@@ -74,10 +74,10 @@ const GAP_PROMPT = (pastQueries) =>
 const SYNTH_PROMPT = () =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
-  "Format (plain text, no markdown headings):\n" +
-  "- Start with a 1-3 sentence conclusion.\n" +
-  "- Then the key findings; cite sources inline with bracketed numbers like [1], [2] after each claim.\n" +
-  '- End with a "Sources:" list of the cited numbers with their URLs.\n' +
+  "Format in Markdown (the UI renders it):\n" +
+  "- Start with a 1-3 sentence conclusion in bold.\n" +
+  "- Then the key findings as short sections or bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n" +
+  '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n' +
   "Be honest about gaps and conflicting sources. If the sources are empty or insufficient, say so plainly and clearly label any general-knowledge statements as not source-backed.";
 
 const VALIDATE_PROMPT =

@@ -62,7 +62,7 @@
       display: flex;
       flex-direction: column;
       gap: 1rem;
-      max-width: 760px;
+      max-width: 900px;
       width: 100%;
       margin: 0 auto;
     }
@@ -86,13 +86,60 @@
     .msg.assistant {
       background: var(--panel);
       border: 1px solid var(--border);
-      align-self: flex-start;
+      align-self: stretch;
+      max-width: 100%; /* research answers use the full column width */
       display: flex;
       flex-direction: column;
       gap: .55rem;
     }
     .msg .content { white-space: pre-wrap; }
     .msg .content.error-text { color: #9a1c1c; }
+
+    /* Rendered markdown (default answer view) */
+    .content.md { white-space: normal; }
+    .content.md > :first-child { margin-top: 0; }
+    .content.md > :last-child { margin-bottom: 0; }
+    .content.md p, .content.md ul, .content.md ol { margin: .5em 0; }
+    .content.md ul, .content.md ol { padding-left: 1.4em; }
+    .content.md h1, .content.md h2, .content.md h3, .content.md h4 {
+      margin: .8em 0 .4em; line-height: 1.25;
+    }
+    .content.md h1 { font-size: 1.25em; }
+    .content.md h2 { font-size: 1.15em; }
+    .content.md h3, .content.md h4 { font-size: 1.05em; }
+    .content.md a { color: var(--accent); }
+    .content.md code {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 4px; padding: .05em .3em; font-size: .9em;
+    }
+    .content.md pre {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: .6rem .8rem; overflow-x: auto;
+    }
+    .content.md pre code { background: none; border: 0; padding: 0; }
+    .content.md blockquote {
+      border-left: 3px solid var(--border); margin: .5em 0;
+      padding-left: .7em; color: var(--muted);
+    }
+    .content.md table { border-collapse: collapse; margin: .5em 0; display: block; overflow-x: auto; }
+    .content.md th, .content.md td { border: 1px solid var(--border); padding: .3rem .55rem; }
+    .content.md th { background: var(--panel-2); }
+    .content.md hr { border: 0; border-top: 1px solid var(--border); }
+
+    /* Answer tools (raw view toggle, copy) */
+    .msg-tools {
+      display: flex; gap: .3rem; justify-content: flex-end;
+      margin: -.2rem -.3rem -.35rem 0;
+      visibility: hidden;
+    }
+    .msg.assistant.has-text .msg-tools { visibility: visible; }
+    .tool-btn {
+      background: transparent; border: 1px solid transparent;
+      color: var(--muted); border-radius: 6px;
+      padding: .1rem .5rem; font-size: .78rem; font-weight: 500;
+    }
+    .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
+    .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
     .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
 
     /* Live activity steps (web searches) */
@@ -150,7 +197,7 @@
       gap: .5rem;
       padding: 1rem 1.25rem;
       border-top: 1px solid var(--border);
-      max-width: 760px;
+      max-width: 900px;
       width: 100%;
       margin: 0 auto;
     }
@@ -193,7 +240,7 @@
       gap: .5rem;
       flex-wrap: wrap;
       padding: .5rem 1.25rem 0;
-      max-width: 760px;
+      max-width: 900px;
       width: 100%;
       margin: 0 auto;
     }
@@ -226,6 +273,8 @@
     <button id="send" type="submit">Send</button>
   </form>
 
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
   <script>
     const chat = document.getElementById("chat");
     const form = document.getElementById("form");
@@ -443,14 +492,68 @@
       el.className = "msg assistant";
       const activity = document.createElement("div");
       activity.className = "activity";
+      const tools = document.createElement("div");
+      tools.className = "msg-tools";
       const content = document.createElement("div");
       showTyping(content);
       const stats = document.createElement("div");
       stats.className = "stats";
-      el.append(activity, content, stats);
+      el.append(activity, tools, content, stats);
       chat.appendChild(el);
       scrollDown();
-      return { el, activity, content, stats, lastStep: null, steps: {}, text: "" };
+
+      const turn = { el, activity, content, stats, lastStep: null, steps: {}, text: "", rawMode: false, errored: false };
+
+      const rawBtn = document.createElement("button");
+      rawBtn.type = "button";
+      rawBtn.className = "tool-btn";
+      rawBtn.textContent = "Raw";
+      rawBtn.title = "Toggle raw text view";
+      rawBtn.addEventListener("click", () => {
+        turn.rawMode = !turn.rawMode;
+        rawBtn.classList.toggle("active", turn.rawMode);
+        renderContent(turn);
+      });
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "tool-btn";
+      copyBtn.textContent = "Copy";
+      copyBtn.title = "Copy raw response to clipboard";
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(turn.text);
+          copyBtn.textContent = "Copied ✓";
+        } catch {
+          copyBtn.textContent = "Copy failed";
+        }
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+      });
+      tools.append(rawBtn, copyBtn);
+      return turn;
+    }
+
+    // Default view is rendered markdown (sanitized); Raw toggles plain text.
+    function renderContent(turn) {
+      const c = turn.content;
+      if (turn.errored) {
+        c.className = "content error-text";
+        c.textContent = turn.text;
+        return;
+      }
+      const canMd = window.marked && window.DOMPurify;
+      if (turn.rawMode || !canMd) {
+        c.className = "content";
+        c.textContent = turn.text;
+      } else {
+        c.className = "content md";
+        // FORBID img: beyond XSS, a rendered <img> from answer text would
+        // fire third-party requests (tracking pixels) — sources stay links.
+        c.innerHTML = DOMPurify.sanitize(marked.parse(turn.text), { FORBID_TAGS: ["img"] });
+        for (const a of c.querySelectorAll("a")) {
+          a.target = "_blank";
+          a.rel = "noopener";
+        }
+      }
     }
 
     // Generic pipeline steps (plan / gap check / synthesis / validation).
@@ -508,16 +611,17 @@
       if (turn.content.classList.contains("typing")) {
         turn.content.classList.remove("typing");
         turn.content.replaceChildren();
+        turn.el.classList.add("has-text"); // reveal the Raw/Copy tools
       }
       turn.text = text;
-      turn.content.textContent = text;
+      renderContent(turn);
       scrollDown();
     }
 
     function setError(turn, message) {
       const text = turn.text ? turn.text + "\n\n[" + message + "]" : message;
+      turn.errored = true;
       setText(turn, text);
-      turn.content.classList.add("error-text");
     }
 
     // "🔎 Searching the web: …" with a spinner.
@@ -596,9 +700,11 @@
         else if (s.type === "step_done") finishGenericStep(turn, s);
         else if (s.type === "done") renderStats(turn, s);
         else if (s.type === "discard_text") {
-          // Server detected a malformed tool call in the streamed text:
-          // clear the bubble and keep waiting for the real answer.
+          // Post-validation replaced the draft: clear the bubble and wait
+          // for the corrected answer to stream.
           turn.text = "";
+          turn.errored = false;
+          turn.el.classList.remove("has-text");
           showTyping(turn.content);
           return "";
         }

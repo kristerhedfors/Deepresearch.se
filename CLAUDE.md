@@ -69,6 +69,15 @@ unknown `status` types (forward compatibility).
 - `{"error":"…"}` — shown as an error in the bubble
 - Stream terminates with `data: [DONE]`
 
+## UI notes
+
+- Assistant answers render as **Markdown by default** (synthesis prompt asks
+  for Markdown). Rendering is client-side with vendored `marked` +
+  `DOMPurify` (`public/vendor/` — no CDN; everything stays behind Basic
+  Auth). Always sanitize: answers can quote hostile web content. Each answer
+  has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
+- Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
+
 ## Logging & observability
 
 - Structured JSON logs, one object per line: `{time, level, event,
