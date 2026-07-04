@@ -9,3 +9,12 @@ export function jsonResponse(obj, status = 200, extraHeaders = {}) {
     },
   });
 }
+
+export function sseResponse(stream) {
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+    },
+  });
+}

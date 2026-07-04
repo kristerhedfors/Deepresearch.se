@@ -54,15 +54,29 @@ extra gap rounds are cut first, validation last, with a visible
 
 ### Code layout
 
+Server (`src/`):
+
 | File | Responsibility |
 |---|---|
-| `src/index.js` | Entrypoint: request id, Basic Auth gate, routing, request logs |
-| `src/auth.js` | Basic Auth (secrets only, fail closed) |
-| `src/chat.js` | `/api/chat`: streaming tool-call loop (`MAX_TOOL_ROUNDS`), input validation |
-| `src/berget.js` | Berget chat-completions client + SSE consumption |
-| `src/exa.js` | Exa `web_search` tool |
-| `src/log.js` | Structured JSON logger (`LOG_LEVEL` var) |
-| `src/http.js` | Response helpers |
+| `index.js` | Entrypoint: request id, auth gate, routing, request logs, `/api/models` |
+| `auth.js` | Basic Auth + session cookie (secrets only, fail closed) |
+| `login.js` | HTML login page (PWAs can't answer a 401 challenge) |
+| `chat.js` | `/api/chat` handler: validation, model resolution, state, SSE scaffold |
+| `pipeline.js` | The research pipeline (triage → search → gap → synth → validate) |
+| `prompts.js` | All LLM prompt builders |
+| `validation.js` | Request validation (messages, images) + model/vision resolution |
+| `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
+| `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
+| `berget.js` | Berget client: streaming + JSON-mode completions, model catalog |
+| `exa.js` | Exa web search |
+| `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
+| `http.js` | Response helpers (json, SSE) |
+
+Client (`public/`): `index.html` (markup only) + `css/app.css` +
+ES modules in `js/` — `app.js` (state, wiring, SSE consumption),
+`turns.js` (bubbles/content/tools), `activity.js` (step bars, stats,
+collapse), `markdown.js` (sanitized rendering), `timescale.js` (slider
+scale). Vendored libs in `vendor/`.
 
 ### /api/chat SSE protocol
 
