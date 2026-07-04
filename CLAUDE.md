@@ -87,6 +87,13 @@ unknown `status` types (forward compatibility).
   Auth). Always sanitize: answers can quote hostile web content. Each answer
   has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
+- Controls row above the input: **web-search knob** (default on; sends
+  `web_search: false` when off → the Worker skips triage/Exa entirely and
+  streams one Berget completion) and the research-time slider (dimmed while
+  search is off). "New chat" in the header clears the client-side history.
+- **Privacy notice** on first visit (Berget/Exa processing, nothing stored
+  server-side, metadata-only logs); acknowledgement remembered for a year
+  in the `dr_privacy_ack` cookie.
 - **Icons/manifest are auth-exempt** (`isPublicAsset` in `src/index.js`):
   iOS fetches `apple-touch-icon` and Chrome downloads manifest icons
   *without* credentials, so behind Basic Auth the home-screen/PWA icon

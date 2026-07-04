@@ -145,6 +145,8 @@ export async function handleChat(request, env, log) {
   const conversation = body.messages;
   // Research time target from the UI slider (see src/budget.js).
   const budgetS = clampBudget(body.time_budget_s);
+  // Web-search knob: default on; explicit false answers from the model only.
+  const webSearchEnabled = body.web_search !== false;
 
   // Image attachments require a vision-capable model. If the catalog is
   // unavailable we let Berget be the judge (its error surfaces upstream).
@@ -176,6 +178,7 @@ export async function handleChat(request, env, log) {
       const state = {
         startedAt,
         model: activeModel,
+        webSearch: webSearchEnabled,
         plan: planResearch(activeModel, budgetS),
         searchCount: 0,
         iterations: 1,
@@ -235,6 +238,35 @@ async function runPipeline(env, log, emit, conversation, model, state) {
     : [];
   const convText = formatConversation(conversation);
   const emitDelta = (t) => emit({ choices: [{ delta: { content: t } }] });
+
+  // Web search off: answer purely from Berget — no triage, no Exa.
+  if (!state.webSearch) {
+    emit({ status: { type: "step_start", id: "plan", label: "Web search off" } });
+    emit({
+      status: {
+        type: "step_done",
+        id: "plan",
+        label: "Web search off — answering from model knowledge",
+        details: [],
+      },
+    });
+    await streamCompletion(
+      env,
+      [
+        {
+          role: "system",
+          content:
+            DIRECT_PROMPT +
+            " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed.",
+        },
+        ...withImageNudge(conversation),
+      ],
+      model,
+      emitDelta,
+      state,
+    );
+    return;
+  }
 
   // ---- Phase 1: triage --------------------------------------------------
   emit({ status: { type: "step_start", id: "plan", label: "Analyzing request…" } });

@@ -277,32 +277,85 @@
     }
     textarea::placeholder { color: var(--muted); opacity: .75; }
 
-    /* Research time-target slider (between output and input) */
+    /* Controls row: web-search toggle + time-target slider */
     #budgetbar {
       display: flex; align-items: center; gap: .7rem;
       padding: .55rem 1.25rem 0;
       max-width: 900px; width: 100%; margin: 0 auto;
       font-size: .8rem; color: var(--muted);
     }
+    #searchtoggle {
+      display: flex; align-items: center; gap: .35rem;
+      white-space: nowrap; cursor: pointer;
+    }
+    #searchtoggle input { accent-color: var(--accent); margin: 0; }
     #budgetbar input[type="range"] {
       flex: 1; margin: 0; accent-color: var(--accent);
     }
+    #budgetbar input[type="range"]:disabled { opacity: .35; }
     #budgetval {
       min-width: 3.4rem; text-align: right;
       font-variant-numeric: tabular-nums;
     }
+
+    .header-right { display: flex; align-items: center; gap: .5rem; }
+    #clearbtn {
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: .35rem .6rem; font-size: .85rem; font-weight: 400;
+    }
+
+    /* First-visit privacy notice (acknowledgement kept in a cookie) */
+    #privacy {
+      position: fixed; inset: 0; z-index: 10;
+      background: rgba(10, 46, 92, .45);
+      display: grid; place-items: end center;
+      padding: 1rem;
+    }
+    #privacy[hidden] { display: none; }
+    .privacy-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.1rem 1.25rem;
+      max-width: 560px; font-size: .88rem; line-height: 1.55;
+      box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+    }
+    .privacy-card p { margin: .55rem 0; }
+    .privacy-card a { color: var(--accent); }
+    .privacy-card button { margin-top: .35rem; padding: .45rem 1.1rem; }
   </style>
 </head>
 <body>
   <header>
     <div>Deepresearch.se</div>
-    <select id="model" title="Model" hidden></select>
+    <div class="header-right">
+      <button id="clearbtn" type="button" title="Start a new chat">New chat</button>
+      <select id="model" title="Model" hidden></select>
+    </div>
   </header>
   <div id="chat"><div class="empty">Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.</div></div>
-  <div id="budgetbar" title="How much time the research pipeline may spend on your question">
-    <span>Research time</span>
+  <div id="budgetbar">
+    <label id="searchtoggle" title="Off: no web searches — the answer comes from the AI model only">
+      <input id="websearch" type="checkbox" checked> Web search
+    </label>
+    <span title="How much time the research pipeline may spend on your question">Research time</span>
     <input id="budget" type="range" min="15" max="180" step="15" value="60" aria-label="Research time target in seconds">
     <span id="budgetval">60 s</span>
+  </div>
+
+  <div id="privacy" hidden>
+    <div class="privacy-card">
+      <strong>Your data on Deepresearch.se</strong>
+      <p>Your messages are processed by <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
+      (EU-hosted AI models) to generate answers. When web search is on, search
+      queries derived from your question are sent to
+      <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a> to find sources.</p>
+      <p>We don't store your conversations — chat history lives only in this
+      browser tab and disappears with "New chat" or a reload. Server logs hold
+      technical metadata only (timings, counts), never message content.
+      Cookies: your login session and this notice's acknowledgement.
+      Preferences (model, time target) stay in your browser.</p>
+      <button id="privacyok" type="button">Got it</button>
+    </div>
   </div>
   <div id="pending"></div>
   <form id="form">
@@ -386,6 +439,36 @@
       localStorage.setItem("budget_s", budgetSlider.value);
     });
     updateBudgetVal();
+
+    // Web-search knob (default on). Off = the answer comes from the model
+    // only; the time slider is moot then, so it dims.
+    const webSearchBox = document.getElementById("websearch");
+    webSearchBox.checked = localStorage.getItem("web_search") !== "off";
+    const syncSearchToggle = () => { budgetSlider.disabled = !webSearchBox.checked; };
+    webSearchBox.addEventListener("change", () => {
+      localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+      syncSearchToggle();
+    });
+    syncSearchToggle();
+
+    // Clear chat (client-side: history lives only in this tab).
+    document.getElementById("clearbtn").addEventListener("click", () => {
+      history.length = 0;
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent =
+        "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
+      chat.replaceChildren(empty);
+      input.focus();
+    });
+
+    // First-visit privacy notice; acknowledgement remembered in a cookie.
+    const privacy = document.getElementById("privacy");
+    if (!/(?:^|;\s*)dr_privacy_ack=1/.test(document.cookie)) privacy.hidden = false;
+    document.getElementById("privacyok").addEventListener("click", () => {
+      document.cookie = "dr_privacy_ack=1; max-age=31536000; path=/; SameSite=Lax; Secure";
+      privacy.hidden = true;
+    });
 
     // ---- Image attachments (vision-capable models only) ----
     function currentModel() {
@@ -841,7 +924,11 @@
       let acc = "";
 
       try {
-        const payload = { messages: messagesForApi(), time_budget_s: Number(budgetSlider.value) };
+        const payload = {
+          messages: messagesForApi(),
+          time_budget_s: Number(budgetSlider.value),
+          web_search: webSearchBox.checked,
+        };
         if (!modelSel.hidden && modelSel.value) payload.model = modelSel.value;
         const res = await fetch("/api/chat", {
           method: "POST",
