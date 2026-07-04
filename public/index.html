@@ -25,7 +25,7 @@
       --user: #d8edff;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+    html, body { height: 100%; margin: 0; overflow-x: hidden; }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
@@ -57,6 +57,7 @@
     #chat {
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 1.25rem;
       display: flex;
       flex-direction: column;
@@ -65,6 +66,21 @@
       width: 100%;
       margin: 0 auto;
     }
+    /* No east-west scrolling: long tokens (URLs etc.) wrap instead of
+       widening the page; wide tables/code scroll inside their own boxes. */
+    .msg, .step { overflow-wrap: anywhere; min-width: 0; }
+
+    /* Jump-to-latest: appears when scrolled away from the bottom; clicking
+       (or scrolling back down yourself) re-attaches auto-follow. */
+    #jumpdown {
+      position: fixed; right: 1.1rem; bottom: 8.2rem; z-index: 6;
+      width: 42px; height: 42px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 1.25rem; line-height: 1; padding: 0;
+      display: grid; place-items: center;
+      box-shadow: 0 3px 12px rgba(4, 30, 60, .35);
+    }
+    #jumpdown[hidden] { display: none; }
     .msg {
       padding: .75rem 1rem;
       border-radius: 12px;
@@ -396,6 +412,7 @@
       <button id="privacyok" type="button">Got it</button>
     </div>
   </div>
+  <button id="jumpdown" type="button" hidden aria-label="Scroll to latest">↓</button>
   <div id="pending"></div>
   <form id="form">
     <button id="attach" type="button" title="Attach images">📎</button>
@@ -655,7 +672,29 @@
       );
     }
 
-    const scrollDown = () => { chat.scrollTop = chat.scrollHeight; };
+    // Auto-follow: streaming pins the view to the bottom ONLY while the user
+    // is already there. Scrolling up detaches (no yank-back on the next
+    // token) and shows the jump-down button; pressing it — or scrolling back
+    // to the bottom yourself — re-attaches.
+    const jumpBtn = document.getElementById("jumpdown");
+    let autoFollow = true;
+    chat.addEventListener("scroll", () => {
+      const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 48;
+      autoFollow = nearBottom;
+      jumpBtn.hidden = nearBottom;
+    });
+    jumpBtn.addEventListener("click", () => {
+      // Instant, not smooth: a smooth animation fires intermediate scroll
+      // events that read as "user scrolled away" and re-detach — and the
+      // bottom keeps moving while content streams.
+      autoFollow = true;
+      chat.scrollTop = chat.scrollHeight;
+      jumpBtn.hidden = true;
+    });
+    const scrollDown = (force = false) => {
+      if (force) autoFollow = true;
+      if (autoFollow) chat.scrollTop = chat.scrollHeight;
+    };
     const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 
     function addUserBubble(text, imageUrls = []) {
@@ -674,7 +713,7 @@
         el.appendChild(imgs);
       }
       chat.appendChild(el);
-      scrollDown();
+      scrollDown(true); // sending re-attaches auto-follow
     }
 
     // An assistant turn = activity panel (search steps) + streamed content
