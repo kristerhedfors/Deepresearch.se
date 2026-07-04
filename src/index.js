@@ -53,7 +53,24 @@ export default {
   },
 };
 
+// Branding assets served WITHOUT auth: iOS fetches apple-touch-icon and
+// Chrome downloads manifest icons without credentials, so behind Basic Auth
+// home-screen/PWA icons silently 401 and fall back to a generic letter.
+// Nothing sensitive here — the icon, favicon, and app name only.
+function isPublicAsset(url, method) {
+  if (method !== "GET" && method !== "HEAD") return false;
+  return (
+    url.pathname === "/favicon.ico" ||
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname.startsWith("/icons/")
+  );
+}
+
 async function route(request, env, url, log) {
+  if (isPublicAsset(url, request.method)) {
+    return env.ASSETS.fetch(request);
+  }
+
   const denied = requireBasicAuth(request, env, log);
   if (denied) return denied;
 

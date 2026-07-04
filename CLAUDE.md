@@ -77,6 +77,11 @@ unknown `status` types (forward compatibility).
   Auth). Always sanitize: answers can quote hostile web content. Each answer
   has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
+- **Icons/manifest are auth-exempt** (`isPublicAsset` in `src/index.js`):
+  iOS fetches `apple-touch-icon` and Chrome downloads manifest icons
+  *without* credentials, so behind Basic Auth the home-screen/PWA icon
+  silently 401s. `/favicon.ico`, `/manifest.webmanifest`, and `/icons/*`
+  are public (branding only — nothing sensitive).
 
 ## Logging & observability
 
