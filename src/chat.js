@@ -5,8 +5,8 @@
 //   1. Triage (JSON): direct reply | one clarifying question | research plan
 //      with 2-4 search queries covering different angles.
 //   2. Search wave: run the planned queries via Exa (deduped, capped).
-//   3. Gap check (JSON, up to MAX_GAP_ITERATIONS): audit coverage against
-//      the question; run follow-up queries for the most important gaps.
+//   3. Gap check (JSON, rounds set by the time-budget planner): audit
+//      coverage; run follow-up queries for the most important gaps.
 //   4. Synthesis: stream a source-grounded answer with [n] citations and a
 //      Sources list, built ONLY from the numbered source registry.
 //   5. Post-validation (JSON): fact-check the draft against the sources; on
@@ -34,12 +34,14 @@ import {
   defaultModel,
   listModels,
 } from "./berget.js";
+import { clampBudget, fitsDeadline, planResearch, recordPhase } from "./budget.js";
 import { webSearch } from "./exa.js";
 import { jsonResponse } from "./http.js";
 
 const MAX_INITIAL_QUERIES = 4;
-const MAX_GAP_ITERATIONS = 2;
 const MAX_FOLLOWUP_QUERIES = 3;
+// Gap iterations (max 2) and validation inclusion are decided per request
+// by the time-budget planner — see src/budget.js.
 const MAX_TOTAL_SEARCHES = 8;
 const MAX_SOURCES = 18; // registry cap fed to synthesis/validation
 const DIGEST_CHAR_CAP = 14_000;
@@ -141,6 +143,8 @@ export async function handleChat(request, env, log) {
   }
   const activeModel = model || defaultModel(env);
   const conversation = body.messages;
+  // Research time target from the UI slider (see src/budget.js).
+  const budgetS = clampBudget(body.time_budget_s);
 
   // Image attachments require a vision-capable model. If the catalog is
   // unavailable we let Berget be the judge (its error surfaces upstream).
@@ -170,6 +174,9 @@ export async function handleChat(request, env, log) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       const startedAt = Date.now();
       const state = {
+        startedAt,
+        model: activeModel,
+        plan: planResearch(activeModel, budgetS),
         searchCount: 0,
         iterations: 1,
         ranQueries: new Set(),
@@ -243,6 +250,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
       addUsage(state.totals, r.usage);
       return r.value;
     }),
+    { model, statKey: "triage" },
   );
 
   const decision = normalizeTriage(triage, lastUser);
@@ -265,12 +273,16 @@ async function runPipeline(env, log, emit, conversation, model, state) {
     return;
   }
 
-  const queries = decision.queries.slice(0, MAX_INITIAL_QUERIES);
+  // The time-budget plan (src/budget.js) decides how many angles, gap
+  // rounds, and whether validation fits; deadline checks refine at runtime.
+  const plan = state.plan;
+  const est = plan.estimates;
+  const queries = decision.queries.slice(0, Math.min(plan.queries, MAX_INITIAL_QUERIES));
   emit({
     status: {
       type: "step_done",
       id: "plan",
-      label: `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"}`,
+      label: `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"} · target ${plan.budgetS}s`,
       details: queries,
     },
   });
@@ -278,9 +290,17 @@ async function runPipeline(env, log, emit, conversation, model, state) {
   // ---- Phase 2: initial search wave --------------------------------------
   await runSearches(env, log, emit, state, queries, 1);
 
-  // ---- Phase 3: gap-check iterations --------------------------------------
-  for (let it = 1; it <= MAX_GAP_ITERATIONS; it++) {
+  // ---- Phase 3: gap-check iterations (budgeted) ---------------------------
+  for (let it = 1; it <= plan.gapIterations; it++) {
     if (state.searchCount >= MAX_TOTAL_SEARCHES) break;
+    // Skip further digging if this round plus the remaining mandatory
+    // phases would blow the time target.
+    const upcoming =
+      est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
+    if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
+      log.info("chat.budget_cut", { cut: "gap_iteration", round: it });
+      break;
+    }
     const stepId = `gap${it}`;
     emit({ status: { type: "step_start", id: stepId, label: `Checking coverage (round ${it})…` } });
 
@@ -299,6 +319,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
         addUsage(state.totals, r.usage);
         return r.value;
       }),
+      { model, statKey: "gap" },
     );
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
@@ -327,6 +348,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
+  const synthStartedAt = Date.now();
   const draft = await streamCompletion(
     env,
     [
@@ -342,9 +364,28 @@ async function runPipeline(env, log, emit, conversation, model, state) {
     emitDelta,
     state,
   );
+  recordPhase(model, "synth", Date.now() - synthStartedAt);
   emit({ status: { type: "step_done", id: "synth", label: "Report drafted", details: [] } });
 
-  // ---- Phase 5: post-validation -------------------------------------------
+  // ---- Phase 5: post-validation (budgeted) --------------------------------
+  const validateNow =
+    plan.validate && fitsDeadline(state.startedAt, plan.budgetMs, est.validate);
+  if (!validateNow) {
+    log.info("chat.budget_cut", { cut: "validation", planned: plan.validate });
+    emit({
+      status: {
+        type: "step_start", id: "validate", label: "Validation" },
+    });
+    emit({
+      status: {
+        type: "step_done",
+        id: "validate",
+        label: `Validation skipped to meet the ${plan.budgetS}s time target`,
+        details: [],
+      },
+    });
+    return;
+  }
   emit({ status: { type: "step_start", id: "validate", label: "Validating claims against sources…" } });
   const verdict = await phase(log, "validate", () =>
     completeJson(
@@ -361,6 +402,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
       addUsage(state.totals, r.usage);
       return r.value;
     }),
+    { model, statKey: "validate" },
   );
 
   if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
@@ -385,12 +427,15 @@ async function runPipeline(env, log, emit, conversation, model, state) {
 // ---- helpers ---------------------------------------------------------------
 
 // Runs a helper phase, logging duration; returns null on failure so the
-// pipeline can degrade instead of breaking.
-async function phase(log, name, fn) {
+// pipeline can degrade instead of breaking. When opts.statKey is given the
+// duration feeds the per-model rolling stats used by the budget planner.
+async function phase(log, name, fn, opts = {}) {
   const startedAt = Date.now();
   try {
     const result = await fn();
-    log.info("chat.phase", { phase: name, duration_ms: Date.now() - startedAt, ok: result != null });
+    const duration_ms = Date.now() - startedAt;
+    if (opts.statKey && opts.model) recordPhase(opts.model, opts.statKey, duration_ms);
+    log.info("chat.phase", { phase: name, duration_ms, ok: result != null });
     return result;
   } catch (err) {
     log.warn("chat.phase_failed", {
@@ -431,6 +476,7 @@ async function runSearches(env, log, emit, state, queries, round) {
 
     emit({ status: { type: "search_start", round, query } });
     const result = await webSearch(env, log, query);
+    recordPhase(state.model, "search", result.durationMs);
     emit({
       status: {
         type: "search_done",
