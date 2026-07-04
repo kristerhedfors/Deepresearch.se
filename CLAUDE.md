@@ -20,6 +20,14 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 `/api/chat` endpoint. Deployed via `npx wrangler deploy` (config in
 `wrangler.toml`), git-connected to Cloudflare.
 
+**Product intent:** the site is a *deep research* assistant, matching its
+name. The system prompt (in `src/chat.js`) instructs the model to (1) ask one
+short clarifying follow-up question when a research request is underspecified,
+(2) otherwise run several `web_search` calls from different angles plus
+follow-up searches, and (3) synthesize a structured, URL-cited answer that is
+honest about gaps. Keep this behavior in mind when editing the prompt or the
+tool loop (`MAX_TOOL_ROUNDS`).
+
 ### Code layout
 
 | File | Responsibility |

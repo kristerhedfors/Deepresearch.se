@@ -22,16 +22,25 @@ import { chatCompletion, consumeChatStream } from "./berget.js";
 import { webSearch } from "./exa.js";
 import { jsonResponse } from "./http.js";
 
-const MAX_TOOL_ROUNDS = 3; // search rounds before forcing a final answer
+const MAX_TOOL_ROUNDS = 5; // search rounds before forcing a final answer
 const MAX_TOOL_CALLS_PER_ROUND = 5;
 const MAX_MESSAGES = 60; // history cap: the API is stateless, clients resend everything
 const MAX_MESSAGE_CHARS = 32_000;
 
 const SYSTEM_PROMPT =
-  "You are the assistant for Deepresearch.se. Be helpful, concise, and clear. " +
-  "You have a `web_search` tool backed by Exa. Use it whenever the user asks " +
-  "about recent events, current facts, specific data, or anything that may have " +
-  "changed since your training. When you use search results, cite the source URLs.";
+  "You are the research assistant for Deepresearch.se. Your job is deep " +
+  "research: thorough, source-grounded answers, not quick guesses.\n\n" +
+  "Workflow:\n" +
+  "1. If the research request is ambiguous or missing key details (scope, " +
+  "timeframe, region, purpose), first ask one short follow-up question to pin " +
+  "it down — do not search yet.\n" +
+  "2. Once the question is clear, research it with the `web_search` tool: run " +
+  "several targeted searches from different angles, and run follow-up " +
+  "searches on leads worth digging into.\n" +
+  "3. Synthesize the findings into a structured answer: a short conclusion " +
+  "first, then the key findings, citing source URLs for every claim. Note " +
+  "disagreements between sources and gaps in the evidence honestly.\n\n" +
+  "Only skip searching for small talk or questions about this site itself.";
 
 const TOOLS = [
   {
