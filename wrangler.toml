@@ -7,5 +7,12 @@
 name = "deepresearch-se"
 compatibility_date = "2026-07-04"
 
+# Custom domains served by this Worker. Cloudflare provisions the DNS record and
+# TLS cert automatically; the zone must be active in this same account.
+routes = [
+  { pattern = "deepresearch.se", custom_domain = true },
+  { pattern = "www.deepresearch.se", custom_domain = true },
+]
+
 [assets]
 directory = "./public"
