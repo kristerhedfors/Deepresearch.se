@@ -231,7 +231,11 @@
     let knownModels = []; // /api/models entries, for vision capability lookup
     let attachments = []; // pending images: {name, dataUrl}
     const MAX_ATTACH = 4;
-    const MAX_FILE_BYTES = 3.5 * 1024 * 1024; // ~4 MB as base64, the server cap
+    const MAX_RAW_BYTES = 25 * 1024 * 1024; // sanity cap on input files
+    // The LLM provider rejects request bodies over ~1 MB, so images are
+    // downscaled to JPEG data URLs within these budgets before attaching.
+    const PER_IMAGE_CHARS = 280000;
+    const TOTAL_IMAGE_CHARS = 700000;
 
     // Model dropdown: populated from /api/models, selection kept in
     // localStorage. If the catalog can't load, the dropdown stays hidden and
@@ -333,25 +337,73 @@
         fileInput.click();
       }
     });
-    fileInput.addEventListener("change", () => {
-      for (const file of fileInput.files) {
+    fileInput.addEventListener("change", async () => {
+      const files = [...fileInput.files];
+      fileInput.value = "";
+      for (const file of files) {
         if (attachments.length >= MAX_ATTACH) {
           alert("Max " + MAX_ATTACH + " images per message.");
           break;
         }
-        if (file.size > MAX_FILE_BYTES) {
-          alert(file.name + " is too large (max ~3.5 MB).");
+        if (file.size > MAX_RAW_BYTES) {
+          alert(file.name + " is too large.");
           continue;
         }
-        const reader = new FileReader();
-        reader.onload = () => {
-          attachments.push({ name: file.name, dataUrl: reader.result });
+        const used = attachments.reduce((s, a) => s + a.dataUrl.length, 0);
+        const budget = Math.min(PER_IMAGE_CHARS, TOTAL_IMAGE_CHARS - used);
+        if (budget < 60000) {
+          alert("Image size budget for this message is full — send these first.");
+          break;
+        }
+        try {
+          const dataUrl = await downscaleImage(file, budget);
+          if (!dataUrl) {
+            alert("Could not compress " + file.name + " enough to send.");
+            continue;
+          }
+          attachments.push({ name: file.name, dataUrl });
           renderPending();
-        };
-        reader.readAsDataURL(file);
+        } catch {
+          alert("Could not read " + file.name + " as an image.");
+        }
       }
-      fileInput.value = "";
     });
+
+    // Phone photos are several MB but the LLM provider rejects request
+    // bodies over ~1 MB — resize to max 1280px and walk JPEG quality (then
+    // dimensions) down until the data URL fits the budget.
+    async function downscaleImage(file, budgetChars) {
+      const img = await loadImage(file);
+      const iw = img.width || img.naturalWidth;
+      const ih = img.height || img.naturalHeight;
+      if (!iw || !ih) return null;
+      let edge = 1280;
+      while (edge >= 320) {
+        const scale = Math.min(1, edge / Math.max(iw, ih));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(iw * scale));
+        canvas.height = Math.max(1, Math.round(ih * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        for (const q of [0.8, 0.65, 0.5]) {
+          const url = canvas.toDataURL("image/jpeg", q);
+          if (url.length <= budgetChars) return url;
+        }
+        edge = Math.round(edge * 0.7);
+      }
+      return null;
+    }
+
+    function loadImage(file) {
+      return createImageBitmap(file).catch(
+        () =>
+          new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = URL.createObjectURL(file);
+          }),
+      );
+    }
 
     const scrollDown = () => { chat.scrollTop = chat.scrollHeight; };
     const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
@@ -555,6 +607,23 @@
       return acc;
     }
 
+    // Keep images only on the latest message when sending: history is resent
+    // every turn and would otherwise re-inflate each request past the
+    // provider's ~1 MB body limit. Older turns keep their text plus a marker.
+    function messagesForApi() {
+      return history.map((m, i) => {
+        if (i === history.length - 1 || m.role !== "user" || typeof m.content === "string") return m;
+        const text = m.content
+          .filter((p) => p.type === "text")
+          .map((p) => p.text)
+          .join("\n");
+        return {
+          role: "user",
+          content: (text ? text + "\n" : "") + "[image was attached earlier in this conversation]",
+        };
+      });
+    }
+
     async function sendMessage(text) {
       // Build message content: plain string, or a multimodal array when
       // images are attached (OpenAI-style parts).
@@ -575,7 +644,7 @@
       let acc = "";
 
       try {
-        const payload = { messages: history };
+        const payload = { messages: messagesForApi() };
         if (!modelSel.hidden && modelSel.value) payload.model = modelSel.value;
         const res = await fetch("/api/chat", {
           method: "POST",

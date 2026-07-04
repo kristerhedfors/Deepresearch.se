@@ -118,11 +118,16 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   The attach button stays tappable on non-vision models (dimmed, not
   disabled — tooltips don't exist on touch devices) and offers a one-tap
   switch to a vision-capable model; the Worker rejects
-  images on non-vision models (400 listing vision-capable alternatives) and
-  enforces caps (4 images/message, 8/request, ~4 MB each as data URLs, in
-  `src/chat.js`). Image parts of the latest user message are forwarded to the
-  synthesis call so research can use them; JSON helper phases are text-only
-  and see an `[N image(s) attached]` marker.
+  images on non-vision models (400 listing vision-capable alternatives).
+  **Berget rejects request bodies over ~1 MB** ("Request payload too large";
+  measured 2026-07: 1.0M chars OK, 1.2M rejected), so the client downscales
+  images before attaching (canvas → JPEG, max 1280px, quality ladder, ≤280K
+  chars/image, ≤700K/message) and strips images from all but the latest
+  message when resending history. Server caps in `src/chat.js`: 4
+  images/message, 8/request, 300K chars/image, 750K total. Image parts of
+  the latest user message are forwarded to the synthesis call so research
+  can use them; image-only sends get an explicit analyze instruction; JSON
+  helper phases are text-only and see an `[N image(s) attached]` marker.
 
 ## Web search — Exa
 

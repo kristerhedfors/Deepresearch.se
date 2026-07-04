@@ -48,7 +48,11 @@ const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
 const MAX_IMAGES_PER_MESSAGE = 4;
 const MAX_IMAGES_PER_REQUEST = 8; // history is resent every turn — keep bounded
-const MAX_IMAGE_CHARS = 5_500_000; // data-URL length ≈ 4 MB binary
+// Berget rejects request bodies over ~1 MB ("Request payload too large";
+// measured 2026-07: 1.0M chars OK, 1.2M rejected). The client downscales
+// images to fit; these server caps leave headroom for text/history.
+const MAX_IMAGE_CHARS = 300_000; // per image, as a data URL
+const MAX_TOTAL_IMAGE_CHARS = 750_000; // per request
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -58,7 +62,7 @@ const TRIAGE_PROMPT = () =>
   '- {"action":"direct"} — small talk, thanks, questions about this site, or simple stable facts that need no web sources.\n' +
   '- {"action":"clarify","question":"..."} — a research request missing details (scope, timeframe, region, purpose) that would materially change what to search. Ask exactly ONE short question.\n' +
   '- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-4 distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).\n' +
-  'Messages may carry attached images (shown as "[N image(s) attached]"). If the request is about analyzing the attached image(s) and needs no current web information, choose "direct".';
+  'Messages may carry attached images (shown as "[N image(s) attached]"). Questions about the attached image itself (identify, describe, read, count, colors, "what is this") MUST be "direct" — web search cannot see images. Choose "research" for an image question only when external facts are also needed (e.g. news or prices about the thing in the image), and then write queries about the topic, never about "the image".';
 
 const GAP_PROMPT = (pastQueries) =>
   `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
@@ -247,7 +251,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
     emit({ status: { type: "step_done", id: "plan", label: "Direct reply (no research needed)", details: [] } });
     await streamCompletion(
       env,
-      [{ role: "system", content: DIRECT_PROMPT }, ...conversation],
+      [{ role: "system", content: DIRECT_PROMPT }, ...withImageNudge(conversation)],
       model,
       emitDelta,
       state,
@@ -493,6 +497,27 @@ function addUsage(totals, usage) {
   totals.co2_grams += usage.co2_grams || 0;
 }
 
+// Image-only sends ("what is this?" implied) otherwise read as an empty
+// message and get ignored: give the model an explicit instruction. Only the
+// outgoing copy is modified.
+function withImageNudge(conversation) {
+  const last = conversation[conversation.length - 1];
+  if (!last || last.role !== "user" || !Array.isArray(last.content)) return conversation;
+  const hasText = last.content.some((p) => p?.type === "text" && p.text.trim());
+  const hasImage = last.content.some((p) => p?.type === "image_url");
+  if (hasText || !hasImage) return conversation;
+  return [
+    ...conversation.slice(0, -1),
+    {
+      ...last,
+      content: [
+        { type: "text", text: "(No text was provided.) Describe and analyze the attached image(s) helpfully." },
+        ...last.content,
+      ],
+    },
+  ];
+}
+
 // Text view of a message's content: string content as-is; multimodal arrays
 // as concatenated text parts plus an "[N image(s) attached]" marker. Used for
 // the JSON-mode helper phases, which are text-only.
@@ -539,6 +564,7 @@ function validateMessages(messages) {
     return `Conversation too long (max ${MAX_MESSAGES} messages). Start a new chat.`;
   }
   let totalImages = 0;
+  let totalImageChars = 0;
   for (const m of messages) {
     if (m?.role !== "user" && m?.role !== "assistant") {
       return "Each message must have role `user` or `assistant`.";
@@ -563,10 +589,11 @@ function validateMessages(messages) {
           return "Images must be attached as data:image/… URLs.";
         }
         if (url.length > MAX_IMAGE_CHARS) {
-          return "An attached image is too large (max ~4 MB).";
+          return "An attached image is too large after encoding (~220 KB max per image). Reload the page — it now compresses images automatically.";
         }
         images++;
         totalImages++;
+        totalImageChars += url.length;
       } else {
         return "Unsupported message content part.";
       }
@@ -580,6 +607,9 @@ function validateMessages(messages) {
   }
   if (totalImages > MAX_IMAGES_PER_REQUEST) {
     return `Too many images in the conversation (max ${MAX_IMAGES_PER_REQUEST}). Start a new chat.`;
+  }
+  if (totalImageChars > MAX_TOTAL_IMAGE_CHARS) {
+    return "The attached images together exceed the provider's request size limit. Remove an image or start a new chat.";
   }
   return null;
 }
