@@ -176,6 +176,9 @@
       padding: 0 .8rem;
       font-size: 1.1rem;
     }
+    /* Dimmed (not disabled): stays tappable on mobile so the tap can explain
+       and offer a switch to a vision-capable model. */
+    #attach.dim { opacity: .5; }
 
     /* Pending image attachments (above the input) */
     #pending {
@@ -209,7 +212,7 @@
   <div id="chat"><div class="empty">Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.</div></div>
   <div id="pending"></div>
   <form id="form">
-    <button id="attach" type="button" disabled title="Attach images">📎</button>
+    <button id="attach" type="button" title="Attach images">📎</button>
     <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     <textarea id="input" placeholder="Ask a research question… (Enter to send, Shift+Enter for newline)" autofocus></textarea>
     <button id="send" type="submit">Send</button>
@@ -273,10 +276,13 @@
 
     function updateAttachState() {
       const vision = !!currentModel()?.vision;
-      attachBtn.disabled = !vision;
+      // Never disable: on touch devices a disabled button gives no feedback
+      // (title tooltips don't exist there). Dim it instead; the tap handler
+      // explains and offers to switch models.
+      attachBtn.classList.toggle("dim", !vision);
       attachBtn.title = vision
         ? "Attach images"
-        : "The selected model does not support image input — pick a vision-capable model";
+        : "Image input needs a vision-capable model — tap to switch";
       if (!vision && attachments.length) {
         attachments = [];
         renderPending();
@@ -305,7 +311,28 @@
       });
     }
 
-    attachBtn.addEventListener("click", () => fileInput.click());
+    attachBtn.addEventListener("click", () => {
+      if (currentModel()?.vision) {
+        fileInput.click();
+        return;
+      }
+      // Non-vision model selected: explain and offer a one-tap switch.
+      const alt = knownModels.find((m) => m.vision && m.up !== false);
+      if (!alt) {
+        alert(knownModels.length
+          ? "No vision-capable models are currently available."
+          : "The model list is still loading — try again in a moment.");
+        return;
+      }
+      if (confirm("Image attachments need a vision-capable model.\nSwitch to " + alt.name + "?")) {
+        modelSel.value = alt.id;
+        localStorage.setItem("model", alt.id);
+        updateAttachState();
+        // Some mobile browsers consume the user gesture on confirm(); if the
+        // picker doesn't open now, the button is active for the next tap.
+        fileInput.click();
+      }
+    });
     fileInput.addEventListener("change", () => {
       for (const file of fileInput.files) {
         if (attachments.length >= MAX_ATTACH) {

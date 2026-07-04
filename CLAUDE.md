@@ -115,7 +115,9 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
 - **Image input:** models with `capabilities.vision` (exposed as `vision` in
   `/api/models`) accept OpenAI-style multimodal content:
   `content: [{type:"text",text}, {type:"image_url",image_url:{url:"data:image/…"}}]`.
-  The UI enables the attach button only for vision models; the Worker rejects
+  The attach button stays tappable on non-vision models (dimmed, not
+  disabled — tooltips don't exist on touch devices) and offers a one-tap
+  switch to a vision-capable model; the Worker rejects
   images on non-vision models (400 listing vision-capable alternatives) and
   enforces caps (4 images/message, 8/request, ~4 MB each as data URLs, in
   `src/chat.js`). Image parts of the latest user message are forwarded to the
