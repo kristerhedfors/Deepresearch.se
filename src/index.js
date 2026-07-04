@@ -1,6 +1,7 @@
 // Cloudflare Worker for Deepresearch.se.
 //
-// - Gates the entire site (UI + API) behind HTTP Basic Auth (djup:forskning).
+// - Gates the entire site (UI + API) behind HTTP Basic Auth, with credentials
+//   read from the BASIC_AUTH_USER / BASIC_AUTH_PASS secrets (fail closed).
 // - POST /api/chat proxies Berget.ai's OpenAI-compatible chat completions API
 //   (streaming) using the BERGET_API_TOKEN secret, defaulting to Mistral Small.
 // - All other requests are served from the static ./public assets.
@@ -12,10 +13,6 @@ const BERGET_URL = "https://api.berget.ai/v1/chat/completions";
 const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; // alias: mistral-small
 const SYSTEM_PROMPT =
   "You are the assistant for Deepresearch.se. Be helpful, concise, and clear.";
-
-// Basic Auth credentials (overridable via BASIC_AUTH_USER / BASIC_AUTH_PASS secrets).
-const DEFAULT_USER = "djup";
-const DEFAULT_PASS = "forskning";
 
 export default {
   async fetch(request, env) {
@@ -39,8 +36,10 @@ export default {
 };
 
 function isAuthorized(request, env) {
-  const expectedUser = env.BASIC_AUTH_USER || DEFAULT_USER;
-  const expectedPass = env.BASIC_AUTH_PASS || DEFAULT_PASS;
+  const expectedUser = env.BASIC_AUTH_USER;
+  const expectedPass = env.BASIC_AUTH_PASS;
+  // Fail closed: if the credential secrets aren't configured, deny everyone.
+  if (!expectedUser || !expectedPass) return false;
 
   const header = request.headers.get("Authorization") || "";
   if (!header.startsWith("Basic ")) return false;

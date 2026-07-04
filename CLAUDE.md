@@ -38,7 +38,16 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
 
 ## Access control
 
-The whole site (UI + API) is behind HTTP **Basic Auth**: username `djup`,
-password `forskning`. Enforced in the Worker; `run_worker_first = true` in
-`wrangler.toml` ensures auth also covers the static assets. Credentials are
-overridable via the `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` secrets.
+The whole site (UI + API) is behind HTTP **Basic Auth**. Credentials are read
+only from the `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` secrets — never hardcoded
+in the repo. The Worker **fails closed**: if either secret is unset, every
+request gets 401. `run_worker_first = true` in `wrangler.toml` ensures auth
+also covers the static assets.
+
+Set them once in the dashboard (Worker → Settings → Variables and Secrets) or
+via CLI:
+
+```bash
+npx wrangler secret put BASIC_AUTH_USER   # enter the username when prompted
+npx wrangler secret put BASIC_AUTH_PASS   # enter the password when prompted
+```
