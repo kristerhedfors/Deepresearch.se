@@ -333,16 +333,31 @@
     }
     #searchpop[hidden] { display: none; }
 
-    #clock { flex: none; }
     #budgetval {
-      min-width: 3.2rem;
+      min-width: 3.6rem;
       font-variant-numeric: tabular-nums;
     }
+    /* Slider with the clock as its thumb (SVG-embedded emoji, since thumbs
+       can't contain text). Track is styled manually — appearance:none. */
     #budgetbar input[type="range"] {
-      flex: 1; margin: 0; accent-color: var(--accent);
+      flex: 1; margin: 0;
+      -webkit-appearance: none; appearance: none;
+      height: 6px; border-radius: 3px;
+      background: var(--border);
+    }
+    #budgetbar input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 26px; height: 26px; border: 0; border-radius: 50%;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
+      cursor: pointer;
+    }
+    #budgetbar input[type="range"]::-moz-range-thumb {
+      width: 26px; height: 26px; border: 0; border-radius: 50%;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
+      cursor: pointer;
     }
     #budgetbar input[type="range"]:disabled { opacity: .35; }
-    #budgetbar.nosearch #clock, #budgetbar.nosearch #budgetval { opacity: .35; }
+    #budgetbar.nosearch #budgetval { opacity: .35; }
 
     .header-right { display: flex; align-items: center; gap: .5rem; }
     #clearbtn {
@@ -392,9 +407,8 @@
       <b>Off:</b> the AI model (Berget.ai) answers from its own knowledge only
       — no web requests.
     </div>
-    <span id="clock" title="Research time target">🕐</span>
-    <span id="budgetval">60 s</span>
-    <input id="budget" type="range" min="15" max="180" step="15" value="60" aria-label="Research time target in seconds">
+    <span id="budgetval" title="Research time target">1 m</span>
+    <input id="budget" type="range" min="0" max="100" step="1" value="28" aria-label="Research time target">
   </div>
 
   <div id="privacy" hidden>
@@ -478,21 +492,35 @@
     });
     loadModels();
 
-    // Research time-target slider: persisted, sent as time_budget_s with
-    // each request. The server plans searches/validation to fit (budget.js).
+    // Research time-target slider: persisted (as seconds), sent as
+    // time_budget_s with each request; the server plans to fit (budget.js).
+    // The slider position (0-100) maps quadratically to 15s–10min so the
+    // low end has fine granularity and the top still reaches 10 minutes.
     const budgetSlider = document.getElementById("budget");
     const budgetVal = document.getElementById("budgetval");
+    const BUDGET_MIN_S = 15, BUDGET_MAX_S = 600;
+    function posToSeconds(p) {
+      const raw = BUDGET_MIN_S + (BUDGET_MAX_S - BUDGET_MIN_S) * Math.pow(p / 100, 2);
+      const step = raw < 60 ? 5 : raw < 180 ? 15 : 30; // human-friendly increments
+      return Math.min(BUDGET_MAX_S, Math.max(BUDGET_MIN_S, Math.round(raw / step) * step));
+    }
+    function secondsToPos(s) {
+      return Math.round(100 * Math.sqrt((s - BUDGET_MIN_S) / (BUDGET_MAX_S - BUDGET_MIN_S)));
+    }
     function fmtBudget(s) {
       if (s < 60) return s + " s";
       const m = Math.floor(s / 60), r = s % 60;
       return r ? m + " m " + r + " s" : m + " m";
     }
+    let budgetS = 60;
     const savedBudget = parseInt(localStorage.getItem("budget_s"), 10);
-    if (savedBudget >= 15 && savedBudget <= 180) budgetSlider.value = savedBudget;
-    const updateBudgetVal = () => { budgetVal.textContent = fmtBudget(Number(budgetSlider.value)); };
+    if (savedBudget >= BUDGET_MIN_S && savedBudget <= BUDGET_MAX_S) budgetS = savedBudget;
+    budgetSlider.value = secondsToPos(budgetS);
+    const updateBudgetVal = () => { budgetVal.textContent = fmtBudget(budgetS); };
     budgetSlider.addEventListener("input", () => {
+      budgetS = posToSeconds(Number(budgetSlider.value));
       updateBudgetVal();
-      localStorage.setItem("budget_s", budgetSlider.value);
+      localStorage.setItem("budget_s", String(budgetS));
     });
     updateBudgetVal();
 
@@ -1018,7 +1046,7 @@
       try {
         const payload = {
           messages: messagesForApi(),
-          time_budget_s: Number(budgetSlider.value),
+          time_budget_s: budgetS,
           web_search: webSearchBox.checked,
         };
         if (!modelSel.hidden && modelSel.value) payload.model = modelSel.value;

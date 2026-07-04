@@ -33,7 +33,7 @@ const PRIORS_MS = {
 };
 const ALPHA = 0.3;
 export const MIN_BUDGET_S = 15;
-export const MAX_BUDGET_S = 180;
+export const MAX_BUDGET_S = 600; // slider tops out at 10 minutes
 export const DEFAULT_BUDGET_S = 60;
 
 const stats = new Map(); // model -> { phase: ewma_ms }
@@ -82,7 +82,7 @@ export function planResearch(model, budgetS) {
   let rest = avail - plan.queries * t.search;
 
   const gapCost = t.gap + 2 * t.search;
-  while (plan.gapIterations < 2 && rest >= gapCost) {
+  while (plan.gapIterations < 3 && rest >= gapCost) {
     plan.gapIterations++;
     rest -= gapCost;
   }

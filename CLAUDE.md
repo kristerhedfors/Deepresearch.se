@@ -40,8 +40,10 @@ works on any JSON-mode model:
 Helper phases fail soft (degrade to fewer searches / accepted draft — never
 break the request). Pipeline constants at the top of `src/chat.js`.
 
-**Time budget:** the UI slider (15–180 s, persisted) sends `time_budget_s`
-with each request; `src/budget.js` plans the spend. Per-model EWMA stats of
+**Time budget:** the UI slider (15 s–10 min; the clock symbol IS the thumb;
+position maps quadratically to seconds for fine low-end granularity;
+persisted) sends `time_budget_s` with each request; `src/budget.js` plans
+the spend. Per-model EWMA stats of
 each phase's duration (seeded with measured priors, per isolate, fed by
 every completed phase) drive a static allocation — triage+synthesis always
 paid, validation reserved next (quality gate, dropped only under tight
