@@ -4,8 +4,8 @@
   "description": "Deep research assistant: multi-angle web search with validated, cited answers.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0d12",
-  "theme_color": "#0b0d12",
+  "background_color": "#6fc3fd",
+  "theme_color": "#6fc3fd",
   "icons": [
     {
       "src": "/icons/icon-192.png?v=3",

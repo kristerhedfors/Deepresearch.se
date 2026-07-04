@@ -10,18 +10,19 @@
   <!-- use-credentials: the site is behind Basic Auth and manifest requests
        are sent without credentials by default (would 401 silently) -->
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
-  <meta name="theme-color" content="#0b0d12">
+  <meta name="theme-color" content="#6fc3fd">
   <style>
+    /* Palette derived from the site icon: sky-blue field, flag-blue accents */
     :root {
-      --bg: #0b0d12;
-      --panel: #12151c;
-      --panel-2: #0f1218;
-      --border: #232833;
-      --text: #e8edf5;
-      --muted: #9aa5b8;
-      --accent: #5b8cff;
-      --ok: #59c98a;
-      --user: #1d2430;
+      --bg: #6fc3fd;
+      --panel: #f2f9ff;
+      --panel-2: #e2f1ff;
+      --border: #8ec4ec;
+      --text: #0a2e5c;
+      --muted: #2f5d8e;
+      --accent: #0d4fa0;
+      --ok: #157a4b;
+      --user: #d8edff;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
@@ -91,7 +92,7 @@
       gap: .55rem;
     }
     .msg .content { white-space: pre-wrap; }
-    .msg .content.error-text { color: #ffd7d7; }
+    .msg .content.error-text { color: #9a1c1c; }
     .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
 
     /* Live activity steps (web searches) */
@@ -121,25 +122,24 @@
     .step li { margin: .15rem 0; }
     .step a { color: var(--accent); text-decoration: none; }
     .step a:hover { text-decoration: underline; }
-    .spin {
-      width: .8rem; height: .8rem; flex: none;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
+    /* Processing indicator: a tiny site icon that pulses in and out, each
+       pulse screwing the inner yellow spiral inward (grow, twist clockwise)
+       and back outward (shrink, untwist) via alternate direction. */
+    .spin, .typing-icon {
+      background: url("/icons/icon-192.png?v=3") center / cover;
       border-radius: 50%;
-      animation: spin .8s linear infinite;
+      flex: none;
+      animation: pulse-screw 1.4s ease-in-out infinite alternate;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { width: 1rem; height: 1rem; }
+    .typing-icon { width: 32px; height: 32px; }
+    @keyframes pulse-screw {
+      from { transform: scale(.72) rotate(0deg); }
+      to   { transform: scale(1.15) rotate(180deg); }
+    }
 
     /* Typing indicator */
     .content.typing { display: flex; gap: .3rem; align-items: center; min-height: 1.2rem; }
-    .dot {
-      width: .45rem; height: .45rem; border-radius: 50%;
-      background: var(--muted);
-      animation: blink 1.2s infinite;
-    }
-    .dot:nth-child(2) { animation-delay: .2s; }
-    .dot:nth-child(3) { animation-delay: .4s; }
-    @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
     /* Per-answer stats footer */
     .stats { font-size: .75rem; color: var(--muted); }
@@ -207,8 +207,9 @@
       position: absolute; top: -7px; right: -7px;
       width: 18px; height: 18px; border-radius: 50%;
       padding: 0; font-size: 11px; line-height: 1;
-      background: #333a47;
+      background: #1b4a80;
     }
+    textarea::placeholder { color: var(--muted); opacity: .75; }
   </style>
 </head>
 <body>
@@ -498,11 +499,9 @@
     function showTyping(content) {
       content.className = "content typing";
       content.replaceChildren();
-      for (let i = 0; i < 3; i++) {
-        const d = document.createElement("span");
-        d.className = "dot";
-        content.appendChild(d);
-      }
+      const icon = document.createElement("span");
+      icon.className = "typing-icon";
+      content.appendChild(icon);
     }
 
     function setText(turn, text) {
