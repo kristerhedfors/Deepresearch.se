@@ -187,18 +187,23 @@
       const activity = document.createElement("div");
       activity.className = "activity";
       const content = document.createElement("div");
-      content.className = "content typing";
-      for (let i = 0; i < 3; i++) {
-        const d = document.createElement("span");
-        d.className = "dot";
-        content.appendChild(d);
-      }
+      showTyping(content);
       const stats = document.createElement("div");
       stats.className = "stats";
       el.append(activity, content, stats);
       chat.appendChild(el);
       scrollDown();
       return { el, activity, content, stats, lastStep: null, text: "" };
+    }
+
+    function showTyping(content) {
+      content.className = "content typing";
+      content.replaceChildren();
+      for (let i = 0; i < 3; i++) {
+        const d = document.createElement("span");
+        d.className = "dot";
+        content.appendChild(d);
+      }
     }
 
     function setText(turn, text) {
@@ -289,6 +294,13 @@
         if (s.type === "search_start") startSearchStep(turn, s.query || "");
         else if (s.type === "search_done") finishSearchStep(turn, s);
         else if (s.type === "done") renderStats(turn, s);
+        else if (s.type === "discard_text") {
+          // Server detected a malformed tool call in the streamed text:
+          // clear the bubble and keep waiting for the real answer.
+          turn.text = "";
+          showTyping(turn.content);
+          return "";
+        }
         // Unknown status types: ignore (forward compatibility).
         return acc;
       }

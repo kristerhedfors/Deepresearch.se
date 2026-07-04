@@ -15,6 +15,7 @@
 // Status events (clients must ignore unknown types):
 //   search_start {round, query}
 //   search_done  {round, query, results, duration_ms, sources: [{title,url}]}
+//   discard_text {}  — clear the answer streamed so far (malformed tool call)
 //   done         {rounds, searches, duration_ms, prompt_tokens,
 //                 completion_tokens, co2_grams}
 
@@ -40,7 +41,9 @@ const SYSTEM_PROMPT =
   "3. Synthesize the findings into a structured answer: a short conclusion " +
   "first, then the key findings, citing source URLs for every claim. Note " +
   "disagreements between sources and gaps in the evidence honestly.\n\n" +
-  "Only skip searching for small talk or questions about this site itself.";
+  "Only skip searching for small talk or questions about this site itself.\n" +
+  "Always invoke web_search through the tool-calling interface — never write " +
+  "the call out as text in your reply.";
 
 const TOOLS = [
   {
@@ -135,18 +138,34 @@ export async function handleChat(request, env, log) {
             usage,
           });
 
-          if (toolCalls.length === 0) break; // final answer already streamed
+          // Mistral Small occasionally writes a tool call as plain text
+          // (`web_search{"query": "..."}`) instead of using the tool-calling
+          // interface. Detect that, tell the UI to discard the garbage text
+          // (discard_text), and run the search as if it were a real call.
+          let effectiveCalls = toolCalls;
+          let assistantText = text || "";
+          if (toolCalls.length === 0 && allowTools) {
+            const pseudo = extractPseudoToolCall(text, rounds);
+            if (pseudo) {
+              log.warn("chat.pseudo_tool_call", { round });
+              emit({ status: { type: "discard_text" } });
+              effectiveCalls = [pseudo];
+              assistantText = ""; // don't feed the malformed text back to the model
+            }
+          }
 
-          if (toolCalls.length > MAX_TOOL_CALLS_PER_ROUND) {
+          if (effectiveCalls.length === 0) break; // final answer already streamed
+
+          if (effectiveCalls.length > MAX_TOOL_CALLS_PER_ROUND) {
             log.warn("chat.tool_calls_capped", {
-              requested: toolCalls.length,
+              requested: effectiveCalls.length,
               cap: MAX_TOOL_CALLS_PER_ROUND,
             });
           }
-          const calls = toolCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
+          const calls = effectiveCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
 
           // Record the assistant's tool-call turn, then run each tool.
-          messages.push({ role: "assistant", content: text || "", tool_calls: calls });
+          messages.push({ role: "assistant", content: assistantText, tool_calls: calls });
           for (const call of calls) {
             const result = await runTool(env, log, emit, call, rounds);
             messages.push({ role: "tool", tool_call_id: call.id, content: result });
@@ -202,6 +221,26 @@ function validateMessages(messages) {
     if (m.content.length > MAX_MESSAGE_CHARS) {
       return `A message exceeds the ${MAX_MESSAGE_CHARS}-character limit.`;
     }
+  }
+  return null;
+}
+
+// Detects a tool call written as plain text (Mistral Small quirk), e.g.
+// `web_search{"query": "..."}`. Returns a synthetic tool-call object, or null.
+function extractPseudoToolCall(text, round) {
+  const m = (text || "").match(/web_search\s*(\{[^{}]*\})/);
+  if (!m) return null;
+  try {
+    const args = JSON.parse(m[1]);
+    if (typeof args.query === "string" && args.query) {
+      return {
+        id: `pseudo_${round}`,
+        type: "function",
+        function: { name: "web_search", arguments: JSON.stringify({ query: args.query }) },
+      };
+    }
+  } catch {
+    // fall through
   }
   return null;
 }
