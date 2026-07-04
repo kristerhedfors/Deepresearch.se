@@ -13,14 +13,61 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
+html { background: var(--bg); }
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
+  background: transparent; /* waves live on body::before, behind content */
   color: var(--text);
   display: flex;
   flex-direction: column;
 }
-header {
+/* Background life: soft diagonal waves drifting across the sky blue.
+   A repeating gradient on an oversized fixed layer, translated one full
+   period (280px along the 135° axis = 198px in x and y) so the loop is
+   seamless. Alphas are tiny on purpose — texture, not stripes. */
+body::before {
+  content: "";
+  position: fixed;
+  top: -200px; left: -200px; right: 0; bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, .05) 70px,
+    rgba(255, 255, 255, 0) 140px,
+    rgba(10, 46, 92, .04) 210px,
+    rgba(255, 255, 255, 0) 280px
+  );
+  animation: bg-drift 26s linear infinite;
+}
+@keyframes bg-drift {
+  to { transform: translate3d(198px, 198px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+/* Header and footer collapse via grid rows (1fr -> 0fr): their natural
+   heights animate without hardcoded max-heights. The inner bar also slides
+   and fades for a true slide-away feel. Clipping applies only while
+   collapsed or animating back (.chrome-restoring, set by app.js for the
+   exit transition) — a permanent overflow:hidden would clip the web-search
+   popover, which opens upward out of the footer. */
+header, #footer {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows .2s ease;
+}
+body.immersive header,
+body.immersive #footer,
+body.chrome-restoring header,
+body.chrome-restoring #footer { overflow: hidden; }
+.header-bar, .footer-slide {
+  min-height: 0;
+  transition: transform .2s ease, opacity .2s ease, visibility 0s,
+    padding .2s ease, border-width .2s ease;
+}
+.header-bar {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
@@ -61,6 +108,7 @@ header {
    (or scrolling back down yourself) re-attaches auto-follow. */
 #jumpdown {
   position: fixed; right: 1.1rem; bottom: 8.2rem; z-index: 6;
+  transition: bottom .2s ease;
   width: 42px; height: 42px; border-radius: 50%;
   background: var(--accent); color: #fff;
   font-size: 1.25rem; line-height: 1; padding: 0;
@@ -70,14 +118,32 @@ header {
 #jumpdown[hidden] { display: none; }
 
 /* Immersive reading: while scrolled up in the content the chrome gets out
-   of the way — header and input/controls hide (body.immersive, toggled by
-   the scroll handler) so the whole screen is content. #chat is flex:1, so
-   it absorbs the freed space automatically. The jump button drops into the
-   corner since there is no footer left to clear. */
+   of the way — header slides up, footer slides down (body.immersive,
+   toggled by the scroll handler) so the whole screen is content. #chat is
+   flex:1, so it absorbs the freed space as the rows collapse. The jump
+   button glides into the corner since there is no footer left to clear.
+   visibility flips after the slide (entering) but instantly on the way
+   back, so the collapsed chrome can't take focus yet never pops in late. */
 body.immersive header,
-body.immersive #budgetbar,
-body.immersive #pending,
-body.immersive #form { display: none; }
+body.immersive #footer { grid-template-rows: 0fr; }
+body.immersive .header-bar {
+  transform: translateY(-100%);
+  opacity: 0;
+  visibility: hidden;
+  /* padding+border set a 33px floor under the border-box even at 0fr —
+     collapse them along with the slide so the header truly reaches 0. */
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+  transition: transform .2s ease, opacity .2s ease, visibility 0s .2s,
+    padding .2s ease, border-width .2s ease;
+}
+body.immersive .footer-slide {
+  transform: translateY(100%);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform .2s ease, opacity .2s ease, visibility 0s .2s;
+}
 body.immersive #jumpdown { bottom: 1.1rem; }
 .msg {
   padding: .75rem 1rem;

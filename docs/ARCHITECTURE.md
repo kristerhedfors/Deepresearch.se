@@ -295,12 +295,18 @@ Client-side behaviors that matter architecturally:
   `scrollTop` (smooth scrolling re-triggered the scroll detector and
   detached follow again); scrolling to the bottom re-attaches.
 - **Immersive reading**: scrolling well up in the content adds
-  `body.immersive`, hiding the header and the input/controls so the whole
-  screen is content (only the jump button stays). Returning to the bottom —
-  by scrolling or the button — restores the chrome and pins to the true
-  bottom. The enter threshold is the hidden chrome's height + 96 px:
-  hiding the chrome grows `#chat` by exactly that height, so a smaller
-  threshold would re-enter the exit band and flicker.
+  `body.immersive` — the header slides up and the footer slides down
+  (~200 ms, grid rows 1fr→0fr so natural heights animate without magic
+  max-heights) leaving the whole screen to content (only the jump button
+  stays). Returning to the bottom — by scrolling or the button — slides the
+  chrome back while a short rAF loop keeps the view pinned to the true
+  bottom throughout the animation. The enter threshold is the hidden
+  chrome's height + 96 px: hiding the chrome grows `#chat` by exactly that
+  height, so a smaller threshold would re-enter the exit band and flicker.
+- **Ambient background**: `body::before` (fixed, `z-index:-1`) drifts a
+  repeating 135° gradient of near-invisible white/navy bands diagonally
+  across the sky-blue base — translated exactly one 280 px period per 26 s
+  loop for a seamless cycle; disabled under `prefers-reduced-motion`.
 - **Persistence**: model selection and budget position in `localStorage`;
   privacy acknowledgement in the `dr_privacy_ack` cookie (1 year); session
   auth in the `dr_session` cookie. Chat history is memory-only — "New chat"

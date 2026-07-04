@@ -103,12 +103,19 @@ unknown `status` types (forward compatibility).
   Auth). Always sanitize: answers can quote hostile web content. Each answer
   has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
-- **Immersive reading:** scrolling up in the content hides the header and
-  the input/controls row (`body.immersive`) so the whole screen is content;
-  only the jump-down button stays. Returning to the bottom (scroll or the
-  button) restores the chrome and pins to the true bottom. Enter threshold
-  is chrome height + 96px (hysteresis: hiding the chrome grows `#chat` by
-  that height, so a smaller threshold would oscillate).
+- **Immersive reading:** scrolling up in the content slides the header up
+  and the footer down (~200 ms; `body.immersive`, grid rows 1fr→0fr so
+  natural heights animate) leaving the whole screen to content; only the
+  jump-down button stays. Returning to the bottom (scroll or the button)
+  slides the chrome back while a short rAF loop keeps the view pinned to
+  the true bottom. Enter threshold is chrome height + 96px (hysteresis:
+  hiding the chrome grows `#chat` by that height, so a smaller threshold
+  would oscillate). Clipping (`overflow:hidden`) applies only while
+  collapsed/animating — permanent clipping would cut off the web-search
+  popover that opens upward from the footer.
+- **Background life:** `body::before` drifts a repeating diagonal gradient
+  (tiny white/navy alphas) across the sky blue — one full 280px period per
+  26s loop so it's seamless; disabled under `prefers-reduced-motion`.
 - Controls row above the input: **web-search knob** (default on; sends
   `web_search: false` when off → the Worker skips triage/Exa entirely and
   streams one Berget completion) and the research-time slider (dimmed while

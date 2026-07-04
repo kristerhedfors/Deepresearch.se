@@ -59,12 +59,7 @@ let immersive = false;
 // the input/controls so the whole screen is content — only the jump-down
 // button stays. Reaching the bottom again (scroll or button) brings the
 // chrome back.
-const chromeEls = [
-  document.querySelector("header"),
-  document.getElementById("budgetbar"),
-  pendingBox,
-  form,
-];
+const chromeEls = [document.querySelector("header"), document.getElementById("footer")];
 const chromeHeight = () => chromeEls.reduce((h, el) => h + (el?.offsetHeight || 0), 0);
 
 function setImmersive(on) {
@@ -73,14 +68,24 @@ function setImmersive(on) {
   document.body.classList.toggle("immersive", on);
 }
 
-// Leaving immersive mode re-inserts the chrome, which shrinks the chat view
-// by that height — so pin to the true bottom afterwards, otherwise the last
-// lines the user just read end up hidden behind the returning footer.
+// Leaving immersive mode slides the chrome back over ~200ms, shrinking the
+// chat view a little each frame — so keep pinning to the true bottom until
+// the animation settles, otherwise the returning footer covers the last
+// lines the user just read.
 function exitImmersiveToBottom() {
   setImmersive(false);
+  // Keep the expanding chrome clipped for the duration of the slide-back
+  // (overflow:hidden lives on this class, not permanently — see app.css).
+  document.body.classList.add("chrome-restoring");
+  setTimeout(() => document.body.classList.remove("chrome-restoring"), 260);
   autoFollow = true;
-  chat.scrollTop = chat.scrollHeight;
   jumpBtn.hidden = true;
+  const until = performance.now() + 320;
+  const pin = () => {
+    chat.scrollTop = chat.scrollHeight;
+    if (performance.now() < until && autoFollow) requestAnimationFrame(pin);
+  };
+  pin();
 }
 
 chat.addEventListener("scroll", () => {
