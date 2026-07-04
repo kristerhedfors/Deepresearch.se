@@ -8,10 +8,12 @@
     :root {
       --bg: #0b0d12;
       --panel: #12151c;
+      --panel-2: #0f1218;
       --border: #232833;
       --text: #e8edf5;
       --muted: #9aa5b8;
       --accent: #5b8cff;
+      --ok: #59c98a;
       --user: #1d2430;
     }
     * { box-sizing: border-box; }
@@ -40,11 +42,81 @@
       width: 100%;
       margin: 0 auto;
     }
-    .msg { padding: .75rem 1rem; border-radius: 12px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
-    .msg.user { background: var(--user); align-self: flex-end; max-width: 85%; }
-    .msg.assistant { background: var(--panel); border: 1px solid var(--border); align-self: flex-start; max-width: 85%; }
-    .msg.error { background: #3a1d1d; border: 1px solid #6b2b2b; color: #ffd7d7; align-self: flex-start; }
+    .msg {
+      padding: .75rem 1rem;
+      border-radius: 12px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      max-width: 85%;
+    }
+    .msg.user {
+      background: var(--user);
+      align-self: flex-end;
+      white-space: pre-wrap;
+    }
+    .msg.assistant {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+    }
+    .msg .content { white-space: pre-wrap; }
+    .msg .content.error-text { color: #ffd7d7; }
     .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+
+    /* Live activity steps (web searches) */
+    .activity { display: flex; flex-direction: column; gap: .35rem; }
+    .activity:empty { display: none; }
+    .step {
+      font-size: .85rem;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .4rem .6rem;
+    }
+    .step summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      cursor: default;
+    }
+    .step summary::-webkit-details-marker { display: none; }
+    .step.finished summary { cursor: pointer; }
+    .step.finished summary::after { content: "▾"; opacity: .55; margin-left: auto; }
+    .step.finished[open] summary::after { content: "▴"; }
+    .step .check { color: var(--ok); flex: none; }
+    .step ul { margin: .45rem 0 .1rem; padding-left: 1.2rem; }
+    .step li { margin: .15rem 0; }
+    .step a { color: var(--accent); text-decoration: none; }
+    .step a:hover { text-decoration: underline; }
+    .spin {
+      width: .8rem; height: .8rem; flex: none;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Typing indicator */
+    .content.typing { display: flex; gap: .3rem; align-items: center; min-height: 1.2rem; }
+    .dot {
+      width: .45rem; height: .45rem; border-radius: 50%;
+      background: var(--muted);
+      animation: blink 1.2s infinite;
+    }
+    .dot:nth-child(2) { animation-delay: .2s; }
+    .dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+    /* Per-answer stats footer */
+    .stats { font-size: .75rem; color: var(--muted); }
+    .stats:empty { display: none; }
+
     form {
       display: flex;
       gap: .5rem;
@@ -94,21 +166,144 @@
     const send = document.getElementById("send");
     const history = []; // {role, content} pairs sent to the API
 
-    function addBubble(role, text) {
-      const empty = chat.querySelector(".empty");
-      if (empty) empty.remove();
+    const scrollDown = () => { chat.scrollTop = chat.scrollHeight; };
+    const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
+
+    function addUserBubble(text) {
+      clearEmpty();
       const el = document.createElement("div");
-      el.className = "msg " + role;
+      el.className = "msg user";
       el.textContent = text;
       chat.appendChild(el);
-      chat.scrollTop = chat.scrollHeight;
-      return el;
+      scrollDown();
+    }
+
+    // An assistant turn = activity panel (search steps) + streamed content
+    // (typing dots until the first token) + stats footer.
+    function addAssistantTurn() {
+      clearEmpty();
+      const el = document.createElement("div");
+      el.className = "msg assistant";
+      const activity = document.createElement("div");
+      activity.className = "activity";
+      const content = document.createElement("div");
+      content.className = "content typing";
+      for (let i = 0; i < 3; i++) {
+        const d = document.createElement("span");
+        d.className = "dot";
+        content.appendChild(d);
+      }
+      const stats = document.createElement("div");
+      stats.className = "stats";
+      el.append(activity, content, stats);
+      chat.appendChild(el);
+      scrollDown();
+      return { el, activity, content, stats, lastStep: null, text: "" };
+    }
+
+    function setText(turn, text) {
+      if (turn.content.classList.contains("typing")) {
+        turn.content.classList.remove("typing");
+        turn.content.replaceChildren();
+      }
+      turn.text = text;
+      turn.content.textContent = text;
+      scrollDown();
+    }
+
+    function setError(turn, message) {
+      const text = turn.text ? turn.text + "\n\n[" + message + "]" : message;
+      setText(turn, text);
+      turn.content.classList.add("error-text");
+    }
+
+    // "🔎 Searching the web: …" with a spinner.
+    function startSearchStep(turn, query) {
+      const details = document.createElement("details");
+      details.className = "step";
+      const summary = document.createElement("summary");
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      const label = document.createElement("span");
+      label.textContent = "Searching the web: “" + query + "”";
+      summary.append(spin, label);
+      details.appendChild(summary);
+      // Block toggling while running (no sources to show yet).
+      details.addEventListener("click", (e) => {
+        if (!details.classList.contains("finished")) e.preventDefault();
+      });
+      turn.activity.appendChild(details);
+      turn.lastStep = { details, summary, label };
+      scrollDown();
+    }
+
+    // Resolve the step: checkmark, counts, timing, expandable source list.
+    // Server emits start/done sequentially, so `lastStep` is always the match.
+    function finishSearchStep(turn, info) {
+      const step = turn.lastStep;
+      if (!step) return;
+      step.details.classList.add("finished");
+      step.summary.querySelector(".spin")?.remove();
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = "✓";
+      step.summary.prepend(check);
+      const n = info.results ?? 0;
+      step.label.textContent =
+        "Searched “" + info.query + "” · " +
+        n + (n === 1 ? " result" : " results") + " · " +
+        Math.round(info.duration_ms ?? 0) + " ms";
+      const ul = document.createElement("ul");
+      for (const src of info.sources || []) {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = src.url;
+        a.textContent = src.title || src.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        li.appendChild(a);
+        ul.appendChild(li);
+      }
+      step.details.appendChild(ul);
+      turn.lastStep = null;
+      scrollDown();
+    }
+
+    function renderStats(turn, s) {
+      const parts = [];
+      if (s.duration_ms != null) parts.push((s.duration_ms / 1000).toFixed(1) + " s");
+      const tokens = (s.prompt_tokens || 0) + (s.completion_tokens || 0);
+      if (tokens) parts.push(tokens.toLocaleString() + " tokens");
+      if (s.searches) parts.push(s.searches + (s.searches === 1 ? " search" : " searches"));
+      if (s.co2_grams) parts.push((s.co2_grams * 1000).toFixed(1) + " mg CO₂");
+      turn.stats.textContent = parts.join(" · ");
+    }
+
+    function handleEvent(turn, evt, acc) {
+      if (evt.error) {
+        setError(turn, evt.error);
+        return acc;
+      }
+      if (evt.status) {
+        const s = evt.status;
+        if (s.type === "search_start") startSearchStep(turn, s.query || "");
+        else if (s.type === "search_done") finishSearchStep(turn, s);
+        else if (s.type === "done") renderStats(turn, s);
+        // Unknown status types: ignore (forward compatibility).
+        return acc;
+      }
+      const chunk = evt.choices?.[0]?.delta?.content;
+      if (chunk) {
+        acc += chunk;
+        setText(turn, acc);
+      }
+      return acc;
     }
 
     async function sendMessage(text) {
       history.push({ role: "user", content: text });
-      addBubble("user", text);
-      const bubble = addBubble("assistant", "");
+      addUserBubble(text);
+      const turn = addAssistantTurn();
       let acc = "";
 
       try {
@@ -121,8 +316,7 @@
         const isJson = (res.headers.get("content-type") || "").includes("application/json");
         if (!res.ok || !res.body || isJson) {
           const err = await res.json().catch(() => ({ error: "Request failed (" + res.status + ")" }));
-          bubble.className = "msg error";
-          bubble.textContent = err.error || "Something went wrong.";
+          setError(turn, err.error || "Something went wrong.");
           history.pop();
           return;
         }
@@ -141,25 +335,19 @@
             const data = line.slice(5).trim();
             if (!data || data === "[DONE]") continue;
             try {
-              const evt = JSON.parse(data);
-              if (evt.error) {
-                bubble.className = "msg error";
-                bubble.textContent = acc ? acc + "\n\n[" + evt.error + "]" : evt.error;
-                continue;
-              }
-              const chunk = evt.choices?.[0]?.delta?.content;
-              if (chunk) {
-                acc += chunk;
-                bubble.textContent = acc;
-                chat.scrollTop = chat.scrollHeight;
-              }
+              acc = handleEvent(turn, JSON.parse(data), acc);
             } catch { /* ignore keep-alive / non-JSON lines */ }
           }
         }
-        history.push({ role: "assistant", content: acc });
+
+        if (acc) {
+          history.push({ role: "assistant", content: acc });
+        } else if (turn.content.classList.contains("typing")) {
+          setError(turn, "No response received.");
+          history.pop();
+        }
       } catch (e) {
-        bubble.className = "msg error";
-        bubble.textContent = "Network error: " + e.message;
+        setError(turn, "Network error: " + e.message);
         history.pop();
       }
     }

@@ -32,6 +32,19 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 | `src/log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `src/http.js` | Response helpers |
 
+### /api/chat SSE protocol
+
+OpenAI-style text deltas plus custom `status` events that the UI renders as
+live activity (spinners, expandable sources, stats). Clients must ignore
+unknown `status` types (forward compatibility).
+
+- `{"choices":[{"delta":{"content":"…"}}]}` — text chunk
+- `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
+- `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
+- `{"status":{"type":"done","rounds":2,"searches":1,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
+- `{"error":"…"}` — shown as an error in the bubble
+- Stream terminates with `data: [DONE]`
+
 ## Logging & observability
 
 - Structured JSON logs, one object per line: `{time, level, event,

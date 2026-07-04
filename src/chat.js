@@ -4,10 +4,19 @@
 // is forwarded to the browser as OpenAI-style SSE) or tool calls (which the
 // Worker executes against Exa, appending results and asking the model again).
 // After MAX_TOOL_ROUNDS the model is called without tools, forcing a final
-// answer. The client protocol is unchanged either way:
+// answer.
+//
+// Client protocol (see CLAUDE.md "/api/chat SSE protocol"):
 //   data: {"choices":[{"delta":{"content":"..."}}]}   text chunk
+//   data: {"status":{...}}                            live activity for the UI
 //   data: {"error":"..."}                             surfaced in the UI
 //   data: [DONE]                                      end of stream
+//
+// Status events (clients must ignore unknown types):
+//   search_start {round, query}
+//   search_done  {round, query, results, duration_ms, sources: [{title,url}]}
+//   done         {rounds, searches, duration_ms, prompt_tokens,
+//                 completion_tokens, co2_grams}
 
 import { chatCompletion, consumeChatStream } from "./berget.js";
 import { webSearch } from "./exa.js";
@@ -77,6 +86,7 @@ export async function handleChat(request, env, log) {
       const startedAt = Date.now();
       let rounds = 0;
       let searches = 0;
+      const totals = { prompt_tokens: 0, completion_tokens: 0, co2_grams: 0 };
 
       try {
         for (let round = 0; ; round++) {
@@ -102,6 +112,11 @@ export async function handleChat(request, env, log) {
             upstream.body,
             (delta) => emit({ choices: [{ delta: { content: delta } }] }),
           );
+          if (usage) {
+            totals.prompt_tokens += usage.prompt_tokens || 0;
+            totals.completion_tokens += usage.completion_tokens || 0;
+            totals.co2_grams += usage.co2_grams || 0;
+          }
           log.info("chat.round", {
             round,
             duration_ms: Date.now() - roundStartedAt,
@@ -124,7 +139,7 @@ export async function handleChat(request, env, log) {
           // Record the assistant's tool-call turn, then run each tool.
           messages.push({ role: "assistant", content: text || "", tool_calls: calls });
           for (const call of calls) {
-            const result = await runTool(env, log, call);
+            const result = await runTool(env, log, emit, call, rounds);
             messages.push({ role: "tool", tool_call_id: call.id, content: result });
           }
           searches += calls.length;
@@ -133,10 +148,18 @@ export async function handleChat(request, env, log) {
         log.error("chat.stream_failed", { error: err?.message || String(err) });
         emit({ error: "Worker error: " + (err?.message || String(err)) });
       } finally {
-        log.info("chat.complete", {
-          rounds,
-          searches,
-          duration_ms: Date.now() - startedAt,
+        const duration_ms = Date.now() - startedAt;
+        log.info("chat.complete", { rounds, searches, duration_ms });
+        emit({
+          status: {
+            type: "done",
+            rounds,
+            searches,
+            duration_ms,
+            prompt_tokens: totals.prompt_tokens,
+            completion_tokens: totals.completion_tokens,
+            co2_grams: totals.co2_grams,
+          },
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -174,17 +197,34 @@ function validateMessages(messages) {
   return null;
 }
 
-async function runTool(env, log, call) {
+// Executes one tool call, emitting search_start / search_done status events
+// around it so the UI can show live activity. Returns the tool result string
+// that goes back to the model.
+async function runTool(env, log, emit, call, round) {
   const name = call.function?.name;
   if (name !== "web_search") {
     log.warn("chat.unknown_tool", { tool: name });
     return `Unknown tool: ${name}`;
   }
+
   let query = "";
   try {
     query = JSON.parse(call.function.arguments || "{}").query || "";
   } catch {
     log.warn("chat.bad_tool_arguments", { tool: name });
   }
-  return webSearch(env, log, query);
+
+  emit({ status: { type: "search_start", round, query } });
+  const result = await webSearch(env, log, query);
+  emit({
+    status: {
+      type: "search_done",
+      round,
+      query,
+      results: result.resultCount,
+      duration_ms: result.durationMs,
+      sources: result.sources,
+    },
+  });
+  return result.content;
 }

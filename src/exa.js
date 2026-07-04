@@ -7,20 +7,30 @@
 const EXA_URL = "https://api.exa.ai/search";
 const NUM_RESULTS = 5;
 
-// Runs a search and formats the results as a compact, LLM-friendly string
-// (numbered title / URL / highlight excerpts). Errors are returned as strings
-// so the model can explain the failure instead of the request 500ing.
+// Runs a search and returns:
+//   content    — compact LLM-friendly string (numbered title/URL/highlights);
+//                errors come back as strings too, so the model can explain
+//                the failure instead of the request 500ing
+//   sources    — [{title, url}] for the UI's expandable activity panel
+//   resultCount, durationMs — for UI counters and logs
 export async function webSearch(env, log, query) {
+  const startedAt = Date.now();
+  const failure = (content) => ({
+    content,
+    sources: [],
+    resultCount: 0,
+    durationMs: Date.now() - startedAt,
+  });
+
   if (!env.EXA_API_KEY) {
     log.error("exa.misconfigured", { missing: "EXA_API_KEY" });
-    return "Web search is unavailable: EXA_API_KEY is not configured.";
+    return failure("Web search is unavailable: EXA_API_KEY is not configured.");
   }
   if (!query) {
     log.warn("exa.empty_query", {});
-    return "No search query was provided.";
+    return failure("No search query was provided.");
   }
 
-  const startedAt = Date.now();
   log.debug("exa.search_query", { query }); // user content: debug level only
 
   let resp;
@@ -43,7 +53,7 @@ export async function webSearch(env, log, query) {
       error: err?.message || String(err),
       duration_ms: Date.now() - startedAt,
     });
-    return `Search request failed: ${err?.message || String(err)}`;
+    return failure(`Search request failed: ${err?.message || String(err)}`);
   }
 
   if (!resp.ok) {
@@ -53,23 +63,33 @@ export async function webSearch(env, log, query) {
       duration_ms: Date.now() - startedAt,
       detail: detail.slice(0, 300),
     });
-    return `Search error (${resp.status}): ${detail.slice(0, 300)}`;
+    return failure(`Search error (${resp.status}): ${detail.slice(0, 300)}`);
   }
 
   const data = await resp.json().catch(() => ({}));
   const results = Array.isArray(data.results) ? data.results : [];
+  const durationMs = Date.now() - startedAt;
   log.info("exa.search", {
-    duration_ms: Date.now() - startedAt,
+    duration_ms: durationMs,
     results: results.length,
     query_chars: query.length,
   });
 
-  if (results.length === 0) return `No results found for: ${query}`;
+  if (results.length === 0) {
+    return { ...failure(`No results found for: ${query}`), durationMs };
+  }
 
-  return results
+  const content = results
     .map((r, i) => {
       const highlights = Array.isArray(r.highlights) ? r.highlights.join(" … ") : "";
       return `[${i + 1}] ${r.title || "(untitled)"}\n${r.url}\n${highlights}`.trim();
     })
     .join("\n\n");
+
+  return {
+    content,
+    sources: results.map((r) => ({ title: r.title || r.url, url: r.url })),
+    resultCount: results.length,
+    durationMs,
+  };
 }
