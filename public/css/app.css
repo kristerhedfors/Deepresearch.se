@@ -68,6 +68,17 @@ header {
   box-shadow: 0 3px 12px rgba(4, 30, 60, .35);
 }
 #jumpdown[hidden] { display: none; }
+
+/* Immersive reading: while scrolled up in the content the chrome gets out
+   of the way — header and input/controls hide (body.immersive, toggled by
+   the scroll handler) so the whole screen is content. #chat is flex:1, so
+   it absorbs the freed space automatically. The jump button drops into the
+   corner since there is no footer left to clear. */
+body.immersive header,
+body.immersive #budgetbar,
+body.immersive #pending,
+body.immersive #form { display: none; }
+body.immersive #jumpdown { bottom: 1.1rem; }
 .msg {
   padding: .75rem 1rem;
   border-radius: 12px;

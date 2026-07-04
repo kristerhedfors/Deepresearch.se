@@ -294,6 +294,13 @@ Client-side behaviors that matter architecturally:
   auto-follow; a jump-to-latest button appears; the jump uses instant
   `scrollTop` (smooth scrolling re-triggered the scroll detector and
   detached follow again); scrolling to the bottom re-attaches.
+- **Immersive reading**: scrolling well up in the content adds
+  `body.immersive`, hiding the header and the input/controls so the whole
+  screen is content (only the jump button stays). Returning to the bottom —
+  by scrolling or the button — restores the chrome and pins to the true
+  bottom. The enter threshold is the hidden chrome's height + 96 px:
+  hiding the chrome grows `#chat` by exactly that height, so a smaller
+  threshold would re-enter the exit band and flicker.
 - **Persistence**: model selection and budget position in `localStorage`;
   privacy acknowledgement in the `dr_privacy_ack` cookie (1 year); session
   auth in the `dr_session` cookie. Chat history is memory-only — "New chat"

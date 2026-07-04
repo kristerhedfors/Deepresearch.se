@@ -103,6 +103,12 @@ unknown `status` types (forward compatibility).
   Auth). Always sanitize: answers can quote hostile web content. Each answer
   has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
+- **Immersive reading:** scrolling up in the content hides the header and
+  the input/controls row (`body.immersive`) so the whole screen is content;
+  only the jump-down button stays. Returning to the bottom (scroll or the
+  button) restores the chrome and pins to the true bottom. Enter threshold
+  is chrome height + 96px (hysteresis: hiding the chrome grows `#chat` by
+  that height, so a smaller threshold would oscillate).
 - Controls row above the input: **web-search knob** (default on; sends
   `web_search: false` when off → the Worker skips triage/Exa entirely and
   streams one Berget completion) and the research-time slider (dimmed while

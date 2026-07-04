@@ -53,15 +53,58 @@ let attachments = []; // pending images: {name, dataUrl}
 
 const jumpBtn = document.getElementById("jumpdown");
 let autoFollow = true;
+let immersive = false;
+
+// Immersive reading: while scrolled up in the content, hide the header and
+// the input/controls so the whole screen is content — only the jump-down
+// button stays. Reaching the bottom again (scroll or button) brings the
+// chrome back.
+const chromeEls = [
+  document.querySelector("header"),
+  document.getElementById("budgetbar"),
+  pendingBox,
+  form,
+];
+const chromeHeight = () => chromeEls.reduce((h, el) => h + (el?.offsetHeight || 0), 0);
+
+function setImmersive(on) {
+  if (immersive === on) return;
+  immersive = on;
+  document.body.classList.toggle("immersive", on);
+}
+
+// Leaving immersive mode re-inserts the chrome, which shrinks the chat view
+// by that height — so pin to the true bottom afterwards, otherwise the last
+// lines the user just read end up hidden behind the returning footer.
+function exitImmersiveToBottom() {
+  setImmersive(false);
+  autoFollow = true;
+  chat.scrollTop = chat.scrollHeight;
+  jumpBtn.hidden = true;
+}
+
 chat.addEventListener("scroll", () => {
-  const nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 48;
+  const fromBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight;
+  const nearBottom = fromBottom < 48;
   autoFollow = nearBottom;
   jumpBtn.hidden = nearBottom;
+  if (immersive) {
+    if (nearBottom) exitImmersiveToBottom();
+  } else if (fromBottom > chromeHeight() + 96) {
+    // Hysteresis: hiding the chrome grows the chat view by chromeHeight(),
+    // pulling the position that much closer to the bottom. Entering on a
+    // smaller distance would land inside the exit threshold and flicker.
+    setImmersive(true);
+  }
 });
 jumpBtn.addEventListener("click", () => {
   // Instant, not smooth: a smooth animation fires intermediate scroll
   // events that read as "user scrolled away" and re-detach — and the
   // bottom keeps moving while content streams.
+  if (immersive) {
+    exitImmersiveToBottom();
+    return;
+  }
   autoFollow = true;
   chat.scrollTop = chat.scrollHeight;
   jumpBtn.hidden = true;
