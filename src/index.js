@@ -14,6 +14,7 @@
 //   src/http.js   — response helpers
 
 import { requireBasicAuth } from "./auth.js";
+import { defaultModel, listModels } from "./berget.js";
 import { handleChat } from "./chat.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
@@ -59,7 +60,22 @@ async function route(request, env, url, log) {
   if (url.pathname === "/api/chat" && request.method === "POST") {
     return handleChat(request, env, log);
   }
+  if (url.pathname === "/api/models" && request.method === "GET") {
+    return handleModels(env, log);
+  }
   return env.ASSETS.fetch(request);
+}
+
+// Model catalog for the UI dropdown (filtered + cached in src/berget.js).
+async function handleModels(env, log) {
+  try {
+    const models = await listModels(env);
+    log.debug("models.list", { count: models.length });
+    return jsonResponse({ models, default: defaultModel(env) });
+  } catch (err) {
+    log.error("models.error", { error: err?.message || String(err) });
+    return jsonResponse({ error: "Could not load the model catalog." }, 502);
+  }
 }
 
 // Every response carries x-request-id so a user report can be correlated

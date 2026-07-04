@@ -19,7 +19,7 @@
 //   done         {rounds, searches, duration_ms, prompt_tokens,
 //                 completion_tokens, co2_grams}
 
-import { chatCompletion, consumeChatStream } from "./berget.js";
+import { chatCompletion, consumeChatStream, defaultModel, listModels } from "./berget.js";
 import { webSearch } from "./exa.js";
 import { jsonResponse } from "./http.js";
 
@@ -86,6 +86,24 @@ export async function handleChat(request, env, log) {
     return jsonResponse({ error: invalid }, 400);
   }
 
+  // Optional model override from the UI dropdown, validated against the
+  // catalog. If the catalog is unreachable, fall back to the default rather
+  // than blocking chat.
+  let model = typeof body.model === "string" && body.model ? body.model : null;
+  if (model) {
+    try {
+      const models = await listModels(env);
+      if (!models.some((m) => m.id === model)) {
+        log.warn("chat.invalid_model", { model: model.slice(0, 120) });
+        return jsonResponse({ error: "Unknown model." }, 400);
+      }
+    } catch (err) {
+      log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
+      model = null;
+    }
+  }
+  const activeModel = model || defaultModel(env);
+
   const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...body.messages];
   const encoder = new TextEncoder();
 
@@ -108,6 +126,7 @@ export async function handleChat(request, env, log) {
 
           const upstream = await chatCompletion(env, messages, {
             tools: allowTools ? TOOLS : undefined,
+            model: activeModel,
           });
           if (!upstream.ok || !upstream.body) {
             const detail = await upstream.text().catch(() => "");
@@ -177,10 +196,11 @@ export async function handleChat(request, env, log) {
         emit({ error: "Worker error: " + (err?.message || String(err)) });
       } finally {
         const duration_ms = Date.now() - startedAt;
-        log.info("chat.complete", { rounds, searches, duration_ms });
+        log.info("chat.complete", { rounds, searches, duration_ms, model: activeModel });
         emit({
           status: {
             type: "done",
+            model: activeModel,
             rounds,
             searches,
             duration_ms,

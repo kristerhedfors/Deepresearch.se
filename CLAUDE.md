@@ -52,7 +52,7 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (the model wrote a tool call as plain text — a Mistral Small
   quirk; the Worker detects it, runs the search anyway, and continues)
-- `{"status":{"type":"done","rounds":2,"searches":1,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
+- `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":1,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
 - `{"error":"…"}` — shown as an error in the bubble
 - Stream terminates with `data: [DONE]`
 
@@ -86,6 +86,13 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   (`mistralai/Mistral-Small-3.2-24B-Instruct-2506`, alias `mistral-small`),
   overridable via the optional `BERGET_MODEL` env var. Other models available
   in Berget's repo can be found at `GET https://api.berget.ai/v1/models`.
+- **Model dropdown:** the UI lets users pick a model. `GET /api/models`
+  (Worker) proxies Berget's catalog filtered to text models that are up and
+  support streaming + function calling (the `web_search` tool requires it),
+  cached ~5 min per isolate (`src/berget.js`). The client sends `model` in the
+  `POST /api/chat` body; the Worker validates it against the catalog (400 on
+  unknown ids) and falls back to the default if the catalog is unreachable.
+  Selection persists in `localStorage`.
 - **API shape:** OpenAI-style `POST /v1/chat/completions` with
   `stream: true`; SSE deltas arrive as `choices[0].delta.content`, terminated
   by `data: [DONE]`.
