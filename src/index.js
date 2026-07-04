@@ -1,23 +1,25 @@
 // Cloudflare Worker for Deepresearch.se — entrypoint.
 //
-// Responsibilities: assign a request id, gate everything behind Basic Auth,
-// route /api/chat vs static assets, and emit structured request logs.
-// wrangler.toml sets run_worker_first = true so auth also covers the assets,
-// which are served via the env.ASSETS binding.
+// Responsibilities: assign a request id, gate everything behind auth (Basic
+// Auth or the /login session cookie), route /api/chat vs static assets, and
+// emit structured request logs. wrangler.toml sets run_worker_first = true
+// so auth also covers the assets, which are served via env.ASSETS.
 //
 // Module map:
-//   src/auth.js   — Basic Auth (secrets only, fail closed)
-//   src/chat.js   — /api/chat: streaming tool-call loop
+//   src/auth.js   — Basic Auth + session cookie (secrets only, fail closed)
+//   src/login.js  — HTML login page (PWAs can't answer a 401 challenge)
+//   src/chat.js   — /api/chat: streaming research pipeline
 //   src/berget.js — Berget.ai client + SSE consumption
 //   src/exa.js    — Exa web_search tool
 //   src/log.js    — structured JSON logger (LOG_LEVEL var)
 //   src/http.js   — response helpers
 
-import { requireBasicAuth } from "./auth.js";
+import { createSessionCookie, isAuthenticated, verifyCredentials } from "./auth.js";
 import { defaultModel, listModels } from "./berget.js";
 import { handleChat } from "./chat.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
+import { loginPage } from "./login.js";
 
 export default {
   async fetch(request, env) {
@@ -70,9 +72,19 @@ async function route(request, env, url, log) {
   if (isPublicAsset(url, request.method)) {
     return env.ASSETS.fetch(request);
   }
+  if (url.pathname === "/login" && request.method === "POST") {
+    return handleLogin(request, env, log);
+  }
 
-  const denied = requireBasicAuth(request, env, log);
-  if (denied) return denied;
+  if (!(await isAuthenticated(request, env))) {
+    log.warn("auth.denied", { reason: "unauthenticated" });
+    if (url.pathname.startsWith("/api/")) {
+      return jsonResponse({ error: "Authentication required." }, 401);
+    }
+    // HTML login form instead of a WWW-Authenticate challenge: installed
+    // PWAs cannot show the native Basic Auth dialog (black screen on iOS).
+    return htmlResponse(loginPage(false), 401);
+  }
 
   if (url.pathname === "/api/chat" && request.method === "POST") {
     return handleChat(request, env, log);
@@ -81,6 +93,36 @@ async function route(request, env, url, log) {
     return handleModels(env, log);
   }
   return env.ASSETS.fetch(request);
+}
+
+// POST /login: validates the form against the same secrets as Basic Auth
+// and issues the signed session cookie (30 days).
+async function handleLogin(request, env, log) {
+  let user = "";
+  let pass = "";
+  try {
+    const form = await request.formData();
+    user = String(form.get("username") ?? "");
+    pass = String(form.get("password") ?? "");
+  } catch {
+    // fall through to failure
+  }
+  if (verifyCredentials(user, pass, env)) {
+    log.info("login.success", {});
+    return new Response(null, {
+      status: 303,
+      headers: { Location: "/", "Set-Cookie": await createSessionCookie(env) },
+    });
+  }
+  log.warn("login.failed", {});
+  return htmlResponse(loginPage(true), 401);
+}
+
+function htmlResponse(html, status) {
+  return new Response(html, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 // Model catalog for the UI dropdown (filtered + cached in src/berget.js).

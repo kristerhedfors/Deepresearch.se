@@ -170,11 +170,21 @@ accumulated numbered source registry.
 
 ## Access control
 
-The whole site (UI + API) is behind HTTP **Basic Auth**. Credentials are read
-only from the `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` secrets — never hardcoded
-in the repo. The Worker **fails closed**: if either secret is unset, every
-request gets 401. `run_worker_first = true` in `wrangler.toml` ensures auth
-also covers the static assets.
+The whole site (UI + API) is gated. Two mechanisms, same credentials (the
+`BASIC_AUTH_USER` / `BASIC_AUTH_PASS` secrets — never hardcoded; the Worker
+**fails closed** if either is unset):
+
+1. **HTTP Basic Auth** — accepted on every request (curl/scripts:
+   `curl -u user:pass …`). No `WWW-Authenticate` challenge is emitted.
+2. **Login page + session cookie** (`/login`, `src/login.js`) — what
+   browsers and installed PWAs use. A standalone PWA cannot show the native
+   Basic Auth dialog (401 challenge = black screen on iOS), so
+   unauthenticated HTML navigation gets a login form; success sets a signed
+   30-day `dr_session` cookie (`exp.hmac(exp)`, HMAC keyed from the
+   credential pair — rotating the password invalidates sessions).
+
+`run_worker_first = true` in `wrangler.toml` ensures auth also covers the
+static assets.
 
 Set them once in the dashboard (Worker → Settings → Variables and Secrets) or
 via CLI:
