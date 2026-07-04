@@ -58,6 +58,10 @@ export function clampBudget(value) {
   return Math.min(MAX_BUDGET_S, Math.max(MIN_BUDGET_S, Math.round(n)));
 }
 
+// Large budgets buy proportionally MORE work, not just headroom: more
+// initial angles (up to 6), more follow-ups per gap round (up to 5), more
+// gap rounds (up to 4), a bigger search cap, and a larger source registry
+// and digest for synthesis.
 export function planResearch(model, budgetS) {
   const t = phaseEstimates(model);
   const budgetMs = budgetS * 1000;
@@ -66,25 +70,43 @@ export function planResearch(model, budgetS) {
     budgetS,
     queries: 1,
     gapIterations: 0,
+    followups: 3,
     validate: false,
+    maxSearches: 8,
+    maxSources: 18,
+    digestCap: 14_000,
     estimates: t,
   };
 
   let avail = budgetMs - t.triage - t.synth;
-  if (avail <= t.search) return plan; // floor plan
+  if (avail <= t.search) {
+    plan.maxSearches = 1;
+    return plan; // floor plan
+  }
 
   if (avail >= t.validate + 2 * t.search) {
     plan.validate = true;
     avail -= t.validate;
   }
 
-  plan.queries = Math.max(1, Math.min(4, Math.floor((avail * 0.6) / t.search)));
+  // Depth scales with the budget tier.
+  const queryCap = budgetS >= 240 ? 6 : 4;
+  plan.followups = budgetS >= 420 ? 5 : budgetS >= 240 ? 4 : 3;
+  const gapRoundCap = budgetS >= 300 ? 4 : budgetS >= 60 ? 3 : 2;
+
+  plan.queries = Math.max(1, Math.min(queryCap, Math.floor((avail * 0.6) / t.search)));
   let rest = avail - plan.queries * t.search;
 
   const gapCost = t.gap + 2 * t.search;
-  while (plan.gapIterations < 3 && rest >= gapCost) {
+  while (plan.gapIterations < gapRoundCap && rest >= gapCost) {
     plan.gapIterations++;
     rest -= gapCost;
+  }
+
+  plan.maxSearches = Math.min(20, plan.queries + plan.gapIterations * plan.followups);
+  if (plan.maxSearches > 8) {
+    plan.maxSources = 24;
+    plan.digestCap = 18_000;
   }
   return plan;
 }

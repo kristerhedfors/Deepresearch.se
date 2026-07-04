@@ -38,13 +38,9 @@ import { clampBudget, fitsDeadline, planResearch, recordPhase } from "./budget.j
 import { webSearch } from "./exa.js";
 import { jsonResponse } from "./http.js";
 
-const MAX_INITIAL_QUERIES = 4;
-const MAX_FOLLOWUP_QUERIES = 3;
-// Gap iterations (max 2) and validation inclusion are decided per request
-// by the time-budget planner — see src/budget.js.
-const MAX_TOTAL_SEARCHES = 8;
-const MAX_SOURCES = 18; // registry cap fed to synthesis/validation
-const DIGEST_CHAR_CAP = 14_000;
+// Research depth (initial angles, follow-ups per round, gap rounds, search
+// and source caps, digest size) is decided per request by the time-budget
+// planner — see src/budget.js.
 const HISTORY_TURNS = 8; // conversation turns included in prompts
 const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
@@ -58,19 +54,19 @@ const MAX_TOTAL_IMAGE_CHARS = 750_000; // per request
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const TRIAGE_PROMPT = () =>
+const TRIAGE_PROMPT = (maxQueries) =>
   `You are the research planner for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
   "Decide how to handle the user's LATEST message given the conversation. Respond ONLY with a JSON object:\n" +
   '- {"action":"direct"} — small talk, thanks, questions about this site, or simple stable facts that need no web sources.\n' +
   '- {"action":"clarify","question":"..."} — a research request missing details (scope, timeframe, region, purpose) that would materially change what to search. Ask exactly ONE short question.\n' +
-  '- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-4 distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).\n' +
+  `- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-${maxQueries} distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).\n` +
   'Messages may carry attached images (shown as "[N image(s) attached]"). Questions about the attached image itself (identify, describe, read, count, colors, "what is this") MUST be "direct" — web search cannot see images. Choose "research" for an image question only when external facts are also needed (e.g. news or prices about the thing in the image), and then write queries about the topic, never about "the image".';
 
-const GAP_PROMPT = (pastQueries) =>
+const GAP_PROMPT = (pastQueries, maxFollowups) =>
   `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
   "Given the research question and the sources collected so far, respond ONLY with JSON:\n" +
   '- {"complete":true} if the sources cover the question well enough for a grounded answer.\n' +
-  '- {"complete":false,"queries":["..."]} otherwise, with 1-3 NEW web-search queries targeting the most important gaps (missing angles, missing numbers, unverified key claims).\n' +
+  `- {"complete":false,"queries":["..."]} otherwise, with 1-${maxFollowups} NEW web-search queries targeting the most important gaps (missing angles, missing numbers, unverified key claims).\n` +
   `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}`;
 
 const SYNTH_PROMPT = () =>
@@ -274,7 +270,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
     completeJson(
       env,
       [
-        { role: "system", content: TRIAGE_PROMPT() },
+        { role: "system", content: TRIAGE_PROMPT(Math.max(4, state.plan.queries)) },
         { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
       ],
       { model, maxTokens: 500 },
@@ -309,7 +305,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
   // rounds, and whether validation fits; deadline checks refine at runtime.
   const plan = state.plan;
   const est = plan.estimates;
-  const queries = decision.queries.slice(0, Math.min(plan.queries, MAX_INITIAL_QUERIES));
+  const queries = decision.queries.slice(0, plan.queries);
   emit({
     status: {
       type: "step_done",
@@ -324,7 +320,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
 
   // ---- Phase 3: gap-check iterations (budgeted) ---------------------------
   for (let it = 1; it <= plan.gapIterations; it++) {
-    if (state.searchCount >= MAX_TOTAL_SEARCHES) break;
+    if (state.searchCount >= plan.maxSearches) break;
     // Skip further digging if this round plus the remaining mandatory
     // phases would blow the time target.
     const upcoming =
@@ -340,10 +336,10 @@ async function runPipeline(env, log, emit, conversation, model, state) {
       completeJson(
         env,
         [
-          { role: "system", content: GAP_PROMPT([...state.ranQueries]) },
+          { role: "system", content: GAP_PROMPT([...state.ranQueries], plan.followups) },
           {
             role: "user",
-            content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources) || "(none)"}`,
+            content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
           },
         ],
         { model, maxTokens: 400 },
@@ -356,7 +352,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
       ? []
-      : gap.queries.filter((q) => typeof q === "string" && q.trim()).slice(0, MAX_FOLLOWUP_QUERIES);
+      : gap.queries.filter((q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
 
     if (followups.length === 0) {
       emit({ status: { type: "step_done", id: stepId, label: "Coverage sufficient", details: [] } });
@@ -376,7 +372,7 @@ async function runPipeline(env, log, emit, conversation, model, state) {
 
   // ---- Phase 4: synthesis (streamed draft) --------------------------------
   emit({ status: { type: "step_start", id: "synth", label: "Writing report…" } });
-  const digest = sourceDigest(state.sources);
+  const digest = sourceDigest(state.sources, plan.digestCap);
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
@@ -502,7 +498,7 @@ async function runSearches(env, log, emit, state, queries, round) {
     if (!query) continue;
     const key = query.toLowerCase();
     if (state.ranQueries.has(key)) continue;
-    if (state.searchCount >= MAX_TOTAL_SEARCHES) break;
+    if (state.searchCount >= state.plan.maxSearches) break;
     state.ranQueries.add(key);
     state.searchCount++;
 
@@ -526,7 +522,7 @@ async function runSearches(env, log, emit, state, queries, round) {
 function addSources(state, items) {
   for (const item of items || []) {
     if (!item?.url || state.byUrl.has(item.url)) continue;
-    if (state.sources.length >= MAX_SOURCES) return;
+    if (state.sources.length >= state.plan.maxSources) return;
     const entry = {
       n: state.sources.length + 1,
       title: item.title || item.url,
@@ -538,7 +534,7 @@ function addSources(state, items) {
   }
 }
 
-function sourceDigest(sources, capChars = DIGEST_CHAR_CAP) {
+function sourceDigest(sources, capChars = 14_000) {
   const blocks = [];
   let used = 0;
   for (const s of sources) {
