@@ -1,0 +1,11 @@
+# Cloudflare Workers static-assets config.
+# `npx wrangler deploy` uploads everything in ./public as static files.
+#
+# IMPORTANT: `name` must match your Worker's name in the Cloudflare dashboard
+# (Workers & Pages -> your project). If it differs, change this one line or the
+# deploy lands on a different Worker that your domain isn't mapped to.
+name = "deepresearch-se"
+compatibility_date = "2026-07-04"
+
+[assets]
+directory = "./public"
