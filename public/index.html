@@ -101,9 +101,9 @@
       cursor: default;
     }
     .step summary::-webkit-details-marker { display: none; }
-    .step.finished summary { cursor: pointer; }
-    .step.finished summary::after { content: "▾"; opacity: .55; margin-left: auto; }
-    .step.finished[open] summary::after { content: "▴"; }
+    .step.expandable summary { cursor: pointer; }
+    .step.expandable summary::after { content: "▾"; opacity: .55; margin-left: auto; }
+    .step.expandable[open] summary::after { content: "▴"; }
     .step .check { color: var(--ok); flex: none; }
     .step ul { margin: .45rem 0 .1rem; padding-left: 1.2rem; }
     .step li { margin: .15rem 0; }
@@ -244,7 +244,50 @@
       el.append(activity, content, stats);
       chat.appendChild(el);
       scrollDown();
-      return { el, activity, content, stats, lastStep: null, text: "" };
+      return { el, activity, content, stats, lastStep: null, steps: {}, text: "" };
+    }
+
+    // Generic pipeline steps (plan / gap check / synthesis / validation).
+    function startGenericStep(turn, id, label) {
+      const details = document.createElement("details");
+      details.className = "step";
+      const summary = document.createElement("summary");
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      const lab = document.createElement("span");
+      lab.textContent = label;
+      summary.append(spin, lab);
+      details.appendChild(summary);
+      details.addEventListener("click", (e) => {
+        if (!details.classList.contains("expandable")) e.preventDefault();
+      });
+      turn.activity.appendChild(details);
+      turn.steps[id] = { details, summary, label: lab };
+      scrollDown();
+    }
+
+    function finishGenericStep(turn, s) {
+      const step = turn.steps[s.id];
+      if (!step) return;
+      step.details.classList.add("finished");
+      step.summary.querySelector(".spin")?.remove();
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = "✓";
+      step.summary.prepend(check);
+      step.label.textContent = s.label || "";
+      const items = Array.isArray(s.details) ? s.details : [];
+      if (items.length) {
+        step.details.classList.add("expandable");
+        const ul = document.createElement("ul");
+        for (const it of items) {
+          const li = document.createElement("li");
+          li.textContent = String(it);
+          ul.appendChild(li);
+        }
+        step.details.appendChild(ul);
+      }
+      scrollDown();
     }
 
     function showTyping(content) {
@@ -298,7 +341,7 @@
     function finishSearchStep(turn, info) {
       const step = turn.lastStep;
       if (!step) return;
-      step.details.classList.add("finished");
+      step.details.classList.add("finished", "expandable");
       step.summary.querySelector(".spin")?.remove();
       const check = document.createElement("span");
       check.className = "check";
@@ -345,6 +388,8 @@
         const s = evt.status;
         if (s.type === "search_start") startSearchStep(turn, s.query || "");
         else if (s.type === "search_done") finishSearchStep(turn, s);
+        else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
+        else if (s.type === "step_done") finishGenericStep(turn, s);
         else if (s.type === "done") renderStats(turn, s);
         else if (s.type === "discard_text") {
           // Server detected a malformed tool call in the streamed text:

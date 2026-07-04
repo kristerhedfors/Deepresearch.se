@@ -12,11 +12,11 @@ export function defaultModel(env) {
 }
 
 // Berget's model catalog, filtered to models the chat can use: text models
-// supporting streaming + function calling (the web_search tool depends on
-// it). Models Berget reports as down are included with `up: false` so the UI
-// can show them greyed out — they become selectable automatically once
-// Berget brings them back. Cached per isolate to keep /api/models and
-// per-request validation cheap.
+// supporting streaming + JSON mode (the research pipeline's planning and
+// validation calls depend on it). Models Berget reports as down are included
+// with `up: false` so the UI can show them greyed out — they become
+// selectable automatically once Berget brings them back. Cached per isolate
+// to keep /api/models and per-request validation cheap.
 let modelsCache = { at: 0, list: null };
 const MODELS_TTL_MS = 5 * 60 * 1000;
 
@@ -35,7 +35,7 @@ export async function listModels(env) {
       (m) =>
         m.model_type === "text" &&
         m.capabilities?.streaming &&
-        m.capabilities?.function_calling,
+        m.capabilities?.json_mode,
     )
     .map((m) => ({
       id: m.id,
@@ -144,4 +144,51 @@ export async function consumeChatStream(body, onText) {
   }
 
   return { text, toolCalls: toolCalls.filter(Boolean), usage, finishReason };
+}
+
+// Non-streaming completion that asks Berget for a JSON object and parses it.
+// Used by the research pipeline's triage / gap-check / validation phases.
+// Returns { value, usage } — value is null when parsing fails (callers must
+// fall back gracefully; a broken helper phase must never break the chat).
+export async function completeJson(env, messages, { model, maxTokens = 900 } = {}) {
+  const resp = await fetch(BERGET_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${env.BERGET_API_TOKEN}`,
+    },
+    body: JSON.stringify({
+      model: model || defaultModel(env),
+      stream: false,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
+      messages,
+    }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`Berget JSON call failed (${resp.status}): ${detail.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const content = data.choices?.[0]?.message?.content || "";
+  return { value: parseLooseJson(content), usage: data.usage || null };
+}
+
+// Tolerant JSON extraction — models occasionally wrap the object in prose or
+// code fences despite json_mode.
+function parseLooseJson(s) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    // fall through to embedded-object extraction
+  }
+  const m = String(s).match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      return JSON.parse(m[0]);
+    } catch {
+      // give up
+    }
+  }
+  return null;
 }

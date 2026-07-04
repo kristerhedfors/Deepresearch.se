@@ -9,14 +9,17 @@ const NUM_RESULTS = 5;
 
 // Runs a search and returns:
 //   content    — compact LLM-friendly string (numbered title/URL/highlights);
-//                errors come back as strings too, so the model can explain
-//                the failure instead of the request 500ing
+//                errors come back as strings too, so the pipeline can carry
+//                on instead of the request 500ing
+//   items      — [{title, url, highlights[]}] structured results for the
+//                pipeline's cross-search source registry
 //   sources    — [{title, url}] for the UI's expandable activity panel
 //   resultCount, durationMs — for UI counters and logs
 export async function webSearch(env, log, query) {
   const startedAt = Date.now();
   const failure = (content) => ({
     content,
+    items: [],
     sources: [],
     resultCount: 0,
     durationMs: Date.now() - startedAt,
@@ -88,6 +91,11 @@ export async function webSearch(env, log, query) {
 
   return {
     content,
+    items: results.map((r) => ({
+      title: r.title || r.url,
+      url: r.url,
+      highlights: Array.isArray(r.highlights) ? r.highlights : [],
+    })),
     sources: results.map((r) => ({ title: r.title || r.url, url: r.url })),
     resultCount: results.length,
     durationMs,

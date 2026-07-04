@@ -1,68 +1,86 @@
-// POST /api/chat — streaming chat with an Exa-backed web_search tool.
+// POST /api/chat — deep-research pipeline with search iterations and
+// post-validation. The Worker orchestrates every phase directly (no function
+// calling), so the flow is deterministic and works on any JSON-mode model:
 //
-// The Worker drives the tool-call loop: the model streams either text (which
-// is forwarded to the browser as OpenAI-style SSE) or tool calls (which the
-// Worker executes against Exa, appending results and asking the model again).
-// After MAX_TOOL_ROUNDS the model is called without tools, forcing a final
-// answer.
+//   1. Triage (JSON): direct reply | one clarifying question | research plan
+//      with 2-4 search queries covering different angles.
+//   2. Search wave: run the planned queries via Exa (deduped, capped).
+//   3. Gap check (JSON, up to MAX_GAP_ITERATIONS): audit coverage against
+//      the question; run follow-up queries for the most important gaps.
+//   4. Synthesis: stream a source-grounded answer with [n] citations and a
+//      Sources list, built ONLY from the numbered source registry.
+//   5. Post-validation (JSON): fact-check the draft against the sources; on
+//      "revise", tell the UI to discard the draft (discard_text) and emit
+//      the corrected answer.
 //
-// Client protocol (see CLAUDE.md "/api/chat SSE protocol"):
-//   data: {"choices":[{"delta":{"content":"..."}}]}   text chunk
-//   data: {"status":{...}}                            live activity for the UI
-//   data: {"error":"..."}                             surfaced in the UI
-//   data: [DONE]                                      end of stream
-//
-// Status events (clients must ignore unknown types):
+// Every phase is surfaced to the UI as status events (see CLAUDE.md
+// "/api/chat SSE protocol"):
+//   step_start   {id, label}                         spinner on
+//   step_done    {id, label, details: [string]}      checkmark + expandable
 //   search_start {round, query}
-//   search_done  {round, query, results, duration_ms, sources: [{title,url}]}
-//   discard_text {}  — clear the answer streamed so far (malformed tool call)
-//   done         {rounds, searches, duration_ms, prompt_tokens,
+//   search_done  {round, query, results, duration_ms, sources}
+//   discard_text {}    clear the streamed draft (validation revised it)
+//   done         {model, rounds, searches, duration_ms, prompt_tokens,
 //                 completion_tokens, co2_grams}
+//
+// Helper phases fail soft: if triage / gap check / validation error or
+// return unparseable JSON, the pipeline degrades (single search, skip
+// iteration, accept draft) rather than failing the request.
 
-import { chatCompletion, consumeChatStream, defaultModel, listModels } from "./berget.js";
+import {
+  chatCompletion,
+  completeJson,
+  consumeChatStream,
+  defaultModel,
+  listModels,
+} from "./berget.js";
 import { webSearch } from "./exa.js";
 import { jsonResponse } from "./http.js";
 
-const MAX_TOOL_ROUNDS = 5; // search rounds before forcing a final answer
-const MAX_TOOL_CALLS_PER_ROUND = 5;
-const MAX_MESSAGES = 60; // history cap: the API is stateless, clients resend everything
+const MAX_INITIAL_QUERIES = 4;
+const MAX_GAP_ITERATIONS = 2;
+const MAX_FOLLOWUP_QUERIES = 3;
+const MAX_TOTAL_SEARCHES = 8;
+const MAX_SOURCES = 18; // registry cap fed to synthesis/validation
+const DIGEST_CHAR_CAP = 14_000;
+const HISTORY_TURNS = 8; // conversation turns included in prompts
+const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
 
-const SYSTEM_PROMPT =
-  "You are the research assistant for Deepresearch.se. Your job is deep " +
-  "research: thorough, source-grounded answers, not quick guesses.\n\n" +
-  "Workflow:\n" +
-  "1. If the research request is ambiguous or missing key details (scope, " +
-  "timeframe, region, purpose), first ask one short follow-up question to pin " +
-  "it down — do not search yet.\n" +
-  "2. Once the question is clear, research it with the `web_search` tool: run " +
-  "several targeted searches from different angles, and run follow-up " +
-  "searches on leads worth digging into.\n" +
-  "3. Synthesize the findings into a structured answer: a short conclusion " +
-  "first, then the key findings, citing source URLs for every claim. Note " +
-  "disagreements between sources and gaps in the evidence honestly.\n\n" +
-  "Only skip searching for small talk or questions about this site itself.\n" +
-  "Always invoke web_search through the tool-calling interface — never write " +
-  "the call out as text in your reply.";
+const today = () => new Date().toISOString().slice(0, 10);
 
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "web_search",
-      description:
-        "Search the web for current, factual, or up-to-date information. " +
-        "Returns titles, URLs, and highlighted excerpts from relevant pages.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "The search query." },
-        },
-        required: ["query"],
-      },
-    },
-  },
-];
+const TRIAGE_PROMPT = () =>
+  `You are the research planner for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
+  "Decide how to handle the user's LATEST message given the conversation. Respond ONLY with a JSON object:\n" +
+  '- {"action":"direct"} — small talk, thanks, questions about this site, or simple stable facts that need no web sources.\n' +
+  '- {"action":"clarify","question":"..."} — a research request missing details (scope, timeframe, region, purpose) that would materially change what to search. Ask exactly ONE short question.\n' +
+  '- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-4 distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).';
+
+const GAP_PROMPT = (pastQueries) =>
+  `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
+  "Given the research question and the sources collected so far, respond ONLY with JSON:\n" +
+  '- {"complete":true} if the sources cover the question well enough for a grounded answer.\n' +
+  '- {"complete":false,"queries":["..."]} otherwise, with 1-3 NEW web-search queries targeting the most important gaps (missing angles, missing numbers, unverified key claims).\n' +
+  `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}`;
+
+const SYNTH_PROMPT = () =>
+  `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
+  "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
+  "Format (plain text, no markdown headings):\n" +
+  "- Start with a 1-3 sentence conclusion.\n" +
+  "- Then the key findings; cite sources inline with bracketed numbers like [1], [2] after each claim.\n" +
+  '- End with a "Sources:" list of the cited numbers with their URLs.\n' +
+  "Be honest about gaps and conflicting sources. If the sources are empty or insufficient, say so plainly and clearly label any general-knowledge statements as not source-backed.";
+
+const VALIDATE_PROMPT =
+  "You are a strict fact-checker for Deepresearch.se. You receive a research question, numbered sources, and a draft answer.\n" +
+  "Check: (1) every factual claim in the draft is supported by the cited source; (2) every [n] citation and URL in the draft matches the provided source list; (3) no invented URLs, numbers, or quotes; (4) important caveats from the sources are not dropped.\n" +
+  "Respond ONLY with JSON:\n" +
+  '- {"verdict":"pass"} if the draft is faithful to the sources.\n' +
+  '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed to fix the issues.';
+
+const DIRECT_PROMPT =
+  "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely.";
 
 export async function handleChat(request, env, log) {
   if (!env.BERGET_API_TOKEN) {
@@ -111,110 +129,47 @@ export async function handleChat(request, env, log) {
     }
   }
   const activeModel = model || defaultModel(env);
+  const conversation = body.messages;
 
-  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...body.messages];
   const encoder = new TextEncoder();
-
-  // The tool-call loop runs inside the ReadableStream so text streams to the
-  // browser as it is produced, including final answers after a search.
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (obj) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       const startedAt = Date.now();
-      let rounds = 0;
-      let searches = 0;
-      const totals = { prompt_tokens: 0, completion_tokens: 0, co2_grams: 0 };
+      const state = {
+        searchCount: 0,
+        iterations: 1,
+        ranQueries: new Set(),
+        sources: [],
+        byUrl: new Map(),
+        totals: { prompt_tokens: 0, completion_tokens: 0, co2_grams: 0 },
+      };
 
       try {
-        for (let round = 0; ; round++) {
-          rounds = round + 1;
-          const allowTools = round < MAX_TOOL_ROUNDS;
-          const roundStartedAt = Date.now();
-
-          const upstream = await chatCompletion(env, messages, {
-            tools: allowTools ? TOOLS : undefined,
-            model: activeModel,
-          });
-          if (!upstream.ok || !upstream.body) {
-            const detail = await upstream.text().catch(() => "");
-            log.error("chat.upstream_error", {
-              status: upstream.status,
-              round,
-              detail: detail.slice(0, 500),
-            });
-            emit({ error: `Berget API error (${upstream.status}).` });
-            break;
-          }
-
-          const { text, toolCalls, usage, finishReason } = await consumeChatStream(
-            upstream.body,
-            (delta) => emit({ choices: [{ delta: { content: delta } }] }),
-          );
-          if (usage) {
-            totals.prompt_tokens += usage.prompt_tokens || 0;
-            totals.completion_tokens += usage.completion_tokens || 0;
-            totals.co2_grams += usage.co2_grams || 0;
-          }
-          log.info("chat.round", {
-            round,
-            duration_ms: Date.now() - roundStartedAt,
-            finish_reason: finishReason,
-            tool_calls: toolCalls.length,
-            chars_streamed: text.length,
-            usage,
-          });
-
-          // Mistral Small occasionally writes a tool call as plain text
-          // (`web_search{"query": "..."}`) instead of using the tool-calling
-          // interface. Detect that, tell the UI to discard the garbage text
-          // (discard_text), and run the search as if it were a real call.
-          let effectiveCalls = toolCalls;
-          let assistantText = text || "";
-          if (toolCalls.length === 0 && allowTools) {
-            const pseudo = extractPseudoToolCall(text, rounds);
-            if (pseudo) {
-              log.warn("chat.pseudo_tool_call", { round });
-              emit({ status: { type: "discard_text" } });
-              effectiveCalls = [pseudo];
-              assistantText = ""; // don't feed the malformed text back to the model
-            }
-          }
-
-          if (effectiveCalls.length === 0) break; // final answer already streamed
-
-          if (effectiveCalls.length > MAX_TOOL_CALLS_PER_ROUND) {
-            log.warn("chat.tool_calls_capped", {
-              requested: effectiveCalls.length,
-              cap: MAX_TOOL_CALLS_PER_ROUND,
-            });
-          }
-          const calls = effectiveCalls.slice(0, MAX_TOOL_CALLS_PER_ROUND);
-
-          // Record the assistant's tool-call turn, then run each tool.
-          messages.push({ role: "assistant", content: assistantText, tool_calls: calls });
-          for (const call of calls) {
-            const result = await runTool(env, log, emit, call, rounds);
-            messages.push({ role: "tool", tool_call_id: call.id, content: result });
-          }
-          searches += calls.length;
-        }
+        await runPipeline(env, log, emit, conversation, activeModel, state);
       } catch (err) {
         log.error("chat.stream_failed", { error: err?.message || String(err) });
         emit({ error: "Worker error: " + (err?.message || String(err)) });
       } finally {
         const duration_ms = Date.now() - startedAt;
-        log.info("chat.complete", { rounds, searches, duration_ms, model: activeModel });
+        log.info("chat.complete", {
+          model: activeModel,
+          rounds: state.iterations,
+          searches: state.searchCount,
+          sources: state.sources.length,
+          duration_ms,
+        });
         emit({
           status: {
             type: "done",
             model: activeModel,
-            rounds,
-            searches,
+            rounds: state.iterations,
+            searches: state.searchCount,
             duration_ms,
-            prompt_tokens: totals.prompt_tokens,
-            completion_tokens: totals.completion_tokens,
-            co2_grams: totals.co2_grams,
+            prompt_tokens: state.totals.prompt_tokens,
+            completion_tokens: state.totals.completion_tokens,
+            co2_grams: state.totals.co2_grams,
           },
         });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -229,6 +184,283 @@ export async function handleChat(request, env, log) {
       "cache-control": "no-cache, no-transform",
     },
   });
+}
+
+async function runPipeline(env, log, emit, conversation, model, state) {
+  const lastUser = [...conversation].reverse().find((m) => m.role === "user")?.content || "";
+  const convText = formatConversation(conversation);
+  const emitDelta = (t) => emit({ choices: [{ delta: { content: t } }] });
+
+  // ---- Phase 1: triage --------------------------------------------------
+  emit({ status: { type: "step_start", id: "plan", label: "Analyzing request…" } });
+  const triage = await phase(log, "triage", () =>
+    completeJson(
+      env,
+      [
+        { role: "system", content: TRIAGE_PROMPT() },
+        { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
+      ],
+      { model, maxTokens: 500 },
+    ).then((r) => {
+      addUsage(state.totals, r.usage);
+      return r.value;
+    }),
+  );
+
+  const decision = normalizeTriage(triage, lastUser);
+
+  if (decision.action === "direct") {
+    emit({ status: { type: "step_done", id: "plan", label: "Direct reply (no research needed)", details: [] } });
+    await streamCompletion(
+      env,
+      [{ role: "system", content: DIRECT_PROMPT }, ...conversation],
+      model,
+      emitDelta,
+      state,
+    );
+    return;
+  }
+
+  if (decision.action === "clarify") {
+    emit({ status: { type: "step_done", id: "plan", label: "Need to narrow the scope first", details: [] } });
+    emitChunked(emitDelta, decision.question);
+    return;
+  }
+
+  const queries = decision.queries.slice(0, MAX_INITIAL_QUERIES);
+  emit({
+    status: {
+      type: "step_done",
+      id: "plan",
+      label: `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"}`,
+      details: queries,
+    },
+  });
+
+  // ---- Phase 2: initial search wave --------------------------------------
+  await runSearches(env, log, emit, state, queries, 1);
+
+  // ---- Phase 3: gap-check iterations --------------------------------------
+  for (let it = 1; it <= MAX_GAP_ITERATIONS; it++) {
+    if (state.searchCount >= MAX_TOTAL_SEARCHES) break;
+    const stepId = `gap${it}`;
+    emit({ status: { type: "step_start", id: stepId, label: `Checking coverage (round ${it})…` } });
+
+    const gap = await phase(log, `gap_check_${it}`, () =>
+      completeJson(
+        env,
+        [
+          { role: "system", content: GAP_PROMPT([...state.ranQueries]) },
+          {
+            role: "user",
+            content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources) || "(none)"}`,
+          },
+        ],
+        { model, maxTokens: 400 },
+      ).then((r) => {
+        addUsage(state.totals, r.usage);
+        return r.value;
+      }),
+    );
+
+    const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
+      ? []
+      : gap.queries.filter((q) => typeof q === "string" && q.trim()).slice(0, MAX_FOLLOWUP_QUERIES);
+
+    if (followups.length === 0) {
+      emit({ status: { type: "step_done", id: stepId, label: "Coverage sufficient", details: [] } });
+      break;
+    }
+    emit({
+      status: {
+        type: "step_done",
+        id: stepId,
+        label: `Digging deeper: ${followups.length} follow-up search${followups.length === 1 ? "" : "es"}`,
+        details: followups,
+      },
+    });
+    state.iterations++;
+    await runSearches(env, log, emit, state, followups, state.iterations);
+  }
+
+  // ---- Phase 4: synthesis (streamed draft) --------------------------------
+  emit({ status: { type: "step_start", id: "synth", label: "Writing report…" } });
+  const digest = sourceDigest(state.sources);
+  const draft = await streamCompletion(
+    env,
+    [
+      { role: "system", content: SYNTH_PROMPT() },
+      {
+        role: "user",
+        content:
+          `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
+          `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`,
+      },
+    ],
+    model,
+    emitDelta,
+    state,
+  );
+  emit({ status: { type: "step_done", id: "synth", label: "Report drafted", details: [] } });
+
+  // ---- Phase 5: post-validation -------------------------------------------
+  emit({ status: { type: "step_start", id: "validate", label: "Validating claims against sources…" } });
+  const verdict = await phase(log, "validate", () =>
+    completeJson(
+      env,
+      [
+        { role: "system", content: VALIDATE_PROMPT },
+        {
+          role: "user",
+          content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
+        },
+      ],
+      { model, maxTokens: 3000 },
+    ).then((r) => {
+      addUsage(state.totals, r.usage);
+      return r.value;
+    }),
+  );
+
+  if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
+    const issues = (Array.isArray(verdict.issues) ? verdict.issues : []).map(String).slice(0, 10);
+    emit({
+      status: {
+        type: "step_done",
+        id: "validate",
+        label: `Fixed ${issues.length || "some"} issue${issues.length === 1 ? "" : "s"} found in fact-check`,
+        details: issues,
+      },
+    });
+    emit({ status: { type: "discard_text" } });
+    emitChunked(emitDelta, verdict.revised_answer.trim());
+  } else if (verdict?.verdict === "pass") {
+    emit({ status: { type: "step_done", id: "validate", label: "All claims verified against sources", details: [] } });
+  } else {
+    emit({ status: { type: "step_done", id: "validate", label: "Validation inconclusive — draft kept as-is", details: [] } });
+  }
+}
+
+// ---- helpers ---------------------------------------------------------------
+
+// Runs a helper phase, logging duration; returns null on failure so the
+// pipeline can degrade instead of breaking.
+async function phase(log, name, fn) {
+  const startedAt = Date.now();
+  try {
+    const result = await fn();
+    log.info("chat.phase", { phase: name, duration_ms: Date.now() - startedAt, ok: result != null });
+    return result;
+  } catch (err) {
+    log.warn("chat.phase_failed", {
+      phase: name,
+      duration_ms: Date.now() - startedAt,
+      error: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
+function normalizeTriage(triage, lastUser) {
+  if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
+    return { action: "clarify", question: triage.question.trim() };
+  }
+  if (triage?.action === "research") {
+    const queries = (Array.isArray(triage.queries) ? triage.queries : [])
+      .filter((q) => typeof q === "string" && q.trim());
+    if (queries.length > 0) return { action: "research", queries };
+  }
+  if (triage?.action === "direct") return { action: "direct" };
+  // Triage failed: research with the raw question when it looks substantial,
+  // otherwise answer directly.
+  return lastUser.trim().length >= 12
+    ? { action: "research", queries: [lastUser.trim().slice(0, 300)] }
+    : { action: "direct" };
+}
+
+async function runSearches(env, log, emit, state, queries, round) {
+  for (const raw of queries) {
+    const query = String(raw || "").trim();
+    if (!query) continue;
+    const key = query.toLowerCase();
+    if (state.ranQueries.has(key)) continue;
+    if (state.searchCount >= MAX_TOTAL_SEARCHES) break;
+    state.ranQueries.add(key);
+    state.searchCount++;
+
+    emit({ status: { type: "search_start", round, query } });
+    const result = await webSearch(env, log, query);
+    emit({
+      status: {
+        type: "search_done",
+        round,
+        query,
+        results: result.resultCount,
+        duration_ms: result.durationMs,
+        sources: result.sources,
+      },
+    });
+    addSources(state, result.items);
+  }
+}
+
+function addSources(state, items) {
+  for (const item of items || []) {
+    if (!item?.url || state.byUrl.has(item.url)) continue;
+    if (state.sources.length >= MAX_SOURCES) return;
+    const entry = {
+      n: state.sources.length + 1,
+      title: item.title || item.url,
+      url: item.url,
+      highlights: (item.highlights || []).slice(0, 3),
+    };
+    state.byUrl.set(item.url, entry);
+    state.sources.push(entry);
+  }
+}
+
+function sourceDigest(sources, capChars = DIGEST_CHAR_CAP) {
+  const blocks = [];
+  let used = 0;
+  for (const s of sources) {
+    const block = `[${s.n}] ${s.title}\n${s.url}\n${s.highlights.join(" … ")}`.trim();
+    if (used + block.length > capChars) break;
+    blocks.push(block);
+    used += block.length + 2;
+  }
+  return blocks.join("\n\n");
+}
+
+// Streams one chat completion to the client; returns the full text.
+async function streamCompletion(env, messages, model, emitDelta, state) {
+  const upstream = await chatCompletion(env, messages, { model });
+  if (!upstream.ok || !upstream.body) {
+    const detail = await upstream.text().catch(() => "");
+    throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
+  }
+  const { text, usage } = await consumeChatStream(upstream.body, emitDelta);
+  addUsage(state.totals, usage);
+  return text;
+}
+
+function emitChunked(emitDelta, text) {
+  for (let i = 0; i < text.length; i += 80) {
+    emitDelta(text.slice(i, i + 80));
+  }
+}
+
+function addUsage(totals, usage) {
+  if (!usage) return;
+  totals.prompt_tokens += usage.prompt_tokens || 0;
+  totals.completion_tokens += usage.completion_tokens || 0;
+  totals.co2_grams += usage.co2_grams || 0;
+}
+
+function formatConversation(conversation) {
+  return conversation
+    .slice(-HISTORY_TURNS)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 2000)}`)
+    .join("\n");
 }
 
 // Returns an error string for invalid input, or null when acceptable.
@@ -251,56 +483,4 @@ function validateMessages(messages) {
     }
   }
   return null;
-}
-
-// Detects a tool call written as plain text (Mistral Small quirk), e.g.
-// `web_search{"query": "..."}`. Returns a synthetic tool-call object, or null.
-function extractPseudoToolCall(text, round) {
-  const m = (text || "").match(/web_search\s*(\{[^{}]*\})/);
-  if (!m) return null;
-  try {
-    const args = JSON.parse(m[1]);
-    if (typeof args.query === "string" && args.query) {
-      return {
-        id: `pseudo_${round}`,
-        type: "function",
-        function: { name: "web_search", arguments: JSON.stringify({ query: args.query }) },
-      };
-    }
-  } catch {
-    // fall through
-  }
-  return null;
-}
-
-// Executes one tool call, emitting search_start / search_done status events
-// around it so the UI can show live activity. Returns the tool result string
-// that goes back to the model.
-async function runTool(env, log, emit, call, round) {
-  const name = call.function?.name;
-  if (name !== "web_search") {
-    log.warn("chat.unknown_tool", { tool: name });
-    return `Unknown tool: ${name}`;
-  }
-
-  let query = "";
-  try {
-    query = JSON.parse(call.function.arguments || "{}").query || "";
-  } catch {
-    log.warn("chat.bad_tool_arguments", { tool: name });
-  }
-
-  emit({ status: { type: "search_start", round, query } });
-  const result = await webSearch(env, log, query);
-  emit({
-    status: {
-      type: "search_done",
-      round,
-      query,
-      results: result.resultCount,
-      duration_ms: result.durationMs,
-      sources: result.sources,
-    },
-  });
-  return result.content;
 }

@@ -21,12 +21,24 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 `wrangler.toml`), git-connected to Cloudflare.
 
 **Product intent:** the site is a *deep research* assistant, matching its
-name. The system prompt (in `src/chat.js`) instructs the model to (1) ask one
-short clarifying follow-up question when a research request is underspecified,
-(2) otherwise run several `web_search` calls from different angles plus
-follow-up searches, and (3) synthesize a structured, URL-cited answer that is
-honest about gaps. Keep this behavior in mind when editing the prompt or the
-tool loop (`MAX_TOOL_ROUNDS`).
+name. `/api/chat` runs a Worker-orchestrated pipeline (`src/chat.js`) — no
+function calling; every phase is a direct call, so it is deterministic and
+works on any JSON-mode model:
+
+1. **Triage** (JSON mode): direct reply | one clarifying question | research
+   plan with 2–4 queries covering different angles.
+2. **Search wave**: planned queries via Exa, deduped, capped
+   (`MAX_TOTAL_SEARCHES`).
+3. **Gap check** (JSON, up to `MAX_GAP_ITERATIONS`): audit coverage, run
+   follow-up queries for missing angles.
+4. **Synthesis** (streamed): answer built ONLY from the numbered source
+   registry, `[n]` citations + "Sources:" list.
+5. **Post-validation** (JSON): fact-check the draft against the sources; on
+   "revise" the UI discards the draft (`discard_text`) and the corrected
+   answer is emitted.
+
+Helper phases fail soft (degrade to fewer searches / accepted draft — never
+break the request). Pipeline constants at the top of `src/chat.js`.
 
 ### Code layout
 
@@ -47,12 +59,13 @@ live activity (spinners, expandable sources, stats). Clients must ignore
 unknown `status` types (forward compatibility).
 
 - `{"choices":[{"delta":{"content":"…"}}]}` — text chunk
+- `{"status":{"type":"step_start","id":"plan","label":"Analyzing request…"}}` — pipeline step spinner
+- `{"status":{"type":"step_done","id":"plan","label":"Planned 3 search angles","details":["query …"]}}` — checkmark; `details` renders as an expandable list
 - `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
-  keep waiting (the model wrote a tool call as plain text — a Mistral Small
-  quirk; the Worker detects it, runs the search anyway, and continues)
-- `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":1,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
+  keep waiting (post-validation found problems; the corrected answer follows)
+- `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
 - `{"error":"…"}` — shown as an error in the bubble
 - Stream terminates with `data: [DONE]`
 
@@ -88,8 +101,8 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   in Berget's repo can be found at `GET https://api.berget.ai/v1/models`.
 - **Model dropdown:** the UI lets users pick a model. `GET /api/models`
   (Worker) proxies Berget's catalog filtered to text models that support
-  streaming + function calling (the `web_search` tool requires it), cached
-  ~5 min per isolate (`src/berget.js`). Models Berget reports as down (e.g.
+  streaming + JSON mode (the research pipeline's planning/validation calls
+  require it), cached ~5 min per isolate (`src/berget.js`). Models Berget reports as down (e.g.
   `status.up: false`, lifecycle `maintenance`) are included with `up: false`
   and rendered greyed out/disabled — they become selectable automatically
   when Berget brings them back. The client sends `model` in the `POST
@@ -106,9 +119,10 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
 — the source of truth for search types, parameters, and response shape. Fetch it
 if anything here looks stale, and report staleness back.
 
-The model can call a `web_search` tool (OpenAI-style function calling; Mistral
-Small supports it). The Worker runs the tool-call loop: model requests a search
-→ Worker calls Exa → results go back to the model → it streams a grounded answer.
+Searches are orchestrated by the Worker pipeline in `src/chat.js` (no
+function calling): the triage/gap-check phases plan queries via JSON-mode
+calls, the Worker runs them against Exa, and synthesis answers from the
+accumulated numbered source registry.
 
 - **Auth:** the Worker reads the `EXA_API_KEY` secret and sends it as the
   `x-api-key` header. Never hardcode it. (Exa returns HTTP 402 without a key.)
@@ -121,7 +135,8 @@ Small supports it). The Worker runs the tool-call loop: model requests a search
 - **Common mistakes:** `text`/`summary`/`highlights` must be nested under
   `contents` on `/search` (they're top-level only on `/contents`); `useAutoprompt`,
   `livecrawl`, `numSentences` are deprecated; use `includeDomains`/`excludeDomains`
-  (not `includeUrls`). The tool loop is capped at `MAX_TOOL_ROUNDS` in `src/chat.js`.
+  (not `includeUrls`). Search volume is capped by the pipeline constants
+  (`MAX_TOTAL_SEARCHES` etc.) in `src/chat.js`.
 
 ## Access control
 
