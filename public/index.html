@@ -200,14 +200,16 @@
         for (const m of models) {
           const opt = document.createElement("option");
           opt.value = m.id;
-          opt.textContent = m.name;
+          opt.textContent = m.up === false ? m.name + " (unavailable)" : m.name;
+          if (m.up === false) opt.disabled = true;
           if (m.pricing) opt.title = m.pricing;
           modelSel.appendChild(opt);
         }
+        const usable = (m) => m.up !== false;
         const saved = localStorage.getItem("model");
-        const pick = models.some((m) => m.id === saved) ? saved
-          : models.some((m) => m.id === data.default) ? data.default
-          : models[0].id;
+        const pick = models.some((m) => m.id === saved && usable(m)) ? saved
+          : models.some((m) => m.id === data.default && usable(m)) ? data.default
+          : (models.find(usable) || models[0]).id;
         modelSel.value = pick;
         modelSel.hidden = false;
       } catch { /* keep dropdown hidden; server default applies */ }

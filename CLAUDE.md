@@ -87,12 +87,15 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   overridable via the optional `BERGET_MODEL` env var. Other models available
   in Berget's repo can be found at `GET https://api.berget.ai/v1/models`.
 - **Model dropdown:** the UI lets users pick a model. `GET /api/models`
-  (Worker) proxies Berget's catalog filtered to text models that are up and
-  support streaming + function calling (the `web_search` tool requires it),
-  cached ~5 min per isolate (`src/berget.js`). The client sends `model` in the
-  `POST /api/chat` body; the Worker validates it against the catalog (400 on
-  unknown ids) and falls back to the default if the catalog is unreachable.
-  Selection persists in `localStorage`.
+  (Worker) proxies Berget's catalog filtered to text models that support
+  streaming + function calling (the `web_search` tool requires it), cached
+  ~5 min per isolate (`src/berget.js`). Models Berget reports as down (e.g.
+  `status.up: false`, lifecycle `maintenance`) are included with `up: false`
+  and rendered greyed out/disabled — they become selectable automatically
+  when Berget brings them back. The client sends `model` in the `POST
+  /api/chat` body; the Worker validates it (400 on unknown or down models)
+  and falls back to the default if the catalog is unreachable. Selection
+  persists in `localStorage`.
 - **API shape:** OpenAI-style `POST /v1/chat/completions` with
   `stream: true`; SSE deltas arrive as `choices[0].delta.content`, terminated
   by `data: [DONE]`.

@@ -93,9 +93,17 @@ export async function handleChat(request, env, log) {
   if (model) {
     try {
       const models = await listModels(env);
-      if (!models.some((m) => m.id === model)) {
+      const entry = models.find((m) => m.id === model);
+      if (!entry) {
         log.warn("chat.invalid_model", { model: model.slice(0, 120) });
         return jsonResponse({ error: "Unknown model." }, 400);
+      }
+      if (!entry.up) {
+        log.warn("chat.model_down", { model: model.slice(0, 120) });
+        return jsonResponse(
+          { error: `${entry.name} is temporarily unavailable (down for maintenance at Berget). Pick another model.` },
+          400,
+        );
       }
     } catch (err) {
       log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });

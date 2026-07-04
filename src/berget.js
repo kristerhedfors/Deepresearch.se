@@ -11,10 +11,12 @@ export function defaultModel(env) {
   return env.BERGET_MODEL || DEFAULT_MODEL;
 }
 
-// Berget's model catalog, filtered to models the chat can actually use:
-// text models that are up and support streaming + function calling (the
-// web_search tool depends on it). Cached per isolate to keep /api/models
-// and per-request validation cheap.
+// Berget's model catalog, filtered to models the chat can use: text models
+// supporting streaming + function calling (the web_search tool depends on
+// it). Models Berget reports as down are included with `up: false` so the UI
+// can show them greyed out — they become selectable automatically once
+// Berget brings them back. Cached per isolate to keep /api/models and
+// per-request validation cheap.
 let modelsCache = { at: 0, list: null };
 const MODELS_TTL_MS = 5 * 60 * 1000;
 
@@ -33,13 +35,13 @@ export async function listModels(env) {
       (m) =>
         m.model_type === "text" &&
         m.capabilities?.streaming &&
-        m.capabilities?.function_calling &&
-        m.status?.up !== false,
+        m.capabilities?.function_calling,
     )
     .map((m) => ({
       id: m.id,
       name: m.name || m.id,
       pricing: formatPricing(m.pricing),
+      up: m.status?.up !== false,
     }));
 
   modelsCache = { at: Date.now(), list };
