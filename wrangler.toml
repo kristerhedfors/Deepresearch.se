@@ -1,9 +1,9 @@
-# Cloudflare Workers static-assets config.
-# `npx wrangler deploy` uploads everything in ./public as static files.
+# Cloudflare Workers config.
+# `npx wrangler deploy` uploads the Worker (src/index.js) plus ./public assets.
 #
-# IMPORTANT: `name` must match your Worker's name in the Cloudflare dashboard
-# (Workers & Pages -> your project). If it differs, change this one line or the
-# deploy lands on a different Worker that your domain isn't mapped to.
+# IMPORTANT: `name` must match the Worker's name in the Cloudflare dashboard
+# (Workers & Pages -> your project). If it differs, the deploy lands on a
+# different Worker that the domain isn't mapped to.
 name = "deepresearch-se"
 main = "src/index.js"
 compatibility_date = "2026-07-04"
@@ -15,9 +15,19 @@ routes = [
   { pattern = "www.deepresearch.se", custom_domain = true },
 ]
 
+# Non-secret configuration. Secrets (BERGET_API_TOKEN, EXA_API_KEY,
+# BASIC_AUTH_USER, BASIC_AUTH_PASS) are set in the dashboard, never here.
+[vars]
+LOG_LEVEL = "info" # debug | info | warn | error
+
 # run_worker_first + binding: the Worker sees every request (so Basic Auth
 # gates the static UI too) and serves assets via env.ASSETS.fetch().
 [assets]
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
+
+# Workers Logs: persists the structured JSON logs, queryable in the dashboard
+# (Worker -> Logs) or live via `npx wrangler tail`.
+[observability]
+enabled = true

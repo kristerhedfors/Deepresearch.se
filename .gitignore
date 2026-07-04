@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / Cloudflare Workers
+node_modules/
+.wrangler/
+.dev.vars

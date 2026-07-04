@@ -16,9 +16,39 @@ git push origin main
 
 ## Project
 
-A Cloudflare Worker (`src/index.js`) that serves a static chat UI (`public/`)
-and a streaming `/api/chat` endpoint. Deployed via `npx wrangler deploy`
-(config in `wrangler.toml`), git-connected to Cloudflare.
+A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
+`/api/chat` endpoint. Deployed via `npx wrangler deploy` (config in
+`wrangler.toml`), git-connected to Cloudflare.
+
+### Code layout
+
+| File | Responsibility |
+|---|---|
+| `src/index.js` | Entrypoint: request id, Basic Auth gate, routing, request logs |
+| `src/auth.js` | Basic Auth (secrets only, fail closed) |
+| `src/chat.js` | `/api/chat`: streaming tool-call loop (`MAX_TOOL_ROUNDS`), input validation |
+| `src/berget.js` | Berget chat-completions client + SSE consumption |
+| `src/exa.js` | Exa `web_search` tool |
+| `src/log.js` | Structured JSON logger (`LOG_LEVEL` var) |
+| `src/http.js` | Response helpers |
+
+## Logging & observability
+
+- Structured JSON logs, one object per line: `{time, level, event,
+  request_id, ...}`. Levels `debug|info|warn|error` via the `LOG_LEVEL` var
+  (default `info`).
+- Event names: `request.complete` / `request.failed`, `auth.denied`,
+  `chat.round`, `chat.complete`, `chat.upstream_error`, `exa.search`,
+  `exa.error`.
+- **Privacy:** never log secrets or chat message content. User-provided text
+  (e.g. search queries) is logged at `debug` level only; `info`+ logs carry
+  counts, durations, statuses, and token usage.
+- Every response carries an `x-request-id` header — use it to find the
+  matching log entries.
+- `[observability] enabled = true` in `wrangler.toml` persists logs to
+  Workers Logs (dashboard: Worker → Logs). Live tail: `npx wrangler tail`.
+- On `/api/chat`, `request.complete` fires when the SSE headers are returned;
+  `chat.complete` (rounds, searches, duration) marks the end of the stream.
 
 ## LLM provider — Berget.ai
 
@@ -57,7 +87,7 @@ Small supports it). The Worker runs the tool-call loop: model requests a search
 - **Common mistakes:** `text`/`summary`/`highlights` must be nested under
   `contents` on `/search` (they're top-level only on `/contents`); `useAutoprompt`,
   `livecrawl`, `numSentences` are deprecated; use `includeDomains`/`excludeDomains`
-  (not `includeUrls`). The tool loop is capped at `MAX_TOOL_ROUNDS` in `src/index.js`.
+  (not `includeUrls`). The tool loop is capped at `MAX_TOOL_ROUNDS` in `src/chat.js`.
 
 ## Access control
 
