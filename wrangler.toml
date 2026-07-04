@@ -15,5 +15,9 @@ routes = [
   { pattern = "www.deepresearch.se", custom_domain = true },
 ]
 
+# run_worker_first + binding: the Worker sees every request (so Basic Auth
+# gates the static UI too) and serves assets via env.ASSETS.fetch().
 [assets]
 directory = "./public"
+binding = "ASSETS"
+run_worker_first = true

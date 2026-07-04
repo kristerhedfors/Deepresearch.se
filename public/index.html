@@ -139,11 +139,12 @@
           for (const line of lines) {
             if (!line.startsWith("data:")) continue;
             const data = line.slice(5).trim();
-            if (!data) continue;
+            if (!data || data === "[DONE]") continue;
             try {
               const evt = JSON.parse(data);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
-                acc += evt.delta.text;
+              const chunk = evt.choices?.[0]?.delta?.content;
+              if (chunk) {
+                acc += chunk;
                 bubble.textContent = acc;
                 chat.scrollTop = chat.scrollHeight;
               }
