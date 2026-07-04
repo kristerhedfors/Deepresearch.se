@@ -70,6 +70,11 @@
       align-self: flex-end;
       white-space: pre-wrap;
     }
+    .msg.user .imgs { display: flex; gap: .4rem; margin-top: .45rem; flex-wrap: wrap; }
+    .msg.user .imgs img {
+      max-width: 140px; max-height: 140px;
+      border-radius: 8px; border: 1px solid var(--border);
+    }
     .msg.assistant {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -165,6 +170,35 @@
       cursor: pointer;
     }
     button:disabled { opacity: .5; cursor: default; }
+    #attach {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 0 .8rem;
+      font-size: 1.1rem;
+    }
+
+    /* Pending image attachments (above the input) */
+    #pending {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      padding: .5rem 1.25rem 0;
+      max-width: 760px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    #pending:empty { display: none; }
+    .thumb { position: relative; }
+    .thumb img {
+      width: 56px; height: 56px; object-fit: cover;
+      border-radius: 8px; border: 1px solid var(--border);
+    }
+    .thumb button {
+      position: absolute; top: -7px; right: -7px;
+      width: 18px; height: 18px; border-radius: 50%;
+      padding: 0; font-size: 11px; line-height: 1;
+      background: #333a47;
+    }
   </style>
 </head>
 <body>
@@ -173,7 +207,10 @@
     <select id="model" title="Model" hidden></select>
   </header>
   <div id="chat"><div class="empty">Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.</div></div>
+  <div id="pending"></div>
   <form id="form">
+    <button id="attach" type="button" disabled title="Attach images">📎</button>
+    <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     <textarea id="input" placeholder="Ask a research question… (Enter to send, Shift+Enter for newline)" autofocus></textarea>
     <button id="send" type="submit">Send</button>
   </form>
@@ -184,7 +221,14 @@
     const input = document.getElementById("input");
     const send = document.getElementById("send");
     const modelSel = document.getElementById("model");
+    const attachBtn = document.getElementById("attach");
+    const fileInput = document.getElementById("file");
+    const pendingBox = document.getElementById("pending");
     const history = []; // {role, content} pairs sent to the API
+    let knownModels = []; // /api/models entries, for vision capability lookup
+    let attachments = []; // pending images: {name, dataUrl}
+    const MAX_ATTACH = 4;
+    const MAX_FILE_BYTES = 3.5 * 1024 * 1024; // ~4 MB as base64, the server cap
 
     // Model dropdown: populated from /api/models, selection kept in
     // localStorage. If the catalog can't load, the dropdown stays hidden and
@@ -196,6 +240,7 @@
         const data = await res.json();
         const models = data.models || [];
         if (models.length === 0) return;
+        knownModels = models;
         modelSel.replaceChildren();
         for (const m of models) {
           const opt = document.createElement("option");
@@ -212,19 +257,93 @@
           : (models.find(usable) || models[0]).id;
         modelSel.value = pick;
         modelSel.hidden = false;
+        updateAttachState();
       } catch { /* keep dropdown hidden; server default applies */ }
     }
-    modelSel.addEventListener("change", () => localStorage.setItem("model", modelSel.value));
+    modelSel.addEventListener("change", () => {
+      localStorage.setItem("model", modelSel.value);
+      updateAttachState();
+    });
     loadModels();
+
+    // ---- Image attachments (vision-capable models only) ----
+    function currentModel() {
+      return knownModels.find((m) => m.id === modelSel.value);
+    }
+
+    function updateAttachState() {
+      const vision = !!currentModel()?.vision;
+      attachBtn.disabled = !vision;
+      attachBtn.title = vision
+        ? "Attach images"
+        : "The selected model does not support image input — pick a vision-capable model";
+      if (!vision && attachments.length) {
+        attachments = [];
+        renderPending();
+      }
+    }
+
+    function renderPending() {
+      pendingBox.replaceChildren();
+      attachments.forEach((a, i) => {
+        const wrap = document.createElement("div");
+        wrap.className = "thumb";
+        const img = document.createElement("img");
+        img.src = a.dataUrl;
+        img.alt = a.name;
+        img.title = a.name;
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.textContent = "×";
+        rm.title = "Remove";
+        rm.addEventListener("click", () => {
+          attachments.splice(i, 1);
+          renderPending();
+        });
+        wrap.append(img, rm);
+        pendingBox.appendChild(wrap);
+      });
+    }
+
+    attachBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      for (const file of fileInput.files) {
+        if (attachments.length >= MAX_ATTACH) {
+          alert("Max " + MAX_ATTACH + " images per message.");
+          break;
+        }
+        if (file.size > MAX_FILE_BYTES) {
+          alert(file.name + " is too large (max ~3.5 MB).");
+          continue;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          attachments.push({ name: file.name, dataUrl: reader.result });
+          renderPending();
+        };
+        reader.readAsDataURL(file);
+      }
+      fileInput.value = "";
+    });
 
     const scrollDown = () => { chat.scrollTop = chat.scrollHeight; };
     const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 
-    function addUserBubble(text) {
+    function addUserBubble(text, imageUrls = []) {
       clearEmpty();
       const el = document.createElement("div");
       el.className = "msg user";
       el.textContent = text;
+      if (imageUrls.length) {
+        const imgs = document.createElement("div");
+        imgs.className = "imgs";
+        for (const url of imageUrls) {
+          const img = document.createElement("img");
+          img.src = url;
+          imgs.appendChild(img);
+        }
+        el.appendChild(imgs);
+      }
       chat.appendChild(el);
       scrollDown();
     }
@@ -410,8 +529,21 @@
     }
 
     async function sendMessage(text) {
-      history.push({ role: "user", content: text });
-      addUserBubble(text);
+      // Build message content: plain string, or a multimodal array when
+      // images are attached (OpenAI-style parts).
+      const images = attachments.slice();
+      attachments = [];
+      renderPending();
+      let content = text;
+      if (images.length) {
+        content = [];
+        if (text) content.push({ type: "text", text });
+        for (const a of images) {
+          content.push({ type: "image_url", image_url: { url: a.dataUrl } });
+        }
+      }
+      history.push({ role: "user", content });
+      addUserBubble(text, images.map((a) => a.dataUrl));
       const turn = addAssistantTurn();
       let acc = "";
 
@@ -466,7 +598,7 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text) return;
+      if (!text && attachments.length === 0) return;
       input.value = "";
       send.disabled = true;
       await sendMessage(text);

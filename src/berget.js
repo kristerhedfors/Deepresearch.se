@@ -42,6 +42,7 @@ export async function listModels(env) {
       name: m.name || m.id,
       pricing: formatPricing(m.pricing),
       up: m.status?.up !== false,
+      vision: m.capabilities?.vision === true,
     }));
 
   modelsCache = { at: Date.now(), list };

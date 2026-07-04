@@ -46,6 +46,9 @@ const DIGEST_CHAR_CAP = 14_000;
 const HISTORY_TURNS = 8; // conversation turns included in prompts
 const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
+const MAX_IMAGES_PER_MESSAGE = 4;
+const MAX_IMAGES_PER_REQUEST = 8; // history is resent every turn — keep bounded
+const MAX_IMAGE_CHARS = 5_500_000; // data-URL length ≈ 4 MB binary
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -54,7 +57,8 @@ const TRIAGE_PROMPT = () =>
   "Decide how to handle the user's LATEST message given the conversation. Respond ONLY with a JSON object:\n" +
   '- {"action":"direct"} — small talk, thanks, questions about this site, or simple stable facts that need no web sources.\n' +
   '- {"action":"clarify","question":"..."} — a research request missing details (scope, timeframe, region, purpose) that would materially change what to search. Ask exactly ONE short question.\n' +
-  '- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-4 distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).';
+  '- {"action":"research","queries":["...","..."]} — a research request that is clear enough. Provide 2-4 distinct, specific web-search queries covering different angles (latest developments, official/primary sources, data and numbers, criticism or risks — as applicable). Queries must be self-contained (no pronouns).\n' +
+  'Messages may carry attached images (shown as "[N image(s) attached]"). If the request is about analyzing the attached image(s) and needs no current web information, choose "direct".';
 
 const GAP_PROMPT = (pastQueries) =>
   `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
@@ -107,29 +111,53 @@ export async function handleChat(request, env, log) {
   // Optional model override from the UI dropdown, validated against the
   // catalog. If the catalog is unreachable, fall back to the default rather
   // than blocking chat.
+  let catalog = null;
+  try {
+    catalog = await listModels(env);
+  } catch (err) {
+    log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
+  }
+
   let model = typeof body.model === "string" && body.model ? body.model : null;
-  if (model) {
-    try {
-      const models = await listModels(env);
-      const entry = models.find((m) => m.id === model);
-      if (!entry) {
-        log.warn("chat.invalid_model", { model: model.slice(0, 120) });
-        return jsonResponse({ error: "Unknown model." }, 400);
-      }
-      if (!entry.up) {
-        log.warn("chat.model_down", { model: model.slice(0, 120) });
-        return jsonResponse(
-          { error: `${entry.name} is temporarily unavailable (down for maintenance at Berget). Pick another model.` },
-          400,
-        );
-      }
-    } catch (err) {
-      log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
-      model = null;
+  if (model && catalog) {
+    const entry = catalog.find((m) => m.id === model);
+    if (!entry) {
+      log.warn("chat.invalid_model", { model: model.slice(0, 120) });
+      return jsonResponse({ error: "Unknown model." }, 400);
     }
+    if (!entry.up) {
+      log.warn("chat.model_down", { model: model.slice(0, 120) });
+      return jsonResponse(
+        { error: `${entry.name} is temporarily unavailable (down for maintenance at Berget). Pick another model.` },
+        400,
+      );
+    }
+  } else if (model && !catalog) {
+    model = null;
   }
   const activeModel = model || defaultModel(env);
   const conversation = body.messages;
+
+  // Image attachments require a vision-capable model. If the catalog is
+  // unavailable we let Berget be the judge (its error surfaces upstream).
+  if (countImages(conversation) > 0 && catalog) {
+    const entry = catalog.find((m) => m.id === activeModel);
+    if (entry && !entry.vision) {
+      const alternatives = catalog
+        .filter((m) => m.vision && m.up)
+        .map((m) => m.name)
+        .join(", ");
+      log.warn("chat.model_no_vision", { model: activeModel.slice(0, 120) });
+      return jsonResponse(
+        {
+          error:
+            `${entry.name} does not support image input.` +
+            (alternatives ? ` Vision-capable models: ${alternatives}.` : ""),
+        },
+        400,
+      );
+    }
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -187,7 +215,13 @@ export async function handleChat(request, env, log) {
 }
 
 async function runPipeline(env, log, emit, conversation, model, state) {
-  const lastUser = [...conversation].reverse().find((m) => m.role === "user")?.content || "";
+  const lastUserMsg = [...conversation].reverse().find((m) => m.role === "user");
+  const lastUser = textOf(lastUserMsg?.content);
+  // Image parts of the latest user message ride along into synthesis so a
+  // vision model can research with the image as context.
+  const imageParts = Array.isArray(lastUserMsg?.content)
+    ? lastUserMsg.content.filter((p) => p?.type === "image_url")
+    : [];
   const convText = formatConversation(conversation);
   const emitDelta = (t) => emit({ choices: [{ delta: { content: t } }] });
 
@@ -286,15 +320,18 @@ async function runPipeline(env, log, emit, conversation, model, state) {
   // ---- Phase 4: synthesis (streamed draft) --------------------------------
   emit({ status: { type: "step_start", id: "synth", label: "Writing report…" } });
   const digest = sourceDigest(state.sources);
+  const synthText =
+    `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
+    `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
   const draft = await streamCompletion(
     env,
     [
       { role: "system", content: SYNTH_PROMPT() },
       {
         role: "user",
-        content:
-          `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-          `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`,
+        content: imageParts.length
+          ? [{ type: "text", text: synthText }, ...imageParts]
+          : synthText,
       },
     ],
     model,
@@ -456,14 +493,44 @@ function addUsage(totals, usage) {
   totals.co2_grams += usage.co2_grams || 0;
 }
 
+// Text view of a message's content: string content as-is; multimodal arrays
+// as concatenated text parts plus an "[N image(s) attached]" marker. Used for
+// the JSON-mode helper phases, which are text-only.
+function textOf(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const text = content
+      .filter((p) => p?.type === "text" && typeof p.text === "string")
+      .map((p) => p.text)
+      .join("\n");
+    const images = content.filter((p) => p?.type === "image_url").length;
+    return images
+      ? `${text}${text ? "\n" : ""}[${images} image${images === 1 ? "" : "s"} attached]`
+      : text;
+  }
+  return "";
+}
+
+function countImages(messages) {
+  let n = 0;
+  for (const m of messages) {
+    if (Array.isArray(m?.content)) {
+      n += m.content.filter((p) => p?.type === "image_url").length;
+    }
+  }
+  return n;
+}
+
 function formatConversation(conversation) {
   return conversation
     .slice(-HISTORY_TURNS)
-    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 2000)}`)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${textOf(m.content).slice(0, 2000)}`)
     .join("\n");
 }
 
 // Returns an error string for invalid input, or null when acceptable.
+// Content is either a plain string or an OpenAI-style multimodal array of
+// {type:"text",text} and {type:"image_url",image_url:{url:"data:image/…"}}.
 function validateMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return "Expected a non-empty `messages` array.";
@@ -471,16 +538,48 @@ function validateMessages(messages) {
   if (messages.length > MAX_MESSAGES) {
     return `Conversation too long (max ${MAX_MESSAGES} messages). Start a new chat.`;
   }
+  let totalImages = 0;
   for (const m of messages) {
     if (m?.role !== "user" && m?.role !== "assistant") {
       return "Each message must have role `user` or `assistant`.";
     }
-    if (typeof m.content !== "string") {
-      return "Each message `content` must be a string.";
+    if (typeof m.content === "string") {
+      if (m.content.length > MAX_MESSAGE_CHARS) {
+        return `A message exceeds the ${MAX_MESSAGE_CHARS}-character limit.`;
+      }
+      continue;
     }
-    if (m.content.length > MAX_MESSAGE_CHARS) {
+    if (!Array.isArray(m.content) || m.content.length === 0) {
+      return "Each message `content` must be a string or a non-empty array of parts.";
+    }
+    let textChars = 0;
+    let images = 0;
+    for (const part of m.content) {
+      if (part?.type === "text" && typeof part.text === "string") {
+        textChars += part.text.length;
+      } else if (part?.type === "image_url" && typeof part.image_url?.url === "string") {
+        const url = part.image_url.url;
+        if (!url.startsWith("data:image/")) {
+          return "Images must be attached as data:image/… URLs.";
+        }
+        if (url.length > MAX_IMAGE_CHARS) {
+          return "An attached image is too large (max ~4 MB).";
+        }
+        images++;
+        totalImages++;
+      } else {
+        return "Unsupported message content part.";
+      }
+    }
+    if (textChars > MAX_MESSAGE_CHARS) {
       return `A message exceeds the ${MAX_MESSAGE_CHARS}-character limit.`;
     }
+    if (images > MAX_IMAGES_PER_MESSAGE) {
+      return `Too many images in one message (max ${MAX_IMAGES_PER_MESSAGE}).`;
+    }
+  }
+  if (totalImages > MAX_IMAGES_PER_REQUEST) {
+    return `Too many images in the conversation (max ${MAX_IMAGES_PER_REQUEST}). Start a new chat.`;
   }
   return null;
 }
