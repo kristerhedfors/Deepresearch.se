@@ -142,6 +142,11 @@
             if (!data || data === "[DONE]") continue;
             try {
               const evt = JSON.parse(data);
+              if (evt.error) {
+                bubble.className = "msg error";
+                bubble.textContent = acc ? acc + "\n\n[" + evt.error + "]" : evt.error;
+                continue;
+              }
               const chunk = evt.choices?.[0]?.delta?.content;
               if (chunk) {
                 acc += chunk;

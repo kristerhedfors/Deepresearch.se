@@ -36,6 +36,29 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   `stream: true`; SSE deltas arrive as `choices[0].delta.content`, terminated
   by `data: [DONE]`.
 
+## Web search — Exa
+
+**Canonical reference:** https://docs.exa.ai/reference/search-api-guide-for-coding-agents
+— the source of truth for search types, parameters, and response shape. Fetch it
+if anything here looks stale, and report staleness back.
+
+The model can call a `web_search` tool (OpenAI-style function calling; Mistral
+Small supports it). The Worker runs the tool-call loop: model requests a search
+→ Worker calls Exa → results go back to the model → it streams a grounded answer.
+
+- **Auth:** the Worker reads the `EXA_API_KEY` secret and sends it as the
+  `x-api-key` header. Never hardcode it. (Exa returns HTTP 402 without a key.)
+- **Endpoint:** `POST https://api.exa.ai/search` (REST — the Worker is JS, so we
+  do NOT use the `exa_py` Python SDK).
+- **Request:** `{ query, type: "auto", numResults: 5, contents: { highlights: true } }`.
+  `type: "auto"` balances relevance/speed; `highlights` returns token-efficient
+  excerpts (preferred for LLM use over full `text`).
+- **Response:** `data.results[]`, each with `title`, `url`, `highlights[]`.
+- **Common mistakes:** `text`/`summary`/`highlights` must be nested under
+  `contents` on `/search` (they're top-level only on `/contents`); `useAutoprompt`,
+  `livecrawl`, `numSentences` are deprecated; use `includeDomains`/`excludeDomains`
+  (not `includeUrls`). The tool loop is capped at `MAX_TOOL_ROUNDS` in `src/index.js`.
+
 ## Access control
 
 The whole site (UI + API) is behind HTTP **Basic Auth**. Credentials are read
