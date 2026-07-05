@@ -47,37 +47,21 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
 }
-/* Header and footer collapse via grid rows (1fr -> 0fr): their natural
-   heights animate without hardcoded max-heights. The inner bar also slides
-   and fades for a true slide-away feel. Clipping applies only while
-   collapsed or animating back (.chrome-restoring, set by app.js for the
-   exit transition) — a permanent overflow:hidden would clip the web-search
-   popover, which opens upward out of the footer. */
-header, #footer {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows .2s ease;
+/* The chrome floats: header and footer are fixed, click-transparent
+   strips (pointer-events: none) whose glass ITEMS re-enable pointer
+   events — content scrolls beneath and stays visible between items and
+   through their translucency. Nothing ever hides or slides. */
+header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 5;
+  pointer-events: none;
 }
-body.immersive header,
-body.immersive #footer,
-body.chrome-restoring header,
-body.chrome-restoring #footer { overflow: hidden; }
-.header-bar, .footer-slide {
-  min-height: 0;
-  /* min-width too: grid items otherwise refuse to shrink below their
-     content's intrinsic width (the textarea's ~330px cols default), which
-     pushes the pane past narrow viewports. */
-  min-width: 0;
-  transition: transform .2s ease, opacity .2s ease, visibility 0s,
-    padding .2s ease, border-width .2s ease;
-}
-/* Frosted-glass surfaces: translucent panes over the drifting sky. */
-.glass {
-  background: rgba(255, 255, 255, .3);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, .55);
-  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+#footer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .header-bar {
@@ -90,6 +74,18 @@ body.chrome-restoring #footer { overflow: hidden; }
   gap: 1rem;
   background: transparent;
 }
+/* The brand is an item like the rest — legible over scrolling content. */
+.brand {
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+  border-radius: 10px;
+  padding: .4rem .7rem;
+  pointer-events: auto;
+}
+.header-right, #composer { pointer-events: auto; }
 #model {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
@@ -109,7 +105,9 @@ body.chrome-restoring #footer { overflow: hidden; }
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1.25rem;
+  /* Top/bottom padding clears the fixed glass chrome so the first and
+     last messages can always scroll fully into the open. */
+  padding: 3.6rem 1.25rem 8rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -134,34 +132,6 @@ body.chrome-restoring #footer { overflow: hidden; }
 }
 #jumpdown[hidden] { display: none; }
 
-/* Immersive reading: while scrolled up in the content the chrome gets out
-   of the way — header slides up, footer slides down (body.immersive,
-   toggled by the scroll handler) so the whole screen is content. #chat is
-   flex:1, so it absorbs the freed space as the rows collapse. The jump
-   button glides into the corner since there is no footer left to clear.
-   visibility flips after the slide (entering) but instantly on the way
-   back, so the collapsed chrome can't take focus yet never pops in late. */
-body.immersive header,
-body.immersive #footer { grid-template-rows: 0fr; }
-body.immersive .header-bar {
-  transform: translateY(-100%);
-  opacity: 0;
-  visibility: hidden;
-  /* padding+border set a 33px floor under the border-box even at 0fr —
-     collapse them along with the slide so the header truly reaches 0. */
-  padding-top: 0;
-  padding-bottom: 0;
-  border-bottom-width: 0;
-  transition: transform .2s ease, opacity .2s ease, visibility 0s .2s,
-    padding .2s ease, border-width .2s ease;
-}
-body.immersive .footer-slide {
-  transform: translateY(100%);
-  opacity: 0;
-  visibility: hidden;
-  transition: transform .2s ease, opacity .2s ease, visibility 0s .2s;
-}
-body.immersive #jumpdown { bottom: 1.1rem; }
 .msg {
   padding: .75rem 1rem;
   border-radius: 12px;

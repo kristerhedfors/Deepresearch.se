@@ -370,15 +370,13 @@ Client-side behaviors that matter architecturally:
   auto-follow; a jump-to-latest button appears; the jump uses instant
   `scrollTop` (smooth scrolling re-triggered the scroll detector and
   detached follow again); scrolling to the bottom re-attaches.
-- **Immersive reading**: scrolling well up in the content adds
-  `body.immersive` — the header slides up and the footer slides down
-  (~200 ms, grid rows 1fr→0fr so natural heights animate without magic
-  max-heights) leaving the whole screen to content (only the jump button
-  stays). Returning to the bottom — by scrolling or the button — slides the
-  chrome back while a short rAF loop keeps the view pinned to the true
-  bottom throughout the animation. The enter threshold is the hidden
-  chrome's height + 96 px: hiding the chrome grows `#chat` by exactly that
-  height, so a smaller threshold would re-enter the exit band and flicker.
+- **Floating glass chrome**: the header and footer are fixed,
+  click-transparent strips (`pointer-events: none`) whose glass items —
+  brand pill, header buttons, the composer pane — re-enable pointer
+  events. Content scrolls beneath the chrome, visible between the items
+  and through their backdrop-blur translucency; nothing hides or slides.
+  `#chat` has top/bottom padding sized to the chrome so the first and
+  last messages can always scroll fully into the open.
 - **Ambient background**: `body::before` (fixed, `z-index:-1`) drifts a
   repeating 135° gradient of near-invisible white/navy bands diagonally
   across the sky-blue base — translated exactly one 280 px period per 26 s

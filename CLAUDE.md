@@ -110,16 +110,13 @@ unknown `status` types (forward compatibility).
   Auth). Always sanitize: answers can quote hostile web content. Each answer
   has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
-- **Immersive reading:** scrolling up in the content slides the header up
-  and the footer down (~200 ms; `body.immersive`, grid rows 1fr→0fr so
-  natural heights animate) leaving the whole screen to content; only the
-  jump-down button stays. Returning to the bottom (scroll or the button)
-  slides the chrome back while a short rAF loop keeps the view pinned to
-  the true bottom. Enter threshold is chrome height + 96px (hysteresis:
-  hiding the chrome grows `#chat` by that height, so a smaller threshold
-  would oscillate). Clipping (`overflow:hidden`) applies only while
-  collapsed/animating — permanent clipping would cut off the web-search
-  popover that opens upward from the footer.
+- **Floating chrome (no hide/show):** header and footer are FIXED,
+  click-transparent strips (`pointer-events: none`) whose glass items
+  (brand pill, buttons, `#composer`) re-enable pointer events — content
+  scrolls beneath the chrome and stays visible between the items and
+  through their translucency. There is no immersive/hide logic anymore.
+  `#chat` carries top/bottom padding (3.6rem / 8rem) so the first and
+  last messages can scroll clear of the fixed items.
 - **Background life:** `body::before` drifts a repeating diagonal gradient
   (tiny white/navy alphas) across the sky blue — one full 280px period per
   26s loop so it's seamless; disabled under `prefers-reduced-motion`.
