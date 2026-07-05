@@ -519,6 +519,12 @@ async function sendMessage(text) {
   const turn = addAssistantTurn(text);
   let acc = "";
 
+  // iOS suspends network for backgrounded apps/PWAs — the most common
+  // cause of mid-stream drops. Track it so the error can say so.
+  let wasHidden = document.hidden;
+  const onVisibility = () => { if (document.hidden) wasHidden = true; };
+  document.addEventListener("visibilitychange", onVisibility);
+
   try {
     const payload = {
       messages: messagesForApi(),
@@ -566,7 +572,14 @@ async function sendMessage(text) {
       history.pop();
     }
   } catch (e) {
-    setError(turn, "Network error: " + e.message);
+    setError(
+      turn,
+      wasHidden
+        ? "Connection lost while the app was in the background — the phone pauses " +
+          "network for backgrounded apps. Keep the app open while research runs. " +
+          (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.")
+        : "Network error: " + e.message,
+    );
     if (acc) {
       // Keep whatever streamed before the connection dropped: the partial
       // answer is visible in the bubble, so it must be in the context of
@@ -581,6 +594,7 @@ async function sendMessage(text) {
       history.pop();
     }
   } finally {
+    document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
   }
 }

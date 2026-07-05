@@ -96,19 +96,65 @@ export async function handleChat(request, env, log, identity) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
 
+  // Client-disconnect detection: when the reader goes away (backgrounded
+  // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
+  // reliably throw. The flag makes the next emit abort the pipeline so no
+  // further Berget/Exa spend goes to a reader that no longer exists.
+  const disconnect = { gone: false, state: null };
+
   const stream = new ReadableStream({
+    cancel() {
+      disconnect.gone = true;
+      log.info("chat.client_disconnected", {
+        model,
+        searches: disconnect.state?.searchCount ?? 0,
+        duration_ms: disconnect.state ? Date.now() - disconnect.state.startedAt : 0,
+      });
+    },
     async start(controller) {
       const encoder = new TextEncoder();
-      const emit = (obj) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       const state = newRequestState(model, webSearchEnabled, budgetS);
+      disconnect.state = state;
+
+      // The JSON helper phases (triage/gap/validation) emit nothing for
+      // tens of seconds; idle HTTP connections get dropped by proxies on
+      // the way to the client. SSE comment lines (":" prefix) keep bytes
+      // flowing — every SSE client ignores them.
+      const keepalive = setInterval(() => {
+        if (disconnect.gone) return;
+        try {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+        } catch {
+          disconnect.gone = true;
+        }
+      }, 15_000);
+
+      const emit = (obj) => {
+        if (disconnect.gone) throw new Error("client disconnected");
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        } catch (err) {
+          disconnect.gone = true;
+          throw new Error("client disconnected");
+        }
+      };
+      const emitSafe = (obj) => {
+        try {
+          emit(obj);
+        } catch {
+          // stream already dead — nothing to tell anyone
+        }
+      };
 
       try {
         await runPipeline(env, log, emit, conversation, model, state);
       } catch (err) {
-        log.error("chat.stream_failed", { error: err?.message || String(err) });
-        emit({ error: "Worker error: " + (err?.message || String(err)) });
+        if (!disconnect.gone) {
+          log.error("chat.stream_failed", { error: err?.message || String(err) });
+          emitSafe({ error: "Worker error: " + (err?.message || String(err)) });
+        }
       } finally {
+        clearInterval(keepalive);
         const duration_ms = Date.now() - state.startedAt;
         log.info("chat.complete", {
           model,
@@ -116,6 +162,7 @@ export async function handleChat(request, env, log, identity) {
           searches: state.searchCount,
           sources: state.sources.length,
           duration_ms,
+          client_gone: disconnect.gone,
         });
         // Usage accounting for quotas (fails soft; never breaks the stream).
         const entry = catalog?.find((m) => m.id === model);
@@ -129,7 +176,7 @@ export async function handleChat(request, env, log, identity) {
           exa_cost: state.searchCount * config.exa_cost_per_search_eur,
           duration_ms,
         });
-        emit({
+        emitSafe({
           status: {
             type: "done",
             model,
@@ -141,8 +188,12 @@ export async function handleChat(request, env, log, identity) {
             co2_grams: state.totals.co2_grams,
           },
         });
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
+        try {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch {
+          // client is gone; the stream is already torn down
+        }
       }
     },
   });

@@ -167,8 +167,19 @@ unknown `status` types (forward compatibility).
   request_id, ...}`. Levels `debug|info|warn|error` via the `LOG_LEVEL` var
   (default `info`).
 - Event names: `request.complete` / `request.failed`, `auth.denied`,
-  `chat.round`, `chat.complete`, `chat.upstream_error`, `exa.search`,
-  `exa.error`.
+  `chat.round`, `chat.complete` (carries `client_gone`),
+  `chat.client_disconnected` (client aborted the SSE stream — backgrounded
+  PWA or dropped network, NOT a server failure), `chat.stream_failed`,
+  `exa.search`, `exa.error`.
+- **SSE keepalive**: `/api/chat` emits a `: keepalive` comment line every
+  15 s so idle-connection timeouts can't kill the stream during quiet
+  phases (triage/gap/validation emit nothing for tens of seconds). On
+  client disconnect the pipeline aborts (no further Berget/Exa spend);
+  detection is the stream's `cancel()` hook + enqueue failures — note
+  neither fires in `wrangler dev` local (client aborts don't propagate
+  there), so verify via production Workers Logs.
+- `BERGET_URL` env override exists solely so local tests can point the
+  Berget client at a mock; production uses the default.
 - **Privacy:** never log secrets or chat message content. User-provided text
   (e.g. search queries) is logged at `debug` level only; `info`+ logs carry
   counts, durations, statuses, and token usage.

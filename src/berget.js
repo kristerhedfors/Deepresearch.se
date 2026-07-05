@@ -3,8 +3,11 @@
 // Auth uses the BERGET_API_TOKEN secret. The default model is Mistral Small,
 // overridable via the BERGET_MODEL var. See CLAUDE.md ("LLM provider").
 
-const BERGET_URL = "https://api.berget.ai/v1/chat/completions";
-const MODELS_URL = "https://api.berget.ai/v1/models";
+// BERGET_URL env override exists solely so local tests can point at a
+// mock (like GOOGLE_TOKEN_URL); production always uses the default.
+const apiBase = (env) => env.BERGET_URL || "https://api.berget.ai/v1";
+const chatUrl = (env) => apiBase(env) + "/chat/completions";
+const modelsUrl = (env) => apiBase(env) + "/models";
 export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; // alias: mistral-small
 
 export function defaultModel(env) {
@@ -24,7 +27,7 @@ export async function listModels(env) {
   if (modelsCache.list && Date.now() - modelsCache.at < MODELS_TTL_MS) {
     return modelsCache.list;
   }
-  const resp = await fetch(MODELS_URL, {
+  const resp = await fetch(modelsUrl(env), {
     headers: { authorization: `Bearer ${env.BERGET_API_TOKEN}` },
   });
   if (!resp.ok) throw new Error(`Berget models fetch failed (${resp.status})`);
@@ -73,7 +76,7 @@ export function chatCompletion(env, messages, { tools, model } = {}) {
     payload.tools = tools;
     payload.tool_choice = "auto";
   }
-  return fetch(BERGET_URL, {
+  return fetch(chatUrl(env), {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -155,7 +158,7 @@ export async function consumeChatStream(body, onText) {
 // Returns { value, usage } — value is null when parsing fails (callers must
 // fall back gracefully; a broken helper phase must never break the chat).
 export async function completeJson(env, messages, { model, maxTokens = 900 } = {}) {
-  const resp = await fetch(BERGET_URL, {
+  const resp = await fetch(chatUrl(env), {
     method: "POST",
     headers: {
       "content-type": "application/json",
