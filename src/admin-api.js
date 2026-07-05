@@ -37,7 +37,9 @@ export async function handleAdminApi(request, env, url, log, identity) {
     const userPath = path.match(/^\/users\/(\d+)$/);
     if (userPath && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
-      const patch = { role: body.role, status: body.status, name: body.name };
+      // Role is deliberately NOT patchable: the only admin is ADMIN_EMAIL,
+      // assigned by the Google sign-in flow. Sole-admin-forever policy.
+      const patch = { status: body.status, name: body.name };
       if ("quota" in body) patch.quota_json = sanitizeQuota(body.quota);
       const user = await updateUser(env, Number(userPath[1]), patch);
       log.info("admin.user_updated", { user_id: userPath[1] });

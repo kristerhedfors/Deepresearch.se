@@ -238,9 +238,12 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   an auto-refreshing "awaiting approval" page — no APIs, no cost — until
   the admin clicks Approve in `/admin`, which takes effect on their next
   request with no re-login. Turning `require_approval` off makes new
-  sign-ins active immediately (quota-capped). Admins can
-  promote/disable/delete users in `/admin` (status is re-checked per
-  request, so disabling is immediate; existing sessions die too).
+  sign-ins active immediately (quota-capped). The admin can
+  approve/disable/delete users and edit quotas in `/admin` (status is
+  re-checked per request, so disabling is immediate; existing sessions
+  die too). **Sole-admin policy**: the admin role is assigned only via
+  `ADMIN_EMAIL` at sign-in — the admin API deliberately cannot change
+  roles, so no other account can ever be promoted.
 - **Flow**: `GET /auth/google` (signed single-use state cookie, CSRF) →
   Google → `GET /auth/google/callback` (code exchange server-to-server;
   claims validated: `iss`, `aud`, `exp`, `email_verified === true`;

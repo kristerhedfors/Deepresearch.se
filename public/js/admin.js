@@ -98,7 +98,6 @@ function renderUsers() {
         <span class="spacer"></span>
         ${u.status === "pending" ? '<button data-act="approve">Approve</button>' : ""}
         <button data-act="edit" class="secondary">Quota…</button>
-        <button data-act="toggle-role" class="secondary">${u.role === "admin" ? "Make user" : "Make admin"}</button>
         ${u.status === "pending" ? "" : `<button data-act="toggle-status" class="secondary">${u.status === "disabled" ? "Enable" : "Disable"}</button>`}
         <button data-act="delete" class="danger">Delete</button>
       </div>
@@ -133,9 +132,6 @@ function renderUsers() {
           el.classList.toggle("open");
         } else if (act === "approve") {
           await api(`/users/${u.id}`, { method: "PATCH", body: { status: "active" } });
-          await load();
-        } else if (act === "toggle-role") {
-          await api(`/users/${u.id}`, { method: "PATCH", body: { role: u.role === "admin" ? "user" : "admin" } });
           await load();
         } else if (act === "toggle-status") {
           await api(`/users/${u.id}`, { method: "PATCH", body: { status: u.status === "disabled" ? "active" : "disabled" } });
