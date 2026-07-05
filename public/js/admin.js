@@ -43,8 +43,33 @@ async function load() {
     return;
   }
   renderTotals();
+  renderByModel();
   renderUsers();
   renderConfig();
+}
+
+// ---- usage by model ------------------------------------------------------
+
+function renderByModel() {
+  const rows = overview.by_model || [];
+  const table = $("models-table");
+  if (!rows.length) {
+    table.innerHTML = '<tr><td class="muted">No model usage recorded yet.</td></tr>';
+  } else {
+    table.innerHTML =
+      `<tr><th>Model</th>${PERIODS.map((p) => `<th>${PERIOD_LABEL[p]}</th>`).join("")}<th>Month in/out</th><th>Requests</th></tr>` +
+      rows
+        .map(
+          (m) => `<tr>
+        <td class="model-name">${escapeHtml(String(m.model).split("/").pop())}</td>
+        ${PERIODS.map((p) => `<td>${count(m[`${p}_tokens`] || 0)} tok<br><b>${euro(m[`${p}_cost`] || 0)}</b></td>`).join("")}
+        <td>${count(m.month_prompt || 0)} / ${count(m.month_completion || 0)}</td>
+        <td>${m.month_requests || 0}</td>
+      </tr>`,
+        )
+        .join("");
+  }
+  $("models-sec").hidden = false;
 }
 
 // ---- overview cards ---------------------------------------------------
@@ -54,7 +79,9 @@ function renderTotals() {
   const pending = overview.users.filter((u) => u.status === "pending").length;
   // Aggregate cost + billable counts (tokens for Berget, searches for Exa).
   const win = (p) =>
-    `${euro(t[`${p}_cost`])}<div class="sub">${count(t[`${p}_tokens`])} tok · ${count(t[`${p}_searches`])} searches</div>`;
+    `${euro((t[`${p}_berget_cost`] || 0) + (t[`${p}_exa_cost`] || 0))}` +
+    `<div class="sub">${count(t[`${p}_tokens`])} tok ${euro(t[`${p}_berget_cost`])} · ` +
+    `${count(t[`${p}_searches`])} srch ${euro(t[`${p}_exa_cost`])}</div>`;
   const cards = [
     ["Last 5 h", win("h5")],
     ["Today", win("day")],
@@ -91,7 +118,7 @@ function renderUsers() {
     const q = {};
     for (const p of PERIODS) {
       q[p] = {
-        tokens: override?.[p]?.tokens ?? defaults[p].tokens,
+        budget_eur: override?.[p]?.budget_eur ?? defaults[p].budget_eur,
         searches: override?.[p]?.searches ?? defaults[p].searches,
       };
     }
@@ -112,20 +139,22 @@ function renderUsers() {
         <button data-act="delete" class="danger">Delete</button>
       </div>
       <div class="quota-bars">
-        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} tokens`, usage[`${p}_tokens`] || 0, q[p].tokens, count)).join("")}
+        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, usage[`${p}_berget_cost`] || 0, q[p].budget_eur, euro)).join("")}
         ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, usage[`${p}_searches`] || 0, q[p].searches, count)).join("")}
       </div>
       <p class="muted" style="margin:.45rem 0 0">
-        Cost: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro(usage[`${p}_cost`] || 0)}`).join(" · ")}
+        Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(usage[`${p}_tokens`] || 0)}`).join(" · ")}<br>
+        Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((usage[`${p}_berget_cost`] || 0) + (usage[`${p}_exa_cost`] || 0))}`).join(" · ")}
       </p>
       <div class="quota-edit">
         <p class="muted">Per-user quota override — blank fields inherit the global defaults
-        (${PERIODS.map((p) => `${PERIOD_LABEL[p]}: ${count(defaults[p].tokens)} tok / ${defaults[p].searches} searches`).join(" · ")}). 0 = uncapped.</p>
+        (${PERIODS.map((p) => `${PERIOD_LABEL[p]}: ${euro(defaults[p].budget_eur)} / ${defaults[p].searches} searches`).join(" · ")}). 0 = uncapped.
+        The budget is enforced as real Berget cost; users only ever see a percentage.</p>
         <div class="quota-grid">
-          <span></span><span class="col">tokens</span><span class="col">searches</span>
+          <span></span><span class="col">budget €</span><span class="col">searches</span>
           ${PERIODS.map((p) => `
             <span>${PERIOD_LABEL[p]}</span>
-            <input type="number" min="0" step="1000" data-q="${p}.tokens" value="${override?.[p]?.tokens ?? ""}" placeholder="${defaults[p].tokens}">
+            <input type="number" min="0" step="0.05" data-q="${p}.budget_eur" value="${override?.[p]?.budget_eur ?? ""}" placeholder="${defaults[p].budget_eur}">
             <input type="number" min="0" step="5" data-q="${p}.searches" value="${override?.[p]?.searches ?? ""}" placeholder="${defaults[p].searches}">`).join("")}
         </div>
         <p style="margin:.6rem 0 0; display:flex; gap:.5rem">
@@ -177,11 +206,14 @@ function renderConfig() {
   const form = $("config-form");
   form.innerHTML = `
     <h3>Default quotas (per user; 0 = uncapped)</h3>
+    <p class="muted">The budget is enforced as real Berget cost (tokens ×
+    each model's actual per-token price) — users only ever see a
+    percentage bar, never amounts. Searches are Exa's billing unit.</p>
     <div class="quota-grid">
-      <span></span><span class="col">tokens</span><span class="col">searches</span>
+      <span></span><span class="col">budget €</span><span class="col">searches</span>
       ${PERIODS.map((p) => `
         <span>${PERIOD_LABEL[p]}</span>
-        <input type="number" min="0" step="1000" name="q.${p}.tokens" value="${c.quotas[p].tokens}">
+        <input type="number" min="0" step="0.05" name="q.${p}.budget_eur" value="${c.quotas[p].budget_eur}">
         <input type="number" min="0" step="5" name="q.${p}.searches" value="${c.quotas[p].searches}">`).join("")}
     </div>
     <h3>Research</h3>
@@ -201,7 +233,7 @@ function renderConfig() {
     const f = new FormData(form);
     const quotas = {};
     for (const p of PERIODS) {
-      quotas[p] = { tokens: Number(f.get(`q.${p}.tokens`)), searches: Number(f.get(`q.${p}.searches`)) };
+      quotas[p] = { budget_eur: Number(f.get(`q.${p}.budget_eur`)), searches: Number(f.get(`q.${p}.searches`)) };
     }
     try {
       await api("/config", {

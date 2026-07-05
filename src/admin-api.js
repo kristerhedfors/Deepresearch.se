@@ -12,7 +12,7 @@
 import { deleteUser, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
-import { getConfig, getUsageAllUsers, saveConfig } from "./quota.js";
+import { getConfig, getUsageAllUsers, getUsageByModel, saveConfig } from "./quota.js";
 
 export async function handleAdminApi(request, env, url, log, identity) {
   const db = await getDb(env);
@@ -64,16 +64,19 @@ export async function handleAdminApi(request, env, url, log, identity) {
 }
 
 async function overview(env) {
-  const [users, config, usage] = await Promise.all([
+  const [users, config, usage, byModel] = await Promise.all([
     listUsers(env),
     getConfig(env),
     getUsageAllUsers(env),
+    getUsageByModel(env),
   ]);
   const usageByUser = Object.fromEntries(usage.map((u) => [u.user_id, u]));
-  // Aggregate counts AND cost per window across all identities.
+  // Aggregate counts AND costs per window across all identities.
   const totals = { month_requests: 0 };
   for (const p of ["h5", "day", "week", "month"]) {
-    for (const k of ["tokens", "searches", "cost", "ms"]) totals[`${p}_${k}`] = 0;
+    for (const k of ["tokens", "searches", "berget_cost", "exa_cost", "ms"]) {
+      totals[`${p}_${k}`] = 0;
+    }
   }
   for (const u of usage) {
     for (const k of Object.keys(totals)) totals[k] += u[k] || 0;
@@ -81,13 +84,14 @@ async function overview(env) {
   return jsonResponse({
     users: users.map((u) => ({ ...u, usage: usageByUser[String(u.id)] || null })),
     admin_usage: usageByUser["admin"] || null,
+    by_model: byModel,
     config,
     totals,
   });
 }
 
-// Per-user quota overrides: keep only known numeric fields (tokens and
-// searches per window); null clears the override entirely.
+// Per-user quota overrides: keep only known numeric fields (budget_eur
+// and searches per window); null clears the override entirely.
 function sanitizeQuota(quota) {
   if (quota == null) return null;
   const out = {};
@@ -95,10 +99,11 @@ function sanitizeQuota(quota) {
     const q = quota[p];
     if (!q || typeof q !== "object") continue;
     const entry = {};
-    for (const k of ["tokens", "searches"]) {
-      if (q[k] !== "" && q[k] != null && Number.isFinite(Number(q[k]))) {
-        entry[k] = Math.max(0, Math.round(Number(q[k])));
-      }
+    if (q.budget_eur !== "" && q.budget_eur != null && Number.isFinite(Number(q.budget_eur))) {
+      entry.budget_eur = Math.max(0, Number(q.budget_eur));
+    }
+    if (q.searches !== "" && q.searches != null && Number.isFinite(Number(q.searches))) {
+      entry.searches = Math.max(0, Math.round(Number(q.searches)));
     }
     if (Object.keys(entry).length) out[p] = entry;
   }

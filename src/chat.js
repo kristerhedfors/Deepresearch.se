@@ -71,18 +71,20 @@ export async function handleChat(request, env, log, identity) {
         kind: blocked.kind,
       });
       const periodName = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" }[blocked.period];
-      const what = blocked.kind === "tokens" ? "token" : "search";
       const verb = blocked.period === "h5" ? "frees up around" : "resets";
-      return jsonResponse(
-        {
-          error:
-            `You've used your ${periodName} ${what} budget ` +
-            `(${blocked.limit.toLocaleString("en-US")} ${blocked.kind}). ` +
-            `It ${verb} ${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC.`,
-          quota: blocked,
-        },
-        429,
-      );
+      const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+      // Budget amounts are EUR — admin-only information. Users get the
+      // period and the reset time, nothing about money.
+      const error =
+        blocked.kind === "budget"
+          ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
+          : `You've used your ${periodName} search budget ` +
+            `(${blocked.limit.toLocaleString("en-US")} searches). It ${verb} ${when}.`;
+      const publicQuota =
+        blocked.kind === "budget"
+          ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
+          : blocked;
+      return jsonResponse({ error, quota: publicQuota }, 429);
     }
   }
 

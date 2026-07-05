@@ -296,34 +296,41 @@ new users are active immediately under the default quotas. Either way the
 admin can disable any user (effective immediately, live sessions
 included).
 
-**Quotas**: caps on **tokens** (Berget: prompt+completion) and
-**searches** (Exa) — the exact units the providers bill — per four
-windows: rolling **last 5 hours**, UTC calendar day, ISO week (Mon), and
-calendar month. There are deliberately no time or currency limits.
+**Quotas — real-cost-grounded**: per four windows (rolling **last 5
+hours**, UTC calendar day, ISO week (Mon), calendar month), two
+dimensions. No time limits.
 
+- **budget_eur** (Berget): a genuine cost cap. Each request's Berget
+  spend is `prompt_tokens × price_in + completion_tokens × price_out`
+  using that model's real per-token catalog prices — models price
+  differently, so a token cap can't bound spend, a budget can. The
+  budget is **opaque to users**: `/api/me` emits only a percentage
+  (`budget_pct`), and the 429 for an exhausted budget carries only the
+  period and reset time — EUR amounts exist solely on `/api/admin/*`.
+- **searches** (Exa): a count cap; Exa bills per search at one configured
+  price (`exa_cost_per_search_eur`), so the count is the cost. Counts are
+  shown to users.
 - Enforcement in `/api/chat`: one aggregate query buckets all four
   windows (filtered from the MINIMUM of the window starts — the ISO week
-  can begin before the month, and the rolling 5h window crosses midnight);
-  any exceeded cap → **429** with the limit, usage, and reset timestamp
-  (for the rolling window: when the oldest event inside it ages out).
-  After every stream a `usage_events` row records tokens, searches,
-  derived cost, and duration (fail-soft — accounting never breaks a
-  served answer).
-- Cost = `prompt_tokens × price_in + completion_tokens × price_out`
-  (raw per-token EUR prices from Berget's catalog) +
-  `searches × exa_cost_per_search_eur` (config). Cost is **admin-only
-  information**, never a cap and never shown to users — `/api/me` strips
-  it entirely.
-- Defaults live in config; per-user overrides (`quota_json`) merge over
-  them; `0` means uncapped. The break-glass admin is exempt but still
-  recorded.
+  can begin before the month, and the rolling 5h window crosses
+  midnight); exceeded budget or search cap → **429**; rolling-window
+  resets are estimated from when the oldest event inside ages out. After
+  every stream a `usage_events` row records model, tokens, searches, the
+  berget/exa cost split, and duration (fail-soft — accounting never
+  breaks a served answer).
+- Defaults live in config; per-user overrides (`quota_json`:
+  budget_eur/searches per window) merge over them; `0` means uncapped.
+  The break-glass admin is exempt but still recorded.
 
-**Dashboards**: `/api/me` powers the in-app account panel — count bars
-only (tokens + searches × four windows, reset times, logout, admin link);
-`/api/admin/overview` powers `/admin` — aggregated cost + counts per
-window site-wide, per-user bars with a per-window cost line, user
-management (approve/enable/disable, quota editor, delete), and
-configuration (default quotas, Exa price, max time budget, default
+**Dashboards**: `/api/me` powers the in-app account panel — an opaque
+"Research budget" percentage bar plus search-count bars per window, reset
+times, logout, admin link. `/api/admin/overview` powers `/admin` —
+aggregated berget+exa cost and counts per window site-wide, a **usage-by-
+model table** (token counts and actual cost per model, incl. month
+prompt/completion split — the ground truth behind the budgets), per-user
+budget bars in €, tokens and total-cost lines, user management
+(approve/enable/disable, quota editor, delete), and configuration
+(default budgets + search caps, Exa price, max time budget, default
 model, approval gate).
 
 ## 5. `GET /api/models`

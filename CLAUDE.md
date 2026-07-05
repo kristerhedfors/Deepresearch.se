@@ -266,20 +266,27 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 - `GOOGLE_AUTH_URL` / `GOOGLE_TOKEN_URL` env overrides exist solely so
   local tests can point the flow at a mock; production uses the defaults.
 
-**Quotas**: measured in the units the providers actually bill — **tokens**
-(Berget, prompt+completion) and **searches** (Exa) — per FOUR windows: a
-**rolling last-5-hours** window (Claude Code-style) plus UTC calendar day
-/ ISO week / month. Deliberately NO time or currency limits. Global
-defaults + per-user overrides (admin "Quota…" editor); 0 = no cap.
-`/api/chat` rejects with 429 (+ reset time; for the rolling window the
-reset is when the oldest event ages out) and records a `usage_events` row
-after every stream (tokens, searches, derived EUR cost, duration).
-**Users never see currency** — the account panel (header person icon →
-`/api/me`) shows count bars only, and `/api/me` doesn't even send cost.
-Cost in EUR (tokens × catalog price + searches × configured price) is
-derived for the ADMIN: `/admin` shows per-window cost + counts aggregated
-site-wide and per user. Note the usage SQL filters from the MINIMUM of
-all window starts — the ISO week can begin before the month does.
+**Quotas — real-cost-grounded**: per FOUR windows (a **rolling
+last-5-hours** window, Claude Code-style, plus UTC calendar day / ISO
+week / month), two dimensions:
+- **budget_eur** (Berget): a genuine COST cap — every request's Berget
+  cost is computed as tokens × that model's actual per-token catalog
+  prices and summed against the budget (different models price
+  differently, so tokens alone can't cap spend). **Opaque to users**:
+  `/api/chat`/`/api/me` never emit amounts — users get only a percentage
+  bar ("Research budget · 43%") and, on 429, the period + reset time.
+- **searches** (Exa): a count cap — Exa bills per search, so the count IS
+  the cost; users see the counts.
+Deliberately NO time limits. Global defaults + per-user overrides (admin
+"Quota…" editor); 0 = no cap. Rolling-window resets are estimated from
+when the oldest event inside ages out. Every stream records a
+`usage_events` row (model, tokens, searches, berget/exa cost split,
+duration). The ADMIN sees everything: `/admin` aggregates cost + counts
+per window site-wide, per user (budget bars in €, tokens + total-cost
+lines), and **per model** (token counts and what they actually cost —
+the granular ground truth behind the budgets). Note the usage SQL
+filters from the MINIMUM of all window starts — the ISO week can begin
+before the month does.
 
 **Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
 usage totals, user management (role/status/quota/delete), config (default

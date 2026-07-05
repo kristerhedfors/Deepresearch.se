@@ -233,26 +233,32 @@ accountOverlay.addEventListener("click", (e) => {
   if (e.target === accountOverlay) accountOverlay.hidden = true;
 });
 
-// Users see counts only — tokens and searches, the units that matter.
-// No currency here by design; cost is the admin's concern.
-function usageBlock(label, usage, quota, resetTs, rolling) {
+// Users see: an OPAQUE research-budget bar (cost-backed server-side, but
+// only a percentage ever reaches the client — never amounts) and plain
+// search counts. Currency is the admin's concern.
+function usageBlock(label, win, rolling) {
   const fmtN = (n) => {
     if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
     if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K";
     return String(n);
   };
-  const bar = (name, used, limit) => {
-    const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-    return `<div class="usage-row"><span>${name} · ${fmtN(used)}${limit > 0 ? " of " + fmtN(limit) : ""}</span>
-      <span>${limit > 0 ? Math.round(pct) + "%" : ""}</span></div>
-      <div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${pct}%"></div></div>`;
-  };
-  const reset = resetTs
-    ? `${rolling ? "frees up" : "resets"} ${new Date(resetTs).toLocaleString()}`
+  const track = (pct) =>
+    `<div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${Math.min(100, pct)}%"></div></div>`;
+  const budgetPct = win.budget_pct;
+  const budgetBar =
+    budgetPct == null
+      ? `<div class="usage-row"><span>Research budget</span><span>no cap</span></div>${track(0)}`
+      : `<div class="usage-row"><span>Research budget</span><span>${budgetPct}%</span></div>${track(budgetPct)}`;
+  const sPct = win.searches_limit > 0 ? (win.searches / win.searches_limit) * 100 : 0;
+  const searchBar =
+    `<div class="usage-row"><span>Web searches · ${fmtN(win.searches)}${win.searches_limit > 0 ? " of " + fmtN(win.searches_limit) : ""}</span>
+      <span>${win.searches_limit > 0 ? Math.round(sPct) + "%" : ""}</span></div>${track(sPct)}`;
+  const reset = win.reset
+    ? `${rolling ? "frees up" : "resets"} ${new Date(win.reset).toLocaleString()}`
     : "";
   return `<div class="usage-block"><div class="lbl">${label}${reset ? " · " + reset : ""}</div>
-    ${bar("Tokens", usage.tokens, quota ? quota.tokens : 0)}
-    ${bar("Searches", usage.searches, quota ? quota.searches : 0)}
+    ${budgetBar}
+    ${searchBar}
   </div>`;
 }
 
@@ -267,12 +273,11 @@ function renderAccount(me) {
     ["This month", "month"],
   ];
   const blocks = periods
-    .map(([label, p]) =>
-      usageBlock(label, me.usage[p], me.quota ? me.quota[p] : null, me.resets?.[p], p === "h5"))
+    .map(([label, p]) => usageBlock(label, me.windows[p], p === "h5"))
     .join("");
   accountBody.innerHTML = `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
-    ${me.quota ? "" : '<p class="muted">No quota applies to this account — usage is tracked for the record.</p>'}
+    ${me.unlimited ? '<p class="muted">No quota applies to this account — usage is tracked for the record.</p>' : ""}
     ${blocks}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
     <div class="account-actions">

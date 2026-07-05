@@ -117,3 +117,13 @@ input[type="number"] { width: 6.2rem; }
 #config-form label { font-size: .85rem; display: inline-flex; gap: .4rem; align-items: center; }
 #config-form h3 { margin: 0; font-size: .85rem; }
 code { background: var(--panel-2); border-radius: 4px; padding: 0 .25rem; }
+
+/* Usage-by-model table */
+.table-scroll { overflow-x: auto; }
+#models-table { border-collapse: collapse; width: 100%; font-size: .8rem; }
+#models-table th, #models-table td {
+  border: 1px solid var(--border); padding: .4rem .55rem; text-align: left;
+  white-space: nowrap; background: #fff;
+}
+#models-table th { background: var(--panel-2); font-size: .72rem; text-transform: uppercase; color: var(--muted); }
+#models-table .model-name { font-weight: 600; overflow-wrap: anywhere; white-space: normal; }

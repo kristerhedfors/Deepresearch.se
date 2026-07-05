@@ -1,18 +1,23 @@
-// Research quotas and usage accounting.
+// Research quotas and usage accounting. Goal: complete, real-cost-grounded
+// cost control.
 //
-// Quotas are measured in the units the providers actually bill:
-//   - TOKENS  (Berget: prompt + completion tokens)
-//   - SEARCHES (Exa: per-search pricing)
-// per four windows: a ROLLING last-5-hours window (Claude Code-style)
-// plus UTC calendar day, ISO week (Monday), and calendar month. There are
-// deliberately no wall-clock/time quotas. 0 = uncapped.
+// Quota dimensions per window:
+//   - BUDGET_EUR (Berget): a COST cap. Different models bill different
+//     per-token prices, so tokens alone can't cap spend — every request's
+//     Berget cost is computed from the catalog's real per-token prices and
+//     summed against the budget. Users see this only as an opaque
+//     percentage bar — the EUR amount never leaves the admin surface.
+//   - SEARCHES (Exa): a COUNT cap. Exa bills per search at one price, so
+//     the count IS the cost; users may see the counts.
+// Windows: a ROLLING last-5-hours window (Claude Code-style) plus UTC
+// calendar day, ISO week (Monday), and calendar month. No time limits.
+// 0 = uncapped.
 //
-// Cost in EUR is *derived* (tokens x catalog price + searches x configured
-// price) and recorded per request — it is shown to the ADMIN only, never
-// to users (they see count bars). Global defaults live in the config
-// table; per-user overrides in users.quota_json (same shape, missing
-// fields inherit). The break-glass admin identity is exempt from
-// enforcement but still recorded.
+// The admin additionally gets per-model token counts and cost
+// (getUsageByModel) — granular ground truth for what the budget is spent
+// on. Global defaults live in the config table; per-user overrides in
+// users.quota_json (same shape, missing fields inherit). The break-glass
+// admin identity is exempt from enforcement but still recorded.
 
 import { getDb } from "./db.js";
 
@@ -21,10 +26,10 @@ const H5_MS = 5 * 3600 * 1000;
 
 export const DEFAULT_CONFIG = {
   quotas: {
-    h5: { tokens: 300_000, searches: 30 },
-    day: { tokens: 1_000_000, searches: 100 },
-    week: { tokens: 4_000_000, searches: 400 },
-    month: { tokens: 12_000_000, searches: 1200 },
+    h5: { budget_eur: 0.25, searches: 30 },
+    day: { budget_eur: 0.5, searches: 100 },
+    week: { budget_eur: 2, searches: 400 },
+    month: { budget_eur: 6, searches: 1200 },
   },
   exa_cost_per_search_eur: 0.005,
   max_time_budget_s: 600, // cap for the UI slider value accepted server-side
@@ -76,7 +81,7 @@ function mergeConfig(base, patch) {
   for (const p of PERIODS) {
     const q = patch.quotas?.[p];
     if (q && typeof q === "object") {
-      if (Number.isFinite(q.tokens)) out.quotas[p].tokens = Math.max(0, Math.round(q.tokens));
+      if (Number.isFinite(q.budget_eur)) out.quotas[p].budget_eur = Math.max(0, q.budget_eur);
       if (Number.isFinite(q.searches)) out.quotas[p].searches = Math.max(0, Math.round(q.searches));
     }
   }
@@ -138,7 +143,7 @@ export function windowReset(period, now = Date.now(), h5Oldest = null) {
 // ---- per-user quota resolution --------------------------------------------
 
 // A user's quota_json can override any subset:
-//   {"h5":{"tokens":500000},"day":{"searches":200}}
+//   {"h5":{"budget_eur":1},"day":{"searches":200}}
 export function effectiveQuota(config, user) {
   const out = structuredClone(config.quotas);
   let override = null;
@@ -150,7 +155,7 @@ export function effectiveQuota(config, user) {
   for (const p of PERIODS) {
     const o = override?.[p];
     if (o && typeof o === "object") {
-      if (Number.isFinite(o.tokens)) out[p].tokens = Math.max(0, Math.round(o.tokens));
+      if (Number.isFinite(o.budget_eur)) out[p].budget_eur = Math.max(0, o.budget_eur);
       if (Number.isFinite(o.searches)) out[p].searches = Math.max(0, Math.round(o.searches));
     }
   }
@@ -159,7 +164,14 @@ export function effectiveQuota(config, user) {
 
 // ---- usage aggregation -----------------------------------------------------
 
-const emptyWindow = () => ({ tokens: 0, searches: 0, cost_eur: 0, hours: 0, requests: 0 });
+const emptyWindow = () => ({
+  tokens: 0,
+  searches: 0,
+  berget_cost: 0,
+  exa_cost: 0,
+  hours: 0,
+  requests: 0,
+});
 
 // One scan over the widest window, bucketed per period in SQL. The filter
 // uses the MINIMUM of all window starts: the ISO week can begin before the
@@ -178,7 +190,8 @@ export async function getUsage(env, userId, now = Date.now()) {
   const cols = PERIODS.flatMap((p) => [
     bucket(p, "prompt_tokens + completion_tokens", "tokens"),
     bucket(p, "searches", "searches"),
-    bucket(p, "berget_cost + exa_cost", "cost"),
+    bucket(p, "berget_cost", "berget_cost"),
+    bucket(p, "exa_cost", "exa_cost"),
     bucket(p, "duration_ms", "ms"),
     bucket(p, "1", "requests"),
   ]);
@@ -193,7 +206,8 @@ export async function getUsage(env, userId, now = Date.now()) {
   for (const p of PERIODS) {
     out[p].tokens = row?.[`${p}_tokens`] || 0;
     out[p].searches = row?.[`${p}_searches`] || 0;
-    out[p].cost_eur = row?.[`${p}_cost`] || 0;
+    out[p].berget_cost = row?.[`${p}_berget_cost`] || 0;
+    out[p].exa_cost = row?.[`${p}_exa_cost`] || 0;
     out[p].hours = (row?.[`${p}_ms`] || 0) / 3_600_000;
     out[p].requests = row?.[`${p}_requests`] || 0;
   }
@@ -201,8 +215,9 @@ export async function getUsage(env, userId, now = Date.now()) {
   return out;
 }
 
-// Site-wide per-user aggregates for the admin dashboard: counts AND cost
-// for every window. Keys: <period>_tokens/_searches/_cost/_ms + month_requests.
+// Site-wide per-user aggregates for the admin dashboard: counts AND costs
+// for every window. Keys: <period>_tokens/_searches/_berget_cost/_exa_cost/
+// _ms + month_requests.
 export async function getUsageAllUsers(env, now = Date.now()) {
   const db = await getDb(env);
   if (!db) return [];
@@ -213,7 +228,8 @@ export async function getUsageAllUsers(env, now = Date.now()) {
   const cols = PERIODS.flatMap((p) => [
     bucket(p, "prompt_tokens + completion_tokens", "tokens"),
     bucket(p, "searches", "searches"),
-    bucket(p, "berget_cost + exa_cost", "cost"),
+    bucket(p, "berget_cost", "berget_cost"),
+    bucket(p, "exa_cost", "exa_cost"),
     bucket(p, "duration_ms", "ms"),
   ]);
   const { results } = await db
@@ -227,22 +243,60 @@ export async function getUsageAllUsers(env, now = Date.now()) {
   return results || [];
 }
 
+// Per-model breakdown for the admin: token counts and Berget cost per
+// window, plus prompt/completion split for the month — the granular
+// ground truth behind the cost budgets. Sorted by month cost.
+export async function getUsageByModel(env, now = Date.now()) {
+  const db = await getDb(env);
+  if (!db) return [];
+  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
+  const minStart = Math.min(...Object.values(starts));
+  const bucket = (p, expr, alias) =>
+    `SUM(CASE WHEN ts >= ${starts[p]} THEN ${expr} ELSE 0 END) AS ${p}_${alias}`;
+  const cols = PERIODS.flatMap((p) => [
+    bucket(p, "prompt_tokens + completion_tokens", "tokens"),
+    bucket(p, "berget_cost", "cost"),
+  ]);
+  const { results } = await db
+    .prepare(
+      `SELECT COALESCE(model, '(unknown)') AS model, ${cols.join(", ")},
+         SUM(CASE WHEN ts >= ${starts.month} THEN prompt_tokens ELSE 0 END) AS month_prompt,
+         SUM(CASE WHEN ts >= ${starts.month} THEN completion_tokens ELSE 0 END) AS month_completion,
+         SUM(CASE WHEN ts >= ${starts.month} THEN 1 ELSE 0 END) AS month_requests
+       FROM usage_events WHERE ts >= ?1 AND (prompt_tokens + completion_tokens) > 0
+       GROUP BY COALESCE(model, '(unknown)')
+       ORDER BY month_cost DESC`,
+    )
+    .bind(minStart)
+    .all();
+  return results || [];
+}
+
 // ---- enforcement -----------------------------------------------------------
 
 // Returns null when within quota, else {period, kind, limit, used, reset_at}.
-// Dimensions are tokens and searches only — no time, no currency.
+// kind "budget" compares accumulated Berget COST against budget_eur (real
+// cost grounding — models price tokens differently); kind "searches" is a
+// straight count. Callers must not expose budget limit/used to users.
 export function quotaExceeded(usage, quota, now = Date.now()) {
   for (const p of PERIODS) {
-    for (const kind of ["tokens", "searches"]) {
-      if (quota[p][kind] > 0 && usage[p][kind] >= quota[p][kind]) {
-        return {
-          period: p,
-          kind,
-          limit: quota[p][kind],
-          used: usage[p][kind],
-          reset_at: windowReset(p, now, usage.h5_oldest),
-        };
-      }
+    if (quota[p].budget_eur > 0 && usage[p].berget_cost >= quota[p].budget_eur) {
+      return {
+        period: p,
+        kind: "budget",
+        limit: quota[p].budget_eur,
+        used: usage[p].berget_cost,
+        reset_at: windowReset(p, now, usage.h5_oldest),
+      };
+    }
+    if (quota[p].searches > 0 && usage[p].searches >= quota[p].searches) {
+      return {
+        period: p,
+        kind: "searches",
+        limit: quota[p].searches,
+        used: usage[p].searches,
+        reset_at: windowReset(p, now, usage.h5_oldest),
+      };
     }
   }
   return null;

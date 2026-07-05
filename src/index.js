@@ -162,17 +162,22 @@ async function routeAuthed(request, env, url, log, identity) {
 }
 
 // GET /api/me — identity + usage vs quota for the user dashboard.
-// Users see COUNTS only (tokens, searches) — cost in EUR is admin-only
-// and never leaves /api/admin/*.
+// The Berget budget is cost-based but OPAQUE to users: only a percentage
+// leaves the server (never the EUR amounts). Searches are plain counts.
 async function handleMe(env, identity) {
   const config = await getConfig(env);
   const usage = await getUsage(env, identity.id);
   const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
-  const counts = {};
-  const resets = {};
+  const windows = {};
   for (const p of ["h5", "day", "week", "month"]) {
-    counts[p] = { tokens: usage[p].tokens, searches: usage[p].searches };
-    resets[p] = windowReset(p, Date.now(), usage.h5_oldest);
+    const budget = quota?.[p]?.budget_eur || 0;
+    windows[p] = {
+      budget_pct:
+        budget > 0 ? Math.min(999, Math.round((100 * usage[p].berget_cost) / budget)) : null,
+      searches: usage[p].searches,
+      searches_limit: quota?.[p]?.searches || 0,
+      reset: windowReset(p, Date.now(), usage.h5_oldest),
+    };
   }
   return jsonResponse({
     id: identity.id,
@@ -180,9 +185,7 @@ async function handleMe(env, identity) {
     name: identity.name,
     role: identity.role,
     unlimited: !!identity.isSecretAdmin,
-    usage: counts,
-    quota,
-    resets,
+    windows,
     db_configured: !!(await getDb(env)),
   });
 }
