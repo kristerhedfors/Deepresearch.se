@@ -16,12 +16,14 @@ routes = [
 ]
 
 # Non-secret configuration. Secrets (BERGET_API_TOKEN, EXA_API_KEY,
-# BASIC_AUTH_USER, BASIC_AUTH_PASS) are set in the dashboard, never here.
+# BASIC_AUTH_USER, BASIC_AUTH_PASS, ADMIN_EMAIL) are set in the dashboard,
+# never here.
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
-# The Google account that gets (and keeps) the admin role on sign-in.
-# Everyone else is auto-provisioned as a regular, quota-capped user.
-ADMIN_EMAIL = "krister.hedfors@gmail.com"
+# ADMIN_EMAIL (the Google account that gets and keeps the admin role on
+# sign-in; everyone else is auto-provisioned as a regular, quota-capped
+# user) is set as a Worker secret, not a var, so it isn't public in this
+# file: `npx wrangler secret put ADMIN_EMAIL`.
 
 # run_worker_first + binding: the Worker sees every request (so Basic Auth
 # gates the static UI too) and serves assets via env.ASSETS.fetch().

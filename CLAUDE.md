@@ -333,9 +333,9 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 
 - **Auto-provisioning + approval gate**: any Google account with a
   **verified** email can sign in; the first sign-in creates the D1 user
-  row. The `ADMIN_EMAIL` var (wrangler.toml, currently
-  krister.hedfors@gmail.com) gets — and keeps — the admin role, always
-  active. Everyone else lands as status **`pending`** (config
+  row. The `ADMIN_EMAIL` secret (set via `wrangler secret put`, not a
+  wrangler.toml var — kept out of the repo) gets — and keeps — the admin
+  role, always active. Everyone else lands as status **`pending`** (config
   `require_approval`, default on): they hold a session but only ever see
   an auto-refreshing "awaiting approval" page — no APIs, no cost — until
   the admin clicks Approve in `/admin`, which takes effect on their next
