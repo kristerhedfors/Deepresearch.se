@@ -74,6 +74,100 @@ export function pendingPage(identity) {
 </html>`;
 }
 
+// One-time terms gate, shown after first sign-in until accepted (index.js
+// enforces; acceptance is recorded on the user row). This is the condensed
+// version of the /build/ "About this project" page — what the site is and
+// what it must not be used for — kept to a single page with a single
+// Accept button so consent stays meaningful without ceremony.
+export function termsPage(identity) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — before you start</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>${PAGE_CSS}
+    body { align-items: start; padding: 1.25rem 1rem 3rem; }
+    .card { width: min(560px, 94vw); text-align: left; }
+    .card h1 { text-align: center; }
+    h2 { font-size: .92rem; margin: .6rem 0 .2rem; }
+    p, li { font-size: .88rem; line-height: 1.5; margin: .3rem 0; }
+    ul { padding-left: 1.2rem; margin: .3rem 0; }
+    .rules { background: #fbeaea; border: 1px solid #e6b8b8; border-radius: 10px; padding: .6rem .9rem; }
+    .rules b { color: #7a1414; }
+    a { color: #0d4fa0; overflow-wrap: anywhere; }
+    form.accept { margin: .4rem 0 0; display: flex; gap: .6rem; align-items: center; }
+    button.primary {
+      background: #0d4fa0; color: #fff; border: 0; border-radius: 24px;
+      padding: .62rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    form.out { margin: 0; }
+    button.plain {
+      background: none; border: 0; color: #2f5d8e; font: inherit;
+      font-size: .8rem; text-decoration: underline; cursor: pointer; padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/icons/icon-192.png?v=4" alt="">
+    <h1>Before you start</h1>
+    <p>You’re signed in as <b>${escapeHtml(identity.email)}</b>. One thing
+    first — please read and accept what this site is and how it may be used.</p>
+
+    <h2>What this is</h2>
+    <p>DeepResearch.se is a working deep-research assistant, but above all a
+    <b>research and demonstration project</b>: an entire SaaS-style app built
+    over a weekend, almost entirely from a phone, with Claude Code as the only
+    development interface. It is invite-only, not a commercial product, and
+    never placed on the market. The source is public at
+    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>
+    and the full story — including the complete build history and the EU AI
+    Act reasoning behind the rules below — is on the
+    <a href="/build/">About this project</a> page.</p>
+
+    <h2>Not allowed here</h2>
+    <p>The EU AI Act’s prohibited practices (Article 5), mapped onto what a
+    text research tool can be asked to do, are hard rules on this site:</p>
+    <div class="rules">
+      <ul>
+        <li><b>Manipulation causing harm</b> — content designed to deceive or
+          psychologically manipulate a person into decisions likely to cause
+          significant harm.</li>
+        <li><b>Exploiting vulnerable people</b> — targeting children or other
+          vulnerable groups to distort their behavior harmfully.</li>
+        <li><b>Social scoring</b> of identifiable people that leads to worse
+          treatment in unrelated contexts.</li>
+        <li><b>Predicting a named person’s criminality</b> from profiling or
+          personality traits rather than verifiable facts.</li>
+        <li><b>Inferring protected characteristics or emotional state</b> of
+          a named, identifiable person (race, politics, religion, union
+          membership, sexual orientation; a coworker’s or student’s
+          feelings) from data about them.</li>
+        <li><b>Facial recognition / biometric surveillance</b> in any form,
+          and <b>non-consensual intimate imagery or CSAM</b> — categorically.</li>
+      </ul>
+    </div>
+
+    <h2>Privacy, briefly</h2>
+    <p>Questions are processed by Berget.ai (EU-hosted models) and web
+    searches by Exa (which retains queries — see the in-app documentation
+    for the semi-private workflow). Conversations are not stored server-side
+    beyond a ≤15-minute answer-recovery buffer; logs carry metadata only.</p>
+
+    <p class="muted">Accepting is recorded on your account. Misuse is grounds
+    for revoking access.</p>
+    <form class="accept" method="post" action="/terms/accept">
+      <button class="primary" type="submit">I understand and accept</button>
+    </form>
+    <form class="out" method="post" action="/logout"><button class="plain" type="submit">Or sign out</button></form>
+  </div>
+</body>
+</html>`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",

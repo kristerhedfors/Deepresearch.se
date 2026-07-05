@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   status TEXT NOT NULL DEFAULT 'active',
   google_sub TEXT,
   quota_json TEXT,
+  terms_accepted_at INTEGER,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS usage_events (
@@ -48,7 +49,10 @@ CREATE TABLE IF NOT EXISTS answers (
 // Additive migrations for databases created before the column existed.
 // "duplicate column" failures are expected and swallowed; anything else in
 // here must stay idempotent-or-ignorable.
-const ALTERS = ["ALTER TABLE users ADD COLUMN google_sub TEXT"];
+const ALTERS = [
+  "ALTER TABLE users ADD COLUMN google_sub TEXT",
+  "ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER",
+];
 
 let migrated = false; // per isolate
 

@@ -1,16 +1,19 @@
 # Build history — Deepresearch.se
 
-The complete, chronological record of how this site was built in a single
-session with Claude Code (model `claude-fable-5`, briefly `claude-opus-4-8`
-mid-session): every prompt as it was written, what was done in response,
-what broke, what was discovered, and the commit that landed each step.
+The complete, chronological record of how this site was built with Claude
+Code (model `claude-fable-5`, briefly `claude-opus-4-8` mid-session):
+every prompt as it was written, what was done in response, what broke,
+what was discovered, and the commit that landed each step. The source
+lives at <https://github.com/kristerhedfors/Deepresearch.se>.
 
-**The whole thing happened in one day.** First commit 2026-07-04 11:54,
-final commit 2026-07-04 22:11 — roughly ten hours from "Deploy hello world"
-to a deployed deep-research assistant with a five-phase pipeline, time
-budgeting, PWA support, image input, and a fully modular codebase. 35
-commits, all pushed straight to `main`, each one verified live before the
-next prompt.
+**The whole thing was built over a weekend** — Saturday and Sunday,
+2026-07-04/05. Day one alone ran from "Deploy hello world" at 11:54 to a
+deployed deep-research assistant by 22:11 — roughly ten hours to a
+five-phase pipeline, time budgeting, PWA support, image input, and a fully
+modular codebase; 35 commits, all pushed straight to `main`, each one
+verified live before the next prompt. Day two (documented further down)
+turned it into a multi-user product with Google sign-in, real-cost quotas,
+and an admin console.
 
 > **One redaction.** The prompt in step 8 originally contained the site's
 > Basic Auth password in plain text. Two prompts later it was deliberately
@@ -897,9 +900,9 @@ do and don't apply to an invite-only, non-commercial demonstration project
 that is nonetheless in real use by real people — see `/build/` for the
 full text rather than duplicating it here.
 
-- Commit: (this document's own commit — see the next continuation's
-  ledger, following the pattern of every previous self-referential entry
-  in this file)
+- Commit: `4e20493` (recorded in the ledger below once the next
+  continuation could see its hash, following the pattern of every
+  previous self-referential entry in this file)
 
 A note on completeness: earlier phases of this document included exact
 token-spend tables, pulled from the session's own transcript. That
@@ -960,3 +963,92 @@ tooling, and documentation, built in two days.
 | 64 | `387bbf6` | 05 17:00 | Document the two-step semi-private workflow; disclose Exa retention |
 | 65 | `eec2537` | 05 17:08 | PWA icons: circular wheel, matching the in-app symbol |
 | 66 | `151ff28` | 05 17:16 | PWA default name: DeepResearch.se, matching the header brand casing |
+| 67 | `4e20493` | 05 17:46 | Two-level account panel; document this session; EU AI Act use restrictions |
+
+---
+
+# Going public — preparing the open repo (2026-07-05 evening)
+
+A fresh session on the same repo, working toward making the source public
+at <https://github.com/kristerhedfors/Deepresearch.se>. One process
+deviation worth noting for the record: this session was bound by the
+platform to a review branch (`claude/sensitive-info-audit-lc44ed`) rather
+than pushing straight to `main` — the second-ever departure from the
+push-to-main rule after the `golden-saturday` checkpoint, and a fitting
+one for changes whose whole point was to be reviewed before publication.
+
+> **A gap to fill.** Some work happened in another conversation whose
+> prompts and commits are not yet recorded here. This document is
+> append-only — those entries will be added when that session is retold,
+> the same way every earlier continuation added its own.
+
+### 75. "Intending to make this repo public I want you to go through it hunting for any kind of sensitive information we would not want to expose."
+
+A full audit of the tree and the git history. The good news: the secrets
+discipline held — no API keys, tokens, or passwords anywhere in code or
+history; `.dev.vars` gitignored; the help-page screenshots even used a
+placeholder account. Three real findings: the admin's personal email as a
+plaintext `ADMIN_EMAIL` var in `wrangler.toml` (moved out of the repo —
+it lives only in the Cloudflare dashboard now), the D1 `database_id`
+(judged a resource identifier rather than a credential, and left), and —
+in this very document — the break-glass Basic Auth *username* that step
+8's redaction had preserved next to its redacted password. Rotating the
+break-glass pair was recommended, since half of it was about to be public.
+
+- Commit: `11910ff`
+
+### 76. "They are rotated! BASIC_AUTH_USER and BASIC_AUTH_PASS are now rotated and saved in claude code env at next chat session as well as cloudflare. ADMIN_EMAIL is a cloudflare variable. D1 we just leave"
+
+The break-glass credentials rotated — the username published in this
+document's step 8 era now opens nothing. A wording fix followed:
+`ADMIN_EMAIL` is a dashboard *variable*, not a wrangler secret.
+
+- Commit: `9c7097b`
+
+### 77. "Leave it, no worries"
+
+Decision recorded: git history stays as it is, no rewrite. The old email
+and username remain visible in historical commits of a public repo; the
+credentials they referred to no longer exist.
+
+### 78. "Make sure documentation properly describes how to install deepresearch.se source code the way I hav, fully with necessary variables and steps."
+
+The README was two eras stale — it still described the day-1 tool-call
+chatbot behind Basic Auth. Rewritten as the complete from-scratch install
+guide matching the production setup: wrangler.toml adaptation, D1
+creation, the deploy-once-before-secrets-appear gotcha from step 6, the
+Google OAuth client, every secret and variable the Worker reads (grepped
+from the source, all sixteen `env.*` references accounted for), first
+admin sign-in, and local dev via `.dev.vars`. CLAUDE.md and
+ARCHITECTURE.md aligned in the same pass.
+
+- Commit: `34abbf2`
+
+### 79. "Make sure acccomplete build history shall not scroll sideways. Also, users mist accept basically the text under About this project when signing in for the first time and accept. Cover the bases properly without overdoing it with consent pages. Also when referring to this project, point to the github repo url https://github.com/kristerhedfors/Deepresearch.se and also make it clear that it was built over a weekend, not over a day. Add the missing pieces of commit and prompt history to the about this project. There will be gaps to be covered from another conversation."
+
+Four things in one prompt. The `/build/` page's rendered history no
+longer scrolls sideways — its tables had `white-space: nowrap` and
+`width: max-content`, forcing a horizontal pan on phones; they now wrap.
+A **one-time terms gate** landed: on first sign-in (before the approval
+wait, the app, or any API) every account gets a single condensed page of
+the About-this-project text — what the site is, the Article 5
+prohibited-use list, the privacy summary — with one Accept button;
+acceptance is stamped on the user row (`terms_accepted_at`, additive D1
+migration), `/build/` stays readable pre-acceptance so the full text is
+one tap away, and the break-glass identity is exempt (no user row to
+stamp). One page, once, recorded — covering the bases without a consent
+labyrinth. The project's framing was corrected everywhere from "built in
+a day" to **built over a weekend**, with the GitHub repo URL now cited on
+the /build/ page, the terms page, and this document's intro. And this
+history section itself was appended, with the gap note above.
+
+- Commit: (this document's own commit — see the ledger of the next
+  continuation)
+
+## Going-public commit ledger
+
+| # | Commit | Time | Subject |
+|---|---|---|---|
+| 68 | `11910ff` | 05 18:59 | Move ADMIN_EMAIL to a Worker secret instead of a public wrangler.toml var |
+| 69 | `9c7097b` | 05 19:08 | Clarify ADMIN_EMAIL is a dashboard variable, not a Worker secret |
+| 70 | `34abbf2` | 05 19:14 | Document the full install: every variable, secret, and setup step |

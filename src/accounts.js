@@ -1,8 +1,9 @@
 // User accounts (D1-backed), provisioned exclusively by Google sign-in
 // (src/google.js). No passwords are stored: Google proves the email, our
 // signed session cookie carries the identity afterwards. Roles are
-// user | admin (ADMIN_EMAIL bootstraps the first admin; admins can promote
-// others in /admin). Disabling a user takes effect on their next request.
+// user | admin — ADMIN_EMAIL is the ONLY path to admin (sole-admin
+// policy; the admin API cannot change roles). Disabling a user takes
+// effect on their next request.
 
 import { getDb } from "./db.js";
 
@@ -82,6 +83,17 @@ export async function updateUser(env, id, patch) {
   binds.push(id);
   await db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
   return getUserById(env, id);
+}
+
+// One-time acceptance of the terms of use (the /terms page shown on first
+// sign-in). Recorded as a timestamp so it doubles as an audit trail.
+export async function acceptTerms(env, id) {
+  const db = await getDb(env);
+  if (!db) throw new Error("Database not configured.");
+  await db
+    .prepare("UPDATE users SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL")
+    .bind(Date.now(), id)
+    .run();
 }
 
 export async function deleteUser(env, id) {

@@ -59,10 +59,10 @@ Server (`src/`):
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Entrypoint: request id, identity gate, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`), sliding-cookie reissue, request logs |
+| `index.js` | Entrypoint: request id, identity gate, terms + approval gates, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`, `/terms/accept`), sliding-cookie reissue, request logs |
 | `auth.js` | Identity: session cookie (365 d, sliding) + admin-secrets break-glass Basic Auth (fail closed); OAuth state HMAC helpers |
 | `google.js` | Google OIDC sign-in: state cookie, code exchange, claims validation, auto-provisioning (`ADMIN_EMAIL` → admin) |
-| `login.js` | Sign-in page — Google button only (PWAs can't answer a 401 challenge) |
+| `login.js` | Sign-in, pending-approval, and one-time terms pages (PWAs can't answer a 401 challenge) |
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
@@ -165,8 +165,10 @@ unknown `status` types (forward compatibility).
   changes visibly.
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
-  demonstration of building a SaaS-style app almost entirely from a phone
-  via Claude Code, invite-only and never placed on the market — plus a
+  demonstration of building a SaaS-style app over a weekend, almost
+  entirely from a phone via Claude Code (source:
+  https://github.com/kristerhedfors/Deepresearch.se), invite-only and
+  never placed on the market — plus a
   restricted-use-cases section grounded in the EU AI Act (Article 5
   prohibited practices mapped onto a text research tool, and an honest
   read of why the Article 2(6)/2(8) research and pre-market exemptions
@@ -331,6 +333,16 @@ also covers the static assets. **The only user-facing sign-in is Google**
 secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, configured on the
 Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 
+- **Terms gate (first sign-in)**: every D1 account must accept the terms
+  of use ONCE before anything else — a single server-rendered page
+  (`termsPage` in `src/login.js`, enforced in `src/index.js` ahead of the
+  approval gate) condensing the `/build/` "About this project" text: what
+  the site is, the EU AI Act Article 5 prohibited-use list, the privacy
+  summary, one Accept button (`POST /terms/accept`). Acceptance is stamped
+  as `terms_accepted_at` on the user row (additive D1 migration). `/build/`
+  stays readable pre-acceptance (the full text the page summarizes);
+  break-glass is exempt (no user row). Deliberately one page, once —
+  keep it that way; no consent-page sprawl.
 - **Auto-provisioning + approval gate**: any Google account with a
   **verified** email can sign in; the first sign-in creates the D1 user
   row. The `ADMIN_EMAIL` variable (set in the Cloudflare dashboard, not

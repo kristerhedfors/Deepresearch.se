@@ -31,7 +31,8 @@ import { handleChat } from "./chat.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
-import { loginPage, pendingPage } from "./login.js";
+import { acceptTerms } from "./accounts.js";
+import { loginPage, pendingPage, termsPage } from "./login.js";
 import { handleClientError, handleMe, handleModels } from "./user-api.js";
 
 export default {
@@ -127,6 +128,26 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
       status: 303,
       headers: { Location: "/login", "Set-Cookie": clearSessionCookie() },
     });
+  }
+
+  // Terms gate: every account must accept the terms of use once, right
+  // after first sign-in — before the approval wait, the app, or any API.
+  // The break-glass identity has no user row to record acceptance on and
+  // is exempt (it's the operator). /build/ stays readable pre-acceptance
+  // so the full "About this project" text the terms summarize is one tap
+  // away, and /logout is handled above.
+  if (identity.user && !identity.user.terms_accepted_at) {
+    if (url.pathname === "/terms/accept" && request.method === "POST") {
+      await acceptTerms(env, identity.user.id);
+      return new Response(null, { status: 303, headers: { Location: "/" } });
+    }
+    if (request.method === "GET" && (url.pathname === "/build" || url.pathname.startsWith("/build/"))) {
+      return env.ASSETS.fetch(request);
+    }
+    if (url.pathname.startsWith("/api/")) {
+      return jsonResponse({ error: "The terms of use must be accepted first.", terms: true }, 403);
+    }
+    return htmlResponse(termsPage(identity), 200);
   }
 
   // Approval gate: pending users are parked on the waiting page — no APIs,
