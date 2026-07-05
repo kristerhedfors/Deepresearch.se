@@ -509,41 +509,41 @@ one part of the session that can't measure itself before it ends.
 
 | # | Commit | Time | Subject |
 |---|---|---|---|
-| 1 | `5cd1b6c` | 11:59 | Initial commit |
-| 2 | `e59f779` | 11:54 | Deploy hello world web app |
-| 3 | `54a66b0` | 11:55 | Document git workflow: push straight to main after every change |
-| 4 | `601bc31` | 12:06 | Add static index.html for Cloudflare Pages |
-| 5 | `93abdcf` | 12:17 | Configure Cloudflare Workers static assets deploy |
-| 6 | `b5f6900` | 12:31 | Add custom domain routes to wrangler config |
-| 7 | `c55044c` | 12:52 | Add streaming AI chatbot Worker (Claude Messages API) |
-| 8 | `4b67b4f` | 13:08 | Switch chatbot to Berget.ai + add Basic Auth |
-| 9 | `85c139b` | 13:10 | Move Basic Auth credentials to secrets (fail closed) |
-| 10 | `8bfaaf9` | 13:45 | Add Exa web search as a tool for the chatbot |
-| 11 | `1a63507` | 13:55 | Refactor Worker into modules; add production structured logging |
-| 12 | `7aa2835` | 14:24 | Add live activity indicators to the chat UI |
-| 13 | `ef0601a` | 14:33 | Make the assistant a deep-research bot with clarifying follow-ups |
-| 14 | `fc4cc23` | 14:36 | Handle Mistral pseudo tool calls; recover instead of showing garbage |
-| 15 | `cdb4da1` | 14:52 | Add model dropdown backed by Berget's model catalog |
-| 16 | `5e347d0` | 14:59 | Show down models greyed out instead of hiding them (e.g. GLM-5.2) |
-| 17 | `1b9edb1` | 15:16 | Rebuild deep research as an orchestrated pipeline with validation |
-| 18 | `6b66151` | 15:35 | Add image attachments for vision-capable models |
-| 19 | `3dc7d03` | 15:47 | Fix attach button dead on mobile for non-vision models |
-| 20 | `08ce6a0` | 18:01 | Fix mobile image uploads: compress client-side for Berget's ~1MB body limit |
-| 21 | `0d8c767` | 18:52 | Add site icon and PWA support (flag-swirl icon, manifest) |
-| 22 | `b2f50aa` | 19:00 | Replace site/PWA icon with the flat flag-swirl artwork |
-| 23 | `c4a1d0a` | 19:17 | Use the airbrushed swirl artwork as the icon, full frame and uncropped |
-| 24 | `be035bb` | 19:23 | Sky-blue theme from the icon + pulsating icon as processing indicator |
-| 25 | `860fe8b` | 19:33 | Full-width answers, markdown rendering by default, Raw/Copy tools |
-| 26 | `a8a4afe` | 20:15 | Remove header subtitle; collapse activity bars after the answer |
-| 27 | `95ed330` | 20:20 | Serve icons and manifest without Basic Auth so PWA icons work |
-| 28 | `49a7c2d` | 20:25 | Fix PWA black screen: login page + session cookie alongside Basic Auth |
-| 29 | `a636645` | 20:46 | Fix activity re-collapse; add research time-target slider with budget planner |
-| 30 | `ce3ca76` | 20:53 | Add clear-chat button, web-search on/off knob, first-visit privacy notice |
-| 31 | `eb55cf4` | 21:04 | Compact controls row: round two-position knob, info symbol, clock + value |
-| 32 | `dd146fc` | 21:09 | No horizontal scrolling; reading-safe streaming with jump-to-latest |
-| 33 | `1624122` | 21:52 | Clock-symbol slider thumb; quadratic time scale up to 10 minutes |
-| 34 | `a80f206` | 21:57 | Scale research depth with the time budget; icon for New chat |
-| 35 | `01ee273` | 22:11 | Refactor server and client for clarity, modularity, maintainability |
+| 1 | [`5cd1b6c`](https://github.com/kristerhedfors/Deepresearch.se/commit/5cd1b6c) | 11:59 | Initial commit |
+| 2 | [`e59f779`](https://github.com/kristerhedfors/Deepresearch.se/commit/e59f779) | 11:54 | Deploy hello world web app |
+| 3 | [`54a66b0`](https://github.com/kristerhedfors/Deepresearch.se/commit/54a66b0) | 11:55 | Document git workflow: push straight to main after every change |
+| 4 | [`601bc31`](https://github.com/kristerhedfors/Deepresearch.se/commit/601bc31) | 12:06 | Add static index.html for Cloudflare Pages |
+| 5 | [`93abdcf`](https://github.com/kristerhedfors/Deepresearch.se/commit/93abdcf) | 12:17 | Configure Cloudflare Workers static assets deploy |
+| 6 | [`b5f6900`](https://github.com/kristerhedfors/Deepresearch.se/commit/b5f6900) | 12:31 | Add custom domain routes to wrangler config |
+| 7 | [`c55044c`](https://github.com/kristerhedfors/Deepresearch.se/commit/c55044c) | 12:52 | Add streaming AI chatbot Worker (Claude Messages API) |
+| 8 | [`4b67b4f`](https://github.com/kristerhedfors/Deepresearch.se/commit/4b67b4f) | 13:08 | Switch chatbot to Berget.ai + add Basic Auth |
+| 9 | [`85c139b`](https://github.com/kristerhedfors/Deepresearch.se/commit/85c139b) | 13:10 | Move Basic Auth credentials to secrets (fail closed) |
+| 10 | [`8bfaaf9`](https://github.com/kristerhedfors/Deepresearch.se/commit/8bfaaf9) | 13:45 | Add Exa web search as a tool for the chatbot |
+| 11 | [`1a63507`](https://github.com/kristerhedfors/Deepresearch.se/commit/1a63507) | 13:55 | Refactor Worker into modules; add production structured logging |
+| 12 | [`7aa2835`](https://github.com/kristerhedfors/Deepresearch.se/commit/7aa2835) | 14:24 | Add live activity indicators to the chat UI |
+| 13 | [`ef0601a`](https://github.com/kristerhedfors/Deepresearch.se/commit/ef0601a) | 14:33 | Make the assistant a deep-research bot with clarifying follow-ups |
+| 14 | [`fc4cc23`](https://github.com/kristerhedfors/Deepresearch.se/commit/fc4cc23) | 14:36 | Handle Mistral pseudo tool calls; recover instead of showing garbage |
+| 15 | [`cdb4da1`](https://github.com/kristerhedfors/Deepresearch.se/commit/cdb4da1) | 14:52 | Add model dropdown backed by Berget's model catalog |
+| 16 | [`5e347d0`](https://github.com/kristerhedfors/Deepresearch.se/commit/5e347d0) | 14:59 | Show down models greyed out instead of hiding them (e.g. GLM-5.2) |
+| 17 | [`1b9edb1`](https://github.com/kristerhedfors/Deepresearch.se/commit/1b9edb1) | 15:16 | Rebuild deep research as an orchestrated pipeline with validation |
+| 18 | [`6b66151`](https://github.com/kristerhedfors/Deepresearch.se/commit/6b66151) | 15:35 | Add image attachments for vision-capable models |
+| 19 | [`3dc7d03`](https://github.com/kristerhedfors/Deepresearch.se/commit/3dc7d03) | 15:47 | Fix attach button dead on mobile for non-vision models |
+| 20 | [`08ce6a0`](https://github.com/kristerhedfors/Deepresearch.se/commit/08ce6a0) | 18:01 | Fix mobile image uploads: compress client-side for Berget's ~1MB body limit |
+| 21 | [`0d8c767`](https://github.com/kristerhedfors/Deepresearch.se/commit/0d8c767) | 18:52 | Add site icon and PWA support (flag-swirl icon, manifest) |
+| 22 | [`b2f50aa`](https://github.com/kristerhedfors/Deepresearch.se/commit/b2f50aa) | 19:00 | Replace site/PWA icon with the flat flag-swirl artwork |
+| 23 | [`c4a1d0a`](https://github.com/kristerhedfors/Deepresearch.se/commit/c4a1d0a) | 19:17 | Use the airbrushed swirl artwork as the icon, full frame and uncropped |
+| 24 | [`be035bb`](https://github.com/kristerhedfors/Deepresearch.se/commit/be035bb) | 19:23 | Sky-blue theme from the icon + pulsating icon as processing indicator |
+| 25 | [`860fe8b`](https://github.com/kristerhedfors/Deepresearch.se/commit/860fe8b) | 19:33 | Full-width answers, markdown rendering by default, Raw/Copy tools |
+| 26 | [`a8a4afe`](https://github.com/kristerhedfors/Deepresearch.se/commit/a8a4afe) | 20:15 | Remove header subtitle; collapse activity bars after the answer |
+| 27 | [`95ed330`](https://github.com/kristerhedfors/Deepresearch.se/commit/95ed330) | 20:20 | Serve icons and manifest without Basic Auth so PWA icons work |
+| 28 | [`49a7c2d`](https://github.com/kristerhedfors/Deepresearch.se/commit/49a7c2d) | 20:25 | Fix PWA black screen: login page + session cookie alongside Basic Auth |
+| 29 | [`a636645`](https://github.com/kristerhedfors/Deepresearch.se/commit/a636645) | 20:46 | Fix activity re-collapse; add research time-target slider with budget planner |
+| 30 | [`ce3ca76`](https://github.com/kristerhedfors/Deepresearch.se/commit/ce3ca76) | 20:53 | Add clear-chat button, web-search on/off knob, first-visit privacy notice |
+| 31 | [`eb55cf4`](https://github.com/kristerhedfors/Deepresearch.se/commit/eb55cf4) | 21:04 | Compact controls row: round two-position knob, info symbol, clock + value |
+| 32 | [`dd146fc`](https://github.com/kristerhedfors/Deepresearch.se/commit/dd146fc) | 21:09 | No horizontal scrolling; reading-safe streaming with jump-to-latest |
+| 33 | [`1624122`](https://github.com/kristerhedfors/Deepresearch.se/commit/1624122) | 21:52 | Clock-symbol slider thumb; quadratic time scale up to 10 minutes |
+| 34 | [`a80f206`](https://github.com/kristerhedfors/Deepresearch.se/commit/a80f206) | 21:57 | Scale research depth with the time budget; icon for New chat |
+| 35 | [`01ee273`](https://github.com/kristerhedfors/Deepresearch.se/commit/01ee273) | 22:11 | Refactor server and client for clarity, modularity, maintainability |
 
 *(All times 2026-07-04, commit-author local time. The first two commits'
 timestamps are out of order because the GitHub-generated initial commit was
@@ -961,38 +961,38 @@ draft of the `/build/` page — the draft whose documentation errors the
 
 | # | Commit | Time | Subject |
 |---|---|---|---|
-| 36 | `e1f2da1` | 04 22:22 | Document the full build history for retelling |
-| 37 | `bde7e9d` | 04 22:32 | Document the complete architecture with draw.io data-flow diagrams |
-| 38 | `748231a` | 04 22:36 | Immersive reading: hide header and controls while scrolled up |
-| 39 | `2b5b6f3` | 04 22:48 | Animate immersive transitions; drifting background waves |
-| 40 | `526f4f2` | 05 06:55 | Record the session's token usage in the build history |
-| 41 | `df6e552` | 05 07:27 | Add accounts, invitations, admin interface, and research quotas |
-| 42 | `75f20fe` | 05 07:32 | Document the Google sign-in enablement plan |
-| 43 | `685fff8` | 05 08:09 | Switch to Google-only sign-in with sliding sessions |
-| 44 | `c36b05f` | 05 08:28 | Bind the production D1 database |
-| 45 | `b55f7a6` | 05 08:39 | Add approval gate: new sign-ins wait for admin approval |
-| 46 | `5e3ffff` | 05 08:50 | Remove role management: sole-admin-forever policy |
-| 47 | `8e6e9e4` | 05 09:02 | Rework quotas: tokens + searches per rolling-5h/day/week/month |
-| 48 | `e1e06e6` | 05 09:20 | Ground the Berget quota in real cost; per-model usage for admin |
-| 49 | `875f153` | 05 09:36 | Admins counted but never blocked; surface break-glass usage |
-| 50 | `cd7dac8` | 05 11:04 | Glass UI: frosted transparent header and one-pane composer |
-| 51 | `0938c95` | 05 11:42 | Enter inserts line break; send only via arrow; fix pane overflow |
-| 52 | `6045f09` | 05 12:10 | Replace hide/show chrome with floating glass overlay |
-| 53 | `2d2094b` | 05 12:25 | Stack the header: plain-text brand, glass controls beneath |
-| 54 | `4a79f32` | 05 12:34 | Centered thin DeepResearch.se; model selector fills the row |
-| 55 | `5c91e64` | 05 12:40 | Composer row order + loupe dimming; illustrated /help docs |
-| 56 | `65e0e6b` | 05 13:00 | PDF report downloads; pdf/docx/md/txt attachments with cards |
-| 57 | `b356ea2` | 05 13:11 | Keep partially streamed answers in context after network errors |
-| 58 | `c0013dd` | 05 14:03 | Harden streams: SSE keepalive, disconnect handling, honest errors |
-| 59 | `61608ff` | 05 14:46 | Record day 2 in the build history: prompts, steps, and token spend |
-| 60 | `a76258b` | 05 15:25 | Refactor for modularity: split client app.js and server quota/config/user-api |
-| 61 | `5b77a79` | 05 15:44 | Capture client disconnects fully: waitUntil, client-error beacon, user_id |
-| 62 | `a821943` | 05 15:56 | PDF downloads can no longer kill a streaming answer |
-| 63 | `7bedab8` | 05 16:17 | Answer recovery: dropped connections fetch the finished answer back |
-| 64 | `387bbf6` | 05 17:00 | Document the two-step semi-private workflow; disclose Exa retention |
-| 65 | `eec2537` | 05 17:08 | PWA icons: circular wheel, matching the in-app symbol |
-| 66 | `151ff28` | 05 17:16 | PWA default name: DeepResearch.se, matching the header brand casing |
-| 67 | `4e20493` | 05 17:46 | Two-level account panel; document this session; EU AI Act use restrictions |
+| 36 | [`e1f2da1`](https://github.com/kristerhedfors/Deepresearch.se/commit/e1f2da1) | 04 22:22 | Document the full build history for retelling |
+| 37 | [`bde7e9d`](https://github.com/kristerhedfors/Deepresearch.se/commit/bde7e9d) | 04 22:32 | Document the complete architecture with draw.io data-flow diagrams |
+| 38 | [`748231a`](https://github.com/kristerhedfors/Deepresearch.se/commit/748231a) | 04 22:36 | Immersive reading: hide header and controls while scrolled up |
+| 39 | [`2b5b6f3`](https://github.com/kristerhedfors/Deepresearch.se/commit/2b5b6f3) | 04 22:48 | Animate immersive transitions; drifting background waves |
+| 40 | [`526f4f2`](https://github.com/kristerhedfors/Deepresearch.se/commit/526f4f2) | 05 06:55 | Record the session's token usage in the build history |
+| 41 | [`df6e552`](https://github.com/kristerhedfors/Deepresearch.se/commit/df6e552) | 05 07:27 | Add accounts, invitations, admin interface, and research quotas |
+| 42 | [`75f20fe`](https://github.com/kristerhedfors/Deepresearch.se/commit/75f20fe) | 05 07:32 | Document the Google sign-in enablement plan |
+| 43 | [`685fff8`](https://github.com/kristerhedfors/Deepresearch.se/commit/685fff8) | 05 08:09 | Switch to Google-only sign-in with sliding sessions |
+| 44 | [`c36b05f`](https://github.com/kristerhedfors/Deepresearch.se/commit/c36b05f) | 05 08:28 | Bind the production D1 database |
+| 45 | [`b55f7a6`](https://github.com/kristerhedfors/Deepresearch.se/commit/b55f7a6) | 05 08:39 | Add approval gate: new sign-ins wait for admin approval |
+| 46 | [`5e3ffff`](https://github.com/kristerhedfors/Deepresearch.se/commit/5e3ffff) | 05 08:50 | Remove role management: sole-admin-forever policy |
+| 47 | [`8e6e9e4`](https://github.com/kristerhedfors/Deepresearch.se/commit/8e6e9e4) | 05 09:02 | Rework quotas: tokens + searches per rolling-5h/day/week/month |
+| 48 | [`e1e06e6`](https://github.com/kristerhedfors/Deepresearch.se/commit/e1e06e6) | 05 09:20 | Ground the Berget quota in real cost; per-model usage for admin |
+| 49 | [`875f153`](https://github.com/kristerhedfors/Deepresearch.se/commit/875f153) | 05 09:36 | Admins counted but never blocked; surface break-glass usage |
+| 50 | [`cd7dac8`](https://github.com/kristerhedfors/Deepresearch.se/commit/cd7dac8) | 05 11:04 | Glass UI: frosted transparent header and one-pane composer |
+| 51 | [`0938c95`](https://github.com/kristerhedfors/Deepresearch.se/commit/0938c95) | 05 11:42 | Enter inserts line break; send only via arrow; fix pane overflow |
+| 52 | [`6045f09`](https://github.com/kristerhedfors/Deepresearch.se/commit/6045f09) | 05 12:10 | Replace hide/show chrome with floating glass overlay |
+| 53 | [`2d2094b`](https://github.com/kristerhedfors/Deepresearch.se/commit/2d2094b) | 05 12:25 | Stack the header: plain-text brand, glass controls beneath |
+| 54 | [`4a79f32`](https://github.com/kristerhedfors/Deepresearch.se/commit/4a79f32) | 05 12:34 | Centered thin DeepResearch.se; model selector fills the row |
+| 55 | [`5c91e64`](https://github.com/kristerhedfors/Deepresearch.se/commit/5c91e64) | 05 12:40 | Composer row order + loupe dimming; illustrated /help docs |
+| 56 | [`65e0e6b`](https://github.com/kristerhedfors/Deepresearch.se/commit/65e0e6b) | 05 13:00 | PDF report downloads; pdf/docx/md/txt attachments with cards |
+| 57 | [`b356ea2`](https://github.com/kristerhedfors/Deepresearch.se/commit/b356ea2) | 05 13:11 | Keep partially streamed answers in context after network errors |
+| 58 | [`c0013dd`](https://github.com/kristerhedfors/Deepresearch.se/commit/c0013dd) | 05 14:03 | Harden streams: SSE keepalive, disconnect handling, honest errors |
+| 59 | [`61608ff`](https://github.com/kristerhedfors/Deepresearch.se/commit/61608ff) | 05 14:46 | Record day 2 in the build history: prompts, steps, and token spend |
+| 60 | [`a76258b`](https://github.com/kristerhedfors/Deepresearch.se/commit/a76258b) | 05 15:25 | Refactor for modularity: split client app.js and server quota/config/user-api |
+| 61 | [`5b77a79`](https://github.com/kristerhedfors/Deepresearch.se/commit/5b77a79) | 05 15:44 | Capture client disconnects fully: waitUntil, client-error beacon, user_id |
+| 62 | [`a821943`](https://github.com/kristerhedfors/Deepresearch.se/commit/a821943) | 05 15:56 | PDF downloads can no longer kill a streaming answer |
+| 63 | [`7bedab8`](https://github.com/kristerhedfors/Deepresearch.se/commit/7bedab8) | 05 16:17 | Answer recovery: dropped connections fetch the finished answer back |
+| 64 | [`387bbf6`](https://github.com/kristerhedfors/Deepresearch.se/commit/387bbf6) | 05 17:00 | Document the two-step semi-private workflow; disclose Exa retention |
+| 65 | [`eec2537`](https://github.com/kristerhedfors/Deepresearch.se/commit/eec2537) | 05 17:08 | PWA icons: circular wheel, matching the in-app symbol |
+| 66 | [`151ff28`](https://github.com/kristerhedfors/Deepresearch.se/commit/151ff28) | 05 17:16 | PWA default name: DeepResearch.se, matching the header brand casing |
+| 67 | [`4e20493`](https://github.com/kristerhedfors/Deepresearch.se/commit/4e20493) | 05 17:46 | Two-level account panel; document this session; EU AI Act use restrictions |
 
 ---
 
@@ -1153,16 +1153,29 @@ usage & history" itself was never a navigation — it swaps views inside
 the panel — but everything that leaves the page now leaves the tab
 alone.
 
+- Commit: `a60b1a2`
+
+### 84. "Link the commit table entries directly to the actual repo. It has now been made public."
+
+With the repo public, all the ledger rows now link their commit hashes
+straight to `github.com/kristerhedfors/Deepresearch.se/commit/…` — the
+story's claims are one tap from their diffs. Applied as a regex pass
+over the ledger tables; verified that GitHub resolves the short hashes
+and that the rendered links open in new tabs (the markdown renderer
+already forces `target="_blank"` on every link, so reading a diff can't
+destroy a conversation — the lesson of #83).
+
 - Commit: (this entry's own — next continuation's ledger)
 
 ## Going-public commit ledger
 
 | # | Commit | Time | Subject |
 |---|---|---|---|
-| 68 | `11910ff` | 05 18:59 | Move ADMIN_EMAIL to a Worker secret instead of a public wrangler.toml var |
-| 69 | `9c7097b` | 05 19:08 | Clarify ADMIN_EMAIL is a dashboard variable, not a Worker secret |
-| 70 | `34abbf2` | 05 19:14 | Document the full install: every variable, secret, and setup step |
-| 71 | `3524a65` | 05 19:40 | Terms acceptance at first sign-in; build history never scrolls sideways |
-| 72 | `515b6b4` | 05 19:58 | The build story gets its own page and account-panel card |
-| 73 | `fbce008` | 05 20:17 | Precise phone-only build claim; fix terms gate blocking static assets |
-| 74 | `ca575e5` | 05 20:32 | Audit the sonnet-drafted commit; weave the two parallel session histories |
+| 68 | [`11910ff`](https://github.com/kristerhedfors/Deepresearch.se/commit/11910ff) | 05 18:59 | Move ADMIN_EMAIL to a Worker secret instead of a public wrangler.toml var |
+| 69 | [`9c7097b`](https://github.com/kristerhedfors/Deepresearch.se/commit/9c7097b) | 05 19:08 | Clarify ADMIN_EMAIL is a dashboard variable, not a Worker secret |
+| 70 | [`34abbf2`](https://github.com/kristerhedfors/Deepresearch.se/commit/34abbf2) | 05 19:14 | Document the full install: every variable, secret, and setup step |
+| 71 | [`3524a65`](https://github.com/kristerhedfors/Deepresearch.se/commit/3524a65) | 05 19:40 | Terms acceptance at first sign-in; build history never scrolls sideways |
+| 72 | [`515b6b4`](https://github.com/kristerhedfors/Deepresearch.se/commit/515b6b4) | 05 19:58 | The build story gets its own page and account-panel card |
+| 73 | [`fbce008`](https://github.com/kristerhedfors/Deepresearch.se/commit/fbce008) | 05 20:17 | Precise phone-only build claim; fix terms gate blocking static assets |
+| 74 | [`ca575e5`](https://github.com/kristerhedfors/Deepresearch.se/commit/ca575e5) | 05 20:32 | Audit the sonnet-drafted commit; weave the two parallel session histories |
+| 75 | [`a60b1a2`](https://github.com/kristerhedfors/Deepresearch.se/commit/a60b1a2) | 05 20:41 | Account-panel and popover page links open new tabs |
