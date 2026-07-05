@@ -127,8 +127,9 @@ unknown `status` types (forward compatibility).
   type and each control (New chat, model selector, account) as its own
   frosted-glass container; the whole input area is ONE glass pane
   (`#composer`, rounded, backdrop-blur over the drifting waves): a
-  single-line auto-growing text input on top (Enter sends, Shift+Enter
-  newline, grows to ~6 lines), and beneath it the attach button (round),
+  single-line auto-growing text input on top (Enter inserts a LINE BREAK
+  — only the arrow button sends; grows to ~6 lines), and beneath it the
+  attach button (round),
   **web-search knob** (default on; sends `web_search: false` when off →
   the Worker skips triage/Exa entirely and streams one Berget
   completion), 🔍 info popover, time value + slider (dimmed while search

@@ -64,6 +64,10 @@ body.chrome-restoring header,
 body.chrome-restoring #footer { overflow: hidden; }
 .header-bar, .footer-slide {
   min-height: 0;
+  /* min-width too: grid items otherwise refuse to shrink below their
+     content's intrinsic width (the textarea's ~330px cols default), which
+     pushes the pane past narrow viewports. */
+  min-width: 0;
   transition: transform .2s ease, opacity .2s ease, visibility 0s,
     padding .2s ease, border-width .2s ease;
 }
@@ -321,6 +325,10 @@ body.immersive #jumpdown { bottom: 1.1rem; }
 }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
+  /* Textareas won't shrink below their cols-based intrinsic width unless
+     width is pinned — without this the pane overflows narrow screens. */
+  width: 100%;
+  min-width: 0;
   resize: none;
   background: transparent;
   color: var(--text);
@@ -431,7 +439,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* Slider with the clock as its thumb (SVG-embedded emoji, since thumbs
    can't contain text). Track is styled manually — appearance:none. */
 #composer input[type="range"] {
-  flex: 1; margin: 0;
+  /* Shrinkable past the browser's ~129px intrinsic width, so the send
+     arrow always fits inside the pane — the slider gives, not the row. */
+  flex: 1 1 60px; min-width: 40px; margin: 0;
   -webkit-appearance: none; appearance: none;
   height: 6px; border-radius: 3px;
   background: var(--border);

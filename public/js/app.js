@@ -583,9 +583,5 @@ form.addEventListener("submit", async (e) => {
   input.focus();
 });
 
-input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    form.requestSubmit();
-  }
-});
+// Enter inserts a line break — nothing is sent until the arrow is tapped
+// (form submit). The input just grows via the autogrow handler above.
