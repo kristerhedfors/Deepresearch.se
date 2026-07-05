@@ -165,8 +165,11 @@ unknown `status` types (forward compatibility).
   changes visibly.
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
-  demonstration of building a SaaS-style app over a weekend, almost
-  entirely from a phone via Claude Code (source:
+  demonstration of building a SaaS-style app over a weekend, **entirely
+  through the Claude Code iPhone app** (domain purchase, every deploy,
+  every service configured, source/config never viewed directly on any
+  other device — the one exception being the D1 database UUID, which had
+  to be hand-copied from the Cloudflare dashboard URL; source:
   https://github.com/kristerhedfors/Deepresearch.se), invite-only and
   never placed on the market — plus a
   restricted-use-cases section grounded in the EU AI Act (Article 5

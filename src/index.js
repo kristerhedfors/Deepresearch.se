@@ -135,20 +135,22 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   // The break-glass identity has no user row to record acceptance on and
   // is exempt (it's the operator). /build/ (About) and /story/ (build
   // history) stay readable pre-acceptance so the full text the terms
-  // summarize is one tap away, and /logout is handled above.
+  // summarize is one tap away, and /logout is handled above. Static
+  // assets (js/css/vendor/markdown files, matched by file extension)
+  // always pass through — they're inert code, not gated content, and
+  // /build/ + /story/ need their own scripts and history.md to render.
   if (identity.user && !identity.user.terms_accepted_at) {
     if (url.pathname === "/terms/accept" && request.method === "POST") {
       await acceptTerms(env, identity.user.id);
       return new Response(null, { status: 303, headers: { Location: "/" } });
     }
-    if (
-      request.method === "GET" &&
-      /^\/(build|story)(\/|$)/.test(url.pathname)
-    ) {
-      return env.ASSETS.fetch(request);
-    }
     if (url.pathname.startsWith("/api/")) {
       return jsonResponse({ error: "The terms of use must be accepted first.", terms: true }, 403);
+    }
+    const isStaticAsset = request.method === "GET" && /\.[a-z0-9]+$/i.test(url.pathname);
+    const isAllowedPage = request.method === "GET" && /^\/(build|story)(\/|$)/.test(url.pathname);
+    if (isStaticAsset || isAllowedPage) {
+      return env.ASSETS.fetch(request);
     }
     return htmlResponse(termsPage(identity), 200);
   }

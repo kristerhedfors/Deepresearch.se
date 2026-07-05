@@ -7,13 +7,19 @@ what was discovered, and the commit that landed each step. The source
 lives at <https://github.com/kristerhedfors/Deepresearch.se>.
 
 **The whole thing was built over a weekend** — Saturday and Sunday,
-2026-07-04/05. Day one alone ran from "Deploy hello world" at 11:54 to a
-deployed deep-research assistant by 22:11 — roughly ten hours to a
-five-phase pipeline, time budgeting, PWA support, image input, and a fully
-modular codebase; 35 commits, all pushed straight to `main`, each one
-verified live before the next prompt. Day two (documented further down)
-turned it into a multi-user product with Google sign-in, real-cost quotas,
-and an admin console.
+2026-07-04/05 — **entirely through the Claude Code iPhone app**: writing
+every prompt, purchasing the domain, every deployment, and configuring
+every service (Cloudflare, Berget.ai, Exa, Google OAuth), without the
+source code or any configuration file ever being viewed directly on any
+other device. The one exception: the Cloudflare D1 database UUID (step 44)
+had to be copied by hand from the dashboard URL in a mobile browser, since
+the mobile UI had no other way to surface it. Day one alone ran from
+"Deploy hello world" at 11:54 to a deployed deep-research assistant by
+22:11 — roughly ten hours to a five-phase pipeline, time budgeting, PWA
+support, image input, and a fully modular codebase; 35 commits, all pushed
+straight to `main`, each one verified live before the next prompt. Day two
+(documented further down) turned it into a multi-user product with Google
+sign-in, real-cost quotas, and an admin console.
 
 > **One redaction.** The prompt in step 8 originally contained the site's
 > Basic Auth password in plain text. Two prompts later it was deliberately
@@ -613,8 +619,11 @@ browser checks. — `685fff8`
 ### 44–45. "Sign-in is temporarily unavailable (accounts database not configured)." / "Cant see the full uuid in database overview on mobile…" / "d9144c29-c8b2-4914-a795-37f8df393ac8"
 
 Production hiccup: the D1 block in wrangler.toml was still commented out.
-The user created the database from a phone (tip that worked: the full UUID
-is in the dashboard URL), pasted the id in chat, and the binding was
+The Cloudflare mobile dashboard UI didn't expose the full database UUID
+anywhere in its normal views — the one point in the whole build where the
+phone-only workflow needed a manual workaround rather than a prompt. The
+user found it by opening the database's page and reading the UUID out of
+the browser's address bar, pasted the id in chat, and the binding was
 pushed. Live verification: a garbage OAuth callback switched from the
 "nodb" bounce to the state-check rejection — proof the Worker reached the
 database. — `c36b05f`

@@ -120,9 +120,9 @@ export function termsPage(identity) {
     <h2>What this is</h2>
     <p>DeepResearch.se is a working deep-research assistant, but above all a
     <b>research and demonstration project</b>: an entire SaaS-style app built
-    over a weekend, almost entirely from a phone, with Claude Code as the only
-    development interface. It is invite-only, not a commercial product, and
-    never placed on the market. The source is public at
+    over a weekend, entirely through the Claude Code iPhone app — no other
+    device, no source or config viewed directly. It is invite-only, not a
+    commercial product, and never placed on the market. The source is public at
     <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>;
     the EU AI Act reasoning behind the rules below is on the
     <a href="/build/">About this project</a> page, and the complete
