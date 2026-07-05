@@ -58,6 +58,7 @@ pre {
   padding: .6rem .75rem;
 }
 .card .big { font-size: 1.15rem; font-weight: 700; }
+.card .big .sub { font-size: .72rem; font-weight: 500; color: var(--muted); }
 .card .lbl { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 
 /* Generic list rows (requests, invites, users) */

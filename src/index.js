@@ -162,23 +162,27 @@ async function routeAuthed(request, env, url, log, identity) {
 }
 
 // GET /api/me — identity + usage vs quota for the user dashboard.
+// Users see COUNTS only (tokens, searches) — cost in EUR is admin-only
+// and never leaves /api/admin/*.
 async function handleMe(env, identity) {
   const config = await getConfig(env);
   const usage = await getUsage(env, identity.id);
   const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
+  const counts = {};
+  const resets = {};
+  for (const p of ["h5", "day", "week", "month"]) {
+    counts[p] = { tokens: usage[p].tokens, searches: usage[p].searches };
+    resets[p] = windowReset(p, Date.now(), usage.h5_oldest);
+  }
   return jsonResponse({
     id: identity.id,
     email: identity.email,
     name: identity.name,
     role: identity.role,
     unlimited: !!identity.isSecretAdmin,
-    usage,
+    usage: counts,
     quota,
-    resets: {
-      day: windowReset("day"),
-      week: windowReset("week"),
-      month: windowReset("month"),
-    },
+    resets,
     db_configured: !!(await getDb(env)),
   });
 }

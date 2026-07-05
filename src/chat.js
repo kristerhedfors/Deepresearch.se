@@ -15,7 +15,6 @@ import {
   getUsage,
   quotaExceeded,
   recordUsage,
-  remainingSeconds,
 } from "./quota.js";
 import { resolveModel, validateMessages } from "./validation.js";
 
@@ -58,8 +57,9 @@ export async function handleChat(request, env, log, identity) {
   if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
 
-  // ---- research quota (Claude Code-style: hours + cost per day/week/month)
-  // The secrets admin is exempt from enforcement but still accounted.
+  // ---- research quota (tokens + searches per 5h/day/week/month windows).
+  // No time or currency limits — quotas are in the units the providers
+  // bill. The break-glass admin is exempt but still accounted.
   const usage = await getUsage(env, identity.id);
   const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
   if (quota) {
@@ -70,14 +70,15 @@ export async function handleChat(request, env, log, identity) {
         period: blocked.period,
         kind: blocked.kind,
       });
-      const what = blocked.kind === "cost" ? "cost budget" : "research-time budget";
-      const periodName = { day: "daily", week: "weekly", month: "monthly" }[blocked.period];
+      const periodName = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" }[blocked.period];
+      const what = blocked.kind === "tokens" ? "token" : "search";
+      const verb = blocked.period === "h5" ? "frees up around" : "resets";
       return jsonResponse(
         {
           error:
-            `You've used your ${periodName} ${what} ` +
-            `(${blocked.kind === "cost" ? "€" + blocked.limit.toFixed(2) : blocked.limit + " h"}). ` +
-            `It resets ${new Date(blocked.reset_at).toISOString().replace(".000Z", "Z")}.`,
+            `You've used your ${periodName} ${what} budget ` +
+            `(${blocked.limit.toLocaleString("en-US")} ${blocked.kind}). ` +
+            `It ${verb} ${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC.`,
           quota: blocked,
         },
         429,
@@ -88,11 +89,6 @@ export async function handleChat(request, env, log, identity) {
   const conversation = body.messages;
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
-  if (quota) {
-    // One request can't blow through the hour cap: clamp to what's left.
-    const left = remainingSeconds(usage, quota);
-    if (Number.isFinite(left)) budgetS = Math.max(15, Math.min(budgetS, Math.ceil(left)));
-  }
   const webSearchEnabled = body.web_search !== false; // knob: default on
 
   const stream = new ReadableStream({

@@ -266,14 +266,20 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 - `GOOGLE_AUTH_URL` / `GOOGLE_TOKEN_URL` env overrides exist solely so
   local tests can point the flow at a mock; production uses the defaults.
 
-**Quotas** (Claude Code-inspired): per user, caps on research **hours**
-(pipeline wall-clock) and **cost** (Berget tokens × catalog price + Exa
-searches × configured price, EUR) per UTC calendar day / ISO week / month.
-Global defaults + per-user overrides (admin "Quota…" editor); 0 = no cap.
-`/api/chat` rejects with 429 (+ reset time) when over, clamps the time
-budget to the remaining hours, and records a `usage_events` row after every
-stream. Users see their own bars in the account panel (header person icon
-→ `/api/me`); the admin dashboard shows totals and per-user bars.
+**Quotas**: measured in the units the providers actually bill — **tokens**
+(Berget, prompt+completion) and **searches** (Exa) — per FOUR windows: a
+**rolling last-5-hours** window (Claude Code-style) plus UTC calendar day
+/ ISO week / month. Deliberately NO time or currency limits. Global
+defaults + per-user overrides (admin "Quota…" editor); 0 = no cap.
+`/api/chat` rejects with 429 (+ reset time; for the rolling window the
+reset is when the oldest event ages out) and records a `usage_events` row
+after every stream (tokens, searches, derived EUR cost, duration).
+**Users never see currency** — the account panel (header person icon →
+`/api/me`) shows count bars only, and `/api/me` doesn't even send cost.
+Cost in EUR (tokens × catalog price + searches × configured price) is
+derived for the ADMIN: `/admin` shows per-window cost + counts aggregated
+site-wide and per user. Note the usage SQL filters from the MINIMUM of
+all window starts — the ISO week can begin before the month does.
 
 **Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
 usage totals, user management (role/status/quota/delete), config (default

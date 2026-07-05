@@ -70,7 +70,11 @@ async function overview(env) {
     getUsageAllUsers(env),
   ]);
   const usageByUser = Object.fromEntries(usage.map((u) => [u.user_id, u]));
-  const totals = { day_cost: 0, week_cost: 0, month_cost: 0, day_ms: 0, week_ms: 0, month_ms: 0, month_requests: 0 };
+  // Aggregate counts AND cost per window across all identities.
+  const totals = { month_requests: 0 };
+  for (const p of ["h5", "day", "week", "month"]) {
+    for (const k of ["tokens", "searches", "cost", "ms"]) totals[`${p}_${k}`] = 0;
+  }
   for (const u of usage) {
     for (const k of Object.keys(totals)) totals[k] += u[k] || 0;
   }
@@ -82,16 +86,20 @@ async function overview(env) {
   });
 }
 
-// Per-user quota overrides: keep only known numeric fields; null clears.
+// Per-user quota overrides: keep only known numeric fields (tokens and
+// searches per window); null clears the override entirely.
 function sanitizeQuota(quota) {
   if (quota == null) return null;
   const out = {};
-  for (const p of ["day", "week", "month"]) {
+  for (const p of ["h5", "day", "week", "month"]) {
     const q = quota[p];
     if (!q || typeof q !== "object") continue;
     const entry = {};
-    if (Number.isFinite(Number(q.hours)) && q.hours !== "" && q.hours != null) entry.hours = Number(q.hours);
-    if (Number.isFinite(Number(q.cost_eur)) && q.cost_eur !== "" && q.cost_eur != null) entry.cost_eur = Number(q.cost_eur);
+    for (const k of ["tokens", "searches"]) {
+      if (q[k] !== "" && q[k] != null && Number.isFinite(Number(q[k]))) {
+        entry[k] = Math.max(0, Math.round(Number(q[k])));
+      }
+    }
     if (Object.keys(entry).length) out[p] = entry;
   }
   return Object.keys(out).length ? out : null;

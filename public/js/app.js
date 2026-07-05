@@ -233,19 +233,26 @@ accountOverlay.addEventListener("click", (e) => {
   if (e.target === accountOverlay) accountOverlay.hidden = true;
 });
 
-function usageBlock(label, usage, quota, resetTs) {
-  const fmtH = (h) => (h >= 10 ? h.toFixed(1) : h.toFixed(2)) + " h";
-  const fmtC = (c) => "€" + c.toFixed(2);
-  const bar = (used, limit, fmt) => {
+// Users see counts only — tokens and searches, the units that matter.
+// No currency here by design; cost is the admin's concern.
+function usageBlock(label, usage, quota, resetTs, rolling) {
+  const fmtN = (n) => {
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K";
+    return String(n);
+  };
+  const bar = (name, used, limit) => {
     const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-    return `<div class="usage-row"><span>${fmt(used)}${limit > 0 ? " of " + fmt(limit) : ""}</span>
+    return `<div class="usage-row"><span>${name} · ${fmtN(used)}${limit > 0 ? " of " + fmtN(limit) : ""}</span>
       <span>${limit > 0 ? Math.round(pct) + "%" : ""}</span></div>
       <div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${pct}%"></div></div>`;
   };
-  const reset = resetTs ? `resets ${new Date(resetTs).toLocaleString()}` : "";
-  return `<div class="usage-block"><div class="lbl">${label} · ${reset}</div>
-    ${bar(usage.hours, quota ? quota.hours : 0, fmtH)}
-    ${bar(usage.cost_eur, quota ? quota.cost_eur : 0, fmtC)}
+  const reset = resetTs
+    ? `${rolling ? "frees up" : "resets"} ${new Date(resetTs).toLocaleString()}`
+    : "";
+  return `<div class="usage-block"><div class="lbl">${label}${reset ? " · " + reset : ""}</div>
+    ${bar("Tokens", usage.tokens, quota ? quota.tokens : 0)}
+    ${bar("Searches", usage.searches, quota ? quota.searches : 0)}
   </div>`;
 }
 
@@ -254,12 +261,14 @@ function renderAccount(me) {
     ? `${me.name && me.name !== me.email ? me.name + " · " : ""}${me.email}`
     : "Site administrator";
   const periods = [
+    ["Last 5 hours", "h5"],
     ["Today", "day"],
     ["This week", "week"],
     ["This month", "month"],
   ];
   const blocks = periods
-    .map(([label, p]) => usageBlock(label, me.usage[p], me.quota ? me.quota[p] : null, me.resets?.[p]))
+    .map(([label, p]) =>
+      usageBlock(label, me.usage[p], me.quota ? me.quota[p] : null, me.resets?.[p], p === "h5"))
     .join("");
   accountBody.innerHTML = `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>

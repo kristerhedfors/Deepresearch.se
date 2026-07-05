@@ -296,27 +296,35 @@ new users are active immediately under the default quotas. Either way the
 admin can disable any user (effective immediately, live sessions
 included).
 
-**Quotas** (Claude Code-inspired): caps on research **hours** and **cost**
-(EUR) per UTC calendar day / ISO week (Mon) / calendar month.
+**Quotas**: caps on **tokens** (Berget: prompt+completion) and
+**searches** (Exa) — the exact units the providers bill — per four
+windows: rolling **last 5 hours**, UTC calendar day, ISO week (Mon), and
+calendar month. There are deliberately no time or currency limits.
 
+- Enforcement in `/api/chat`: one aggregate query buckets all four
+  windows (filtered from the MINIMUM of the window starts — the ISO week
+  can begin before the month, and the rolling 5h window crosses midnight);
+  any exceeded cap → **429** with the limit, usage, and reset timestamp
+  (for the rolling window: when the oldest event inside it ages out).
+  After every stream a `usage_events` row records tokens, searches,
+  derived cost, and duration (fail-soft — accounting never breaks a
+  served answer).
 - Cost = `prompt_tokens × price_in + completion_tokens × price_out`
-  (raw per-token EUR prices from Berget's catalog, carried on each model
-  entry) + `searches × exa_cost_per_search_eur` (config).
-- Enforcement in `/api/chat`: one aggregate query over the month window
-  buckets day/week/month usage; any exceeded cap → **429** with the limit,
-  usage, and reset timestamp. The requested time budget is also clamped to
-  the remaining hours in the tightest window, so a single request can't
-  blow through a cap. After every stream a `usage_events` row is recorded
-  (fail-soft — accounting never breaks a served answer).
+  (raw per-token EUR prices from Berget's catalog) +
+  `searches × exa_cost_per_search_eur` (config). Cost is **admin-only
+  information**, never a cap and never shown to users — `/api/me` strips
+  it entirely.
 - Defaults live in config; per-user overrides (`quota_json`) merge over
   them; `0` means uncapped. The break-glass admin is exempt but still
   recorded.
 
-**Dashboards**: `/api/me` powers the in-app account panel (per-period
-hours/cost bars + reset times, logout, admin link); `/api/admin/overview`
-powers `/admin` — site totals, per-user usage bars, user management
-(role, enable/disable, quota editor, delete), and configuration (default
-quotas, Exa price, max time budget, default model).
+**Dashboards**: `/api/me` powers the in-app account panel — count bars
+only (tokens + searches × four windows, reset times, logout, admin link);
+`/api/admin/overview` powers `/admin` — aggregated cost + counts per
+window site-wide, per-user bars with a per-window cost line, user
+management (approve/enable/disable, quota editor, delete), and
+configuration (default quotas, Exa price, max time budget, default
+model, approval gate).
 
 ## 5. `GET /api/models`
 

@@ -4,7 +4,8 @@
 // provisioned by Google sign-in — there is nothing to create here.
 
 const $ = (id) => document.getElementById(id);
-const PERIODS = ["day", "week", "month"];
+const PERIODS = ["h5", "day", "week", "month"];
+const PERIOD_LABEL = { h5: "Last 5 h", day: "Today", week: "This week", month: "This month" };
 
 let overview = null;
 
@@ -20,7 +21,12 @@ async function api(path, opts = {}) {
 }
 
 const euro = (v) => "€" + (Number(v) || 0).toFixed(2);
-const hours = (ms) => ((Number(ms) || 0) / 3_600_000).toFixed(2) + " h";
+const count = (v) => {
+  const n = Number(v) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K";
+  return String(n);
+};
 
 async function load() {
   try {
@@ -46,10 +52,14 @@ async function load() {
 function renderTotals() {
   const t = overview.totals;
   const pending = overview.users.filter((u) => u.status === "pending").length;
+  // Aggregate cost + billable counts (tokens for Berget, searches for Exa).
+  const win = (p) =>
+    `${euro(t[`${p}_cost`])}<div class="sub">${count(t[`${p}_tokens`])} tok · ${count(t[`${p}_searches`])} searches</div>`;
   const cards = [
-    ["Today", `${euro(t.day_cost)} · ${hours(t.day_ms)}`],
-    ["This week", `${euro(t.week_cost)} · ${hours(t.week_ms)}`],
-    ["This month", `${euro(t.month_cost)} · ${hours(t.month_ms)}`],
+    ["Last 5 h", win("h5")],
+    ["Today", win("day")],
+    ["This week", win("week")],
+    ["This month", win("month")],
     ["Requests this month", String(t.month_requests || 0)],
     ["Users", String(overview.users.length)],
     ["Awaiting approval", String(pending)],
@@ -81,8 +91,8 @@ function renderUsers() {
     const q = {};
     for (const p of PERIODS) {
       q[p] = {
-        hours: override?.[p]?.hours ?? defaults[p].hours,
-        cost_eur: override?.[p]?.cost_eur ?? defaults[p].cost_eur,
+        tokens: override?.[p]?.tokens ?? defaults[p].tokens,
+        searches: override?.[p]?.searches ?? defaults[p].searches,
       };
     }
     const el = document.createElement("div");
@@ -102,22 +112,21 @@ function renderUsers() {
         <button data-act="delete" class="danger">Delete</button>
       </div>
       <div class="quota-bars">
-        ${quotaBar("Today", (usage.day_ms || 0) / 3.6e6, q.day.hours, (v) => v.toFixed(2) + " h")}
-        ${quotaBar("Today", usage.day_cost || 0, q.day.cost_eur, euro)}
-        ${quotaBar("Week", (usage.week_ms || 0) / 3.6e6, q.week.hours, (v) => v.toFixed(2) + " h")}
-        ${quotaBar("Week", usage.week_cost || 0, q.week.cost_eur, euro)}
-        ${quotaBar("Month", (usage.month_ms || 0) / 3.6e6, q.month.hours, (v) => v.toFixed(2) + " h")}
-        ${quotaBar("Month", usage.month_cost || 0, q.month.cost_eur, euro)}
+        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} tokens`, usage[`${p}_tokens`] || 0, q[p].tokens, count)).join("")}
+        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, usage[`${p}_searches`] || 0, q[p].searches, count)).join("")}
       </div>
+      <p class="muted" style="margin:.45rem 0 0">
+        Cost: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro(usage[`${p}_cost`] || 0)}`).join(" · ")}
+      </p>
       <div class="quota-edit">
         <p class="muted">Per-user quota override — blank fields inherit the global defaults
-        (${PERIODS.map((p) => `${p}: ${defaults[p].hours} h / ${euro(defaults[p].cost_eur)}`).join(" · ")}).</p>
+        (${PERIODS.map((p) => `${PERIOD_LABEL[p]}: ${count(defaults[p].tokens)} tok / ${defaults[p].searches} searches`).join(" · ")}). 0 = uncapped.</p>
         <div class="quota-grid">
-          <span></span><span class="col">hours</span><span class="col">cost €</span>
+          <span></span><span class="col">tokens</span><span class="col">searches</span>
           ${PERIODS.map((p) => `
-            <span>${p}</span>
-            <input type="number" min="0" step="0.25" data-q="${p}.hours" value="${override?.[p]?.hours ?? ""}" placeholder="${defaults[p].hours}">
-            <input type="number" min="0" step="0.1" data-q="${p}.cost_eur" value="${override?.[p]?.cost_eur ?? ""}" placeholder="${defaults[p].cost_eur}">`).join("")}
+            <span>${PERIOD_LABEL[p]}</span>
+            <input type="number" min="0" step="1000" data-q="${p}.tokens" value="${override?.[p]?.tokens ?? ""}" placeholder="${defaults[p].tokens}">
+            <input type="number" min="0" step="5" data-q="${p}.searches" value="${override?.[p]?.searches ?? ""}" placeholder="${defaults[p].searches}">`).join("")}
         </div>
         <p style="margin:.6rem 0 0; display:flex; gap:.5rem">
           <button data-act="save-quota">Save quota</button>
@@ -167,13 +176,13 @@ function renderConfig() {
   const c = overview.config;
   const form = $("config-form");
   form.innerHTML = `
-    <h3>Default quotas (per user)</h3>
+    <h3>Default quotas (per user; 0 = uncapped)</h3>
     <div class="quota-grid">
-      <span></span><span class="col">hours</span><span class="col">cost €</span>
+      <span></span><span class="col">tokens</span><span class="col">searches</span>
       ${PERIODS.map((p) => `
-        <span>${p}</span>
-        <input type="number" min="0" step="0.25" name="q.${p}.hours" value="${c.quotas[p].hours}">
-        <input type="number" min="0" step="0.1" name="q.${p}.cost_eur" value="${c.quotas[p].cost_eur}">`).join("")}
+        <span>${PERIOD_LABEL[p]}</span>
+        <input type="number" min="0" step="1000" name="q.${p}.tokens" value="${c.quotas[p].tokens}">
+        <input type="number" min="0" step="5" name="q.${p}.searches" value="${c.quotas[p].searches}">`).join("")}
     </div>
     <h3>Research</h3>
     <div class="group">
@@ -192,7 +201,7 @@ function renderConfig() {
     const f = new FormData(form);
     const quotas = {};
     for (const p of PERIODS) {
-      quotas[p] = { hours: Number(f.get(`q.${p}.hours`)), cost_eur: Number(f.get(`q.${p}.cost_eur`)) };
+      quotas[p] = { tokens: Number(f.get(`q.${p}.tokens`)), searches: Number(f.get(`q.${p}.searches`)) };
     }
     try {
       await api("/config", {
