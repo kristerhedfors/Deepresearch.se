@@ -1165,6 +1165,26 @@ and that the rendered links open in new tabs (the markdown renderer
 already forces `target="_blank"` on every link, so reading a diff can't
 destroy a conversation — the lesson of #83).
 
+- Commit: `02cb95f`
+
+### 85. "Bug: pressing New chat while generating leaves the send arrow grayed out after clearing the chat"
+
+The composer disables the send arrow for the duration of a send — and
+"New chat" cleared the UI without touching the in-flight request, so the
+invisible old stream kept the arrow hostage until it finished (up to the
+full time budget). Worse, when it eventually completed it pushed its
+answer into the *fresh* conversation's history as invisible stale
+context. Fix in `stream.js`: an `AbortController` plus a generation
+counter — New chat aborts the in-flight fetch (arrow back instantly) and
+bumps the generation, so a stale send can never render into, or push
+history onto, a conversation it doesn't belong to; the deliberate abort
+shows no error, sends no beacon, skips recovery, and purges the
+abandoned answer from the server's recovery cache. The recovery poller
+checks the generation too, ending early if a new chat starts while it
+waits. Verified with the slowed mock: New chat mid-generation re-enables
+the arrow within a beat, and the next conversation renders exactly one
+user bubble and one answer — no leftovers.
+
 - Commit: (this entry's own — next continuation's ledger)
 
 ## Going-public commit ledger
@@ -1179,3 +1199,4 @@ destroy a conversation — the lesson of #83).
 | 73 | [`fbce008`](https://github.com/kristerhedfors/Deepresearch.se/commit/fbce008) | 05 20:17 | Precise phone-only build claim; fix terms gate blocking static assets |
 | 74 | [`ca575e5`](https://github.com/kristerhedfors/Deepresearch.se/commit/ca575e5) | 05 20:32 | Audit the sonnet-drafted commit; weave the two parallel session histories |
 | 75 | [`a60b1a2`](https://github.com/kristerhedfors/Deepresearch.se/commit/a60b1a2) | 05 20:41 | Account-panel and popover page links open new tabs |
+| 76 | [`02cb95f`](https://github.com/kristerhedfors/Deepresearch.se/commit/02cb95f) | 05 20:47 | Ledger commit hashes link to the public GitHub repo |

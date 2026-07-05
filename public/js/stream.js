@@ -26,6 +26,10 @@ const history = []; // {role, content} pairs sent to the API
 
 let scrollDown = () => {};
 let inFlight = false;
+let controller = null; // AbortController of the in-flight request
+// Bumped by clearHistory: a send that started under an older generation
+// must never touch the new conversation's history or UI.
+let generation = 0;
 
 export function initStream(scrollFn) {
   scrollDown = scrollFn;
@@ -37,8 +41,14 @@ export function isStreaming() {
   return inFlight;
 }
 
+// New chat: forget the conversation AND abort any in-flight request —
+// otherwise the invisible old stream keeps the send button hostage until
+// it finishes, then leaks its answer into the fresh history.
 export function clearHistory() {
   history.length = 0; // history lives only in this tab
+  generation++;
+  controller?.abort();
+  controller = null;
 }
 
 // ---- Answer recovery --------------------------------------------------
@@ -57,12 +67,13 @@ function ackAnswer(requestId) {
 // The pipeline may still be researching when our connection dies (it runs
 // to completion server-side), so keep polling until well past the time
 // budget. Repeated 404s mean recovery isn't available (no DB, or expired).
-async function recoverAnswer(turn, requestId, budgetS) {
+// `gen` ends the poll early if the user starts a new chat meanwhile.
+async function recoverAnswer(turn, requestId, budgetS, gen) {
   if (!requestId) return null;
   startGenericStep(turn, "recover", "Connection lost — recovering the answer…");
   const deadline = Date.now() + (budgetS + 120) * 1000;
   let misses = 0;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && gen === generation) {
     await sleep(4000);
     try {
       const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
@@ -162,6 +173,9 @@ export async function sendMessage(text, opts) {
   const turn = addAssistantTurn(text);
   let acc = "";
   inFlight = true;
+  const gen = generation;
+  controller = new AbortController();
+  const signal = controller.signal;
 
   // iOS suspends network for backgrounded apps/PWAs — the most common
   // cause of mid-stream drops. Track it so the error can say so.
@@ -181,14 +195,17 @@ export async function sendMessage(text, opts) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
+      signal,
     });
     requestId = res.headers.get("x-request-id") || "";
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
     if (!res.ok || !res.body || isJson) {
       const err = await res.json().catch(() => ({ error: "Request failed (" + res.status + ")" }));
-      setError(turn, err.error || "Something went wrong.");
-      history.pop();
+      if (gen === generation) {
+        setError(turn, err.error || "Something went wrong.");
+        history.pop();
+      }
       return;
     }
 
@@ -211,6 +228,12 @@ export async function sendMessage(text, opts) {
       }
     }
 
+    if (gen !== generation) {
+      // Chat was cleared while the tail streamed in: nothing to render or
+      // remember; purge the server's copy of an answer nobody will read.
+      ackAnswer(requestId);
+      return;
+    }
     if (acc) {
       history.push({ role: "assistant", content: acc });
       ackAnswer(requestId); // delivered intact — purge the server's recovery copy
@@ -219,6 +242,12 @@ export async function sendMessage(text, opts) {
       history.pop();
     }
   } catch (e) {
+    if (e?.name === "AbortError" || gen !== generation) {
+      // New chat aborted this request deliberately: no error UI, no
+      // beacon, no recovery — just purge the abandoned server copy.
+      ackAnswer(requestId);
+      return;
+    }
     // Tell the server why the client's side died — it often can't know
     // (a download-triggered navigation or backgrounded tab kills the fetch
     // without a clean disconnect). sendBeacon survives page teardown.
@@ -240,7 +269,12 @@ export async function sendMessage(text, opts) {
     // The server finishes the research even when our connection dies and
     // parks the answer in a short-lived recovery cache — poll it back
     // before bothering the user.
-    const recovered = await recoverAnswer(turn, requestId, opts.budgetS);
+    const recovered = await recoverAnswer(turn, requestId, opts.budgetS, gen);
+    if (gen !== generation) {
+      // Chat was cleared while recovery was polling — drop the result.
+      ackAnswer(requestId);
+      return;
+    }
     if (recovered) {
       acc = recovered.text;
       setText(turn, acc);
