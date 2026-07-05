@@ -64,20 +64,23 @@ header {
   pointer-events: none;
 }
 
-/* Two stacked rows: plain-text brand on top, glass controls beneath. */
+/* Two stacked rows: centered plain-text brand on top, glass controls
+   spanning the full width beneath. */
 .header-bar {
-  padding: .5rem 1rem .35rem;
+  padding: .45rem 1rem .35rem;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: .4rem;
+  align-items: stretch;
+  gap: .35rem;
   background: transparent;
 }
-/* Just the characters — no pane; a soft glow keeps them legible over
-   scrolling content. It never captures clicks. */
+/* Just the characters — thin, small, centered; a soft glow keeps them
+   legible over scrolling content. Never captures clicks. */
 .brand {
-  font-weight: 600;
-  font-size: .95rem;
+  align-self: center;
+  font-weight: 300;
+  font-size: .8rem;
+  letter-spacing: .03em;
   text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
   pointer-events: none;
 }
@@ -94,7 +97,9 @@ header {
   font: inherit;
   font-size: .85rem;
   font-weight: 400;
-  max-width: min(340px, 52vw);
+  /* Fills all space between New chat (left) and account (right). */
+  flex: 1;
+  min-width: 0;
 }
 #model[hidden] { display: none; }
 #chat {
