@@ -173,18 +173,21 @@ unknown `status` types (forward compatibility).
   prohibited practices mapped onto a text research tool, and an honest
   read of why the Article 2(6)/2(8) research and pre-market exemptions
   don't cleanly apply to continuous real-world use by invited people).
-  The page also fetches and renders `public/build/history.md` (the
-  complete, prompt-by-prompt build history, moved here from `docs/` so
-  it's part of the shipped product and not just a repo file) via the
-  same vendored `marked`/`DOMPurify` pipeline the chat UI uses. Append to
-  `history.md`, not rewrite — it's a chronological record; keep adding a
-  new section per session the way earlier entries did.
+- **"The build story"** at `/story/` (auth-gated static page, its own
+  top-level account-panel entry): fetches and renders
+  `public/build/history.md` (the complete, prompt-by-prompt build
+  history, moved from `docs/` so it's part of the shipped product and
+  not just a repo file) via the same vendored `marked`/`DOMPurify`
+  pipeline the chat UI uses, flowing with normal page scroll — and
+  NEVER sideways: tables and code wrap instead of forcing width. Append
+  to `history.md`, not rewrite — it's a chronological record; keep
+  adding a new section per session the way earlier entries did.
 - **Account panel** (`public/js/account.js`) is two levels: the default
   view shows only the rolling 5-hour window (the one that actually gates
   the next message) plus navigation (Full usage & history, About this
-  project, Documentation, Admin, Sign out); "Full usage & history" drills
-  into today/this-week/this-month. Both views re-render from one cached
-  `/api/me` response.
+  project, The build story, Documentation, Admin, Sign out); "Full usage
+  & history" drills into today/this-week/this-month. Both views re-render
+  from one cached `/api/me` response.
 - **Privacy notice** on first visit (Berget/Exa processing, metadata-only
   logs, no stored conversations — except the ≤15 min answer-recovery
   buffer, disclosed in the notice); acknowledgement remembered for a year
@@ -340,9 +343,9 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   the site is, the EU AI Act Article 5 prohibited-use list, the privacy
   summary, one Accept button (`POST /terms/accept`). Acceptance is stamped
   as `terms_accepted_at` on the user row (additive D1 migration). `/build/`
-  stays readable pre-acceptance (the full text the page summarizes);
-  break-glass is exempt (no user row). Deliberately one page, once —
-  keep it that way; no consent-page sprawl.
+  and `/story/` stay readable pre-acceptance (the full text the page
+  summarizes); break-glass is exempt (no user row). Deliberately one
+  page, once — keep it that way; no consent-page sprawl.
 - **Auto-provisioning + approval gate**: any Google account with a
   **verified** email can sign in; the first sign-in creates the D1 user
   row. The `ADMIN_EMAIL` variable (set in the Cloudflare dashboard, not

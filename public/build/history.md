@@ -1042,6 +1042,20 @@ a day" to **built over a weekend**, with the GitHub repo URL now cited on
 the /build/ page, the terms page, and this document's intro. And this
 history section itself was appended, with the gap note above.
 
+- Commit: `3524a65` (resolved by the next entry, as ever)
+
+### 80. "Place the entire build story under a separate card at top level under account page instead of below the eu ai act under about this page"
+
+The build history left the bottom of the About page and became a
+first-class page of its own: `/story/`, with its own "The build story"
+entry in the account panel between About this project and Documentation.
+The story page renders the same `history.md` with normal page scroll (no
+inner scroll box — the page IS the story) and inherits the
+nothing-scrolls-sideways rules. `/build/` keeps its purpose statement and
+the EU AI Act section, now ending in a pointer card to the story; the
+terms page links both, and both stay readable before the terms are
+accepted.
+
 - Commit: (this document's own commit — see the ledger of the next
   continuation)
 
@@ -1052,3 +1066,4 @@ history section itself was appended, with the gap note above.
 | 68 | `11910ff` | 05 18:59 | Move ADMIN_EMAIL to a Worker secret instead of a public wrangler.toml var |
 | 69 | `9c7097b` | 05 19:08 | Clarify ADMIN_EMAIL is a dashboard variable, not a Worker secret |
 | 70 | `34abbf2` | 05 19:14 | Document the full install: every variable, secret, and setup step |
+| 71 | `3524a65` | 05 19:40 | Terms acceptance at first sign-in; build history never scrolls sideways |

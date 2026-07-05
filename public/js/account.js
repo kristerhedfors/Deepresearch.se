@@ -59,6 +59,7 @@ function renderSummary(me) {
     <div class="account-actions">
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <a href="/build/">About this project</a>
+      <a href="/story/">The build story</a>
       <a href="/help/">Documentation</a>
       ${me.role === "admin" ? '<a href="/admin">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>

@@ -133,15 +133,18 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   // Terms gate: every account must accept the terms of use once, right
   // after first sign-in — before the approval wait, the app, or any API.
   // The break-glass identity has no user row to record acceptance on and
-  // is exempt (it's the operator). /build/ stays readable pre-acceptance
-  // so the full "About this project" text the terms summarize is one tap
-  // away, and /logout is handled above.
+  // is exempt (it's the operator). /build/ (About) and /story/ (build
+  // history) stay readable pre-acceptance so the full text the terms
+  // summarize is one tap away, and /logout is handled above.
   if (identity.user && !identity.user.terms_accepted_at) {
     if (url.pathname === "/terms/accept" && request.method === "POST") {
       await acceptTerms(env, identity.user.id);
       return new Response(null, { status: 303, headers: { Location: "/" } });
     }
-    if (request.method === "GET" && (url.pathname === "/build" || url.pathname.startsWith("/build/"))) {
+    if (
+      request.method === "GET" &&
+      /^\/(build|story)(\/|$)/.test(url.pathname)
+    ) {
       return env.ASSETS.fetch(request);
     }
     if (url.pathname.startsWith("/api/")) {

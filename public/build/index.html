@@ -49,33 +49,6 @@
     }
     .not-allowed li { margin: .5rem 0; }
     .not-allowed b { color: #7a1414; }
-    /* The rendered build history (fetched markdown) lives in its own
-       vertical scroll container — it's long. NOTHING here may scroll
-       sideways: tables and code wrap instead of forcing width, so the
-       page never pans horizontally on a phone. */
-    #history {
-      max-height: 70vh; overflow-y: auto; overflow-x: hidden;
-      overflow-wrap: break-word;
-      border: 1px solid var(--border); border-radius: 10px;
-      padding: .8rem 1rem; background: #fff;
-    }
-    #history h1 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
-    #history h2 { font-size: 1rem; margin-top: 1.2rem; }
-    #history h3 { font-size: .92rem; margin-top: .9rem; }
-    #history hr { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
-    #history table { border-collapse: collapse; font-size: .8rem; width: 100%; }
-    #history th, #history td {
-      border: 1px solid var(--border); padding: .3rem .55rem; text-align: left;
-      vertical-align: top; overflow-wrap: anywhere;
-    }
-    #history pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-    #history code { overflow-wrap: anywhere; }
-    #history th { background: var(--panel-2); }
-    #history blockquote {
-      margin: .5rem 0; padding: .4rem .8rem; border-left: 3px solid var(--accent);
-      background: var(--panel-2); border-radius: 0 6px 6px 0; font-size: .88rem;
-    }
-    #history a { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -94,7 +67,8 @@
     recovery, all of it) built <b>over a weekend</b>, almost entirely
     <b>from a phone</b>, prompt by prompt, using Claude Code as the only
     development interface — no laptop, no IDE. The complete, verbatim
-    build history is below, and the source code is public at
+    build history has its own page, <a href="/story/">The build story</a>,
+    and the source code is public at
     <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>.</p>
     <div class="callout"><b>Access:</b> this site is invite-only and
     approval-gated. It is not marketed, not sold, and not intended for the
@@ -198,24 +172,13 @@
   </section>
 
   <section>
-    <h2>The complete build history</h2>
+    <h2>The build story</h2>
     <p>Every prompt, verbatim, from the first "Deploy hello world" to
     right now — what was asked, what broke, what was discovered, and the
-    commit that landed each step. This is the same file kept in the repo
-    for retelling, rendered here so it's part of the product, not just the
-    source.</p>
-    <div id="history"><p class="muted">Loading…</p></div>
+    commit that landed each step — has its own page:
+    <a href="/story/"><b>The build story</b></a> (also reachable from the
+    account panel).</p>
   </section>
 </main>
-<script src="/vendor/marked.min.js"></script>
-<script src="/vendor/purify.min.js"></script>
-<script type="module">
-  import { renderMarkdownInto } from "/js/markdown.js";
-  const el = document.getElementById("history");
-  fetch("/build/history.md")
-    .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
-    .then((md) => renderMarkdownInto(el, md))
-    .catch(() => { el.innerHTML = '<p class="muted">Could not load the build history.</p>'; });
-</script>
 </body>
 </html>

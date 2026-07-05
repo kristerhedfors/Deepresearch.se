@@ -123,10 +123,10 @@ export function termsPage(identity) {
     over a weekend, almost entirely from a phone, with Claude Code as the only
     development interface. It is invite-only, not a commercial product, and
     never placed on the market. The source is public at
-    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>
-    and the full story — including the complete build history and the EU AI
-    Act reasoning behind the rules below — is on the
-    <a href="/build/">About this project</a> page.</p>
+    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>;
+    the EU AI Act reasoning behind the rules below is on the
+    <a href="/build/">About this project</a> page, and the complete
+    prompt-by-prompt history is on <a href="/story/">The build story</a>.</p>
 
     <h2>Not allowed here</h2>
     <p>The EU AI Act’s prohibited practices (Article 5), mapped onto what a
