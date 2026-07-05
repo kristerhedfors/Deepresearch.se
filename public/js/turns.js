@@ -1,8 +1,9 @@
 // Chat turn rendering: user bubbles and assistant turns (activity wrapper +
-// streamed content + Raw/Copy tools + stats footer). Initialize once with
-// the chat container and a scroll callback.
+// streamed content + Raw/Copy/PDF tools + stats footer). Initialize once
+// with the chat container and a scroll callback.
 
 import { renderMarkdownInto } from "./markdown.js";
+import { downloadReport } from "./report.js";
 
 const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -24,7 +25,7 @@ export function clearChatDom() {
 
 const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 
-export function addUserBubble(text, imageUrls = []) {
+export function addUserBubble(text, imageUrls = [], docNames = []) {
   clearEmpty();
   const el = document.createElement("div");
   el.className = "msg user";
@@ -39,13 +40,25 @@ export function addUserBubble(text, imageUrls = []) {
     }
     el.appendChild(imgs);
   }
+  if (docNames.length) {
+    const docs = document.createElement("div");
+    docs.className = "docs";
+    for (const name of docNames) {
+      const chip = document.createElement("span");
+      chip.className = "doc-chip";
+      chip.textContent = "📄 " + name;
+      docs.appendChild(chip);
+    }
+    el.appendChild(docs);
+  }
   chat.appendChild(el);
   scrollDown(true); // sending re-attaches auto-follow
 }
 
 // An assistant turn = collapsible activity panel + streamed content (typing
-// icon until the first token) + Raw/Copy tools + stats footer.
-export function addAssistantTurn() {
+// icon until the first token) + Raw/Copy/PDF tools + stats footer.
+// `question` (the user's prompt) becomes the PDF report's title.
+export function addAssistantTurn(question = "") {
   clearEmpty();
   const el = document.createElement("div");
   el.className = "msg assistant";
@@ -75,9 +88,10 @@ export function addAssistantTurn() {
 
   const turn = {
     el, activityWrap, activity, activityLabel, content, stats,
+    question, model: "",
     lastStep: null, steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
   };
-  tools.append(makeRawButton(turn), makeCopyButton(turn));
+  tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));
   return turn;
 }
 
@@ -93,6 +107,26 @@ function makeRawButton(turn) {
     renderContent(turn);
   });
   return rawBtn;
+}
+
+function makePdfButton(turn) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "tool-btn";
+  btn.textContent = "PDF";
+  btn.title = "Download as a PDF report";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+      await downloadReport(turn, { model: turn.model });
+      btn.textContent = "PDF ✓";
+    } catch {
+      btn.textContent = "PDF failed";
+    }
+    setTimeout(() => { btn.textContent = "PDF"; btn.disabled = false; }, 1500);
+  });
+  return btn;
 }
 
 function makeCopyButton(turn) {

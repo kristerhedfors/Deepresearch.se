@@ -91,9 +91,14 @@
       <li><b>Text field</b> — type your question. <b>Enter inserts a line
         break</b>; nothing is sent until you tap the <b>arrow</b>. The field
         grows up to about six lines.</li>
-      <li><b>Paperclip</b> — attach images (on models that support image
-        input; on others the button is dimmed and offers to switch model).
-        Images are downscaled in your browser before upload.</li>
+      <li><b>Paperclip</b> — attach images or documents
+        (<code>pdf</code>, <code>docx</code>, <code>md</code>,
+        <code>txt</code>). Each attachment appears as a small card above
+        the bottom edge of the pane, with a white ✕ to remove it.
+        Documents are read <i>in your browser</i> — their extracted text
+        travels inside your message; the files themselves are never
+        uploaded anywhere. Images need a vision-capable model (you'll be
+        offered a switch) and are downscaled in your browser first.</li>
       <li><b>Blue knob</b> — the web-search switch. See the next section;
         this is the control with the biggest privacy meaning.</li>
       <li><b>🔍 loupe</b> — shows a short explanation of the web-search
@@ -103,6 +108,13 @@
         rounds, and a fact-checking pass; less time gets a faster, slimmer
         answer. The spelled-out target sits right of the slider.</li>
       <li><b>Arrow</b> — sends the question. This is the only way to send.</li>
+    </ul>
+    <h3>On each answer</h3>
+    <ul>
+      <li><b>Raw</b> — toggles between rendered and plain-text view.</li>
+      <li><b>Copy</b> — copies the answer text to your clipboard.</li>
+      <li><b>PDF</b> — downloads the answer as a formatted report tagged
+        DeepResearch.se, generated entirely in your browser.</li>
     </ul>
     <img src="/help/img/popover.png" alt="The web-search info popover" width="390">
   </section>

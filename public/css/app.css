@@ -350,24 +350,55 @@ button:disabled { opacity: .5; cursor: default; }
   box-shadow: 0 2px 8px rgba(4, 30, 60, .25);
 }
 
-/* Pending image attachments (above the input, inside the pane) */
+/* Pending attachments: rounded cards on their own line at the BOTTOM of
+   the glass pane — thumb/file icon + name, and a white circular ✕ in the
+   upper-right corner to remove. */
 #pending {
   display: flex;
-  gap: .5rem;
+  gap: .6rem;
   flex-wrap: wrap;
-  padding: .35rem .35rem 0;
+  padding: .5rem .15rem .1rem;
 }
 #pending:empty { display: none; }
-.thumb { position: relative; }
-.thumb img {
-  width: 56px; height: 56px; object-fit: cover;
-  border-radius: 8px; border: 1px solid var(--border);
+.att-card {
+  position: relative;
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(255, 255, 255, .5);
+  border: 1px solid rgba(255, 255, 255, .75);
+  border-radius: 12px;
+  padding: .4rem .6rem;
+  max-width: 200px;
 }
-.thumb button {
+.att-card img {
+  width: 34px; height: 34px; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--border); flex: none;
+}
+.att-card .icon {
+  width: 34px; height: 34px; border-radius: 8px; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+  display: grid; place-items: center; font-size: 1rem;
+}
+.att-card .meta { min-width: 0; }
+.att-card .name {
+  font-size: .75rem; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;
+}
+.att-card .sub { font-size: .65rem; color: var(--muted); text-transform: uppercase; }
+.att-remove {
   position: absolute; top: -7px; right: -7px;
-  width: 18px; height: 18px; border-radius: 50%;
-  padding: 0; font-size: 11px; line-height: 1;
-  background: #1b4a80;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0; font-size: 11px; line-height: 1; font-weight: 700;
+  display: grid; place-items: center;
+  box-shadow: 0 1px 4px rgba(4, 30, 60, .3);
+}
+
+/* Document chips inside the sent user bubble */
+.msg.user .docs { display: flex; gap: .4rem; margin-top: .45rem; flex-wrap: wrap; }
+.doc-chip {
+  background: rgba(255, 255, 255, .6); border: 1px solid var(--border);
+  border-radius: 8px; padding: .15rem .5rem; font-size: .75rem;
 }
 textarea::placeholder { color: var(--muted); opacity: .75; }
 

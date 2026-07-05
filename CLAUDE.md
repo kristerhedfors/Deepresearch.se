@@ -106,9 +106,21 @@ unknown `status` types (forward compatibility).
 
 - Assistant answers render as **Markdown by default** (synthesis prompt asks
   for Markdown). Rendering is client-side with vendored `marked` +
-  `DOMPurify` (`public/vendor/` — no CDN; everything stays behind Basic
-  Auth). Always sanitize: answers can quote hostile web content. Each answer
-  has Raw (plain-text toggle) and Copy (raw text to clipboard) buttons.
+  `DOMPurify` (`public/vendor/` — no CDN; everything stays behind auth).
+  Always sanitize: answers can quote hostile web content. Each answer has
+  Raw (plain-text toggle), Copy, and **PDF** buttons — PDF generates a
+  branded DeepResearch.se report client-side via vendored jsPDF
+  (`public/js/report.js`; the 360KB lib is script-injected on first use
+  only).
+- **Document attachments** (`public/js/docs.js`): the paperclip accepts
+  images AND `pdf`/`docx`/`md`/`txt`. Docs are parsed entirely client-side
+  (txt/md directly; pdf via vendored pdf.js, dynamically imported on first
+  PDF; docx via a minimal ZIP reader + `DecompressionStream("deflate-raw")`
+  — no library) and embedded as labeled text blocks in the API message
+  (never shown in the bubble, which gets 📄 chips). Caps: 3 docs × 9K chars
+  (fits the server's 32K message limit), 4 images. Attachments render as
+  rounded cards with a white circular ✕, on their own line at the BOTTOM
+  of the composer pane (`#pending` after the form).
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
 - **Floating chrome (no hide/show):** header and footer are FIXED,
   click-transparent strips (`pointer-events: none`) whose glass items

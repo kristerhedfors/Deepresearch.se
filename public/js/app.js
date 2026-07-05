@@ -18,6 +18,7 @@ import {
   startGenericStep,
   startSearchStep,
 } from "./activity.js";
+import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import {
   addAssistantTurn,
@@ -257,110 +258,150 @@ document.getElementById("privacyok").addEventListener("click", () => {
   privacy.hidden = true;
 });
 
-// ---- Image attachments (vision-capable models only) ------------------------
+// ---- Attachments: images (vision models) + documents (pdf/docx/md/txt) -----
 
-const MAX_ATTACH = 4;
+const MAX_IMAGES = 4;
+const MAX_DOCS = 3;
 const MAX_RAW_BYTES = 25 * 1024 * 1024; // sanity cap on input files
 // The LLM provider rejects request bodies over ~1 MB, so images are
 // downscaled to JPEG data URLs within these budgets before attaching.
 const PER_IMAGE_CHARS = 280000;
 const TOTAL_IMAGE_CHARS = 700000;
+// Documents become extracted text inside the message; the server caps a
+// message at 32K chars, so each doc gets a slice of that.
+const PER_DOC_CHARS = 9000;
+
+const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
+const images = () => attachments.filter((a) => a.kind === "image");
+const docs = () => attachments.filter((a) => a.kind === "doc");
 
 function currentModel() {
   return knownModels.find((m) => m.id === modelSel.value);
 }
 
 function updateAttachState() {
+  // Documents attach on every model; images need vision. Keep the button
+  // fully active either way — the vision question is handled per-file.
   const vision = !!currentModel()?.vision;
-  // Never disable: on touch devices a disabled button gives no feedback
-  // (title tooltips don't exist there). Dim it instead; the tap handler
-  // explains and offers to switch models.
-  attachBtn.classList.toggle("dim", !vision);
   attachBtn.title = vision
-    ? "Attach images"
-    : "Image input needs a vision-capable model — tap to switch";
-  if (!vision && attachments.length) {
-    attachments = [];
+    ? "Attach images or documents (pdf, docx, md, txt)"
+    : "Attach documents (pdf, docx, md, txt) — images need a vision model";
+  if (!vision && images().length) {
+    attachments = attachments.filter((a) => a.kind !== "image");
     renderPending();
   }
 }
 
+// Each attachment renders as a rounded card (thumb or file icon + name)
+// with a white circular × in its upper-right corner — on their own line
+// at the bottom of the glass pane.
 function renderPending() {
   pendingBox.replaceChildren();
   attachments.forEach((a, i) => {
-    const wrap = document.createElement("div");
-    wrap.className = "thumb";
-    const img = document.createElement("img");
-    img.src = a.dataUrl;
-    img.alt = a.name;
-    img.title = a.name;
+    const card = document.createElement("div");
+    card.className = "att-card";
+    if (a.kind === "image") {
+      const img = document.createElement("img");
+      img.src = a.dataUrl;
+      img.alt = a.name;
+      card.appendChild(img);
+    } else {
+      const icon = document.createElement("span");
+      icon.className = "icon";
+      icon.textContent = "📄";
+      card.appendChild(icon);
+    }
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = a.name;
+    name.title = a.name;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = a.kind === "image" ? "image" : a.ext + (a.truncated ? " · truncated" : "");
+    meta.append(name, sub);
+    card.appendChild(meta);
     const rm = document.createElement("button");
     rm.type = "button";
-    rm.textContent = "×";
-    rm.title = "Remove";
+    rm.className = "att-remove";
+    rm.textContent = "✕";
+    rm.title = "Remove attachment";
+    rm.setAttribute("aria-label", "Remove " + a.name);
     rm.addEventListener("click", () => {
       attachments.splice(i, 1);
       renderPending();
     });
-    wrap.append(img, rm);
-    pendingBox.appendChild(wrap);
+    card.appendChild(rm);
+    pendingBox.appendChild(card);
   });
 }
 
-attachBtn.addEventListener("click", () => {
-  if (currentModel()?.vision) {
-    fileInput.click();
-    return;
-  }
-  // Non-vision model selected: explain and offer a one-tap switch.
-  const alt = knownModels.find((m) => m.vision && m.up !== false);
-  if (!alt) {
-    alert(knownModels.length
-      ? "No vision-capable models are currently available."
-      : "The model list is still loading — try again in a moment.");
-    return;
-  }
-  if (confirm("Image attachments need a vision-capable model.\nSwitch to " + alt.name + "?")) {
-    modelSel.value = alt.id;
-    localStorage.setItem("model", alt.id);
-    updateAttachState();
-    // Some mobile browsers consume the user gesture on confirm(); if the
-    // picker doesn't open now, the button is active for the next tap.
-    fileInput.click();
-  }
-});
+attachBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", async () => {
   const files = [...fileInput.files];
   fileInput.value = "";
   for (const file of files) {
-    if (attachments.length >= MAX_ATTACH) {
-      alert("Max " + MAX_ATTACH + " images per message.");
-      break;
-    }
     if (file.size > MAX_RAW_BYTES) {
       alert(file.name + " is too large.");
       continue;
     }
-    const used = attachments.reduce((s, a) => s + a.dataUrl.length, 0);
-    const budget = Math.min(PER_IMAGE_CHARS, TOTAL_IMAGE_CHARS - used);
-    if (budget < 60000) {
-      alert("Image size budget for this message is full — send these first.");
-      break;
-    }
-    try {
-      const dataUrl = await downscaleImage(file, budget);
-      if (!dataUrl) {
-        alert("Could not compress " + file.name + " enough to send.");
-        continue;
-      }
-      attachments.push({ name: file.name, dataUrl });
-      renderPending();
-    } catch {
-      alert("Could not read " + file.name + " as an image.");
-    }
+    if (isImageFile(file)) await addImageFile(file);
+    else if (isParsableDoc(file)) await addDocFile(file);
+    else alert(file.name + ": unsupported type. Use images or pdf, docx, md, txt.");
   }
 });
+
+async function addImageFile(file) {
+  if (!currentModel()?.vision) {
+    // Explain and offer a one-tap switch to a vision-capable model.
+    const alt = knownModels.find((m) => m.vision && m.up !== false);
+    if (!alt) {
+      alert("Images need a vision-capable model and none is available right now.");
+      return;
+    }
+    if (!confirm("Image attachments need a vision-capable model.\nSwitch to " + alt.name + "?")) return;
+    modelSel.value = alt.id;
+    localStorage.setItem("model", alt.id);
+    updateAttachState();
+  }
+  if (images().length >= MAX_IMAGES) {
+    alert("Max " + MAX_IMAGES + " images per message.");
+    return;
+  }
+  const used = images().reduce((s, a) => s + a.dataUrl.length, 0);
+  const budget = Math.min(PER_IMAGE_CHARS, TOTAL_IMAGE_CHARS - used);
+  if (budget < 60000) {
+    alert("Image size budget for this message is full — send these first.");
+    return;
+  }
+  try {
+    const dataUrl = await downscaleImage(file, budget);
+    if (!dataUrl) {
+      alert("Could not compress " + file.name + " enough to send.");
+      return;
+    }
+    attachments.push({ kind: "image", name: file.name, dataUrl });
+    renderPending();
+  } catch {
+    alert("Could not read " + file.name + " as an image.");
+  }
+}
+
+async function addDocFile(file) {
+  if (docs().length >= MAX_DOCS) {
+    alert("Max " + MAX_DOCS + " documents per message.");
+    return;
+  }
+  try {
+    const { text, truncated } = await parseDocFile(file, PER_DOC_CHARS);
+    attachments.push({ kind: "doc", name: file.name, ext: docExt(file), text, truncated });
+    renderPending();
+  } catch (err) {
+    alert(err?.message || "Could not read " + file.name + ".");
+  }
+}
 
 // Phone photos are several MB but the LLM provider rejects request bodies
 // over ~1 MB — resize to max 1280px and walk JPEG quality (then dimensions)
@@ -413,7 +454,10 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "search_done") finishSearchStep(turn, s);
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
-    else if (s.type === "done") renderStats(turn, s);
+    else if (s.type === "done") {
+      turn.model = s.model || ""; // titles the PDF report metadata
+      renderStats(turn, s);
+    }
     else if (s.type === "discard_text") {
       resetForRevision(turn);
       return "";
@@ -448,22 +492,31 @@ function messagesForApi() {
 }
 
 async function sendMessage(text) {
-  // Build message content: plain string, or a multimodal array when images
-  // are attached (OpenAI-style parts).
-  const images = attachments.slice();
+  // Build message content. Documents become labeled text blocks in the
+  // API message (never shown in the bubble); images become OpenAI-style
+  // multimodal parts.
+  const sentImages = images();
+  const sentDocs = docs();
   attachments = [];
   renderPending();
-  let content = text;
-  if (images.length) {
+  let apiText = text;
+  for (const d of sentDocs) {
+    apiText +=
+      `\n\n--- Attached document: ${d.name}${d.truncated ? " (truncated)" : ""} ---\n` +
+      d.text +
+      "\n--- End of document ---";
+  }
+  let content = apiText;
+  if (sentImages.length) {
     content = [];
-    if (text) content.push({ type: "text", text });
-    for (const a of images) {
+    if (apiText) content.push({ type: "text", text: apiText });
+    for (const a of sentImages) {
       content.push({ type: "image_url", image_url: { url: a.dataUrl } });
     }
   }
   history.push({ role: "user", content });
-  addUserBubble(text, images.map((a) => a.dataUrl));
-  const turn = addAssistantTurn();
+  addUserBubble(text, sentImages.map((a) => a.dataUrl), sentDocs.map((d) => d.name));
+  const turn = addAssistantTurn(text);
   let acc = "";
 
   try {
