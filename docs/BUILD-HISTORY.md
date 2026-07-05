@@ -466,6 +466,36 @@ No change was declared done on faith:
    with measured priors and updating on every completed phase makes a time
    budget you can actually plan against.
 
+## What it cost in tokens
+
+Measured from the session's own transcript (every API request's usage
+metadata, deduplicated per request), covering the build day and the
+documentation follow-ups (2026-07-04 11:52 → 2026-07-05 06:54):
+
+| Metric | Amount |
+|---|---|
+| Model API calls | 506 |
+| User prompts (text turns) | ~65 |
+| Output tokens (everything the model wrote: code, analysis, docs) | **557,126** |
+| Fresh input tokens (uncached) | 45,475 |
+| Prompt-cache writes | 10,037,587 |
+| Prompt-cache reads | 209,075,549 |
+| **Total tokens processed** | **~219.7 million** |
+
+The spread between "fresh input" and "cache reads" is the story: an agent
+session re-sends its whole growing context on every call, and prompt
+caching is what makes that economical — 99.98% of all input tokens were
+cache hits. The model *wrote* about 557K tokens to produce the entire
+product: ~2,850 lines of hand-written code and config now shipping
+(server, client, styles, markup — vendored libraries excluded), plus all
+the iterations that were replaced along the way, the live probing, and
+the documentation.
+
+Split by model: `claude-fable-5` did the bulk (457K output tokens across
+its calls), with a brief `claude-opus-4-8` interlude during the icon work
+(100K output tokens). Numbers exclude this very paragraph's commit — the
+one part of the session that can't measure itself before it ends.
+
 ## Full commit ledger
 
 | # | Commit | Time | Subject |
