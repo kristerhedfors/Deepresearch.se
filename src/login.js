@@ -62,7 +62,7 @@ export function pendingPage(identity) {
 </head>
 <body>
   <div class="card">
-    <img class="logo" src="/icons/icon-192.png?v=3" alt="">
+    <img class="logo" src="/icons/icon-192.png?v=4" alt="">
     <h1>Almost there</h1>
     <p class="muted">You’re signed in as <b>${escapeHtml(identity.email)}</b>,
     and your account is waiting for the site owner’s approval. This page
@@ -105,7 +105,7 @@ export function loginPage(flash) {
 </head>
 <body>
   <div class="card">
-    <img class="logo" src="/icons/icon-192.png?v=3" alt="">
+    <img class="logo" src="/icons/icon-192.png?v=4" alt="">
     <h1>Deepresearch.se</h1>
     ${messages[flash] || ""}
     <a class="gbtn" href="/auth/google">${G_SVG} Continue with Google</a>

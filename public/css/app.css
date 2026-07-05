@@ -260,7 +260,7 @@ header {
    pulse screwing the inner yellow spiral inward (grow, twist clockwise)
    and back outward (shrink, untwist) via alternate direction. */
 .spin, .typing-icon {
-  background: url("/icons/icon-192.png?v=3") center / cover;
+  background: url("/icons/icon-192.png?v=4") center / cover;
   border-radius: 50%;
   flex: none;
   animation: pulse-screw 1.4s ease-in-out infinite alternate;
