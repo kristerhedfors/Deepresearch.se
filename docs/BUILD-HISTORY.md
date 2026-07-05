@@ -539,3 +539,220 @@ one part of the session that can't measure itself before it ends.
 *(All times 2026-07-04, commit-author local time. The first two commits'
 timestamps are out of order because the GitHub-generated initial commit was
 merged after work had started.)*
+
+---
+
+# Day 2 — from chatbot to product (2026-07-04 22:30 → 2026-07-05 14:00)
+
+The same session continued (context compacted, never restarted): 23 more
+commits turning the deep-research chatbot into a multi-user product with
+Google sign-in, an approval gate, real-cost quotas, an admin console, a
+glass UI, PDF reports, and document attachments. Every prompt verbatim, as
+before.
+
+## Documentation & polish (evening of day 1)
+
+### 37. "Detail the complete architecture in markdown including drawio data flows in repo"
+
+`docs/ARCHITECTURE.md` (with inline Mermaid) + `docs/architecture.drawio`
+with four editable pages: system context & deployment, request routing &
+auth, the pipeline data flow, and the SSE stream sequence. — `bde7e9d`
+
+### 38. "While scrolling a result, use entire screen for content, meaning hide input and controls at bottom, hide model selector and stuff in header up top…"
+
+Immersive reading v1: scrolling up hid header and footer. The trap found
+during implementation: hiding the chrome grows the chat view by exactly the
+chrome's height, so a naive threshold oscillates — entering needed
+hysteresis (chrome height + 96px). — `748231a`
+
+### 39. "Enter and exit immersive reader smoothly but still very quickly. Have header and footer slide away and back… Also add a bit of css life to background color with waves of slightly different shades move diagonally across… keep it subtle"
+
+Slide animation via `grid-template-rows: 1fr→0fr` (animates natural
+heights, no magic max-heights; the header's padding+border floor of 33px
+had to collapse too). Background: a repeating diagonal gradient of
+near-invisible white/navy bands, translated exactly one 280px period per
+26s loop for a seamless cycle. — `2b5b6f3`
+
+### 40. "Also record for the linkedin post the number of tokens used"
+
+The token-usage section above. — `526f4f2`
+
+## The multi-user product (morning, ~7 hours)
+
+### 41. "Now build and integrate the admin interface to handle invitations to users. Will add google authentication later. Users either try to log in and request access there… or get a link or qr code to open bound to their email… Also have some basic configurability… Users can be either regular users or admins. Users should have a research quota inspired by Claude code meaning x hours and y cost… per day, per week and month, plus a dashboard for admin and one for users… Let me set admin creds as cloudflare worker secrets"
+
+The biggest single build of the session (+2,742 lines, 19 files): D1
+database (auto-migrating schema), email+password accounts via single-use
+invitations with QR codes (vendored MIT qrcodegen — invite URLs never touch
+a third party), a public request-access flow, hours+cost quotas per
+day/week/month with per-user overrides, usage recording after every
+stream, an admin console, and an in-app usage panel. Verified with 22 curl
+checks + 16 Playwright checks against `wrangler dev --local` with real D1.
+— `df6e552`
+
+### 42. "Guide me on howto enable google authentication later, I have a google cloud project"
+
+`docs/GOOGLE-AUTH.md`: console setup, secrets, the server-side OIDC code
+flow mapped onto the email-keyed accounts, and a pitfalls checklist
+(email_verified, exact redirect URIs, consent-screen publishing).
+— `75f20fe`
+
+### 43. "Lets switch to google auth only, we have google secret and client configured in cloudflare. Let krister.hedfors@gmail.com be admin and everyone else regular user. Make sure PWA handles long lived tokens so users dont need to log in every time"
+
+Passwords, invitations, and access requests deleted the same day they were
+built (net −1,172 lines). Google OIDC became the only sign-in:
+auto-provisioning on first login, ADMIN_EMAIL → admin role, sessions
+stretched to 365 days with sliding renewal (HttpOnly server-set cookies
+also dodge Safari ITP's 7-day cap). Break-glass Basic Auth kept for
+emergencies. Verified with a mocked Google token endpoint: 27 curl + 9
+browser checks. — `685fff8`
+
+### 44–45. "Sign-in is temporarily unavailable (accounts database not configured)." / "Cant see the full uuid in database overview on mobile…" / "d9144c29-c8b2-4914-a795-37f8df393ac8"
+
+Production hiccup: the D1 block in wrangler.toml was still commented out.
+The user created the database from a phone (tip that worked: the full UUID
+is in the dashboard URL), pasted the id in chat, and the binding was
+pushed. Live verification: a garbage OAuth callback switched from the
+"nodb" bounce to the state-check rejection — proof the Worker reached the
+database. — `c36b05f`
+
+### 46–47. "I cant add users in admin interface? Do I need to add them ib google cloud interface?" → "Yes I want the gate"
+
+First: an explanation (auto-provisioning means users create themselves by
+signing in; the one Google-console trap is a consent screen stuck in
+Testing). Then the approval gate: new sign-ins land as status `pending` on
+an auto-refreshing waiting page — no APIs, no cost — until approved in
+/admin, where approval takes effect on the user's next request with no
+re-login. 17 checks. — `b55f7a6`
+
+### 48. "Remove the Make admin button, Im the only admin forever"
+
+Sole-admin policy, enforced at both layers: button removed AND the admin
+API stopped accepting role changes entirely — the only path to admin is
+ADMIN_EMAIL at sign-in. — `5e3ffff`
+
+## Quota iterations — finding the right model
+
+### 49. "Quota fixes: 1) We want 5hr quota as well… 2) users should not see currency amounts, they just need the bar 3) there should be no time limits! Exa pays by search count and berget by token! Measure correctly and aggregate correctly so admin can see both user and aggregated usage…"
+
+Quotas v2: a rolling last-5-hours window joined day/week/month; dimensions
+became tokens + searches; `/api/me` stripped of every cost field. Two real
+bugs found by the verification pass: the aggregation undercounted weeks
+that start before the month (fixed by filtering from the MINIMUM of all
+window starts), and the quota sanitizer still filtered for the old field
+names, nulling every new override. 20 unit + 12 e2e + 9 browser checks.
+— `8e6e9e4`
+
+### 50. "Actually for berget keep quota cost based as different tokens have different cost so the bar shown to users is backed by cost - but still opaque to users. In admin interface we count tokens per model as well… Conplete cost control and real cost grounded quota is our goal."
+
+Quotas v3 (final): Berget budget in EUR per window — the only cap that
+truly bounds spend across differently-priced models — surfaced to users
+only as an opaque percentage ("Research budget · 43%"); Exa stays
+count-capped. Admin gained the usage-by-model table: token counts and what
+they actually cost, per window. Unit test proving the point: the same
+million tokens cost €0.30 on the cheap model and €4.00 on the pricey one.
+— `e1e06e6`
+
+### 51. "I dont se quota being used, maybe because in admin. I still want quota and bars being counted and shown… although not blocking me once used up… Or if it should have counted, figure out the bug that prevents counting from happening"
+
+Diagnosis: usage was counted — under the break-glass identity (the PWA
+still carried its pre-Google session), which the admin UI never displayed.
+Fixes: admins are now counted but never blocked (bars top out, numbers keep
+climbing), the break-glass identity got its own visible row, and the
+account panel says which identity you're on. Also fixed en route: a
+Google-signed-in admin had been quota-blocked like a regular user.
+— `875f153`
+
+## The glass UI arc (five iterations to the final look)
+
+### 52. "Lets make ui nicer. Both footer and header shall be glass-like transparent. One glass pane with rounded corners contain text input… the new chat, model selector and account button are all individual glass containers." — `cd7dac8`
+### 53. "When typing in inout bar I want enter to linebreak! Dont send query until arrow is tapped. Arrow with container falls slightly outside the footer glass container, make room by moving slider to the left…" — `0938c95` (also found: textareas refuse to shrink below their cols-based intrinsic width — the pane was silently 65px wider than a 320px viewport)
+### 54. "Get rid of the logic to hide header and footer info, instead rely on their items to have glass-like transparency. So no more hide/show, content is visible between items and through their semi transparency." — `6045f09` (immersive mode deleted two days after birth; fixed click-transparent strips with pointer-events re-enabled per item)
+### 55. "good but i no longer see my account button make space for it by making deep research dot se the text without a glass pane just the characters at the top…" — `2d2094b`
+### 56. "Write it like DeepResearch.se, center the characters, make then thinner and smaller. Then let model selector fill out all space between new chat button on left and account button on right" — `4a79f32`
+### 57. "Make research depth slider take up the remaining space on left side… Also, gray out looking glass when web search is switched off. Have a dpcumentation link in accout page where all controls are very clearly explained with screenshots and what it means for privacy." — `5c91e64` (the /help page: five real screenshots captured with Playwright at 2×, every control explained with its privacy meaning)
+
+## Reports, attachments, resilience
+
+### 58. "In addition to raw view and copy button for output, have one to download a generated pdf report, tagged with DeepResearch.se. Also allow as attachments pdf, md, docx and txt and make sure we can parse those." + "Once attached, show rach attached file as a card with rounded corners with a little text and a white circle with an x in its upper roght corner to remove attachment…"
+
+PDF button on every answer (vendored jsPDF, injected on first click;
+branded A4 report with page footers). Attachments parsed fully client-side
+— the files never leave the browser, only extracted text: txt/md directly,
+PDF via lazily-imported pdf.js, and docx via a hand-written minimal ZIP
+reader on top of the browser's native DecompressionStream. Verified with
+real fixtures (a zipfile-built docx, a hand-constructed PDF) and fetch
+interception proving exactly what reached the payload. — `65e0e6b`
+
+### 59. (screenshot) "When we get an error, a network error for instance, and I ask a follow-up question, the text generated as far as it could on the previous reply is not available in context. The… it should be."
+
+The bug: the network-error handler popped the user message and discarded
+the streamed partial — text visible on screen that the model had no memory
+of. Fix: partials stay in context with a cut-off marker. Verified with a
+purpose-built server that streams half an answer then destroys the TCP
+socket. — `b356ea2`
+
+### 60. (screenshot) "Got this network error again, seems to councide with me switching to another app for a moment but dont assume that, search logs and fix"
+
+Logs were unreachable from the sandbox (no API token yet) — which was
+itself the finding: client aborts and server failures were
+indistinguishable. Shipped: SSE keepalive comments every 15s (the JSON
+phases emit nothing for tens of seconds — exactly what idle-connection
+reapers kill), a cancel() hook + pipeline abort on disconnect (no spend
+into a dead stream), a distinct chat.client_disconnected log event, and an
+honest client error when the drop coincides with app backgrounding (iOS
+pauses network for backgrounded PWAs). — `c0013dd`
+
+### 61–63. "Guide me to create the appropriate cloudflare api token" / "Why not limited to my specific domain" / "Network path open and cloudflare api token and account id configured"
+
+Least-privilege token guide (Workers Scripts/Tail/Observability + D1,
+account-scoped — Cloudflare has no domain scoping for Workers resources;
+the specified token carries zero zone permissions). Network path verified
+open from the sandbox; the token lands in the next session's environment.
+
+## Token spend, day 2
+
+Same methodology as before (per-request usage metadata from the session
+transcript). The feature day alone (2026-07-05 06:54 → 14:45):
+
+| Metric | Day 2 | Cumulative (whole session) |
+|---|---|---|
+| Model API calls | 341 | 847 |
+| Output tokens | 378,070 | 935,196 |
+| Fresh input tokens | 33,928 | 79,403 |
+| Prompt-cache writes | 6,553,104 | 16,590,691 |
+| Prompt-cache reads | 136,357,250 | 345,432,799 |
+| **Total processed** | **~143.3M** | **~363.0M** |
+
+Still 99.98% of input served from cache. The cumulative session: **~93
+user prompts, 847 API calls, 363 million tokens processed, 935K written**
+— for a deployed multi-user research product with auth, quotas, admin
+tooling, and documentation, built in two days.
+
+## Day 2 commit ledger
+
+| # | Commit | Time | Subject |
+|---|---|---|---|
+| 36 | `e1f2da1` | 04 22:22 | Document the full build history for retelling |
+| 37 | `bde7e9d` | 04 22:32 | Document the complete architecture with draw.io data-flow diagrams |
+| 38 | `748231a` | 04 22:36 | Immersive reading: hide header and controls while scrolled up |
+| 39 | `2b5b6f3` | 04 22:48 | Animate immersive transitions; drifting background waves |
+| 40 | `526f4f2` | 05 06:55 | Record the session's token usage in the build history |
+| 41 | `df6e552` | 05 07:27 | Add accounts, invitations, admin interface, and research quotas |
+| 42 | `75f20fe` | 05 07:32 | Document the Google sign-in enablement plan |
+| 43 | `685fff8` | 05 08:09 | Switch to Google-only sign-in with sliding sessions |
+| 44 | `c36b05f` | 05 08:28 | Bind the production D1 database |
+| 45 | `b55f7a6` | 05 08:39 | Add approval gate: new sign-ins wait for admin approval |
+| 46 | `5e3ffff` | 05 08:50 | Remove role management: sole-admin-forever policy |
+| 47 | `8e6e9e4` | 05 09:02 | Rework quotas: tokens + searches per rolling-5h/day/week/month |
+| 48 | `e1e06e6` | 05 09:20 | Ground the Berget quota in real cost; per-model usage for admin |
+| 49 | `875f153` | 05 09:36 | Admins counted but never blocked; surface break-glass usage |
+| 50 | `cd7dac8` | 05 11:04 | Glass UI: frosted transparent header and one-pane composer |
+| 51 | `0938c95` | 05 11:42 | Enter inserts line break; send only via arrow; fix pane overflow |
+| 52 | `6045f09` | 05 12:10 | Replace hide/show chrome with floating glass overlay |
+| 53 | `2d2094b` | 05 12:25 | Stack the header: plain-text brand, glass controls beneath |
+| 54 | `4a79f32` | 05 12:34 | Centered thin DeepResearch.se; model selector fills the row |
+| 55 | `5c91e64` | 05 12:40 | Composer row order + loupe dimming; illustrated /help docs |
+| 56 | `65e0e6b` | 05 13:00 | PDF report downloads; pdf/docx/md/txt attachments with cards |
+| 57 | `b356ea2` | 05 13:11 | Keep partially streamed answers in context after network errors |
+| 58 | `c0013dd` | 05 14:03 | Harden streams: SSE keepalive, disconnect handling, honest errors |
