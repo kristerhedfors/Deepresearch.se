@@ -18,7 +18,7 @@ import {
 } from "./quota.js";
 import { resolveModel, validateMessages } from "./validation.js";
 
-export async function handleChat(request, env, log, identity) {
+export async function handleChat(request, env, log, identity, ctx) {
   if (!env.BERGET_API_TOKEN) {
     log.error("chat.misconfigured", { missing: "BERGET_API_TOKEN" });
     return jsonResponse(
@@ -106,97 +106,114 @@ export async function handleChat(request, env, log, identity) {
     cancel() {
       disconnect.gone = true;
       log.info("chat.client_disconnected", {
+        user_id: identity.id,
         model,
         searches: disconnect.state?.searchCount ?? 0,
         duration_ms: disconnect.state ? Date.now() - disconnect.state.startedAt : 0,
       });
     },
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const state = newRequestState(model, webSearchEnabled, budgetS);
-      disconnect.state = state;
+    start(controller) {
+      // The pipeline runs detached from the stream's lifecycle and is
+      // registered with ctx.waitUntil: when the client disconnects, the
+      // runtime would otherwise kill the invocation on the spot — losing
+      // the chat.complete log AND the usage_events row (spend would go
+      // unaccounted). waitUntil keeps the Worker alive through the finally
+      // block; the disconnect.gone flag still aborts further Berget/Exa
+      // spend at the next emit.
+      const work = runChatStream(controller);
+      ctx?.waitUntil(work);
+    },
+  });
 
-      // The JSON helper phases (triage/gap/validation) emit nothing for
-      // tens of seconds; idle HTTP connections get dropped by proxies on
-      // the way to the client. SSE comment lines (":" prefix) keep bytes
-      // flowing — every SSE client ignores them.
-      const keepalive = setInterval(() => {
-        if (disconnect.gone) return;
-        try {
-          controller.enqueue(encoder.encode(": keepalive\n\n"));
-        } catch {
-          disconnect.gone = true;
-        }
-      }, 15_000);
+  async function runChatStream(controller) {
+    const encoder = new TextEncoder();
+    const state = newRequestState(model, webSearchEnabled, budgetS);
+    disconnect.state = state;
 
-      const emit = (obj) => {
-        if (disconnect.gone) throw new Error("client disconnected");
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-        } catch (err) {
-          disconnect.gone = true;
-          throw new Error("client disconnected");
-        }
-      };
-      const emitSafe = (obj) => {
-        try {
-          emit(obj);
-        } catch {
-          // stream already dead — nothing to tell anyone
-        }
-      };
-
+    // The JSON helper phases (triage/gap/validation) emit nothing for
+    // tens of seconds; idle HTTP connections get dropped by proxies on
+    // the way to the client. SSE comment lines (":" prefix) keep bytes
+    // flowing — every SSE client ignores them.
+    const keepalive = setInterval(() => {
+      if (disconnect.gone) return;
       try {
-        await runPipeline(env, log, emit, conversation, model, state);
+        controller.enqueue(encoder.encode(": keepalive\n\n"));
+      } catch {
+        disconnect.gone = true;
+      }
+    }, 15_000);
+
+    const emit = (obj) => {
+      if (disconnect.gone) throw new Error("client disconnected");
+      try {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       } catch (err) {
-        if (!disconnect.gone) {
-          log.error("chat.stream_failed", { error: err?.message || String(err) });
-          emitSafe({ error: "Worker error: " + (err?.message || String(err)) });
-        }
-      } finally {
-        clearInterval(keepalive);
-        const duration_ms = Date.now() - state.startedAt;
-        log.info("chat.complete", {
+        disconnect.gone = true;
+        throw new Error("client disconnected");
+      }
+    };
+    const emitSafe = (obj) => {
+      try {
+        emit(obj);
+      } catch {
+        // stream already dead — nothing to tell anyone
+      }
+    };
+
+    try {
+      await runPipeline(env, log, emit, conversation, model, state);
+    } catch (err) {
+      if (!disconnect.gone) {
+        log.error("chat.stream_failed", {
+          user_id: identity.id,
+          error: err?.message || String(err),
+        });
+        emitSafe({ error: "Worker error: " + (err?.message || String(err)) });
+      }
+    } finally {
+      clearInterval(keepalive);
+      const duration_ms = Date.now() - state.startedAt;
+      log.info("chat.complete", {
+        user_id: identity.id,
+        model,
+        rounds: state.iterations,
+        searches: state.searchCount,
+        sources: state.sources.length,
+        duration_ms,
+        client_gone: disconnect.gone,
+      });
+      // Usage accounting for quotas (fails soft; never breaks the stream).
+      const entry = catalog?.find((m) => m.id === model);
+      await recordUsage(env, log, {
+        user_id: identity.id,
+        model,
+        prompt_tokens: state.totals.prompt_tokens,
+        completion_tokens: state.totals.completion_tokens,
+        searches: state.searchCount,
+        berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
+        exa_cost: state.searchCount * config.exa_cost_per_search_eur,
+        duration_ms,
+      });
+      emitSafe({
+        status: {
+          type: "done",
           model,
           rounds: state.iterations,
           searches: state.searchCount,
-          sources: state.sources.length,
           duration_ms,
-          client_gone: disconnect.gone,
-        });
-        // Usage accounting for quotas (fails soft; never breaks the stream).
-        const entry = catalog?.find((m) => m.id === model);
-        await recordUsage(env, log, {
-          user_id: identity.id,
-          model,
           prompt_tokens: state.totals.prompt_tokens,
           completion_tokens: state.totals.completion_tokens,
-          searches: state.searchCount,
-          berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
-          exa_cost: state.searchCount * config.exa_cost_per_search_eur,
-          duration_ms,
-        });
-        emitSafe({
-          status: {
-            type: "done",
-            model,
-            rounds: state.iterations,
-            searches: state.searchCount,
-            duration_ms,
-            prompt_tokens: state.totals.prompt_tokens,
-            completion_tokens: state.totals.completion_tokens,
-            co2_grams: state.totals.co2_grams,
-          },
-        });
-        try {
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch {
-          // client is gone; the stream is already torn down
-        }
+          co2_grams: state.totals.co2_grams,
+        },
+      });
+      try {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch {
+        // client is gone; the stream is already torn down
       }
-    },
-  });
+    }
+  }
 
   return sseResponse(stream);
 }

@@ -173,10 +173,13 @@ unknown `status` types (forward compatibility).
   request_id, ...}`. Levels `debug|info|warn|error` via the `LOG_LEVEL` var
   (default `info`).
 - Event names: `request.complete` / `request.failed`, `auth.denied`,
-  `chat.round`, `chat.complete` (carries `client_gone`),
+  `chat.round`, `chat.complete` (carries `client_gone` and `user_id`),
   `chat.client_disconnected` (client aborted the SSE stream — backgrounded
   PWA or dropped network, NOT a server failure), `chat.stream_failed`,
-  `exa.search`, `exa.error`.
+  `chat.client_error` (the CLIENT's own view of a died stream, reported
+  via `navigator.sendBeacon` to `/api/client-error`: browser error string,
+  `was_hidden`, chars received, and `chat_request_id` for correlating with
+  the server-side trace), `exa.search`, `exa.error`.
 - **SSE keepalive**: `/api/chat` emits a `: keepalive` comment line every
   15 s so idle-connection timeouts can't kill the stream during quiet
   phases (triage/gap/validation emit nothing for tens of seconds). On
@@ -184,6 +187,13 @@ unknown `status` types (forward compatibility).
   detection is the stream's `cancel()` hook + enqueue failures — note
   neither fires in `wrangler dev` local (client aborts don't propagate
   there), so verify via production Workers Logs.
+- **Disconnect survival**: the pipeline promise is registered with
+  `ctx.waitUntil()` — without it the runtime kills the invocation the
+  moment the client vanishes, silently dropping the `chat.complete` log
+  AND the `usage_events` accounting row (observed in production: a trace
+  that just stops mid-pipeline). With it, the finally block always runs.
+- Stream errors shown in the UI carry a short `(ref xxxxxxxx)` — the
+  first 8 chars of the request id, quotable straight into a log search.
 - `BERGET_URL` env override exists solely so local tests can point the
   Berget client at a mock; production uses the default.
 - **Privacy:** never log secrets or chat message content. User-provided text

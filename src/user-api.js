@@ -1,6 +1,6 @@
-// Signed-in user JSON APIs (non-chat): the model dropdown catalog and the
-// account/usage panel. Routed from src/index.js; admin endpoints live in
-// src/admin-api.js.
+// Signed-in user JSON APIs (non-chat): the model dropdown catalog, the
+// account/usage panel, and the client-error beacon. Routed from
+// src/index.js; admin endpoints live in src/admin-api.js.
 
 import { defaultModel, listModels } from "./berget.js";
 import { getConfig } from "./config.js";
@@ -22,6 +22,31 @@ export async function handleModels(env, log) {
     log.error("models.error", { error: err?.message || String(err) });
     return jsonResponse({ error: "Could not load the model catalog." }, 502);
   }
+}
+
+// POST /api/client-error — navigator.sendBeacon target: the client reports
+// why ITS side of a chat stream died (the server often can't tell — a
+// download-triggered navigation or backgrounded tab kills the fetch without
+// a clean disconnect). Whitelisted metadata only, hard-capped; the browser
+// error string is not user content. Correlate via chat_request_id (the
+// x-request-id the client read off the /api/chat response).
+export async function handleClientError(request, log, identity) {
+  let body = {};
+  try {
+    const raw = await request.text();
+    if (raw.length <= 2048) body = JSON.parse(raw);
+  } catch {
+    body = {};
+  }
+  const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : undefined);
+  log.warn("chat.client_error", {
+    user_id: identity.id,
+    chat_request_id: str(body.request_id, 64),
+    error: str(body.error, 200),
+    was_hidden: body.was_hidden === true,
+    received_chars: Number.isFinite(body.received_chars) ? body.received_chars : 0,
+  });
+  return new Response(null, { status: 204 });
 }
 
 // GET /api/me — identity + usage vs quota for the user dashboard.

@@ -116,6 +116,7 @@ export async function sendMessage(text, opts) {
   const onVisibility = () => { if (document.hidden) wasHidden = true; };
   document.addEventListener("visibilitychange", onVisibility);
 
+  let requestId = "";
   try {
     const payload = {
       messages: messagesForApi(),
@@ -128,6 +129,7 @@ export async function sendMessage(text, opts) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+    requestId = res.headers.get("x-request-id") || "";
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
     if (!res.ok || !res.body || isJson) {
@@ -163,13 +165,31 @@ export async function sendMessage(text, opts) {
       history.pop();
     }
   } catch (e) {
+    // Tell the server why the client's side died — it often can't know
+    // (a download-triggered navigation or backgrounded tab kills the fetch
+    // without a clean disconnect). sendBeacon survives page teardown.
+    try {
+      navigator.sendBeacon?.(
+        "/api/client-error",
+        new Blob(
+          [JSON.stringify({
+            request_id: requestId,
+            error: String(e?.message || e).slice(0, 200),
+            was_hidden: wasHidden,
+            received_chars: acc.length,
+          })],
+          { type: "application/json" },
+        ),
+      );
+    } catch { /* reporting must never mask the real error */ }
+    const ref = requestId ? " (ref " + requestId.slice(0, 8) + ")" : "";
     setError(
       turn,
       wasHidden
         ? "Connection lost while the app was in the background — the phone pauses " +
           "network for backgrounded apps. Keep the app open while research runs. " +
-          (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.")
-        : "Network error: " + e.message,
+          (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
+        : "Network error: " + e.message + ref,
     );
     if (acc) {
       // Keep whatever streamed before the connection dropped: the partial

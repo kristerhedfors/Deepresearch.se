@@ -30,10 +30,10 @@ import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { loginPage, pendingPage } from "./login.js";
-import { handleMe, handleModels } from "./user-api.js";
+import { handleClientError, handleMe, handleModels } from "./user-api.js";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const startedAt = Date.now();
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
@@ -44,7 +44,7 @@ export default {
     });
 
     try {
-      const { response, identity } = await route(request, env, url, log);
+      const { response, identity } = await route(request, env, url, log, ctx);
       // Note: for /api/chat this marks headers-sent; the end of the SSE
       // stream is logged separately as chat.complete.
       log.info("request.complete", {
@@ -87,7 +87,7 @@ function isPublicAsset(url, method) {
 
 // Returns {response, identity} — identity only when resolved, so the
 // caller can slide the session cookie.
-async function route(request, env, url, log) {
+async function route(request, env, url, log, ctx) {
   if (isPublicAsset(url, request.method)) {
     return { response: await env.ASSETS.fetch(request) };
   }
@@ -115,11 +115,11 @@ async function route(request, env, url, log) {
     return { response: htmlResponse(loginPage(""), 401) };
   }
 
-  const response = await routeAuthed(request, env, url, log, identity);
+  const response = await routeAuthed(request, env, url, log, identity, ctx);
   return { response, identity };
 }
 
-async function routeAuthed(request, env, url, log, identity) {
+async function routeAuthed(request, env, url, log, identity, ctx) {
   if (url.pathname === "/logout" && request.method === "POST") {
     return new Response(null, {
       status: 303,
@@ -137,13 +137,16 @@ async function routeAuthed(request, env, url, log, identity) {
     return htmlResponse(pendingPage(identity), 200);
   }
   if (url.pathname === "/api/chat" && request.method === "POST") {
-    return handleChat(request, env, log, identity);
+    return handleChat(request, env, log, identity, ctx);
   }
   if (url.pathname === "/api/models" && request.method === "GET") {
     return handleModels(env, log);
   }
   if (url.pathname === "/api/me" && request.method === "GET") {
     return handleMe(env, identity);
+  }
+  if (url.pathname === "/api/client-error" && request.method === "POST") {
+    return handleClientError(request, log, identity);
   }
 
   // Admin-only: the JSON API and the admin UI assets.
