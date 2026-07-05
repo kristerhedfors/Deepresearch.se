@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS answers (
+  request_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  text TEXT,
+  stats_json TEXT
+);
 `;
 
 // Additive migrations for databases created before the column existed.

@@ -67,7 +67,8 @@ Server (`src/`):
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
-| `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) |
+| `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
+| `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording |
 | `pipeline.js` | The research pipeline (triage → search → gap → synth → validate) |
@@ -162,8 +163,9 @@ unknown `status` types (forward compatibility).
   via Playwright) and the privacy meaning of each — linked from the
   account panel. Re-capture the screenshots when the composer/header
   changes visibly.
-- **Privacy notice** on first visit (Berget/Exa processing, nothing stored
-  server-side, metadata-only logs); acknowledgement remembered for a year
+- **Privacy notice** on first visit (Berget/Exa processing, metadata-only
+  logs, no stored conversations — except the ≤15 min answer-recovery
+  buffer, disclosed in the notice); acknowledgement remembered for a year
   in the `dr_privacy_ack` cookie.
 - **Icons/manifest are auth-exempt** (`isPublicAsset` in `src/index.js`):
   iOS fetches `apple-touch-icon` and Chrome downloads manifest icons
@@ -186,11 +188,21 @@ unknown `status` types (forward compatibility).
   the server-side trace), `exa.search`, `exa.error`.
 - **SSE keepalive**: `/api/chat` emits a `: keepalive` comment line every
   15 s so idle-connection timeouts can't kill the stream during quiet
-  phases (triage/gap/validation emit nothing for tens of seconds). On
-  client disconnect the pipeline aborts (no further Berget/Exa spend);
-  detection is the stream's `cancel()` hook + enqueue failures — note
-  neither fires in `wrangler dev` local (client aborts don't propagate
-  there), so verify via production Workers Logs.
+  phases (triage/gap/validation emit nothing for tens of seconds).
+  Disconnect detection is the stream's `cancel()` hook + enqueue
+  failures — note neither fires in `wrangler dev` local (client aborts
+  don't propagate there), so verify via production Workers Logs.
+- **Answer recovery (`src/answers.js`)**: on client disconnect the
+  pipeline does NOT abort — it finishes (the spend is mostly committed
+  by then) and parks the final answer + stats in the D1 `answers` table
+  keyed by request id. Every request writes a metadata-only `running`
+  marker at stream start and the full answer at completion; the client
+  acks intact deliveries with `DELETE /api/chat/answer?id=…` (content
+  normally lives server-side for seconds) and polls
+  `GET /api/chat/answer?id=…` after a died stream to re-render the
+  completed answer. Rows expire after 15 min (`ANSWER_TTL_MS`,
+  lazy-purged on every read/write) — the privacy notice discloses this
+  explicitly; it is a recovery buffer, not storage.
 - **Disconnect survival**: the pipeline promise is registered with
   `ctx.waitUntil()` — without it the runtime kills the invocation the
   moment the client vanishes, silently dropping the `chat.complete` log

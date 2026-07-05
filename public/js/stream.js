@@ -41,6 +41,51 @@ export function clearHistory() {
   history.length = 0; // history lives only in this tab
 }
 
+// ---- Answer recovery --------------------------------------------------
+// The server parks every finished answer in a short-lived cache
+// (src/answers.js) keyed by x-request-id: if our stream dies, we poll the
+// completed answer back instead of asking the user to resend; if it
+// arrives intact, we ack so the server purges its copy immediately.
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function ackAnswer(requestId) {
+  if (!requestId) return;
+  fetch("/api/chat/answer?id=" + encodeURIComponent(requestId), { method: "DELETE" }).catch(() => {});
+}
+
+// The pipeline may still be researching when our connection dies (it runs
+// to completion server-side), so keep polling until well past the time
+// budget. Repeated 404s mean recovery isn't available (no DB, or expired).
+async function recoverAnswer(turn, requestId, budgetS) {
+  if (!requestId) return null;
+  startGenericStep(turn, "recover", "Connection lost — recovering the answer…");
+  const deadline = Date.now() + (budgetS + 120) * 1000;
+  let misses = 0;
+  while (Date.now() < deadline) {
+    await sleep(4000);
+    try {
+      const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
+      if (res.status === 404) {
+        if (++misses >= 3) break;
+        continue;
+      }
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.status === "done") {
+        if (!data.text) break; // pipeline produced nothing — treat as failed
+        finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
+        return data;
+      }
+      misses = 0; // still researching — keep waiting
+    } catch {
+      // still offline — keep trying until the deadline
+    }
+  }
+  finishGenericStep(turn, { id: "recover", label: "Could not recover the answer" });
+  return null;
+}
+
 // Dispatch one SSE event to the turn/activity renderers. Returns the updated
 // text accumulator.
 function handleEvent(turn, evt, acc) {
@@ -168,6 +213,7 @@ export async function sendMessage(text, opts) {
 
     if (acc) {
       history.push({ role: "assistant", content: acc });
+      ackAnswer(requestId); // delivered intact — purge the server's recovery copy
     } else if (isTyping(turn)) {
       setError(turn, "No response received.");
       history.pop();
@@ -190,6 +236,23 @@ export async function sendMessage(text, opts) {
         ),
       );
     } catch { /* reporting must never mask the real error */ }
+
+    // The server finishes the research even when our connection dies and
+    // parks the answer in a short-lived recovery cache — poll it back
+    // before bothering the user.
+    const recovered = await recoverAnswer(turn, requestId, opts.budgetS);
+    if (recovered) {
+      acc = recovered.text;
+      setText(turn, acc);
+      if (recovered.stats) {
+        turn.model = recovered.stats.model || "";
+        renderStats(turn, recovered.stats);
+      }
+      history.push({ role: "assistant", content: acc });
+      ackAnswer(requestId);
+      return;
+    }
+
     const ref = requestId ? " (ref " + requestId.slice(0, 8) + ")" : "";
     setError(
       turn,

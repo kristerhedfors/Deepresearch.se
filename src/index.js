@@ -14,9 +14,10 @@
 //   src/accounts.js  — user accounts (D1)
 //   src/config.js    — global site config (D1 config table, cached)
 //   src/quota.js     — usage accounting + quota enforcement
-//   src/user-api.js  — /api/me + /api/models
+//   src/user-api.js  — /api/me + /api/models + /api/client-error
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
+//   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
 //   src/berget.js    — Berget.ai client + SSE consumption
 //   src/exa.js       — Exa web_search
 //   src/db.js        — optional D1 binding + schema
@@ -24,6 +25,7 @@
 //   src/http.js      — response helpers
 
 import { handleAdminApi } from "./admin-api.js";
+import { handleAnswerAck, handleAnswerGet } from "./answers.js";
 import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
 import { handleChat } from "./chat.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
@@ -44,7 +46,7 @@ export default {
     });
 
     try {
-      const { response, identity } = await route(request, env, url, log, ctx);
+      const { response, identity } = await route(request, env, url, log, ctx, requestId);
       // Note: for /api/chat this marks headers-sent; the end of the SSE
       // stream is logged separately as chat.complete.
       log.info("request.complete", {
@@ -87,7 +89,7 @@ function isPublicAsset(url, method) {
 
 // Returns {response, identity} — identity only when resolved, so the
 // caller can slide the session cookie.
-async function route(request, env, url, log, ctx) {
+async function route(request, env, url, log, ctx, requestId) {
   if (isPublicAsset(url, request.method)) {
     return { response: await env.ASSETS.fetch(request) };
   }
@@ -115,11 +117,11 @@ async function route(request, env, url, log, ctx) {
     return { response: htmlResponse(loginPage(""), 401) };
   }
 
-  const response = await routeAuthed(request, env, url, log, identity, ctx);
+  const response = await routeAuthed(request, env, url, log, identity, ctx, requestId);
   return { response, identity };
 }
 
-async function routeAuthed(request, env, url, log, identity, ctx) {
+async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/logout" && request.method === "POST") {
     return new Response(null, {
       status: 303,
@@ -137,7 +139,15 @@ async function routeAuthed(request, env, url, log, identity, ctx) {
     return htmlResponse(pendingPage(identity), 200);
   }
   if (url.pathname === "/api/chat" && request.method === "POST") {
-    return handleChat(request, env, log, identity, ctx);
+    return handleChat(request, env, log, identity, ctx, requestId);
+  }
+  // Answer recovery (src/answers.js): poll a dropped stream's finished
+  // answer back, or ack an intact delivery so the cached copy is purged.
+  if (url.pathname === "/api/chat/answer" && request.method === "GET") {
+    return handleAnswerGet(env, url, identity);
+  }
+  if (url.pathname === "/api/chat/answer" && request.method === "DELETE") {
+    return handleAnswerAck(env, url, identity);
   }
   if (url.pathname === "/api/models" && request.method === "GET") {
     return handleModels(env, log);

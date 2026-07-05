@@ -4,6 +4,7 @@
 // (src/pipeline.js) as SSE. Ends every stream with a `done` stats event and
 // `[DONE]`, then records the usage event for quota accounting.
 
+import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -18,7 +19,7 @@ import {
 } from "./quota.js";
 import { resolveModel, validateMessages } from "./validation.js";
 
-export async function handleChat(request, env, log, identity, ctx) {
+export async function handleChat(request, env, log, identity, ctx, requestId) {
   if (!env.BERGET_API_TOKEN) {
     log.error("chat.misconfigured", { missing: "BERGET_API_TOKEN" });
     return jsonResponse(
@@ -98,8 +99,11 @@ export async function handleChat(request, env, log, identity, ctx) {
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
-  // reliably throw. The flag makes the next emit abort the pipeline so no
-  // further Berget/Exa spend goes to a reader that no longer exists.
+  // reliably throw. The pipeline keeps running after a disconnect (emit
+  // degrades to a no-op): the spend is already mostly committed by then,
+  // and the finished answer is parked in the recovery cache
+  // (src/answers.js) for the client to poll — instead of asking the user
+  // to resend and pay again.
   const disconnect = { gone: false, state: null };
 
   const stream = new ReadableStream({
@@ -130,6 +134,10 @@ export async function handleChat(request, env, log, identity, ctx) {
     const state = newRequestState(model, webSearchEnabled, budgetS);
     disconnect.state = state;
 
+    // Recovery marker (metadata only): lets the poller tell "still
+    // researching" apart from "nothing will ever come".
+    await markAnswerRunning(env, log, requestId, identity.id);
+
     // The JSON helper phases (triage/gap/validation) emit nothing for
     // tens of seconds; idle HTTP connections get dropped by proxies on
     // the way to the client. SSE comment lines (":" prefix) keep bytes
@@ -143,33 +151,30 @@ export async function handleChat(request, env, log, identity, ctx) {
       }
     }, 15_000);
 
+    // Server-side mirror of the client's text accumulator (including the
+    // discard_text reset), so the recovery cache holds exactly what a
+    // connected client would have rendered.
+    const answer = { text: "" };
     const emit = (obj) => {
-      if (disconnect.gone) throw new Error("client disconnected");
+      const chunk = obj.choices?.[0]?.delta?.content;
+      if (chunk) answer.text += chunk;
+      else if (obj.status?.type === "discard_text") answer.text = "";
+      if (disconnect.gone) return; // client gone: finish anyway, park in the cache
       try {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-      } catch (err) {
-        disconnect.gone = true;
-        throw new Error("client disconnected");
-      }
-    };
-    const emitSafe = (obj) => {
-      try {
-        emit(obj);
       } catch {
-        // stream already dead — nothing to tell anyone
+        disconnect.gone = true;
       }
     };
 
     try {
       await runPipeline(env, log, emit, conversation, model, state);
     } catch (err) {
-      if (!disconnect.gone) {
-        log.error("chat.stream_failed", {
-          user_id: identity.id,
-          error: err?.message || String(err),
-        });
-        emitSafe({ error: "Worker error: " + (err?.message || String(err)) });
-      }
+      log.error("chat.stream_failed", {
+        user_id: identity.id,
+        error: err?.message || String(err),
+      });
+      emit({ error: "Worker error: " + (err?.message || String(err)) });
     } finally {
       clearInterval(keepalive);
       const duration_ms = Date.now() - state.startedAt;
@@ -194,18 +199,21 @@ export async function handleChat(request, env, log, identity, ctx) {
         exa_cost: state.searchCount * config.exa_cost_per_search_eur,
         duration_ms,
       });
-      emitSafe({
-        status: {
-          type: "done",
-          model,
-          rounds: state.iterations,
-          searches: state.searchCount,
-          duration_ms,
-          prompt_tokens: state.totals.prompt_tokens,
-          completion_tokens: state.totals.completion_tokens,
-          co2_grams: state.totals.co2_grams,
-        },
-      });
+      const stats = {
+        type: "done",
+        model,
+        rounds: state.iterations,
+        searches: state.searchCount,
+        duration_ms,
+        prompt_tokens: state.totals.prompt_tokens,
+        completion_tokens: state.totals.completion_tokens,
+        co2_grams: state.totals.co2_grams,
+      };
+      emit({ status: stats });
+      // Park the finished answer for recovery. The client DELETEs it the
+      // moment the stream arrives intact, so content normally lives here
+      // for seconds; a dropped client polls it back within the TTL.
+      await saveAnswer(env, log, requestId, identity.id, answer.text, stats);
       try {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
