@@ -3,10 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Deepresearch.se</title>
+  <title>DeepResearch.se</title>
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=4">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=4">
+  <!-- iOS "Add to Home Screen" prefers this meta tag over <title> or the
+       manifest for the home-screen label. -->
+  <meta name="apple-mobile-web-app-title" content="DeepResearch.se">
   <!-- use-credentials: the site is behind Basic Auth and manifest requests
        are sent without credentials by default (would 401 silently) -->
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
