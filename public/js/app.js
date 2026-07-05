@@ -277,7 +277,8 @@ function renderAccount(me) {
     .join("");
   accountBody.innerHTML = `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
-    ${me.unlimited ? '<p class="muted">No quota applies to this account — usage is tracked for the record.</p>' : ""}
+    ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
+    ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${blocks}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
     <div class="account-actions">

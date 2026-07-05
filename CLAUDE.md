@@ -281,7 +281,12 @@ Deliberately NO time limits. Global defaults + per-user overrides (admin
 "Quota…" editor); 0 = no cap. Rolling-window resets are estimated from
 when the oldest event inside ages out. Every stream records a
 `usage_events` row (model, tokens, searches, berget/exa cost split,
-duration). The ADMIN sees everything: `/admin` aggregates cost + counts
+duration). **Admins are never blocked**: enforcement (the 429 gate)
+applies to regular users only — admin usage is still recorded and their
+panel bars keep counting past 100% (`enforced: false` in `/api/me`).
+Usage under the break-glass identity (secrets Basic Auth or legacy
+pre-Google cookies) is recorded as user `admin` and shown as its own
+row in `/admin`, so no spend is invisible. The ADMIN sees everything: `/admin` aggregates cost + counts
 per window site-wide, per user (budget bars in €, tokens + total-cost
 lines), and **per model** (token counts and what they actually cost —
 the granular ground truth behind the budgets). Note the usage SQL

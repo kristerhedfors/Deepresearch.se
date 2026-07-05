@@ -185,6 +185,8 @@ async function handleMe(env, identity) {
     name: identity.name,
     role: identity.role,
     unlimited: !!identity.isSecretAdmin,
+    // Admins see their bars fill and overflow, but are never blocked.
+    enforced: !identity.isSecretAdmin && identity.role !== "admin",
     windows,
     db_configured: !!(await getDb(env)),
   });

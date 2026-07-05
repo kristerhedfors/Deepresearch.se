@@ -111,6 +111,31 @@ function renderUsers() {
     ? ""
     : '<p class="muted">No users yet — accounts appear on first Google sign-in.</p>';
   const defaults = overview.config.quotas;
+
+  // Usage recorded under the shared break-glass identity (ADMIN_USER
+  // secrets over Basic Auth, or a legacy pre-Google session cookie) —
+  // shown here so no spend is ever invisible. Reference bars use the
+  // global defaults; nothing is enforced on this identity.
+  if (overview.admin_usage) {
+    const a = overview.admin_usage;
+    const el = document.createElement("div");
+    el.className = "rowitem";
+    el.innerHTML = `
+      <div class="head">
+        <b>Break-glass admin</b>
+        <span class="muted">ADMIN_USER secrets · legacy sessions · never blocked</span>
+        <span class="badge admin">admin</span>
+      </div>
+      <div class="quota-bars">
+        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, a[`${p}_berget_cost`] || 0, defaults[p].budget_eur, euro)).join("")}
+        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, a[`${p}_searches`] || 0, defaults[p].searches, count)).join("")}
+      </div>
+      <p class="muted" style="margin:.45rem 0 0">
+        Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(a[`${p}_tokens`] || 0)}`).join(" · ")}<br>
+        Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((a[`${p}_berget_cost`] || 0) + (a[`${p}_exa_cost`] || 0))}`).join(" · ")}
+      </p>`;
+    box.appendChild(el);
+  }
   for (const u of overview.users) {
     const usage = u.usage || {};
     let override = null;

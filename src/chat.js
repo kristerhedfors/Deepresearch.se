@@ -57,11 +57,14 @@ export async function handleChat(request, env, log, identity) {
   if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
 
-  // ---- research quota (tokens + searches per 5h/day/week/month windows).
-  // No time or currency limits — quotas are in the units the providers
-  // bill. The break-glass admin is exempt but still accounted.
+  // ---- research quota (Berget budget + Exa searches per 5h/day/week/month)
+  // ADMINS ARE NEVER BLOCKED: their usage is recorded and their bars keep
+  // counting (past 100%), but the 429 gate applies to regular users only.
   const usage = await getUsage(env, identity.id);
-  const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
+  const quota =
+    identity.isSecretAdmin || identity.role === "admin"
+      ? null
+      : effectiveQuota(config, identity.user);
   if (quota) {
     const blocked = quotaExceeded(usage, quota);
     if (blocked) {
