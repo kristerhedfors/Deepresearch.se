@@ -182,7 +182,12 @@ unknown `status` types (forward compatibility).
 ## LLM provider — Berget.ai
 
 **This project uses Berget.ai, NOT Anthropic.** Berget exposes an
-OpenAI-compatible API at `https://api.berget.ai/v1`.
+OpenAI-compatible API at `https://api.berget.ai/v1`. Berget was picked in
+part because it commits to **zero data retention** — "your data is never
+stored or retained," declared at <https://berget.ai/en> and the
+[Data Processing Agreement](https://berget.ai/dpa) — see
+`docs/ARCHITECTURE.md` §9 and `docs/SBOM.md` for the full rationale and
+third-party data-processor inventory.
 
 - **Auth:** the Worker reads the `BERGET_API_TOKEN` secret (already configured
   on the Worker in the Cloudflare dashboard) and sends it as
@@ -226,6 +231,13 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
 **Canonical reference:** https://docs.exa.ai/reference/search-api-guide-for-coding-agents
 — the source of truth for search types, parameters, and response shape. Fetch it
 if anything here looks stale, and report staleness back.
+
+Exa was picked in part because it offers **Zero Data Retention (ZDR)**
+across its search products — query data isn't stored by the main service or
+any subprocessor — declared at <https://docs.exa.ai/reference/security> and
+announced at <https://exa.ai/blog/zdr-search-engine>; see
+`docs/ARCHITECTURE.md` §9 and `docs/SBOM.md` for the full rationale and
+third-party data-processor inventory.
 
 Searches are orchestrated by the Worker pipeline in `src/chat.js` (no
 function calling): the triage/gap-check phases plan queries via JSON-mode

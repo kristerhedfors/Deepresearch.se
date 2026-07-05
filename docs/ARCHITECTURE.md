@@ -431,3 +431,27 @@ states. What D1 does persist is account/metering metadata only:
 
 Per-isolate ephemeral caches remain: the 5-minute model catalog, the ~30 s
 config cache, and the EWMA phase-duration stats (re-seeded from priors).
+
+**Provider selection — zero data retention.** Berget.ai (LLM) and Exa (web
+search) were deliberately chosen over comparable providers because both
+commit to **zero data retention (ZDR)** for the traffic this pipeline sends
+them: neither stores chat content or search queries once a request
+completes, which extends the "nothing chat-related is stored server-side"
+posture above out to the two providers that actually see the content.
+Their own docs declaring this:
+
+- Berget — "Zero retention — your data is never stored or retained,"
+  EU-only infrastructure: <https://berget.ai/en> (homepage), backed by the
+  [Data Processing Agreement](https://berget.ai/dpa)
+- Exa — Zero Data Retention across its search products (query data isn't
+  stored by the main service or any subprocessor):
+  <https://docs.exa.ai/reference/security> (Security & Enterprise docs),
+  announcement: <https://exa.ai/blog/zdr-search-engine>
+
+## 10. Software bill of materials
+
+There is no `package.json` — everything the client and server depend on is
+either original code, a handful of libraries vendored verbatim under
+`public/vendor/`, or an external HTTP API. The full inventory (versions,
+licenses, and the third-party data processors above with their retention
+policies) lives in [`SBOM.md`](./SBOM.md).
