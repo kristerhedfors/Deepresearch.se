@@ -275,6 +275,20 @@ function calling): the triage/gap-check phases plan queries via JSON-mode
 calls, the Worker runs them against Exa, and synthesis answers from the
 accumulated numbered source registry.
 
+**Retention reality — Exa is NOT zero-data-retention by default.** Exa
+retains query data on the standard API plan; true ZDR is an
+enterprise-only arrangement (https://exa.ai/blog/zdr-search-engine),
+which this site does not have. The documented workaround is the
+**two-step semi-private workflow** (user docs: `/help/` → "Sensitive
+topics", hinted in the 🔍 popover): (1) web search ON, ask a *generic*,
+impersonal question on the subject so the pipeline pulls sources into
+the conversation; (2) web search OFF, ask the real/specific questions —
+the model answers from the in-context sources, nothing further reaches
+Exa. Only AI-derived short queries ever go to Exa (never the
+conversation), but a query still reveals the topic. Keep the help page,
+popover, and privacy notice in sync if the search provider or plan
+changes (an Exa ZDR enterprise plan would obsolete these warnings).
+
 - **Auth:** the Worker reads the `EXA_API_KEY` secret and sends it as the
   `x-api-key` header. Never hardcode it. (Exa returns HTTP 402 without a key.)
 - **Endpoint:** `POST https://api.exa.ai/search` (REST — the Worker is JS, so we
