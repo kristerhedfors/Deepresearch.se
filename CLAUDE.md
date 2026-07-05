@@ -123,10 +123,17 @@ unknown `status` types (forward compatibility).
 - **Background life:** `body::before` drifts a repeating diagonal gradient
   (tiny white/navy alphas) across the sky blue — one full 280px period per
   26s loop so it's seamless; disabled under `prefers-reduced-motion`.
-- Controls row above the input: **web-search knob** (default on; sends
-  `web_search: false` when off → the Worker skips triage/Exa entirely and
-  streams one Berget completion) and the research-time slider (dimmed while
-  search is off). "New chat" in the header clears the client-side history.
+- **Glass chrome:** the header is transparent with the title in smaller
+  type and each control (New chat, model selector, account) as its own
+  frosted-glass container; the whole input area is ONE glass pane
+  (`#composer`, rounded, backdrop-blur over the drifting waves): a
+  single-line auto-growing text input on top (Enter sends, Shift+Enter
+  newline, grows to ~6 lines), and beneath it the attach button (round),
+  **web-search knob** (default on; sends `web_search: false` when off →
+  the Worker skips triage/Exa entirely and streams one Berget
+  completion), 🔍 info popover, time value + slider (dimmed while search
+  is off), and a round accent **arrow send button**. "New chat" in the
+  header clears the client-side history.
 - **Privacy notice** on first visit (Berget/Exa processing, nothing stored
   server-side, metadata-only logs); acknowledgement remembered for a year
   in the `dr_privacy_ack` cookie.

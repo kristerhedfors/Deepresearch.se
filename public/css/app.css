@@ -67,20 +67,33 @@ body.chrome-restoring #footer { overflow: hidden; }
   transition: transform .2s ease, opacity .2s ease, visibility 0s,
     padding .2s ease, border-width .2s ease;
 }
+/* Frosted-glass surfaces: translucent panes over the drifting sky. */
+.glass {
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+}
+
 .header-bar {
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  padding: .55rem 1rem;
   font-weight: 600;
+  font-size: .95rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  background: transparent;
 }
 #model {
-  background: var(--panel);
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: .35rem .5rem;
   font: inherit;
   font-size: .85rem;
@@ -291,26 +304,34 @@ body.immersive #jumpdown { bottom: 1.1rem; }
 .stats { font-size: .75rem; color: var(--muted); }
 .stats:empty { display: none; }
 
-form {
-  display: flex;
-  gap: .5rem;
-  padding: 1rem 1.25rem;
-  border-top: 1px solid var(--border);
+/* Composer: ONE glass pane — single-line input on top, controls beneath
+   (attach · web-search knob · info · time value+slider · send arrow). */
+#composer {
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+  border-radius: 18px;
   max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
+  width: calc(100% - 1.5rem);
+  margin: .35rem auto .85rem;
+  padding: .5rem .65rem .55rem;
+  position: relative; /* anchors the info popover */
 }
+form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
-  flex: 1;
   resize: none;
-  background: var(--panel);
+  background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: .75rem;
+  border: 0;
+  outline: none;
+  padding: .45rem .35rem .2rem;
   font: inherit;
-  min-height: 46px;
-  max-height: 160px;
+  line-height: 1.4;
+  min-height: 1.9rem;
+  max-height: 8.5rem; /* auto-grows (app.js) up to ~6 lines */
+  overflow-y: auto;
 }
 button {
   background: var(--accent);
@@ -323,25 +344,39 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: .5; cursor: default; }
+#composer-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
 #attach {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 0 .8rem;
-  font-size: 1.1rem;
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 50%;
+  width: 34px; height: 34px; flex: none;
+  padding: 0;
+  display: grid; place-items: center;
 }
 /* Dimmed (not disabled): stays tappable on mobile so the tap can explain
    and offer a switch to a vision-capable model. */
 #attach.dim { opacity: .5; }
+#send {
+  border-radius: 50%;
+  width: 34px; height: 34px; flex: none;
+  padding: 0;
+  display: grid; place-items: center;
+  box-shadow: 0 2px 8px rgba(4, 30, 60, .25);
+}
 
-/* Pending image attachments (above the input) */
+/* Pending image attachments (above the input, inside the pane) */
 #pending {
   display: flex;
   gap: .5rem;
   flex-wrap: wrap;
-  padding: .5rem 1.25rem 0;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
+  padding: .35rem .35rem 0;
 }
 #pending:empty { display: none; }
 .thumb { position: relative; }
@@ -357,14 +392,6 @@ button:disabled { opacity: .5; cursor: default; }
 }
 textarea::placeholder { color: var(--muted); opacity: .75; }
 
-/* Controls row: web-search knob + info symbol + clock/value + slider */
-#budgetbar {
-  display: flex; align-items: center; gap: .55rem;
-  padding: .55rem 1.25rem 0;
-  max-width: 900px; width: 100%; margin: 0 auto;
-  font-size: .8rem; color: var(--muted);
-  position: relative; /* anchors the info popover */
-}
 /* Round knob sliding between two positions in a pill track */
 #searchtoggle { cursor: pointer; display: inline-flex; }
 #searchtoggle input { position: absolute; opacity: 0; pointer-events: none; }
@@ -403,31 +430,36 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 /* Slider with the clock as its thumb (SVG-embedded emoji, since thumbs
    can't contain text). Track is styled manually — appearance:none. */
-#budgetbar input[type="range"] {
+#composer input[type="range"] {
   flex: 1; margin: 0;
   -webkit-appearance: none; appearance: none;
   height: 6px; border-radius: 3px;
   background: var(--border);
 }
-#budgetbar input[type="range"]::-webkit-slider-thumb {
+#composer input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 26px; height: 26px; border: 0; border-radius: 50%;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
   cursor: pointer;
 }
-#budgetbar input[type="range"]::-moz-range-thumb {
+#composer input[type="range"]::-moz-range-thumb {
   width: 26px; height: 26px; border: 0; border-radius: 50%;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
   cursor: pointer;
 }
-#budgetbar input[type="range"]:disabled { opacity: .35; }
-#budgetbar.nosearch #budgetval { opacity: .35; }
+#composer input[type="range"]:disabled { opacity: .35; }
+#composer.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
 #clearbtn, #accountbtn {
-  background: var(--panel); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: .35rem .5rem; line-height: 0;
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .4rem .55rem; line-height: 0;
   display: inline-flex; align-items: center;
 }
 

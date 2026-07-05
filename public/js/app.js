@@ -184,7 +184,7 @@ const webSearchBox = document.getElementById("websearch");
 webSearchBox.checked = localStorage.getItem("web_search") !== "off";
 const syncSearchToggle = () => {
   budgetSlider.disabled = !webSearchBox.checked;
-  document.getElementById("budgetbar").classList.toggle("nosearch", !webSearchBox.checked);
+  document.getElementById("composer").classList.toggle("nosearch", !webSearchBox.checked);
 };
 webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
@@ -563,11 +563,20 @@ async function sendMessage(text) {
   }
 }
 
+// Single-line composer that grows with content (Shift+Enter) up to the
+// CSS max-height, then scrolls internally.
+const autogrow = () => {
+  input.style.height = "auto";
+  input.style.height = input.scrollHeight + "px";
+};
+input.addEventListener("input", autogrow);
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text && attachments.length === 0) return;
   input.value = "";
+  autogrow();
   send.disabled = true;
   await sendMessage(text);
   send.disabled = false;
