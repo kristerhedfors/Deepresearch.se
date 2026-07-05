@@ -154,3 +154,8 @@ also returned to clients as the `x-request-id` response header. Persisted
 via `[observability]` (dashboard: Worker → Logs), live via
 `npx wrangler tail`. Never logs secrets or chat content; user text appears
 at `debug` only.
+
+## License
+
+[MIT](LICENSE). The vendored libraries in `public/vendor/` (marked,
+DOMPurify, jsPDF, pdf.js) keep their own licenses.

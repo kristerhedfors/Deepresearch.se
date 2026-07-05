@@ -1209,6 +1209,18 @@ after sign-in). One test-environment honesty note: the sandbox Chromium
 ships without H.264, so video *playback* was verified as "downloads
 fine, real browsers decode it" rather than watched.
 
+- Commit: `69d3fae`
+
+### 87. "Slap on the MIT license and mention it briefly where appropriate"
+
+A root `LICENSE` file (MIT, © 2026 Krister Hedfors — GitHub picks it up
+automatically), a License section at the end of the README noting that
+the vendored libraries in `public/vendor/` keep their own licenses, and
+two one-line mentions where the source is already pointed at: the
+landing page's source-code card ("MIT-licensed, on GitHub") and the
+About page's GitHub reference. Deliberately no license banner anywhere
+else — the license belongs where the code does.
+
 - Commit: (this entry's own — next continuation's ledger)
 
 ## Going-public commit ledger
@@ -1226,3 +1238,4 @@ fine, real browsers decode it" rather than watched.
 | 76 | [`02cb95f`](https://github.com/kristerhedfors/Deepresearch.se/commit/02cb95f) | 05 20:47 | Ledger commit hashes link to the public GitHub repo |
 | 77 | [`4fca025`](https://github.com/kristerhedfors/Deepresearch.se/commit/4fca025) | 05 21:02 | New chat aborts the in-flight request instead of orphaning it |
 | 78 | [`08e085f`](https://github.com/kristerhedfors/Deepresearch.se/commit/08e085f) | 05 22:18 | llm-assisted utveckling research video *(the repo's first hand-made commit)* |
+| 79 | [`69d3fae`](https://github.com/kristerhedfors/Deepresearch.se/commit/69d3fae) | 05 22:26 | Public promotional surface: landing page with the promo video |
