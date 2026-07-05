@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — documentation</title>
+  <link rel="icon" href="/favicon.ico?v=3" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>
+    :root {
+      --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
+      --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem;
+      line-height: 1.55;
+    }
+    main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem;
+    }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem 1.15rem;
+    }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul { padding-left: 1.3rem; margin: .4rem 0; }
+    img {
+      max-width: 100%; height: auto; border-radius: 10px;
+      border: 1px solid var(--border); margin: .5rem 0; display: block;
+      box-shadow: 0 3px 14px rgba(4,30,60,.12);
+    }
+    .privacy-flag {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
+    }
+    .privacy-flag b { color: var(--accent); }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>How DeepResearch.se works</h1>
+    <a class="back" href="/">← Back to the app</a>
+  </div>
+
+  <section>
+    <h2>What this site does</h2>
+    <p>You ask a question; the site plans web searches, runs them, reads the
+    results, and writes an answer with numbered citations — like a research
+    assistant on a deadline you choose. The AI models run at
+    <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
+    (EU-hosted) and web searches go through
+    <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
+    <div class="privacy-flag"><b>Privacy in one line:</b> your conversations
+    are never stored on our server — history lives only in your browser tab.
+    The server keeps metadata for quotas (token counts, search counts,
+    durations), never message content.</div>
+  </section>
+
+  <section>
+    <h2>The header</h2>
+    <img src="/help/img/header.png" alt="Header: new chat, model selector, account button" width="390">
+    <ul>
+      <li><b>New chat</b> (pencil icon, left) — clears the conversation.
+        Because history exists only in your browser, this really erases it;
+        there is nothing to delete server-side.</li>
+      <li><b>Model selector</b> (middle) — picks which AI model answers.
+        Models that are down for maintenance show as greyed out and come back
+        automatically. Your choice is remembered in this browser.</li>
+      <li><b>Account button</b> (person icon, right) — opens your usage
+        panel: see below.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The input area</h2>
+    <img src="/help/img/composer-on.png" alt="Composer with web search on" width="390">
+    <ul>
+      <li><b>Text field</b> — type your question. <b>Enter inserts a line
+        break</b>; nothing is sent until you tap the <b>arrow</b>. The field
+        grows up to about six lines.</li>
+      <li><b>Paperclip</b> — attach images (on models that support image
+        input; on others the button is dimmed and offers to switch model).
+        Images are downscaled in your browser before upload.</li>
+      <li><b>Blue knob</b> — the web-search switch. See the next section;
+        this is the control with the biggest privacy meaning.</li>
+      <li><b>🔍 loupe</b> — shows a short explanation of the web-search
+        switch. It greys out when web search is off.</li>
+      <li><b>Slider + time</b> — your research time target, from 15 seconds
+        to 10 minutes. More time buys more search angles, more follow-up
+        rounds, and a fact-checking pass; less time gets a faster, slimmer
+        answer. The spelled-out target sits right of the slider.</li>
+      <li><b>Arrow</b> — sends the question. This is the only way to send.</li>
+    </ul>
+    <img src="/help/img/popover.png" alt="The web-search info popover" width="390">
+  </section>
+
+  <section>
+    <h2>Web search on / off — and what it means for privacy</h2>
+    <img src="/help/img/composer-off.png" alt="Composer with web search off — controls dimmed" width="390">
+    <p><b>On</b> (knob blue): the AI plans a few search queries derived from
+    your question, runs them against Exa, and answers from the sources it
+    finds, with citations.</p>
+    <p><b>Off</b> (knob grey, loupe and slider dimmed): the model answers
+    purely from its own training knowledge. No web requests are made at all.</p>
+    <div class="privacy-flag"><b>Privacy:</b> with web search ON, short
+    search queries <i>derived from</i> your question are sent to Exa (never
+    your full conversation). With web search OFF, nothing leaves except the
+    conversation itself going to Berget.ai to generate the answer. Either
+    way, our server stores no message content.</div>
+  </section>
+
+  <section>
+    <h2>Your account panel</h2>
+    <img src="/help/img/account-panel.png" alt="Account and usage panel with quota bars" width="390">
+    <ul>
+      <li><b>Research budget</b> — an opaque percentage of your allowance
+        for AI-model usage in each window (last 5 hours, today, this week,
+        this month). When a bar reaches 100% you'll be asked to wait until
+        the window shown next to it resets.</li>
+      <li><b>Web searches</b> — how many live searches you've used of your
+        allowance per window.</li>
+      <li><b>Sign out</b> — ends your session on this device. You stay
+        signed in for a year otherwise (sessions renew themselves while you
+        use the site).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Privacy, in full</h2>
+    <ul>
+      <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
+        answers; kept only in your browser tab; erased by New chat or a
+        reload. Never stored on our server.</li>
+      <li><b>Search queries</b>: sent to Exa only while web search is ON,
+        and only as short queries the AI derives from your question.</li>
+      <li><b>What our server keeps</b>: your account (Google email, name)
+        and per-request usage numbers — token counts, search counts,
+        durations — used for the quota bars. No message text, ever.</li>
+      <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
+        <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
+      <li><b>In your browser only</b>: model choice, time target, and the
+        web-search switch position (localStorage).</li>
+      <li><b>Sign-in</b>: Google only. We receive your verified email and
+        name from Google; we never see your Google password.</li>
+    </ul>
+  </section>
+
+  <p class="muted">Questions or something unclear? Ask the site owner.</p>
+</main>
+</body>
+</html>

@@ -238,6 +238,7 @@ function renderAccount(me) {
     ${blocks}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
     <div class="account-actions">
+      <a href="/help/">Documentation</a>
       ${me.role === "admin" ? '<a href="/admin">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
     </div>`;

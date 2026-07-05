@@ -131,9 +131,15 @@ unknown `status` types (forward compatibility).
   attach button (round),
   **web-search knob** (default on; sends `web_search: false` when off →
   the Worker skips triage/Exa entirely and streams one Berget
-  completion), 🔍 info popover, time value + slider (dimmed while search
-  is off), and a round accent **arrow send button**. "New chat" in the
-  header clears the client-side history.
+  completion), 🔍 info popover, the slider filling the remaining space,
+  then the spelled-out time value (loupe/slider/value all dim while
+  search is off), and a round accent **arrow send button**. "New chat"
+  in the header clears the client-side history.
+- **User documentation** at `/help/` (auth-gated static page): every
+  control explained with real screenshots (`public/help/img/`, captured
+  via Playwright) and the privacy meaning of each — linked from the
+  account panel. Re-capture the screenshots when the composer/header
+  changes visibly.
 - **Privacy notice** on first visit (Berget/Exa processing, nothing stored
   server-side, metadata-only logs); acknowledgement remembered for a year
   in the `dr_privacy_ack` cookie.
