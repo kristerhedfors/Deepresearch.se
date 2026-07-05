@@ -64,26 +64,22 @@ header {
   pointer-events: none;
 }
 
+/* Two stacked rows: plain-text brand on top, glass controls beneath. */
 .header-bar {
-  padding: .55rem 1rem;
-  font-weight: 600;
-  font-size: .95rem;
+  padding: .5rem 1rem .35rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .4rem;
   background: transparent;
 }
-/* The brand is an item like the rest — legible over scrolling content. */
+/* Just the characters — no pane; a soft glow keeps them legible over
+   scrolling content. It never captures clicks. */
 .brand {
-  background: rgba(255, 255, 255, .3);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, .55);
-  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
-  border-radius: 10px;
-  padding: .4rem .7rem;
-  pointer-events: auto;
+  font-weight: 600;
+  font-size: .95rem;
+  text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
+  pointer-events: none;
 }
 .header-right, #composer { pointer-events: auto; }
 #model {
@@ -98,16 +94,16 @@ header {
   font: inherit;
   font-size: .85rem;
   font-weight: 400;
-  max-width: 45%;
+  max-width: min(340px, 52vw);
 }
 #model[hidden] { display: none; }
 #chat {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* Top/bottom padding clears the fixed glass chrome so the first and
-     last messages can always scroll fully into the open. */
-  padding: 3.6rem 1.25rem 8rem;
+  /* Top/bottom padding clears the fixed glass chrome (two header rows /
+     the composer) so first and last messages can scroll into the open. */
+  padding: 5.6rem 1.25rem 8rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;

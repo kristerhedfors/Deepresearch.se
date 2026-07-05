@@ -112,11 +112,13 @@ unknown `status` types (forward compatibility).
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
 - **Floating chrome (no hide/show):** header and footer are FIXED,
   click-transparent strips (`pointer-events: none`) whose glass items
-  (brand pill, buttons, `#composer`) re-enable pointer events — content
-  scrolls beneath the chrome and stays visible between the items and
-  through their translucency. There is no immersive/hide logic anymore.
-  `#chat` carries top/bottom padding (3.6rem / 8rem) so the first and
-  last messages can scroll clear of the fixed items.
+  re-enable pointer events — content scrolls beneath the chrome and
+  stays visible between the items and through their translucency. The
+  header stacks TWO rows: the brand as plain characters (no pane, soft
+  white text-glow, never captures clicks) and beneath it the glass
+  controls row (New chat, model selector, account button). `#chat`
+  carries top/bottom padding (5.6rem / 8rem) so the first and last
+  messages can scroll clear of the fixed items.
 - **Background life:** `body::before` drifts a repeating diagonal gradient
   (tiny white/navy alphas) across the sky blue — one full 280px period per
   26s loop so it's seamless; disabled under `prefers-reduced-motion`.
