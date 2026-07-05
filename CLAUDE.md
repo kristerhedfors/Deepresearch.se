@@ -333,8 +333,8 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 
 - **Auto-provisioning + approval gate**: any Google account with a
   **verified** email can sign in; the first sign-in creates the D1 user
-  row. The `ADMIN_EMAIL` secret (set via `wrangler secret put`, not a
-  wrangler.toml var — kept out of the repo) gets — and keeps — the admin
+  row. The `ADMIN_EMAIL` variable (set in the Cloudflare dashboard, not
+  in wrangler.toml — kept out of the repo) gets — and keeps — the admin
   role, always active. Everyone else lands as status **`pending`** (config
   `require_approval`, default on): they hold a session but only ever see
   an auto-refreshing "awaiting approval" page — no APIs, no cost — until
@@ -401,11 +401,14 @@ quotas, Exa cost, max time budget, default model — stored in the D1
 `config` table, cached ~30 s per isolate).
 
 **D1 setup (one-time)**: `npx wrangler d1 create deepresearch-se`, paste
-the id into the commented `[[d1_databases]]` block in `wrangler.toml`,
-push. Schema auto-applies on first use (plus guarded additive ALTERs).
-Without the binding everything degrades gracefully: break-glass auth only,
-Google sign-in bounces with a clear message, no quotas.
+the id into the `[[d1_databases]]` block in `wrangler.toml`, push. Schema
+auto-applies on first use (plus guarded additive ALTERs). Without the
+binding everything degrades gracefully: break-glass auth only, Google
+sign-in bounces with a clear message, no quotas.
 
 Secrets are set in the dashboard (Worker → Settings → Variables and
 Secrets) or via CLI: `ADMIN_USER`, `ADMIN_PASS`, `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET` (plus `BERGET_API_TOKEN`, `EXA_API_KEY`).
+`ADMIN_EMAIL` is a plaintext dashboard *variable* (not in wrangler.toml,
+so it stays out of the public repo). The full from-scratch install guide
+is in `README.md`.

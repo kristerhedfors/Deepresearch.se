@@ -93,10 +93,15 @@ Known provider limits baked into the design:
   auth gate covers the static UI as well; assets are served via
   `env.ASSETS.fetch()`.
 - `routes` — custom domains `deepresearch.se` and `www.deepresearch.se`.
+- `[[d1_databases]]` — the D1 binding for accounts, quotas, config, and
+  the answer-recovery cache (schema self-applies on first use).
 - `[vars] LOG_LEVEL = "info"`; `[observability] enabled = true` persists
   logs to Workers Logs.
 - Secrets are set only in the dashboard/CLI, never in the repo:
-  `BERGET_API_TOKEN`, `EXA_API_KEY`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASS`.
+  `BERGET_API_TOKEN`, `EXA_API_KEY`, `ADMIN_USER`, `ADMIN_PASS` (legacy
+  fallbacks `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`), `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET`. `ADMIN_EMAIL` is a plaintext dashboard variable,
+  also kept out of the repo. Step-by-step install guide: `README.md`.
 
 ## 3. Request lifecycle & auth
 
