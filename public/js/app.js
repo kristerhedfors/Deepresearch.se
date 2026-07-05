@@ -567,7 +567,19 @@ async function sendMessage(text) {
     }
   } catch (e) {
     setError(turn, "Network error: " + e.message);
-    history.pop();
+    if (acc) {
+      // Keep whatever streamed before the connection dropped: the partial
+      // answer is visible in the bubble, so it must be in the context of
+      // follow-up questions too. The marker tells the model (and reader)
+      // that it ends abruptly.
+      history.push({
+        role: "assistant",
+        content: acc + "\n\n[This answer was cut off by a connection error.]",
+      });
+    } else {
+      // Nothing arrived at all — drop the question so a retry starts clean.
+      history.pop();
+    }
   } finally {
     collapseActivity(turn); // research done → fold the step bars away
   }
