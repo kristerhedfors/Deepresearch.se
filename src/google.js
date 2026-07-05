@@ -23,6 +23,7 @@
 import { createUserFromGoogle, getUserByEmail, normalizeEmail, updateUser } from "./accounts.js";
 import { createSessionCookie, signState, verifyState } from "./auth.js";
 import { getDb } from "./db.js";
+import { getConfig } from "./quota.js";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -124,19 +125,25 @@ export async function handleGoogleCallback(request, env, url, log) {
   const email = normalizeEmail(claims.email);
   if (!email) return fail("google-failed", "bad email");
 
-  // Provision on first sign-in; ADMIN_EMAIL gets (and keeps) the admin role.
+  // Provision on first sign-in; ADMIN_EMAIL gets (and keeps) the admin
+  // role and is always active. With the approval gate on (config
+  // require_approval), everyone else lands as "pending": they get a
+  // session, but only the waiting page until the admin approves — so
+  // approval takes effect on their next request, no re-login.
   const isAdminEmail = email === adminEmail(env);
   let user = await getUserByEmail(env, email);
   if (!user) {
+    const config = await getConfig(env);
     user = await createUserFromGoogle(env, {
       email,
       name: typeof claims.name === "string" ? claims.name : "",
       sub: typeof claims.sub === "string" ? claims.sub : "",
       role: isAdminEmail ? "admin" : "user",
+      status: !isAdminEmail && config.require_approval ? "pending" : "active",
     });
-    log.info("google.user_created", { role: user.role });
+    log.info("google.user_created", { role: user.role, status: user.status });
   } else {
-    if (user.status !== "active") return fail("disabled");
+    if (user.status === "disabled") return fail("disabled");
     if (isAdminEmail && user.role !== "admin") {
       user = await updateUser(env, user.id, { role: "admin" });
     }

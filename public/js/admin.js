@@ -45,12 +45,14 @@ async function load() {
 
 function renderTotals() {
   const t = overview.totals;
+  const pending = overview.users.filter((u) => u.status === "pending").length;
   const cards = [
     ["Today", `${euro(t.day_cost)} · ${hours(t.day_ms)}`],
     ["This week", `${euro(t.week_cost)} · ${hours(t.week_ms)}`],
     ["This month", `${euro(t.month_cost)} · ${hours(t.month_ms)}`],
     ["Requests this month", String(t.month_requests || 0)],
     ["Users", String(overview.users.length)],
+    ["Awaiting approval", String(pending)],
   ];
   $("totals").innerHTML = cards
     .map(([lbl, big]) => `<div class="card"><div class="big">${big}</div><div class="lbl">${lbl}</div></div>`)
@@ -91,11 +93,13 @@ function renderUsers() {
         <span class="muted">${escapeHtml(u.email)}</span>
         <span class="badge ${u.role}">${u.role}</span>
         ${u.status === "disabled" ? '<span class="badge disabled">disabled</span>' : ""}
+        ${u.status === "pending" ? '<span class="badge pending">awaiting approval</span>' : ""}
         ${override ? '<span class="badge">custom quota</span>' : ""}
         <span class="spacer"></span>
+        ${u.status === "pending" ? '<button data-act="approve">Approve</button>' : ""}
         <button data-act="edit" class="secondary">Quota…</button>
         <button data-act="toggle-role" class="secondary">${u.role === "admin" ? "Make user" : "Make admin"}</button>
-        <button data-act="toggle-status" class="secondary">${u.status === "disabled" ? "Enable" : "Disable"}</button>
+        ${u.status === "pending" ? "" : `<button data-act="toggle-status" class="secondary">${u.status === "disabled" ? "Enable" : "Disable"}</button>`}
         <button data-act="delete" class="danger">Delete</button>
       </div>
       <div class="quota-bars">
@@ -127,6 +131,9 @@ function renderUsers() {
       try {
         if (act === "edit") {
           el.classList.toggle("open");
+        } else if (act === "approve") {
+          await api(`/users/${u.id}`, { method: "PATCH", body: { status: "active" } });
+          await load();
         } else if (act === "toggle-role") {
           await api(`/users/${u.id}`, { method: "PATCH", body: { role: u.role === "admin" ? "user" : "admin" } });
           await load();
@@ -178,6 +185,11 @@ function renderConfig() {
       <label>Max time budget (s) <input type="number" min="15" max="600" name="maxbudget" value="${c.max_time_budget_s}"></label>
       <label>Default model <input name="model" value="${escapeHtml(c.default_model || "")}" placeholder="(worker default)" style="min-width:230px"></label>
     </div>
+    <h3>Accounts</h3>
+    <div class="group">
+      <label><input type="checkbox" name="approval" ${c.require_approval ? "checked" : ""}>
+        Require admin approval for new sign-ins (off = anyone with a Google account gets access immediately)</label>
+    </div>
     <div class="group"><button type="submit">Save configuration</button><span class="muted" id="config-msg"></span></div>`;
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -194,6 +206,7 @@ function renderConfig() {
           exa_cost_per_search_eur: Number(f.get("exa")),
           max_time_budget_s: Number(f.get("maxbudget")),
           default_model: String(f.get("model") || ""),
+          require_approval: f.get("approval") === "on",
         },
       });
       $("config-msg").textContent = "Saved ✓";

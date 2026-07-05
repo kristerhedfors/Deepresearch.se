@@ -75,6 +75,7 @@ pre {
 }
 .badge.admin { background: #0d4fa0; color: #fff; border-color: #0d4fa0; }
 .badge.disabled { background: #eee; color: #777; border-color: #ccc; }
+.badge.pending { background: #fff3d6; color: #7a5b12; border-color: #e3c576; }
 
 /* Buttons & inputs */
 button {

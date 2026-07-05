@@ -287,9 +287,14 @@ server-to-server, claims validated (`iss`, `aud`, `exp`, and
 token endpoint over TLS, so signature verification is not required in
 this flow per Google's guidance). First sign-in auto-provisions the user
 row: the `ADMIN_EMAIL` address (wrangler var) gets and keeps the admin
-role, everyone else is a regular user under the default quotas — that is
-the cost boundary for open sign-in, and the admin can disable any user
-(effective immediately, live sessions included).
+role and is always active; everyone else lands as **`pending`** when the
+approval gate is on (config `require_approval`, default on) — they hold a
+session but see only an auto-refreshing waiting page (APIs return 403,
+nothing costs anything) until the admin approves them in `/admin`, which
+takes effect on their next request without re-login. With the gate off,
+new users are active immediately under the default quotas. Either way the
+admin can disable any user (effective immediately, live sessions
+included).
 
 **Quotas** (Claude Code-inspired): caps on research **hours** and **cost**
 (EUR) per UTC calendar day / ISO week (Mon) / calendar month.

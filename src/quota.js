@@ -18,6 +18,9 @@ export const DEFAULT_CONFIG = {
   exa_cost_per_search_eur: 0.005,
   max_time_budget_s: 600, // cap for the UI slider value accepted server-side
   default_model: "", // empty = Worker default (BERGET_MODEL var / built-in)
+  // Approval gate: new Google sign-ins land as status "pending" (waiting
+  // page, no API access) until the admin approves them in /admin.
+  require_approval: true,
 };
 
 // ---- global config -------------------------------------------------------
@@ -73,6 +76,7 @@ function mergeConfig(base, patch) {
     out.max_time_budget_s = Math.min(600, Math.max(15, Math.round(patch.max_time_budget_s)));
   }
   if (typeof patch.default_model === "string") out.default_model = patch.default_model;
+  if (typeof patch.require_approval === "boolean") out.require_approval = patch.require_approval;
   return out;
 }
 
@@ -84,6 +88,7 @@ function sanitizeConfigPatch(patch) {
     exa_cost_per_search_eur: numOr(patch?.exa_cost_per_search_eur),
     max_time_budget_s: numOr(patch?.max_time_budget_s),
     default_model: patch?.default_model,
+    require_approval: patch?.require_approval,
   };
 }
 const numOr = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : undefined);

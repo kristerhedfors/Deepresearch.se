@@ -29,7 +29,7 @@ import { getDb } from "./db.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
-import { loginPage } from "./login.js";
+import { loginPage, pendingPage } from "./login.js";
 import { effectiveQuota, getConfig, getUsage, windowReset } from "./quota.js";
 
 export default {
@@ -125,6 +125,16 @@ async function routeAuthed(request, env, url, log, identity) {
       status: 303,
       headers: { Location: "/login", "Set-Cookie": clearSessionCookie() },
     });
+  }
+
+  // Approval gate: pending users are parked on the waiting page — no APIs,
+  // no app, no admin — until the admin flips them to active. The page
+  // auto-refreshes, so approval takes effect without a re-login.
+  if (identity.pending) {
+    if (url.pathname.startsWith("/api/")) {
+      return jsonResponse({ error: "Your account is awaiting approval.", pending: true }, 403);
+    }
+    return htmlResponse(pendingPage(identity), 200);
   }
   if (url.pathname === "/api/chat" && request.method === "POST") {
     return handleChat(request, env, log, identity);

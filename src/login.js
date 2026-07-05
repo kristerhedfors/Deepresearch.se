@@ -38,6 +38,52 @@ const G_SVG =
   '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
   "</svg>";
 
+// Waiting room for the approval gate: shown to signed-in users whose
+// account is still status "pending". Auto-refreshes so approval kicks in
+// without any user action; signing out is the only available act.
+export function pendingPage(identity) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="20">
+  <title>Deepresearch.se — awaiting approval</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>${PAGE_CSS}
+    form { margin: 0; }
+    button {
+      background: #e2f1ff; color: #0a2e5c; border: 1px solid #8ec4ec;
+      border-radius: 8px; padding: .5rem 1rem; font: inherit; font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/icons/icon-192.png?v=3" alt="">
+    <h1>Almost there</h1>
+    <p class="muted">You’re signed in as <b>${escapeHtml(identity.email)}</b>,
+    and your account is waiting for the site owner’s approval. This page
+    checks again automatically — once you’re approved it turns into the app
+    by itself.</p>
+    <form method="post" action="/logout"><button type="submit">Sign out</button></form>
+  </div>
+</body>
+</html>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[c]);
+}
+
 // flash: "" | "google-failed" | "google-unverified" | "disabled" | "nodb"
 export function loginPage(flash) {
   const messages = {

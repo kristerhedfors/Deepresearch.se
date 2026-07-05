@@ -36,15 +36,23 @@ export async function listUsers(env) {
 
 // First Google sign-in for an email creates the account. `sub` is Google's
 // stable subject id — stored so the account stays pinned to that Google
-// identity even if email ownership ever changes hands.
-export async function createUserFromGoogle(env, { email, name, sub, role }) {
+// identity even if email ownership ever changes hands. `status` is
+// "pending" when the approval gate is on (src/google.js decides).
+export async function createUserFromGoogle(env, { email, name, sub, role, status }) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
   await db
     .prepare(
-      "INSERT INTO users (email, name, role, status, google_sub, created_at) VALUES (?, ?, ?, 'active', ?, ?)",
+      "INSERT INTO users (email, name, role, status, google_sub, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(email, name?.slice(0, 120) || null, role === "admin" ? "admin" : "user", sub || null, Date.now())
+    .bind(
+      email,
+      name?.slice(0, 120) || null,
+      role === "admin" ? "admin" : "user",
+      status === "pending" ? "pending" : "active",
+      sub || null,
+      Date.now(),
+    )
     .run();
   return getUserByEmail(env, email);
 }

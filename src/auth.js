@@ -46,6 +46,9 @@ function userIdentity(user) {
     role: user.role === "admin" ? "admin" : "user",
     email: user.email,
     name: user.name || user.email,
+    // Approval gate: pending users authenticate but only ever see the
+    // waiting page (index.js enforces) until the admin activates them.
+    pending: user.status === "pending",
     user,
   };
 }
@@ -71,7 +74,9 @@ export async function identify(request, env) {
 
   if (session.uid === ADMIN_ID) return { ...adminIdentity(), refreshCookie };
   const user = await getUserById(env, Number(session.uid)).catch(() => null);
-  if (user && user.status === "active") return { ...userIdentity(user), refreshCookie };
+  if (user && (user.status === "active" || user.status === "pending")) {
+    return { ...userIdentity(user), refreshCookie };
+  }
   return null;
 }
 
