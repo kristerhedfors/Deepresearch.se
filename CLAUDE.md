@@ -117,7 +117,11 @@ unknown `status` types (forward compatibility).
   Raw (plain-text toggle), Copy, and **PDF** buttons — PDF generates a
   branded DeepResearch.se report client-side via vendored jsPDF
   (`public/js/report.js`; the 360KB lib is script-injected on first use
-  only).
+  only). The PDF is saved via the native share sheet on touch devices and
+  an `<a download>` click elsewhere — NEVER jsPDF's own `doc.save()`,
+  whose Safari fallback navigates the page and aborts in-flight fetches
+  (this killed a streaming answer in production). Belt-and-suspenders:
+  the button waits (`"when done"`) while a research stream is running.
 - **Document attachments** (`public/js/docs.js`): the paperclip accepts
   images AND `pdf`/`docx`/`md`/`txt`. Docs are parsed entirely client-side
   (txt/md directly; pdf via vendored pdf.js, dynamically imported on first

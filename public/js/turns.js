@@ -10,10 +10,12 @@ const EMPTY_TEXT =
 
 let chat;
 let scrollDown;
+let isBusy = () => false;
 
-export function initTurns(chatEl, scrollFn) {
+export function initTurns(chatEl, scrollFn, opts = {}) {
   chat = chatEl;
   scrollDown = scrollFn;
+  isBusy = opts.isBusy || isBusy;
 }
 
 export function clearChatDom() {
@@ -116,6 +118,14 @@ function makePdfButton(turn) {
   btn.textContent = "PDF";
   btn.title = "Download as a PDF report";
   btn.addEventListener("click", async () => {
+    // Downloads wait while an answer is streaming: on iOS a download can
+    // navigate the page, which aborts the in-flight fetch mid-answer.
+    if (isBusy()) {
+      btn.textContent = "when done";
+      btn.title = "The report downloads after the current research finishes";
+      setTimeout(() => { btn.textContent = "PDF"; }, 1500);
+      return;
+    }
     btn.disabled = true;
     btn.textContent = "…";
     try {

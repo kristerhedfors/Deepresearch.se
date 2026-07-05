@@ -16,7 +16,7 @@
 import { initAccountPanel } from "./account.js";
 import { hasPending, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { initModels, selectedModelId } from "./models.js";
-import { clearHistory, initStream, sendMessage } from "./stream.js";
+import { clearHistory, initStream, isStreaming, sendMessage } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, initTurns } from "./turns.js";
 
@@ -59,7 +59,7 @@ const scrollDown = (force = false) => {
 
 // ---- Module wiring ---------------------------------------------------------
 
-initTurns(chat, scrollDown);
+initTurns(chat, scrollDown, { isBusy: isStreaming });
 initStream(scrollDown);
 initModels(document.getElementById("model"), { onChange: syncAttachState });
 initAttachments(

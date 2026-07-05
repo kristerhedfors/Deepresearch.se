@@ -138,5 +138,34 @@ export async function downloadReport(turn, meta = {}) {
   footer();
 
   const stamp = now.toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
-  doc.save(`deepresearch-report-${stamp}.pdf`);
+  await savePdf(doc, `deepresearch-report-${stamp}.pdf`);
+}
+
+// NEVER use jsPDF's doc.save(): its Safari fallback navigates the page to
+// the blob URL, and a navigation aborts every in-flight fetch (it killed a
+// streaming answer in production). Hand the blob over ourselves instead —
+// the native share sheet on touch devices (no navigation, and the natural
+// way to save/AirDrop/mail a file on a phone), else a plain <a download>.
+async function savePdf(doc, filename) {
+  const blob = doc.output("blob");
+  const file = new File([blob], filename, { type: "application/pdf" });
+  const touch = matchMedia("(pointer: coarse)").matches;
+  if (touch && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user closed the sheet
+      // Gesture expired or share refused — fall through to the download.
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Keep the blob alive long enough for the download to start.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }

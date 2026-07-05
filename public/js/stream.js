@@ -25,9 +25,16 @@ import {
 const history = []; // {role, content} pairs sent to the API
 
 let scrollDown = () => {};
+let inFlight = false;
 
 export function initStream(scrollFn) {
   scrollDown = scrollFn;
+}
+
+// True while a /api/chat stream is running — downloads must wait (on iOS
+// a download-triggered navigation aborts the in-flight fetch).
+export function isStreaming() {
+  return inFlight;
 }
 
 export function clearHistory() {
@@ -109,6 +116,7 @@ export async function sendMessage(text, opts) {
   addUserBubble(text, opts.images.map((a) => a.dataUrl), opts.docs.map((d) => d.name));
   const turn = addAssistantTurn(text);
   let acc = "";
+  inFlight = true;
 
   // iOS suspends network for backgrounded apps/PWAs — the most common
   // cause of mid-stream drops. Track it so the error can say so.
@@ -205,6 +213,7 @@ export async function sendMessage(text, opts) {
       history.pop();
     }
   } finally {
+    inFlight = false;
     document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
   }
