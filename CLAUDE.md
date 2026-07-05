@@ -21,15 +21,15 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 `wrangler.toml`), git-connected to Cloudflare.
 
 **Product intent:** the site is a *deep research* assistant, matching its
-name. `/api/chat` runs a Worker-orchestrated pipeline (`src/chat.js`) — no
-function calling; every phase is a direct call, so it is deterministic and
-works on any JSON-mode model:
+name. `/api/chat` runs a Worker-orchestrated pipeline (`src/pipeline.js`,
+handler scaffold in `src/chat.js`) — no function calling; every phase is a
+direct call, so it is deterministic and works on any JSON-mode model:
 
 1. **Triage** (JSON mode): direct reply | one clarifying question | research
    plan with 2–4 queries covering different angles.
-2. **Search wave**: planned queries via Exa, deduped, capped
-   (`MAX_TOTAL_SEARCHES`).
-3. **Gap check** (JSON, up to `MAX_GAP_ITERATIONS`): audit coverage, run
+2. **Search wave**: planned queries via Exa, deduped, capped by the
+   budget plan (`plan.maxSearches`).
+3. **Gap check** (JSON, rounds set by the plan): audit coverage, run
    follow-up queries for missing angles.
 4. **Synthesis** (streamed): answer built ONLY from the numbered source
    registry, `[n]` citations + "Sources:" list.
@@ -38,7 +38,8 @@ works on any JSON-mode model:
    answer is emitted.
 
 Helper phases fail soft (degrade to fewer searches / accepted draft — never
-break the request). Pipeline constants at the top of `src/chat.js`.
+break the request). Search/round caps come from the time-budget planner
+(`src/budget.js`).
 
 **Time budget:** the UI slider (15 s–10 min; the clock symbol IS the thumb;
 position maps quadratically to seconds for fine low-end granularity;
@@ -64,7 +65,9 @@ Server (`src/`):
 | `login.js` | Sign-in page — Google button only (PWAs can't answer a 401 challenge) |
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
-| `quota.js` | Global config, calendar-window usage accounting, quota enforcement, cost calc |
+| `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
+| `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
+| `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording |
 | `pipeline.js` | The research pipeline (triage → search → gap → synth → validate) |
@@ -78,12 +81,15 @@ Server (`src/`):
 | `http.js` | Response helpers (json, SSE) |
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
-ES modules in `js/` — `app.js` (state, wiring, SSE consumption, account
-panel), `turns.js` (bubbles/content/tools), `activity.js` (step bars,
-stats, collapse), `markdown.js` (sanitized rendering), `timescale.js`
-(slider scale). Admin UI: `admin/index.html` + `js/admin.js` +
-`css/admin.css` (served only to admins). Vendored libs in `vendor/`
-(`marked`, `DOMPurify`).
+ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
+search knob, composer), `stream.js` (conversation history + `/api/chat`
+SSE send loop), `models.js` (model dropdown), `attachments.js` (pending
+images/docs, downscaling), `account.js` (account & usage panel),
+`turns.js` (bubbles/content/tools), `activity.js` (step bars, stats,
+collapse), `markdown.js` (sanitized rendering), `timescale.js` (slider
+scale). Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css`
+(served only to admins). Vendored libs in `vendor/` (`marked`,
+`DOMPurify`).
 
 ### /api/chat SSE protocol
 
@@ -226,7 +232,7 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   measured 2026-07: 1.0M chars OK, 1.2M rejected), so the client downscales
   images before attaching (canvas → JPEG, max 1280px, quality ladder, ≤280K
   chars/image, ≤700K/message) and strips images from all but the latest
-  message when resending history. Server caps in `src/chat.js`: 4
+  message when resending history. Server caps in `src/validation.js`: 4
   images/message, 8/request, 300K chars/image, 750K total. Image parts of
   the latest user message are forwarded to the synthesis call so research
   can use them; image-only sends get an explicit analyze instruction; JSON
@@ -238,7 +244,7 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
 — the source of truth for search types, parameters, and response shape. Fetch it
 if anything here looks stale, and report staleness back.
 
-Searches are orchestrated by the Worker pipeline in `src/chat.js` (no
+Searches are orchestrated by the Worker pipeline in `src/pipeline.js` (no
 function calling): the triage/gap-check phases plan queries via JSON-mode
 calls, the Worker runs them against Exa, and synthesis answers from the
 accumulated numbered source registry.
@@ -254,8 +260,8 @@ accumulated numbered source registry.
 - **Common mistakes:** `text`/`summary`/`highlights` must be nested under
   `contents` on `/search` (they're top-level only on `/contents`); `useAutoprompt`,
   `livecrawl`, `numSentences` are deprecated; use `includeDomains`/`excludeDomains`
-  (not `includeUrls`). Search volume is capped by the pipeline constants
-  (`MAX_TOTAL_SEARCHES` etc.) in `src/chat.js`.
+  (not `includeUrls`). Search volume is capped by the time-budget plan
+  (`plan.maxSearches` — `src/budget.js`).
 
 ## Access control & accounts — Google sign-in only
 

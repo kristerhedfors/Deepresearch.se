@@ -23,7 +23,7 @@
 import { createUserFromGoogle, getUserByEmail, normalizeEmail, updateUser } from "./accounts.js";
 import { createSessionCookie, signState, verifyState } from "./auth.js";
 import { getDb } from "./db.js";
-import { getConfig } from "./quota.js";
+import { getConfig } from "./config.js";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";

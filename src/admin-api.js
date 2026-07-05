@@ -12,7 +12,8 @@
 import { deleteUser, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
-import { getConfig, getUsageAllUsers, getUsageByModel, saveConfig } from "./quota.js";
+import { getConfig, saveConfig } from "./config.js";
+import { getUsageAllUsers, getUsageByModel, PERIODS } from "./quota.js";
 
 export async function handleAdminApi(request, env, url, log, identity) {
   const db = await getDb(env);
@@ -73,7 +74,7 @@ async function overview(env) {
   const usageByUser = Object.fromEntries(usage.map((u) => [u.user_id, u]));
   // Aggregate counts AND costs per window across all identities.
   const totals = { month_requests: 0 };
-  for (const p of ["h5", "day", "week", "month"]) {
+  for (const p of PERIODS) {
     for (const k of ["tokens", "searches", "berget_cost", "exa_cost", "ms"]) {
       totals[`${p}_${k}`] = 0;
     }
@@ -95,7 +96,7 @@ async function overview(env) {
 function sanitizeQuota(quota) {
   if (quota == null) return null;
   const out = {};
-  for (const p of ["h5", "day", "week", "month"]) {
+  for (const p of PERIODS) {
     const q = quota[p];
     if (!q || typeof q !== "object") continue;
     const entry = {};

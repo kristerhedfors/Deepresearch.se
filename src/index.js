@@ -12,7 +12,9 @@
 //   src/google.js    — Google OIDC sign-in (the only user-facing login)
 //   src/login.js     — sign-in page (PWAs can't answer a 401 challenge)
 //   src/accounts.js  — user accounts (D1)
-//   src/quota.js     — config, usage accounting, quota enforcement
+//   src/config.js    — global site config (D1 config table, cached)
+//   src/quota.js     — usage accounting + quota enforcement
+//   src/user-api.js  — /api/me + /api/models
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/berget.js    — Berget.ai client + SSE consumption
@@ -23,14 +25,12 @@
 
 import { handleAdminApi } from "./admin-api.js";
 import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
-import { defaultModel, listModels } from "./berget.js";
 import { handleChat } from "./chat.js";
-import { getDb } from "./db.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { loginPage, pendingPage } from "./login.js";
-import { effectiveQuota, getConfig, getUsage, windowReset } from "./quota.js";
+import { handleMe, handleModels } from "./user-api.js";
 
 export default {
   async fetch(request, env) {
@@ -161,56 +161,11 @@ async function routeAuthed(request, env, url, log, identity) {
   return env.ASSETS.fetch(request);
 }
 
-// GET /api/me — identity + usage vs quota for the user dashboard.
-// The Berget budget is cost-based but OPAQUE to users: only a percentage
-// leaves the server (never the EUR amounts). Searches are plain counts.
-async function handleMe(env, identity) {
-  const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id);
-  const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
-  const windows = {};
-  for (const p of ["h5", "day", "week", "month"]) {
-    const budget = quota?.[p]?.budget_eur || 0;
-    windows[p] = {
-      budget_pct:
-        budget > 0 ? Math.min(999, Math.round((100 * usage[p].berget_cost) / budget)) : null,
-      searches: usage[p].searches,
-      searches_limit: quota?.[p]?.searches || 0,
-      reset: windowReset(p, Date.now(), usage.h5_oldest),
-    };
-  }
-  return jsonResponse({
-    id: identity.id,
-    email: identity.email,
-    name: identity.name,
-    role: identity.role,
-    unlimited: !!identity.isSecretAdmin,
-    // Admins see their bars fill and overflow, but are never blocked.
-    enforced: !identity.isSecretAdmin && identity.role !== "admin",
-    windows,
-    db_configured: !!(await getDb(env)),
-  });
-}
-
 function htmlResponse(html, status) {
   return new Response(html, {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
-}
-
-// Model catalog for the UI dropdown (filtered + cached in src/berget.js).
-async function handleModels(env, log) {
-  try {
-    const models = await listModels(env);
-    const config = await getConfig(env);
-    const configured = config.default_model && models.some((m) => m.id === config.default_model && m.up);
-    log.debug("models.list", { count: models.length });
-    return jsonResponse({ models, default: configured ? config.default_model : defaultModel(env) });
-  } catch (err) {
-    log.error("models.error", { error: err?.message || String(err) });
-    return jsonResponse({ error: "Could not load the model catalog." }, 502);
-  }
 }
 
 // Every response carries x-request-id so a user report can be correlated

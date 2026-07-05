@@ -8,10 +8,10 @@ import { listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
+import { getConfig } from "./config.js";
 import {
   bergetCost,
   effectiveQuota,
-  getConfig,
   getUsage,
   quotaExceeded,
   recordUsage,

@@ -1,5 +1,5 @@
 // Research quotas and usage accounting. Goal: complete, real-cost-grounded
-// cost control.
+// cost control. (Global config defaults live in src/config.js.)
 //
 // Quota dimensions per window:
 //   - BUDGET_EUR (Berget): a COST cap. Different models bill different
@@ -23,91 +23,6 @@ import { getDb } from "./db.js";
 
 export const PERIODS = ["h5", "day", "week", "month"];
 const H5_MS = 5 * 3600 * 1000;
-
-export const DEFAULT_CONFIG = {
-  quotas: {
-    h5: { budget_eur: 0.25, searches: 30 },
-    day: { budget_eur: 0.5, searches: 100 },
-    week: { budget_eur: 2, searches: 400 },
-    month: { budget_eur: 6, searches: 1200 },
-  },
-  exa_cost_per_search_eur: 0.005,
-  max_time_budget_s: 600, // cap for the UI slider value accepted server-side
-  default_model: "", // empty = Worker default (BERGET_MODEL var / built-in)
-  // Approval gate: new Google sign-ins land as status "pending" (waiting
-  // page, no API access) until the admin approves them in /admin.
-  require_approval: true,
-};
-
-// ---- global config -------------------------------------------------------
-
-let configCache = { at: 0, value: null };
-const CONFIG_TTL_MS = 30_000;
-
-export async function getConfig(env) {
-  const db = await getDb(env);
-  if (!db) return structuredClone(DEFAULT_CONFIG);
-  if (configCache.value && Date.now() - configCache.at < CONFIG_TTL_MS) {
-    return configCache.value;
-  }
-  const row = await db.prepare("SELECT value FROM config WHERE key='app'").first();
-  let stored = {};
-  try {
-    stored = row ? JSON.parse(row.value) : {};
-  } catch {
-    stored = {};
-  }
-  const merged = mergeConfig(DEFAULT_CONFIG, stored);
-  configCache = { at: Date.now(), value: merged };
-  return merged;
-}
-
-export async function saveConfig(env, patch) {
-  const db = await getDb(env);
-  if (!db) throw new Error("Database not configured.");
-  const current = await getConfig(env);
-  const next = mergeConfig(current, sanitizeConfigPatch(patch));
-  await db
-    .prepare("INSERT INTO config (key, value) VALUES ('app', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-    .bind(JSON.stringify(next))
-    .run();
-  configCache = { at: Date.now(), value: next };
-  return next;
-}
-
-function mergeConfig(base, patch) {
-  const out = structuredClone(base);
-  if (!patch || typeof patch !== "object") return out;
-  for (const p of PERIODS) {
-    const q = patch.quotas?.[p];
-    if (q && typeof q === "object") {
-      if (Number.isFinite(q.budget_eur)) out.quotas[p].budget_eur = Math.max(0, q.budget_eur);
-      if (Number.isFinite(q.searches)) out.quotas[p].searches = Math.max(0, Math.round(q.searches));
-    }
-  }
-  if (Number.isFinite(patch.exa_cost_per_search_eur)) {
-    out.exa_cost_per_search_eur = Math.max(0, patch.exa_cost_per_search_eur);
-  }
-  if (Number.isFinite(patch.max_time_budget_s)) {
-    out.max_time_budget_s = Math.min(600, Math.max(15, Math.round(patch.max_time_budget_s)));
-  }
-  if (typeof patch.default_model === "string") out.default_model = patch.default_model;
-  if (typeof patch.require_approval === "boolean") out.require_approval = patch.require_approval;
-  return out;
-}
-
-// Only known keys survive into storage (an admin API caller can't stuff
-// arbitrary JSON into config).
-function sanitizeConfigPatch(patch) {
-  return {
-    quotas: patch?.quotas,
-    exa_cost_per_search_eur: numOr(patch?.exa_cost_per_search_eur),
-    max_time_budget_s: numOr(patch?.max_time_budget_s),
-    default_model: patch?.default_model,
-    require_approval: patch?.require_approval,
-  };
-}
-const numOr = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : undefined);
 
 // ---- windows ---------------------------------------------------------------
 // h5 is a rolling window (last 5 hours); day/week/month are UTC calendar.
@@ -163,6 +78,34 @@ export function effectiveQuota(config, user) {
 }
 
 // ---- usage aggregation -----------------------------------------------------
+// All three queries share one shape: a single scan over the widest window,
+// bucketed per period with SUM(CASE WHEN ts >= start ...). The scan filter
+// uses the MINIMUM of all window starts: the ISO week can begin before the
+// month does, and the rolling 5h window can reach past midnight or the
+// start of the month.
+
+function windowStarts(now) {
+  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
+  return { starts, minStart: Math.min(...Object.values(starts)) };
+}
+
+// SELECT columns bucketing each (expr → alias) pair into every period:
+// `SUM(CASE WHEN ts >= <start> THEN <expr> ELSE 0 END) AS <period>_<alias>`.
+function bucketCols(starts, exprs) {
+  return PERIODS.flatMap((p) =>
+    Object.entries(exprs).map(
+      ([alias, expr]) => `SUM(CASE WHEN ts >= ${starts[p]} THEN ${expr} ELSE 0 END) AS ${p}_${alias}`,
+    ),
+  ).join(", ");
+}
+
+const USAGE_EXPRS = {
+  tokens: "prompt_tokens + completion_tokens",
+  searches: "searches",
+  berget_cost: "berget_cost",
+  exa_cost: "exa_cost",
+  ms: "duration_ms",
+};
 
 const emptyWindow = () => ({
   tokens: 0,
@@ -173,31 +116,18 @@ const emptyWindow = () => ({
   requests: 0,
 });
 
-// One scan over the widest window, bucketed per period in SQL. The filter
-// uses the MINIMUM of all window starts: the ISO week can begin before the
-// month does, and the rolling 5h window can reach past midnight or the
-// start of the month.
+// One user's usage per window, for quota checks and the account panel.
 // Also returns h5_oldest (oldest event inside the rolling window) for the
 // rolling reset estimate.
 export async function getUsage(env, userId, now = Date.now()) {
   const db = await getDb(env);
   const out = { h5: emptyWindow(), day: emptyWindow(), week: emptyWindow(), month: emptyWindow(), h5_oldest: null };
   if (!db) return out;
-  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
-  const minStart = Math.min(...Object.values(starts));
-  const bucket = (p, expr, alias) =>
-    `SUM(CASE WHEN ts >= ${starts[p]} THEN ${expr} ELSE 0 END) AS ${p}_${alias}`;
-  const cols = PERIODS.flatMap((p) => [
-    bucket(p, "prompt_tokens + completion_tokens", "tokens"),
-    bucket(p, "searches", "searches"),
-    bucket(p, "berget_cost", "berget_cost"),
-    bucket(p, "exa_cost", "exa_cost"),
-    bucket(p, "duration_ms", "ms"),
-    bucket(p, "1", "requests"),
-  ]);
+  const { starts, minStart } = windowStarts(now);
+  const cols = bucketCols(starts, { ...USAGE_EXPRS, requests: "1" });
   const row = await db
     .prepare(
-      `SELECT ${cols.join(", ")},
+      `SELECT ${cols},
          MIN(CASE WHEN ts >= ${starts.h5} THEN ts END) AS h5_oldest
        FROM usage_events WHERE user_id = ?1 AND ts >= ?2`,
     )
@@ -221,20 +151,10 @@ export async function getUsage(env, userId, now = Date.now()) {
 export async function getUsageAllUsers(env, now = Date.now()) {
   const db = await getDb(env);
   if (!db) return [];
-  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
-  const minStart = Math.min(...Object.values(starts));
-  const bucket = (p, expr, alias) =>
-    `SUM(CASE WHEN ts >= ${starts[p]} THEN ${expr} ELSE 0 END) AS ${p}_${alias}`;
-  const cols = PERIODS.flatMap((p) => [
-    bucket(p, "prompt_tokens + completion_tokens", "tokens"),
-    bucket(p, "searches", "searches"),
-    bucket(p, "berget_cost", "berget_cost"),
-    bucket(p, "exa_cost", "exa_cost"),
-    bucket(p, "duration_ms", "ms"),
-  ]);
+  const { starts, minStart } = windowStarts(now);
   const { results } = await db
     .prepare(
-      `SELECT user_id, ${cols.join(", ")},
+      `SELECT user_id, ${bucketCols(starts, USAGE_EXPRS)},
          SUM(CASE WHEN ts >= ${starts.month} THEN 1 ELSE 0 END) AS month_requests
        FROM usage_events WHERE ts >= ?1 GROUP BY user_id`,
     )
@@ -249,17 +169,14 @@ export async function getUsageAllUsers(env, now = Date.now()) {
 export async function getUsageByModel(env, now = Date.now()) {
   const db = await getDb(env);
   if (!db) return [];
-  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
-  const minStart = Math.min(...Object.values(starts));
-  const bucket = (p, expr, alias) =>
-    `SUM(CASE WHEN ts >= ${starts[p]} THEN ${expr} ELSE 0 END) AS ${p}_${alias}`;
-  const cols = PERIODS.flatMap((p) => [
-    bucket(p, "prompt_tokens + completion_tokens", "tokens"),
-    bucket(p, "berget_cost", "cost"),
-  ]);
+  const { starts, minStart } = windowStarts(now);
+  const cols = bucketCols(starts, {
+    tokens: "prompt_tokens + completion_tokens",
+    cost: "berget_cost",
+  });
   const { results } = await db
     .prepare(
-      `SELECT COALESCE(model, '(unknown)') AS model, ${cols.join(", ")},
+      `SELECT COALESCE(model, '(unknown)') AS model, ${cols},
          SUM(CASE WHEN ts >= ${starts.month} THEN prompt_tokens ELSE 0 END) AS month_prompt,
          SUM(CASE WHEN ts >= ${starts.month} THEN completion_tokens ELSE 0 END) AS month_completion,
          SUM(CASE WHEN ts >= ${starts.month} THEN 1 ELSE 0 END) AS month_requests
