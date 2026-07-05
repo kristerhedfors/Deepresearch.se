@@ -1,0 +1,73 @@
+// D1 database access. The binding is optional: until the database exists
+// (npx wrangler d1 create deepresearch-se + uncomment the block in
+// wrangler.toml) `getDb` returns null and every account/quota feature
+// degrades to the pre-multiuser behavior — admin-secrets auth only, no
+// quotas. Nothing may throw just because DB is absent.
+//
+// Schema is applied lazily, once per isolate (CREATE TABLE IF NOT EXISTS is
+// idempotent), so there is no separate migration step to operate.
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  role TEXT NOT NULL DEFAULT 'user',
+  status TEXT NOT NULL DEFAULT 'active',
+  pass_hash TEXT,
+  pass_salt TEXT,
+  quota_json TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS invites (
+  token TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user',
+  created_by TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS access_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL,
+  message TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  handled_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS usage_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  model TEXT,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  searches INTEGER NOT NULL DEFAULT 0,
+  berget_cost REAL NOT NULL DEFAULT 0,
+  exa_cost REAL NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_events(user_id, ts);
+CREATE TABLE IF NOT EXISTS config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+`;
+
+let migrated = false; // per isolate
+
+// Returns the D1 binding with schema applied, or null when the database is
+// not configured. Callers must handle null (feature off, not an error).
+export async function getDb(env) {
+  if (!env.DB) return null;
+  if (!migrated) {
+    const statements = SCHEMA.split(";")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => env.DB.prepare(s));
+    await env.DB.batch(statements);
+    migrated = true;
+  }
+  return env.DB;
+}

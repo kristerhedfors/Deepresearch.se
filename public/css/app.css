@@ -424,11 +424,54 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #budgetbar.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
-#clearbtn {
+#clearbtn, #accountbtn {
   background: var(--panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px;
   padding: .35rem .5rem; line-height: 0;
   display: inline-flex; align-items: center;
+}
+
+/* Account & usage panel (quota bars from /api/me) */
+#account {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(10, 46, 92, .45);
+  display: grid; place-items: center;
+  padding: 1rem;
+}
+#account[hidden] { display: none; }
+.account-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1rem 1.2rem 1.2rem;
+  width: min(440px, 94vw); max-height: 86vh; overflow-y: auto;
+  font-size: .88rem; line-height: 1.5;
+  box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+}
+.account-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.account-head button {
+  background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem;
+}
+.account-card .muted { color: var(--muted); font-size: .8rem; }
+.account-card .who { margin: .2rem 0 .7rem; overflow-wrap: anywhere; }
+.account-card .role-badge {
+  font-size: .7rem; padding: .12rem .45rem; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  vertical-align: middle; margin-left: .35rem;
+}
+.usage-block { margin: .55rem 0; }
+.usage-block .lbl { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.usage-row { display: flex; justify-content: space-between; font-size: .8rem; margin-top: .3rem; }
+.usage-track {
+  height: 8px; border-radius: 4px; background: var(--panel-2);
+  border: 1px solid var(--border); overflow: hidden; margin-top: .2rem;
+}
+.usage-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.usage-fill.hot { background: #9a1c1c; }
+.account-actions { display: flex; gap: .5rem; margin-top: .9rem; flex-wrap: wrap; }
+.account-actions a, .account-actions button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .4rem .8rem; font: inherit; font-size: .82rem; font-weight: 600;
+  text-decoration: none; cursor: pointer;
 }
 
 /* First-visit privacy notice (acknowledgement kept in a cookie) */

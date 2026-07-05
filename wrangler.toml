@@ -31,3 +31,14 @@ run_worker_first = true
 # (Worker -> Logs) or live via `npx wrangler tail`.
 [observability]
 enabled = true
+
+# D1 database for accounts, invitations, and research quotas. ONE-TIME SETUP:
+#   npx wrangler d1 create deepresearch-se
+# then paste the printed database_id below and uncomment the block. Until
+# then the Worker runs fine with accounts/quotas disabled (admin secrets
+# only). The schema applies itself on first use — no migration step.
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "deepresearch-se"
+# database_id = "PASTE-DATABASE-ID-HERE"

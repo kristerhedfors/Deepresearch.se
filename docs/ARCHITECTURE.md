@@ -110,22 +110,29 @@ Every request flows through `src/index.js`
    fetches `apple-touch-icon` and Chrome downloads manifest icons *without*
    credentials; behind auth they silently 401 and the PWA icon breaks.
    Nothing sensitive is exposed — branding only.
-3. **`POST /login`** — validates the form against the same secrets as Basic
-   Auth; success issues the session cookie and 303-redirects to `/`.
-4. **Auth gate** (`src/auth.js`) — two mechanisms, same credentials, and it
-   **fails closed** (missing secrets ⇒ everything is denied):
-   - **HTTP Basic Auth** — checked on every request (curl/scripts). No
-     `WWW-Authenticate` challenge is ever emitted.
-   - **Session cookie** `dr_session` — value `exp.hmac(exp)`,
-     HMAC-SHA-256 keyed from the credential pair (so rotating the password
-     invalidates all sessions), 30-day TTL, `Secure; HttpOnly; SameSite=Lax`.
-     Exists because an installed PWA cannot display the native Basic Auth
-     dialog (a 401 challenge renders as a black screen on iOS) — so
-     unauthenticated HTML navigation gets the login page instead;
-     unauthenticated `/api/*` gets a 401 JSON body.
+3. **Public auth endpoints** — `GET/POST /login` (password login +
+   request-access form), `POST /request-access`, `GET/POST /invite`
+   (token-gated account creation). These are reachable without identity by
+   design.
+4. **Identity gate** (`src/auth.js`) — resolves *who* is calling, and
+   **fails closed** (missing admin secrets ⇒ everything is denied):
+   - **Admin**: the `ADMIN_USER`/`ADMIN_PASS` secrets (fallback
+     `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`). No database needed.
+   - **Users**: email + password accounts in D1 (PBKDF2-SHA-256, 150k
+     iterations, per-user salt), status re-checked per request.
+   - Both work over **HTTP Basic Auth** (no `WWW-Authenticate` challenge is
+     ever emitted) and the **session cookie** `dr_session` — value
+     `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed from the admin
+     credential pair (rotating the admin password invalidates all
+     sessions), 30-day TTL, `Secure; HttpOnly; SameSite=Lax`. The cookie
+     path exists because an installed PWA cannot display the native Basic
+     Auth dialog (black screen on iOS) — unauthenticated HTML navigation
+     gets the login page; unauthenticated `/api/*` gets a 401 JSON body.
    - Credential comparison is constant-time-ish (`safeEqual`).
-5. **Routing** — `POST /api/chat` → pipeline; `GET /api/models` → catalog;
-   everything else → `env.ASSETS.fetch()` (the static UI).
+5. **Routing** — `POST /api/chat` → pipeline (with quota gate);
+   `GET /api/models` → catalog; `GET /api/me` → identity + usage;
+   `/api/admin/*` and `/admin*` → admin role required (403 / 302);
+   `POST /logout` → cookie cleared; everything else → `env.ASSETS.fetch()`.
 
 ## 4. `POST /api/chat` — the research pipeline
 
@@ -257,6 +264,47 @@ compatibility). Draw.io page 4 shows the full sequence.
 | `{"error":"…"}` | Shown as an error inside the bubble |
 | `data: [DONE]` | Stream end (always sent, even after errors) |
 
+## 4.5 Accounts, invitations, and research quotas (D1)
+
+Multi-user features live in an optional **Cloudflare D1** database
+(`[[d1_databases]]` in `wrangler.toml`; schema auto-applies on first use
+from `src/db.js`). Without the binding the Worker degrades gracefully:
+admin-secrets auth only, no accounts, no quotas — nothing throws.
+
+Tables: `users` (role `user|admin`, status, PBKDF2 hash+salt, optional
+`quota_json` override), `invites` (single-use token bound to an email,
+expiry), `access_requests` (pending/approved/denied), `usage_events`
+(per-request tokens, searches, Berget+Exa cost, duration), `config`
+(one JSON row, ~30 s isolate cache).
+
+**Onboarding**: a visitor either submits the login page's *Request access*
+form (admin approves → invite) or receives an invitation directly — a
+link/QR (vendored `qrcodegen`, rendered client-side so the URL never
+leaves the site) pointing at `/invite?token=…`, where they set a password
+and are signed straight in.
+
+**Quotas** (Claude Code-inspired): caps on research **hours** and **cost**
+(EUR) per UTC calendar day / ISO week (Mon) / calendar month.
+
+- Cost = `prompt_tokens × price_in + completion_tokens × price_out`
+  (raw per-token EUR prices from Berget's catalog, carried on each model
+  entry) + `searches × exa_cost_per_search_eur` (config).
+- Enforcement in `/api/chat`: one aggregate query over the month window
+  buckets day/week/month usage; any exceeded cap → **429** with the limit,
+  usage, and reset timestamp. The requested time budget is also clamped to
+  the remaining hours in the tightest window, so a single request can't
+  blow through a cap. After every stream a `usage_events` row is recorded
+  (fail-soft — accounting never breaks a served answer).
+- Defaults live in config; per-user overrides (`quota_json`) merge over
+  them; `0` means uncapped. The secrets admin is exempt but still recorded.
+
+**Dashboards**: `/api/me` powers the in-app account panel (per-period
+hours/cost bars + reset times, logout, admin link); `/api/admin/overview`
+powers `/admin` — site totals, per-user usage bars, pending requests,
+invitations, user management (role, enable/disable, quota editor, delete),
+and configuration (default quotas, Exa price, max time budget, default
+model, invite expiry, request-access toggle).
+
 ## 5. `GET /api/models`
 
 Proxies Berget's catalog filtered to `model_type === "text"` with
@@ -344,10 +392,16 @@ level via `LOG_LEVEL` (default `info`), persisted by Workers Logs
   `request.complete` marks headers-sent; `chat.complete` (rounds, searches,
   sources, duration) marks the true end of the stream.
 
-## 9. Data at rest — there is none
+## 9. Data at rest
 
-The Worker stores nothing between requests beyond per-isolate, best-effort
-caches: the 5-minute model catalog and the EWMA phase-duration stats. Both
-are ephemeral and reconstructible (the stats re-seed from priors). Chat
-content exists only in the browser and in flight to Berget/Exa — which is
-exactly what the first-visit privacy notice states.
+**Chat content is never stored.** Conversations exist only in the browser
+and in flight to Berget/Exa — exactly what the first-visit privacy notice
+states. What D1 does persist is account/metering metadata only:
+
+- `users` — email, name, role/status, password hash+salt, quota override
+- `invites` / `access_requests` — emails and optional request messages
+- `usage_events` — counts, costs, and durations per request (no content)
+- `config` — the admin's settings
+
+Per-isolate ephemeral caches remain: the 5-minute model catalog, the ~30 s
+config cache, and the EWMA phase-duration stats (re-seeded from priors).

@@ -58,25 +58,31 @@ Server (`src/`):
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Entrypoint: request id, auth gate, routing, request logs, `/api/models` |
-| `auth.js` | Basic Auth + session cookie (secrets only, fail closed) |
-| `login.js` | HTML login page (PWAs can't answer a 401 challenge) |
-| `chat.js` | `/api/chat` handler: validation, model resolution, state, SSE scaffold |
+| `index.js` | Entrypoint: request id, identity gate, routing (`/api/*`, `/admin`, `/invite`, `/login`, `/logout`), request logs |
+| `auth.js` | Identity: admin secrets + D1 user accounts, Basic Auth + uid session cookie (fail closed) |
+| `login.js` | Login / request-access / invite HTML pages (PWAs can't answer a 401 challenge) |
+| `accounts.js` | Users (PBKDF2 passwords), invitations, access requests (D1) |
+| `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
+| `quota.js` | Global config, calendar-window usage accounting, quota enforcement, cost calc |
+| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
+| `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording |
 | `pipeline.js` | The research pipeline (triage → search → gap → synth → validate) |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
-| `berget.js` | Berget client: streaming + JSON-mode completions, model catalog |
+| `berget.js` | Berget client: streaming + JSON-mode completions, model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
-ES modules in `js/` — `app.js` (state, wiring, SSE consumption),
-`turns.js` (bubbles/content/tools), `activity.js` (step bars, stats,
-collapse), `markdown.js` (sanitized rendering), `timescale.js` (slider
-scale). Vendored libs in `vendor/`.
+ES modules in `js/` — `app.js` (state, wiring, SSE consumption, account
+panel), `turns.js` (bubbles/content/tools), `activity.js` (step bars,
+stats, collapse), `markdown.js` (sanitized rendering), `timescale.js`
+(slider scale). Admin UI: `admin/index.html` + `js/admin.js` +
+`css/admin.css` (served only to admins). Vendored libs in `vendor/`
+(`marked`, `DOMPurify`, `qrcodegen`).
 
 ### /api/chat SSE protocol
 
@@ -214,28 +220,61 @@ accumulated numbered source registry.
   (not `includeUrls`). Search volume is capped by the pipeline constants
   (`MAX_TOTAL_SEARCHES` etc.) in `src/chat.js`.
 
-## Access control
+## Access control & accounts
 
-The whole site (UI + API) is gated. Two mechanisms, same credentials (the
-`BASIC_AUTH_USER` / `BASIC_AUTH_PASS` secrets — never hardcoded; the Worker
-**fails closed** if either is unset):
+The whole site (UI + API) is gated; `run_worker_first = true` ensures auth
+also covers the static assets. Two identity sources:
 
-1. **HTTP Basic Auth** — accepted on every request (curl/scripts:
-   `curl -u user:pass …`). No `WWW-Authenticate` challenge is emitted.
-2. **Login page + session cookie** (`/login`, `src/login.js`) — what
-   browsers and installed PWAs use. A standalone PWA cannot show the native
-   Basic Auth dialog (401 challenge = black screen on iOS), so
-   unauthenticated HTML navigation gets a login form; success sets a signed
-   30-day `dr_session` cookie (`exp.hmac(exp)`, HMAC keyed from the
-   credential pair — rotating the password invalidates sessions).
+1. **Admin** — the `ADMIN_USER` / `ADMIN_PASS` Worker secrets (legacy
+   fallback: `BASIC_AUTH_USER` / `BASIC_AUTH_PASS`; never hardcoded; the
+   Worker **fails closed** if unset). Always works, needs no database.
+   `role: admin`, exempt from quotas (usage still recorded).
+2. **User accounts** — email + password in D1, created only via
+   invitations. Roles `user` | `admin`; status `active` | `disabled`
+   (re-checked per request, so disabling is immediate). Passwords are
+   PBKDF2-SHA-256 (150k iters, per-user salt). Google sign-in is planned to
+   slot in beside this (accounts are keyed by email).
 
-`run_worker_first = true` in `wrangler.toml` ensures auth also covers the
-static assets.
+Both are accepted over **HTTP Basic Auth** (`curl -u user:pass` or
+`curl -u email:password`; no `WWW-Authenticate` challenge is ever emitted)
+and via the **login page + session cookie** (`/login`) — required for
+installed PWAs (401 challenge = black screen on iOS). Cookie:
+`u.<uid>.<exp>.<hmac(uid.exp)>`, 30 days, HMAC keyed from the admin
+credential pair — rotating the admin password invalidates all sessions.
 
-Set them once in the dashboard (Worker → Settings → Variables and Secrets) or
-via CLI:
+**Onboarding flows** (both need D1):
+- **Request access**: the login page has a public "Request access" form
+  (email + message → `access_requests`); the admin approves/denies in
+  `/admin`. Approval creates an invitation.
+- **Invitation**: admin creates an invite bound to an email (`/admin` →
+  link + QR code, single-use, expiry configurable). Opening
+  `/invite?token=…` lets the invitee set a password; the account is created
+  and they're signed in.
+
+**Quotas** (Claude Code-inspired): per user, caps on research **hours**
+(pipeline wall-clock) and **cost** (Berget tokens × catalog price + Exa
+searches × configured price, EUR) per UTC calendar day / ISO week / month.
+Global defaults + per-user overrides (admin "Quota…" editor); 0 = no cap.
+`/api/chat` rejects with 429 (+ reset time) when over, clamps the time
+budget to the remaining hours, and records a `usage_events` row after every
+stream. Users see their own bars in the account panel (header person icon
+→ `/api/me`); the admin dashboard shows totals and per-user bars.
+
+**Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
+pending requests, invitations (+QR via vendored `qrcodegen`), user
+management (role/status/quota/delete), config (default quotas, Exa cost,
+max time budget, default model, invite expiry, request toggle — stored in
+the D1 `config` table, cached ~30 s per isolate).
+
+**D1 setup (one-time)**: `npx wrangler d1 create deepresearch-se`, paste
+the id into the commented `[[d1_databases]]` block in `wrangler.toml`,
+push. Schema auto-applies on first use. Without the binding everything
+degrades gracefully: admin-secrets auth only, no accounts, no quotas.
+
+Secrets are set in the dashboard (Worker → Settings → Variables and
+Secrets) or via CLI:
 
 ```bash
-npx wrangler secret put BASIC_AUTH_USER   # enter the username when prompted
-npx wrangler secret put BASIC_AUTH_PASS   # enter the password when prompted
+npx wrangler secret put ADMIN_USER   # admin username
+npx wrangler secret put ADMIN_PASS   # admin password
 ```

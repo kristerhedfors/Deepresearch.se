@@ -41,6 +41,9 @@ export async function listModels(env) {
       id: m.id,
       name: m.name || m.id,
       pricing: formatPricing(m.pricing),
+      // Raw EUR-per-token prices, kept for quota cost accounting.
+      price_in: typeof m.pricing?.input === "number" ? m.pricing.input : 0,
+      price_out: typeof m.pricing?.output === "number" ? m.pricing.output : 0,
       up: m.status?.up !== false,
       vision: m.capabilities?.vision === true,
     }));

@@ -211,6 +211,71 @@ document.getElementById("clearbtn").addEventListener("click", () => {
   input.focus();
 });
 
+// ---- Account & usage panel (/api/me: quota bars, admin link, logout) -------
+
+const accountOverlay = document.getElementById("account");
+const accountBody = document.getElementById("account-body");
+document.getElementById("accountbtn").addEventListener("click", async () => {
+  accountOverlay.hidden = false;
+  accountBody.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    renderAccount(await res.json());
+  } catch {
+    accountBody.innerHTML = '<p class="muted">Could not load account info.</p>';
+  }
+});
+document.getElementById("accountclose").addEventListener("click", () => {
+  accountOverlay.hidden = true;
+});
+accountOverlay.addEventListener("click", (e) => {
+  if (e.target === accountOverlay) accountOverlay.hidden = true;
+});
+
+function usageBlock(label, usage, quota, resetTs) {
+  const fmtH = (h) => (h >= 10 ? h.toFixed(1) : h.toFixed(2)) + " h";
+  const fmtC = (c) => "€" + c.toFixed(2);
+  const bar = (used, limit, fmt) => {
+    const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+    return `<div class="usage-row"><span>${fmt(used)}${limit > 0 ? " of " + fmt(limit) : ""}</span>
+      <span>${limit > 0 ? Math.round(pct) + "%" : ""}</span></div>
+      <div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${pct}%"></div></div>`;
+  };
+  const reset = resetTs ? `resets ${new Date(resetTs).toLocaleString()}` : "";
+  return `<div class="usage-block"><div class="lbl">${label} · ${reset}</div>
+    ${bar(usage.hours, quota ? quota.hours : 0, fmtH)}
+    ${bar(usage.cost_eur, quota ? quota.cost_eur : 0, fmtC)}
+  </div>`;
+}
+
+function renderAccount(me) {
+  const who = me.email
+    ? `${me.name && me.name !== me.email ? me.name + " · " : ""}${me.email}`
+    : "Site administrator";
+  const periods = [
+    ["Today", "day"],
+    ["This week", "week"],
+    ["This month", "month"],
+  ];
+  const blocks = periods
+    .map(([label, p]) => usageBlock(label, me.usage[p], me.quota ? me.quota[p] : null, me.resets?.[p]))
+    .join("");
+  accountBody.innerHTML = `
+    <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
+    ${me.quota ? "" : '<p class="muted">No quota applies to this account — usage is tracked for the record.</p>'}
+    ${blocks}
+    ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
+    <div class="account-actions">
+      ${me.role === "admin" ? '<a href="/admin">Admin interface</a>' : ""}
+      <button id="logoutbtn" type="button">Sign out</button>
+    </div>`;
+  document.getElementById("logoutbtn").addEventListener("click", async () => {
+    await fetch("/logout", { method: "POST" });
+    location.href = "/login";
+  });
+}
+
 // ---- First-visit privacy notice (acknowledgement kept in a cookie) --------
 
 const privacy = document.getElementById("privacy");

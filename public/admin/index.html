@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deepresearch.se — admin</title>
+  <link rel="icon" href="/favicon.ico?v=3" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <header>
+    <div class="title"><a href="/" title="Back to the app">←</a> Deepresearch.se admin</div>
+  </header>
+
+  <main>
+    <section id="setup" hidden>
+      <h2>Database not configured</h2>
+      <p>Accounts, invitations and quotas need the D1 database. One-time setup:</p>
+      <pre>npx wrangler d1 create deepresearch-se
+# put the printed database_id into the [[d1_databases]] block in wrangler.toml
+# (uncomment it), commit and push — the schema applies itself on first use.</pre>
+    </section>
+
+    <section id="totals-sec" hidden>
+      <h2>Usage (all users)</h2>
+      <div class="cards" id="totals"></div>
+    </section>
+
+    <section id="requests-sec" hidden>
+      <h2>Access requests <span class="count" id="requests-count"></span></h2>
+      <div id="requests"></div>
+    </section>
+
+    <section id="invites-sec" hidden>
+      <h2>Invitations</h2>
+      <form id="invite-form">
+        <input id="invite-email" type="email" placeholder="email@example.com" required>
+        <select id="invite-role">
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+        </select>
+        <button type="submit">Create invitation</button>
+      </form>
+      <div id="invites"></div>
+    </section>
+
+    <section id="users-sec" hidden>
+      <h2>Users</h2>
+      <div id="users"></div>
+    </section>
+
+    <section id="config-sec" hidden>
+      <h2>Configuration</h2>
+      <form id="config-form"></form>
+    </section>
+  </main>
+
+  <div id="qr-overlay" hidden>
+    <div class="qr-card">
+      <h3 id="qr-title">Invitation</h3>
+      <canvas id="qr-canvas" width="264" height="264"></canvas>
+      <input id="qr-link" readonly>
+      <div class="row">
+        <button id="qr-copy" type="button">Copy link</button>
+        <button id="qr-close" type="button" class="secondary">Close</button>
+      </div>
+      <p class="muted">The link is bound to the invitee's email and single-use.
+      Send it, or let them scan the QR code.</p>
+    </div>
+  </div>
+
+  <script src="/vendor/qrcodegen.js"></script>
+  <script type="module" src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,15 +1,25 @@
 // POST /api/chat — thin handler: validate the request, resolve the model,
-// build the per-request state (budget plan, counters, source registry), and
-// stream the research pipeline (src/pipeline.js) as SSE. Ends every stream
-// with a `done` stats event and `[DONE]`.
+// enforce the caller's research quota, build the per-request state (budget
+// plan, counters, source registry), and stream the research pipeline
+// (src/pipeline.js) as SSE. Ends every stream with a `done` stats event and
+// `[DONE]`, then records the usage event for quota accounting.
 
 import { listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
+import {
+  bergetCost,
+  effectiveQuota,
+  getConfig,
+  getUsage,
+  quotaExceeded,
+  recordUsage,
+  remainingSeconds,
+} from "./quota.js";
 import { resolveModel, validateMessages } from "./validation.js";
 
-export async function handleChat(request, env, log) {
+export async function handleChat(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     log.error("chat.misconfigured", { missing: "BERGET_API_TOKEN" });
     return jsonResponse(
@@ -39,12 +49,50 @@ export async function handleChat(request, env, log) {
   } catch (err) {
     log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
   }
+  const config = await getConfig(env);
+  // The admin can set a site default model; it only applies when valid & up.
+  if (!body.model && config.default_model && catalog?.some((m) => m.id === config.default_model && m.up)) {
+    body.model = config.default_model;
+  }
   const resolved = resolveModel(body, catalog, env, log);
   if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
 
+  // ---- research quota (Claude Code-style: hours + cost per day/week/month)
+  // The secrets admin is exempt from enforcement but still accounted.
+  const usage = await getUsage(env, identity.id);
+  const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
+  if (quota) {
+    const blocked = quotaExceeded(usage, quota);
+    if (blocked) {
+      log.info("chat.quota_blocked", {
+        user_id: identity.id,
+        period: blocked.period,
+        kind: blocked.kind,
+      });
+      const what = blocked.kind === "cost" ? "cost budget" : "research-time budget";
+      const periodName = { day: "daily", week: "weekly", month: "monthly" }[blocked.period];
+      return jsonResponse(
+        {
+          error:
+            `You've used your ${periodName} ${what} ` +
+            `(${blocked.kind === "cost" ? "€" + blocked.limit.toFixed(2) : blocked.limit + " h"}). ` +
+            `It resets ${new Date(blocked.reset_at).toISOString().replace(".000Z", "Z")}.`,
+          quota: blocked,
+        },
+        429,
+      );
+    }
+  }
+
   const conversation = body.messages;
-  const budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
+  let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
+  budgetS = Math.min(budgetS, config.max_time_budget_s);
+  if (quota) {
+    // One request can't blow through the hour cap: clamp to what's left.
+    const left = remainingSeconds(usage, quota);
+    if (Number.isFinite(left)) budgetS = Math.max(15, Math.min(budgetS, Math.ceil(left)));
+  }
   const webSearchEnabled = body.web_search !== false; // knob: default on
 
   const stream = new ReadableStream({
@@ -66,6 +114,18 @@ export async function handleChat(request, env, log) {
           rounds: state.iterations,
           searches: state.searchCount,
           sources: state.sources.length,
+          duration_ms,
+        });
+        // Usage accounting for quotas (fails soft; never breaks the stream).
+        const entry = catalog?.find((m) => m.id === model);
+        await recordUsage(env, log, {
+          user_id: identity.id,
+          model,
+          prompt_tokens: state.totals.prompt_tokens,
+          completion_tokens: state.totals.completion_tokens,
+          searches: state.searchCount,
+          berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
+          exa_cost: state.searchCount * config.exa_cost_per_search_eur,
           duration_ms,
         });
         emit({
