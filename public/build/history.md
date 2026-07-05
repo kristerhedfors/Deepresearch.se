@@ -542,7 +542,7 @@ merged after work had started.)*
 
 ---
 
-# Day 2 — from chatbot to product (2026-07-04 22:30 → 2026-07-05 14:00)
+# Day 2 — from chatbot to product (2026-07-04 22:30 → 2026-07-05 17:46)
 
 The same session continued (context compacted, never restarted): 23 more
 commits turning the deep-research chatbot into a multi-user product with
@@ -710,6 +710,202 @@ account-scoped — Cloudflare has no domain scoping for Workers resources;
 the specified token carries zero zone permissions). Network path verified
 open from the sandbox; the token lands in the next session's environment.
 
+## Debugging with the token, a real refactor, and self-documentation (afternoon)
+
+The token from the previous step landed in this continuation's environment
+(a new session, same repo, same conversation history preserved by the
+platform) — the next several prompts are the first time this project's own
+production logs were actually queried live, not just planned for.
+
+### 64. A screenshot of the app mid-error, plus: "See if error logs at cloudflare are sufficient to solve this network error which - coincidence or not - happened when I switched briefly to another app"
+
+No commit — an investigation. First attempt at the Cloudflare API failed
+oddly: `/user/tokens/verify` returned "Invalid API Token" even though the
+token worked fine against account-scoped endpoints a moment later — that
+endpoint needs a permission scope the token doesn't carry, not proof the
+token is bad. The account-wide GraphQL Analytics API
+(`workersInvocationsAdaptive`) turned out to be a dead end for this
+specific question: it only exposes coarse dimensions (status/colo/date),
+and — the actually interesting finding — it reports `status: success` for
+essentially every invocation regardless of whether the client ever
+received the answer, because the pipeline's own fail-soft
+`try/catch/finally` design lets the Worker invocation complete normally
+even after a client disconnects mid-stream. The real answer lived in
+Cloudflare's newer "Workers Logs" (full structured `console.log` capture),
+whose query API is dashboard-only and undocumented; several blind POSTs to
+`/accounts/{id}/workers/observability/telemetry/query` failed ("Query not
+found") until probing a sibling `/telemetry/keys` endpoint revealed the
+real request shape (`queryId`, `timeframe`, `parameters.filters`, `dry`).
+Once that worked, the exact failed request's full trace came back:
+triage → 20 Exa searches across 4 rounds → synthesis → validation, then
+`chat.complete` logged ~80 seconds later with **no error of any kind**.
+Cross-referenced against `git log`, the fix for exactly this class of
+failure (`c0013dd`, shipped the previous session) had deployed about ten
+minutes *after* this specific incident — bad timing, not a wasted fix.
+One more detail worth keeping: the error text shown to the user was the
+*generic* branch, not the backgrounding-specific one — meaning the
+client's own `document.hidden` check hadn't fired before the fetch reader
+threw, a real gap in the client's own detection, not proof the drop was
+unrelated to switching apps.
+
+### 65. "I specifically added the cloudflare account api token for you to be able to debug this, tell me what more you need"
+
+No commit. Pushed past the earlier "Invalid API Token" red herring and
+confirmed the token had full account access all along; retrieved the
+complete structured-log trace for the failed request end-to-end
+(described above), closing out the investigation with a concrete,
+log-backed answer instead of a guess.
+
+### 66. "I dont want server side caching as it implies server storage against our zero retention promise. If nothing to do then lets leave it at that"
+
+No commit. At this point in the conversation, caching a completed answer
+server-side — even briefly — was rejected as in tension with the
+zero-retention promise, and the investigation was closed with nothing
+shipped. (The position reversed four prompts later, once a strict TTL was
+explicitly deemed acceptable — see #70.)
+
+### 67. "Refactor for clarity, modularity and maintainability"
+
+Server: `src/config.js` split out of `src/quota.js` (global site config had
+been bolted onto the quota module for no reason other than history); the
+three usage-aggregation SQL queries, which had each hand-rolled the same
+`SUM(CASE WHEN ts >= …)` bucketing, now share one `windowStarts`/
+`bucketCols` helper; `/api/me` and `/api/models` moved out of `index.js`
+into a new `src/user-api.js`, leaving `index.js` as pure entrypoint +
+routing. Client: `public/js/app.js` (623 lines, six unrelated concerns) was
+split into `stream.js` (conversation history + the `/api/chat` SSE send
+loop), `models.js` (model dropdown), `attachments.js` (pending
+images/docs, downscaling), and `account.js` (the usage panel) — `app.js`
+itself dropped to bootstrap and wiring. CLAUDE.md's layout tables and a
+few genuinely stale references (a `MAX_TOTAL_SEARCHES` constant that no
+longer exists; the pipeline had moved to `src/pipeline.js` two sessions
+earlier without the docs catching up) were fixed in the same pass.
+Verified with `wrangler deploy --dry-run`, esbuild bundling both client
+module graphs, and a Playwright run against `wrangler dev` with break-glass
+auth exercising every moved piece — including a full send through the
+composer, asserting the server's error surfaced correctly in the bubble.
+
+- Commit: `a76258b`
+
+### 68. "Now we hit the network error again while answer was generating. I pressed the pdf button on previous reply and it triggered. Make sure logs capture this and then figure out my options"
+
+Two things came out of one prompt. First, the logging gap that the
+previous investigation had exposed but not yet fixed: without
+`ctx.waitUntil()` around the pipeline promise, a client disconnect could
+kill the Worker invocation mid-pipeline *before* the `finally` block's
+`chat.complete` log and usage-accounting write ever ran — confirmed live
+by finding a request in the trace that simply stopped after three Exa
+searches, no completion event, no disconnect event, no usage row. Fixed by
+registering the pipeline with `ctx.waitUntil()`; added a
+`navigator.sendBeacon`-based `/api/client-error` endpoint so the *client's*
+own view of a failed stream (browser error string, whether the tab was
+hidden, characters received) gets logged too, since beacons survive page
+teardown when a normal fetch wouldn't; added `user_id` to every chat
+lifecycle log line; and the on-screen error now carries a quotable
+`(ref xxxxxxxx)` request-id suffix.
+
+- Commit: `5b77a79`
+
+Second, a diagnosis, not yet a fix: jsPDF's `doc.save()` falls back to
+*navigating the page* to the blob URL on Safari, and that navigation
+aborts every in-flight fetch — the PDF button on an earlier answer had
+killed the very stream in the screenshot. Three options were laid out
+(guard the button while streaming, fix the save mechanism itself, or
+both) and the user was asked to choose.
+
+### 69. "C"
+
+Both options landed: `report.js` now hands the finished PDF to the native
+share sheet on touch devices (no navigation — and a better fit for saving
+to Files/AirDrop on a phone) or a plain `<a download>` click elsewhere,
+never `doc.save()`; and the PDF button answers "when done" instead of
+generating while any research stream is in flight, as a second line of
+defense. Verified against a deliberately slowed mock stream: a mid-stream
+click refuses, a post-stream click produces a real download.
+
+- Commit: `a821943`
+
+### 70. "We got those again, horrible ux. Use server side cache then which clears after some time, thats perfectly fine as long as it clears after some appropriate timeout:" (quoting the on-screen error, including its `(ref f81c2350)` suffix)
+
+The idea rejected in #66 came back once a TTL made it explicitly
+acceptable. Built the answer-recovery cache: a new D1 `answers` table
+(15-minute TTL, lazily purged on every read/write); the pipeline no longer
+throws away its work on a client disconnect — it already survived the
+disconnect via `ctx.waitUntil` (see #68), so the change was to let it run
+to completion and park the finished answer + stats keyed by the
+`x-request-id` the client already holds, instead of discarding it; and the
+client polls `GET /api/chat/answer` after a dead stream and re-renders the
+recovered answer with its stats footer, `DELETE`-acking the server's copy
+the instant it arrives intact (so in the normal case content lives
+server-side for seconds, not minutes). The privacy notice was updated to
+disclose the buffer explicitly rather than silently expand what "we don't
+store your conversations" means. Verified with a curl script that aborts
+mid-request (confirming `running` → `done` → ack → 404) and a Playwright
+run that kills the page's fetch reads mid-stream exactly like iOS does,
+confirming the recovered answer renders with its stats intact.
+
+- Commit: `7bedab8`
+
+### 71. "I realized there are no solid options now for true zero data retention web search providers. The workflow for semi privacy then is the following: ask generic search related questions on some subject so the agent fetches the data from exa. Then you switch off web search and ask your questions on this data. Document this use case and make it clear in docs that exa really is not zero data retention by default"
+
+Documented the two-step semi-private workflow — web search **on** for a
+generic, impersonal fetch so the pipeline pulls sources into context, then
+**off** to ask the real, specific questions from what's already in the
+conversation — across three surfaces: a new "Sensitive topics" section on
+the `/help/` page, a one-line note in the 🔍 popover, and the first-visit
+privacy notice. All three state plainly that Exa's zero-data-retention
+option is an enterprise-only arrangement this site doesn't have, grounded
+against Exa's own published ZDR announcement and security docs.
+
+- Commit: `387bbf6`
+
+### 72. "Make the pwa icon match the circular wheel symbol used in the gui"
+
+The in-app processing indicator had always shown the site icon as a
+circle (`border-radius: 50%` on the pulsing typing/step spinner), but the
+actual home-screen icon files were still the original rounded-square
+artwork on sky blue. Cropped a true circular disc from the existing
+artwork for every icon size (favicon, 192, 512, maskable), backgrounding
+it on the site's sky blue for the variants that can't hold transparency
+(apple-touch-icon, maskable safe-zone). Cache-buster bumped `?v=3` →
+`?v=4` everywhere so installed PWAs actually fetch the new files.
+
+- Commit: `eec2537`
+
+### 73. "Make pwa default name DeepResearch.se instead" (session continued under `claude-sonnet-5` from here)
+
+The manifest's `name`/`short_name` had drifted to lowercase-r
+"Deepresearch.se" / "Deepresearch", inconsistent with the brand casing
+used in the header and everywhere else. Fixed both, the page `<title>`,
+and added an `apple-mobile-web-app-title` meta tag — iOS's "Add to Home
+Screen" prefers that tag over `<title>` or the manifest, so without it the
+home-screen label could keep showing the old casing even after the
+manifest changed.
+
+- Commit: `151ff28`
+
+### 74. "Place full usage one level down under account page, only show 5hr limit on first level. On first level make it clear that this site is intended for research, showcasing how saas applications such as a deep research agent like this can be built through a mobile only workflow using claude code. Have this as a separate entry under the account button where the entire prompt flow as documented in this repo, complemented with what we have not yet stored to those docs from this session, is detailed step by step, prompt by prompt. Also note that since this is a research site, list which use cases are not allowed by the eu ai act and make sure to pin it down to match against the requirements for a research site like this. It is invite only for research purposes so its not put on the market"
+
+This document, the account panel's two-level restructure (the 5-hour
+window up front, everything else one tap away), and a new `/build/` page —
+the first time this history has been rendered *in the product itself*
+rather than only kept as a repo file for retelling. The EU AI Act section
+on that page states the prohibited-use list from Article 5 mapped onto
+what a text research assistant can actually be asked to do, plus an honest
+account of how the Article 2(6)/2(8) research and pre-market exemptions
+do and don't apply to an invite-only, non-commercial demonstration project
+that is nonetheless in real use by real people — see `/build/` for the
+full text rather than duplicating it here.
+
+- Commit: (this document's own commit — see the next continuation's
+  ledger, following the pattern of every previous self-referential entry
+  in this file)
+
+A note on completeness: earlier phases of this document included exact
+token-spend tables, pulled from the session's own transcript. That
+introspection wasn't available this time; rather than estimate, this
+section omits a token count instead of guessing one.
+
 ## Token spend, day 2
 
 Same methodology as before (per-request usage metadata from the session
@@ -756,3 +952,11 @@ tooling, and documentation, built in two days.
 | 56 | `65e0e6b` | 05 13:00 | PDF report downloads; pdf/docx/md/txt attachments with cards |
 | 57 | `b356ea2` | 05 13:11 | Keep partially streamed answers in context after network errors |
 | 58 | `c0013dd` | 05 14:03 | Harden streams: SSE keepalive, disconnect handling, honest errors |
+| 59 | `61608ff` | 05 14:46 | Record day 2 in the build history: prompts, steps, and token spend |
+| 60 | `a76258b` | 05 15:25 | Refactor for modularity: split client app.js and server quota/config/user-api |
+| 61 | `5b77a79` | 05 15:44 | Capture client disconnects fully: waitUntil, client-error beacon, user_id |
+| 62 | `a821943` | 05 15:56 | PDF downloads can no longer kill a streaming answer |
+| 63 | `7bedab8` | 05 16:17 | Answer recovery: dropped connections fetch the finished answer back |
+| 64 | `387bbf6` | 05 17:00 | Document the two-step semi-private workflow; disclose Exa retention |
+| 65 | `eec2537` | 05 17:08 | PWA icons: circular wheel, matching the in-app symbol |
+| 66 | `151ff28` | 05 17:16 | PWA default name: DeepResearch.se, matching the header brand casing |

@@ -163,6 +163,26 @@ unknown `status` types (forward compatibility).
   via Playwright) and the privacy meaning of each — linked from the
   account panel. Re-capture the screenshots when the composer/header
   changes visibly.
+- **"About this project"** at `/build/` (auth-gated static page, linked
+  from the account panel): states the site's actual purpose — a
+  demonstration of building a SaaS-style app almost entirely from a phone
+  via Claude Code, invite-only and never placed on the market — plus a
+  restricted-use-cases section grounded in the EU AI Act (Article 5
+  prohibited practices mapped onto a text research tool, and an honest
+  read of why the Article 2(6)/2(8) research and pre-market exemptions
+  don't cleanly apply to continuous real-world use by invited people).
+  The page also fetches and renders `public/build/history.md` (the
+  complete, prompt-by-prompt build history, moved here from `docs/` so
+  it's part of the shipped product and not just a repo file) via the
+  same vendored `marked`/`DOMPurify` pipeline the chat UI uses. Append to
+  `history.md`, not rewrite — it's a chronological record; keep adding a
+  new section per session the way earlier entries did.
+- **Account panel** (`public/js/account.js`) is two levels: the default
+  view shows only the rolling 5-hour window (the one that actually gates
+  the next message) plus navigation (Full usage & history, About this
+  project, Documentation, Admin, Sign out); "Full usage & history" drills
+  into today/this-week/this-month. Both views re-render from one cached
+  `/api/me` response.
 - **Privacy notice** on first visit (Berget/Exa processing, metadata-only
   logs, no stored conversations — except the ≤15 min answer-recovery
   buffer, disclosed in the notice); acknowledgement remembered for a year

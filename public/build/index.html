@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — about this project</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>
+    :root {
+      --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
+      --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem;
+      line-height: 1.55;
+    }
+    main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem 1.15rem; overflow-x: auto;
+    }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+    .callout {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .6rem .8rem; font-size: .86rem; margin: .6rem 0;
+    }
+    .callout b { color: var(--accent); }
+    .callout.warn { border-left-color: #9a1c1c; }
+    .not-allowed {
+      background: #fbeaea; border: 1px solid #e6b8b8; border-radius: 10px;
+      padding: .7rem 1rem; margin: .6rem 0;
+    }
+    .not-allowed li { margin: .5rem 0; }
+    .not-allowed b { color: #7a1414; }
+    /* The rendered build history (fetched markdown) lives in its own scroll
+       container — it's long, and its headings/tables must not collide with
+       this page's own furniture or overflow on a phone. */
+    #history {
+      max-height: 70vh; overflow-y: auto; overflow-x: auto;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: .8rem 1rem; background: #fff;
+    }
+    #history h1 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+    #history h2 { font-size: 1rem; margin-top: 1.2rem; }
+    #history h3 { font-size: .92rem; margin-top: .9rem; }
+    #history hr { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
+    #history table { border-collapse: collapse; font-size: .8rem; width: max-content; min-width: 100%; }
+    #history th, #history td {
+      border: 1px solid var(--border); padding: .3rem .55rem; text-align: left; white-space: nowrap;
+    }
+    #history th { background: var(--panel-2); }
+    #history blockquote {
+      margin: .5rem 0; padding: .4rem .8rem; border-left: 3px solid var(--accent);
+      background: var(--panel-2); border-radius: 0 6px 6px 0; font-size: .88rem;
+    }
+    #history a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>About this project</h1>
+    <a class="back" href="/">← Back to the app</a>
+  </div>
+
+  <section>
+    <h2>What this site is</h2>
+    <p>DeepResearch.se is a working deep-research assistant — but the
+    product is a side effect. The actual subject is a build methodology:
+    an entire SaaS-style application (Google sign-in, real-cost quotas, a
+    five-phase research pipeline, an admin console, a PWA, disconnect
+    recovery, all of it) built almost entirely <b>from a phone</b>, prompt
+    by prompt, using Claude Code as the only development interface — no
+    laptop, no IDE. The complete, verbatim build history is below.</p>
+    <div class="callout"><b>Access:</b> this site is invite-only and
+    approval-gated. It is not marketed, not sold, and not intended for the
+    general public — it exists to let people interested in the underlying
+    question ("how far can an agentic, mobile-only coding workflow go")
+    see and use the result, not to acquire a commercial research tool. The
+    operator does not intend to place it on the market.</div>
+  </section>
+
+  <section>
+    <h2>Restricted use cases (EU AI Act)</h2>
+    <p>Because this is a research and demonstration project rather than a
+    commercial product, its relationship to the EU AI Act's scope is worth
+    stating plainly rather than glossing over.</p>
+
+    <h3>Where the research/pre-market exemptions do and don't fit</h3>
+    <p>The Act carves two things out of scope that might seem to apply
+    here, and in the interest of not overclaiming, neither fits cleanly:</p>
+    <ul>
+      <li><b>Article 2(6)</b> exempts AI systems "specifically developed
+        and put into service for the <i>sole</i> purpose of scientific
+        research and development." This site's build <i>process</i> is a
+        genuine subject of research (the LinkedIn-documented question of
+        mobile-only, agentic software development), but the assistant
+        itself is put into service to answer real questions for real
+        invited users — not solely to study AI. The exemption's "sole
+        purpose" test is a hard one, and this project doesn't cleanly
+        pass it.</li>
+      <li><b>Article 2(8)</b> excludes R&D activity "prior to" placing an
+        AI system on the market or putting it into service — but it says
+        explicitly that <b>"testing in real world conditions shall not be
+        covered by that exclusion."</b> Ongoing, continuous use by
+        real invited people asking real questions is real-world use, not
+        a bounded pre-release test. Being invite-only and never placed on
+        the general market keeps this project away from consumer-market
+        obligations aimed at products sold or offered broadly — but it
+        does not, by itself, invoke Article 2(8).</li>
+    </ul>
+    <div class="callout warn"><b>So the position here is deliberately
+      modest:</b> rather than lean on a contested exemption, this site
+      treats the Act's list of <i>prohibited practices</i> (Article 5 —
+      which applies regardless of high-risk classification, GPAI status,
+      or market exemptions, and has been in force since 2 February 2025)
+      as binding hard rules for what the assistant may be used for. That
+      list is mapped below to what a text-based research tool can
+      actually be asked to do.</div>
+
+    <h3>Not allowed on this site</h3>
+    <div class="not-allowed">
+      <ul>
+        <li><b>Manipulation causing harm.</b> Using the assistant to
+          produce deceptive or psychologically manipulative content aimed
+          at materially distorting a specific person's decisions in a way
+          reasonably likely to cause them, or someone else, significant
+          harm. <span class="muted">(Art. 5(1)(a))</span></li>
+        <li><b>Exploiting vulnerable people.</b> Targeting children,
+          people with disabilities, or people in a vulnerable
+          socio-economic situation in order to distort their behavior in
+          harmful ways. <span class="muted">(Art. 5(1)(b))</span></li>
+        <li><b>Social scoring.</b> Using outputs from this site to
+          evaluate or rank identifiable people by social behavior or
+          personal characteristics in order to treat them worse in an
+          unrelated context, or worse than their actual conduct
+          warrants. <span class="muted">(Art. 5(1)(c))</span></li>
+        <li><b>Predicting someone's likelihood of committing a crime</b>
+          based solely on profiling or personality traits — asking the
+          assistant to size up a named individual's "criminality" from
+          characteristics rather than case-specific, verifiable
+          facts. <span class="muted">(Art. 5(1)(d))</span></li>
+        <li><b>Inferring protected characteristics about a named,
+          identifiable person</b> — race, political opinions, religious or
+          philosophical beliefs, trade-union membership, or sexual
+          orientation — from what they've written or from other data
+          about them. This site has no biometric input, so this is the
+          text-based equivalent of the Act's biometric-categorization
+          ban. <span class="muted">(Art. 5(1)(g))</span></li>
+        <li><b>Inferring the emotional state of a named employee or
+          student</b> in a workplace or educational setting (e.g. "how
+          anxious is my coworker X based on these
+          messages"). <span class="muted">(Art. 5(1)(f))</span></li>
+        <li><b>Anything involving facial recognition or biometric
+          surveillance</b> — building or feeding a facial-recognition
+          database, or real-time identification of people in public
+          spaces. Not something a text-only tool can do; listed for
+          completeness. <span class="muted">(Art. 5(1)(e), (h))</span></li>
+        <li><b>Generating non-consensual intimate imagery of a real
+          person, or any child sexual abuse material.</b> Unlawful
+          regardless of the AI Act, and explicitly added to Article 5 by
+          the May 2026 Digital Omnibus agreement (in force from 2 December
+          2026).</li>
+      </ul>
+    </div>
+    <p class="muted">This site is also a <i>deployer</i> of third-party
+    models (Berget.ai-hosted models) and a third-party search provider
+    (Exa) — not a General-Purpose AI Model provider — so GPAI-provider
+    obligations don't attach to the operator here; users must separately
+    respect Berget's and Exa's own acceptable-use terms. None of the above
+    is legal advice; it states the operating rules for this invite-only
+    project, grounded in Regulation (EU) 2024/1689 and the May 2026
+    Digital Omnibus agreement. Misuse is grounds for revoking access.</p>
+  </section>
+
+  <section>
+    <h2>The complete build history</h2>
+    <p>Every prompt, verbatim, from the first "Deploy hello world" to
+    right now — what was asked, what broke, what was discovered, and the
+    commit that landed each step. This is the same file kept in the repo
+    for retelling, rendered here so it's part of the product, not just the
+    source.</p>
+    <div id="history"><p class="muted">Loading…</p></div>
+  </section>
+</main>
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script type="module">
+  import { renderMarkdownInto } from "/js/markdown.js";
+  const el = document.getElementById("history");
+  fetch("/build/history.md")
+    .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then((md) => renderMarkdownInto(el, md))
+    .catch(() => { el.innerHTML = '<p class="muted">Could not load the build history.</p>'; });
+</script>
+</body>
+</html>
