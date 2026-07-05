@@ -1,4 +1,4 @@
-# Deepresearch.se
+# DeepResearch.se
 
 A deep-research AI assistant on Cloudflare Workers: a static chat UI plus a
 streaming `/api/chat` endpoint that runs a Worker-orchestrated research
@@ -19,7 +19,8 @@ browser ── Google OIDC session ──> Worker (src/index.js)
 
 See `docs/ARCHITECTURE.md` for the full design and `CLAUDE.md` for
 conventions. The complete prompt-by-prompt build history lives in
-`public/build/history.md` (served in-app at `/build/`).
+`public/build/history.md` (rendered in-app at `/story/`; `/build/` holds the
+project purpose and EU AI Act use restrictions).
 
 ## Installing your own instance
 

@@ -752,8 +752,9 @@ Once that worked, the exact failed request's full trace came back:
 triage → 20 Exa searches across 4 rounds → synthesis → validation, then
 `chat.complete` logged ~80 seconds later with **no error of any kind**.
 Cross-referenced against `git log`, the fix for exactly this class of
-failure (`c0013dd`, shipped the previous session) had deployed about ten
-minutes *after* this specific incident — bad timing, not a wasted fix.
+failure (`c0013dd`, shipped the previous session) had been committed
+thirteen minutes after this specific incident and deployed within the
+hour — bad timing, not a wasted fix.
 One more detail worth keeping: the error text shown to the user was the
 *generic* branch, not the backgrounding-specific one — meaning the
 client's own `document.hidden` check hadn't fired before the fetch reader
@@ -913,11 +914,6 @@ full text rather than duplicating it here.
   continuation could see its hash, following the pattern of every
   previous self-referential entry in this file)
 
-A note on completeness: earlier phases of this document included exact
-token-spend tables, pulled from the session's own transcript. That
-introspection wasn't available this time; rather than estimate, this
-section omits a token count instead of guessing one.
-
 ## Token spend, day 2
 
 Same methodology as before (per-request usage metadata from the session
@@ -936,6 +932,30 @@ Still 99.98% of input served from cache. The cumulative session: **~93
 user prompts, 847 API calls, 363 million tokens processed, 935K written**
 — for a deployed multi-user research product with auth, quotas, admin
 tooling, and documentation, built in two days.
+
+## Token spend, the debugging & hardening continuation
+
+The prompts from #64 through #74 — plus the #82 audit below — ran as a
+separate session in a fresh sandbox (the one that finally had the
+Cloudflare API token), so its transcript is its own file; same
+per-request methodology, covering 2026-07-05 14:56 → 20:27. The
+going-public session (#75–#81) ran in parallel in yet another sandbox
+whose transcript isn't readable from here, so its spend is *not* in the
+"continuation" column — only in the story:
+
+| Metric | Continuation | New cumulative |
+|---|---|---|
+| Model API calls | 274 | 1,121 |
+| Output tokens | 257,533 | 1,192,729 |
+| Fresh input tokens | 23,792 | 103,195 |
+| Prompt-cache writes | 2,138,812 | 18,729,503 |
+| Prompt-cache reads | 67,363,745 | 412,796,544 |
+| **Total processed** | **~69.8M** | **~432.8M** |
+
+Split by model within the continuation: `claude-fable-5` wrote 175K
+output tokens, `claude-sonnet-5` 82K (the PWA-name fix and the first
+draft of the `/build/` page — the draft whose documentation errors the
+#82 audit then corrected). Cache hit rate held above 99.9%.
 
 ## Day 2 commit ledger
 
@@ -989,7 +1009,11 @@ one for changes whose whole point was to be reviewed before publication.
 > **A gap to fill.** Some work happened in another conversation whose
 > prompts and commits are not yet recorded here. This document is
 > append-only — those entries will be added when that session is retold,
-> the same way every earlier continuation added its own.
+> the same way every earlier continuation added its own. *(Resolved: the
+> other conversation was the debugging & hardening session, whose entries
+> #64–#74 were already above when this note was written; its final turn —
+> the #82 audit below — closed the loop, adding the missing entries and
+> the token-spend table it had been unable to record.)*
 
 ### 75. "Intending to make this repo public I want you to go through it hunting for any kind of sensitive information we would not want to expose."
 
@@ -1065,8 +1089,57 @@ the EU AI Act section, now ending in a pointer card to the story; the
 terms page links both, and both stay readable before the terms are
 accepted.
 
-- Commit: (this document's own commit — see the ledger of the next
-  continuation)
+- Commit: `515b6b4`
+
+### 81. A follow-up in the same session (prompt not preserved verbatim here): make the phone-only claim precise, and fix what verifying it surfaced
+
+The "almost entirely from a phone" framing undersold what actually
+happened: every prompt, the domain purchase, every deployment, and every
+service configuration (Cloudflare, Berget.ai, Exa, Google OAuth) went
+through the Claude Code iPhone app alone, with the source never viewed on
+any other device — the one exception being the D1 UUID workaround of step
+44. The claim was tightened everywhere the build describes itself. And
+verifying the wording change surfaced a real bug: the terms gate matched
+only `/build/` and `/story/` as exempt pages, so the assets those pages
+need (`/js/*.js`, `/vendor/*.js`, `history.md` itself) were swallowed by
+the gate and served back as terms HTML — breaking module loading for
+anyone who hadn't accepted yet. Static assets now always pass the gate.
+
+- Commit: `fbce008`
+
+### 82. "Fill in the missing pieces from the build story which I think reside in this repo and make sure the weaker model making the previous commit didnt mess up."
+
+Back in the debugging & hardening session, under `claude-fable-5` again:
+an audit of #74's commit (`4e20493`, drafted under `claude-sonnet-5`).
+The code held up — routing, the About page, the account-panel levels,
+and the `.gitignore` fix all checked out — but the audit caught real
+errors, all in the self-documentation rather than the product:
+
+- The #74 entry claimed the session transcript "wasn't available" for
+  token accounting and skipped the spend table. It was available the
+  whole time (`~/.claude/projects/…/<session>.jsonl`, the same source as
+  every earlier table) — the model just didn't look. The continuation's
+  spend table now exists above, same methodology as always.
+- The #64 entry said the `c0013dd` hardening fix "had deployed about ten
+  minutes after" the incident it would have prevented. The repo's own
+  timestamps say: incident 13:50, commit 14:03 (thirteen minutes),
+  production deploy 14:47 (within the hour). Corrected.
+- A comment in `account.js` said the drill-down shows "all four
+  windows"; it shows the three calendar windows — the 5-hour window
+  staying on the first level was the entire point of #74. Corrected.
+
+Then the plot twist: pushing the audit was rejected — the going-public
+session (#75–#81) had landed six commits on `main` in parallel, touching
+the same files, including a README rewrite that independently fixed the
+same staleness this audit had just fixed, and a relocation of the
+rendered history to `/story/`. The audit was rebased onto that work,
+keeping the going-public session's versions wherever both sessions had
+fixed the same thing, and closing that session's own loose ends: its
+"gap to fill" note (resolved above), the undocumented `fbce008` entry
+(#81), and ledger rows 72–73.
+
+- Commit: (this entry's own — next continuation's ledger, per this
+  file's tradition)
 
 ## Going-public commit ledger
 
@@ -1076,3 +1149,5 @@ accepted.
 | 69 | `9c7097b` | 05 19:08 | Clarify ADMIN_EMAIL is a dashboard variable, not a Worker secret |
 | 70 | `34abbf2` | 05 19:14 | Document the full install: every variable, secret, and setup step |
 | 71 | `3524a65` | 05 19:40 | Terms acceptance at first sign-in; build history never scrolls sideways |
+| 72 | `515b6b4` | 05 19:58 | The build story gets its own page and account-panel card |
+| 73 | `fbce008` | 05 20:17 | Precise phone-only build claim; fix terms gate blocking static assets |

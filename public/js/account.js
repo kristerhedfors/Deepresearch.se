@@ -4,9 +4,9 @@
 //
 // Two levels: the default view keeps only the rolling 5-hour window (the
 // one that actually governs whether you can send another message right
-// now) plus navigation; "Full usage & history" drills into all four
-// windows. Both views re-render from the same cached /api/me response —
-// only the first open hits the network.
+// now) plus navigation; "Full usage & history" drills into the calendar
+// windows (today / this week / this month). Both views re-render from the
+// same cached /api/me response — only the first open hits the network.
 
 export function initAccountPanel() {
   const overlay = document.getElementById("account");
