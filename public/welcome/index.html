@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — a deep-research assistant, built from a phone</title>
+  <meta name="description" content="A deep-research AI assistant built over a weekend, entirely through the Claude Code iPhone app. Invite-only research project — docs, build story, and source are open.">
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=4">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>
+    :root {
+      --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
+      --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 2rem 1rem 3rem;
+      line-height: 1.55; background: transparent;
+    }
+    /* Same drifting waves as the app — one seamless 280px period per loop. */
+    body::before {
+      content: "";
+      position: fixed;
+      top: -200px; left: -200px; right: 0; bottom: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0) 0,
+        rgba(255, 255, 255, .05) 70px,
+        rgba(255, 255, 255, 0) 140px,
+        rgba(10, 46, 92, .04) 210px,
+        rgba(255, 255, 255, 0) 280px
+      );
+      animation: bg-drift 26s linear infinite;
+    }
+    @keyframes bg-drift { to { transform: translate3d(198px, 198px, 0); } }
+    @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
+
+    main { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.1rem; }
+    .hero { text-align: center; padding: .5rem 0 .3rem; }
+    .hero img.logo {
+      width: 84px; height: 84px; border-radius: 50%;
+      box-shadow: 0 6px 24px rgba(4, 30, 60, .25);
+    }
+    h1 {
+      font-size: 1.7rem; font-weight: 300; letter-spacing: .04em;
+      margin: .6rem 0 .2rem; color: #fff;
+      text-shadow: 0 1px 10px rgba(255, 255, 255, .55), 0 1px 2px rgba(10, 46, 92, .25);
+    }
+    .tagline { font-size: 1rem; color: var(--text); margin: 0 auto; max-width: 34rem; }
+    .card {
+      background: rgba(255, 255, 255, .55); border: 1px solid rgba(255, 255, 255, .7);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-radius: 16px; padding: 1rem 1.15rem;
+      box-shadow: 0 4px 18px rgba(4, 30, 60, .12);
+    }
+    .card h2 { font-size: 1rem; margin: 0 0 .45rem; }
+    .card p { font-size: .92rem; margin: .35rem 0; }
+    video {
+      display: block; width: 100%; border-radius: 12px;
+      background: #0a2e5c; box-shadow: 0 4px 18px rgba(4, 30, 60, .2);
+    }
+    .cta { text-align: center; padding: 1.1rem 1.15rem; }
+    .cta a.signin {
+      display: inline-block; background: var(--accent); color: #fff;
+      text-decoration: none; font-weight: 600; font-size: .95rem;
+      border-radius: 12px; padding: .65rem 1.4rem;
+      box-shadow: 0 4px 14px rgba(13, 79, 160, .35);
+    }
+    .cta p { font-size: .8rem; color: var(--muted); margin: .55rem 0 0; }
+    .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; }
+    .links a {
+      display: block; background: rgba(255, 255, 255, .55);
+      border: 1px solid rgba(255, 255, 255, .7); border-radius: 14px;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      padding: .75rem .9rem; text-decoration: none; color: var(--text);
+      box-shadow: 0 4px 14px rgba(4, 30, 60, .1);
+    }
+    .links a b { display: block; font-size: .92rem; }
+    .links a span { font-size: .78rem; color: var(--muted); }
+    footer { text-align: center; font-size: .78rem; color: var(--muted); padding-top: .4rem; }
+    footer a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="hero">
+    <img class="logo" src="/icons/icon-192.png?v=4" alt="DeepResearch.se">
+    <h1>DeepResearch.se</h1>
+    <p class="tagline">A deep-research AI assistant that plans its own web
+    searches, checks its coverage, and answers with numbered citations —
+    within a time budget you set.</p>
+  </div>
+
+  <div class="card">
+    <video src="/llm-assiterad-utveckling.mp4" controls autoplay muted loop playsinline
+      aria-label="Promotional video: LLM-assisted development research"></video>
+  </div>
+
+  <div class="card">
+    <h2>Built over a weekend — entirely from a phone</h2>
+    <p>The assistant is real, but it's also the evidence: this whole
+    SaaS-style application — Google sign-in, research quotas grounded in
+    real cost, a five-phase research pipeline, an admin console, a PWA —
+    was built over one weekend <b>entirely through the Claude Code iPhone
+    app</b>. Every prompt, the domain purchase, every deployment, every
+    service configuration; the source code was never viewed on any other
+    device. The complete prompt-by-prompt record is public, and so is the
+    code.</p>
+  </div>
+
+  <div class="links">
+    <a href="/story/"><b>The build story</b><span>Every prompt, verbatim, with its commit</span></a>
+    <a href="/build/"><b>About this project</b><span>Purpose &amp; EU AI Act use restrictions</span></a>
+    <a href="/help/"><b>Documentation</b><span>Every control, and its privacy meaning</span></a>
+    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener"><b>Source code</b><span>github.com/kristerhedfors</span></a>
+  </div>
+
+  <div class="card cta">
+    <a class="signin" href="/login">Sign in</a>
+    <p>Invite-only research project — new accounts await the operator's
+    approval after signing in with Google.</p>
+  </div>
+
+  <footer>
+    Not a commercial product; never placed on the market.
+    See <a href="/build/">About this project</a> for the use restrictions.
+  </footer>
+</main>
+</body>
+</html>

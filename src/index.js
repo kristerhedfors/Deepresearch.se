@@ -75,16 +75,31 @@ export default {
   },
 };
 
-// Branding assets served WITHOUT auth: iOS fetches apple-touch-icon and
-// Chrome downloads manifest icons without credentials, so behind auth
-// home-screen/PWA icons silently 401 and fall back to a generic letter.
-// Nothing sensitive here — the icon, favicon, and app name only.
+// The public surface, served WITHOUT auth. Two kinds of things live here:
+//
+// Branding assets: iOS fetches apple-touch-icon and Chrome downloads
+// manifest icons without credentials, so behind auth home-screen/PWA
+// icons silently 401 and fall back to a generic letter.
+//
+// The promotional surface: the landing page (/welcome/, also served to
+// signed-out visitors at /), the documentation, About, and the build
+// story pages plus everything they need to render — the promo video, the
+// markdown renderer, and the vendored libs (all public on GitHub anyway).
+// The app itself and every /api/* stay gated.
 function isPublicAsset(url, method) {
   if (method !== "GET" && method !== "HEAD") return false;
   return (
     url.pathname === "/favicon.ico" ||
     url.pathname === "/manifest.webmanifest" ||
-    url.pathname.startsWith("/icons/")
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/welcome/") ||
+    url.pathname.startsWith("/help/") ||
+    url.pathname.startsWith("/build/") ||
+    url.pathname.startsWith("/story/") ||
+    url.pathname === "/llm-assiterad-utveckling.mp4" ||
+    url.pathname === "/js/markdown.js" ||
+    url.pathname === "/vendor/marked.min.js" ||
+    url.pathname === "/vendor/purify.min.js"
   );
 }
 
@@ -109,6 +124,13 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- everything else requires an identity ------------------------------
   const identity = await identify(request, env);
   if (!identity) {
+    // Visitors hitting the root get the promotional landing page (video,
+    // docs, build story, sign-in) rather than a bare login form.
+    if (url.pathname === "/" && request.method === "GET") {
+      return {
+        response: await env.ASSETS.fetch(new Request(url.origin + "/welcome/", request)),
+      };
+    }
     log.warn("auth.denied", { reason: "unauthenticated" });
     if (url.pathname.startsWith("/api/")) {
       return { response: jsonResponse({ error: "Authentication required." }, 401) };

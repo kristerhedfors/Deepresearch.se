@@ -195,11 +195,20 @@ unknown `status` types (forward compatibility).
   logs, no stored conversations — except the ≤15 min answer-recovery
   buffer, disclosed in the notice); acknowledgement remembered for a year
   in the `dr_privacy_ack` cookie.
-- **Icons/manifest are auth-exempt** (`isPublicAsset` in `src/index.js`):
-  iOS fetches `apple-touch-icon` and Chrome downloads manifest icons
-  *without* credentials, so behind Basic Auth the home-screen/PWA icon
-  silently 401s. `/favicon.ico`, `/manifest.webmanifest`, and `/icons/*`
-  are public (branding only — nothing sensitive).
+- **Public surface** (`isPublicAsset` in `src/index.js`) — served without
+  auth: branding (`/favicon.ico`, `/manifest.webmanifest`, `/icons/*` —
+  iOS/Chrome fetch these *without* credentials, so gating them silently
+  breaks PWA icons) plus the **promotional surface**: `/welcome/` (the
+  landing page), `/help/`, `/build/`, `/story/`, the promo video
+  (`/llm-assiterad-utveckling.mp4`), and the support files those pages
+  render with (`/js/markdown.js`, vendored `marked`/`DOMPurify` — all
+  public on GitHub anyway). The app itself and every `/api/*` stay gated.
+- **Landing page** (`public/welcome/index.html`): signed-out visitors
+  hitting `/` get this promotional page (hero, the promo video, cards to
+  story/about/docs/GitHub, a sign-in CTA noting invite-only approval)
+  instead of a bare login form; `/login` remains the explicit sign-in
+  page and the target for auth bounces on other paths. Signed-in users
+  at `/` get the app, as always.
 
 ## Logging & observability
 

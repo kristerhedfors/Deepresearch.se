@@ -1185,6 +1185,30 @@ waits. Verified with the slowed mock: New chat mid-generation re-enables
 the arrow within a beat, and the next conversation renders exactly one
 user bubble and one answer — no leftovers.
 
+- Commit: `4fca025`
+
+### 86. "Make documentation, build story, and all those info cards in account page and the promotional video I just commited to the landing page available outside authentication. Like a nice promotional landing page"
+
+The prompt arrived alongside the first-ever hand-made commit in this
+repo's history: the user recorded a promotional video ("LLM-assisterad
+utveckling") and committed the mp4 directly — every one of the 77 commits
+before it had been authored through Claude Code. The auth boundary then
+moved from "everything" to "the app and the APIs": `/help/`, `/build/`,
+`/story/`, the video, and the support files those pages render with (the
+markdown module, the vendored `marked`/`DOMPurify` — all public on GitHub
+anyway) joined the icons on the public surface. Signed-out visitors
+hitting `/` now get a proper landing page (`public/welcome/`) instead of
+a bare login form: the circular-wheel hero over the app's own drifting
+sky, the video, cards to the story / About & EU AI Act / documentation /
+GitHub, and a sign-in CTA that says out loud what the terms say in full —
+invite-only, approval-gated. Verified unauthenticated end-to-end: the
+landing renders with zero console errors, `/story/` fetches and renders
+the full history without credentials, and the gate still holds
+everywhere it should (`/api/*` 401, the app shell 401, the chat UI only
+after sign-in). One test-environment honesty note: the sandbox Chromium
+ships without H.264, so video *playback* was verified as "downloads
+fine, real browsers decode it" rather than watched.
+
 - Commit: (this entry's own — next continuation's ledger)
 
 ## Going-public commit ledger
@@ -1200,3 +1224,5 @@ user bubble and one answer — no leftovers.
 | 74 | [`ca575e5`](https://github.com/kristerhedfors/Deepresearch.se/commit/ca575e5) | 05 20:32 | Audit the sonnet-drafted commit; weave the two parallel session histories |
 | 75 | [`a60b1a2`](https://github.com/kristerhedfors/Deepresearch.se/commit/a60b1a2) | 05 20:41 | Account-panel and popover page links open new tabs |
 | 76 | [`02cb95f`](https://github.com/kristerhedfors/Deepresearch.se/commit/02cb95f) | 05 20:47 | Ledger commit hashes link to the public GitHub repo |
+| 77 | [`4fca025`](https://github.com/kristerhedfors/Deepresearch.se/commit/4fca025) | 05 21:02 | New chat aborts the in-flight request instead of orphaning it |
+| 78 | [`08e085f`](https://github.com/kristerhedfors/Deepresearch.se/commit/08e085f) | 05 22:18 | llm-assisted utveckling research video *(the repo's first hand-made commit)* |
