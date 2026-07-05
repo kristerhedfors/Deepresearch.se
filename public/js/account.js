@@ -56,12 +56,14 @@ function renderSummary(me) {
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
+    <!-- Page links open NEW TABS: the conversation lives only in this
+         tab's memory, so a same-tab navigation would destroy it. -->
     <div class="account-actions">
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
-      <a href="/build/">About this project</a>
-      <a href="/story/">The build story</a>
-      <a href="/help/">Documentation</a>
-      ${me.role === "admin" ? '<a href="/admin">Admin interface</a>' : ""}
+      <a href="/build/" target="_blank" rel="noopener">About this project</a>
+      <a href="/story/" target="_blank" rel="noopener">The build story</a>
+      <a href="/help/" target="_blank" rel="noopener">Documentation</a>
+      ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
     </div>`;
 }

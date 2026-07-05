@@ -1138,8 +1138,22 @@ fixed the same thing, and closing that session's own loose ends: its
 "gap to fill" note (resolved above), the undocumented `fbce008` entry
 (#81), and ledger rows 72–73.
 
-- Commit: (this entry's own — next continuation's ledger, per this
-  file's tradition)
+- Commit: `ca575e5`
+
+### 83. "Issue with account page: the full page sites like Documentation, Full usage and history - and whichever else - when entering those we switch page! So when we come back the entire ongoing convo is gone. Have those popup new tabs instead! Very annoying ux"
+
+A one-line-of-thinking bug with a real cost: the account panel's page
+links (About this project, The build story, Documentation, Admin) were
+plain same-tab anchors — and since the conversation lives only in the
+tab's memory (by design; nothing is stored server-side), tapping
+Documentation mid-conversation navigated away and destroyed the chat.
+All page links now open new tabs (`target="_blank" rel="noopener"`),
+including the same trap in the 🔍 popover's documentation link. "Full
+usage & history" itself was never a navigation — it swaps views inside
+the panel — but everything that leaves the page now leaves the tab
+alone.
+
+- Commit: (this entry's own — next continuation's ledger)
 
 ## Going-public commit ledger
 
@@ -1151,3 +1165,4 @@ fixed the same thing, and closing that session's own loose ends: its
 | 71 | `3524a65` | 05 19:40 | Terms acceptance at first sign-in; build history never scrolls sideways |
 | 72 | `515b6b4` | 05 19:58 | The build story gets its own page and account-panel card |
 | 73 | `fbce008` | 05 20:17 | Precise phone-only build claim; fix terms gate blocking static assets |
+| 74 | `ca575e5` | 05 20:32 | Audit the sonnet-drafted commit; weave the two parallel session histories |
