@@ -110,24 +110,27 @@ Every request flows through `src/index.js`
    fetches `apple-touch-icon` and Chrome downloads manifest icons *without*
    credentials; behind auth they silently 401 and the PWA icon breaks.
    Nothing sensitive is exposed — branding only.
-3. **Public auth endpoints** — `GET/POST /login` (password login +
-   request-access form), `POST /request-access`, `GET/POST /invite`
-   (token-gated account creation). These are reachable without identity by
-   design.
+3. **Public auth endpoints** — `GET /login` (the sign-in page: a single
+   "Continue with Google" button), `GET /auth/google` (starts the OAuth
+   flow with a signed single-use state cookie), `GET /auth/google/callback`
+   (finishes it). Reachable without identity by design.
 4. **Identity gate** (`src/auth.js`) — resolves *who* is calling, and
-   **fails closed** (missing admin secrets ⇒ everything is denied):
-   - **Admin**: the `ADMIN_USER`/`ADMIN_PASS` secrets (fallback
-     `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`). No database needed.
-   - **Users**: email + password accounts in D1 (PBKDF2-SHA-256, 150k
-     iterations, per-user salt), status re-checked per request.
-   - Both work over **HTTP Basic Auth** (no `WWW-Authenticate` challenge is
-     ever emitted) and the **session cookie** `dr_session` — value
-     `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed from the admin
-     credential pair (rotating the admin password invalidates all
-     sessions), 30-day TTL, `Secure; HttpOnly; SameSite=Lax`. The cookie
-     path exists because an installed PWA cannot display the native Basic
-     Auth dialog (black screen on iOS) — unauthenticated HTML navigation
-     gets the login page; unauthenticated `/api/*` gets a 401 JSON body.
+   **fails closed** (missing admin secrets ⇒ everything is denied, since
+   they also key the session HMAC):
+   - **Users**: D1 accounts provisioned by Google sign-in (no passwords
+     stored — Google proves the email). Identified by the session cookie
+     `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed
+     from the admin credential pair, **365-day TTL with sliding renewal**
+     (any authenticated request past the half-life gets a fresh cookie) —
+     so an installed PWA never shows a login screen again while in use.
+     HttpOnly + server-set also exempts it from Safari ITP's 7-day cap.
+     User status is re-checked per request; disabling kills live sessions.
+   - **Break-glass admin**: the `ADMIN_USER`/`ADMIN_PASS` secrets (fallback
+     `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`) over HTTP Basic Auth only — for
+     curl/scripts/emergencies; no DB or Google needed. No
+     `WWW-Authenticate` challenge is ever emitted (native dialog = black
+     screen in installed PWAs); unauthenticated HTML navigation gets the
+     sign-in page, unauthenticated `/api/*` a 401 JSON body.
    - Credential comparison is constant-time-ish (`safeEqual`).
 5. **Routing** — `POST /api/chat` → pipeline (with quota gate);
    `GET /api/models` → catalog; `GET /api/me` → identity + usage;
@@ -264,24 +267,29 @@ compatibility). Draw.io page 4 shows the full sequence.
 | `{"error":"…"}` | Shown as an error inside the bubble |
 | `data: [DONE]` | Stream end (always sent, even after errors) |
 
-## 4.5 Accounts, invitations, and research quotas (D1)
+## 4.5 Accounts (Google sign-in) and research quotas (D1)
 
 Multi-user features live in an optional **Cloudflare D1** database
 (`[[d1_databases]]` in `wrangler.toml`; schema auto-applies on first use
-from `src/db.js`). Without the binding the Worker degrades gracefully:
-admin-secrets auth only, no accounts, no quotas — nothing throws.
+from `src/db.js`, plus guarded additive ALTERs). Without the binding the
+Worker degrades gracefully: break-glass auth only, Google sign-in bounces
+with a clear message, no quotas — nothing throws.
 
-Tables: `users` (role `user|admin`, status, PBKDF2 hash+salt, optional
-`quota_json` override), `invites` (single-use token bound to an email,
-expiry), `access_requests` (pending/approved/denied), `usage_events`
-(per-request tokens, searches, Berget+Exa cost, duration), `config`
-(one JSON row, ~30 s isolate cache).
+Tables: `users` (role `user|admin`, status, Google `sub`, optional
+`quota_json` override), `usage_events` (per-request tokens, searches,
+Berget+Exa cost, duration — no content), `config` (one JSON row, ~30 s
+isolate cache).
 
-**Onboarding**: a visitor either submits the login page's *Request access*
-form (admin approves → invite) or receives an invitation directly — a
-link/QR (vendored `qrcodegen`, rendered client-side so the URL never
-leaves the site) pointing at `/invite?token=…`, where they set a password
-and are signed straight in.
+**Onboarding is Google sign-in itself** (`src/google.js`): server-side
+OIDC code flow — signed single-use state cookie (CSRF), code exchanged
+server-to-server, claims validated (`iss`, `aud`, `exp`, and
+`email_verified === true`; the ID token arrives directly from Google's
+token endpoint over TLS, so signature verification is not required in
+this flow per Google's guidance). First sign-in auto-provisions the user
+row: the `ADMIN_EMAIL` address (wrangler var) gets and keeps the admin
+role, everyone else is a regular user under the default quotas — that is
+the cost boundary for open sign-in, and the admin can disable any user
+(effective immediately, live sessions included).
 
 **Quotas** (Claude Code-inspired): caps on research **hours** and **cost**
 (EUR) per UTC calendar day / ISO week (Mon) / calendar month.
@@ -296,14 +304,14 @@ and are signed straight in.
   blow through a cap. After every stream a `usage_events` row is recorded
   (fail-soft — accounting never breaks a served answer).
 - Defaults live in config; per-user overrides (`quota_json`) merge over
-  them; `0` means uncapped. The secrets admin is exempt but still recorded.
+  them; `0` means uncapped. The break-glass admin is exempt but still
+  recorded.
 
 **Dashboards**: `/api/me` powers the in-app account panel (per-period
 hours/cost bars + reset times, logout, admin link); `/api/admin/overview`
-powers `/admin` — site totals, per-user usage bars, pending requests,
-invitations, user management (role, enable/disable, quota editor, delete),
-and configuration (default quotas, Exa price, max time budget, default
-model, invite expiry, request-access toggle).
+powers `/admin` — site totals, per-user usage bars, user management
+(role, enable/disable, quota editor, delete), and configuration (default
+quotas, Exa price, max time budget, default model).
 
 ## 5. `GET /api/models`
 
@@ -398,8 +406,8 @@ level via `LOG_LEVEL` (default `info`), persisted by Workers Logs
 and in flight to Berget/Exa — exactly what the first-visit privacy notice
 states. What D1 does persist is account/metering metadata only:
 
-- `users` — email, name, role/status, password hash+salt, quota override
-- `invites` / `access_requests` — emails and optional request messages
+- `users` — email, name, role/status, Google subject id, quota override
+  (no passwords — Google is the only credential)
 - `usage_events` — counts, costs, and durations per request (no content)
 - `config` — the admin's settings
 

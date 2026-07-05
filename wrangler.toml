@@ -19,6 +19,9 @@ routes = [
 # BASIC_AUTH_USER, BASIC_AUTH_PASS) are set in the dashboard, never here.
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
+# The Google account that gets (and keeps) the admin role on sign-in.
+# Everyone else is auto-provisioned as a regular, quota-capped user.
+ADMIN_EMAIL = "krister.hedfors@gmail.com"
 
 # run_worker_first + binding: the Worker sees every request (so Basic Auth
 # gates the static UI too) and serves assets via env.ASSETS.fetch().

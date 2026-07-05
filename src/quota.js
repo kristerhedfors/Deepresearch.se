@@ -16,8 +16,6 @@ export const DEFAULT_CONFIG = {
     month: { hours: 12, cost_eur: 6 },
   },
   exa_cost_per_search_eur: 0.005,
-  invite_expiry_days: 14,
-  allow_access_requests: true,
   max_time_budget_s: 600, // cap for the UI slider value accepted server-side
   default_model: "", // empty = Worker default (BERGET_MODEL var / built-in)
 };
@@ -71,12 +69,6 @@ function mergeConfig(base, patch) {
   if (Number.isFinite(patch.exa_cost_per_search_eur)) {
     out.exa_cost_per_search_eur = Math.max(0, patch.exa_cost_per_search_eur);
   }
-  if (Number.isFinite(patch.invite_expiry_days)) {
-    out.invite_expiry_days = Math.min(365, Math.max(1, Math.round(patch.invite_expiry_days)));
-  }
-  if (typeof patch.allow_access_requests === "boolean") {
-    out.allow_access_requests = patch.allow_access_requests;
-  }
   if (Number.isFinite(patch.max_time_budget_s)) {
     out.max_time_budget_s = Math.min(600, Math.max(15, Math.round(patch.max_time_budget_s)));
   }
@@ -90,8 +82,6 @@ function sanitizeConfigPatch(patch) {
   return {
     quotas: patch?.quotas,
     exa_cost_per_search_eur: numOr(patch?.exa_cost_per_search_eur),
-    invite_expiry_days: numOr(patch?.invite_expiry_days),
-    allow_access_requests: patch?.allow_access_requests,
     max_time_budget_s: numOr(patch?.max_time_budget_s),
     default_model: patch?.default_model,
   };

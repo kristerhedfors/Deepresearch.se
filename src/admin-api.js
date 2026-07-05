@@ -1,24 +1,15 @@
 // /api/admin/* — JSON API behind the admin role (enforced in index.js).
 //
 // Endpoints:
-//   GET    /api/admin/overview            requests + users(+usage) + invites + config + totals
-//   POST   /api/admin/invites             {email, role?} -> {token, url}
-//   DELETE /api/admin/invites/:token      revoke an unused invite
-//   POST   /api/admin/requests/:id        {action: "approve"|"deny"} -> invite on approve
-//   PATCH  /api/admin/users/:id           {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
+//   GET    /api/admin/overview   users(+usage) + config + totals
+//   PATCH  /api/admin/users/:id  {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
 //   DELETE /api/admin/users/:id
-//   PUT    /api/admin/config              partial config patch -> full config
+//   PUT    /api/admin/config     partial config patch -> full config
+//
+// Accounts are provisioned by Google sign-in (src/google.js) — there is no
+// create-user endpoint; the admin manages roles, status, and quotas.
 
-import {
-  createInvite,
-  deleteUser,
-  handleAccessRequest,
-  listAccessRequests,
-  listInvites,
-  listUsers,
-  revokeInvite,
-  updateUser,
-} from "./accounts.js";
+import { deleteUser, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, getUsageAllUsers, saveConfig } from "./quota.js";
@@ -41,46 +32,20 @@ export async function handleAdminApi(request, env, url, log, identity) {
 
   try {
     if (path === "/overview" && method === "GET") {
-      return overview(request, env, url);
+      return overview(env);
     }
-    if (path === "/invites" && method === "POST") {
-      const body = await request.json().catch(() => ({}));
-      const config = await getConfig(env);
-      const invite = await createInvite(env, {
-        email: body.email,
-        role: body.role,
-        expiryDays: config.invite_expiry_days,
-        createdBy: identity.id,
-      });
-      log.info("admin.invite_created", { role: body.role === "admin" ? "admin" : "user" });
-      return jsonResponse({ invite: withUrl(invite, url) });
-    }
-    const inviteDel = path.match(/^\/invites\/([a-f0-9]{48})$/);
-    if (inviteDel && method === "DELETE") {
-      await revokeInvite(env, inviteDel[1]);
-      return jsonResponse({ ok: true });
-    }
-    const reqAction = path.match(/^\/requests\/(\d+)$/);
-    if (reqAction && method === "POST") {
-      const body = await request.json().catch(() => ({}));
-      const action = body.action === "deny" ? "deny" : "approve";
-      const config = await getConfig(env);
-      const invite = await handleAccessRequest(env, Number(reqAction[1]), action, config.invite_expiry_days);
-      log.info("admin.request_handled", { action });
-      return jsonResponse({ ok: true, invite: invite ? withUrl(invite, url) : null });
-    }
-    const userPatch = path.match(/^\/users\/(\d+)$/);
-    if (userPatch && method === "PATCH") {
+    const userPath = path.match(/^\/users\/(\d+)$/);
+    if (userPath && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
       const patch = { role: body.role, status: body.status, name: body.name };
       if ("quota" in body) patch.quota_json = sanitizeQuota(body.quota);
-      const user = await updateUser(env, Number(userPatch[1]), patch);
-      log.info("admin.user_updated", { user_id: userPatch[1] });
+      const user = await updateUser(env, Number(userPath[1]), patch);
+      log.info("admin.user_updated", { user_id: userPath[1] });
       return jsonResponse({ user });
     }
-    if (userPatch && method === "DELETE") {
-      await deleteUser(env, Number(userPatch[1]));
-      log.info("admin.user_deleted", { user_id: userPatch[1] });
+    if (userPath && method === "DELETE") {
+      await deleteUser(env, Number(userPath[1]));
+      log.info("admin.user_deleted", { user_id: userPath[1] });
       return jsonResponse({ ok: true });
     }
     if (path === "/config" && method === "PUT") {
@@ -96,11 +61,9 @@ export async function handleAdminApi(request, env, url, log, identity) {
   }
 }
 
-async function overview(request, env, url) {
-  const [requests, users, invites, config, usage] = await Promise.all([
-    listAccessRequests(env, "pending"),
+async function overview(env) {
+  const [users, config, usage] = await Promise.all([
     listUsers(env),
-    listInvites(env),
     getConfig(env),
     getUsageAllUsers(env),
   ]);
@@ -110,17 +73,11 @@ async function overview(request, env, url) {
     for (const k of Object.keys(totals)) totals[k] += u[k] || 0;
   }
   return jsonResponse({
-    requests,
     users: users.map((u) => ({ ...u, usage: usageByUser[String(u.id)] || null })),
     admin_usage: usageByUser["admin"] || null,
-    invites: invites.map((i) => (i.used_at ? i : withUrl(i, url))),
     config,
     totals,
   });
-}
-
-function withUrl(invite, url) {
-  return { ...invite, url: `${url.origin}/invite?token=${invite.token}` };
 }
 
 // Per-user quota overrides: keep only known numeric fields; null clears.

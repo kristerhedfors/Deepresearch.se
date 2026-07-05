@@ -1,25 +1,32 @@
 // Authentication and identity for the whole site (UI + API).
 //
-// Two credential sources, two transports:
-//   - ADMIN: the ADMIN_USER / ADMIN_PASS Worker secrets (legacy fallback:
-//     BASIC_AUTH_USER / BASIC_AUTH_PASS). Always works, needs no database.
-//   - USERS: email + password accounts in D1 (created via invitations).
-// Both are accepted over HTTP Basic Auth (curl/scripts) and via the signed
-// session cookie issued by POST /login — required for installed PWAs: a
-// standalone app cannot show the native Basic Auth dialog, so a 401
-// challenge renders as a dead black screen (notably on iOS).
+// User-facing sign-in is GOOGLE ONLY (src/google.js): a successful Google
+// login mints the signed session cookie below, which then authenticates
+// every request. Two identity sources resolve here:
 //
-// Everything fails closed when the admin secrets are unset. The cookie is
-// `u.<uid>.<expiry>.<hmac(uid.expiry)>` keyed from the admin credential
-// pair, so rotating the admin password invalidates all sessions (admin and
-// user alike). uid "admin" is the secrets identity; numeric uids are D1
-// users (re-checked against the DB on every request, so disabling a user
-// takes effect immediately).
+//   - USERS: D1 accounts (created by Google sign-in), identified by the
+//     session cookie `u.<uid>.<expiry>.<hmac(uid.expiry)>` and re-checked
+//     against the DB on every request (disabling is immediate).
+//   - ADMIN break-glass: the ADMIN_USER / ADMIN_PASS Worker secrets over
+//     HTTP Basic Auth (legacy fallback: BASIC_AUTH_USER / BASIC_AUTH_PASS).
+//     For curl/scripts and emergencies — no database, no Google needed.
+//     Legacy admin session cookies from the pre-Google era also still map
+//     here so existing installs aren't logged out.
+//
+// PWA longevity: sessions last 365 days and slide — any authenticated
+// request past the half-life gets a fresh cookie (index.js appends it), so
+// an installed PWA that is opened at least twice a year never re-logs-in.
+// The cookie is HttpOnly and server-set, which also exempts it from
+// Safari/ITP's 7-day cap on script-writable storage.
+//
+// Everything fails closed when the admin secrets are unset (they also key
+// the HMAC — rotating them invalidates all sessions).
 
-import { getUserById, verifyUserLogin } from "./accounts.js";
+import { getUserById } from "./accounts.js";
 
 const COOKIE_NAME = "dr_session";
-const SESSION_TTL_S = 30 * 24 * 3600; // 30 days
+const SESSION_TTL_S = 365 * 24 * 3600; // 1 year, sliding
+const REFRESH_BELOW_S = SESSION_TTL_S / 2;
 
 export const ADMIN_ID = "admin";
 
@@ -44,39 +51,28 @@ function userIdentity(user) {
 }
 
 // Resolves who is making this request, or null. Order: Basic header
-// (admin secrets, then DB email login), then session cookie.
+// (admin secrets break-glass), then session cookie. Sets `refreshCookie`
+// on the identity when the cookie has passed its half-life.
 export async function identify(request, env) {
-  const creds = adminCreds(env);
-  if (!creds) return null; // fail closed
+  if (!adminCreds(env)) return null; // fail closed
 
   const basic = parseBasicHeader(request);
   if (basic) {
+    const creds = adminCreds(env);
     if (safeEqual(basic.user, creds.user) && safeEqual(basic.pass, creds.pass)) {
       return adminIdentity();
     }
-    const user = await verifyUserLogin(env, basic.user, basic.pass).catch(() => null);
-    if (user) return userIdentity(user);
     return null; // explicit bad credentials — don't fall through to cookie
   }
 
-  const uid = await verifySessionCookie(request, env);
-  if (uid === ADMIN_ID) return adminIdentity();
-  if (uid) {
-    const user = await getUserById(env, Number(uid)).catch(() => null);
-    if (user && user.status === "active") return userIdentity(user);
-  }
-  return null;
-}
+  const session = await verifySessionCookie(request, env);
+  if (!session) return null;
+  const refreshCookie = session.exp * 1000 - Date.now() < REFRESH_BELOW_S * 1000;
 
-// Login-form credential check. Returns an identity or null.
-export async function verifyLogin(env, username, password) {
-  const creds = adminCreds(env);
-  if (!creds) return null;
-  if (safeEqual(username, creds.user) && safeEqual(password, creds.pass)) {
-    return adminIdentity();
-  }
-  const user = await verifyUserLogin(env, username, password).catch(() => null);
-  return user ? userIdentity(user) : null;
+  if (session.uid === ADMIN_ID) return { ...adminIdentity(), refreshCookie };
+  const user = await getUserById(env, Number(session.uid)).catch(() => null);
+  if (user && user.status === "active") return { ...userIdentity(user), refreshCookie };
+  return null;
 }
 
 export async function createSessionCookie(env, uid = ADMIN_ID) {
@@ -90,6 +86,16 @@ export async function createSessionCookie(env, uid = ADMIN_ID) {
 
 export function clearSessionCookie() {
   return `${COOKIE_NAME}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`;
+}
+
+// HMAC helpers for the OAuth state cookie (src/google.js).
+export async function signState(env, state) {
+  return hmacHex(env, `state.${state}`);
+}
+export async function verifyState(env, state, cookieValue) {
+  const [cState, cSig] = String(cookieValue).split(".");
+  if (!cState || !cSig || !safeEqual(cState, state)) return false;
+  return safeEqual(cSig, await hmacHex(env, `state.${state}`));
 }
 
 function parseBasicHeader(request) {
@@ -106,9 +112,9 @@ function parseBasicHeader(request) {
   return { user: decoded.slice(0, sep), pass: decoded.slice(sep + 1) };
 }
 
-// Returns the uid from a valid cookie, or null. Accepts the pre-multiuser
-// legacy format `<exp>.<sig>` as the admin identity so existing sessions
-// survive the upgrade.
+// Returns {uid, exp} from a valid cookie, or null. Accepts the
+// pre-multiuser legacy format `<exp>.<sig>` as the admin identity so
+// existing sessions survive upgrades.
 async function verifySessionCookie(request, env) {
   const cookies = request.headers.get("Cookie") || "";
   const m = cookies.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
@@ -120,7 +126,7 @@ async function verifySessionCookie(request, env) {
     const exp = parseInt(expStr, 10);
     if (!uid || !Number.isFinite(exp) || exp * 1000 < Date.now()) return null;
     const expected = await hmacHex(env, `${uid}.${expStr}`);
-    return safeEqual(sig, expected) ? uid : null;
+    return safeEqual(sig, expected) ? { uid, exp } : null;
   }
 
   if (parts.length === 2) {
@@ -128,7 +134,7 @@ async function verifySessionCookie(request, env) {
     const exp = parseInt(expStr, 10);
     if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return null;
     const expected = await hmacHex(env, expStr);
-    return safeEqual(sig, expected) ? ADMIN_ID : null;
+    return safeEqual(sig, expected) ? { uid: ADMIN_ID, exp } : null;
   }
   return null;
 }

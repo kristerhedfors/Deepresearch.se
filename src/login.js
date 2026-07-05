@@ -1,8 +1,7 @@
-// Server-rendered auth pages: login (with request-access) and the invite
-// landing page. Shown to unauthenticated browsers/PWAs instead of a bare
+// Server-rendered sign-in page. Google is the only user-facing sign-in;
+// this page is what unauthenticated browsers/PWAs get instead of a bare
 // 401 challenge (which an installed PWA cannot answer — black screen).
-// Styled to match the app's sky-blue theme; autocomplete attributes let
-// password managers fill the same credentials used for Basic Auth.
+// Styled to match the app's sky-blue theme.
 
 const PAGE_CSS = `
     * { box-sizing: border-box; }
@@ -15,123 +14,59 @@ const PAGE_CSS = `
     .card {
       background: #f2f9ff; border: 1px solid #8ec4ec; border-radius: 14px;
       padding: 1.6rem; width: min(340px, 92vw);
-      display: flex; flex-direction: column; gap: .7rem; text-align: center;
+      display: flex; flex-direction: column; gap: .8rem; text-align: center;
     }
     img.logo { width: 72px; height: 72px; margin: 0 auto .2rem; border-radius: 18px; }
-    h1 { font-size: 1.05rem; margin: 0 0 .3rem; }
-    input, textarea {
-      background: #fff; color: inherit; border: 1px solid #8ec4ec;
-      border-radius: 8px; padding: .6rem .7rem; font: inherit; width: 100%;
-    }
-    textarea { resize: vertical; min-height: 60px; }
-    button {
-      background: #0d4fa0; color: #fff; border: 0; border-radius: 8px;
-      padding: .6rem; font: inherit; font-weight: 600; cursor: pointer;
-    }
+    h1 { font-size: 1.05rem; margin: 0 0 .1rem; }
     .err { color: #9a1c1c; font-size: .85rem; margin: 0; }
-    .ok { color: #157a4b; font-size: .85rem; margin: 0; }
     .muted { color: #2f5d8e; font-size: .8rem; margin: .2rem 0 0; line-height: 1.45; }
-    details { text-align: left; font-size: .85rem; }
-    details summary { cursor: pointer; color: #0d4fa0; font-weight: 600; text-align: center; }
-    details form { display: flex; flex-direction: column; gap: .55rem; margin-top: .6rem; }
+    a.gbtn {
+      display: flex; align-items: center; justify-content: center; gap: .6rem;
+      background: #fff; color: #1f1f1f; text-decoration: none;
+      border: 1px solid #dadce0; border-radius: 24px;
+      padding: .62rem 1rem; font-weight: 600; font-size: .92rem;
+    }
+    a.gbtn:active { background: #f3f6fb; }
 `;
 
-function page(title, body) {
+// Google "G" mark per branding guidelines (inline SVG, no external fetch).
+const G_SVG =
+  '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">' +
+  '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+  '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
+  '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
+  '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
+  "</svg>";
+
+// flash: "" | "google-failed" | "google-unverified" | "disabled" | "nodb"
+export function loginPage(flash) {
+  const messages = {
+    "google-failed": '<p class="err">Google sign-in didn’t complete. Please try again.</p>',
+    "google-unverified":
+      '<p class="err">That Google account’s email address is not verified — verify it with Google first.</p>',
+    disabled: '<p class="err">This account has been disabled by the site owner.</p>',
+    nodb: '<p class="err">Sign-in is temporarily unavailable (accounts database not configured).</p>',
+  };
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${title}</title>
+  <title>Deepresearch.se — sign in</title>
   <link rel="icon" href="/favicon.ico" sizes="48x48">
   <meta name="theme-color" content="#6fc3fd">
   <style>${PAGE_CSS}</style>
 </head>
 <body>
-${body}
-</body>
-</html>`;
-}
-
-// flash: "" | "failed" | "requested" | "request-off"
-export function loginPage(flash, allowRequests = true) {
-  const messages = {
-    failed: '<p class="err">Wrong username/email or password.</p>',
-    requested:
-      '<p class="ok">Request sent. You’ll receive an invitation link if access is granted.</p>',
-    "request-off": '<p class="err">Access requests are currently disabled.</p>',
-  };
-  const requestBlock = allowRequests
-    ? `
-    <details${flash === "requested" || flash === "request-off" ? " open" : ""}>
-      <summary>No account? Request access</summary>
-      <form method="post" action="/request-access">
-        <input name="email" type="email" placeholder="Your email" autocomplete="email" required>
-        <textarea name="message" placeholder="Who are you / why do you want access? (optional)" maxlength="500"></textarea>
-        <button type="submit">Request access</button>
-        <p class="muted">The site owner reviews requests manually. If approved,
-        you’ll get a personal invitation link bound to this email.</p>
-      </form>
-    </details>`
-    : "";
-  return page(
-    "Deepresearch.se — sign in",
-    `  <div class="card">
+  <div class="card">
     <img class="logo" src="/icons/icon-192.png?v=3" alt="">
     <h1>Deepresearch.se</h1>
     ${messages[flash] || ""}
-    <form method="post" action="/login" style="display:flex;flex-direction:column;gap:.7rem">
-      <input name="username" placeholder="Email or username" autocomplete="username" required autofocus>
-      <input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-      <button type="submit">Sign in</button>
-    </form>
-    ${requestBlock}
-  </div>`,
-  );
-}
-
-// Invite landing: the token is validated server-side before rendering; this
-// page only sets the password for the pre-bound email. `error` re-renders
-// with a message; a null invite renders the invalid state.
-export function invitePage(invite, error = "") {
-  if (!invite) {
-    return page(
-      "Deepresearch.se — invitation",
-      `  <div class="card">
-    <img class="logo" src="/icons/icon-192.png?v=3" alt="">
-    <h1>Invitation not valid</h1>
-    <p class="muted">This invitation link is invalid, expired, or has already
-    been used. Ask the site owner for a new one, or request access from the
-    <a href="/">sign-in page</a>.</p>
-  </div>`,
-    );
-  }
-  return page(
-    "Deepresearch.se — accept invitation",
-    `  <div class="card">
-    <img class="logo" src="/icons/icon-192.png?v=3" alt="">
-    <h1>Welcome to Deepresearch.se</h1>
-    <p class="muted">This invitation is for <b>${escapeHtml(invite.email)}</b>.
-    Choose a password to create your account.</p>
-    ${error ? `<p class="err">${escapeHtml(error)}</p>` : ""}
-    <form method="post" action="/invite" style="display:flex;flex-direction:column;gap:.7rem">
-      <input type="hidden" name="token" value="${escapeHtml(invite.token)}">
-      <input name="name" placeholder="Your name (optional)" autocomplete="name" maxlength="120">
-      <input name="password" type="password" placeholder="Password (min 8 characters)" autocomplete="new-password" minlength="8" required autofocus>
-      <button type="submit">Create account</button>
-      <p class="muted">You’ll sign in with your email and this password.
-      Google sign-in is coming later.</p>
-    </form>
-  </div>`,
-  );
-}
-
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[c]);
+    <a class="gbtn" href="/auth/google">${G_SVG} Continue with Google</a>
+    <p class="muted">Sign in with your Google account. New accounts start
+    with a standard research quota; your conversations are never stored on
+    the server.</p>
+  </div>
+</body>
+</html>`;
 }

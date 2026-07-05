@@ -58,10 +58,11 @@ Server (`src/`):
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Entrypoint: request id, identity gate, routing (`/api/*`, `/admin`, `/invite`, `/login`, `/logout`), request logs |
-| `auth.js` | Identity: admin secrets + D1 user accounts, Basic Auth + uid session cookie (fail closed) |
-| `login.js` | Login / request-access / invite HTML pages (PWAs can't answer a 401 challenge) |
-| `accounts.js` | Users (PBKDF2 passwords), invitations, access requests (D1) |
+| `index.js` | Entrypoint: request id, identity gate, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`), sliding-cookie reissue, request logs |
+| `auth.js` | Identity: session cookie (365 d, sliding) + admin-secrets break-glass Basic Auth (fail closed); OAuth state HMAC helpers |
+| `google.js` | Google OIDC sign-in: state cookie, code exchange, claims validation, auto-provisioning (`ADMIN_EMAIL` → admin) |
+| `login.js` | Sign-in page — Google button only (PWAs can't answer a 401 challenge) |
+| `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
 | `quota.js` | Global config, calendar-window usage accounting, quota enforcement, cost calc |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
@@ -82,7 +83,7 @@ panel), `turns.js` (bubbles/content/tools), `activity.js` (step bars,
 stats, collapse), `markdown.js` (sanitized rendering), `timescale.js`
 (slider scale). Admin UI: `admin/index.html` + `js/admin.js` +
 `css/admin.css` (served only to admins). Vendored libs in `vendor/`
-(`marked`, `DOMPurify`, `qrcodegen`).
+(`marked`, `DOMPurify`).
 
 ### /api/chat SSE protocol
 
@@ -220,36 +221,42 @@ accumulated numbered source registry.
   (not `includeUrls`). Search volume is capped by the pipeline constants
   (`MAX_TOTAL_SEARCHES` etc.) in `src/chat.js`.
 
-## Access control & accounts
+## Access control & accounts — Google sign-in only
 
 The whole site (UI + API) is gated; `run_worker_first = true` ensures auth
-also covers the static assets. Two identity sources:
+also covers the static assets. **The only user-facing sign-in is Google**
+(OIDC authorization-code flow, server side, no SDK — `src/google.js`;
+secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, configured on the
+Worker; setup reference: `docs/GOOGLE-AUTH.md`).
 
-1. **Admin** — the `ADMIN_USER` / `ADMIN_PASS` Worker secrets (legacy
-   fallback: `BASIC_AUTH_USER` / `BASIC_AUTH_PASS`; never hardcoded; the
-   Worker **fails closed** if unset). Always works, needs no database.
-   `role: admin`, exempt from quotas (usage still recorded).
-2. **User accounts** — email + password in D1, created only via
-   invitations. Roles `user` | `admin`; status `active` | `disabled`
-   (re-checked per request, so disabling is immediate). Passwords are
-   PBKDF2-SHA-256 (150k iters, per-user salt). Google sign-in is planned to
-   slot in beside this (accounts are keyed by email).
-
-Both are accepted over **HTTP Basic Auth** (`curl -u user:pass` or
-`curl -u email:password`; no `WWW-Authenticate` challenge is ever emitted)
-and via the **login page + session cookie** (`/login`) — required for
-installed PWAs (401 challenge = black screen on iOS). Cookie:
-`u.<uid>.<exp>.<hmac(uid.exp)>`, 30 days, HMAC keyed from the admin
-credential pair — rotating the admin password invalidates all sessions.
-
-**Onboarding flows** (both need D1):
-- **Request access**: the login page has a public "Request access" form
-  (email + message → `access_requests`); the admin approves/denies in
-  `/admin`. Approval creates an invitation.
-- **Invitation**: admin creates an invite bound to an email (`/admin` →
-  link + QR code, single-use, expiry configurable). Opening
-  `/invite?token=…` lets the invitee set a password; the account is created
-  and they're signed in.
+- **Auto-provisioning**: any Google account with a **verified** email can
+  sign in; the first sign-in creates the D1 user row. The `ADMIN_EMAIL`
+  var (wrangler.toml, currently krister.hedfors@gmail.com) gets — and
+  keeps — the admin role; everyone else is a regular, quota-capped user.
+  Admins can promote/disable/delete users in `/admin` (status is
+  re-checked per request, so disabling is immediate; existing sessions die
+  too). Cost exposure from open sign-in is bounded by the default quotas.
+- **Flow**: `GET /auth/google` (signed single-use state cookie, CSRF) →
+  Google → `GET /auth/google/callback` (code exchange server-to-server;
+  claims validated: `iss`, `aud`, `exp`, `email_verified === true`;
+  Google's stable `sub` stored on the user row) → session cookie → `/`.
+  ID-token signature is not verified — it arrives directly from Google's
+  token endpoint over TLS (per Google's own guidance for this flow).
+- **Sessions (PWA longevity)**: `dr_session` = `u.<uid>.<exp>.<hmac>`,
+  **365 days, sliding** — any authenticated request past the half-life
+  gets a fresh cookie appended, so an installed PWA opened at least twice
+  a year never re-logs-in. HttpOnly + server-set also exempts it from
+  Safari ITP's 7-day cap on script-writable storage. HMAC is keyed from
+  the admin credential pair — rotating `ADMIN_PASS` logs everyone out.
+- **Break-glass**: the `ADMIN_USER` / `ADMIN_PASS` secrets (legacy
+  fallback `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`) still work over HTTP Basic
+  Auth (`curl -u …`; never via any form) — for scripts and emergencies;
+  needs no DB, no Google; exempt from quotas (usage still recorded as
+  user `admin`). The Worker **fails closed** if these secrets are unset
+  (they also key the session HMAC). No `WWW-Authenticate` challenge is
+  ever emitted.
+- `GOOGLE_AUTH_URL` / `GOOGLE_TOKEN_URL` env overrides exist solely so
+  local tests can point the flow at a mock; production uses the defaults.
 
 **Quotas** (Claude Code-inspired): per user, caps on research **hours**
 (pipeline wall-clock) and **cost** (Berget tokens × catalog price + Exa
@@ -261,20 +268,16 @@ stream. Users see their own bars in the account panel (header person icon
 → `/api/me`); the admin dashboard shows totals and per-user bars.
 
 **Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
-pending requests, invitations (+QR via vendored `qrcodegen`), user
-management (role/status/quota/delete), config (default quotas, Exa cost,
-max time budget, default model, invite expiry, request toggle — stored in
-the D1 `config` table, cached ~30 s per isolate).
+usage totals, user management (role/status/quota/delete), config (default
+quotas, Exa cost, max time budget, default model — stored in the D1
+`config` table, cached ~30 s per isolate).
 
 **D1 setup (one-time)**: `npx wrangler d1 create deepresearch-se`, paste
 the id into the commented `[[d1_databases]]` block in `wrangler.toml`,
-push. Schema auto-applies on first use. Without the binding everything
-degrades gracefully: admin-secrets auth only, no accounts, no quotas.
+push. Schema auto-applies on first use (plus guarded additive ALTERs).
+Without the binding everything degrades gracefully: break-glass auth only,
+Google sign-in bounces with a clear message, no quotas.
 
 Secrets are set in the dashboard (Worker → Settings → Variables and
-Secrets) or via CLI:
-
-```bash
-npx wrangler secret put ADMIN_USER   # admin username
-npx wrangler secret put ADMIN_PASS   # admin password
-```
+Secrets) or via CLI: `ADMIN_USER`, `ADMIN_PASS`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` (plus `BERGET_API_TOKEN`, `EXA_API_KEY`).

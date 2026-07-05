@@ -1,10 +1,25 @@
 # Enabling Google sign-in
 
+> **STATUS: IMPLEMENTED** (`src/google.js`) — with deliberate deviations
+> from the original plan below, decided when the site switched to
+> **Google-only** auth:
+> - Google is the ONLY user-facing sign-in; password login, invitations,
+>   and access requests were removed entirely.
+> - Any Google account with a verified email is **auto-provisioned** as a
+>   regular user on first sign-in (quota-capped); the `ADMIN_EMAIL`
+>   wrangler var gets the admin role. There is no invite gate anymore —
+>   quotas are the cost boundary, and the admin can disable users.
+> - Sessions are 365-day sliding cookies so PWA users never re-log-in.
+> - `ADMIN_USER`/`ADMIN_PASS` remain as break-glass Basic Auth (scripts,
+>   emergencies) and still key the session HMAC.
+>
+> §1 (console setup), §2 (secrets), §3 (flow), and the pitfalls checklist
+> below remain accurate and are the operational reference.
+
 How to add "Sign in with Google" to Deepresearch.se. The account layer was
-built for this: **accounts are keyed by email**, `pass_hash` is nullable,
-and sessions are already identity-carrying cookies — Google becomes a third
-way to *prove* an email, not a new account system. Invite-only access
-control stays exactly as it is.
+built for this: **accounts are keyed by email**, and sessions are already
+identity-carrying cookies — Google becomes the way to *prove* an email,
+not a new account system.
 
 ## 1. Google Cloud Console (one-time, ~5 minutes)
 

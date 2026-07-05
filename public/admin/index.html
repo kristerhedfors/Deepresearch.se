@@ -16,7 +16,7 @@
   <main>
     <section id="setup" hidden>
       <h2>Database not configured</h2>
-      <p>Accounts, invitations and quotas need the D1 database. One-time setup:</p>
+      <p>Accounts and quotas need the D1 database. One-time setup:</p>
       <pre>npx wrangler d1 create deepresearch-se
 # put the printed database_id into the [[d1_databases]] block in wrangler.toml
 # (uncomment it), commit and push — the schema applies itself on first use.</pre>
@@ -27,26 +27,12 @@
       <div class="cards" id="totals"></div>
     </section>
 
-    <section id="requests-sec" hidden>
-      <h2>Access requests <span class="count" id="requests-count"></span></h2>
-      <div id="requests"></div>
-    </section>
-
-    <section id="invites-sec" hidden>
-      <h2>Invitations</h2>
-      <form id="invite-form">
-        <input id="invite-email" type="email" placeholder="email@example.com" required>
-        <select id="invite-role">
-          <option value="user">user</option>
-          <option value="admin">admin</option>
-        </select>
-        <button type="submit">Create invitation</button>
-      </form>
-      <div id="invites"></div>
-    </section>
-
     <section id="users-sec" hidden>
       <h2>Users</h2>
+      <p class="muted">Accounts are created automatically on first Google
+      sign-in — the address configured as <code>ADMIN_EMAIL</code> becomes
+      admin, everyone else a regular user with the default quota. Manage
+      roles, status, and per-user quotas here.</p>
       <div id="users"></div>
     </section>
 
@@ -56,21 +42,6 @@
     </section>
   </main>
 
-  <div id="qr-overlay" hidden>
-    <div class="qr-card">
-      <h3 id="qr-title">Invitation</h3>
-      <canvas id="qr-canvas" width="264" height="264"></canvas>
-      <input id="qr-link" readonly>
-      <div class="row">
-        <button id="qr-copy" type="button">Copy link</button>
-        <button id="qr-close" type="button" class="secondary">Close</button>
-      </div>
-      <p class="muted">The link is bound to the invitee's email and single-use.
-      Send it, or let them scan the QR code.</p>
-    </div>
-  </div>
-
-  <script src="/vendor/qrcodegen.js"></script>
   <script type="module" src="/js/admin.js"></script>
 </body>
 </html>

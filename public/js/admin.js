@@ -1,6 +1,7 @@
-// Admin UI: access requests, invitations (+QR), users with quotas, config.
-// All data comes from /api/admin/* (role-gated server-side); this page is
-// just rendering and actions.
+// Admin UI: usage totals, user management (role/status/quota/delete), and
+// site configuration. All data comes from /api/admin/* (role-gated
+// server-side); this page is just rendering and actions. Accounts are
+// provisioned by Google sign-in — there is nothing to create here.
 
 const $ = (id) => document.getElementById(id);
 const PERIODS = ["day", "week", "month"];
@@ -20,7 +21,6 @@ async function api(path, opts = {}) {
 
 const euro = (v) => "€" + (Number(v) || 0).toFixed(2);
 const hours = (ms) => ((Number(ms) || 0) / 3_600_000).toFixed(2) + " h";
-const when = (ts) => (ts ? new Date(ts).toISOString().slice(0, 16).replace("T", " ") : "—");
 
 async function load() {
   try {
@@ -37,8 +37,6 @@ async function load() {
     return;
   }
   renderTotals();
-  renderRequests();
-  renderInvites();
   renderUsers();
   renderConfig();
 }
@@ -53,110 +51,12 @@ function renderTotals() {
     ["This month", `${euro(t.month_cost)} · ${hours(t.month_ms)}`],
     ["Requests this month", String(t.month_requests || 0)],
     ["Users", String(overview.users.length)],
-    ["Pending access requests", String(overview.requests.length)],
   ];
   $("totals").innerHTML = cards
     .map(([lbl, big]) => `<div class="card"><div class="big">${big}</div><div class="lbl">${lbl}</div></div>`)
     .join("");
   $("totals-sec").hidden = false;
 }
-
-// ---- access requests ----------------------------------------------------
-
-function renderRequests() {
-  const box = $("requests");
-  $("requests-count").textContent = overview.requests.length || "";
-  box.innerHTML = overview.requests.length
-    ? ""
-    : '<p class="muted">No pending requests.</p>';
-  for (const r of overview.requests) {
-    const el = document.createElement("div");
-    el.className = "rowitem";
-    el.innerHTML = `
-      <div class="head">
-        <b>${escapeHtml(r.email)}</b>
-        <span class="muted">${when(r.created_at)}</span>
-        <span class="spacer"></span>
-        <button data-act="approve">Approve → invite</button>
-        <button data-act="deny" class="danger">Deny</button>
-      </div>
-      ${r.message ? `<p class="msg">${escapeHtml(r.message)}</p>` : ""}`;
-    el.addEventListener("click", async (e) => {
-      const act = e.target.dataset?.act;
-      if (!act) return;
-      e.target.disabled = true;
-      try {
-        const res = await api(`/requests/${r.id}`, { method: "POST", body: { action: act } });
-        await load();
-        if (res.invite) showQr(res.invite);
-      } catch (err) {
-        alert(err.message);
-        e.target.disabled = false;
-      }
-    });
-    box.appendChild(el);
-  }
-  $("requests-sec").hidden = false;
-}
-
-// ---- invitations ---------------------------------------------------------
-
-function renderInvites() {
-  const box = $("invites");
-  const open = overview.invites.filter((i) => !i.used_at);
-  const used = overview.invites.filter((i) => i.used_at);
-  box.innerHTML = open.length || used.length ? "" : '<p class="muted">No invitations yet.</p>';
-  for (const inv of open) {
-    const expired = inv.expires_at < Date.now();
-    const el = document.createElement("div");
-    el.className = "rowitem";
-    el.innerHTML = `
-      <div class="head">
-        <b>${escapeHtml(inv.email)}</b>
-        <span class="badge ${inv.role}">${inv.role}</span>
-        <span class="muted">${expired ? "expired" : "expires"} ${when(inv.expires_at)}</span>
-        <span class="spacer"></span>
-        ${expired ? "" : '<button data-act="qr" class="secondary">Link / QR</button>'}
-        <button data-act="revoke" class="danger">Revoke</button>
-      </div>`;
-    el.addEventListener("click", async (e) => {
-      const act = e.target.dataset?.act;
-      if (act === "qr") showQr(inv);
-      if (act === "revoke") {
-        try {
-          await api(`/invites/${inv.token}`, { method: "DELETE" });
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      }
-    });
-    box.appendChild(el);
-  }
-  if (used.length) {
-    const el = document.createElement("p");
-    el.className = "muted";
-    el.textContent = `${used.length} used invitation${used.length === 1 ? "" : "s"}: ` +
-      used.slice(0, 8).map((i) => i.email).join(", ") + (used.length > 8 ? ", …" : "");
-    box.appendChild(el);
-  }
-  $("invites-sec").hidden = false;
-}
-
-$("invite-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  try {
-    const res = await api("/invites", {
-      method: "POST",
-      body: { email: $("invite-email").value, role: $("invite-role").value },
-    });
-    $("invite-email").value = "";
-    await load();
-    showQr(res.invite);
-  } catch (err) {
-    alert(err.message);
-  }
-});
 
 // ---- users ---------------------------------------------------------------
 
@@ -168,7 +68,9 @@ function quotaBar(label, used, limit, fmt) {
 
 function renderUsers() {
   const box = $("users");
-  box.innerHTML = overview.users.length ? "" : '<p class="muted">No users yet — create an invitation above.</p>';
+  box.innerHTML = overview.users.length
+    ? ""
+    : '<p class="muted">No users yet — accounts appear on first Google sign-in.</p>';
   const defaults = overview.config.quotas;
   for (const u of overview.users) {
     const usage = u.usage || {};
@@ -232,7 +134,7 @@ function renderUsers() {
           await api(`/users/${u.id}`, { method: "PATCH", body: { status: u.status === "disabled" ? "active" : "disabled" } });
           await load();
         } else if (act === "delete") {
-          if (!confirm(`Delete ${u.email} and their usage history?`)) return;
+          if (!confirm(`Delete ${u.email} and their usage history? They can sign in again with Google and start fresh.`)) return;
           await api(`/users/${u.id}`, { method: "DELETE" });
           await load();
         } else if (act === "save-quota") {
@@ -276,11 +178,6 @@ function renderConfig() {
       <label>Max time budget (s) <input type="number" min="15" max="600" name="maxbudget" value="${c.max_time_budget_s}"></label>
       <label>Default model <input name="model" value="${escapeHtml(c.default_model || "")}" placeholder="(worker default)" style="min-width:230px"></label>
     </div>
-    <h3>Accounts</h3>
-    <div class="group">
-      <label><input type="checkbox" name="requests" ${c.allow_access_requests ? "checked" : ""}> Allow access requests on the login page</label>
-      <label>Invite expiry (days) <input type="number" min="1" max="365" name="expiry" value="${c.invite_expiry_days}"></label>
-    </div>
     <div class="group"><button type="submit">Save configuration</button><span class="muted" id="config-msg"></span></div>`;
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -297,8 +194,6 @@ function renderConfig() {
           exa_cost_per_search_eur: Number(f.get("exa")),
           max_time_budget_s: Number(f.get("maxbudget")),
           default_model: String(f.get("model") || ""),
-          allow_access_requests: f.get("requests") === "on",
-          invite_expiry_days: Number(f.get("expiry")),
         },
       });
       $("config-msg").textContent = "Saved ✓";
@@ -310,42 +205,6 @@ function renderConfig() {
   };
   $("config-sec").hidden = false;
 }
-
-// ---- QR overlay -------------------------------------------------------------
-
-function showQr(invite) {
-  $("qr-title").textContent = `Invitation for ${invite.email}`;
-  $("qr-link").value = invite.url;
-  const canvas = $("qr-canvas");
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (window.qrcodegen) {
-    const qr = qrcodegen.QrCode.encodeText(invite.url, qrcodegen.QrCode.Ecc.MEDIUM);
-    const scale = Math.floor(canvas.width / (qr.size + 8)); // 4-module quiet zone
-    const offset = Math.floor((canvas.width - qr.size * scale) / 2);
-    ctx.fillStyle = "#0a2e5c";
-    for (let y = 0; y < qr.size; y++) {
-      for (let x = 0; x < qr.size; x++) {
-        if (qr.getModule(x, y)) ctx.fillRect(offset + x * scale, offset + y * scale, scale, scale);
-      }
-    }
-  }
-  $("qr-overlay").hidden = false;
-}
-$("qr-copy").addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText($("qr-link").value);
-    $("qr-copy").textContent = "Copied ✓";
-  } catch {
-    $("qr-link").select();
-  }
-  setTimeout(() => ($("qr-copy").textContent = "Copy link"), 1500);
-});
-$("qr-close").addEventListener("click", () => ($("qr-overlay").hidden = true));
-$("qr-overlay").addEventListener("click", (e) => {
-  if (e.target === $("qr-overlay")) $("qr-overlay").hidden = true;
-});
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({

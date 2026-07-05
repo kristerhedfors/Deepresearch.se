@@ -89,8 +89,6 @@ input, select, textarea {
   border-radius: 8px; padding: .42rem .55rem; font: inherit; font-size: .85rem;
 }
 input[type="number"] { width: 6.2rem; }
-form#invite-form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .8rem; }
-form#invite-form input[type="email"] { flex: 1; min-width: 200px; }
 
 /* Usage bars */
 .quota-bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .5rem; margin-top: .5rem; }
@@ -116,19 +114,4 @@ form#invite-form input[type="email"] { flex: 1; min-width: 200px; }
 #config-form .group { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; }
 #config-form label { font-size: .85rem; display: inline-flex; gap: .4rem; align-items: center; }
 #config-form h3 { margin: 0; font-size: .85rem; }
-
-/* QR overlay */
-#qr-overlay {
-  position: fixed; inset: 0; background: rgba(4, 30, 60, .45);
-  display: grid; place-items: center; z-index: 50; padding: 1rem;
-}
-#qr-overlay[hidden] { display: none; }
-.qr-card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-  padding: 1.2rem; width: min(360px, 94vw); text-align: center;
-  display: flex; flex-direction: column; gap: .7rem;
-}
-.qr-card h3 { margin: 0; font-size: .95rem; overflow-wrap: anywhere; }
-.qr-card canvas { margin: 0 auto; background: #fff; border-radius: 8px; }
-.qr-card input { font-size: .75rem; }
-.qr-card .row { display: flex; gap: .5rem; justify-content: center; }
+code { background: var(--panel-2); border-radius: 4px; padding: 0 .25rem; }

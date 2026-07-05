@@ -14,27 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT,
   role TEXT NOT NULL DEFAULT 'user',
   status TEXT NOT NULL DEFAULT 'active',
-  pass_hash TEXT,
-  pass_salt TEXT,
+  google_sub TEXT,
   quota_json TEXT,
   created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS invites (
-  token TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'user',
-  created_by TEXT,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  used_at INTEGER
-);
-CREATE TABLE IF NOT EXISTS access_requests (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT NOT NULL,
-  message TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at INTEGER NOT NULL,
-  handled_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS usage_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +37,11 @@ CREATE TABLE IF NOT EXISTS config (
 );
 `;
 
+// Additive migrations for databases created before the column existed.
+// "duplicate column" failures are expected and swallowed; anything else in
+// here must stay idempotent-or-ignorable.
+const ALTERS = ["ALTER TABLE users ADD COLUMN google_sub TEXT"];
+
 let migrated = false; // per isolate
 
 // Returns the D1 binding with schema applied, or null when the database is
@@ -67,6 +54,9 @@ export async function getDb(env) {
       .filter(Boolean)
       .map((s) => env.DB.prepare(s));
     await env.DB.batch(statements);
+    for (const alter of ALTERS) {
+      await env.DB.prepare(alter).run().catch(() => {});
+    }
     migrated = true;
   }
   return env.DB;
