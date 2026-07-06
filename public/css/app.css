@@ -670,6 +670,28 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .privacy-card button { margin-top: .35rem; padding: .45rem 1.1rem; }
 
 /* Account settings — the cloud-storage knob (public/js/account.js) */
-.setting-row { display: flex; align-items: center; gap: .55rem; margin: .45rem 0 .2rem; cursor: pointer; }
-.setting-row input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+/* Settings sub-view rows: label left, slide switch right. The switch is
+   the ORIGINAL toggle design the composer's web-search knob had before it
+   became the spiderweb — kept here as generic classes so every future
+   setting reuses it. */
+.settings-item { margin: .3rem 0 .6rem; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .3rem 0; }
+.settings-label { font-size: .95em; }
+.switch { cursor: pointer; display: inline-flex; flex: none; -webkit-user-select: none; user-select: none; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch-track {
+  width: 40px; height: 22px; border-radius: 11px;
+  background: var(--border);
+  position: relative; flex: none;
+  transition: background .15s ease;
+}
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
+  transition: left .15s ease;
+}
+.switch input:checked + .switch-track .switch-thumb { left: 20px; }
+.switch input:disabled + .switch-track { opacity: .45; cursor: not-allowed; }
 .setting-desc { font-size: .82em; line-height: 1.45; margin: .15rem 0 .4rem; }

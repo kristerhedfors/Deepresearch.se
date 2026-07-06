@@ -100,36 +100,69 @@ export function initAccountPanel() {
     });
   }
 
-  // Settings section (the cloud-storage knob). Rendered into the summary
-  // view's placeholder once /api/settings answers; hidden entirely for the
-  // break-glass identity (no account row to remember the setting on) and
-  // when the server has no storage configured.
-  async function wireSettings() {
-    const box = document.getElementById("settingsblock");
-    if (!box || !me?.email) return;
-    let s;
-    try {
-      s = await loadSettings();
-    } catch {
-      return;
-    }
-    if (!s.available?.storage) return;
-    box.innerHTML = `
+  // The "settings" view — its own level below the summary, like "Full
+  // usage & history" and "Messages", built as a list of switch rows so
+  // future settings just add rows. The switch itself is the original
+  // slide-toggle design the composer's web-search knob used before it
+  // became the spiderweb (generic .switch classes, not tied to the
+  // composer). Cloud storage is ON by default; the row is shown disabled
+  // (forced off) when the account can't use it — break-glass identity or a
+  // server without the storage bindings — rather than hidden, so the state
+  // is explainable.
+  function settingRow({ id, label, checked, disabled }) {
+    return `
+      <div class="settings-row">
+        <span class="settings-label">${label}</span>
+        <label class="switch">
+          <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+        </label>
+      </div>`;
+  }
+
+  async function loadSettingsView() {
+    body.innerHTML = `
+      <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
       <p class="section-lbl">Settings</p>
-      <label class="setting-row">
-        <input type="checkbox" id="cloudknob"${s.server_history ? " checked" : ""}>
-        <span>Store history in the cloud</span>
-      </label>
-      <p class="muted setting-desc">Off (default): conversations, attached files and the
-        document index live only in this browser. On: they're also kept in this
-        site's Cloudflare storage so history follows your account across devices
-        — conversations stay <b>encrypted</b> exactly as they are locally; attached
-        files and the document search index are stored <b>unencrypted</b> (retrieval
-        needs readable text). Switching it off downloads everything back here and
-        deletes the cloud copies.</p>
-      <p id="syncstatus" class="muted" hidden></p>`;
-    const knob = box.querySelector("#cloudknob");
-    const status = box.querySelector("#syncstatus");
+      <p class="muted">Loading…</p>`;
+    document.getElementById("settingsbackbtn").addEventListener("click", () => show("summary"));
+
+    let s = null;
+    if (me?.email) {
+      try {
+        s = await loadSettings(true); // fresh — another device may have flipped it
+      } catch {
+        s = null;
+      }
+    }
+    const usable = !!s?.available?.storage;
+    const note = !me?.email
+      ? "Settings need a signed-in account (break-glass sessions have none)."
+      : s === null
+        ? "Could not load settings — try again in a moment."
+        : usable
+          ? ""
+          : "Cloud storage isn't configured on this server, so history stays in this browser only.";
+    body.innerHTML = `
+      <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
+      <p class="section-lbl">Settings</p>
+      <div class="settings-item">
+        ${settingRow({ id: "cloudknob", label: "Store history in the cloud", checked: usable && s.server_history, disabled: !usable })}
+        <p class="muted setting-desc">On (default): conversations, attached files and the
+          document index are kept in this site's Cloudflare storage, so history
+          follows your account across devices — conversations stay <b>encrypted</b>
+          exactly as they are in this browser; attached files and the document
+          search index are stored <b>unencrypted</b> (retrieval needs readable
+          text). Off: everything lives only in this browser — switching off
+          downloads it all here and deletes the cloud copies.</p>
+        <p id="syncstatus" class="muted" hidden></p>
+        ${note ? `<p class="muted">${note}</p>` : ""}
+      </div>`;
+    document.getElementById("settingsbackbtn").addEventListener("click", () => show("summary"));
+    if (!usable) return;
+
+    const knob = document.getElementById("cloudknob");
+    const status = document.getElementById("syncstatus");
     const progress = (msg) => { status.textContent = msg; };
     knob.addEventListener("change", async () => {
       const on = knob.checked;
@@ -162,17 +195,21 @@ export function initAccountPanel() {
       loadMessages();
       return;
     }
+    if (view === "settings") {
+      loadSettingsView();
+      return;
+    }
     body.innerHTML = view === "full" ? renderFullUsage(me) : renderSummary(me);
     if (view === "full") {
       document.getElementById("usagebackbtn").addEventListener("click", () => show("summary"));
     } else {
       document.getElementById("fullusagebtn")?.addEventListener("click", () => show("full"));
       document.getElementById("messagesbtn")?.addEventListener("click", () => show("messages"));
+      document.getElementById("settingsbtn")?.addEventListener("click", () => show("settings"));
       document.getElementById("logoutbtn").addEventListener("click", async () => {
         await fetch("/logout", { method: "POST" });
         location.href = "/login";
       });
-      wireSettings();
     }
   };
 
@@ -208,13 +245,13 @@ function renderSummary(me) {
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
-    <div id="settingsblock"></div>
     <!-- Page links open NEW TABS: even though history now persists across
          reloads (encrypted, local — see /help/), a same-tab navigation
          would still abort any in-flight research request. -->
     <div class="account-actions">
       <button id="messagesbtn" type="button"${msgCount ? ' class="has-badge"' : ""}>Messages${msgCount ? ` (${msgCount})` : ""}</button>
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
+      <button id="settingsbtn" type="button">Settings</button>
       <a href="/build/" target="_blank" rel="noopener">About this project</a>
       <a href="/story/" target="_blank" rel="noopener">The build story</a>
       <a href="/help/" target="_blank" rel="noopener">Documentation</a>
