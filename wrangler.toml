@@ -36,6 +36,17 @@ run_worker_first = true
 [observability]
 enabled = true
 
+# Raise the CPU-time ceiling to the Workers Paid plan's max (default is 30s).
+# A round 4 model-eval battery (cybersecurity queries, mid-long 150s time
+# budgets) found several models' requests killed by Cloudflare with outcome
+# "exceededCpu" mid-pipeline — no exception, nothing our own code could
+# catch, since the platform tears down the isolate itself. A longer budget
+# legitimately plans more searches/gap rounds/a bigger synthesis digest, so
+# total CPU cost scales with research depth; this raises the ceiling to
+# match rather than silently truncating deep research on slower models.
+[limits]
+cpu_ms = 300_000
+
 # D1 database for accounts and research quotas. The schema applies itself
 # on first use — no migration step. Without this binding the Worker still
 # runs, but Google sign-in is disabled (break-glass admin auth only).
