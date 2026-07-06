@@ -543,3 +543,85 @@ demonstrably helps a subset of cases but does not eliminate Kimi-K2.6's
 failure rate; root cause for the deterministic subset (why these specific
 topics/queries reliably fail) is unconfirmed and not reachable with the
 diagnostics available in this environment.
+
+---
+
+## Round 7 — 2026-07-06 (post-Exa-depth-scaling comparison)
+
+**Run:** three parallel batteries re-running the exact query sets from
+prior rounds, now that Exa search depth scales with the time budget
+(commit `4d577fe`): `cybersecurity` @ 150s (35 runs, comparison vs round
+4's final baseline), `science` @ 90s (35 runs, comparison vs round 5's
+baseline), and a new `genetics` @ 450s test on 3 models (GLM-4.7-FP8,
+Kimi-K2.6, Mistral-Medium-3.5-128B) to exercise Exa's `"deep"` search
+type for the first time (only reachable at >=420s budgets).
+
+**Findings — the `auto`-tier depth increase (8/10 results vs the old
+hardcoded 5) shows a modest, real, evidence-backed improvement:**
+- `science` @ 90s: 33/35 succeeded (up from round 5's 31/35 — within
+  Kimi-K2.6's known noise, not attributable to the Exa change).
+- Direct before/after citation counts on matched model+query pairs (same
+  query, same model, only the Exa params differ): gpt-oss-120b's
+  `physics_superconductor` went from 5 to 8 distinct sources — concretely,
+  the SAME 5 original sources were retained plus 3 new legitimate ones
+  (a CERN Indico presentation, New Scientist, a research-landscape blog).
+  `cybersecurity` @ 150s showed the same modest pattern: GLM's
+  `policy_nis2` 5→8 citations, Llama's `tech_supply_chain` 8→9,
+  gpt-oss-120b's `tech_ad_lateral` 5→6. Answers were often similar length
+  or slightly shorter despite more citations — denser, not padded.
+- `cybersecurity` @ 150s: 33/35 (down from round 4's clean 35/35, but
+  both failures were Kimi-K2.6's known empty-completion issue — unrelated
+  to search depth).
+
+**Findings — Exa's `"deep"` search type (>=420s tier): real latency
+cost, quality benefit unproven in this sample.**
+- Confirmed via Workers Logs `type:"deep"` was genuinely requested and
+  used. Per-search duration consistently 3-4.5s (one request logged 19
+  individual deep searches, avg ~3.7s each) vs the ~1-2s typical for
+  `"auto"` searches observed elsewhere this session — roughly a 2-3x
+  latency cost, in the same ballpark as deep mode's ~1.7x price premium.
+- GLM-4.7-FP8 and Mistral-Medium-3.5-128B: 5/5 clean. Kimi-K2.6: 2/5 —
+  its known empty-completion issue, worse at this longer budget (more
+  total request time for the underlying flake to hit).
+- **Quality wasn't clearly proportionate to the cost.** One Mistral-Medium
+  answer (`mammoth_project_status`) ran 19 deep searches yet the final
+  synthesis cited only 6 sources — 4 of them Colossal Biosciences' OWN
+  promotional site, plus two pop-culture/entertainment outlets (Den of
+  Geek, CBR), with only NPR as a genuinely independent source. More/
+  deeper searches did not automatically buy more independent scrutiny —
+  they can just as easily converge on confirming the same dominant
+  narrative (here, the company's own PR) if that's what's most
+  search-relevant. This is a real, non-cherry-picked finding, not a
+  one-off: worth a source-diversity check (e.g. penalizing
+  same-domain-dominance in the digest, or an explicit "seek independent
+  verification" instruction) rather than assuming deep mode alone fixes
+  source quality.
+- **New failure signature**: `moonshotai/Kimi-K2.6 :: dire_wolf_de_extinction`
+  failed with a bare `error: "terminated"` — doesn't match this harness's
+  normal error formats (`client-side timeout` / `Worker error: ...`).
+  Traced to Node's undici HTTP client throwing this message on an
+  unusually long-lived single connection (this was the longest-duration
+  request across all three batteries). Most likely a test-harness/
+  environment artifact (a TCP-level reset on an exceptionally long
+  connection through this sandbox's proxy) rather than a new pipeline
+  bug — not confirmed via Workers Logs since no request_id was captured
+  for this specific failure (the error occurred before headers arrived
+  back to the harness). Flagged, not fixed; watch for recurrence.
+
+**Decisions:** No code changes this round — this was a verification/
+comparison pass. The `auto`-tier depth scaling is confirmed working as
+designed with a real, modest quality improvement. `"deep"` mode is
+technically working (correct type, correct latency profile) but its
+value proposition relative to cost is NOT proven by this small sample —
+downgrading confidence in it from "should help" to "unclear, needs more
+data" pending a larger, controlled comparison.
+
+**Carried forward:**
+1. `"deep"` mode's cost/quality tradeoff needs a genuinely controlled
+   A/B (same budget, only `type` differs) before trusting it's worth the
+   ~1.7x price — not yet done.
+2. Source-diversity / same-domain-dominance is a new, real quality gap
+   independent of search depth — worth investigating regardless of the
+   Exa tier used.
+3. The bare "terminated" error on an extreme-duration request — watch
+   for recurrence; not yet root-caused.
