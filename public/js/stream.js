@@ -23,8 +23,19 @@ import {
   setText,
 } from "./turns.js";
 import { saveConversation } from "./history-store.js";
+import { firstChunks, retrieve } from "./rag.js";
 
 const history = []; // {role, content} pairs sent to the API
+
+// Large documents attached to this conversation (RAG-indexed — see
+// public/js/rag.js): follow-up questions keep retrieving from them, so
+// their ids/names are conversation state, persisted in the encrypted
+// record (`ragDocs`) and restored on load.
+let convRagDocs = []; // [{id, name}]
+
+// Per-question excerpt budget: generous enough for real answers, small
+// enough that history-resending never approaches the 32K message cap.
+const EXCERPT_TOTAL_CHARS = 12000;
 
 let scrollDown = () => {};
 let inFlight = false;
@@ -65,6 +76,7 @@ export function applyLoadedConversation(record) {
   currentId = record.id;
   convTitle = record.title;
   convCreatedAt = record.createdAt;
+  convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   renderStoredConversation(record.messages);
   scrollDown(true);
 }
@@ -97,6 +109,7 @@ async function persistConversation(opts) {
       model: opts?.model || "",
       budgetS: opts?.budgetS ?? null,
       webSearch: opts?.webSearch !== false,
+      ragDocs: convRagDocs,
       createdAt: convCreatedAt,
       updatedAt: now,
     });
@@ -124,6 +137,7 @@ export function clearHistory() {
   currentId = null;
   convTitle = null;
   convCreatedAt = null;
+  convRagDocs = [];
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -230,6 +244,52 @@ function messagesForApi() {
   });
 }
 
+// Builds the labeled excerpt blocks for every RAG-indexed document in this
+// conversation: semantic retrieval against the question, a positional
+// fallback for a newly attached doc retrieval missed entirely (a doc the
+// user JUST attached must never be silently absent from its own turn),
+// and a hard total-size budget.
+async function buildRagBlocks(questionText, newRagDocs) {
+  const names = new Map(convRagDocs.map((d) => [d.id, d.name]));
+  const metaByDoc = new Map(newRagDocs.filter((d) => d.metadata).map((d) => [d.docId, d.metadata]));
+  let matches = [];
+  try {
+    matches = await retrieve(convRagDocs.map((d) => d.id), questionText || "the attached document", 8);
+  } catch {
+    matches = [];
+  }
+  for (const d of newRagDocs) {
+    if (!matches.some((m) => m.docId === d.docId)) {
+      matches = matches.concat(await firstChunks(d.docId, 3).catch(() => []));
+    }
+  }
+  if (!matches.length) return "";
+
+  const byDoc = new Map();
+  let used = 0;
+  for (const m of matches) {
+    if (used >= EXCERPT_TOTAL_CHARS) break;
+    const excerpt = m.text.slice(0, Math.min(1600, EXCERPT_TOTAL_CHARS - used));
+    if (!excerpt.trim()) continue;
+    used += excerpt.length;
+    if (!byDoc.has(m.docId)) byDoc.set(m.docId, []);
+    byDoc.get(m.docId).push({ seq: m.seq, text: excerpt });
+  }
+
+  let out = "";
+  for (const [docId, excerpts] of byDoc) {
+    const name = names.get(docId) || "document";
+    const meta = metaByDoc.get(docId);
+    out +=
+      `\n\n--- Attached document: ${name} (large document, indexed for retrieval — ` +
+      `showing the excerpts most relevant to this question) ---\n` +
+      (meta ? `[Document metadata]\n${meta}\n\n` : "") +
+      excerpts.map((e) => `[Excerpt — part ${e.seq + 1}]\n${e.text}`).join("\n\n") +
+      "\n--- End of document excerpts ---";
+  }
+  return out;
+}
+
 // One send: text plus attachments already collected by the composer.
 // opts: {images, docs, model, budgetS, webSearch}
 export async function sendMessage(text, opts) {
@@ -239,13 +299,27 @@ export async function sendMessage(text, opts) {
   // tracked-changes/comments for docx, Info dict for pdf — see exif.js /
   // docs.js) rides along as its own labeled block so it's research
   // material, not silently dropped or silently blended into the main text.
+  //
+  // Large documents don't ride inline: they were RAG-indexed at attach
+  // time (attachments.js / rag.js) and contribute retrieved excerpts here
+  // instead — on this turn and on every follow-up in this conversation.
+  const newRagDocs = (opts.docs || []).filter((d) => d.rag && d.docId);
+  for (const d of newRagDocs) {
+    if (!convRagDocs.some((r) => r.id === d.docId)) {
+      convRagDocs.push({ id: d.docId, name: d.name });
+    }
+  }
   let apiText = text;
   for (const d of opts.docs) {
+    if (d.rag) continue; // excerpts appended below
     apiText +=
       `\n\n--- Attached document: ${d.name}${d.truncated ? " (truncated)" : ""} ---\n` +
       (d.metadata ? `[Document metadata]\n${d.metadata}\n\n` : "") +
       d.text +
       "\n--- End of document ---";
+  }
+  if (convRagDocs.length) {
+    apiText += await buildRagBlocks(text, newRagDocs);
   }
   for (const a of opts.images) {
     if (a.metadata) {

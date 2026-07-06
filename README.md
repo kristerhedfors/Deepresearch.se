@@ -116,6 +116,7 @@ Plaintext variables (dashboard "Variables", or `[vars]`):
 | `ADMIN_EMAIL` | The Google account that gets — and keeps — the admin role on sign-in. Set as a dashboard variable, deliberately not committed in `wrangler.toml`. **The only path to admin**: the admin API cannot promote anyone. |
 | `LOG_LEVEL` | `debug` \| `info` (default) \| `warn` \| `error` — already in `wrangler.toml` |
 | `BERGET_MODEL` | Optional default-model override (falls back to Mistral Small) |
+| `BERGET_EMBED_MODEL` | Optional embedding-model override for document RAG (falls back to `intfloat/multilingual-e5-large`, 1024 dims). The Vectorize index (step 7) is created with fixed dimensions — a model with different dimensions needs the index recreated. |
 
 (`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` are accepted as legacy fallbacks for
 `ADMIN_USER`/`ADMIN_PASS`; `BERGET_URL`, `GOOGLE_AUTH_URL`,
@@ -130,6 +131,26 @@ auto-provisions the row with the admin role. Every other Google account
 lands as `pending` on an awaiting-approval page until approved in `/admin`
 (where default quotas, Exa cost, max time budget, and the default model
 are also configured; settings live in the D1 `config` table).
+
+### 7. Optional: cloud storage + document RAG (R2 + Vectorize)
+
+Enables the per-account **"Store history in the cloud"** knob (account
+panel → Settings) and server-side retrieval for large attached documents.
+Entirely optional — without these resources the knob never appears and
+everything stays client-side (large-document RAG still works locally via
+OPFS/IndexedDB, using `POST /api/embed` for embeddings only):
+
+```bash
+npx wrangler r2 bucket create deepresearch-se-storage
+npx wrangler vectorize create deepresearch-se-rag --dimensions=1024 --metric=cosine
+npx wrangler vectorize create-metadata-index deepresearch-se-rag --property-name=u --type=string
+```
+
+Then uncomment the `[[r2_buckets]]` and `[[vectorize]]` blocks in
+`wrangler.toml` and deploy. **Create the resources first** — a binding
+that points at a nonexistent bucket/index makes every deploy fail
+outright. What lands where (and what is/isn't encrypted) is documented
+in `CLAUDE.md` ("Cloud storage" and "Large documents" sections).
 
 ## Develop locally
 

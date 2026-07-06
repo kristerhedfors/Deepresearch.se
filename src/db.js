@@ -73,6 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_user_messages_user_created ON user_messages(user_
 const ALTERS = [
   "ALTER TABLE users ADD COLUMN google_sub TEXT",
   "ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER",
+  "ALTER TABLE users ADD COLUMN settings_json TEXT",
 ];
 
 let migrated = false; // per isolate

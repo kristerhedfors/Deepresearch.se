@@ -14,6 +14,7 @@ import {
   saveConversation,
 } from "./history-store.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
+import { pullNewer } from "./sync.js";
 
 // opts: {onNew, onLoad(record)} — both provided by app.js, which owns the
 // composer state (model/budget/search-toggle) this module has no access to.
@@ -98,6 +99,10 @@ export function initHistorySidebar(opts = {}) {
   function open() {
     overlay.hidden = false;
     refresh();
+    // Cloud-storage accounts: quietly fetch anything newer written from
+    // another device (no-op while the knob is off) and re-render if it
+    // actually brought something down.
+    pullNewer().then((n) => { if (n && !overlay.hidden) refresh(); }).catch(() => {});
   }
   function close() {
     overlay.hidden = true;

@@ -19,6 +19,16 @@
 // attached images — can be large, and its async, structured API is the
 // modern standard for exactly this amount of client-side data.
 
+// Cloud copies (opt-in): when the account's server_history knob is ON
+// (settings.js), every locally-saved record is ALSO mirrored — as the
+// same opaque {iv, ciphertext} blob, still unreadable without the key —
+// to the server's R2 store (src/storage.js), and deletes propagate. The
+// local IndexedDB copy always stays (lazy cache + the only copy when the
+// knob is off). Bulk moves in either direction live in sync.js; this
+// module only dual-writes the record it just touched.
+
+import { serverHistoryOn } from "./settings.js";
+
 const DB_NAME = "dr_history";
 const DB_VERSION = 1;
 const STORE = "conversations";
@@ -134,22 +144,64 @@ export async function loadConversation(id) {
   return decryptRecord(key, r.iv, r.ciphertext);
 }
 
-// data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt}
+// data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt, ragDocs}
 export async function saveConversation(id, data) {
   const key = await historyKey();
   const db = await openDb();
   const enc = await encryptRecord(key, data);
+  const record = { id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext };
   await reqToPromise(
-    db
-      .transaction(STORE, "readwrite")
-      .objectStore(STORE)
-      .put({ id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext }),
+    db.transaction(STORE, "readwrite").objectStore(STORE).put(record),
   );
+  // Cloud mirror (fire-and-forget): a failed push must never surface as a
+  // chat error — sync.js reconciles by updatedAt on the next opportunity.
+  if (serverHistoryOn()) {
+    fetch("/api/convos/" + encodeURIComponent(id), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: data.updatedAt,
+        createdAt: data.createdAt,
+      }),
+    }).catch(() => {});
+  }
 }
 
 export async function deleteConversation(id) {
   const db = await openDb();
   await reqToPromise(db.transaction(STORE, "readwrite").objectStore(STORE).delete(id));
+  if (serverHistoryOn()) {
+    fetch("/api/convos/" + encodeURIComponent(id), { method: "DELETE" }).catch(() => {});
+  }
+}
+
+// ---- raw (still-encrypted) record access for sync.js ------------------------
+// Sync moves ciphertext blobs as-is — no decrypt/re-encrypt round trip, and
+// no need for the key at all on the bulk path.
+
+export async function exportEncryptedRecords() {
+  const db = await openDb();
+  const records = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
+  return records.map((r) => ({ id: r.id, updatedAt: r.updatedAt, iv: r.iv, ciphertext: r.ciphertext }));
+}
+
+// Imports one server-side record, last-write-wins by updatedAt. Returns
+// true when the local store actually changed.
+export async function importEncryptedRecord(id, record) {
+  if (!record?.iv || !record?.ciphertext) return false;
+  const db = await openDb();
+  const existing = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
+  const updatedAt = Number(record.updatedAt) || 0;
+  if (existing && existing.updatedAt >= updatedAt) return false;
+  await reqToPromise(
+    db
+      .transaction(STORE, "readwrite")
+      .objectStore(STORE)
+      .put({ id, updatedAt, iv: record.iv, ciphertext: record.ciphertext }),
+  );
+  return true;
 }
 
 function bytesToBase64(bytes) {

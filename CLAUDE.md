@@ -112,6 +112,9 @@ Server (`src/`):
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
+| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage knob — `GET/PUT /api/settings` |
+| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation records (`/api/convos*`), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
+| `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording |
@@ -136,16 +139,24 @@ downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
 load), `activity.js` (step bars, stats, collapse), `markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
-(IndexedDB + AES-GCM: the encrypted conversation store itself),
-`history-ui.js` (the left history sidebar: list/rename/delete/load).
+(IndexedDB + AES-GCM: the encrypted conversation store itself, now also
+dual-writing each record to the cloud while the knob is on),
+`history-ui.js` (the left history sidebar: list/rename/delete/load),
+`settings.js` (cached `/api/settings` client; `serverHistoryOn()` is the
+synchronous question every storage-touching module asks), `opfs.js`
+(original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
+`/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
+server-index push/import), `sync.js` (bulk sync when the knob flips,
+either direction, + `pullNewer` reconciliation on sidebar open).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
-### Chat history — fully client-side, encrypted
+### Chat history — client-side and encrypted by default
 
-Conversations are never sent to, or stored on, the server — but unlike
+By default conversations are never stored on the server (the opt-in
+cloud-storage mode below stores them **still encrypted**) — and unlike
 the original ephemeral-only design (history erased by "New chat" or a
-reload), every conversation now **persists across reloads inside the
+reload), every conversation **persists across reloads inside the
 browser itself**, listed in a left-side history panel (`history-ui.js`)
 the same way a normal chat app's sidebar works: labelled by its first
 question, clickable to reopen, renamable, deletable.
@@ -192,13 +203,100 @@ unencrypted. A plaintext fallback would defeat the point of the feature.
 **What's stored per conversation**: title, the same `{role, content}`
 message array `stream.js` already sends to `/api/chat`, plus the model /
 time-budget / web-search settings it was sent with (restored when you
-reopen it — `app.js`'s `onLoad` callback). Live-session-only details
+reopen it — `app.js`'s `onLoad` callback) and the ids/names of any
+RAG-indexed documents (`ragDocs` — so follow-up questions keep
+retrieving from them after a reload). Live-session-only details
 (activity step traces, per-turn stats) are NOT persisted — reopening a
 conversation shows the final messages, not a replay of the research
 steps. Document-attachment names aren't reconstructed as chips on reload
 either (their text was already embedded inline in the message when
 sent) — both are accepted, cosmetic simplifications, not correctness
 gaps.
+
+### Cloud storage — the per-account `server_history` knob (default OFF)
+
+`/api/settings` (`src/settings.js`, stored in `users.settings_json`)
+carries one knob, rendered in the account panel's Settings section:
+**"Store history in the cloud"**. It is remembered server-side (follows
+the account), and OFF is — and must remain — the default: off means
+exactly the original posture above, nothing conversation-derived stored
+server-side.
+
+**ON is an explicit opt-in to Cloudflare-side storage**, and the storage
+split is the point to preserve when touching any of this:
+- **Conversations** (`src/storage.js`, R2 `convos/{uid}/{convId}`): the
+  SAME `{iv, ciphertext}` blob the browser writes to its own IndexedDB —
+  encrypted under the same `/api/history-key` mechanism regardless of
+  where it rests. `history-store.js` dual-writes each save and propagates
+  deletes; `sync.js`'s `pullNewer()` (on sidebar open) downloads records
+  written from other devices — cloud mode is therefore also cross-device
+  history sync, which local-only mode deliberately never was.
+- **Original attached files** (`files/{uid}/{fileId}`): raw bytes,
+  NOT encrypted (the server must be able to serve/index them) —
+  disclosed in the settings UI and privacy notice.
+- **RAG index** (`src/rag.js`): vectors in **Vectorize** (ids
+  `{uid}:{docId}:{seq}`, metadata `{u, d, seq, text}`, metadata index on
+  `u`), plus one exportable JSON copy per document in R2
+  (`rag/{uid}/{docId}`, chunks + base64 vectors) so draining back to the
+  client never re-embeds. Also not encrypted — retrieval needs readable
+  chunk text.
+
+**Why R2 (+ Vectorize) and not D1** — the storage judgement call:
+conversation records with inline images run to several MB (past D1's
+2 MB row ceiling), original files up to 25 MB, and similarity search
+inside the Worker would burn the CPU budget the pipeline already
+competes for. D1 only gained the `settings_json` column; every blob
+lives in R2; vectors live in Vectorize. Both bindings are OPTIONAL and
+commented out in `wrangler.toml` (creating them is a one-time
+`wrangler r2 bucket create` / `vectorize create` — see the file's
+comments; declaring a binding for a nonexistent resource fails every
+deploy). Without them the feature is invisible: `/api/settings` reports
+it unavailable and the UI never shows the knob.
+
+**Flipping the knob is a sync, not just a flag** (`public/js/sync.js`):
+- **On** → push all local conversation ciphertexts (compared by
+  `updatedAt`), OPFS originals, and locally-indexed RAG docs (vectors
+  included). Local copies stay — the app keeps working local-first, with
+  the cloud as the account-wide copy.
+- **Off** → pull down everything newer/missing, and ONLY if every item
+  came down clean, `DELETE /api/storage` wipes convos + files + RAG
+  exports + vectors in one call. A partial pull never deletes the only
+  complete copy; the toggle reports it kept the cloud copies and can be
+  retried. Read/delete endpoints deliberately stay open while the knob
+  is off — that IS the drain path.
+
+### Large documents — RAG (OPFS + IndexedDB locally, Vectorize + R2 in cloud mode)
+
+Documents whose extracted text exceeds the 9K inline budget are no
+longer truncated to their first ~2 pages — `attachments.js` parses them
+in full (up to ~8M chars, i.e. thousands of pages), stores the original
+bytes in **OPFS** (`opfs.js` — all attached files, images included, keep
+their originals there; metadata rows live in the `dr_rag` IndexedDB),
+and indexes them for retrieval (`public/js/rag.js`): ~1.4K-char chunks
+with 200-char overlap, embedded in batches through **`POST /api/embed`**
+— a quota-gated, usage-recorded proxy to **Berget's embedding model**
+(`intfloat/multilingual-e5-large`, 1024 dims, e5 `query:`/`passage:`
+prefixes applied server-side so client and server can't drift). The
+attachment card shows live indexing progress; sending waits for it
+(`indexingBusy()`); an indexing failure degrades to exactly the old
+behavior (first 9K chars inline, marked truncated).
+
+At send time (`stream.js`), every question retrieves the top-k most
+relevant chunks across ALL of the conversation's indexed docs and embeds
+them as labeled excerpt blocks (bounded to ~12K chars) — follow-up
+questions keep retrieving without re-attaching. Where retrieval runs
+follows the knob: local mode does cosine top-k over IndexedDB vectors in
+the browser; cloud mode queries Vectorize (`POST /api/rag/query`) — which
+can hold docs indexed on another device — and falls back to the local
+index if the server comes up empty or errors. A newly attached doc that
+retrieval misses entirely still contributes its opening chunks
+(`firstChunks`) so it is never silently absent from its own turn.
+
+**Encryption asymmetry, stated once more because it's the design**: the
+RAG index and stored files are plaintext in BOTH locations (retrieval
+requires readable text); conversations are ciphertext in BOTH locations.
+Keep the settings UI, `/help/`, and the privacy notice consistent with
+that whenever any of it changes.
 
 ### /api/chat SSE protocol
 
@@ -230,15 +328,20 @@ clone-not-share of nested fields), `alerts.js` (error classification),
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`'s
-`quotaBlockedResponse`, and `pipeline.js`'s exported pure functions
+`quotaBlockedResponse`, `pipeline.js`'s exported pure functions
 (`hostnameOf`, `addSources`, `backfillOverflowSources`, `sourceDigest`,
-`normalizeTriage` — the source-registry/domain-diversity logic).
+`normalizeTriage` — the source-registry/domain-diversity logic),
+`settings.js` (`parseSettings` coercion, `storageAvailability`), and
+`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
 timestamp extraction, byte-order handling, malformed-input safety) and
 `docs.js` (the docx ZIP reader + core/app property and tracked-change/
-comment extraction). Both run in Node unmodified since `File`, `Blob`,
+comment extraction), and `rag.js`'s pure core (`chunkText` coverage/
+overlap/termination properties, `cosineSim`, `topKChunks`, the vector
+codec — the module is written to be import-safe outside a browser).
+These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
 
@@ -267,7 +370,7 @@ suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once
-npm run test:mocked   # 37 tests, free: /api/chat intercepted
+npm run test:mocked   # 38 tests, free: /api/chat (and /api/embed) intercepted
 npm run test:live     # 5 tests, real Berget tokens + one Exa run
 ```
 

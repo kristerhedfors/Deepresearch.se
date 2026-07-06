@@ -59,3 +59,27 @@ cpu_ms = 300_000
 binding = "DB"
 database_name = "deepresearch-se"
 database_id = "d9144c29-c8b2-4914-a795-37f8df393ac8"
+
+# ---- Opt-in cloud storage (per-user server_history knob) --------------------
+# R2 holds encrypted conversation records, attached original files, and the
+# exportable RAG index copies (src/storage.js, src/rag.js); Vectorize holds
+# the document-RAG vectors (dimensions must match src/berget.js's embedding
+# model — multilingual-e5-large = 1024).
+#
+# COMMENTED OUT ON PURPOSE: declaring a binding for a resource that does not
+# exist yet makes EVERY deploy fail outright (same failure class as the
+# round-4 cpu_ms incident — see tests/MODEL-EVAL-FINDINGS.md). Without these
+# bindings the feature simply stays off: /api/settings reports it
+# unavailable and the UI hides the knob. One-time setup, then uncomment:
+#
+#   npx wrangler r2 bucket create deepresearch-se-storage
+#   npx wrangler vectorize create deepresearch-se-rag --dimensions=1024 --metric=cosine
+#   npx wrangler vectorize create-metadata-index deepresearch-se-rag --property-name=u --type=string
+#
+# [[r2_buckets]]
+# binding = "STORAGE"
+# bucket_name = "deepresearch-se-storage"
+#
+# [[vectorize]]
+# binding = "RAG_INDEX"
+# index_name = "deepresearch-se-rag"

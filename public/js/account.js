@@ -16,6 +16,8 @@
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
+import { loadSettings, setServerHistory } from "./settings.js";
+import { syncToClient, syncToServer } from "./sync.js";
 
 export function initAccountPanel() {
   const overlay = document.getElementById("account");
@@ -98,6 +100,63 @@ export function initAccountPanel() {
     });
   }
 
+  // Settings section (the cloud-storage knob). Rendered into the summary
+  // view's placeholder once /api/settings answers; hidden entirely for the
+  // break-glass identity (no account row to remember the setting on) and
+  // when the server has no storage configured.
+  async function wireSettings() {
+    const box = document.getElementById("settingsblock");
+    if (!box || !me?.email) return;
+    let s;
+    try {
+      s = await loadSettings();
+    } catch {
+      return;
+    }
+    if (!s.available?.storage) return;
+    box.innerHTML = `
+      <p class="section-lbl">Settings</p>
+      <label class="setting-row">
+        <input type="checkbox" id="cloudknob"${s.server_history ? " checked" : ""}>
+        <span>Store history in the cloud</span>
+      </label>
+      <p class="muted setting-desc">Off (default): conversations, attached files and the
+        document index live only in this browser. On: they're also kept in this
+        site's Cloudflare storage so history follows your account across devices
+        — conversations stay <b>encrypted</b> exactly as they are locally; attached
+        files and the document search index are stored <b>unencrypted</b> (retrieval
+        needs readable text). Switching it off downloads everything back here and
+        deletes the cloud copies.</p>
+      <p id="syncstatus" class="muted" hidden></p>`;
+    const knob = box.querySelector("#cloudknob");
+    const status = box.querySelector("#syncstatus");
+    const progress = (msg) => { status.textContent = msg; };
+    knob.addEventListener("change", async () => {
+      const on = knob.checked;
+      knob.disabled = true;
+      status.hidden = false;
+      try {
+        await setServerHistory(on);
+        if (on) {
+          const r = await syncToServer(progress);
+          status.textContent =
+            `Cloud storage is on — ${r.pushed} item(s) uploaded.` +
+            (r.errors.length ? ` ${r.errors.length} item(s) failed and will retry on the next sync.` : "");
+        } else {
+          const r = await syncToClient(progress);
+          status.textContent = r.wiped
+            ? `Cloud storage is off — ${r.pulled} item(s) downloaded and the cloud copies removed.`
+            : "Downloaded what was reachable, but some items failed — the cloud copies were kept. Toggle again to retry.";
+        }
+      } catch (err) {
+        knob.checked = !on; // the setting didn't change server-side
+        status.textContent = err?.message || "Could not update the setting.";
+      } finally {
+        knob.disabled = false;
+      }
+    });
+  }
+
   const show = (view) => {
     if (view === "messages") {
       loadMessages();
@@ -113,6 +172,7 @@ export function initAccountPanel() {
         await fetch("/logout", { method: "POST" });
         location.href = "/login";
       });
+      wireSettings();
     }
   };
 
@@ -148,6 +208,7 @@ function renderSummary(me) {
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
+    <div id="settingsblock"></div>
     <!-- Page links open NEW TABS: even though history now persists across
          reloads (encrypted, local — see /help/), a same-tab navigation
          would still abort any in-flight research request. -->

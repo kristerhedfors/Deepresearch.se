@@ -16,6 +16,9 @@
 //   src/quota.js     — usage accounting + quota enforcement
 //   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
 //   src/history-key.js — per-user key for the client's encrypted local history
+//   src/settings.js  — per-user settings (/api/settings: server_history knob)
+//   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
+//   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
@@ -41,6 +44,9 @@ import {
   handleMessages,
   handleModels,
 } from "./user-api.js";
+import { handleSettingsGet, handleSettingsPut } from "./settings.js";
+import { handleStorage } from "./storage.js";
+import { handleEmbed, handleRag } from "./rag.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -215,6 +221,31 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/messages" && request.method === "GET") {
     return handleMessages(env, identity);
+  }
+  // Per-user settings (currently just the server_history knob).
+  if (url.pathname === "/api/settings" && request.method === "GET") {
+    return handleSettingsGet(env, identity);
+  }
+  if (url.pathname === "/api/settings" && request.method === "PUT") {
+    return handleSettingsPut(request, env, log, identity);
+  }
+  // Document-RAG embedding proxy (used in BOTH storage modes) + the
+  // server-side index endpoints (knob-gated inside src/rag.js).
+  if (url.pathname === "/api/embed" && request.method === "POST") {
+    return handleEmbed(request, env, log, identity);
+  }
+  if (url.pathname.startsWith("/api/rag/")) {
+    return handleRag(request, env, url, log, identity);
+  }
+  // Opt-in cloud storage: encrypted conversation records + original files.
+  if (
+    url.pathname === "/api/convos" ||
+    url.pathname.startsWith("/api/convos/") ||
+    url.pathname === "/api/files" ||
+    url.pathname.startsWith("/api/files/") ||
+    url.pathname === "/api/storage"
+  ) {
+    return handleStorage(request, env, url, log, identity);
   }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);

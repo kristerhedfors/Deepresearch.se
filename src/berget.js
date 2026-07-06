@@ -8,7 +8,21 @@
 const apiBase = (env) => env.BERGET_URL || "https://api.berget.ai/v1";
 const chatUrl = (env) => apiBase(env) + "/chat/completions";
 const modelsUrl = (env) => apiBase(env) + "/models";
+const embeddingsUrl = (env) => apiBase(env) + "/embeddings";
 export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; // alias: mistral-small
+// Embedding model for the document-RAG feature (src/rag.js). Berget hosts
+// intfloat/multilingual-e5-large (1024 dims, cosine, €0.03/1M tokens as of
+// 2026-07) — the plain (non-instruct) variant, whose input convention is
+// the well-defined "query: …" / "passage: …" prefix pair applied
+// server-side in src/rag.js. Overridable via BERGET_EMBED_MODEL, but note
+// the Vectorize index is created with a fixed dimension count — switching
+// to a model with different dimensions requires recreating the index.
+export const DEFAULT_EMBED_MODEL = "intfloat/multilingual-e5-large";
+export const EMBED_DIMS = 1024;
+
+export function embedModel(env) {
+  return env.BERGET_EMBED_MODEL || DEFAULT_EMBED_MODEL;
+}
 
 // Neither Berget call below had a timeout until a live model-eval battery
 // (2026-07-06, round 2) surfaced requests that silently died mid-pipeline
@@ -57,20 +71,25 @@ export function adminDefaultModelValid(config, catalog) {
 // with `up: false` so the UI can show them greyed out — they become
 // selectable automatically once Berget brings them back. Cached per isolate
 // to keep /api/models and per-request validation cheap.
-let modelsCache = { at: 0, list: null };
+let modelsCache = { at: 0, list: null, raw: null };
 const MODELS_TTL_MS = 5 * 60 * 1000;
 
-export async function listModels(env) {
+// One catalog fetch feeds both views: `list` (chat-capable text models, the
+// shape the UI and validation consume) and `raw` (every catalog entry as
+// Berget returns it — needed to price non-chat models like the embedding
+// model, which the text-only filter below would otherwise hide).
+async function fetchCatalog(env) {
   if (modelsCache.list && Date.now() - modelsCache.at < MODELS_TTL_MS) {
-    return modelsCache.list;
+    return modelsCache;
   }
   const resp = await fetch(modelsUrl(env), {
     headers: { authorization: `Bearer ${env.BERGET_API_TOKEN}` },
   });
   if (!resp.ok) throw new Error(`Berget models fetch failed (${resp.status})`);
   const data = await resp.json();
+  const raw = Array.isArray(data.data) ? data.data : [];
 
-  const list = (Array.isArray(data.data) ? data.data : [])
+  const list = raw
     .filter(
       (m) =>
         m.model_type === "text" &&
@@ -88,8 +107,25 @@ export async function listModels(env) {
       vision: m.capabilities?.vision === true,
     }));
 
-  modelsCache = { at: Date.now(), list };
-  return list;
+  modelsCache = { at: Date.now(), list, raw };
+  return modelsCache;
+}
+
+export async function listModels(env) {
+  return (await fetchCatalog(env)).list;
+}
+
+// Raw catalog entry lookup by id or alias — used to price embedding calls
+// for quota accounting. Returns null (never throws) when the catalog is
+// unreachable or the model unknown: cost accounting degrades to zero-cost
+// rather than blocking the feature.
+export async function rawModelEntry(env, id) {
+  try {
+    const { raw } = await fetchCatalog(env);
+    return raw.find((m) => m.id === id || m.aliases?.includes(id)) || null;
+  } catch {
+    return null;
+  }
 }
 
 // "€0.30 in / €0.30 out per 1M tokens" — shown as a tooltip in the UI.
@@ -243,6 +279,44 @@ function parseLooseJson(s) {
     }
   }
   return { value: null, parseMode: "failed" };
+}
+
+// Embeddings (OpenAI-compatible POST /v1/embeddings). Used by the document
+// RAG feature: the client indexes large attachments through POST /api/embed
+// and src/rag.js embeds queries server-side. Same timeout discipline as
+// completeJson — an unbounded fetch to Berget has already bitten this
+// project once (see the round 2 note above).
+const EMBED_TIMEOUT_MS = 60_000;
+
+export async function embedTexts(env, texts, { model } = {}) {
+  const resp = await fetch(embeddingsUrl(env), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${env.BERGET_API_TOKEN}`,
+    },
+    body: JSON.stringify({
+      model: model || embedModel(env),
+      input: texts,
+    }),
+    signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`Berget embeddings call failed (${resp.status}): ${detail.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const rows = Array.isArray(data.data) ? data.data : [];
+  if (rows.length !== texts.length) {
+    throw new Error(`Berget embeddings returned ${rows.length} vectors for ${texts.length} inputs`);
+  }
+  // The API is allowed to return rows out of order; `index` is authoritative.
+  const vectors = new Array(texts.length);
+  for (const row of rows) {
+    if (!Array.isArray(row?.embedding)) throw new Error("Berget embeddings returned a malformed vector");
+    vectors[row.index ?? rows.indexOf(row)] = row.embedding;
+  }
+  return { vectors, usage: data.usage || null, model: data.model || model || embedModel(env) };
 }
 
 // Brace-counting scan for the first balanced {...} block, string-aware so

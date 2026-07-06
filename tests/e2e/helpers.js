@@ -98,6 +98,35 @@ export async function mockChat(page, answer = "MOCK ANSWER") {
   return payloads;
 }
 
+// Mock POST /api/embed (the document-RAG embedding proxy) with a
+// deterministic unit vector per text. Equal vectors → equal cosine scores
+// → retrieval returns chunks in original order (Array.sort is stable), so
+// assertions about which excerpts survive are deterministic.
+export async function mockEmbed(page) {
+  // Float32Array([1]) → base64
+  const UNIT = Buffer.from(new Float32Array([1]).buffer).toString("base64");
+  await page.route("**/api/embed", async (route) => {
+    const { texts } = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ vectors: texts.map(() => UNIT), dims: 1, model: "mock-embed" }),
+    });
+  });
+}
+
+// Mock POST /api/embed as unavailable — exercises the client's fallback:
+// a large document degrades to the pre-RAG inline truncation.
+export async function mockEmbedFail(page) {
+  await page.route("**/api/embed", (route) =>
+    route.fulfill({
+      status: 503,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ error: "Embedding service unavailable." }),
+    }),
+  );
+}
+
 // Record real /api/chat payloads without intercepting them.
 export function sniffChat(page) {
   const payloads = [];
