@@ -466,7 +466,7 @@ compatibility). Draw.io page 4 shows the full sequence.
 | `status: search_start {round, query}` | "Searching the web: …" spinner |
 | `status: search_done {round, query, results, duration_ms, sources[]}` | Resolved bar with counts + expandable source links |
 | `status: discard_text` | Clear the streamed draft; corrected answer follows |
-| `status: done {model, rounds, searches, duration_ms, prompt_tokens, completion_tokens, co2_grams}` | Stats footer |
+| `status: done {model, rounds, searches, duration_ms, prompt_tokens, completion_tokens}` | Stats footer |
 | `{"error":"…"}` | Shown as an error inside the bubble |
 | `data: [DONE]` | Stream end (always sent, even after errors) |
 

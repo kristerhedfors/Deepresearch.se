@@ -205,7 +205,6 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         duration_ms,
         prompt_tokens: state.totals.prompt_tokens,
         completion_tokens: state.totals.completion_tokens,
-        co2_grams: state.totals.co2_grams,
       };
       emit({ status: stats });
       // Park the finished answer for recovery. The client DELETEs it the
@@ -256,6 +255,6 @@ function newRequestState(model, webSearch, budgetS) {
     ranQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
-    totals: { prompt_tokens: 0, completion_tokens: 0, co2_grams: 0 },
+    totals: { prompt_tokens: 0, completion_tokens: 0 },
   };
 }

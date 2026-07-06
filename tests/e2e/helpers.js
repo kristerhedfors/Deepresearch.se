@@ -77,7 +77,7 @@ export function sseBody(answer, { model = "mock-model", searches = 0 } = {}) {
     {
       status: {
         type: "done", model, rounds: 1, searches,
-        duration_ms: 42, prompt_tokens: 10, completion_tokens: 20, co2_grams: 0.001,
+        duration_ms: 42, prompt_tokens: 10, completion_tokens: 20,
       },
     },
   ];

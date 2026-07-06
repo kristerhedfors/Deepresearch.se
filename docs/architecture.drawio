@@ -281,7 +281,7 @@
         <mxCell id="p_revise" value="on revise:&lt;br&gt;SSE discard_text (UI clears draft)&lt;br&gt;→ emitChunked(revised_answer)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
           <mxGeometry x="740" y="1225" width="250" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="p_done" value="finally (always, even on error):&lt;br&gt;SSE done {model, rounds, searches, duration_ms, tokens, co2_grams} → data: [DONE]&lt;br&gt;log chat.complete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+        <mxCell id="p_done" value="finally (always, even on error):&lt;br&gt;SSE done {model, rounds, searches, duration_ms, tokens} → data: [DONE]&lt;br&gt;log chat.complete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
           <mxGeometry x="290" y="1330" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="p_failsoft" value="FAIL-SOFT INVARIANT&lt;br&gt;triage / gap / validation run via phase():&lt;br&gt;error or unparseable JSON → null → degrade&lt;br&gt;(fallback query · skip round · keep draft).&lt;br&gt;Exa errors return strings, never throw.&lt;br&gt;A helper phase can never fail the request." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;size=14;align=left;spacingLeft=8;" vertex="1" parent="1">
@@ -435,7 +435,7 @@
         <mxCell id="sm13" value="synthesis — stream:true (digest [n] + image parts of latest msg)" style="html=1;exitX=1;exitY=0.62;entryX=0;entryY=0.62;" edge="1" parent="1" source="s_lw" target="s_lb">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="sm14" value="SSE deltas (choices[0].delta.content) + usage/CO2 chunks" style="html=1;exitX=0;exitY=0.66;entryX=1;entryY=0.66;dashed=1;" edge="1" parent="1" source="s_lb" target="s_lw">
+        <mxCell id="sm14" value="SSE deltas (choices[0].delta.content) + usage chunks" style="html=1;exitX=0;exitY=0.66;entryX=1;entryY=0.66;dashed=1;" edge="1" parent="1" source="s_lb" target="s_lw">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="sm15" value="forwarded text deltas — answer streams into the bubble (markdown-rendered live)" style="html=1;exitX=0;exitY=0.7;entryX=1;entryY=0.7;dashed=1;" edge="1" parent="1" source="s_lw" target="s_lc">
@@ -450,7 +450,7 @@
         <mxCell id="sm18" value="on revise: status discard_text (UI clears draft) + revised answer as deltas" style="html=1;exitX=0;exitY=0.86;entryX=1;entryY=0.86;dashed=1;" edge="1" parent="1" source="s_lw" target="s_lc">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="sm19" value="status: done {model, rounds, searches, duration_ms, tokens, co2_grams}" style="html=1;exitX=0;exitY=0.92;entryX=1;entryY=0.92;dashed=1;" edge="1" parent="1" source="s_lw" target="s_lc">
+        <mxCell id="sm19" value="status: done {model, rounds, searches, duration_ms, tokens}" style="html=1;exitX=0;exitY=0.92;entryX=1;entryY=0.92;dashed=1;" edge="1" parent="1" source="s_lw" target="s_lc">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="sm20" value="data: [DONE] — activity bars collapse to one summary bar" style="html=1;exitX=0;exitY=0.97;entryX=1;entryY=0.97;dashed=1;" edge="1" parent="1" source="s_lw" target="s_lc">

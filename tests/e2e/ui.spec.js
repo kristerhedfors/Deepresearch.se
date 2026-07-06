@@ -28,7 +28,7 @@ test("a search step resolves to a checkmark and an expandable source list", asyn
     { status: { type: "step_start", id: "synth", label: "Writing report…" } },
     { choices: [{ delta: { content: "The answer." } }] },
     { status: { type: "step_done", id: "synth", label: "Report drafted" } },
-    { status: { type: "done", model: "mock-model", rounds: 1, searches: 1, duration_ms: 200, prompt_tokens: 5, completion_tokens: 5, co2_grams: 0 } },
+    { status: { type: "done", model: "mock-model", rounds: 1, searches: 1, duration_ms: 200, prompt_tokens: 5, completion_tokens: 5 } },
   ];
   const body = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n";
   await page.route("**/api/chat", (route) =>

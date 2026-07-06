@@ -103,7 +103,7 @@ export function finishSearchStep(turn, info) {
   step.details.appendChild(ul);
 }
 
-// Stats footer from the `done` event (model, duration, tokens, CO2).
+// Stats footer from the `done` event (model, duration, tokens).
 export function renderStats(turn, s) {
   turn.searchCount = s.searches || 0;
   const parts = [];
@@ -112,7 +112,6 @@ export function renderStats(turn, s) {
   const tokens = (s.prompt_tokens || 0) + (s.completion_tokens || 0);
   if (tokens) parts.push(tokens.toLocaleString() + " tokens");
   if (s.searches) parts.push(s.searches + (s.searches === 1 ? " search" : " searches"));
-  if (s.co2_grams) parts.push((s.co2_grams * 1000).toFixed(1) + " mg CO₂");
   turn.stats.textContent = parts.join(" · ");
 }
 

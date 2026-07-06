@@ -213,7 +213,7 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
-- `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97,"co2_grams":0.013}}` — stats footer
+- `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer
 - `{"error":"…"}` — shown as an error in the bubble
 - Stream terminates with `data: [DONE]`
 

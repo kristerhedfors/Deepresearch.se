@@ -515,5 +515,4 @@ function addUsage(totals, usage) {
   if (!usage) return;
   totals.prompt_tokens += usage.prompt_tokens || 0;
   totals.completion_tokens += usage.completion_tokens || 0;
-  totals.co2_grams += usage.co2_grams || 0;
 }

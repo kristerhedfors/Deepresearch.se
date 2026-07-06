@@ -156,8 +156,8 @@ export async function consumeChatStream(body, onText) {
         continue; // keep-alive / non-JSON line
       }
 
-      // Berget appends usage chunks (token counts, then energy/CO2 stats)
-      // with an empty `choices` array; merge them for logging.
+      // Berget appends a token-usage chunk with an empty `choices` array;
+      // merge it in for logging/accounting.
       if (chunk.usage) usage = { ...(usage || {}), ...chunk.usage };
 
       const choice = chunk.choices?.[0];
