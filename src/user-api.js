@@ -2,6 +2,8 @@
 // account/usage panel, and the client-error beacon. Routed from
 // src/index.js; admin endpoints live in src/admin-api.js.
 
+import { countOpenAlerts } from "./alerts.js";
+import { countPendingUsers } from "./accounts.js";
 import { defaultModel, listModels } from "./berget.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
@@ -67,6 +69,18 @@ export async function handleMe(env, identity) {
       reset: windowReset(p, Date.now(), usage.h5_oldest),
     };
   }
+  const isAdmin = identity.isSecretAdmin || identity.role === "admin";
+  // Notification badge (header account button, visible outside /admin too):
+  // pending sign-in approvals + open operational alerts. Admin-only — a
+  // regular user's /api/me response never carries this.
+  let notifications = null;
+  if (isAdmin) {
+    const [pendingUsers, openAlerts] = await Promise.all([
+      countPendingUsers(env),
+      countOpenAlerts(env),
+    ]);
+    notifications = { pending_users: pendingUsers, open_alerts: openAlerts, total: pendingUsers + openAlerts };
+  }
   return jsonResponse({
     id: identity.id,
     email: identity.email,
@@ -76,6 +90,7 @@ export async function handleMe(env, identity) {
     // Admins see their bars fill and overflow, but are never blocked.
     enforced: !identity.isSecretAdmin && identity.role !== "admin",
     windows,
+    notifications,
     db_configured: !!(await getDb(env)),
   });
 }

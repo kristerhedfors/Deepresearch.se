@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS answers (
   text TEXT,
   stats_json TEXT
 );
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT UNIQUE NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'warning',
+  message TEXT NOT NULL,
+  detail TEXT,
+  count INTEGER NOT NULL DEFAULT 1,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  acknowledged_at INTEGER
+);
 `;
 
 // Additive migrations for databases created before the column existed.

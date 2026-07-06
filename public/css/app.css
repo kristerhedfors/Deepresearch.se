@@ -474,7 +474,22 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border-radius: 10px;
   padding: .4rem .55rem; line-height: 0;
   display: inline-flex; align-items: center;
+  position: relative;
 }
+/* Admin-only: pending sign-in approvals + open operational alerts
+   (/api/me's `notifications`), visible from the main chat view so an
+   issue like a depleted Berget wallet doesn't sit unnoticed until
+   someone happens to open /admin. */
+.notif-badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 999px;
+  background: #fff; color: #c0392b;
+  font-size: .62rem; font-weight: 700; line-height: 16px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(4, 30, 60, .35), 0 0 0 2px rgba(4, 30, 60, .12);
+}
+.notif-badge[hidden] { display: none; }
 
 /* Account & usage panel (quota bars from /api/me) */
 #account {
@@ -502,6 +517,12 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
   vertical-align: middle; margin-left: .35rem;
 }
+.notif-notice {
+  font-size: .8rem; padding: .45rem .6rem; margin: .3rem 0 .6rem;
+  border-radius: 8px; background: rgba(192, 57, 43, .1);
+  border: 1px solid rgba(192, 57, 43, .35); color: #c0392b;
+}
+.notif-notice a { color: inherit; text-decoration: underline; }
 .usage-block { margin: .55rem 0; }
 .usage-block .lbl { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .usage-row { display: flex; justify-content: space-between; font-size: .8rem; margin-top: .3rem; }

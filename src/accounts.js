@@ -35,6 +35,15 @@ export async function listUsers(env) {
   return results || [];
 }
 
+// Count only — feeds the admin notification badge without pulling every
+// user row (that's what /api/admin/overview's full list is for).
+export async function countPendingUsers(env) {
+  const db = await getDb(env);
+  if (!db) return 0;
+  const row = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'pending'").first();
+  return row?.n || 0;
+}
+
 // First Google sign-in for an email creates the account. `sub` is Google's
 // stable subject id — stored so the account stays pinned to that Google
 // identity even if email ownership ever changes hands. `status` is

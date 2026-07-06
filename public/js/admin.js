@@ -42,10 +42,49 @@ async function load() {
     );
     return;
   }
+  renderAlerts();
   renderTotals();
   renderByModel();
   renderUsers();
   renderConfig();
+}
+
+// ---- alerts ---------------------------------------------------------------
+
+function renderAlerts() {
+  const box = $("alerts");
+  const open = (overview.alerts || []).filter((a) => !a.acknowledged_at);
+  if (!open.length) {
+    box.innerHTML = '<p class="muted">No active alerts.</p>';
+  } else {
+    box.innerHTML = "";
+    for (const a of open) {
+      const el = document.createElement("div");
+      el.className = "rowitem alert-row";
+      el.innerHTML = `
+        <div class="head">
+          <span class="badge ${a.severity === "critical" ? "critical" : "pending"}">${escapeHtml(a.severity)}</span>
+          <b>${escapeHtml(a.message)}</b>
+          <span class="spacer"></span>
+          <button data-act="ack">Dismiss</button>
+        </div>
+        <p class="muted" style="margin:.35rem 0 0">
+          Seen ${a.count}× · first ${new Date(a.first_seen_at).toLocaleString()} ·
+          last ${new Date(a.last_seen_at).toLocaleString()}
+          ${a.detail ? `<br>${escapeHtml(a.detail)}` : ""}
+        </p>`;
+      el.querySelector('[data-act="ack"]').addEventListener("click", async () => {
+        try {
+          await api(`/alerts/${a.id}/ack`, { method: "POST" });
+          await load();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+      box.appendChild(el);
+    }
+  }
+  $("alerts-sec").hidden = false;
 }
 
 // ---- usage by model ------------------------------------------------------

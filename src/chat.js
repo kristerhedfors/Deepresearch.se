@@ -4,6 +4,7 @@
 // (src/pipeline.js) as SSE. Ends every stream with a `done` stats event and
 // `[DONE]`, then records the usage event for quota accounting.
 
+import { classifyChatError, raiseAlert } from "./alerts.js";
 import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
@@ -170,11 +171,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     try {
       await runPipeline(env, log, emit, conversation, model, state);
     } catch (err) {
+      const errMessage = err?.message || String(err);
       log.error("chat.stream_failed", {
         user_id: identity.id,
-        error: err?.message || String(err),
+        error: errMessage,
       });
-      emit({ error: "Worker error: " + (err?.message || String(err)) });
+      const alert = classifyChatError(errMessage);
+      await raiseAlert(env, alert.type, alert.severity, alert.message, `model: ${model} — ${errMessage}`);
+      emit({ error: "Worker error: " + errMessage });
     } finally {
       clearInterval(keepalive);
       const duration_ms = Date.now() - state.startedAt;

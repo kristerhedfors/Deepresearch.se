@@ -11,7 +11,33 @@
 export function initAccountPanel() {
   const overlay = document.getElementById("account");
   const body = document.getElementById("account-body");
+  const badge = document.getElementById("notif-badge");
   let me = null;
+
+  const renderBadge = () => {
+    const total = me?.notifications?.total || 0;
+    if (total > 0) {
+      badge.textContent = total > 99 ? "99+" : String(total);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  };
+
+  // Fetched eagerly (not just on account-button click) so an admin sees
+  // the notification badge — pending sign-in approvals + open operational
+  // alerts — straight from the main chat view, not only after opening the
+  // account panel or /admin. A no-op badge-wise for regular users:
+  // /api/me only includes `notifications` for admins.
+  fetch("/api/me")
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      if (data) {
+        me = data;
+        renderBadge();
+      }
+    })
+    .catch(() => {});
 
   const show = (view) => {
     body.innerHTML = view === "full" ? renderFullUsage(me) : renderSummary(me);
@@ -33,6 +59,7 @@ export function initAccountPanel() {
       const res = await fetch("/api/me");
       if (!res.ok) throw new Error("HTTP " + res.status);
       me = await res.json();
+      renderBadge();
       show("summary");
     } catch {
       body.innerHTML = '<p class="muted">Could not load account info.</p>';
@@ -54,6 +81,7 @@ function renderSummary(me) {
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
     ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
+    ${me.notifications?.total ? `<p class="notif-notice">⚠ ${me.notifications.total} notification${me.notifications.total === 1 ? "" : "s"} — ${me.notifications.open_alerts ? `${me.notifications.open_alerts} alert${me.notifications.open_alerts === 1 ? "" : "s"}` : ""}${me.notifications.open_alerts && me.notifications.pending_users ? " · " : ""}${me.notifications.pending_users ? `${me.notifications.pending_users} pending approval${me.notifications.pending_users === 1 ? "" : "s"}` : ""} — see <a href="/admin" target="_blank" rel="noopener">Admin interface</a></p>` : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
     <!-- Page links open NEW TABS: the conversation lives only in this

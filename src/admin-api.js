@@ -1,14 +1,16 @@
 // /api/admin/* — JSON API behind the admin role (enforced in index.js).
 //
 // Endpoints:
-//   GET    /api/admin/overview   users(+usage) + config + totals
-//   PATCH  /api/admin/users/:id  {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
+//   GET    /api/admin/overview    users(+usage) + config + totals + alerts
+//   PATCH  /api/admin/users/:id   {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
 //   DELETE /api/admin/users/:id
-//   PUT    /api/admin/config     partial config patch -> full config
+//   PUT    /api/admin/config      partial config patch -> full config
+//   POST   /api/admin/alerts/:id/ack   dismiss one operational alert
 //
 // Accounts are provisioned by Google sign-in (src/google.js) — there is no
 // create-user endpoint; the admin manages roles, status, and quotas.
 
+import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { deleteUser, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -57,6 +59,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
       log.info("admin.config_saved", {});
       return jsonResponse({ config });
     }
+    const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
+    if (alertPath && method === "POST") {
+      await acknowledgeAlert(env, Number(alertPath[1]));
+      log.info("admin.alert_acknowledged", { alert_id: alertPath[1] });
+      return jsonResponse({ ok: true });
+    }
     return jsonResponse({ error: "Not found." }, 404);
   } catch (err) {
     log.warn("admin.api_error", { error: err?.message || String(err) });
@@ -65,11 +73,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
 }
 
 async function overview(env) {
-  const [users, config, usage, byModel] = await Promise.all([
+  const [users, config, usage, byModel, alerts] = await Promise.all([
     listUsers(env),
     getConfig(env),
     getUsageAllUsers(env),
     getUsageByModel(env),
+    listAlerts(env),
   ]);
   const usageByUser = Object.fromEntries(usage.map((u) => [u.user_id, u]));
   // Aggregate counts AND costs per window across all identities.
@@ -88,6 +97,7 @@ async function overview(env) {
     by_model: byModel,
     config,
     totals,
+    alerts,
   });
 }
 

@@ -588,9 +588,30 @@ filters from the MINIMUM of all window starts — the ISO week can begin
 before the month does.
 
 **Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
-usage totals, user management (role/status/quota/delete), config (default
-quotas, Exa cost, max time budget, default model — stored in the D1
-`config` table, cached ~30 s per isolate).
+alerts, usage totals, user management (role/status/quota/delete), config
+(default quotas, Exa cost, max time budget, default model — stored in the
+D1 `config` table, cached ~30 s per isolate).
+
+**Operational alerts (`src/alerts.js`, D1 `alerts` table)**: production
+issues get surfaced instead of only living in Workers Logs where nobody's
+looking — added after a real incident (round 4 of the model-eval work,
+see `tests/MODEL-EVAL-FINDINGS.md`) where the Berget account's wallet
+balance ran out mid-session with no visible signal beyond per-request
+errors. `chat.js`'s top-level pipeline catch classifies the caught error
+(`classifyChatError`) into one of a small, stable set of types —
+`berget_insufficient_balance` (critical), `chat_empty_completion`,
+`chat_dropped_stream`, or a generic `chat_stream_failed` fallback — and
+upserts a row keyed by `type`: a repeat occurrence bumps `count`/
+`last_seen_at` and un-acknowledges the row (worth re-surfacing) rather
+than piling up duplicate rows. `/api/admin/overview` includes the alert
+list; `POST /api/admin/alerts/:id/ack` dismisses one. `/api/me` adds a
+`notifications` object for admin identities only (`pending_users` +
+`open_alerts` + `total`) — the header's account button renders a white
+circular badge with that count (`public/js/account.js`) so an admin sees
+it from the main chat view, not only after opening `/admin`; pending
+sign-in approvals (existing `status: 'pending'` users) feed the same
+count. Fails soft like every other D1-backed feature: no DB binding means
+alerts are silently a no-op.
 
 **D1 setup (one-time)**: `npx wrangler d1 create deepresearch-se`, paste
 the id into the `[[d1_databases]]` block in `wrangler.toml`, push. Schema
