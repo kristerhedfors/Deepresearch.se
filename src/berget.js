@@ -155,8 +155,10 @@ export async function consumeChatStream(body, onText) {
 
 // Non-streaming completion that asks Berget for a JSON object and parses it.
 // Used by the research pipeline's triage / gap-check / validation phases.
-// Returns { value, usage } — value is null when parsing fails (callers must
-// fall back gracefully; a broken helper phase must never break the chat).
+// Returns { value, usage, diagnostics } — value is null when parsing fails
+// (callers must fall back gracefully; a broken helper phase must never break
+// the chat). diagnostics is metadata only (no content) for per-model
+// observability: how the JSON was obtained and whether output was truncated.
 export async function completeJson(env, messages, { model, maxTokens = 900 } = {}) {
   const resp = await fetch(chatUrl(env), {
     method: "POST",
@@ -177,24 +179,66 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
     throw new Error(`Berget JSON call failed (${resp.status}): ${detail.slice(0, 200)}`);
   }
   const data = await resp.json();
-  const content = data.choices?.[0]?.message?.content || "";
-  return { value: parseLooseJson(content), usage: data.usage || null };
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content || "";
+  const { value, parseMode } = parseLooseJson(content);
+  return {
+    value,
+    usage: data.usage || null,
+    diagnostics: {
+      parse_mode: parseMode, // "strict" | "repaired" | "failed"
+      finish_reason: choice?.finish_reason || null,
+      content_length: content.length,
+    },
+  };
 }
 
 // Tolerant JSON extraction — models occasionally wrap the object in prose or
-// code fences despite json_mode.
+// code fences despite json_mode. Returns { value, parseMode }: "strict" when
+// the whole string parsed as-is, "repaired" when a balanced {...} object had
+// to be extracted from surrounding text, "failed" when neither worked.
 function parseLooseJson(s) {
   try {
-    return JSON.parse(s);
+    return { value: JSON.parse(s), parseMode: "strict" };
   } catch {
     // fall through to embedded-object extraction
   }
-  const m = String(s).match(/\{[\s\S]*\}/);
-  if (m) {
+  const extracted = extractFirstBalancedObject(String(s));
+  if (extracted != null) {
     try {
-      return JSON.parse(m[0]);
+      return { value: JSON.parse(extracted), parseMode: "repaired" };
     } catch {
       // give up
+    }
+  }
+  return { value: null, parseMode: "failed" };
+}
+
+// Brace-counting scan for the first balanced {...} block, string-aware so
+// braces inside quoted strings don't throw off the depth count. Safer than a
+// greedy regex when a model emits more than one JSON-shaped chunk (e.g.
+// reasoning prose containing an example object, followed by the real one).
+function extractFirstBalancedObject(s) {
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+    } else if (c === "{") {
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
     }
   }
   return null;

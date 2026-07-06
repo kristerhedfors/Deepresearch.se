@@ -76,6 +76,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       { model, maxTokens: 500 },
     ).then((r) => {
       addUsage(state.totals, r.usage);
+      log.info("chat.json_diag", { phase: "triage", model, ...r.diagnostics });
       return r.value;
     }),
     { model, statKey: "triage" },
@@ -142,6 +143,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
         { model, maxTokens: 400 },
       ).then((r) => {
         addUsage(state.totals, r.usage);
+        log.info("chat.json_diag", { phase: `gap_check_${it}`, model, ...r.diagnostics });
         return r.value;
       }),
       { model, statKey: "gap" },
@@ -212,6 +214,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       { model, maxTokens: 3000 },
     ).then((r) => {
       addUsage(state.totals, r.usage);
+      log.info("chat.json_diag", { phase: "validate", model, ...r.diagnostics });
       return r.value;
     }),
     { model, statKey: "validate" },
@@ -244,11 +247,12 @@ async function phase(log, name, fn, opts = {}) {
     const result = await fn();
     const duration_ms = Date.now() - startedAt;
     if (opts.statKey && opts.model) recordPhase(opts.model, opts.statKey, duration_ms);
-    log.info("chat.phase", { phase: name, duration_ms, ok: result != null });
+    log.info("chat.phase", { phase: name, model: opts.model || null, duration_ms, ok: result != null });
     return result;
   } catch (err) {
     log.warn("chat.phase_failed", {
       phase: name,
+      model: opts.model || null,
       duration_ms: Date.now() - startedAt,
       error: err?.message || String(err),
     });
