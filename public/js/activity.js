@@ -45,6 +45,12 @@ export function finishGenericStep(turn, s) {
 }
 
 // "Searching the web: …" with a spinner.
+//
+// Searches within one round run concurrently server-side (src/pipeline.js),
+// so several search_start events can arrive before any search_done — keyed
+// by query text (pipeline.js already dedupes queries within a round, so
+// this is always a unique key) rather than assuming strict start/done
+// pairing.
 export function startSearchStep(turn, query) {
   const details = document.createElement("details");
   details.className = "step";
@@ -60,14 +66,14 @@ export function startSearchStep(turn, query) {
     if (!details.classList.contains("finished")) e.preventDefault();
   });
   turn.activity.appendChild(details);
-  turn.lastStep = { details, summary, label };
+  (turn.pendingSearchSteps ||= new Map()).set(query, { details, summary, label });
 }
 
 // Resolve the step: checkmark, counts, timing, expandable source list.
-// The server emits start/done sequentially, so `lastStep` is always the match.
 export function finishSearchStep(turn, info) {
-  const step = turn.lastStep;
+  const step = turn.pendingSearchSteps?.get(info.query);
   if (!step) return;
+  turn.pendingSearchSteps.delete(info.query);
   step.details.classList.add("finished", "expandable");
   step.summary.querySelector(".spin")?.remove();
   const check = document.createElement("span");
@@ -91,7 +97,6 @@ export function finishSearchStep(turn, info) {
     ul.appendChild(li);
   }
   step.details.appendChild(ul);
-  turn.lastStep = null;
 }
 
 // Stats footer from the `done` event (model, duration, tokens, CO2).

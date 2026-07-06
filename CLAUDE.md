@@ -536,6 +536,34 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
   `livecrawl`, `numSentences` are deprecated; use `includeDomains`/`excludeDomains`
   (not `includeUrls`). Search volume is capped by the time-budget plan
   (`plan.maxSearches` — `src/budget.js`).
+- **Search depth also scales with the time budget** (`plan.searchDepth` —
+  `src/budget.js`'s `searchDepthFor()`), not just search *count*. A round 6
+  assessment found the slider previously only bought more separate
+  searches while every individual call stayed a fixed 5-result `"auto"`
+  search — below even Exa's own default of 10 — regardless of budget.
+  Tiered the same way as the angle/round caps: `<60s` → 5 results/`auto`
+  (unchanged floor behavior), `60-239s` → 8/`auto`, `240-419s` →
+  10/`auto`, `≥420s` → 10/`"deep"` (Exa's own thorough-but-slower mode,
+  reserved for the most generous budgets only — untested at scale, and
+  ~1.7x Exa's per-search price). `src/exa.js`'s `webSearch()` takes this
+  as a `depth` param instead of hardcoding `numResults`/`type`.
+  **Cost accounting follows**: Exa's real pricing varies by tier (search
+  $7/1k, deep $12/1k, deep-reasoning $15/1k as of 2026); the admin's
+  configured `exa_cost_per_search_eur` is scaled by `plan.searchDepth
+  .costMultiplier` (`src/chat.js`'s `recordUsage` call) so a request that
+  used a costlier tier doesn't get silently under-counted against the
+  user's opaque budget bar or the admin's totals.
+- **Searches within one round run concurrently** (`Promise.all` in
+  `src/pipeline.js`'s `runSearches`), not one fetch at a time — the same
+  assessment found the previous sequential loop left several seconds of
+  wall-clock on the table per round for independent queries. The query
+  cap is applied before firing the batch (not as a mid-loop break) so it
+  can't overrun `plan.maxSearches`, and results are processed back in
+  original order so citation numbering stays deterministic regardless of
+  fetch completion order. This changed the SSE contract subtly: several
+  `search_start` events can now arrive before any `search_done` (not
+  strictly paired) — `public/js/activity.js` tracks pending search steps
+  in a `Map` keyed by query text instead of a single "last started" slot.
 
 ## Access control & accounts — Google sign-in only
 

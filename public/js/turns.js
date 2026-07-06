@@ -92,7 +92,7 @@ export function addAssistantTurn(question = "", images = []) {
   const turn = {
     el, activityWrap, activity, activityLabel, content, stats,
     question, images, model: "",
-    lastStep: null, steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
+    steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
   };
   tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));
   return turn;

@@ -331,19 +331,34 @@ function normalizeTriage(triage, lastUser) {
     : { action: "direct" };
 }
 
+// Queries within one round are independent, so they run concurrently
+// (Promise.all) instead of one fetch at a time — a round 6 assessment
+// found the sequential loop was leaving several seconds of wall-clock on
+// the table per round for no reason, time better spent on actual depth.
+// Filtering against the query cap happens BEFORE firing anything (not as
+// a mid-loop break) so a batch can't overrun plan.maxSearches; results
+// are processed back in original order so source numbering (citations)
+// stays deterministic regardless of which fetch happens to resolve first.
 async function runSearches(ctx, queries, round) {
   const { env, log, emit, state } = ctx;
+  const batch = [];
   for (const raw of queries) {
     const query = String(raw || "").trim();
     if (!query) continue;
     const key = query.toLowerCase();
     if (state.ranQueries.has(key)) continue;
-    if (state.searchCount >= state.plan.maxSearches) break;
+    if (state.searchCount + batch.length >= state.plan.maxSearches) break;
     state.ranQueries.add(key);
-    state.searchCount++;
+    batch.push(query);
+  }
+  if (!batch.length) return;
+  state.searchCount += batch.length;
 
-    emit({ status: { type: "search_start", round, query } });
-    const result = await webSearch(env, log, query);
+  for (const query of batch) emit({ status: { type: "search_start", round, query } });
+  const results = await Promise.all(batch.map((query) => webSearch(env, log, query, state.plan.searchDepth)));
+  for (let i = 0; i < batch.length; i++) {
+    const query = batch[i];
+    const result = results[i];
     recordPhase(ctx.model, "search", result.durationMs);
     emit({
       status: {

@@ -5,7 +5,6 @@
 // rules and the canonical reference URL.
 
 const EXA_URL = "https://api.exa.ai/search";
-const NUM_RESULTS = 5;
 
 // Runs a search and returns:
 //   content    — compact LLM-friendly string (numbered title/URL/highlights);
@@ -15,7 +14,13 @@ const NUM_RESULTS = 5;
 //                pipeline's cross-search source registry
 //   sources    — [{title, url}] for the UI's expandable activity panel
 //   resultCount, durationMs — for UI counters and logs
-export async function webSearch(env, log, query) {
+//
+// depth (src/budget.js's plan.searchDepth): { numResults, type } — scales
+// with the time budget instead of a fixed 5-result "auto" search
+// regardless of how much depth the user actually asked for.
+export async function webSearch(env, log, query, depth = {}) {
+  const numResults = depth.numResults || 5;
+  const type = depth.type || "auto";
   const startedAt = Date.now();
   const failure = (content) => ({
     content,
@@ -46,8 +51,8 @@ export async function webSearch(env, log, query) {
       },
       body: JSON.stringify({
         query,
-        type: "auto",
-        numResults: NUM_RESULTS,
+        type,
+        numResults,
         contents: { highlights: true },
       }),
     });
@@ -76,6 +81,8 @@ export async function webSearch(env, log, query) {
     duration_ms: durationMs,
     results: results.length,
     query_chars: query.length,
+    type,
+    num_results_requested: numResults,
   });
 
   if (results.length === 0) {

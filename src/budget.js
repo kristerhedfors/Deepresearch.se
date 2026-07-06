@@ -82,6 +82,7 @@ export function planResearch(model, budgetS) {
     maxSources: 18,
     digestCap: 14_000,
     estimates: t,
+    searchDepth: searchDepthFor(budgetS),
   };
 
   let avail = budgetMs - t.triage - t.synth;
@@ -115,6 +116,28 @@ export function planResearch(model, budgetS) {
     plan.digestCap = 18_000;
   }
   return plan;
+}
+
+// A round 6 assessment found the time-budget slider scaled how MANY
+// searches ran, but never how deep any single one went: numResults was a
+// hardcoded 5 (Exa's own default is 10) and `type` was always "auto",
+// never Exa's "deep"/"deep-reasoning" modes — which exist specifically
+// for the "spend more time, get a more thorough result" tradeoff a longer
+// budget should unlock. Tiered the same way as the angle/round caps
+// above. `costMultiplier` reflects Exa's real published pricing ratios
+// (search $7/1k, deep $12/1k, deep-reasoning $15/1k as of 2026) relative
+// to the admin-configured `exa_cost_per_search_eur`, which is assumed to
+// price the standard tier — so usage accounting stays honest instead of
+// under-counting real spend when a request uses a costlier tier.
+// `type: "deep"` is reserved for the most generous budgets only: it's
+// ~1.7x the cost of a standard search, latency is unproven at scale (not
+// yet run through a real eval battery — see CLAUDE.md's model-eval
+// section), and a short/default request has no business paying for it.
+function searchDepthFor(budgetS) {
+  if (budgetS >= 420) return { numResults: 10, type: "deep", costMultiplier: 12 / 7 };
+  if (budgetS >= 240) return { numResults: 10, type: "auto", costMultiplier: 1 };
+  if (budgetS >= 60) return { numResults: 8, type: "auto", costMultiplier: 1 };
+  return { numResults: 5, type: "auto", costMultiplier: 1 };
 }
 
 // True if `upcomingMs` more work still fits within budget (+15% grace).

@@ -202,7 +202,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         completion_tokens: state.totals.completion_tokens,
         searches: state.searchCount,
         berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
-        exa_cost: state.searchCount * config.exa_cost_per_search_eur,
+        // The admin-configured per-search price is priced for Exa's
+        // standard tier; a request whose time budget bought a costlier
+        // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
+        // recorded cost scaled by that tier's real price ratio, so a long
+        // budget's genuinely higher Exa spend doesn't go under-counted
+        // against the user's opaque budget bar or the admin's cost totals.
+        exa_cost: state.searchCount * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1),
         duration_ms,
       });
       const stats = {
