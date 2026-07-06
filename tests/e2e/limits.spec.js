@@ -9,6 +9,8 @@ import {
   fx,
   imagesOfMessage,
   mockChat,
+  mockEmbed,
+  mockEmbedFail,
   openApp,
   selectModel,
   send,
@@ -17,11 +19,16 @@ import {
   waitForDone,
 } from "./helpers.js";
 
-test("oversized txt truncates to the per-doc cap with a visible marker", async ({ page }) => {
+// An over-cap document now goes through RAG (chunk + embed + retrieve)
+// instead of truncation — but when the embedding endpoint is unavailable
+// the client must degrade to exactly the old behavior: first 9K chars
+// inline, marked truncated.
+test("oversized txt falls back to per-doc-cap truncation when indexing is unavailable", async ({ page }) => {
   await openApp(page);
+  await mockEmbedFail(page);
   const payloads = await mockChat(page);
   await attach(page, ["big.txt"], 1);
-  await expect(page.locator("#pending .att-card .sub")).toContainText("truncated");
+  await expect(page.locator("#pending .att-card .sub")).toContainText("truncated", { timeout: 30_000 });
   await send(page, "Summarize.");
   await waitForDone(page);
 
@@ -32,6 +39,24 @@ test("oversized txt truncates to the per-doc cap with a visible marker", async (
   // The embedded doc slice respects the 9K per-doc cap.
   const block = text.split(docHeader("big.txt", true))[1].split("--- End of document ---")[0];
   expect(block.trim().length).toBeLessThanOrEqual(9000);
+});
+
+test("oversized txt is RAG-indexed and sends retrieved excerpts, not the whole text", async ({ page }) => {
+  await openApp(page);
+  await mockEmbed(page);
+  const payloads = await mockChat(page);
+  await attach(page, ["big.txt"], 1);
+  await expect(page.locator("#pending .att-card .sub")).toContainText("indexed", { timeout: 30_000 });
+  await send(page, "Summarize.");
+  await waitForDone(page);
+
+  const text = textOfMessage(payloads[0].messages.at(-1));
+  expect(text).toContain("large document, indexed for retrieval"); // excerpt block, not the inline block
+  expect(text).not.toContain(docHeader("big.txt", true));
+  expect(text).toContain(SENTINEL.bigtxt); // head chunk is among the (tied-score) top-k
+  expect(text).not.toContain(SENTINEL.bigtail); // tail chunk didn't make the top-k
+  // Excerpts stay within the retrieval budget, far under the message cap.
+  expect(text.length).toBeLessThanOrEqual(16_000);
 });
 
 test("image cap: 5th image is rejected with an explanation", async ({ page }) => {

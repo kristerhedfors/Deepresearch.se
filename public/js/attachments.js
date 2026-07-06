@@ -7,6 +7,9 @@
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
+import { opfsAvailable, saveOriginal } from "./opfs.js";
+import { indexDocument } from "./rag.js";
+import { serverHistoryOn } from "./settings.js";
 
 const MAX_IMAGES = 4;
 const MAX_DOCS = 3;
@@ -18,6 +21,10 @@ const TOTAL_IMAGE_CHARS = 700000;
 // Documents become extracted text inside the message; the server caps a
 // message at 32K chars, so each doc gets a slice of that.
 const PER_DOC_CHARS = 9000;
+// Documents past the inline budget go through RAG instead of truncation
+// (public/js/rag.js): parsed in full up to this ceiling (~ thousands of
+// pages), chunked, embedded, and retrieved per question.
+const RAG_PARSE_MAX_CHARS = 8_000_000;
 
 let attachBtn;
 let pendingBox;
@@ -56,6 +63,36 @@ export function initAttachments(attachBtnEl, fileInputEl, pendingBoxEl) {
 
 export function hasPending() {
   return attachments.length > 0;
+}
+
+// True while a large document is still being chunked/embedded — the send
+// button waits for this (app.js) so a question can't outrun its own
+// attachment's index.
+export function indexingBusy() {
+  return attachments.some((a) => a.indexing);
+}
+
+// Original bytes → OPFS (and, when the cloud knob is on, mirrored to R2).
+// Pure archival — never blocks or fails the attach itself.
+async function archiveOriginal(fileId, file) {
+  try {
+    if (await opfsAvailable()) {
+      await saveOriginal(fileId, file, { name: file.name, type: file.type });
+    }
+    if (serverHistoryOn()) {
+      fetch("/api/files/" + encodeURIComponent(fileId), {
+        method: "PUT",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-file-name": encodeURIComponent(file.name),
+          "x-file-type": file.type || "application/octet-stream",
+        },
+        body: file,
+      }).catch(() => {});
+    }
+  } catch {
+    // no OPFS / storage denied — the attachment still works normally
+  }
 }
 
 // Hand over everything pending for a send and clear the row.
@@ -107,7 +144,10 @@ function renderPending() {
     name.title = a.name;
     const sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = a.kind === "image" ? "image" : a.ext + (a.truncated ? " · truncated" : "");
+    if (a.kind === "image") sub.textContent = "image";
+    else if (a.indexing) sub.textContent = `${a.ext} · indexing… ${a.progress || 0}%`;
+    else if (a.rag) sub.textContent = `${a.ext} · indexed (${a.chunkCount} parts)`;
+    else sub.textContent = a.ext + (a.truncated ? " · truncated" : "");
     meta.append(name, sub);
     if (a.metadata) {
       const badge = document.createElement("div");
@@ -166,9 +206,12 @@ async function addImageFile(file) {
       alert("Could not compress " + file.name + " enough to send.");
       return;
     }
+    const fileId = crypto.randomUUID();
+    archiveOriginal(fileId, file); // fire-and-forget — see above
     attachments.push({
       kind: "image",
       name: file.name,
+      fileId,
       dataUrl,
       metadata: exif.summary,
       metadataSensitive: exif.hasGps,
@@ -195,17 +238,66 @@ async function addDocFile(file) {
     return;
   }
   try {
-    const { text, truncated, metadata, hasTrackedDeletions } = await parseDocFile(file, PER_DOC_CHARS);
-    attachments.push({
+    // Parse in full first: whether this goes inline or through RAG depends
+    // on how much text actually comes out, not on file size.
+    const { text, truncated, metadata, hasTrackedDeletions } = await parseDocFile(file, RAG_PARSE_MAX_CHARS);
+    const fileId = crypto.randomUUID();
+    archiveOriginal(fileId, file); // fire-and-forget — see above
+
+    if (text.length <= PER_DOC_CHARS) {
+      // Small document: the original inline path, unchanged.
+      attachments.push({
+        kind: "doc",
+        name: file.name,
+        fileId,
+        ext: docExt(file),
+        text,
+        truncated,
+        metadata,
+        metadataSensitive: hasTrackedDeletions,
+      });
+      renderPending();
+      return;
+    }
+
+    // Large document: index for retrieval instead of truncating to the
+    // first ~2 pages. The card shows live indexing progress; sending waits
+    // for it (app.js checks indexingBusy). If indexing fails (embedding
+    // endpoint down), degrade to exactly the pre-RAG behavior: first
+    // PER_DOC_CHARS chars inline, marked truncated.
+    const att = {
       kind: "doc",
       name: file.name,
+      fileId,
       ext: docExt(file),
-      text,
-      truncated,
+      rag: true,
+      docId: fileId,
+      chars: text.length,
+      indexing: true,
+      progress: 0,
       metadata,
       metadataSensitive: hasTrackedDeletions,
-    });
+    };
+    attachments.push(att);
     renderPending();
+    try {
+      const { chunkCount } = await indexDocument(fileId, file.name, text, {
+        onProgress: (done, total) => {
+          att.progress = Math.round((100 * done) / total);
+          renderPending();
+        },
+      });
+      att.chunkCount = chunkCount;
+    } catch (err) {
+      console.warn("rag: indexing failed, falling back to inline truncation", err);
+      att.rag = false;
+      att.docId = null;
+      att.text = text.slice(0, PER_DOC_CHARS);
+      att.truncated = true;
+    } finally {
+      att.indexing = false;
+      renderPending();
+    }
   } catch (err) {
     alert(err?.message || "Could not read " + file.name + ".");
   }

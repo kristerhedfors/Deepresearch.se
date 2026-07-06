@@ -14,7 +14,8 @@
 // knob, autogrow, submit), and the module initializers.
 
 import { initAccountPanel } from "./account.js";
-import { hasPending, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
+import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
+import { loadSettings } from "./settings.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
 import { clearHistory, initStream, isStreaming, sendMessage, stopGeneration } from "./stream.js";
@@ -68,6 +69,9 @@ initAttachments(
   document.getElementById("pending"),
 );
 initAccountPanel();
+// Account settings (the cloud-storage knob): fetched once at boot so the
+// storage modules' synchronous serverHistoryOn() checks have an answer.
+loadSettings().catch(() => {});
 
 // ---- Research time-target slider ----------------------------------------
 // Persisted as seconds; sent as time_budget_s with each request (the server
@@ -203,6 +207,10 @@ form.addEventListener("submit", async (e) => {
   }
   const text = input.value.trim();
   if (!text && !hasPending()) return;
+  if (indexingBusy()) {
+    alert("Still indexing an attached document — try again in a moment (the card shows progress).");
+    return;
+  }
   input.value = "";
   autogrow();
   setSendMode(true);

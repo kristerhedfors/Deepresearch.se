@@ -112,13 +112,20 @@
       Nominatim</a> (only the coordinates are sent, nothing else about you or
       your message)
       (see the documentation for details).</p>
-      <p>We don't store your conversations on our server — chat history is
-      saved only in this browser, encrypted with a key the server never
-      writes down anywhere (see the History panel and the documentation for
-      how that works). Deleting a conversation there, or clearing this
+      <p>By default we don't store your conversations on our server — chat
+      history is saved only in this browser, encrypted with a key the server
+      never writes down anywhere (see the History panel and the documentation
+      for how that works). Deleting a conversation there, or clearing this
       browser's site data, erases it for good; we have no copy to recover.
-      Server logs hold technical metadata only (timings, counts), never
-      message content.
+      You can opt in to cloud storage (Account &amp; usage → Settings): your
+      conversations are then also kept in this site's Cloudflare storage —
+      still encrypted the same way — together with attached files and their
+      document-search index (those two are not encrypted; indexing needs
+      readable text), and switching the setting off downloads everything back
+      and deletes the cloud copies. Large attached documents are indexed with
+      Berget's embedding model so questions retrieve only the relevant
+      excerpts. Server logs hold technical metadata only (timings, counts),
+      never message content.
       If your connection drops mid-answer, the finished answer is held
       server-side for up to 15 minutes so your device can pick it up when it
       reconnects — it's deleted the moment it's delivered, or when the 15
