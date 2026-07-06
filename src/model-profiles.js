@@ -28,6 +28,11 @@ const DEFAULT = {
   // usable verdict, running it is pure wasted latency/tokens for the same
   // "draft kept as-is" outcome the fail-soft path already gives for free.
   skipValidation: false,
+  // Total attempts (not extra retries) streamCompletion makes when a
+  // completion comes back clean but empty (finish_reason set, zero
+  // content) — see round 4/5's model-eval findings for the failure mode
+  // this guards against. 2 = today's universal one-retry behavior.
+  maxCompletionAttempts: 2,
 };
 
 const OVERRIDES = {
@@ -48,8 +53,18 @@ const OVERRIDES = {
   "zai-org/GLM-4.7-FP8": {
     priorsMs: { triage: 45_000, search: 3_000, gap: 12_000, synth: 40_000, validate: 25_000 },
   },
+  // maxCompletionAttempts bumped to 3: rounds 4-5's evidence shows this
+  // model's clean-but-empty completion isn't a per-query determinism
+  // issue (the exact same query succeeds cleanly on some runs, needs the
+  // retry on others) — a combined sample across two independent battery
+  // rounds (cybersecurity + science/genetics, 90-150s budgets) found the
+  // single retry insufficient about half the time at a 90s budget (5 of
+  // 10 runs exhausted both attempts). Each attempt costs real latency
+  // (~60-70s when it comes back empty) but a slow, correct answer beats a
+  // fast, empty one — worth the extra attempt specifically for this model.
   "moonshotai/Kimi-K2.6": {
     priorsMs: { triage: 15_000, search: 2_500, gap: 8_000, synth: 35_000, validate: 20_000 },
+    maxCompletionAttempts: 3,
   },
 
   // gpt-oss-120b's post-validation phase returned neither "pass" nor a

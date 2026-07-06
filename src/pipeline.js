@@ -390,7 +390,8 @@ function sourceDigest(sources, capChars) {
 
 // Streams one chat completion to the client; returns the full text.
 async function streamCompletion(ctx, messages) {
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const maxAttempts = ctx.profile.maxCompletionAttempts;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
     if (!upstream.ok || !upstream.body) {
       const detail = await upstream.text().catch(() => "");
@@ -416,13 +417,14 @@ async function streamCompletion(ctx, messages) {
     // one above: a stream that completes CLEANLY (finish_reason set,
     // pipeline reaches "done") but with zero content — no dropped
     // connection, no thrown error, just an empty answer silently delivered
-    // to the user. One retry is cheap insurance against what looks like a
-    // transient backend blip rather than a systemic issue (never
-    // reproduced twice in a row across eval batteries); only after a
-    // second empty completion do we give up and surface it.
-    ctx.log.warn("chat.empty_completion", { model: ctx.model, attempt });
-    if (attempt === 2) {
-      throw new Error("Berget returned an empty response twice in a row for this model");
+    // to the user. Retrying is cheap insurance against what looks like a
+    // transient backend blip rather than a per-query determinism issue
+    // (the same query succeeds cleanly on some runs); only after
+    // exhausting maxCompletionAttempts (model-profiles.js — 2 by default,
+    // higher for models evidenced to need it) do we give up and surface it.
+    ctx.log.warn("chat.empty_completion", { model: ctx.model, attempt, maxAttempts });
+    if (attempt === maxAttempts) {
+      throw new Error(`Berget returned an empty response ${maxAttempts} times in a row for this model`);
     }
   }
 }

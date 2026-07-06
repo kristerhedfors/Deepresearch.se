@@ -70,8 +70,13 @@ that tends to preface its JSON with reasoning/prose), `maxTokensOverride`
 `skipValidation` (stop attempting the post-validation phase entirely for
 a model whose validate call has been evidenced to reliably fail to
 produce a usable verdict — same "draft kept as-is" outcome the fail-soft
-path already gives, without the wasted latency/tokens). **Keep this
-evidence-driven**: every entry should trace back to a reproduced finding,
+path already gives, without the wasted latency/tokens), and
+`maxCompletionAttempts` (total attempts `streamCompletion` makes when a
+model returns a clean-but-empty completion — finish_reason set, zero
+content — before giving up; 2 by default, matching the universal
+single-retry behavior, raised to 3 for a model evidenced to exhaust that
+retry at a high rate). **Keep this evidence-driven**: every entry should
+trace back to a reproduced finding,
 not a guess. `tests/model-eval.mjs` is the tool for finding them — it
 runs a fixed research-query battery against every model in the live
 catalog and surfaces per-model failure/quirk patterns from the resulting

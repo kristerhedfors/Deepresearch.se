@@ -125,6 +125,40 @@ const QUERY_SETS = {
     { key: "policy_nis2", text: "What are the incident-reporting obligations for essential and important entities under the EU's NIS2 Directive, and how do the deadlines, scope, and penalties compare to the original NIS Directive it replaced?" },
     { key: "policy_us_eu_disclosure", text: "Compare mandatory cybersecurity incident disclosure requirements for companies under the US SEC's 2023 cybersecurity disclosure rules versus the EU's NIS2 Directive: timelines, which entities are covered, and enforcement mechanisms." },
   ],
+  // 2026-07 round 5: another domain-specific quality pass, scientific
+  // research this time — informed by (not copied from) real 2026 deep-
+  // research agent benchmarks (DeepResearch Bench, HLE, ResearcherBench,
+  // AutoResearchBench), whose common pattern is cross-source literature
+  // synthesis, numeric precision, and resolving genuinely conflicting
+  // findings rather than closed-book trivia. Spans biomedicine, physics,
+  // climate science, and meta-science/research-policy so findings aren't
+  // confined to one field. Judged by hand the same way as `cybersecurity`:
+  // citation accuracy, appropriate hedging on genuinely unsettled science,
+  // numeric correctness, and whether claims stay traceable to sources.
+  science: [
+    { key: "bio_glp1", text: "What are the most significant clinical trial results published in the last two years for GLP-1 receptor agonists (e.g. semaglutide, tirzepatide), including specific efficacy numbers for weight loss and cardiovascular outcomes?" },
+    { key: "physics_superconductor", text: "What is the current experimental status of recent room-temperature superconductivity claims, and what specific issues have independent replication attempts identified?" },
+    { key: "climate_carbon_budget", text: "What do recent major climate science assessments say about the remaining global carbon budget for staying under 1.5°C of warming, and how has that estimate changed across recent updates?" },
+    { key: "conflicting_alcohol", text: "What does current research say about the long-term cognitive and cardiovascular effects of moderate alcohol consumption — do recent large studies agree or conflict with earlier research that suggested a protective effect?" },
+    { key: "meta_reproducibility", text: "What is the current scale of the reproducibility crisis in psychology and biomedical research, and what concrete reforms (e.g. preregistration, registered reports) have journals and funders adopted in response?" },
+  ],
+  // 2026-07 round 6: a narrower, targeted pass — ancient DNA / de-extinction
+  // genetics (Colossal Biosciences' dire wolf and woolly mammoth work), run
+  // against only the three strongest/slowest models (GLM-4.7-FP8, Kimi-K2.6,
+  // Mistral-Medium) rather than the full catalog. This topic is a good
+  // stress test in its own right: heavy recent-news component (claims are
+  // contested almost as soon as they're published), a real scientific-
+  // controversy angle (is this "de-extinction" or gene-edited hybrids?),
+  // and genuine technical depth (ancient DNA degradation, sequencing
+  // methods) — good for spotting citation/hedging quality beyond the
+  // `science` set's more textbook-stable topics.
+  genetics: [
+    { key: "dire_wolf_de_extinction", text: "What did Colossal Biosciences actually do to create the 'dire wolf' pups it announced, and how has the scientific community responded to calling this 'de-extinction' rather than gene-edited gray wolves?" },
+    { key: "mammoth_project_status", text: "What is the current status and timeline of Colossal Biosciences' woolly mammoth de-extinction project, and what specific genetic modifications have they made so far to Asian elephant cells?" },
+    { key: "ancient_dna_technique", text: "What techniques do paleogeneticists use to extract and sequence DNA from ancient specimens like mammoth remains found in permafrost, and what are the main challenges from DNA degradation over time?" },
+    { key: "de_extinction_criticism", text: "What are the main scientific and ethical criticisms of de-extinction projects like Colossal's, regarding whether the resulting animals are genuinely the extinct species or novel hybrids?" },
+    { key: "ancient_human_admixture", text: "What have recent ancient DNA studies revealed about Neanderthal and Denisovan genetic contributions to modern human populations, and has that picture changed with newer research?" },
+  ],
 };
 const QUERY_SET_NAME = process.env.EVAL_QUERY_SET || "round1";
 const QUERIES = QUERY_SETS[QUERY_SET_NAME];
@@ -164,10 +198,20 @@ async function fetchModels() {
 // since /api/chat returns its Response before the pipeline even starts,
 // per src/chat.js, so a mid-stream abort is the common failure mode, not a
 // connection that never got a response).
+//
+// The real production client (public/js/stream.js) has NO time-based
+// abort at all — it only cancels on explicit user action ("New chat").
+// A round 5 eval battery found this harness's OWN timeout firing just
+// before a slow-but-legitimate server-side failure path (the
+// empty-completion retry in pipeline.js, which can take ~60-70s per
+// attempt) reached its conclusion — misreporting a genuine, already-
+// classified "Worker error" as a generic "client-side timeout" instead,
+// and losing the real error detail in the process. Widened with a lot of
+// headroom since there's no real-user behavior this needs to match.
 async function postOnce(model, messages) {
   const startedAt = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BUDGET_S * 1.15 * 1000 + 30_000);
+  const timeout = setTimeout(() => controller.abort(), BUDGET_S * 2 * 1000 + 90_000);
   let requestId = null;
   const events = [];
   let text = "";

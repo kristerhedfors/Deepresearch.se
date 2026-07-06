@@ -47,6 +47,15 @@ file is the durable record of what mattered from it.
    instruction-following gap in the "image + external facts → research"
    triage rule. Not yet investigated further; low severity since the
    answer was factually correct.
+5. **Kimi-K2.6's empty-completion rate at shorter time budgets — fix
+   applied in round 6, verification pending.** Combined rounds 5+6
+   evidence: 50% of Kimi-K2.6 runs at a 90s budget exhausted the
+   round-4 single retry (both attempts came back empty). Confirmed via a
+   clean-success spot-check that this is a per-attempt flake, not a
+   deterministic per-query failure, so `model-profiles.js`'s new
+   `maxCompletionAttempts: 3` override (up from the universal default of
+   2) should meaningfully help. Needs a follow-up battery at the same 90s
+   budget to confirm the failure rate actually drops before closing this.
 
 ---
 
@@ -399,9 +408,115 @@ research-quality fix, but closes the "found in Workers Logs, nobody
 noticed" gap this exact round exposed twice (CPU kills, then wallet
 depletion).
 
-**Carried forward:** none — round 4 is fully closed. Watch whether
-Kimi-K2.6's empty-completion rate (now ~40% per query, retried) continues
-at this level in future rounds; if it stays this high, consider whether
-a model-profiles.js entry (e.g. widening the retry to 2 attempts for this
-specific model) is warranted — not yet justified by a large enough
-sample to be more than a hunch.
+**Carried forward:** watch whether Kimi-K2.6's empty-completion rate
+(now ~40% per query, retried) continues at this level — see round 5/6
+below, which confirms it and acts on it.
+
+---
+
+## Round 4 — final full-catalog confirmation — 2026-07-06
+
+**Run:** all 7 up models × 5 queries, `cybersecurity` set, 150s budget,
+concurrency 3 (35 runs) — a clean, unconfounded re-run after the Workers
+Paid upgrade, the `cpu_ms` config, and the empty-completion retry were
+all live and the Berget wallet was funded.
+
+**Result: 35/35 succeeded, zero failures.** Every fix from this round
+holds under full load at the depth (150s, mid-long research) the
+cybersecurity battery was designed to stress. This is the definitive
+round 4 close-out number.
+
+---
+
+## Round 5 — 2026-07-06 (query set: `science`)
+
+**Run:** 7 up models × 5 queries (biomedicine, physics, climate science,
+a genuinely conflicting-evidence topic, meta-science/research-policy),
+90s budget, concurrency 2. Query set informed by (not copied from) real
+2026 deep-research agent benchmarks — DeepResearch Bench, HLE,
+ResearcherBench, AutoResearchBench — whose common pattern is cross-source
+literature synthesis and resolving genuinely conflicting findings rather
+than closed-book trivia.
+
+**Findings:**
+- **Response quality was strong across every model that completed** —
+  spot-checked citation accuracy and hedging; no model over-claimed
+  certainty on the conflicting alcohol-and-cognition query, and numeric
+  claims (carbon budget figures, trial efficacy numbers) were consistently
+  attributed to specific sources rather than stated as bare fact.
+- **31/35 succeeded; all 4 failures were Kimi-K2.6** (4 of its 5 queries)
+  — 2 explicit `chat_stream_failed` (empty-completion retry exhausted)
+  and 2 reported as `client-side timeout` by the harness. Investigated
+  the two "timeout" cases via Workers Logs rather than taking the
+  harness's label at face value (see decisions below) — they turned out
+  to be the SAME failure mode, not a separate one.
+
+**Decisions:**
+- Confirmed via Workers Logs that both "client-side timeout" cases were
+  actually the empty-completion failure completing server-side
+  (`chat.empty_completion` × 2 then `chat.stream_failed`) just late
+  enough (~140s total) that the test harness's own abort fired first and
+  masked the real error. The production client (`stream.js`) has NO
+  time-based abort at all — this was purely a test-harness artifact
+  misreporting a real, already-correctly-classified server error as a
+  vaguer one. Widened the harness's abort window (`BUDGET_S * 1.15 + 30s`
+  → `BUDGET_S * 2 + 90s`) so future rounds don't lose this signal.
+- This reframes the true Kimi-K2.6 picture at a 90s budget: not "20%
+  genuine failure, 20% ambiguous," but **50% real empty-completion
+  failure** (5 of 10 combined runs across this round and round 6, once
+  the masked cases are correctly attributed).
+
+**Carried forward:** the Kimi-K2.6 empty-completion rate — see round 6,
+run in parallel with this round, which supplies the second half of the
+evidence and the resulting fix.
+
+---
+
+## Round 6 — 2026-07-06 (query set: `genetics`)
+
+**Run:** 3 models only (GLM-4.7-FP8, Kimi-K2.6, Mistral-Medium-3.5-128B
+— chosen as the strongest/slowest of the catalog), 5 queries on ancient
+DNA / de-extinction genetics (Colossal Biosciences' dire wolf and woolly
+mammoth work, ancient-DNA sequencing technique, the scientific/ethical
+de-extinction controversy, ancient human admixture), 90s budget,
+concurrency 2 — run in parallel with round 5's `science` battery.
+
+**Findings:**
+- **GLM-4.7-FP8 and Mistral-Medium-3.5-128B: 5/5 each, strong quality.**
+  Spot-checked the dire-wolf query specifically for the framing that
+  matters most here (genuine "de-extinction" vs. gene-edited gray-wolf
+  hybrids) — both correctly represented it as gene editing of an extant
+  species toward extinct-species traits, not literal resurrection,
+  matching the real scientific controversy rather than repeating
+  Colossal's own marketing framing uncritically.
+- **Kimi-K2.6: 4/5, one `client-side timeout`** — investigated via
+  Workers Logs (see round 5's decisions) and confirmed the same
+  empty-completion-exhausted-late signature as round 5's masked cases,
+  not a new failure mode.
+- One Kimi-K2.6 answer (`mammoth_project_status`) was suspiciously short
+  (916 chars vs. 3-7K for its other successful answers) — `ok: true`, no
+  error, but thin content. Not investigated further this round (low
+  severity, didn't recur); worth watching.
+
+**Decisions:**
+- Combined with round 5: Kimi-K2.6's empty-completion failure, even with
+  the round-4 single retry, exhausted both attempts in 5 of 10 runs
+  (50%) at a 90s budget — and critically, a spot-check of a clean success
+  (`physics_superconductor`, round 5) showed NO retry was needed at all,
+  proving this is a per-attempt flake rather than a deterministic
+  per-query failure, so an additional retry attempt should meaningfully
+  help rather than just repeating the same failure. Added
+  `maxCompletionAttempts` to `model-profiles.js` (default 2, matching
+  today's universal behavior) and set it to 3 for Kimi-K2.6 specifically
+  — evidence-gated, not a guess. Wired into `pipeline.js`'s
+  `streamCompletion` retry loop; `alerts.js`'s error classifier regex
+  updated to match a variable attempt count instead of a hardcoded
+  "twice."
+- This is the first `model-profiles.js` field targeting the empty-
+  completion failure mode specifically (previous fields addressed speed
+  priors, JSON reinforcement, and validation skipping) — a new dimension
+  of per-model adaptation, evidence-driven per this module's convention.
+
+**Carried forward:** verify the `maxCompletionAttempts: 3` fix actually
+reduces Kimi-K2.6's failure rate at a 90s budget in a follow-up
+confirmation battery before considering this closed.

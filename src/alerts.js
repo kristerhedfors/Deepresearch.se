@@ -22,11 +22,11 @@ export function classifyChatError(message) {
       message: "Berget wallet balance is depleted — every research request will fail until it's topped up at berget.ai.",
     };
   }
-  if (/empty response twice in a row/i.test(msg)) {
+  if (/empty response \d+ times? in a row/i.test(msg)) {
     return {
       type: "chat_empty_completion",
       severity: "warning",
-      message: "A model returned an empty response twice in a row for a research request (auto-retried once, then gave up).",
+      message: "A model returned an empty response for a research request even after retrying (see model-profiles.js's maxCompletionAttempts).",
     };
   }
   if (/finish_reason.*dropped connection/i.test(msg)) {
