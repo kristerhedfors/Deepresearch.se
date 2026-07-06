@@ -6,7 +6,13 @@
 // Not a pass/fail test suite (see ./e2e/ for that) — a data-collection
 // sweep; results are read and analyzed by hand afterward.
 //
+// Multiple QUERY_SETS exist (round1, round2, ...) targeting different
+// pipeline paths as prior rounds' findings get fixed and new gaps get
+// identified — add a new named set rather than mutating an old one, so
+// past findings stay reproducible against the set that produced them.
+//
 // Run: BASIC_AUTH_USER=... BASIC_AUTH_PASS=... node model-eval.mjs
+// EVAL_QUERY_SET=round2 selects a different set (default: round1).
 // Results land in ./model-eval-results/<run-timestamp>/ (gitignored).
 
 import fs from "node:fs";
@@ -26,13 +32,49 @@ const CONCURRENCY = Number(process.env.EVAL_CONCURRENCY || 3);
 // Only these models when set (comma-separated ids) — for a targeted re-run.
 const ONLY_MODELS = process.env.EVAL_MODELS?.split(",").map((s) => s.trim()).filter(Boolean);
 
-const QUERIES = [
-  { key: "factual", text: "What is the latest stable version of Node.js and when was it released?" },
-  { key: "comparison", text: "Compare the trade-offs between Server-Sent Events and WebSockets for streaming LLM responses in a web app." },
-  { key: "vague", text: "How does it compare to the alternatives?" },
-  { key: "narrow", text: "What are Berget.ai's documented rate limits and maximum request body size for the chat completions API?" },
-  { key: "direct", text: "Explain what an exponentially weighted moving average is, in one paragraph." },
-];
+// Each entry is either single-turn (`text`) or multi-turn (`turns`, an array
+// of user messages sent as sequential REAL requests — the harness resends
+// the actual streamed answer as the assistant turn, same as the real client
+// does, to test conversation-context handling like anaphora resolution).
+const QUERY_SETS = {
+  // 2026-07-06 baseline: factual/comparison/synthesis, deliberately vague
+  // (clarify path), gap-check-inducing narrow technical, and a
+  // no-search-needed direct question.
+  round1: [
+    { key: "factual", text: "What is the latest stable version of Node.js and when was it released?" },
+    { key: "comparison", text: "Compare the trade-offs between Server-Sent Events and WebSockets for streaming LLM responses in a web app." },
+    { key: "vague", text: "How does it compare to the alternatives?" },
+    { key: "narrow", text: "What are Berget.ai's documented rate limits and maximum request body size for the chat completions API?" },
+    { key: "direct", text: "Explain what an exponentially weighted moving average is, in one paragraph." },
+  ],
+  // 2026-07 round 2: targets pipeline paths round 1 didn't exercise —
+  // multi-turn conversation history (anaphora resolution in triage), a
+  // deliberately niche/sparse-source topic (fail-soft on thin results), a
+  // topic with genuinely conflicting expert findings (honest-about-gaps
+  // instruction + validation catching overclaims), one requiring numeric
+  // precision (a stronger validation stress test than round 1's narrow
+  // query), and a non-English question (multilingual robustness, untested
+  // in round 1 — real traffic to a .se domain plausibly includes Swedish).
+  round2: [
+    {
+      key: "multiturn",
+      turns: [
+        "I'm researching quantum-resistant cryptography algorithms. Just noting that for context — no need to look anything up yet.",
+        "Now give me the current NIST-standardized algorithms for this, with sources.",
+      ],
+    },
+    { key: "sparse", text: "What is the current maintenance status, latest release version, and any known security advisories for the niche JavaScript library 'micromark-extension-directive'?" },
+    { key: "conflicting", text: "What does recent research say about the health effects of moderate daily coffee consumption? Note where studies disagree or findings are mixed." },
+    { key: "numeric", text: "What share of global electricity generation came from renewable sources in 2025, and how does that compare to the 2020 figure?" },
+    { key: "multilingual", text: "Vilka är de senaste kraven i EU:s AI-förordning (AI Act) som gäller för forsknings- och demonstrationsprojekt som inte släpps på marknaden?" },
+  ],
+};
+const QUERY_SET_NAME = process.env.EVAL_QUERY_SET || "round1";
+const QUERIES = QUERY_SETS[QUERY_SET_NAME];
+if (!QUERIES) {
+  console.error(`Unknown EVAL_QUERY_SET "${QUERY_SET_NAME}". Options: ${Object.keys(QUERY_SETS).join(", ")}`);
+  process.exit(1);
+}
 
 // Heuristic scan for the historical failure class (tool-call-shaped tokens
 // leaking into a synthesized answer, or raw JSON leaking into prose) plus
@@ -59,14 +101,16 @@ async function fetchModels() {
   return models;
 }
 
-async function runOne(model, query) {
+// One real /api/chat call. Returns the same shape whether it completed,
+// got a non-2xx, or was aborted — request_id and whatever events/text
+// arrived before an abort are always preserved (headers arrive immediately
+// since /api/chat returns its Response before the pipeline even starts,
+// per src/chat.js, so a mid-stream abort is the common failure mode, not a
+// connection that never got a response).
+async function postOnce(model, messages) {
   const startedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BUDGET_S * 1.15 * 1000 + 30_000);
-  // Captured outside the try block so a mid-stream abort (the common case —
-  // headers arrive immediately since /api/chat returns its Response before
-  // the pipeline even starts, per src/chat.js) still reports which request
-  // hung, instead of silently dropping it in the catch block.
   let requestId = null;
   const events = [];
   let text = "";
@@ -77,7 +121,7 @@ async function runOne(model, query) {
       method: "POST",
       headers: { authorization: AUTH, "content-type": "application/json" },
       body: JSON.stringify({
-        messages: [{ role: "user", content: query.text }],
+        messages,
         model: model.id,
         web_search: true,
         time_budget_s: BUDGET_S,
@@ -88,9 +132,9 @@ async function runOne(model, query) {
     if (!res.ok || !res.body) {
       const detail = await res.text().catch(() => "");
       return {
-        model: model.id, query: query.key, request_id: requestId,
-        ok: false, http_status: res.status, error: detail.slice(0, 500),
-        duration_ms: Date.now() - startedAt,
+        ok: false, request_id: requestId, http_status: res.status,
+        error: detail.slice(0, 500), duration_ms: Date.now() - startedAt,
+        events, text,
       };
     }
 
@@ -124,35 +168,71 @@ async function runOne(model, query) {
       }
     }
 
-    const suspects = SUSPECT_PATTERNS.filter(([, re]) => re.test(text)).map(([name]) => name);
     return {
-      model: model.id, query: query.key, request_id: requestId,
-      ok: !streamError, stream_error: streamError,
-      duration_ms: Date.now() - startedAt,
-      answer_length: text.length,
-      answer_preview: text.slice(0, 500),
-      events: events.map((e) => ({ type: e.type, id: e.id, label: e.label })),
-      done_stats: doneStats,
-      suspect_patterns: suspects,
-      full_answer: text,
+      ok: !streamError, request_id: requestId, stream_error: streamError,
+      duration_ms: Date.now() - startedAt, events, text, done_stats: doneStats,
     };
   } catch (err) {
-    // Report whatever arrived before the abort — request_id and the last
-    // events seen tell us WHICH PHASE it hung in, which "client-side
-    // timeout" alone does not.
     return {
-      model: model.id, query: query.key, request_id: requestId,
-      ok: false,
+      ok: false, request_id: requestId,
       error: err.name === "AbortError" ? "client-side timeout" : err.message,
-      duration_ms: Date.now() - startedAt,
-      answer_length: text.length,
-      answer_preview: text.slice(0, 500),
-      events: events.map((e) => ({ type: e.type, id: e.id, label: e.label })),
-      last_event: events.at(-1) || null,
+      duration_ms: Date.now() - startedAt, events, text,
     };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const briefEvents = (events) => (events || []).map((e) => ({ type: e.type, id: e.id, label: e.label }));
+
+// Runs a query (single- or multi-turn) end to end. Multi-turn resends the
+// PREVIOUS TURN'S REAL streamed answer as the assistant message, exactly
+// like the real client does (public/js/stream.js resends full history) —
+// this is what actually exercises the pipeline's conversation-context
+// handling (e.g. triage resolving "this"/"it" from prior turns), not a
+// simulated one.
+async function runOne(model, query) {
+  const turns = query.turns || [query.text];
+  let messages = [];
+  const turnResults = [];
+  let stoppedEarly = false;
+
+  for (const userText of turns) {
+    messages = [...messages, { role: "user", content: userText }];
+    const r = await postOnce(model, messages);
+    turnResults.push({ user_text: userText, ...r });
+    if (!r.ok) {
+      stoppedEarly = true;
+      break;
+    }
+    messages = [...messages, { role: "assistant", content: r.text }];
+  }
+
+  const last = turnResults.at(-1);
+  const combinedText = turnResults.map((r) => r.text).join("\n---\n");
+  const suspects = SUSPECT_PATTERNS.filter(([, re]) => re.test(combinedText)).map(([name]) => name);
+
+  return {
+    model: model.id, query: query.key,
+    ok: !stoppedEarly,
+    turns: turnResults.length,
+    of_turns: turns.length,
+    request_id: last.request_id,
+    duration_ms: turnResults.reduce((sum, r) => sum + r.duration_ms, 0),
+    error: last.error || last.stream_error || null,
+    answer_length: last.text.length,
+    answer_preview: last.text.slice(0, 500),
+    events: briefEvents(last.events),
+    last_event: last.events.at(-1) || null,
+    done_stats: last.done_stats || null,
+    suspect_patterns: suspects,
+    full_answer: combinedText,
+    per_turn: turnResults.map((r, i) => ({
+      turn: i + 1, user_text: r.user_text, ok: r.ok,
+      duration_ms: r.duration_ms, answer_length: r.text.length,
+      events: briefEvents(r.events),
+    })),
+  };
 }
 
 // Simple fixed-concurrency pool — keep production load bounded and
@@ -174,8 +254,8 @@ async function main() {
   const models = await fetchModels();
   const jobs = models.flatMap((model) => QUERIES.map((query) => ({ model, query })));
   console.log(
-    `Evaluating ${models.length} up model(s) × ${QUERIES.length} queries = ${jobs.length} runs, ` +
-    `budget ${BUDGET_S}s each, concurrency ${CONCURRENCY}.`,
+    `Evaluating ${models.length} up model(s) × ${QUERIES.length} queries (set: ${QUERY_SET_NAME}) = ` +
+    `${jobs.length} runs, budget ${BUDGET_S}s each, concurrency ${CONCURRENCY}.`,
   );
   console.log(models.map((m) => m.id).join("\n"));
 
