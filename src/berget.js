@@ -22,6 +22,22 @@ export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; //
 const JSON_CALL_TIMEOUT_MS = 45_000;
 const STREAM_CONNECT_TIMEOUT_MS = 30_000;
 
+// A round 4 model-eval battery (cybersecurity queries, mid-long time
+// budget) found several models' synthesis stream just never completing:
+// Workers Logs showed the request killed with outcome "exceededCpu" while
+// still inside the synth phase, no chat.stream_failed, nothing — the
+// client sees a clean EOF with 0 chars, "ok: true". `chatCompletion`
+// already requests `max_tokens: 4096`, but Berget doesn't always honor it
+// (the user's own account of Berget's infra: models run on hardware known
+// to misbehave — a degenerate/repetitive generation that doesn't hit a
+// natural stop can keep emitting well past the requested cap). Every
+// legitimate synthesis answer observed across all eval rounds has stayed
+// under ~13,000 characters; this is a generous safety valve, not a content
+// limit — it exists purely so a runaway generation gets cut off by OUR
+// code (a clean, catchable error) before Cloudflare's platform-level CPU
+// limit kills the whole isolate with no error surfaced at all.
+const STREAM_MAX_CHARS = 32_000;
+
 export function defaultModel(env) {
   return env.BERGET_MODEL || DEFAULT_MODEL;
 }
@@ -152,6 +168,12 @@ export async function consumeChatStream(body, onText) {
       if (delta.content) {
         text += delta.content;
         onText(delta.content);
+        if (text.length > STREAM_MAX_CHARS) {
+          await reader.cancel();
+          throw new Error(
+            `Berget stream exceeded the ${STREAM_MAX_CHARS}-char safety cap — likely a runaway/degenerate generation on the backend; aborted before it could exhaust the Worker's CPU budget`,
+          );
+        }
       }
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
