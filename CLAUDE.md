@@ -564,6 +564,31 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
   `search_start` events can now arrive before any `search_done` (not
   strictly paired) — `public/js/activity.js` tracks pending search steps
   in a `Map` keyed by query text instead of a single "last started" slot.
+- **Source diversity is enforced, not just requested.** A round 7
+  assessment found that even a thorough, 19-search "deep" run on a
+  company's own product still cited that company's own site for most of
+  its sources — relevance-ranked search naturally surfaces whoever
+  published the most about themselves, not whoever is most independent.
+  Fixed on two levels, deliberately not either/or:
+  - **Algorithmic backstop** (`src/pipeline.js`'s `addSources()`): a hard
+    per-domain cap (3) on the source registry, the same relevance-vs-
+    diversity tension classic search-result diversification techniques
+    address (Carbonell & Goldstein's Maximal Marginal Relevance is the
+    canonical one) — guaranteed regardless of whether a given model
+    reliably follows the prompt-level asks below. Sources beyond the cap
+    aren't dropped outright — they go to an overflow list `backfillOverflowSources()`
+    draws from (before synthesis) if the capped registry ends up short of
+    `plan.maxSources`, so a genuinely niche topic with few distinct
+    domains isn't artificially starved enforcing diversity that doesn't
+    exist.
+  - **Prompt-level**: `triagePrompt` now makes an independent-source query
+    mandatory (not "criticism — as applicable", which let a model decide
+    a routine-sounding update wasn't "risky" enough to need one);
+    `gapPrompt` treats single-domain dominance in the sources collected
+    so far as an explicit coverage gap; `synthPrompt` requires the answer
+    say so plainly when sources are still dominated by one origin despite
+    all this, rather than presenting single-origin claims as
+    independently established.
 
 ## Access control & accounts — Google sign-in only
 

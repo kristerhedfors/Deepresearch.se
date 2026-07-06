@@ -197,6 +197,7 @@ async function runGapChecks(ctx) {
 async function runSynthesis(ctx) {
   const { state, lastUser, convText, imageParts } = ctx;
   const plan = state.plan;
+  backfillOverflowSources(state);
   ctx.step("synth", "Writing report…");
   const digest = sourceDigest(state.sources, plan.digestCap);
   const synthText =
@@ -374,12 +375,71 @@ async function runSearches(ctx, queries, round) {
   }
 }
 
+// A round 7 assessment found that MORE and DEEPER searches don't
+// automatically buy more independent verification — a genuinely
+// well-researched, 19-search "deep" run on a company's own product still
+// ended up citing that company's own site 4 of 6 times, because Exa's
+// relevance ranking naturally surfaces whoever has published the most
+// content about themselves. This is the classic relevance-vs-diversity
+// tension search engines have long addressed with result diversification
+// (Carbonell & Goldstein's Maximal Marginal Relevance is the canonical
+// technique) — capping how many results from one origin can dominate a
+// result set, independent of how a caller phrases its queries. Doing it
+// here as a hard cap (not a prompt instruction) guarantees it regardless
+// of whether a given model reliably follows the softer prompt-level asks
+// in prompts.js (triagePrompt's mandatory independent-source query,
+// gapPrompt's dominance check) — belt and suspenders, not either/or.
+const DOMAIN_CAP = 3;
+
+function hostnameOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 // Cross-search source registry: deduped by URL, numbered in arrival order so
-// citations stay stable between synthesis and validation.
+// citations stay stable between synthesis and validation. Sources beyond
+// DOMAIN_CAP for their origin are held in an overflow list rather than
+// dropped outright — backfillOverflowSources() uses them if the capped
+// registry ends up short of maxSources (a niche topic with genuinely few
+// distinct domains shouldn't be starved just to enforce diversity that
+// isn't available).
 function addSources(state, items) {
+  state.domainCounts ||= new Map();
+  state.sourceOverflow ||= [];
   for (const item of items || []) {
     if (!item?.url || state.byUrl.has(item.url)) continue;
     if (state.sources.length >= state.plan.maxSources) return;
+    const host = hostnameOf(item.url);
+    const count = state.domainCounts.get(host) || 0;
+    if (count >= DOMAIN_CAP) {
+      state.sourceOverflow.push(item);
+      continue;
+    }
+    state.domainCounts.set(host, count + 1);
+    const entry = {
+      n: state.sources.length + 1,
+      title: item.title || item.url,
+      url: item.url,
+      highlights: (item.highlights || []).slice(0, 3),
+    };
+    state.byUrl.set(item.url, entry);
+    state.sources.push(entry);
+  }
+}
+
+// Called once before synthesis: if the domain cap left the registry short
+// of maxSources (few distinct domains for a niche topic), backfill from
+// the overflow — diversity that doesn't exist can't be enforced, and a
+// smaller-than-planned source list would otherwise cost the answer real
+// grounding for no benefit.
+function backfillOverflowSources(state) {
+  const overflow = state.sourceOverflow || [];
+  while (state.sources.length < state.plan.maxSources && overflow.length) {
+    const item = overflow.shift();
+    if (!item?.url || state.byUrl.has(item.url)) continue;
     const entry = {
       n: state.sources.length + 1,
       title: item.title || item.url,
