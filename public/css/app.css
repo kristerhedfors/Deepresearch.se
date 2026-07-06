@@ -335,7 +335,8 @@ button:disabled { opacity: .5; cursor: default; }
   border: 1px solid rgba(255, 255, 255, .6);
   color: var(--text);
   border-radius: 50%;
-  width: 34px; height: 34px; flex: none;
+  /* Same diameter as the spiderweb knob disc, for row symmetry. */
+  width: 32px; height: 32px; flex: none;
   padding: 0;
   display: grid; place-items: center;
 }
