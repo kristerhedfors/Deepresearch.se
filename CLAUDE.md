@@ -326,8 +326,15 @@ Let a battery finish before pushing anything.
   the Worker skips triage/Exa entirely and streams one Berget
   completion), 🔍 info popover, the slider filling the remaining space,
   then the spelled-out time value (loupe/slider/value all dim while
-  search is off), and a round accent **arrow send button**. "New chat"
-  in the header clears the client-side history.
+  search is off), and a round accent **arrow send button** that becomes
+  a **square stop button** (same element, swapped icon, never disabled)
+  while a response is streaming — clicking it aborts the in-flight
+  request (`stream.js`'s `stopGeneration()`) but keeps whatever streamed
+  so far as normal conversation context (a `*(Stopped.)*` marker is
+  appended, not an error), so the composer is immediately ready for a
+  follow-up. Distinct from "New chat" (`clearHistory()`), which also
+  aborts but discards everything instead. "New chat" in the header
+  clears the client-side history.
 - **User documentation** at `/help/` (auth-gated static page): every
   control explained with real screenshots (`public/help/img/`, captured
   via Playwright) and the privacy meaning of each — linked from the

@@ -349,6 +349,9 @@ button:disabled { opacity: .5; cursor: default; }
   display: grid; place-items: center;
   box-shadow: 0 2px 8px rgba(4, 30, 60, .25);
 }
+/* Stop mode (streaming in progress): same button, square icon, a
+   distinct color so it doesn't read as just a disabled send arrow. */
+#send.stop { background: #4a5568; }
 
 /* Pending attachments: rounded cards on their own line at the BOTTOM of
    the glass pane — thumb/file icon + name, and a white circular ✕ in the

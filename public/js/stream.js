@@ -51,6 +51,14 @@ export function clearHistory() {
   controller = null;
 }
 
+// Stop button: abort the in-flight request WITHOUT bumping `generation` —
+// unlike clearHistory, the point here is to keep whatever streamed so far
+// as normal context for a follow-up, not to discard it. sendMessage's
+// catch block tells the two apart via `gen === generation`.
+export function stopGeneration() {
+  controller?.abort();
+}
+
 // ---- Answer recovery --------------------------------------------------
 // The server parks every finished answer in a short-lived cache
 // (src/answers.js) keyed by x-request-id: if our stream dies, we poll the
@@ -243,10 +251,29 @@ export async function sendMessage(text, opts) {
       history.pop();
     }
   } catch (e) {
-    if (e?.name === "AbortError" || gen !== generation) {
-      // New chat aborted this request deliberately: no error UI, no
-      // beacon, no recovery — just purge the abandoned server copy.
+    if (e?.name === "AbortError") {
+      if (gen !== generation) {
+        // New chat cleared history while this stream was still running:
+        // nothing to keep, no error UI, no beacon, no recovery — just
+        // purge the abandoned server copy.
+        ackAnswer(requestId);
+        return;
+      }
+      // The user pressed Stop: keep whatever streamed so far as normal
+      // (non-error) context — that's the whole point of stopping instead
+      // of just waiting, the partial answer is still there for a
+      // follow-up question. The server finishes the research in the
+      // background regardless (src/chat.js's ctx.waitUntil), so purge its
+      // recovery copy — nobody will poll for it.
       ackAnswer(requestId);
+      if (acc) {
+        const stopped = acc + "\n\n*(Stopped.)*";
+        setText(turn, stopped);
+        history.push({ role: "assistant", content: stopped });
+      } else {
+        setError(turn, "Stopped before any response arrived.");
+        history.pop();
+      }
       return;
     }
     // Tell the server why the client's side died — it often can't know

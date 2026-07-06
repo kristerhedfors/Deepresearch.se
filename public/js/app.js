@@ -16,7 +16,7 @@
 import { initAccountPanel } from "./account.js";
 import { hasPending, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { initModels, selectedModelId } from "./models.js";
-import { clearHistory, initStream, isStreaming, sendMessage } from "./stream.js";
+import { clearHistory, initStream, isStreaming, sendMessage, stopGeneration } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, initTurns } from "./turns.js";
 
@@ -141,13 +141,31 @@ const autogrow = () => {
 };
 input.addEventListener("input", autogrow);
 
+// While a response is streaming, the same button switches from send
+// (arrow) to stop (square) — never disabled, so it stays clickable to
+// interrupt generation. stream.js keeps whatever streamed so far as
+// normal context, so the composer is immediately ready for a follow-up.
+const SEND_ICON = send.innerHTML;
+const STOP_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+function setSendMode(streaming) {
+  send.innerHTML = streaming ? STOP_ICON : SEND_ICON;
+  send.classList.toggle("stop", streaming);
+  send.setAttribute("aria-label", streaming ? "Stop generating" : "Send");
+  send.title = streaming ? "Stop generating" : "Send";
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (isStreaming()) {
+    stopGeneration();
+    return;
+  }
   const text = input.value.trim();
   if (!text && !hasPending()) return;
   input.value = "";
   autogrow();
-  send.disabled = true;
+  setSendMode(true);
   const { images, docs } = takeAttachments();
   await sendMessage(text, {
     images,
@@ -156,7 +174,7 @@ form.addEventListener("submit", async (e) => {
     budgetS,
     webSearch: webSearchBox.checked,
   });
-  send.disabled = false;
+  setSendMode(false);
   input.focus();
 });
 
