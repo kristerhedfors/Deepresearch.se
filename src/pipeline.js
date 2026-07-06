@@ -30,6 +30,7 @@ import {
   withImageNudge,
 } from "./conversation.js";
 import { webSearch } from "./exa.js";
+import { getModelProfile } from "./model-profiles.js";
 import {
   directPrompt,
   gapPrompt,
@@ -40,6 +41,8 @@ import {
 } from "./prompts.js";
 
 export async function runPipeline(env, log, emit, conversation, model, state) {
+  const profile = getModelProfile(model);
+  const reinforceJsonOnly = profile.jsonReinforcement;
   const lastUser = textOf(lastUserMessage(conversation)?.content);
   // Image parts of the latest user message ride along into synthesis so a
   // vision model can research with the image as context.
@@ -70,7 +73,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     completeJson(
       env,
       [
-        { role: "system", content: triagePrompt(Math.max(4, state.plan.queries)) },
+        { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly }) },
         { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
       ],
       { model, maxTokens: 500 },
@@ -134,7 +137,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       completeJson(
         env,
         [
-          { role: "system", content: gapPrompt([...state.ranQueries], plan.followups) },
+          { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { reinforceJsonOnly }) },
           {
             role: "user",
             content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
@@ -205,13 +208,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     completeJson(
       env,
       [
-        { role: "system", content: validatePrompt() },
+        { role: "system", content: validatePrompt({ reinforceJsonOnly }) },
         {
           role: "user",
           content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
         },
       ],
-      { model, maxTokens: 3000 },
+      { model, maxTokens: profile.maxTokensOverride?.validate ?? 3000 },
     ).then((r) => {
       addUsage(state.totals, r.usage);
       log.info("chat.json_diag", { phase: "validate", model, ...r.diagnostics });

@@ -8,6 +8,9 @@
 //    per model (models differ several-fold in speed), seeded with priors
 //    measured on production runs. Stats live per isolate; the priors keep
 //    cold isolates sensible. Every completed phase feeds recordPhase().
+//    A model can also carry its own prior overrides (src/model-profiles.js)
+//    for cases where the global priors are evidenced to be badly wrong for
+//    it — consulted only until that model's own EWMA has real data.
 //
 // 2. STATIC ALLOCATION (planResearch) — before searching begins:
 //      fixed  = triage + synthesis            (always paid)
@@ -23,6 +26,8 @@
 //    work plus the remaining mandatory phases still fit in budget +15%
 //    grace. Overruns cut optional work (extra gap rounds first, validation
 //    last) instead of blowing the target.
+
+import { getModelProfile } from "./model-profiles.js";
 
 const PRIORS_MS = {
   triage: 6000,
@@ -47,8 +52,9 @@ export function recordPhase(model, phase, ms) {
 
 export function phaseEstimates(model) {
   const m = stats.get(model) || {};
+  const profilePriors = getModelProfile(model).priorsMs;
   const out = {};
-  for (const k of Object.keys(PRIORS_MS)) out[k] = m[k] ?? PRIORS_MS[k];
+  for (const k of Object.keys(PRIORS_MS)) out[k] = m[k] ?? profilePriors?.[k] ?? PRIORS_MS[k];
   return out;
 }
 

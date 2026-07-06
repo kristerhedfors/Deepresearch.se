@@ -1,0 +1,81 @@
+// Per-model behavioral/performance overrides layered on top of the
+// pipeline's default, model-agnostic behavior. Unknown models get DEFAULT
+// unchanged — this module exists ONLY to patch specific, empirically
+// observed per-model quirks, found by running a fixed research-query
+// battery against every model in Berget's catalog (tests/model-eval.mjs;
+// methodology and raw results are reproducible, but results themselves
+// aren't committed — see that file's header).
+//
+// Keep this evidence-driven: don't add an override without a reproduced
+// finding. Unknown/new models always get DEFAULT — behavior for them is
+// exactly what it was before this module existed.
+
+const DEFAULT = {
+  // Per-phase prior duration overrides (ms), consulted by budget.js's
+  // phaseEstimates() ONLY until the model has its own in-isolate EWMA
+  // measurement for that phase. null = no override, fall back to the
+  // global PRIORS_MS every model started with.
+  priorsMs: null,
+  // Extra reinforcement line spliced into JSON-mode prompts (prompts.js)
+  // for models that tend to preface their JSON with reasoning/prose,
+  // risking truncation before a complete object forms.
+  jsonReinforcement: false,
+  // Per-phase max_tokens override for completeJson calls. Keys match
+  // budget.js's phase names (triage/gap/validate); only set what's needed.
+  maxTokensOverride: null,
+};
+
+const OVERRIDES = {
+  // 2026-07-06 battery: both models measured far slower than the global
+  // priors. GLM's triage alone took 24-95s in isolated single-phase runs
+  // (clarify-only queries) against a 6s global prior, and both models
+  // routinely missed the 60s-budget pipeline's deadline on multi-phase
+  // queries (GLM hung at the very start of synthesis on two different
+  // queries, twice each, after triage+search+gap already completed;
+  // Kimi completed full runs but often past the 60s target, once timing
+  // out just after validation had already finished). Elevated priors
+  // here make planResearch() plan conservatively for these models from a
+  // COLD isolate — fewer search angles, validation skipped sooner —
+  // instead of only adapting after the in-isolate EWMA warms up.
+  // Approximate, not exact: derived from a handful of live observations,
+  // not precise per-phase instrumentation. Expected to keep improving via
+  // the existing EWMA mechanism as real traffic accumulates.
+  "zai-org/GLM-4.7-FP8": {
+    priorsMs: { triage: 45_000, search: 3_000, gap: 12_000, synth: 40_000, validate: 25_000 },
+  },
+  "moonshotai/Kimi-K2.6": {
+    priorsMs: { triage: 15_000, search: 2_500, gap: 8_000, synth: 35_000, validate: 20_000 },
+  },
+
+  // Same battery: gpt-oss-120b's post-validation phase returned neither
+  // "pass" nor a usable "revise" on 3 of 4 research runs ("Validation
+  // inconclusive — draft kept as-is"), losing the quality-gate benefit
+  // for this model specifically — every other model verified cleanly.
+  // Working hypothesis (couldn't confirm the exact parse/truncation
+  // signature from Workers Logs, despite the parse_mode/finish_reason
+  // diagnostics added for this purpose — the Cloudflare telemetry query
+  // API only returned row-count aggregates, not log content, from this
+  // environment): a verbose/reasoning-leaning model spending tokens on
+  // preamble before its JSON verdict, tripping the validate phase's
+  // max_tokens cap before a complete object forms. Both the reinforcement
+  // line and the larger token budget are safe even if this hypothesis is
+  // wrong — worst case they cost a little extra latency/tokens for this
+  // one model.
+  "openai/gpt-oss-120b": {
+    jsonReinforcement: true,
+    maxTokensOverride: { validate: 4500 },
+  },
+};
+
+export function getModelProfile(modelId) {
+  const override = OVERRIDES[modelId];
+  if (!override) return DEFAULT;
+  return {
+    ...DEFAULT,
+    ...override,
+    priorsMs: override.priorsMs ? { ...override.priorsMs } : DEFAULT.priorsMs,
+    maxTokensOverride: override.maxTokensOverride
+      ? { ...override.maxTokensOverride }
+      : DEFAULT.maxTokensOverride,
+  };
+}
