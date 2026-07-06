@@ -53,6 +53,55 @@ test("admin notification center renders without a JS error", async ({ page }) =>
   expect(errors, "no uncaught JS errors on /admin").toEqual([]);
 });
 
+// The Settings sub-view (one level below the account summary): the
+// cloud-storage row renders as a slide switch, reflects the server state
+// (mocked here — the real break-glass identity always reads as off), and
+// flipping it off drives the PUT + drain-sync + status line. The mocks are
+// registered before openApp so the boot-time reconcile (which runs when
+// the effective state is on) exercises the same endpoints.
+test("settings panel: cloud-storage switch toggles and reports the drain", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  let serverHistory = true;
+  const puts = [];
+  const json = (body) => ({ status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  await page.route("**/api/settings", (route) => {
+    if (route.request().method() === "PUT") {
+      serverHistory = route.request().postDataJSON().server_history;
+      puts.push(serverHistory);
+    }
+    return route.fulfill(json({ server_history: serverHistory, available: { storage: true, rag: true } }));
+  });
+  await page.route("**/api/convos", (route) => route.fulfill(json({ conversations: [] })));
+  await page.route("**/api/files", (route) => route.fulfill(json({ files: [] })));
+  await page.route("**/api/rag/docs", (route) => route.fulfill(json({ docs: [] })));
+  await page.route("**/api/storage", (route) => route.fulfill(json({ ok: true, deleted: 0 })));
+  // The panel only offers settings to a signed-in account (the break-glass
+  // identity the suite authenticates as has none), so mock a regular user.
+  const win = { budget_pct: 0, searches: 0, searches_limit: 0, reset: null };
+  await page.route("**/api/me", (route) =>
+    route.fulfill(json({
+      id: 1, email: "user@example.com", name: "Test User", role: "user",
+      unlimited: false, enforced: true, db_configured: true,
+      windows: { h5: win, day: win, week: win, month: win },
+      notifications: { unread_messages: 0, total: 0 },
+    })),
+  );
+
+  await openApp(page, { webSearch: false, budgetS: 15 });
+  await page.click("#accountbtn");
+  await page.click("#settingsbtn");
+  await expect(page.locator("#account-body")).toContainText("Store history in the cloud");
+  await expect(page.locator("#cloudknob")).toBeChecked();
+
+  await page.click(".switch-track"); // the visible half of the switch — the input itself is hidden
+  await expect(page.locator("#syncstatus")).toContainText("Cloud storage is off", { timeout: 15_000 });
+  await expect(page.locator("#syncstatus")).toContainText("cloud copies removed");
+  await expect(page.locator("#cloudknob")).not.toBeChecked();
+  expect(puts).toEqual([false]);
+  expect(errors, "no uncaught JS errors in the settings panel").toEqual([]);
+});
+
 test("account message center renders without a JS error", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));

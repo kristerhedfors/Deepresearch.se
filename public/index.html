@@ -80,8 +80,9 @@
       </div>
       <button id="historynewbtn" type="button" class="history-new">+ New chat</button>
       <div id="historylist" class="history-list"><p class="muted">Loading…</p></div>
-      <p class="history-footnote">Stored only in this browser, encrypted with a key
-        this server never sees in the clear. <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
+      <p class="history-footnote">Encrypted with a key this server never sees in
+        the clear — stored in this browser, plus (by default) an encrypted cloud
+        copy you can switch off in Settings. <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
     </aside>
   </div>
 
@@ -112,20 +113,19 @@
       Nominatim</a> (only the coordinates are sent, nothing else about you or
       your message)
       (see the documentation for details).</p>
-      <p>By default we don't store your conversations on our server — chat
-      history is saved only in this browser, encrypted with a key the server
+      <p>Your chat history is encrypted in this browser with a key the server
       never writes down anywhere (see the History panel and the documentation
-      for how that works). Deleting a conversation there, or clearing this
-      browser's site data, erases it for good; we have no copy to recover.
-      You can opt in to cloud storage (Account &amp; usage → Settings): your
-      conversations are then also kept in this site's Cloudflare storage —
-      still encrypted the same way — together with attached files and their
-      document-search index (those two are not encrypted; indexing needs
-      readable text), and switching the setting off downloads everything back
-      and deletes the cloud copies. Large attached documents are indexed with
-      Berget's embedding model so questions retrieve only the relevant
-      excerpts. Server logs hold technical metadata only (timings, counts),
-      never message content.
+      for how that works), and — by default — an encrypted copy is also kept
+      in this site's Cloudflare storage so your history follows your account
+      across devices, together with attached files and their document-search
+      index (those two are not encrypted; indexing needs readable text).
+      You can switch cloud storage off in Account &amp; usage → Settings:
+      everything is then downloaded to this browser and the cloud copies are
+      deleted — after that, deleting a conversation here or clearing this
+      browser's site data erases it for good, with no copy to recover.
+      Large attached documents are indexed with Berget's embedding model so
+      questions retrieve only the relevant excerpts. Server logs hold
+      technical metadata only (timings, counts), never message content.
       If your connection drops mid-answer, the finished answer is held
       server-side for up to 15 minutes so your device can pick it up when it
       reconnects — it's deleted the moment it's delivered, or when the 15

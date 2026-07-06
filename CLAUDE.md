@@ -151,15 +151,17 @@ either direction, + `pullNewer` reconciliation on sidebar open).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
-### Chat history — client-side and encrypted by default
+### Chat history — always encrypted; browser-local, with an opt-out cloud copy
 
-By default conversations are never stored on the server (the opt-in
-cloud-storage mode below stores them **still encrypted**) — and unlike
+Conversations are ALWAYS encrypted client-side before they rest anywhere
+(the cloud-storage mode below stores the same ciphertext) — and unlike
 the original ephemeral-only design (history erased by "New chat" or a
 reload), every conversation **persists across reloads inside the
 browser itself**, listed in a left-side history panel (`history-ui.js`)
 the same way a normal chat app's sidebar works: labelled by its first
-question, clickable to reopen, renamable, deletable.
+question, clickable to reopen, renamable, deletable. Accounts that
+switch the cloud knob OFF (see the next section) hold their history in
+this browser ONLY — nothing conversation-derived server-side.
 
 **Storage**: IndexedDB (`history-store.js`, database `dr_history`) — the
 modern, higher-capacity, async successor to `localStorage`, appropriate
@@ -213,17 +215,26 @@ either (their text was already embedded inline in the message when
 sent) — both are accepted, cosmetic simplifications, not correctness
 gaps.
 
-### Cloud storage — the per-account `server_history` knob (default OFF)
+### Cloud storage — the per-account `server_history` knob (default ON)
 
 `/api/settings` (`src/settings.js`, stored in `users.settings_json`)
-carries one knob, rendered in the account panel's Settings section:
+carries one knob, rendered in the account panel's **Settings sub-view**
+(its own level below the summary, like "Full usage & history" — a list
+of `.settings-row` slide-switch rows, the ORIGINAL pre-spiderweb toggle
+design as generic `.switch` classes, so future settings just add rows):
 **"Store history in the cloud"**. It is remembered server-side (follows
-the account), and OFF is — and must remain — the default: off means
-exactly the original posture above, nothing conversation-derived stored
+the account). **ON is the default** (an explicit product decision when
+the feature shipped — only a stored, explicit `false` opts out; absent/
+malformed settings mean on), and `/api/settings` reports the EFFECTIVE
+state: an identity that can't use storage (break-glass, missing R2
+binding) always reads as off, so clients never dual-write into 503s.
+Because most accounts never touch the knob, `app.js` runs a quiet,
+fail-soft boot reconcile whenever the effective state is on: a diff-only
+`syncToServer()` push plus `pullNewer()`. OFF restores exactly the
+original posture above — nothing conversation-derived stored
 server-side.
 
-**ON is an explicit opt-in to Cloudflare-side storage**, and the storage
-split is the point to preserve when touching any of this:
+**The storage split is the point to preserve when touching any of this:**
 - **Conversations** (`src/storage.js`, R2 `convos/{uid}/{convId}`): the
   SAME `{iv, ciphertext}` blob the browser writes to its own IndexedDB —
   encrypted under the same `/api/history-key` mechanism regardless of
@@ -370,7 +381,7 @@ suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once
-npm run test:mocked   # 38 tests, free: /api/chat (and /api/embed) intercepted
+npm run test:mocked   # 39 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
 npm run test:live     # 5 tests, real Berget tokens + one Exa run
 ```
 

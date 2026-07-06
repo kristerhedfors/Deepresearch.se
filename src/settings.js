@@ -1,11 +1,13 @@
 // Per-user settings (users.settings_json, additive D1 column) — currently a
-// single knob: `server_history`, default OFF.
+// single knob: `server_history`, default ON (a product decision made as the
+// feature shipped: cloud history is the normal mode, switching it OFF is
+// the explicit per-account opt-out).
 //
-// OFF (the default) is the original posture: conversations live only in the
+// OFF is the original local-only posture: conversations live only in the
 // browser's encrypted IndexedDB, attached files in its OPFS, the RAG index
 // in its IndexedDB — nothing conversation-derived is stored server-side.
 //
-// ON is an explicit per-account opt-in to Cloudflare-side storage
+// ON is Cloudflare-side storage
 // (src/storage.js + src/rag.js): conversation records are stored in R2
 // STILL ENCRYPTED with the same client-held AES-GCM key mechanism (the
 // server stores ciphertext it cannot read without also deriving the key —
@@ -25,11 +27,12 @@
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 
-const DEFAULTS = { server_history: false };
+const DEFAULTS = { server_history: true };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
-// defaults. Exported for unit tests.
+// defaults. Only a stored, explicit `false` switches the knob off — an
+// absent or malformed value means the default (on). Exported for unit tests.
 export function parseSettings(json) {
   let raw = {};
   try {
@@ -38,7 +41,7 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return { server_history: raw.server_history === true };
+  return { server_history: raw.server_history !== false };
 }
 
 // What the server can actually offer this identity right now. `storage`
@@ -71,10 +74,15 @@ async function saveSettings(env, userId, settings) {
     .run();
 }
 
+// The payload reports the EFFECTIVE state, not the raw stored flag: with
+// the default ON, an identity that can't actually use cloud storage
+// (break-glass, or a server without the R2 binding) must read as off —
+// otherwise every such client would dutifully dual-write into 503s.
 function settingsPayload(env, identity, settings) {
+  const available = storageAvailability(env, identity);
   return {
-    server_history: settings.server_history,
-    available: storageAvailability(env, identity),
+    server_history: available.storage && settings.server_history,
+    available,
   };
 }
 

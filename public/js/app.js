@@ -16,6 +16,7 @@
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { loadSettings } from "./settings.js";
+import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
 import { clearHistory, initStream, isStreaming, sendMessage, stopGeneration } from "./stream.js";
@@ -71,7 +72,18 @@ initAttachments(
 initAccountPanel();
 // Account settings (the cloud-storage knob): fetched once at boot so the
 // storage modules' synchronous serverHistoryOn() checks have an answer.
-loadSettings().catch(() => {});
+// Cloud storage is ON by default — most accounts never touch the knob —
+// so boot also runs a quiet background reconcile: push anything local the
+// cloud doesn't have yet (diff-only; skips up-to-date items) and pull
+// conversations written from other devices. Entirely fail-soft and
+// deliberately not awaited — the app is fully usable while it runs.
+loadSettings()
+  .then((s) => {
+    if (!s?.server_history) return;
+    syncToServer().catch(() => {});
+    pullNewer().catch(() => {});
+  })
+  .catch(() => {});
 
 // ---- Research time-target slider ----------------------------------------
 // Persisted as seconds; sent as time_budget_s with each request (the server
