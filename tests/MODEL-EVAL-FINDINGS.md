@@ -19,16 +19,34 @@ file is the durable record of what mattered from it.
 
 ## Open issues / improvement potential (living list — edit in place, only this section)
 
-1. **GLM-4.7-FP8 / Kimi-K2.6 / Llama-3.3-70B-Instruct: intermittent
-   mid-stream drops.** Berget's connection to these three models
-   occasionally dies mid-stream with no error frame — confirmed
-   non-deterministic (same query passes on one run, fails the next;
-   reproduces at concurrency 1 and 3 alike). Round 3 converted this from
-   a *silent* failure (0-char answer, `ok: true`, no explanation) into a
-   *visible* one (thrown error, `chat.stream_failed` logged, honest
-   message to the user) — but the underlying instability itself is on
-   Berget's side and isn't fixable from this codebase. Re-check whether
-   it's improved next time Berget's infra changes.
+1. **GLM-4.7-FP8 / Kimi-K2.6 / Llama-3.3-70B-Instruct / gemma-4-31B-it:
+   silent request death — root cause found in round 4, only partially
+   fixable from this codebase.** Round 4 traced this (previously assumed
+   to be pure Berget-side connection flakiness) to Cloudflare killing the
+   Worker invocation itself with `outcome: exceededCpu` — this account is
+   on the Workers **Free** plan, a hard **10ms CPU time per request**
+   ceiling (confirmed both via Cloudflare's docs and by a direct deploy
+   attempt: raising it via `wrangler.toml`'s `[limits] cpu_ms` is flatly
+   rejected on Free — "CPU limits are not supported for the Free plan",
+   code 100328). Most requests never approach 10ms of actual CPU (nearly
+   all wall-clock time is idle waiting on Berget/Exa fetches, which
+   doesn't count as CPU time) — but heavier processing (bigger digests,
+   more search results, more verbose model output) for certain models on
+   complex topics can tip over it, and once it does, Cloudflare tears
+   down the isolate with NO exception for our own error handling to
+   catch — this is NOT the same as the finish_reason-missing case round 3
+   fixed (that one we CAN observe and throw on; this one the platform
+   kills before any of our code runs again). Round 3's "mid-stream drop"
+   framing was likely this same mechanism observed on simpler queries
+   where it trips less often; Berget-side hardware instability (per the
+   site owner's own account) may still compound this by making certain
+   models more verbose/erratic on some requests than others, but the
+   *ceiling* being hit is Cloudflare's, not Berget's.
+   **Real fix: upgrade this account to Workers Paid ($5/month)** — raises
+   the default to 30s and makes it configurable up to 5 minutes. Until
+   then, this is an accepted platform-capacity limitation, not a code bug
+   — see round 4's entry below for what was and wasn't fixed from this
+   side.
 2. ~~Prompt-injection resistance is inconsistent.~~ **Resolved** — see
    round 3's final verification entry below. Both previously-failing
    models now reliably run the actual research instead of complying.
@@ -251,3 +269,83 @@ issues #1 and #4 remain open.
 either closed or explicitly tracked in the living list above. Open
 issues #1, #3, #4 remain, all previously assessed as either
 unfixable-from-here or low-severity/deferred.
+
+---
+
+## Round 4 — 2026-07-06 (query set: `cybersecurity`)
+
+**Run:** 7 up models × 5 queries (technical: open-source supply-chain
+attacks, ZTNA vs VPN, AD lateral movement/privilege escalation; policy:
+EU NIS2 incident-reporting obligations, US SEC vs EU NIS2 disclosure
+comparison), mid-long depth — `EVAL_BUDGET_S=150` (vs. 60s in rounds
+1-3), plus two smaller confirmation re-runs after each fix attempt. This
+was a domain-quality pass (does the pipeline produce good cybersecurity
+research?), not a pipeline-path pass like rounds 1-3.
+
+**Findings:**
+- **Response quality on the models that completed successfully was
+  excellent** — this was the actual original ask (personally judge
+  quality/research pattern). Spot-checked `gpt-oss-120b` and
+  `Mistral-Medium-3.5-128B` on `tech_ad_lateral` (a legitimate
+  offensive/defensive infosec research topic — AD lateral movement and
+  privilege escalation techniques): both produced detailed, correctly
+  cited, well-structured technical answers (attack technique tables,
+  detection-log-event specifics, defensive recommendations) with **no
+  over-refusal or inappropriate hedging** on dual-use security content.
+  Policy answers (`gpt-oss-120b` on NIS2) were equally solid — accurate
+  deadlines, fine amounts, and structure, properly cited. Mistral-Small's
+  post-validation caught and fixed 3 real issues on one run ("Fixed 3
+  issues found in fact-check"), the fact-check gate working as intended.
+- **A large fraction of runs from 4 of 7 models came back `ok:true` with
+  0 (or near-0) characters** — GLM-4.7-FP8 (3/5), Kimi-K2.6 (5/5, total
+  failure), gemma-4-31B-it (4/5), Llama-3.3-70B-Instruct (4/5) — while
+  `gpt-oss-120b`, `Mistral-Medium-3.5-128B`, and `Mistral-Small` were
+  reliable (5/5, 5/5, 4/5). This is a MUCH higher failure rate than
+  rounds 1-3 ever showed for these models, isolating the trigger to
+  mid-long depth + complex/technical content specifically (more search
+  angles, more gap rounds, a bigger synthesis digest — see Open issue #1
+  for the confirmed root cause: Cloudflare `exceededCpu`, this account's
+  Free-plan 10ms CPU ceiling).
+
+**Decisions and what was tried (in order):**
+1. Added a `STREAM_MAX_CHARS` (32,000 char) safety valve to
+   `consumeChatStream` (`516342b`) — a real, still-useful defensive fix
+   for a genuine runaway/degenerate generation, but a confirmation
+   re-test showed it did NOT fix Kimi-K2.6 (still 4/5 empty) — proving
+   the CPU exhaustion is often cumulative across the whole request
+   (searches + gap-check JSON parsing + digest building), not just from
+   one oversized stream. Kept — it's still correct, low-risk insurance,
+   just not sufficient alone.
+2. Added `[limits] cpu_ms = 300_000` to `wrangler.toml` (`ba33ca8`) to
+   raise Cloudflare's CPU ceiling from the 30s Paid default to the 5-min
+   max. **This was based on a wrong assumption that the account was on
+   Workers Paid.** A confirmation battery afterward showed *zero*
+   improvement — some failures completed in as little as 10-13s of
+   wall-clock, which rules out a 30s+ CPU ceiling being the active limit
+   for those specific cases. Investigating via a direct `wrangler
+   deploy` attempt (not just git-push) surfaced the real error: **"CPU
+   limits are not supported for the Free plan"** (code 100328) — this
+   account is on Workers **Free**, and the setting was being silently
+   rejected by Cloudflare's deploy API on every push since the commit,
+   **breaking every subsequent deploy** (confirmed via the live script's
+   settings API: no `limits` key was ever actually applied). Reverted
+   immediately (`dfa6a1b`) once discovered, restoring working deploys.
+   Verified via a manual `wrangler deploy --dry-run` that the revert is
+   clean.
+3. **Real fix identified but not applied (requires the site owner's
+   action, not code):** upgrade the Cloudflare account to Workers Paid
+   ($5/month) — this both raises the default CPU ceiling to 30s AND
+   makes `cpu_ms` configurable up to 5 minutes via the same
+   `wrangler.toml` mechanism that's currently reverted. Given genuinely
+   complex multi-source synthesis for verbose models can plausibly
+   exceed even a fairly generous ceiling under a mid-long time budget, a
+   30s-to-5min ceiling (vs. today's 10ms) would very likely eliminate
+   this failure class outright. Left as an explicit recommendation, not
+   auto-applied — billing/plan changes are the account owner's call.
+
+**Carried forward:** Open issue #1 (updated with the full root-cause
+chain) stays open pending a plan upgrade decision. No further code
+changes are planned here until that decision is made, since the
+remaining failure mode is a genuine platform capacity ceiling, not a
+bug this codebase can route around without materially cutting research
+depth/quality for the models and topics that need it.

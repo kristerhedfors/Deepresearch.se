@@ -238,6 +238,31 @@ than per-model:
   itself (not reachable from this codebase); see the findings ledger for
   that as an accepted open issue.
 
+**Round 4 (`cybersecurity` query set, mid-long 150s time budgets) found
+the deeper root cause of round 2/3's "silent mid-stream drop" pattern**:
+Workers Logs showed these requests killed by Cloudflare itself with
+`outcome: exceededCpu` — this account is on the Workers **Free** plan
+(a hard 10ms CPU-time-per-request ceiling; confirmed via a direct
+`wrangler deploy` attempt, not just the docs). Nearly all wall-clock time
+in this pipeline is idle waiting on Berget/Exa fetches, which doesn't
+count as CPU time — but a longer time budget legitimately plans deeper
+research (more searches, more gap rounds, a bigger synthesis digest),
+and the extra JSON parsing/decoding/digest-building for verbose models on
+complex topics can tip over 10ms. Once it does, Cloudflare tears down the
+isolate before any of our own error handling can run — unlike the
+finish_reason case above, this one genuinely can't be caught from inside
+the Worker, only prevented. Added a `STREAM_MAX_CHARS` safety valve in
+`berget.js` (bounds a runaway/degenerate generation) — real but
+insufficient alone, since the exhaustion is often cumulative across the
+whole request rather than from one oversized stream. **The actual fix
+requires upgrading this Cloudflare account to Workers Paid ($5/month)**,
+which raises the default ceiling to 30s and allows configuring it up to
+5 minutes via `wrangler.toml`'s `[limits] cpu_ms` — do NOT add that
+section while still on the Free plan, since Cloudflare's deploy API
+rejects it outright and breaks every subsequent deploy (confirmed the
+hard way; see `tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry for the
+full incident and revert).
+
 **Don't commit (or otherwise deploy) mid-battery.** A push to `main`
 triggers Cloudflare's auto-deploy, which can silently truncate in-flight
 streamed requests the battery is relying on — this produced a batch of
