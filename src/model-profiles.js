@@ -23,6 +23,11 @@ const DEFAULT = {
   // Per-phase max_tokens override for completeJson calls. Keys match
   // budget.js's phase names (triage/gap/validate); only set what's needed.
   maxTokensOverride: null,
+  // Skip the post-validation phase entirely for this model — for a model
+  // whose validate call has been evidenced to reliably fail to produce a
+  // usable verdict, running it is pure wasted latency/tokens for the same
+  // "draft kept as-is" outcome the fail-soft path already gives for free.
+  skipValidation: false,
 };
 
 const OVERRIDES = {
@@ -47,23 +52,28 @@ const OVERRIDES = {
     priorsMs: { triage: 15_000, search: 2_500, gap: 8_000, synth: 35_000, validate: 20_000 },
   },
 
-  // Same battery: gpt-oss-120b's post-validation phase returned neither
-  // "pass" nor a usable "revise" on 3 of 4 research runs ("Validation
-  // inconclusive — draft kept as-is"), losing the quality-gate benefit
-  // for this model specifically — every other model verified cleanly.
-  // Working hypothesis (couldn't confirm the exact parse/truncation
-  // signature from Workers Logs, despite the parse_mode/finish_reason
-  // diagnostics added for this purpose — the Cloudflare telemetry query
-  // API only returned row-count aggregates, not log content, from this
-  // environment): a verbose/reasoning-leaning model spending tokens on
-  // preamble before its JSON verdict, tripping the validate phase's
-  // max_tokens cap before a complete object forms. Both the reinforcement
-  // line and the larger token budget are safe even if this hypothesis is
-  // wrong — worst case they cost a little extra latency/tokens for this
-  // one model.
+  // gpt-oss-120b's post-validation phase returned neither "pass" nor a
+  // usable "revise" on 3 of 4 research runs in the 2026-07-06 battery
+  // ("Validation inconclusive — draft kept as-is") — every other model
+  // verified cleanly. First attempt: a "JSON only, no preamble"
+  // reinforcement line plus a bumped validate max_tokens, on the
+  // hypothesis that a verbose/reasoning-leaning model was tripping the
+  // token cap before completing its JSON. A follow-up confirmation
+  // battery with that fix deployed showed NO improvement — inconclusive
+  // on all 3 of 3 research runs that reached validation, same rate as
+  // before. Root cause remains unconfirmed (the Cloudflare Workers Logs
+  // telemetry query API only returns row-count aggregates from this
+  // environment, not log content, so the parse_mode/finish_reason
+  // diagnostics added for this purpose couldn't be pulled). With the
+  // failure now reproduced 6 of 7 times across two independent batteries,
+  // the pragmatic fix is to stop attempting the phase for this model
+  // rather than keep guessing at prompt/token tweaks: skip validation
+  // entirely, landing on the same "draft kept as-is" outcome the
+  // inconclusive path already gives, without the wasted latency/tokens.
+  // jsonReinforcement is kept (harmless, may still help triage/gap).
   "openai/gpt-oss-120b": {
     jsonReinforcement: true,
-    maxTokensOverride: { validate: 4500 },
+    skipValidation: true,
   },
 };
 

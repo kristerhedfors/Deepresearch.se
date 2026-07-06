@@ -195,6 +195,12 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   stepDone("synth", "Report drafted");
 
   // ---- Phase 5: post-validation (budgeted) -------------------------------
+  if (profile.skipValidation) {
+    log.info("chat.budget_cut", { cut: "validation_profile_skip" });
+    step("validate", "Validation");
+    stepDone("validate", "Validation skipped for this model");
+    return;
+  }
   const validateNow =
     plan.validate && fitsDeadline(state.startedAt, plan.budgetMs, est.validate);
   if (!validateNow) {
