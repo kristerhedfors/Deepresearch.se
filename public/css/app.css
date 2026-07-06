@@ -507,7 +507,10 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .history-panel {
   position: absolute; top: 0; left: 0; bottom: 0;
   width: min(320px, 86vw);
-  background: var(--panel); border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border-right: 1px solid rgba(255, 255, 255, .55);
   box-shadow: 4px 0 30px rgba(4, 30, 60, .3);
   padding: .9rem 1rem 1rem;
   display: flex; flex-direction: column; gap: .6rem;
@@ -529,14 +532,14 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   display: flex; align-items: stretch; gap: .2rem;
   border-radius: 8px;
 }
-.history-item.active { background: var(--panel-2); }
+.history-item.active { background: rgba(255, 255, 255, .35); }
 .history-open {
   flex: 1; min-width: 0; text-align: left;
   background: transparent; color: var(--text);
   border-radius: 8px; padding: .45rem .55rem;
   display: flex; flex-direction: column; gap: .1rem;
 }
-.history-item:hover .history-open, .history-open:focus-visible { background: var(--panel-2); }
+.history-item:hover .history-open, .history-open:focus-visible { background: rgba(255, 255, 255, .35); }
 .history-title {
   font-size: .85rem; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
