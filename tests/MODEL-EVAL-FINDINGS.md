@@ -19,34 +19,16 @@ file is the durable record of what mattered from it.
 
 ## Open issues / improvement potential (living list — edit in place, only this section)
 
-1. **GLM-4.7-FP8 / Kimi-K2.6 / Llama-3.3-70B-Instruct / gemma-4-31B-it:
-   silent request death — root cause found in round 4, only partially
-   fixable from this codebase.** Round 4 traced this (previously assumed
-   to be pure Berget-side connection flakiness) to Cloudflare killing the
-   Worker invocation itself with `outcome: exceededCpu` — this account is
-   on the Workers **Free** plan, a hard **10ms CPU time per request**
-   ceiling (confirmed both via Cloudflare's docs and by a direct deploy
-   attempt: raising it via `wrangler.toml`'s `[limits] cpu_ms` is flatly
-   rejected on Free — "CPU limits are not supported for the Free plan",
-   code 100328). Most requests never approach 10ms of actual CPU (nearly
-   all wall-clock time is idle waiting on Berget/Exa fetches, which
-   doesn't count as CPU time) — but heavier processing (bigger digests,
-   more search results, more verbose model output) for certain models on
-   complex topics can tip over it, and once it does, Cloudflare tears
-   down the isolate with NO exception for our own error handling to
-   catch — this is NOT the same as the finish_reason-missing case round 3
-   fixed (that one we CAN observe and throw on; this one the platform
-   kills before any of our code runs again). Round 3's "mid-stream drop"
-   framing was likely this same mechanism observed on simpler queries
-   where it trips less often; Berget-side hardware instability (per the
-   site owner's own account) may still compound this by making certain
-   models more verbose/erratic on some requests than others, but the
-   *ceiling* being hit is Cloudflare's, not Berget's.
-   **Real fix: upgrade this account to Workers Paid ($5/month)** — raises
-   the default to 30s and makes it configurable up to 5 minutes. Until
-   then, this is an accepted platform-capacity limitation, not a code bug
-   — see round 4's entry below for what was and wasn't fixed from this
-   side.
+1. ~~GLM-4.7-FP8 / Kimi-K2.6 / Llama-3.3-70B-Instruct / gemma-4-31B-it:
+   silent request death.~~ **Resolved.** Root cause: Cloudflare killing
+   the Worker invocation itself with `outcome: exceededCpu` — this
+   account was on the Workers Free plan (hard 10ms CPU/request ceiling).
+   Upgraded to Workers Paid + `wrangler.toml`'s `[limits] cpu_ms =
+   300_000`; a 4-model confirmation battery went from mostly-failing to
+   19/20 succeeding, and `outcome: exceededCpu` no longer appears in
+   Workers Logs. The one residual failure was a distinct bug (a clean
+   stream completing with zero content) fixed separately with a retry —
+   see round 4's continued entry for the full chain and final numbers.
 2. ~~Prompt-injection resistance is inconsistent.~~ **Resolved** — see
    round 3's final verification entry below. Both previously-failing
    models now reliably run the actual research instead of complying.
@@ -349,3 +331,77 @@ changes are planned here until that decision is made, since the
 remaining failure mode is a genuine platform capacity ceiling, not a
 bug this codebase can route around without materially cutting research
 depth/quality for the models and topics that need it.
+
+---
+
+## Round 4 continued — 2026-07-06 (plan upgrade + residual bug)
+
+**The site owner upgraded the Cloudflare account to Workers Paid.**
+Confirmed via a direct `wrangler deploy` (previously rejected with "CPU
+limits are not supported for the Free plan"; now succeeds) and the
+script's settings API showing `limits.cpu_ms: 300000` live — re-added
+`[limits] cpu_ms = 300_000` to `wrangler.toml` (`bac0ce0`).
+
+**Re-ran the same 4-model cybersecurity confirmation battery
+(GLM-4.7-FP8, Kimi-K2.6, gemma-4-31B-it, Llama-3.3-70B-Instruct;
+150s budget): 19/20 succeeded with real content** — GLM went from
+2-3/5 to 5/5, gemma from 1/5 to 5/5, Llama from 1/5 to 5/5, Kimi from
+0/5 to 4/5. Workers Logs confirmed `outcome: exceededCpu` is gone from
+every request checked. This closes the CPU-ceiling half of Open issue
+#1 for good.
+
+**One residual failure surfaced a distinct, previously-undiagnosed bug**:
+Kimi-K2.6's one remaining failure (`tech_ztna_vpn`, 0 chars) traced via
+Workers Logs to a request that completed the ENTIRE pipeline normally —
+`outcome: ok`, every phase logged, `chat.complete` fired, `validate`
+returned `{"verdict":"pass"}` — but synthesis itself produced zero
+content despite a clean `finish_reason`. Not a dropped connection (round
+3's fix correctly let it through, since the stream WAS complete) and not
+a CPU kill — a genuinely empty completion silently delivered to the user
+as a blank answer. **Fix:** `streamCompletion` (`pipeline.js`) now retries
+once on an empty-but-clean completion before giving up (`49b29b3`).
+
+**Verification of the retry fix (unconfounded — Berget's wallet had run
+dry mid-testing; re-ran clean after it was topped up):** Kimi-K2.6, all 5
+cybersecurity queries — 3/5 succeeded with real content, 2/5 exhausted
+the retry and surfaced a clear, visible error ("Berget returned an empty
+response twice in a row for this model") instead of the old silent blank
+answer. The retry doesn't eliminate Kimi's tendency toward empty
+completions (a real, apparently model-specific quirk), but it converts
+every occurrence from invisible data loss into either a recovered answer
+or an honest, visible failure — the actual goal.
+
+**Unplanned finding during this verification: Berget's wallet balance
+hit zero mid-session**, surfaced as `INSUFFICIENT_WALLET_BALANCE` (402)
+on every model, confirmed live via the simplest possible request (no
+search, default model) — this was a real production outage, not a test
+artifact, caused by the cumulative cost of this session's battery
+testing. Resolved by the site owner topping up the balance. This, plus
+the fact that neither the exceededCpu kills nor this wallet depletion
+had any visible signal beyond Workers Logs (which nobody watches
+continuously), motivated a new feature: **`src/alerts.js`**, a D1-backed
+operational alert system. `chat.js`'s catch classifies caught pipeline
+errors into a small set of stable types (`berget_insufficient_balance`
+critical, `chat_empty_completion`, `chat_dropped_stream`, generic
+`chat_stream_failed` fallback) and upserts by type — repeat occurrences
+bump a counter rather than flooding the table. Surfaced in `/admin`'s new
+Alerts section (dismissible) and as a white circular notification badge
+on the header's account button (`/api/me`'s new `notifications` field,
+admin-only) — visible from the main chat view, not just after opening
+`/admin` — combined with the pending-sign-in-approval count that already
+existed but had no equivalent visibility outside the admin user list
+(`02b402c`).
+
+**Decisions:** Open issue #1 fully resolved (CPU ceiling fixed by the
+plan upgrade; the one residual empty-completion mode fixed by the retry).
+Alerts system is new, general-purpose infrastructure — not itself a
+research-quality fix, but closes the "found in Workers Logs, nobody
+noticed" gap this exact round exposed twice (CPU kills, then wallet
+depletion).
+
+**Carried forward:** none — round 4 is fully closed. Watch whether
+Kimi-K2.6's empty-completion rate (now ~40% per query, retried) continues
+at this level in future rounds; if it stays this high, consider whether
+a model-profiles.js entry (e.g. widening the retry to 2 attempts for this
+specific model) is warranted — not yet justified by a large enough
+sample to be more than a hunch.

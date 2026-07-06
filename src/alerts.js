@@ -43,6 +43,28 @@ export function classifyChatError(message) {
   };
 }
 
+// Suggested remediation per alert type — looked up at READ time (not
+// stored on the row) so wording improvements apply retroactively to
+// existing rows and don't require a migration. Keyed by the same stable
+// types classifyChatError() produces; unmatched/custom types (a future
+// raiseAlert() call this file doesn't know about yet) fall back to a
+// generic "check Workers Logs" pointer rather than showing nothing.
+const REMEDIATIONS = {
+  berget_insufficient_balance:
+    "Top up the Berget.ai account balance in their dashboard (billing/wallet section) — every research request fails until it's funded again. Confirm it's resolved by sending any chat message; a 402 error means it's still empty.",
+  chat_empty_completion:
+    "Usually a transient model quirk — the pipeline already retries once automatically before this fires, so this alert means BOTH attempts came back empty. If one specific model keeps recurring here, consider a model-profiles.js override (e.g. widening the retry) once the pattern is clearly evidenced across several occurrences, not a one-off.",
+  chat_dropped_stream:
+    "Known Berget-side connection instability for certain models, not fixable from this codebase — see tests/MODEL-EVAL-FINDINGS.md's open issues. No action needed unless the rate climbs sharply; that would suggest a new, different root cause worth investigating via Workers Logs.",
+  chat_stream_failed:
+    "Check Workers Logs for the chat.stream_failed event (search by request id or timeframe) to see the actual error — this is a catch-all for failures that don't match a more specific known pattern yet.",
+};
+const DEFAULT_REMEDIATION = "Check Workers Logs for this alert's timeframe to see the underlying error in full.";
+
+function withRemediation(row) {
+  return { ...row, remediation: REMEDIATIONS[row.type] || DEFAULT_REMEDIATION };
+}
+
 export async function raiseAlert(env, type, severity, message, detail) {
   const db = await getDb(env);
   if (!db) return;
@@ -70,7 +92,7 @@ export async function listAlerts(env) {
   const { results } = await db
     .prepare(`SELECT * FROM alerts ORDER BY (acknowledged_at IS NOT NULL), last_seen_at DESC`)
     .all();
-  return results || [];
+  return (results || []).map(withRemediation);
 }
 
 export async function countOpenAlerts(env) {

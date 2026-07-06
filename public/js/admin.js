@@ -49,40 +49,78 @@ async function load() {
   renderConfig();
 }
 
-// ---- alerts ---------------------------------------------------------------
+// ---- notification center ---------------------------------------------------
+// Unifies everything needing admin attention — pending sign-in approvals
+// (already in overview.users) and operational alerts (overview.alerts) —
+// each rendered with a plain-language issue description and a suggested
+// remediation, so this is a place to ACT from, not just a log to skim.
 
 function renderAlerts() {
   const box = $("alerts");
-  const open = (overview.alerts || []).filter((a) => !a.acknowledged_at);
-  if (!open.length) {
-    box.innerHTML = '<p class="muted">No active alerts.</p>';
-  } else {
-    box.innerHTML = "";
-    for (const a of open) {
-      const el = document.createElement("div");
-      el.className = "rowitem alert-row";
-      el.innerHTML = `
-        <div class="head">
-          <span class="badge ${a.severity === "critical" ? "critical" : "pending"}">${escapeHtml(a.severity)}</span>
-          <b>${escapeHtml(a.message)}</b>
-          <span class="spacer"></span>
-          <button data-act="ack">Dismiss</button>
-        </div>
-        <p class="muted" style="margin:.35rem 0 0">
-          Seen ${a.count}× · first ${new Date(a.first_seen_at).toLocaleString()} ·
-          last ${new Date(a.last_seen_at).toLocaleString()}
-          ${a.detail ? `<br>${escapeHtml(a.detail)}` : ""}
-        </p>`;
-      el.querySelector('[data-act="ack"]').addEventListener("click", async () => {
-        try {
-          await api(`/alerts/${a.id}/ack`, { method: "POST" });
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      box.appendChild(el);
-    }
+  const pending = (overview.users || []).filter((u) => u.status === "pending");
+  const openAlerts = (overview.alerts || []).filter((a) => !a.acknowledged_at);
+
+  box.innerHTML = "";
+  if (!pending.length && !openAlerts.length) {
+    box.innerHTML = '<p class="muted">No active notifications.</p>';
+    $("alerts-sec").hidden = false;
+    return;
+  }
+
+  for (const u of pending) {
+    const el = document.createElement("div");
+    el.className = "rowitem notif-row";
+    el.innerHTML = `
+      <div class="head">
+        <span class="badge pending">pending approval</span>
+        <b>New sign-in awaiting approval: ${escapeHtml(u.name || u.email)}</b>
+        <span class="spacer"></span>
+        <button data-act="approve">Approve</button>
+      </div>
+      <p class="muted" style="margin:.35rem 0 0">
+        ${escapeHtml(u.email)} — signed in with Google and is waiting for
+        access. <b>Remediation:</b> click Approve to let them in with the
+        default quota, or leave pending and delete the account below if
+        this sign-in wasn't expected.
+      </p>`;
+    el.querySelector('[data-act="approve"]').addEventListener("click", async () => {
+      try {
+        await api(`/users/${u.id}`, { method: "PATCH", body: { status: "active" } });
+        await load();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    box.appendChild(el);
+  }
+
+  for (const a of openAlerts) {
+    const el = document.createElement("div");
+    el.className = "rowitem notif-row";
+    el.innerHTML = `
+      <div class="head">
+        <span class="badge ${a.severity === "critical" ? "critical" : "pending"}">${escapeHtml(a.severity)}</span>
+        <b>${escapeHtml(a.message)}</b>
+        <span class="spacer"></span>
+        <button data-act="ack">Dismiss</button>
+      </div>
+      <p class="muted" style="margin:.35rem 0 0">
+        <b>Remediation:</b> ${escapeHtml(a.remediation || "")}
+      </p>
+      <p class="muted" style="margin:.35rem 0 0">
+        Seen ${a.count}× · first ${new Date(a.first_seen_at).toLocaleString()} ·
+        last ${new Date(a.last_seen_at).toLocaleString()}
+        ${a.detail ? `<br>${escapeHtml(a.detail)}` : ""}
+      </p>`;
+    el.querySelector('[data-act="ack"]').addEventListener("click", async () => {
+      try {
+        await api(`/alerts/${a.id}/ack`, { method: "POST" });
+        await load();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    box.appendChild(el);
   }
   $("alerts-sec").hidden = false;
 }
