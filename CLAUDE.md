@@ -78,6 +78,20 @@ catalog and surfaces per-model failure/quirk patterns from the resulting
 SSE traces (see that file's header for methodology and how to re-run it
 when Berget's catalog changes).
 
+Not every finding from that harness is model-specific, though: a round 2
+battery surfaced requests that died silently mid-pipeline for a few
+models — no error, no client-visible failure, just a stream that stopped.
+Workers Logs showed several phases completing normally then nothing, with
+`chat.complete` never firing — the signature of an awaited `fetch()` that
+never settles, not a thrown/caught exception. Root cause: `src/berget.js`'s
+two Berget calls had **no timeout at all**, so a hung backend response
+could silently defeat every fail-soft path in this pipeline. Fixed
+universally (not via a model profile) — `completeJson` bounds the whole
+call at 45s, `chatCompletion` bounds only the time to receive a response
+(30s) so a legitimately long stream can still be read afterward. Verified
+live: the previously flaky models went from 1-4 failures per 5 queries to
+0-1.
+
 ### Code layout
 
 Server (`src/`):
@@ -102,7 +116,7 @@ Server (`src/`):
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
-| `berget.js` | Berget client: streaming + JSON-mode completions, model catalog (incl. raw per-token pricing) |
+| `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
@@ -172,14 +186,22 @@ npm run test:live     # 4 tests, real Berget tokens + one Exa run
 
 **Model-matrix eval (`tests/model-eval.mjs`)**: a separate tool from the
 Playwright suite above — a plain Node script (no deps) that runs a fixed
-battery of 5 research queries against every `up` model from `/api/models`
+battery of research queries against every `up` model from `/api/models`
 directly via the live SSE endpoint, to find per-model behavior
 differences (see `src/model-profiles.js`). Not pass/fail; it's a
 data-collection sweep whose output is read and analyzed by hand.
+Multiple named query sets exist in `QUERY_SETS` (`round1`, `round2`, ...)
+— add a new named set for a fresh sweep rather than editing an old one,
+so past findings stay reproducible against the exact set that produced
+them. Queries can be multi-turn (`turns: [...]`): the harness resends the
+ACTUAL streamed answer as the assistant turn for the next request, the
+same as the real client, to exercise conversation-context handling
+(e.g. triage resolving "this"/"it" from a prior turn) rather than
+simulating it.
 
 ```bash
 cd tests && npm run eval:models   # BASIC_AUTH_USER/PASS required
-# EVAL_MODELS=id1,id2 EVAL_BUDGET_S=60 EVAL_CONCURRENCY=3 are optional overrides
+# EVAL_QUERY_SET=round2 EVAL_MODELS=id1,id2 EVAL_BUDGET_S=60 EVAL_CONCURRENCY=3 are optional overrides
 ```
 
 Results land in `tests/model-eval-results/<timestamp>/` (gitignored — raw
@@ -189,6 +211,13 @@ tool-call-shaped tokens) plus a `_summary.json`. Re-run this whenever
 Berget's catalog changes materially (new model, or a model profiled in
 `model-profiles.js` gets updated by its provider) to check whether
 existing overrides still apply and whether new ones are needed.
+
+**Don't commit (or otherwise deploy) mid-battery.** A push to `main`
+triggers Cloudflare's auto-deploy, which can silently truncate in-flight
+streamed requests the battery is relying on — this produced a batch of
+confusing zero-answer results during the round 2 battery (traced to a
+mid-run `git push`, not a real bug) before being caught and re-run clean.
+Let a battery finish before pushing anything.
 
 ## UI notes
 

@@ -278,10 +278,25 @@ unaffected:
   path already gives, without the wasted latency/tokens.
 
 Every override must trace back to a reproduced finding from
-`tests/model-eval.mjs` — a battery of 5 representative research queries
-run against every `up` model in the live catalog, surfacing per-model
-failure/quirk patterns from the resulting SSE traces (see that file's
-header for methodology; CLAUDE.md documents how to run it).
+`tests/model-eval.mjs` — a battery of representative research queries
+(multiple named sets; see that file's header) run against every `up`
+model in the live catalog, surfacing per-model failure/quirk patterns
+from the resulting SSE traces (CLAUDE.md documents how to run it).
+
+**Not every finding is model-specific.** A round 2 battery surfaced
+requests that died silently mid-pipeline — no error, no client-visible
+failure — for a subset of models. Workers Logs showed several phases
+completing normally (info level), then nothing: no warn/error, and
+`chat.complete` (unconditionally logged in `chat.js`'s `finally` block)
+never fired. That signature is an awaited `fetch()` that never settles,
+not a thrown/caught exception — neither Berget call in `src/berget.js`
+had a timeout, so a hung backend response could silently defeat every
+fail-soft path described above. Fixed universally rather than per-model:
+`completeJson` bounds the whole call at 45s; `chatCompletion` bounds only
+the time to receive a response (30s), clearing the timer once `fetch()`
+settles so a legitimately long stream can still be read afterward.
+Verified live: previously flaky models went from 1-4 failures per 5
+queries to 0-1.
 
 ### 4.4 SSE protocol
 
