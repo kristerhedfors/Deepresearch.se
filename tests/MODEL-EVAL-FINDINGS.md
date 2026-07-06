@@ -47,15 +47,28 @@ file is the durable record of what mattered from it.
    instruction-following gap in the "image + external facts → research"
    triage rule. Not yet investigated further; low severity since the
    answer was factually correct.
-5. **Kimi-K2.6's empty-completion rate at shorter time budgets — fix
-   applied in round 6, verification pending.** Combined rounds 5+6
-   evidence: 50% of Kimi-K2.6 runs at a 90s budget exhausted the
-   round-4 single retry (both attempts came back empty). Confirmed via a
-   clean-success spot-check that this is a per-attempt flake, not a
-   deterministic per-query failure, so `model-profiles.js`'s new
-   `maxCompletionAttempts: 3` override (up from the universal default of
-   2) should meaningfully help. Needs a follow-up battery at the same 90s
-   budget to confirm the failure rate actually drops before closing this.
+5. **Kimi-K2.6's empty-completion failures are partly query-specific, not
+   purely random — `maxCompletionAttempts: 3` helps some cases, not
+   all.** Re-running the SAME 5 `science` queries against Kimi-K2.6 three
+   times at a 90s budget (once pre-fix, twice post-fix) revealed a
+   pattern the initial single spot-check missed: `bio_glp1` and
+   `climate_carbon_budget` failed in **all three runs**, including with
+   `maxCompletionAttempts: 3` fully engaged (all 3 attempts came back
+   empty) — while `physics_superconductor` succeeded all three times and
+   `conflicting_alcohol`/`meta_reproducibility` succeeded in 2 of 3. This
+   contradicts the round 6 write-up's original conclusion (drawn from a
+   single clean-success spot-check) that this was purely a per-attempt
+   flake — it's a MIX: some queries are attempt-random (retry helps) and
+   at least two are near-deterministic for this model regardless of
+   retry count (retry doesn't help). Root cause for the deterministic
+   subset is unconfirmed — plausibly something about the retrieved
+   source content or digest for these specific topics, but Berget/Workers
+   Logs give no visibility into actual completion content to confirm.
+   The `maxCompletionAttempts` fix is kept (it demonstrably helps the
+   attempt-random subset, and turns every failure into a visible error
+   either way) but this issue is NOT fully closed — a real, evidenced
+   subset of Kimi-K2.6 requests will still fail no matter how many
+   retries are configured.
 
 ---
 
@@ -501,22 +514,32 @@ concurrency 2 — run in parallel with round 5's `science` battery.
 **Decisions:**
 - Combined with round 5: Kimi-K2.6's empty-completion failure, even with
   the round-4 single retry, exhausted both attempts in 5 of 10 runs
-  (50%) at a 90s budget — and critically, a spot-check of a clean success
-  (`physics_superconductor`, round 5) showed NO retry was needed at all,
-  proving this is a per-attempt flake rather than a deterministic
-  per-query failure, so an additional retry attempt should meaningfully
-  help rather than just repeating the same failure. Added
-  `maxCompletionAttempts` to `model-profiles.js` (default 2, matching
-  today's universal behavior) and set it to 3 for Kimi-K2.6 specifically
-  — evidence-gated, not a guess. Wired into `pipeline.js`'s
-  `streamCompletion` retry loop; `alerts.js`'s error classifier regex
-  updated to match a variable attempt count instead of a hardcoded
-  "twice."
+  (50%) at a 90s budget. Added `maxCompletionAttempts` to
+  `model-profiles.js` (default 2, matching today's universal behavior)
+  and set it to 3 for Kimi-K2.6 — evidence-gated, not a guess. Wired into
+  `pipeline.js`'s `streamCompletion` retry loop; `alerts.js`'s error
+  classifier regex updated to match a variable attempt count instead of a
+  hardcoded "twice."
 - This is the first `model-profiles.js` field targeting the empty-
   completion failure mode specifically (previous fields addressed speed
   priors, JSON reinforcement, and validation skipping) — a new dimension
   of per-model adaptation, evidence-driven per this module's convention.
+- **Verification found the fix's justification was half-right.** Re-running
+  the exact same 5 `science` queries against Kimi-K2.6 twice more with the
+  fix live showed `bio_glp1` and `climate_carbon_budget` failing in
+  EVERY run across all three attempts total (pre-fix + 2 post-fix) — even
+  with 3 full attempts engaged, confirmed via Workers Logs showing 3
+  distinct `chat.empty_completion` warnings before giving up. The
+  original conclusion (drawn from one clean-success spot-check on
+  `physics_superconductor`) that this was purely attempt-random doesn't
+  hold up against the larger sample: it's a mix of attempt-random queries
+  (retry helps — `conflicting_alcohol`, `meta_reproducibility` recovered
+  on later attempts) and at least two that are near-deterministic for
+  this model regardless of retry count. See open issue #5 (corrected) —
+  this is honestly still open, not resolved by the retry-count fix alone.
 
-**Carried forward:** verify the `maxCompletionAttempts: 3` fix actually
-reduces Kimi-K2.6's failure rate at a 90s budget in a follow-up
-confirmation battery before considering this closed.
+**Carried forward:** open issue #5, corrected — `maxCompletionAttempts`
+demonstrably helps a subset of cases but does not eliminate Kimi-K2.6's
+failure rate; root cause for the deterministic subset (why these specific
+topics/queries reliably fail) is unconfirmed and not reachable with the
+diagnostics available in this environment.
