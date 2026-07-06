@@ -66,20 +66,22 @@ database_id = "d9144c29-c8b2-4914-a795-37f8df393ac8"
 # the document-RAG vectors (dimensions must match src/berget.js's embedding
 # model — multilingual-e5-large = 1024).
 #
-# COMMENTED OUT ON PURPOSE: declaring a binding for a resource that does not
-# exist yet makes EVERY deploy fail outright (same failure class as the
-# round-4 cpu_ms incident — see tests/MODEL-EVAL-FINDINGS.md). Without these
-# bindings the feature simply stays off: /api/settings reports it
-# unavailable and the UI hides the knob. One-time setup, then uncomment:
+# These resources were created 2026-07-06 (R2 bucket with location hint
+# weur; Vectorize index 1024 dims/cosine with a string metadata index on
+# `u`) — the bindings below MUST NOT be declared before the resources
+# exist, or every deploy fails outright (same failure class as the round-4
+# cpu_ms incident — see tests/MODEL-EVAL-FINDINGS.md). Removing the
+# bindings simply switches the feature off: /api/settings reports it
+# unavailable and the UI hides the knob. Recreate from scratch with:
 #
-#   npx wrangler r2 bucket create deepresearch-se-storage
+#   npx wrangler r2 bucket create deepresearch-se-storage --location weur
 #   npx wrangler vectorize create deepresearch-se-rag --dimensions=1024 --metric=cosine
 #   npx wrangler vectorize create-metadata-index deepresearch-se-rag --property-name=u --type=string
-#
-# [[r2_buckets]]
-# binding = "STORAGE"
-# bucket_name = "deepresearch-se-storage"
-#
-# [[vectorize]]
-# binding = "RAG_INDEX"
-# index_name = "deepresearch-se-rag"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "deepresearch-se-storage"
+
+[[vectorize]]
+binding = "RAG_INDEX"
+index_name = "deepresearch-se-rag"
