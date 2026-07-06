@@ -1267,3 +1267,29 @@ unblocked the whole suite. All 33 tests green against production.
 | 77 | [`4fca025`](https://github.com/kristerhedfors/Deepresearch.se/commit/4fca025) | 05 21:02 | New chat aborts the in-flight request instead of orphaning it |
 | 78 | [`08e085f`](https://github.com/kristerhedfors/Deepresearch.se/commit/08e085f) | 05 22:18 | llm-assisted utveckling research video *(the repo's first hand-made commit)* |
 | 79 | [`69d3fae`](https://github.com/kristerhedfors/Deepresearch.se/commit/69d3fae) | 05 22:26 | Public promotional surface: landing page with the promo video |
+
+## Cloud storage & document RAG (2026-07-06, one phone session)
+
+The biggest single-session feature since launch, again driven entirely
+from the phone: a per-account **"Store history in the cloud"** setting
+(default off), and retrieval-augmented handling of large attached
+documents.
+
+- **The knob** (`/api/settings`, account panel → Settings): off keeps
+  the original posture — encrypted conversations only in this browser.
+  On mirrors them to Cloudflare **R2 still encrypted with the same
+  key mechanism**, together with attached original files and the
+  document-search index (those two necessarily readable — retrieval
+  needs text; disclosed in the UI and the privacy notice). Flipping it
+  off downloads everything back and wipes the cloud copies — and only
+  wipes when every item came down clean.
+- **Large documents** are no longer truncated to their first pages:
+  parsed in full (thousands of pages), originals kept in OPFS, chunked
+  and embedded through Berget's `multilingual-e5-large`, indexed in
+  IndexedDB locally or Vectorize in cloud mode, and every question
+  sends only the most relevant excerpts — follow-ups included.
+- **Setup ran over the phone too**: the R2 bucket and Vectorize index
+  were created from the Claude session with a scoped API token minted
+  in Safari on the Cloudflare dashboard, bindings verified with a
+  dry-run before the merge, and the deploy confirmed live by running
+  the full 38-test mocked e2e suite against production — all green.
