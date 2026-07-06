@@ -106,3 +106,11 @@ test("@live web search ON with doc + image: Exa searches run and the answer arri
   await expect(turn.locator(".content.md")).not.toHaveText("");
   await expect(turn.locator(".stats")).toContainText("search");
 });
+
+test("@live stop button keeps the partial answer as normal follow-up context", async ({ page }) => {
+  await openApp(page, { webSearch: false, budgetS: 15 });
+  await send(page, "Write a very long, detailed 500-word essay about the history of tea.");
+  await page.locator("#send").click(); // click Stop the instant it appears mid-stream
+  const turn = page.locator(".msg.assistant").last();
+  await expect(turn).toContainText("Stopped", { timeout: 15_000 });
+});
