@@ -13,7 +13,13 @@
 //
 // Run: BASIC_AUTH_USER=... BASIC_AUTH_PASS=... node model-eval.mjs
 // EVAL_QUERY_SET=round2 selects a different set (default: round1).
-// Results land in ./model-eval-results/<run-timestamp>/ (gitignored).
+// Results land in ./model-eval-results/<run-timestamp>/ (gitignored — raw
+// output, useful while actively debugging a round, no lasting value
+// after). MODEL-EVAL-FINDINGS.md is the durable, committed record: read
+// it before a new round (don't re-discover a known issue) and append a
+// dated section to it after every round (findings, decisions, what's
+// still open) — that file is what makes this a hillclimb across rounds
+// instead of a fresh start each time.
 
 import fs from "node:fs";
 import path from "node:path";
