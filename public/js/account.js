@@ -15,6 +15,8 @@
 //   main app for routine Approve/Dismiss actions). Deliberately never
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
+import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
+
 export function initAccountPanel() {
   const overlay = document.getElementById("account");
   const body = document.getElementById("account-body");
@@ -212,7 +214,7 @@ function renderMessages(personal, admin) {
         (u) => `
       <div class="msg-row">
         <span class="badge pending">pending</span>
-        <div><div>New sign-in awaiting approval: ${escapeHtml(u.name || u.email)}</div>
+        <div><div>${pendingApprovalLine(u)}</div>
         <div class="muted msg-when">${escapeHtml(u.email)}</div></div>
         <button data-act="approve" data-id="${u.id}">Approve</button>
       </div>`,
@@ -223,7 +225,7 @@ function renderMessages(personal, admin) {
       .map(
         (a) => `
       <div class="msg-row">
-        <span class="badge ${a.severity === "critical" ? "critical" : "pending"}">${escapeHtml(a.severity)}</span>
+        ${alertSeverityBadge(a)}
         <div><div>${escapeHtml(a.message)}</div>
         <div class="muted msg-when">${escapeHtml(a.remediation || "")}</div></div>
         <button data-act="ack" data-id="${a.id}">Dismiss</button>
@@ -269,10 +271,4 @@ function usageBlock(label, win, rolling) {
     ${budgetBar}
     ${searchBar}
   </div>`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  })[c]);
 }

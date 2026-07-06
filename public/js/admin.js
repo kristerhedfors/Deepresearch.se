@@ -3,6 +3,8 @@
 // server-side); this page is just rendering and actions. Accounts are
 // provisioned by Google sign-in — there is nothing to create here.
 
+import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
+
 const $ = (id) => document.getElementById(id);
 const PERIODS = ["h5", "day", "week", "month"];
 const PERIOD_LABEL = { h5: "Last 5 h", day: "Today", week: "This week", month: "This month" };
@@ -73,7 +75,7 @@ function renderAlerts() {
     el.innerHTML = `
       <div class="head">
         <span class="badge pending">pending approval</span>
-        <b>New sign-in awaiting approval: ${escapeHtml(u.name || u.email)}</b>
+        <b>${pendingApprovalLine(u)}</b>
         <span class="spacer"></span>
         <button data-act="approve">Approve</button>
       </div>
@@ -99,7 +101,7 @@ function renderAlerts() {
     el.className = "rowitem notif-row";
     el.innerHTML = `
       <div class="head">
-        <span class="badge ${a.severity === "critical" ? "critical" : "pending"}">${escapeHtml(a.severity)}</span>
+        ${alertSeverityBadge(a)}
         <b>${escapeHtml(a.message)}</b>
         <span class="spacer"></span>
         <button data-act="ack">Dismiss</button>
@@ -356,12 +358,6 @@ function renderConfig() {
     }
   };
   $("config-sec").hidden = false;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  })[c]);
 }
 
 load();

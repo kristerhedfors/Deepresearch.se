@@ -259,87 +259,99 @@ export async function sendMessage(text, opts) {
         ackAnswer(requestId);
         return;
       }
-      // The user pressed Stop: keep whatever streamed so far as normal
-      // (non-error) context — that's the whole point of stopping instead
-      // of just waiting, the partial answer is still there for a
-      // follow-up question. The server finishes the research in the
-      // background regardless (src/chat.js's ctx.waitUntil), so purge its
-      // recovery copy — nobody will poll for it.
-      ackAnswer(requestId);
-      if (acc) {
-        const stopped = acc + "\n\n*(Stopped.)*";
-        setText(turn, stopped);
-        history.push({ role: "assistant", content: stopped });
-      } else {
-        setError(turn, "Stopped before any response arrived.");
-        history.pop();
-      }
+      handleStopped(turn, acc, requestId);
       return;
     }
-    // Tell the server why the client's side died — it often can't know
-    // (a download-triggered navigation or backgrounded tab kills the fetch
-    // without a clean disconnect). sendBeacon survives page teardown.
-    try {
-      navigator.sendBeacon?.(
-        "/api/client-error",
-        new Blob(
-          [JSON.stringify({
-            request_id: requestId,
-            error: String(e?.message || e).slice(0, 200),
-            was_hidden: wasHidden,
-            received_chars: acc.length,
-          })],
-          { type: "application/json" },
-        ),
-      );
-    } catch { /* reporting must never mask the real error */ }
-
-    // The server finishes the research even when our connection dies and
-    // parks the answer in a short-lived recovery cache — poll it back
-    // before bothering the user.
-    const recovered = await recoverAnswer(turn, requestId, opts.budgetS, gen);
-    if (gen !== generation) {
-      // Chat was cleared while recovery was polling — drop the result.
-      ackAnswer(requestId);
-      return;
-    }
-    if (recovered) {
-      acc = recovered.text;
-      setText(turn, acc);
-      if (recovered.stats) {
-        turn.model = recovered.stats.model || "";
-        renderStats(turn, recovered.stats);
-      }
-      history.push({ role: "assistant", content: acc });
-      ackAnswer(requestId);
-      return;
-    }
-
-    const ref = requestId ? " (ref " + requestId.slice(0, 8) + ")" : "";
-    setError(
-      turn,
-      wasHidden
-        ? "Connection lost while the app was in the background — the phone pauses " +
-          "network for backgrounded apps. Keep the app open while research runs. " +
-          (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
-        : "Network error: " + e.message + ref,
-    );
-    if (acc) {
-      // Keep whatever streamed before the connection dropped: the partial
-      // answer is visible in the bubble, so it must be in the context of
-      // follow-up questions too. The marker tells the model (and reader)
-      // that it ends abruptly.
-      history.push({
-        role: "assistant",
-        content: acc + "\n\n[This answer was cut off by a connection error.]",
-      });
-    } else {
-      // Nothing arrived at all — drop the question so a retry starts clean.
-      history.pop();
-    }
+    await handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opts.budgetS);
   } finally {
     inFlight = false;
     document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
+  }
+}
+
+// The user pressed Stop mid-stream: keep whatever streamed so far as
+// normal (non-error) context — that's the whole point of stopping instead
+// of just waiting, the partial answer is still there for a follow-up
+// question. The server finishes the research in the background regardless
+// (src/chat.js's ctx.waitUntil), so purge its recovery copy — nobody will
+// poll for it.
+function handleStopped(turn, acc, requestId) {
+  ackAnswer(requestId);
+  if (acc) {
+    const stopped = acc + "\n\n*(Stopped.)*";
+    setText(turn, stopped);
+    history.push({ role: "assistant", content: stopped });
+  } else {
+    setError(turn, "Stopped before any response arrived.");
+    history.pop();
+  }
+}
+
+// Any non-abort exception (dropped connection, backgrounded-tab network
+// suspension, etc): tell the server why the client's side died, try to
+// recover the finished answer from the short-lived server cache, and only
+// fall back to a visible error once recovery comes up empty.
+async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, budgetS) {
+  // Tell the server why the client's side died — it often can't know (a
+  // download-triggered navigation or backgrounded tab kills the fetch
+  // without a clean disconnect). sendBeacon survives page teardown.
+  try {
+    navigator.sendBeacon?.(
+      "/api/client-error",
+      new Blob(
+        [JSON.stringify({
+          request_id: requestId,
+          error: String(e?.message || e).slice(0, 200),
+          was_hidden: wasHidden,
+          received_chars: acc.length,
+        })],
+        { type: "application/json" },
+      ),
+    );
+  } catch { /* reporting must never mask the real error */ }
+
+  // The server finishes the research even when our connection dies and
+  // parks the answer in a short-lived recovery cache — poll it back
+  // before bothering the user.
+  const recovered = await recoverAnswer(turn, requestId, budgetS, gen);
+  if (gen !== generation) {
+    // Chat was cleared while recovery was polling — drop the result.
+    ackAnswer(requestId);
+    return;
+  }
+  if (recovered) {
+    acc = recovered.text;
+    setText(turn, acc);
+    if (recovered.stats) {
+      turn.model = recovered.stats.model || "";
+      renderStats(turn, recovered.stats);
+    }
+    history.push({ role: "assistant", content: acc });
+    ackAnswer(requestId);
+    return;
+  }
+
+  const ref = requestId ? " (ref " + requestId.slice(0, 8) + ")" : "";
+  setError(
+    turn,
+    wasHidden
+      ? "Connection lost while the app was in the background — the phone pauses " +
+        "network for backgrounded apps. Keep the app open while research runs. " +
+        (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
+      : "Network error: " + e.message + ref,
+  );
+  if (acc) {
+    // Keep whatever streamed before the connection dropped: the partial
+    // answer is visible in the bubble, so it must be in the context of
+    // follow-up questions too. The marker tells the model (and reader)
+    // that it ends abruptly.
+    history.push({
+      role: "assistant",
+      content: acc + "\n\n[This answer was cut off by a connection error.]",
+    });
+  } else {
+    // Nothing arrived at all — drop the question so a retry starts clean.
+    history.pop();
   }
 }

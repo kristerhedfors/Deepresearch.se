@@ -21,15 +21,23 @@ export function startGenericStep(turn, id, label) {
   turn.steps[id] = { details, summary, label: lab };
 }
 
-export function finishGenericStep(turn, s) {
-  const step = turn.steps[s.id];
-  if (!step) return;
+// Shared by finishGenericStep/finishSearchStep: marks a step's details/
+// summary as finished — adds the "finished" class and swaps the spinner
+// for a checkmark. Doesn't touch "expandable"; callers add that based on
+// whether they have anything to show inside.
+function markFinished(step) {
   step.details.classList.add("finished");
   step.summary.querySelector(".spin")?.remove();
   const check = document.createElement("span");
   check.className = "check";
   check.textContent = "✓";
   step.summary.prepend(check);
+}
+
+export function finishGenericStep(turn, s) {
+  const step = turn.steps[s.id];
+  if (!step) return;
+  markFinished(step);
   step.label.textContent = s.label || "";
   const items = Array.isArray(s.details) ? s.details : [];
   if (items.length) {
@@ -74,12 +82,8 @@ export function finishSearchStep(turn, info) {
   const step = turn.pendingSearchSteps?.get(info.query);
   if (!step) return;
   turn.pendingSearchSteps.delete(info.query);
-  step.details.classList.add("finished", "expandable");
-  step.summary.querySelector(".spin")?.remove();
-  const check = document.createElement("span");
-  check.className = "check";
-  check.textContent = "✓";
-  step.summary.prepend(check);
+  markFinished(step);
+  step.details.classList.add("expandable");
   const n = info.results ?? 0;
   step.label.textContent =
     "Searched “" + info.query + "” · " +
