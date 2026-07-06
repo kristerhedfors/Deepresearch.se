@@ -103,13 +103,32 @@ webSearchBox.addEventListener("change", () => {
 });
 syncSearchToggle();
 
-// 🔍 symbol: tap/click for a popover explaining the web-search knob
-// (title tooltips don't exist on touch devices).
+// The web-search popover opens on a press-and-hold of the spiderweb knob
+// itself (the separate 🔍 button was dropped to give the slider its space).
+// A held press must NOT also flip the toggle, so the label's click is
+// swallowed when the hold timer fired.
 const searchPop = document.getElementById("searchpop");
-document.getElementById("searchinfo").addEventListener("click", (e) => {
-  e.stopPropagation();
-  searchPop.hidden = !searchPop.hidden;
+const searchToggle = document.getElementById("searchtoggle");
+let holdTimer = 0;
+let holdFired = false;
+searchToggle.addEventListener("pointerdown", () => {
+  holdFired = false;
+  holdTimer = setTimeout(() => {
+    holdFired = true;
+    searchPop.hidden = false;
+  }, 500);
 });
+for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+  searchToggle.addEventListener(ev, () => clearTimeout(holdTimer));
+}
+searchToggle.addEventListener("click", (e) => {
+  if (holdFired) {
+    e.preventDefault();
+    e.stopPropagation();
+    holdFired = false;
+  }
+});
+searchToggle.addEventListener("contextmenu", (e) => e.preventDefault());
 document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
