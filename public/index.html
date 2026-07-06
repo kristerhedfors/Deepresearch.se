@@ -21,6 +21,9 @@
     <div class="header-bar">
       <div class="brand">DeepResearch.se</div>
       <div class="header-right">
+        <button id="historybtn" type="button" title="Chat history" aria-label="Chat history" hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        </button>
         <button id="clearbtn" type="button" title="New chat" aria-label="New chat">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>
         </button>
@@ -70,6 +73,19 @@
     </div>
   </div>
 
+  <div id="historysidebar" hidden>
+    <aside class="history-panel">
+      <div class="history-head">
+        <strong>Chat history</strong>
+        <button id="historyclose" type="button" aria-label="Close">✕</button>
+      </div>
+      <button id="historynewbtn" type="button" class="history-new">+ New chat</button>
+      <div id="historylist" class="history-list"><p class="muted">Loading…</p></div>
+      <p class="history-footnote">Stored only in this browser, encrypted with a key
+        this server never sees in the clear. <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
+    </aside>
+  </div>
+
   <div id="account" hidden>
     <div class="account-card">
       <div class="account-head">
@@ -89,9 +105,13 @@
       <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a> to find
       sources — Exa may retain those queries under its own policy (see the
       documentation for a two-step workflow around this).</p>
-      <p>We don't store your conversations — chat history lives only in this
-      browser tab and disappears with "New chat" or a reload. Server logs hold
-      technical metadata only (timings, counts), never message content.
+      <p>We don't store your conversations on our server — chat history is
+      saved only in this browser, encrypted with a key the server never
+      writes down anywhere (see the History panel and the documentation for
+      how that works). Deleting a conversation there, or clearing this
+      browser's site data, erases it for good; we have no copy to recover.
+      Server logs hold technical metadata only (timings, counts), never
+      message content.
       If your connection drops mid-answer, the finished answer is held
       server-side for up to 15 minutes so your device can pick it up when it
       reconnects — it's deleted the moment it's delivered, or when the 15

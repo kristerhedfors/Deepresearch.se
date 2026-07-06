@@ -148,8 +148,9 @@ function renderSummary(me) {
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
-    <!-- Page links open NEW TABS: the conversation lives only in this
-         tab's memory, so a same-tab navigation would destroy it. -->
+    <!-- Page links open NEW TABS: even though history now persists across
+         reloads (encrypted, local — see /help/), a same-tab navigation
+         would still abort any in-flight research request. -->
     <div class="account-actions">
       <button id="messagesbtn" type="button"${msgCount ? ' class="has-badge"' : ""}>Messages${msgCount ? ` (${msgCount})` : ""}</button>
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>

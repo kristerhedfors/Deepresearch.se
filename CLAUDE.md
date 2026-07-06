@@ -123,19 +123,82 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
+| `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
 search knob, composer), `stream.js` (conversation history + `/api/chat`
-SSE send loop), `models.js` (model dropdown), `attachments.js` (pending
-images/docs, downscaling), `account.js` (account & usage panel),
-`turns.js` (bubbles/content/tools), `activity.js` (step bars, stats,
-collapse), `markdown.js` (sanitized rendering), `timescale.js` (slider
-scale). Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css`
-(served only to admins). Vendored libs in `vendor/` (`marked`,
-`DOMPurify`).
+SSE send loop, autosaves to encrypted local history after every turn),
+`models.js` (model dropdown), `attachments.js` (pending images/docs,
+downscaling), `account.js` (account & usage panel), `turns.js`
+(bubbles/content/tools, plus reconstructing a stored conversation on
+load), `activity.js` (step bars, stats, collapse), `markdown.js`
+(sanitized rendering), `timescale.js` (slider scale), `history-store.js`
+(IndexedDB + AES-GCM: the encrypted conversation store itself),
+`history-ui.js` (the left history sidebar: list/rename/delete/load).
+Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
+only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
+
+### Chat history — fully client-side, encrypted
+
+Conversations are never sent to, or stored on, the server — but unlike
+the original ephemeral-only design (history erased by "New chat" or a
+reload), every conversation now **persists across reloads inside the
+browser itself**, listed in a left-side history panel (`history-ui.js`)
+the same way a normal chat app's sidebar works: labelled by its first
+question, clickable to reopen, renamable, deletable.
+
+**Storage**: IndexedDB (`history-store.js`, database `dr_history`) — the
+modern, higher-capacity, async successor to `localStorage`, appropriate
+here since a conversation with attached images can be sizeable. Every
+record is AES-256-GCM encrypted before it is written; even the title
+(which can reveal the topic) lives inside the ciphertext, so listing
+conversations for the sidebar means decrypting each one — fine at the
+scale one person's history reaches.
+
+**Key hierarchy — the actual security property being engineered for**:
+the encryption key is deterministically derived server-side
+(`GET /api/history-key`, `src/history-key.js`: HMAC-SHA256 of a
+`HISTORY_KEY_SECRET` Worker secret + the user's id) and fetched by the
+client fresh once per page load, held **only in a module-level JS
+variable — never written to `localStorage`, `IndexedDB`, or any other
+disk-backed storage**. This split key-vs-ciphertext residency is the
+whole design:
+  - **Offline extraction of the browser's storage** (a stolen device, a
+    disk image, IndexedDB pulled at rest) recovers only ciphertext — the
+    key was never persisted there to find.
+  - **A server compromise** recovers `HISTORY_KEY_SECRET` (and could
+    derive any user's key on demand) but recovers no ciphertext at all,
+    since conversation content never leaves the browser.
+  - Only the **combination** — a live compromise able to mint the key,
+    AND separate access to that specific browser's storage — can decrypt
+    anything. This is disclosed as the honest limitation at `/help/`, not
+    hidden: it is a materially higher bar than either alone, not a claim
+    that either compromise is harmless in every context.
+  - Deterministic derivation means the same signed-in identity always
+    re-derives the same key — this does NOT sync history across
+    devices/browsers (each one's IndexedDB is its own copy), it only
+    means no key itself ever needs to be the thing that's persisted.
+
+**Fails closed, not soft, and deliberately so**: unlike D1-backed
+features elsewhere in this app, there is no plaintext fallback when
+`HISTORY_KEY_SECRET` is unset — `/api/history-key` returns 503, and the
+client hides the History button entirely (`historyAvailable()` in
+`history-store.js`) rather than silently storing conversations
+unencrypted. A plaintext fallback would defeat the point of the feature.
+
+**What's stored per conversation**: title, the same `{role, content}`
+message array `stream.js` already sends to `/api/chat`, plus the model /
+time-budget / web-search settings it was sent with (restored when you
+reopen it — `app.js`'s `onLoad` callback). Live-session-only details
+(activity step traces, per-turn stats) are NOT persisted — reopening a
+conversation shows the final messages, not a replay of the research
+steps. Document-attachment names aren't reconstructed as chips on reload
+either (their text was already embedded inline in the message when
+sent) — both are accepted, cosmetic simplifications, not correctness
+gaps.
 
 ### /api/chat SSE protocol
 
@@ -338,15 +401,15 @@ Let a battery finish before pushing anything.
   stays visible between the items and through their translucency. The
   header stacks TWO rows: the brand as plain characters (no pane, soft
   white text-glow, never captures clicks) and beneath it the glass
-  controls row (New chat, model selector, account button). `#chat`
+  controls row (history, New chat, model selector, account button). `#chat`
   carries top/bottom padding (5.6rem / 8rem) so the first and last
   messages can scroll clear of the fixed items.
 - **Background life:** `body::before` drifts a repeating diagonal gradient
   (tiny white/navy alphas) across the sky blue — one full 280px period per
   26s loop so it's seamless; disabled under `prefers-reduced-motion`.
 - **Glass chrome:** the header is transparent with the title in smaller
-  type and each control (New chat, model selector, account) as its own
-  frosted-glass container; the whole input area is ONE glass pane
+  type and each control (history, New chat, model selector, account) as
+  its own frosted-glass container; the whole input area is ONE glass pane
   (`#composer`, rounded, backdrop-blur over the drifting waves): a
   single-line auto-growing text input on top (Enter inserts a LINE BREAK
   — only the arrow button sends; grows to ~6 lines), and beneath it the
@@ -362,13 +425,17 @@ Let a battery finish before pushing anything.
   so far as normal conversation context (a `*(Stopped.)*` marker is
   appended, not an error), so the composer is immediately ready for a
   follow-up. Distinct from "New chat" (`clearHistory()`), which also
-  aborts but discards everything instead. "New chat" in the header
-  clears the client-side history.
+  aborts but discards everything on screen instead. "New chat" in the
+  header clears the on-screen conversation and its in-memory state —
+  it does NOT delete the conversation from encrypted local history (see
+  "Chat history" above); the previous conversation stays listed in the
+  history panel until explicitly deleted there.
 - **User documentation** at `/help/` (auth-gated static page): every
   control explained with real screenshots (`public/help/img/`, captured
   via Playwright) and the privacy meaning of each — linked from the
   account panel. Re-capture the screenshots when the composer/header
-  changes visibly.
+  changes visibly (the header screenshot is now stale after adding the
+  history button — not yet recaptured).
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
   demonstration of building a SaaS-style app over a weekend, **entirely

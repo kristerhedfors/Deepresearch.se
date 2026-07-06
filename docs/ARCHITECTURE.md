@@ -623,9 +623,14 @@ level via `LOG_LEVEL` (default `info`), persisted by Workers Logs
 
 ## 9. Data at rest
 
-**Chat content is never stored.** Conversations exist only in the browser
-and in flight to Berget/Exa — exactly what the first-visit privacy notice
-states. What D1 does persist is account/metering metadata only:
+**Chat content is never stored on the server** — conversations exist
+server-side only in flight to Berget/Exa, exactly what the first-visit
+privacy notice states. Client-side, conversations DO persist: an
+encrypted local history (IndexedDB, AES-256-GCM; `src/history-key.js` +
+`public/js/history-store.js` — see CLAUDE.md's "Chat history" section for
+the full key-management design) so users can return to a past
+conversation, without the server ever seeing or storing the plaintext.
+What D1 does persist is account/metering metadata only:
 
 - `users` — email, name, role/status, Google subject id, quota override
   (no passwords — Google is the only credential)

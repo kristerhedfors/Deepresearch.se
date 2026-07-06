@@ -64,23 +64,79 @@
     (EU-hosted) and web searches go through
     <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
     <div class="privacy-flag"><b>Privacy in one line:</b> your conversations
-    are never stored on our server — history lives only in your browser tab.
-    The server keeps metadata for quotas (token counts, search counts,
-    durations), never message content.</div>
+    are never stored on our server — chat history lives only in your browser,
+    encrypted (see "Chat history" below). The server keeps metadata for
+    quotas (token counts, search counts, durations), never message content.</div>
   </section>
 
   <section>
     <h2>The header</h2>
-    <img src="/help/img/header.png" alt="Header: new chat, model selector, account button" width="390">
+    <img src="/help/img/header.png" alt="Header: history, new chat, model selector, account button" width="390">
     <ul>
-      <li><b>New chat</b> (pencil icon, left) — clears the conversation.
-        Because history exists only in your browser, this really erases it;
-        there is nothing to delete server-side.</li>
+      <li><b>History</b> (clock icon, left) — opens the chat history panel:
+        see "Chat history" below. Hidden entirely if this server hasn't set
+        up encrypted history.</li>
+      <li><b>New chat</b> (pencil icon) — saves the current conversation (if
+        it has one) and starts a fresh one on screen. The old one isn't
+        erased — find it again in the History panel, or delete it there if
+        you're done with it.</li>
       <li><b>Model selector</b> (middle) — picks which AI model answers.
         Models that are down for maintenance show as greyed out and come back
         automatically. Your choice is remembered in this browser.</li>
       <li><b>Account button</b> (person icon, right) — opens your usage
         panel: see below.</li>
+    </ul>
+  </section>
+
+  <section id="history">
+    <h2>Chat history — encrypted, and yours alone</h2>
+    <p>Every conversation you have is saved automatically, right here in
+    your browser, so you can pick it back up later — the History panel
+    (clock icon in the header) lists them by their first question, most
+    recent first. Click one to reopen it (this also restores the model,
+    time target, and web-search setting it was sent with); the pencil
+    renames it, the trash bin deletes it.</p>
+    <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
+    modern, larger-capacity successor to <code>localStorage</code>) — never
+    on our server. Nothing about a conversation, not even its title, is
+    ever sent anywhere to be saved.</p>
+    <h3>How the encryption works</h3>
+    <p>Every conversation is encrypted (AES-256-GCM) before it touches your
+    browser's storage. The key comes from the server, derived per-account
+    from a secret it holds — but that key is fetched fresh each time you
+    open the app and kept only in memory for that page load; it is never
+    written to <code>localStorage</code>, <code>IndexedDB</code>, or any
+    other disk-backed storage. This split is deliberate, and gives two
+    separate guarantees instead of one:</p>
+    <ul>
+      <li><b>If your browser's storage is examined at rest</b> — a stolen
+        or cloned device, a forensic disk image — the attacker finds only
+        ciphertext. The key that would unlock it was never written down in
+        that browser to begin with.</li>
+      <li><b>If our server is ever compromised</b>, the attacker could
+        recover the secret the key derives from and compute your key — but
+        would still have no ciphertext to decrypt with it, because your
+        conversations never leave your browser in the first place.</li>
+    </ul>
+    <div class="privacy-flag"><b>Honest limitation:</b> only the
+    <i>combination</i> of both — someone who has compromised the server
+    (able to derive your key) <i>and</i> has separately obtained your
+    browser's stored data — could decrypt your history. That is a
+    materially higher bar than either alone, which is the actual promise
+    here; we're not claiming a single compromise is impossible to build
+    into a bigger attack, only that it isn't sufficient by itself.</div>
+    <h3>What this means day to day</h3>
+    <ul>
+      <li><b>It's this browser only.</b> History doesn't sync between
+        devices or browsers — sign in on your phone and it starts with no
+        history, independent of your laptop's. That's the same isolation
+        that keeps each copy's key exposure independent.</li>
+      <li><b>Clearing your browser's site data deletes it for good.</b>
+        There is no server-side backup to restore from — that's the same
+        fact that makes a server compromise alone insufficient.</li>
+      <li>If this server hasn't configured the feature, the History button
+        simply doesn't appear — conversations still work, they just don't
+        persist across a reload, the previous behavior.</li>
     </ul>
   </section>
 
@@ -187,8 +243,9 @@
     <h2>Privacy, in full</h2>
     <ul>
       <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
-        answers; kept only in your browser tab; erased by New chat or a
-        reload. Never stored on our server.</li>
+        answers; never stored on our server. Saved locally in your browser,
+        encrypted (see "Chat history" above) — erased only when you delete
+        a conversation there or clear this browser's site data.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an

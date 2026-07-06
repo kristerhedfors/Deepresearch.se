@@ -27,6 +27,40 @@ export function clearChatDom() {
 
 const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 
+// Splits a stored {role:"user", content} entry back into bubble parts.
+// Document attachments aren't reconstructed as chips here — their text was
+// already embedded inline in the message when it was sent (see stream.js's
+// sendMessage), so it simply shows as part of the message text on reload.
+function splitUserContent(content) {
+  if (typeof content === "string") return { text: content, imageUrls: [] };
+  const text = content
+    .filter((p) => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+  const imageUrls = content.filter((p) => p.type === "image_url").map((p) => p.image_url.url);
+  return { text, imageUrls };
+}
+
+// Loads a previously saved conversation (public/js/history-ui.js) into the
+// chat DOM: user bubbles and assistant turns with their final text set
+// directly, no typing animation or activity steps (those were live-session
+// UI, never persisted — only the message content itself is saved).
+export function renderStoredConversation(messages) {
+  clearChatDom();
+  let lastUser = { text: "", imageUrls: [] };
+  for (const m of messages) {
+    if (m.role === "user") {
+      lastUser = splitUserContent(m.content);
+      addUserBubble(lastUser.text, lastUser.imageUrls);
+    } else if (m.role === "assistant" && typeof m.content === "string") {
+      // question/images are threaded through so the PDF report button
+      // works the same as it does on a live turn.
+      const turn = addAssistantTurn(lastUser.text, lastUser.imageUrls);
+      setText(turn, m.content);
+    }
+  }
+}
+
 export function addUserBubble(text, imageUrls = [], docNames = []) {
   clearEmpty();
   const el = document.createElement("div");

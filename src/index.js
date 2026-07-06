@@ -14,7 +14,8 @@
 //   src/accounts.js  — user accounts (D1)
 //   src/config.js    — global site config (D1 config table, cached)
 //   src/quota.js     — usage accounting + quota enforcement
-//   src/user-api.js  — /api/me + /api/models + /api/client-error
+//   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
+//   src/history-key.js — per-user key for the client's encrypted local history
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
@@ -33,7 +34,13 @@ import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { acceptTerms } from "./accounts.js";
 import { loginPage, pendingPage, termsPage } from "./login.js";
-import { handleClientError, handleMe, handleMessages, handleModels } from "./user-api.js";
+import {
+  handleClientError,
+  handleHistoryKey,
+  handleMe,
+  handleMessages,
+  handleModels,
+} from "./user-api.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -202,6 +209,9 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/me" && request.method === "GET") {
     return handleMe(env, identity);
+  }
+  if (url.pathname === "/api/history-key" && request.method === "GET") {
+    return handleHistoryKey(env, identity);
   }
   if (url.pathname === "/api/messages" && request.method === "GET") {
     return handleMessages(env, identity);

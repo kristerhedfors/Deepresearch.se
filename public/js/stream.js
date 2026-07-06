@@ -17,10 +17,12 @@ import {
   addAssistantTurn,
   addUserBubble,
   isTyping,
+  renderStoredConversation,
   resetForRevision,
   setError,
   setText,
 } from "./turns.js";
+import { saveConversation } from "./history-store.js";
 
 const history = []; // {role, content} pairs sent to the API
 
@@ -31,8 +33,78 @@ let controller = null; // AbortController of the in-flight request
 // must never touch the new conversation's history or UI.
 let generation = 0;
 
-export function initStream(scrollFn) {
+// Identity of the conversation currently in `history`, for the encrypted
+// local-history sidebar (public/js/history-ui.js). Unset until the first
+// exchange completes, so an abandoned empty chat never creates an entry.
+let currentId = null;
+let convTitle = null;
+let convCreatedAt = null;
+let onHistoryChange = () => {};
+
+export function initStream(scrollFn, opts = {}) {
   scrollDown = scrollFn;
+  onHistoryChange = opts.onHistoryChange || onHistoryChange;
+}
+
+// The id of the conversation currently on screen, or null for a fresh,
+// not-yet-saved chat — used by the sidebar to highlight the active entry.
+export function currentConversationId() {
+  return currentId;
+}
+
+// Sidebar "load": replace the on-screen conversation with a previously
+// saved one. Aborts any in-flight request and bumps `generation` exactly
+// like clearHistory, so a stream from the conversation being replaced can
+// never write into the newly loaded one.
+export function applyLoadedConversation(record) {
+  controller?.abort();
+  controller = null;
+  generation++;
+  history.length = 0;
+  history.push(...record.messages);
+  currentId = record.id;
+  convTitle = record.title;
+  convCreatedAt = record.createdAt;
+  renderStoredConversation(record.messages);
+  scrollDown(true);
+}
+
+function deriveTitle(hist) {
+  const first = hist.find((m) => m.role === "user");
+  const text =
+    typeof first?.content === "string"
+      ? first.content
+      : (first?.content || []).find((p) => p.type === "text")?.text || "";
+  return text.trim().slice(0, 60) || "New conversation";
+}
+
+// Persists the current conversation after every completed exchange
+// (success, stopped-with-partial-answer, or recovered/cut-off-with-
+// partial-answer — anywhere an assistant reply actually lands in
+// `history`). Silently a no-op if encrypted history isn't available
+// (server not configured, or IndexedDB blocked) — the conversation still
+// works for this tab, it just won't survive a reload.
+async function persistConversation(opts) {
+  if (!history.length) return;
+  if (!currentId) currentId = crypto.randomUUID();
+  if (!convTitle) convTitle = deriveTitle(history);
+  const now = Date.now();
+  if (!convCreatedAt) convCreatedAt = now;
+  try {
+    await saveConversation(currentId, {
+      title: convTitle,
+      messages: history,
+      model: opts?.model || "",
+      budgetS: opts?.budgetS ?? null,
+      webSearch: opts?.webSearch !== false,
+      createdAt: convCreatedAt,
+      updatedAt: now,
+    });
+    onHistoryChange(currentId);
+  } catch {
+    // See comment above — history storage being unavailable must never
+    // surface as a chat error.
+  }
 }
 
 // True while a /api/chat stream is running — downloads must wait (on iOS
@@ -45,10 +117,13 @@ export function isStreaming() {
 // otherwise the invisible old stream keeps the send button hostage until
 // it finishes, then leaks its answer into the fresh history.
 export function clearHistory() {
-  history.length = 0; // history lives only in this tab
+  history.length = 0; // history lives only in this tab (encrypted copy aside)
   generation++;
   controller?.abort();
   controller = null;
+  currentId = null;
+  convTitle = null;
+  convCreatedAt = null;
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -246,6 +321,7 @@ export async function sendMessage(text, opts) {
     if (acc) {
       history.push({ role: "assistant", content: acc });
       ackAnswer(requestId); // delivered intact — purge the server's recovery copy
+      await persistConversation(opts);
     } else if (isTyping(turn)) {
       setError(turn, "No response received.");
       history.pop();
@@ -259,10 +335,10 @@ export async function sendMessage(text, opts) {
         ackAnswer(requestId);
         return;
       }
-      handleStopped(turn, acc, requestId);
+      await handleStopped(turn, acc, requestId, opts);
       return;
     }
-    await handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opts.budgetS);
+    await handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opts);
   } finally {
     inFlight = false;
     document.removeEventListener("visibilitychange", onVisibility);
@@ -276,12 +352,13 @@ export async function sendMessage(text, opts) {
 // question. The server finishes the research in the background regardless
 // (src/chat.js's ctx.waitUntil), so purge its recovery copy — nobody will
 // poll for it.
-function handleStopped(turn, acc, requestId) {
+async function handleStopped(turn, acc, requestId, opts) {
   ackAnswer(requestId);
   if (acc) {
     const stopped = acc + "\n\n*(Stopped.)*";
     setText(turn, stopped);
     history.push({ role: "assistant", content: stopped });
+    await persistConversation(opts);
   } else {
     setError(turn, "Stopped before any response arrived.");
     history.pop();
@@ -292,7 +369,7 @@ function handleStopped(turn, acc, requestId) {
 // suspension, etc): tell the server why the client's side died, try to
 // recover the finished answer from the short-lived server cache, and only
 // fall back to a visible error once recovery comes up empty.
-async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, budgetS) {
+async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opts) {
   // Tell the server why the client's side died — it often can't know (a
   // download-triggered navigation or backgrounded tab kills the fetch
   // without a clean disconnect). sendBeacon survives page teardown.
@@ -314,7 +391,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, bud
   // The server finishes the research even when our connection dies and
   // parks the answer in a short-lived recovery cache — poll it back
   // before bothering the user.
-  const recovered = await recoverAnswer(turn, requestId, budgetS, gen);
+  const recovered = await recoverAnswer(turn, requestId, opts.budgetS, gen);
   if (gen !== generation) {
     // Chat was cleared while recovery was polling — drop the result.
     ackAnswer(requestId);
@@ -329,6 +406,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, bud
     }
     history.push({ role: "assistant", content: acc });
     ackAnswer(requestId);
+    await persistConversation(opts);
     return;
   }
 
@@ -350,6 +428,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, bud
       role: "assistant",
       content: acc + "\n\n[This answer was cut off by a connection error.]",
     });
+    await persistConversation(opts);
   } else {
     // Nothing arrived at all — drop the question so a retry starts clean.
     history.pop();

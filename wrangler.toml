@@ -16,7 +16,8 @@ routes = [
 ]
 
 # Non-secret configuration. Secrets (BERGET_API_TOKEN, EXA_API_KEY,
-# BASIC_AUTH_USER, BASIC_AUTH_PASS) are set in the dashboard, never here.
+# BASIC_AUTH_USER, BASIC_AUTH_PASS, HISTORY_KEY_SECRET) are set in the
+# dashboard, never here.
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on

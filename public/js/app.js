@@ -15,7 +15,8 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
-import { initModels, selectedModelId } from "./models.js";
+import { initHistorySidebar } from "./history-ui.js";
+import { initModels, selectedModelId, selectModel } from "./models.js";
 import { clearHistory, initStream, isStreaming, sendMessage, stopGeneration } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, initTurns } from "./turns.js";
@@ -60,7 +61,6 @@ const scrollDown = (force = false) => {
 // ---- Module wiring ---------------------------------------------------------
 
 initTurns(chat, scrollDown, { isBusy: isStreaming });
-initStream(scrollDown);
 initModels(document.getElementById("model"), { onChange: syncAttachState });
 initAttachments(
   document.getElementById("attach"),
@@ -114,13 +114,34 @@ document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
 
-// ---- Header: clear chat ----------------------------------------------------
+// ---- Header: clear chat / chat history ------------------------------------
 
-document.getElementById("clearbtn").addEventListener("click", () => {
+function newChat() {
   clearHistory();
   clearChatDom();
   input.focus();
+}
+document.getElementById("clearbtn").addEventListener("click", newChat);
+
+// Encrypted local history sidebar (public/js/history-ui.js + history-store.js):
+// loading a saved conversation also restores the model/time-target/web-search
+// settings it was sent with, same as re-opening a real chat-app conversation.
+const historySidebar = initHistorySidebar({
+  onNew: newChat,
+  onLoad: (record) => {
+    if (record.model) selectModel(record.model);
+    if (Number.isFinite(record.budgetS) && record.budgetS >= BUDGET_MIN_S && record.budgetS <= BUDGET_MAX_S) {
+      budgetS = record.budgetS;
+      budgetSlider.value = secondsToPos(budgetS);
+      updateBudgetVal();
+      localStorage.setItem("budget_s", String(budgetS));
+    }
+    webSearchBox.checked = record.webSearch !== false;
+    localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+    syncSearchToggle();
+  },
 });
+initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });
 
 // ---- First-visit privacy notice (acknowledgement kept in a cookie) --------
 

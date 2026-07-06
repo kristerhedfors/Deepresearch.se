@@ -7,6 +7,7 @@ import { countPendingUsers } from "./accounts.js";
 import { adminDefaultModelValid, defaultModel, listModels } from "./berget.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
+import { deriveHistoryKey, historyKeyConfigured } from "./history-key.js";
 import { jsonResponse } from "./http.js";
 import { effectiveQuota, getUsage, PERIODS, quotaExceeded, windowReset } from "./quota.js";
 import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-messages.js";
@@ -50,6 +51,19 @@ export async function handleClientError(request, log, identity) {
     received_chars: Number.isFinite(body.received_chars) ? body.received_chars : 0,
   });
   return new Response(null, { status: 204 });
+}
+
+// GET /api/history-key — a per-user key (src/history-key.js) the client
+// uses to encrypt/decrypt its own locally-stored chat history
+// (public/js/history-store.js). Fails closed (503) when
+// HISTORY_KEY_SECRET isn't configured — there is deliberately no
+// plaintext fallback, since that would defeat the point of the feature.
+export async function handleHistoryKey(env, identity) {
+  if (!historyKeyConfigured(env)) {
+    return jsonResponse({ error: "Encrypted chat history is not configured on this server." }, 503);
+  }
+  const key = await deriveHistoryKey(env, identity.id);
+  return jsonResponse({ key });
 }
 
 // GET /api/me — identity + usage vs quota for the user dashboard.

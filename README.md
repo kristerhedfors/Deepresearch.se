@@ -102,6 +102,13 @@ Set on the Worker (Settings → Variables and Secrets in the dashboard, or
 | `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — **also key the session-cookie HMAC, so the Worker fails closed without them**; rotating `ADMIN_PASS` invalidates every session |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The OAuth client from step 4 |
 
+Optional but recommended — enables encrypted, client-side chat history
+(`GET /api/history-key`, `src/history-key.js`):
+
+| Secret | Purpose |
+|---|---|
+| `HISTORY_KEY_SECRET` | Any long random string. Derives each user's local-history encryption key (HMAC-SHA256, per user id) — never sent to the client itself, only the derived key is. **Fails closed, not soft**: without it, `/api/history-key` returns 503 and the client hides the History button entirely rather than storing conversations unencrypted. Rotating it invalidates every previously-saved conversation (the old key can no longer be re-derived to decrypt them). |
+
 Plaintext variables (dashboard "Variables", or `[vars]`):
 
 | Variable | Purpose |
@@ -140,6 +147,7 @@ ADMIN_PASS=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ADMIN_EMAIL=...
+HISTORY_KEY_SECRET=...
 ```
 
 Break-glass Basic Auth (`curl -u`) is the practical way to hit local
