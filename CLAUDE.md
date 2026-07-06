@@ -581,9 +581,12 @@ Let a battery finish before pushing anything.
   attach button (round),
   **web-search knob** (default on; sends `web_search: false` when off →
   the Worker skips triage/Exa entirely and streams one Berget
-  completion), 🔍 info popover, the slider filling the remaining space,
-  then the spelled-out time value (loupe/slider/value all dim while
-  search is off), and a round accent **arrow send button** that becomes
+  completion; a spiderweb sits inside the knob — accent blue with a
+  soft glow when on, grey when off — and press-and-holding the knob
+  opens the info popover that used to hang off a separate 🔍 button,
+  removed to give the slider its footer space), the slider filling the
+  remaining space, then the spelled-out time value (slider/value dim
+  while search is off), and a round accent **arrow send button** that becomes
   a **square stop button** (same element, swapped icon, never disabled)
   while a response is streaming — clicking it aborts the in-flight
   request (`stream.js`'s `stopGeneration()`) but keeps whatever streamed
@@ -775,7 +778,8 @@ retains query data on the standard API plan; true ZDR is an
 enterprise-only arrangement (https://exa.ai/blog/zdr-search-engine),
 which this site does not have. The documented workaround is the
 **two-step semi-private workflow** (user docs: `/help/` → "Sensitive
-topics", hinted in the 🔍 popover): (1) web search ON, ask a *generic*,
+topics", hinted in the web-search popover — opened by press-and-holding
+the spiderweb knob): (1) web search ON, ask a *generic*,
 impersonal question on the subject so the pipeline pulls sources into
 the conversation; (2) web search OFF, ask the real/specific questions —
 the model answers from the in-context sources, nothing further reaches
