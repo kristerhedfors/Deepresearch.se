@@ -5,6 +5,7 @@
 // with takeAttachments().
 
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
+import { extractExif, formatExifSummary } from "./exif.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
 
 const MAX_IMAGES = 4;
@@ -20,7 +21,11 @@ const PER_DOC_CHARS = 9000;
 
 let attachBtn;
 let pendingBox;
-let attachments = []; // {kind:"image",name,dataUrl} | {kind:"doc",name,ext,text,truncated}
+// {kind:"image",name,dataUrl,metadata,hasGps} | {kind:"doc",name,ext,text,truncated,metadata}
+// `metadata` is a formatted summary string (EXIF for images, docProps/
+// tracked-changes/comments for docx, Info-dict for pdf) or null — see
+// exif.js / docs.js. Included in the outgoing message by stream.js.
+let attachments = [];
 
 const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
 const images = () => attachments.filter((a) => a.kind === "image");
@@ -101,6 +106,15 @@ function renderPending() {
     sub.className = "sub";
     sub.textContent = a.kind === "image" ? "image" : a.ext + (a.truncated ? " · truncated" : "");
     meta.append(name, sub);
+    if (a.metadata) {
+      const badge = document.createElement("div");
+      badge.className = "att-meta-badge" + (a.metadataSensitive ? " att-meta-sensitive" : "");
+      badge.textContent = a.metadataSensitive
+        ? (a.kind === "image" ? "📍 location data included" : "⚠️ tracked changes included")
+        : "ℹ️ metadata included";
+      badge.title = a.metadata; // full extracted summary, visible on hover/tap-hold
+      meta.appendChild(badge);
+    }
     card.appendChild(meta);
     const rm = document.createElement("button");
     rm.type = "button";
@@ -139,15 +153,35 @@ async function addImageFile(file) {
     return;
   }
   try {
+    // EXIF must come from the ORIGINAL bytes — downscaleImage's canvas
+    // re-encode strips all metadata, so this has to happen first (a File
+    // can be read more than once; this doesn't consume what downscaleImage
+    // reads afterward).
+    const exif = await extractImageMetadata(file);
     const dataUrl = await downscaleImage(file, budget);
     if (!dataUrl) {
       alert("Could not compress " + file.name + " enough to send.");
       return;
     }
-    attachments.push({ kind: "image", name: file.name, dataUrl });
+    attachments.push({
+      kind: "image",
+      name: file.name,
+      dataUrl,
+      metadata: exif.summary,
+      metadataSensitive: exif.hasGps,
+    });
     renderPending();
   } catch {
     alert("Could not read " + file.name + " as an image.");
+  }
+}
+
+async function extractImageMetadata(file) {
+  try {
+    const meta = extractExif(await file.arrayBuffer());
+    return { summary: formatExifSummary(meta), hasGps: !!meta?.gps };
+  } catch {
+    return { summary: null, hasGps: false }; // never let metadata extraction block the attach
   }
 }
 
@@ -157,8 +191,16 @@ async function addDocFile(file) {
     return;
   }
   try {
-    const { text, truncated } = await parseDocFile(file, PER_DOC_CHARS);
-    attachments.push({ kind: "doc", name: file.name, ext: docExt(file), text, truncated });
+    const { text, truncated, metadata, hasTrackedDeletions } = await parseDocFile(file, PER_DOC_CHARS);
+    attachments.push({
+      kind: "doc",
+      name: file.name,
+      ext: docExt(file),
+      text,
+      truncated,
+      metadata,
+      metadataSensitive: hasTrackedDeletions,
+    });
     renderPending();
   } catch (err) {
     alert(err?.message || "Could not read " + file.name + ".");

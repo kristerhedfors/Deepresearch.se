@@ -235,13 +235,22 @@ function messagesForApi() {
 export async function sendMessage(text, opts) {
   // Build message content. Documents become labeled text blocks in the
   // API message (never shown in the bubble); images become OpenAI-style
-  // multimodal parts.
+  // multimodal parts. Extracted metadata (EXIF for images, docProps/
+  // tracked-changes/comments for docx, Info dict for pdf — see exif.js /
+  // docs.js) rides along as its own labeled block so it's research
+  // material, not silently dropped or silently blended into the main text.
   let apiText = text;
   for (const d of opts.docs) {
     apiText +=
       `\n\n--- Attached document: ${d.name}${d.truncated ? " (truncated)" : ""} ---\n` +
+      (d.metadata ? `[Document metadata]\n${d.metadata}\n\n` : "") +
       d.text +
       "\n--- End of document ---";
+  }
+  for (const a of opts.images) {
+    if (a.metadata) {
+      apiText += `\n\n--- Image metadata: ${a.name} ---\n${a.metadata}\n--- End of image metadata ---`;
+    }
   }
   let content = apiText;
   if (opts.images.length) {

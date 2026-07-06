@@ -387,6 +387,16 @@ button:disabled { opacity: .5; cursor: default; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;
 }
 .att-card .sub { font-size: .65rem; color: var(--muted); text-transform: uppercase; }
+/* Transparency badge: shown when exif.js/docs.js found metadata worth
+   flagging before the attachment is sent (see attachments.js). The
+   sensitive variant (GPS on an image, unaccepted deletions in a docx)
+   gets a warmer color so it stands out from routine author/camera info. */
+.att-card .att-meta-badge {
+  font-size: .62rem; color: var(--accent); margin-top: .1rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px;
+  cursor: help;
+}
+.att-card .att-meta-badge.att-meta-sensitive { color: #a15c00; font-weight: 600; }
 .att-remove {
   position: absolute; top: -7px; right: -7px;
   width: 20px; height: 20px; border-radius: 50%;

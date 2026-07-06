@@ -47,7 +47,7 @@ export default defineConfig({
   projects: [
     {
       name: "mocked",
-      testMatch: /(parsing|limits|report|api|ui)\.spec\.js/,
+      testMatch: /(parsing|limits|report|api|ui|metadata)\.spec\.js/,
       timeout: 90_000,
     },
     {
