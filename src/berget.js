@@ -10,6 +10,18 @@ const chatUrl = (env) => apiBase(env) + "/chat/completions";
 const modelsUrl = (env) => apiBase(env) + "/models";
 export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; // alias: mistral-small
 
+// Neither Berget call below had a timeout until a live model-eval battery
+// (2026-07-06, round 2) surfaced requests that silently died mid-pipeline
+// for a few models: Workers Logs showed several phases logging normally
+// (info level), then NOTHING — no warn/error, no chat.complete — for
+// requests that succeed when simply re-run. That signature is consistent
+// with an awaited fetch() that never settles: nothing throws for phase()'s
+// try/catch to catch, so the fail-soft design this pipeline is built
+// around never engages. These bound the hang into a normal, catchable
+// error instead.
+const JSON_CALL_TIMEOUT_MS = 45_000;
+const STREAM_CONNECT_TIMEOUT_MS = 30_000;
+
 export function defaultModel(env) {
   return env.BERGET_MODEL || DEFAULT_MODEL;
 }
@@ -65,6 +77,10 @@ function formatPricing(p) {
 
 // Starts a streaming chat completion. Pass `tools` to enable function
 // calling, and `model` to override the default.
+//
+// The abort signal bounds only the time to receive a RESPONSE (headers) —
+// once fetch() settles the timer is cleared, so a legitimately long
+// stream can keep being read afterward without getting cut off mid-flight.
 export function chatCompletion(env, messages, { tools, model } = {}) {
   const payload = {
     model: model || defaultModel(env),
@@ -76,6 +92,8 @@ export function chatCompletion(env, messages, { tools, model } = {}) {
     payload.tools = tools;
     payload.tool_choice = "auto";
   }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
   return fetch(chatUrl(env), {
     method: "POST",
     headers: {
@@ -83,7 +101,8 @@ export function chatCompletion(env, messages, { tools, model } = {}) {
       authorization: `Bearer ${env.BERGET_API_TOKEN}`,
     },
     body: JSON.stringify(payload),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer));
 }
 
 // Consumes one OpenAI-style SSE response body. Calls `onText` for each text
@@ -173,6 +192,7 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
       response_format: { type: "json_object" },
       messages,
     }),
+    signal: AbortSignal.timeout(JSON_CALL_TIMEOUT_MS),
   });
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
