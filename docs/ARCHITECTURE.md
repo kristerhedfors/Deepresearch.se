@@ -68,7 +68,7 @@ flowchart LR
 |---|---|---|---|
 | Berget.ai | `POST https://api.berget.ai/v1/chat/completions` | `Authorization: Bearer BERGET_API_TOKEN` | All LLM calls: streaming completions + non-streaming JSON-mode calls |
 | Berget.ai | `GET https://api.berget.ai/v1/models` | same | Model catalog (filtered, cached ~5 min/isolate) |
-| Exa | `POST https://api.exa.ai/search` | `x-api-key: EXA_API_KEY` | Web search: `type:"auto"`, `numResults:5`, `contents:{highlights:true}` |
+| Exa | `POST https://api.exa.ai/search` | `x-api-key: EXA_API_KEY` | Web search: `type`/`numResults` scale with the time budget (§4.3b), `contents:{highlights:true}` |
 
 Known provider limits baked into the design:
 
@@ -202,11 +202,14 @@ Phase details:
    returns junk, `normalizeTriage` falls back: substantial question (≥12
    chars) → research with the raw question as the single query; otherwise
    answer directly.
-2. **Search wave** (`runSearches`): each planned query → Exa. Queries are
-   deduped case-insensitively (`ranQueries`), capped at `plan.maxSearches`.
-   Results feed `addSources`: **deduped by URL, numbered in arrival order**
-   so `[n]` citations stay stable between synthesis and validation; capped
-   at `plan.maxSources`, keeping ≤3 highlights per source.
+2. **Search wave** (`runSearches`): a round's queries are deduped
+   case-insensitively (`ranQueries`), capped at `plan.maxSearches`, then run
+   **concurrently** (`Promise.all`) against Exa at a depth (`numResults`,
+   `type`) that scales with the time budget — §4.3b covers the full
+   mechanism. Results feed `addSources`: **deduped by URL, numbered in
+   arrival order** so `[n]` citations stay stable between synthesis and
+   validation; capped at `plan.maxSources` overall AND at 3 per domain
+   (§4.3b again), keeping ≤3 highlights per source.
 3. **Gap check** (JSON, ≤400 tokens, up to `plan.gapIterations` rounds):
    audits the source digest against the question; returns follow-up queries
    for missing angles or `complete`. Each round first passes a deadline
@@ -359,6 +362,95 @@ detail in `tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry.
 every `model-eval.mjs` round — read it before starting a new round so
 you don't re-discover a known issue, and append a new dated section
 after every round instead of editing history.
+
+### 4.3b Variable-depth search (`src/exa.js`, `src/budget.js`, `src/pipeline.js`)
+
+An assessment of prior live-eval rounds found that the time-budget slider
+only ever bought more search *count* — every individual Exa call stayed a
+fixed 5-result `"auto"` search (below Exa's own default of 10) regardless
+of budget. The depth-scaling fix below addresses that. Once deployed, a
+dedicated comparison battery (`tests/MODEL-EVAL-FINDINGS.md`'s round 7)
+confirmed a real, modest quality improvement from it — but also surfaced
+a second, independent gap: more/deeper searches don't automatically buy
+more *independent* verification. The diversity fix below addresses that
+second gap, verified separately in round 8.
+
+**Depth scales with the budget tier**, not just angle/round counts.
+`budget.js`'s `searchDepthFor(budgetS)` returns `{numResults, type,
+costMultiplier}`, attached to the plan as `plan.searchDepth` and passed
+through to every Exa call in the request (`src/exa.js`'s `webSearch()`
+takes it as a `depth` param rather than hardcoding `numResults`/`type`):
+
+| Budget | `numResults` | `type` | `costMultiplier` |
+|---|---|---|---|
+| `<60s` | 5 | `"auto"` | 1 (unchanged floor behavior) |
+| `60-239s` | 8 | `"auto"` | 1 |
+| `240-419s` | 10 | `"auto"` | 1 |
+| `≥420s` | 10 | `"deep"` | 12/7 |
+
+`"deep"` is Exa's own thorough-but-slower mode, reserved for the most
+generous budgets only: it costs ~1.7x a standard search (Exa's published
+per-1k pricing as of 2026 — search $7, deep $12, deep-reasoning $15) and
+was untested at scale before round 7's confirmation battery. `costMultiplier`
+scales the admin-configured `exa_cost_per_search_eur` at usage-recording
+time (`chat.js`'s `recordUsage` call) so a request that used the costlier
+tier isn't silently under-counted against the user's opaque budget bar or
+the admin's site-wide totals — the admin's configured per-search cost is
+assumed to price the standard tier.
+
+**Searches within one round run concurrently**, not sequentially.
+`runSearches` (`pipeline.js`) fires the whole round's queries via
+`Promise.all` against `webSearch`, since they're independent of each
+other — the prior sequential loop left several seconds of wall-clock on
+the table per round for no benefit. The query cap (`plan.maxSearches`) is
+applied while building the batch, before anything is fired, so a
+concurrent batch can't overrun it; results are matched back to their
+originating query by index (not arrival order) so citation numbering
+stays deterministic regardless of which fetch happens to resolve first.
+This changed the SSE contract subtly — several `search_start` events can
+now arrive before any paired `search_done` — so `public/js/activity.js`
+tracks pending search steps in a `Map` keyed by query text instead of
+assuming strict start/done pairing.
+
+**Source diversity is enforced algorithmically, not only requested.**
+Round 7 found that even a thorough, 19-search "deep" run on a company's
+own product still cited that company's own site for most of its sources:
+relevance-ranked search naturally surfaces whoever has published the most
+about themselves, not whoever is most independent — the classic
+relevance-vs-diversity tension search engines address with result
+diversification (Carbonell & Goldstein's Maximal Marginal Relevance is
+the canonical technique). Fixed on two levels, deliberately not
+either/or:
+
+- **Algorithmic backstop** (`pipeline.js`'s `addSources`): a hard
+  per-domain cap (`DOMAIN_CAP = 3`) on the source registry, checked
+  against `hostnameOf(url)` (hostname with a leading `www.` stripped).
+  This holds regardless of whether a given model reliably follows the
+  prompt-level asks below. Sources beyond the cap for their domain aren't
+  dropped — they go to a `state.sourceOverflow` list. Once all searches
+  are done, `backfillOverflowSources` (called once, in `runSynthesis`,
+  right before building the digest) tops the registry back up to
+  `plan.maxSources` from that overflow if the domain cap left it short —
+  a niche topic with genuinely few distinct domains shouldn't be starved
+  enforcing diversity that doesn't exist. Both functions number entries
+  sequentially as they're admitted, so citation numbers stay stable once
+  synthesis begins.
+- **Prompt-level** (`prompts.js`): `triagePrompt`'s `INDEPENDENT_SOURCE_RULE`
+  makes an independent/third-party query mandatory whenever the topic
+  centers on a specific entity's own claims — not conditional on the
+  model judging the topic "risky", which previously left an easy out for
+  routine-sounding claims. `gapPrompt` treats single-domain dominance in
+  the sources collected so far as an explicit coverage gap in its own
+  right, ordering a follow-up query for independent coverage instead of
+  another official-source query. `synthPrompt` requires the final answer
+  say so plainly when the sources are still dominated by one origin
+  despite all this, rather than presenting single-origin claims as
+  independently established.
+
+Round 8's confirmation battery re-ran the exact pre-fix baseline queries
+against the deployed fix and verified the domain cap holding in practice
+(see `tests/MODEL-EVAL-FINDINGS.md`'s round 7/8 entries for the full
+before/after citation breakdowns).
 
 ### 4.4 SSE protocol
 
