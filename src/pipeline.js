@@ -390,27 +390,41 @@ function sourceDigest(sources, capChars) {
 
 // Streams one chat completion to the client; returns the full text.
 async function streamCompletion(ctx, messages) {
-  const upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
-  if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => "");
-    throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => "");
+      throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
+    }
+    const { text, usage, finishReason } = await consumeChatStream(upstream.body, ctx.emitDelta);
+    addUsage(ctx.state.totals, usage);
+    if (!finishReason) {
+      // A round 3 model-eval battery found Berget's connection can drop
+      // mid-stream for some models with no error frame at all — the reader
+      // just sees a clean EOF, so nothing throws and the caller would
+      // otherwise silently return truncated (sometimes empty) text as if it
+      // were a complete, successful answer. A normal completion always sets
+      // finish_reason on its last chunk (standard OpenAI Chat Completions
+      // behavior); its absence is the tell. Throwing here routes this
+      // through chat.js's existing error handling — the user sees an honest
+      // error instead of a confusing blank/truncated answer, and it's
+      // finally visible in logs (chat.stream_failed) instead of invisible.
+      throw new Error(`Berget stream ended without a finish_reason (${text.length} chars received) — likely a dropped connection`);
+    }
+    if (text) return text;
+    // A round 4 model-eval battery found a distinct failure mode from the
+    // one above: a stream that completes CLEANLY (finish_reason set,
+    // pipeline reaches "done") but with zero content — no dropped
+    // connection, no thrown error, just an empty answer silently delivered
+    // to the user. One retry is cheap insurance against what looks like a
+    // transient backend blip rather than a systemic issue (never
+    // reproduced twice in a row across eval batteries); only after a
+    // second empty completion do we give up and surface it.
+    ctx.log.warn("chat.empty_completion", { model: ctx.model, attempt });
+    if (attempt === 2) {
+      throw new Error("Berget returned an empty response twice in a row for this model");
+    }
   }
-  const { text, usage, finishReason } = await consumeChatStream(upstream.body, ctx.emitDelta);
-  addUsage(ctx.state.totals, usage);
-  if (!finishReason) {
-    // A round 3 model-eval battery found Berget's connection can drop
-    // mid-stream for some models with no error frame at all — the reader
-    // just sees a clean EOF, so nothing throws and the caller would
-    // otherwise silently return truncated (sometimes empty) text as if it
-    // were a complete, successful answer. A normal completion always sets
-    // finish_reason on its last chunk (standard OpenAI Chat Completions
-    // behavior); its absence is the tell. Throwing here routes this
-    // through chat.js's existing error handling — the user sees an honest
-    // error instead of a confusing blank/truncated answer, and it's
-    // finally visible in logs (chat.stream_failed) instead of invisible.
-    throw new Error(`Berget stream ended without a finish_reason (${text.length} chars received) — likely a dropped connection`);
-  }
-  return text;
 }
 
 // Emits already-complete text as delta chunks (clarify questions, revised
