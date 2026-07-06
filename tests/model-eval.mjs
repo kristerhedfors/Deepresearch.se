@@ -161,11 +161,16 @@ const QUERY_SETS = {
   ],
 };
 const QUERY_SET_NAME = process.env.EVAL_QUERY_SET || "round1";
-const QUERIES = QUERY_SETS[QUERY_SET_NAME];
+let QUERIES = QUERY_SETS[QUERY_SET_NAME];
 if (!QUERIES) {
   console.error(`Unknown EVAL_QUERY_SET "${QUERY_SET_NAME}". Options: ${Object.keys(QUERY_SETS).join(", ")}`);
   process.exit(1);
 }
+// EVAL_QUERY_KEYS=key1,key2 narrows to specific queries within the set — for
+// a cheap targeted re-test instead of re-running the whole (possibly
+// expensive, long-budget) set.
+const ONLY_KEYS = process.env.EVAL_QUERY_KEYS?.split(",").map((s) => s.trim()).filter(Boolean);
+if (ONLY_KEYS?.length) QUERIES = QUERIES.filter((q) => ONLY_KEYS.includes(q.key));
 
 // Heuristic scan for the historical failure class (tool-call-shaped tokens
 // leaking into a synthesized answer, or raw JSON leaking into prose) plus
