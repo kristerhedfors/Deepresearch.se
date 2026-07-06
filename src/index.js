@@ -33,7 +33,7 @@ import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { acceptTerms } from "./accounts.js";
 import { loginPage, pendingPage, termsPage } from "./login.js";
-import { handleClientError, handleMe, handleModels } from "./user-api.js";
+import { handleClientError, handleMe, handleMessages, handleModels } from "./user-api.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -202,6 +202,9 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/me" && request.method === "GET") {
     return handleMe(env, identity);
+  }
+  if (url.pathname === "/api/messages" && request.method === "GET") {
+    return handleMessages(env, identity);
   }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);

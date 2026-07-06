@@ -362,12 +362,32 @@ Let a battery finish before pushing anything.
   NEVER sideways: tables and code wrap instead of forcing width. Append
   to `history.md`, not rewrite — it's a chronological record; keep
   adding a new section per session the way earlier entries did.
-- **Account panel** (`public/js/account.js`) is two levels: the default
+- **Account panel** (`public/js/account.js`) is three views: the default
   view shows only the rolling 5-hour window (the one that actually gates
-  the next message) plus navigation (Full usage & history, About this
-  project, The build story, Documentation, Admin, Sign out); "Full usage
-  & history" drills into today/this-week/this-month. Both views re-render
-  from one cached `/api/me` response.
+  the next message) plus navigation (Messages, Full usage & history, About
+  this project, The build story, Documentation, Admin, Sign out); "Full
+  usage & history" drills into today/this-week/this-month (reuses the
+  cached `/api/me` response); "Messages" is the message center.
+- **Message center** (`GET /api/messages`, `src/user-api.js` +
+  `src/user-messages.js`): account-level notices for EVERY user — quota
+  exhausted, quota available again, sign-in approved, quota changed by an
+  admin — plus, for admins only, the same pending-approvals and
+  operational-alerts data `/admin`'s Notifications section shows (fetched
+  from a lighter `GET /api/admin/notifications`), so routine Approve/
+  Dismiss doesn't require leaving the main app. **Zero-retention
+  discipline**: the `user_messages` D1 table has no content column at
+  all — only `type`/`period`/`kind` enums and timestamps ever get stored,
+  nothing derived from a chat message or a model's answer, matching the
+  privacy notice's promise that conversations are never stored. "Quota
+  available again" isn't a separately logged event — a stored
+  `quota_exceeded` row is annotated `resolved` at READ time by comparing
+  its `(period, kind)` against the caller's CURRENT quota state
+  (`src/quota.js`'s `quotaExceeded()`), so a lifted block resolves itself
+  without a second write. Inserts are deduped per `(user, type, period,
+  kind)` within a 1-hour window so a user hammering send while blocked
+  gets one message, not one per attempt. Opening the list marks
+  everything read; the header's notification badge (`/api/me`'s
+  `notifications.total`) now applies to every identity, not just admins.
 - **Privacy notice** on first visit (Berget/Exa processing, metadata-only
   logs, no stored conversations — except the ≤15 min answer-recovery
   buffer, disclosed in the notice); acknowledgement remembered for a year

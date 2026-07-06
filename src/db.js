@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS alerts (
   last_seen_at INTEGER NOT NULL,
   acknowledged_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS user_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  period TEXT,
+  kind TEXT,
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_user_messages_user_created ON user_messages(user_id, created_at DESC);
 `;
 
 // Additive migrations for databases created before the column existed.

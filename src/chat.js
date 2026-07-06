@@ -6,6 +6,7 @@
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { markAnswerRunning, saveAnswer } from "./answers.js";
+import { addUserMessage } from "./user-messages.js";
 import { listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -89,6 +90,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         blocked.kind === "budget"
           ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
           : blocked;
+      await addUserMessage(env, identity.id, "quota_exceeded", { period: blocked.period, kind: blocked.kind });
       return jsonResponse({ error, quota: publicQuota }, 429);
     }
   }

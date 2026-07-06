@@ -8,7 +8,8 @@ import { defaultModel, listModels } from "./berget.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
-import { effectiveQuota, getUsage, PERIODS, windowReset } from "./quota.js";
+import { effectiveQuota, getUsage, PERIODS, quotaExceeded, windowReset } from "./quota.js";
+import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-messages.js";
 
 // GET /api/models — model catalog for the UI dropdown (filtered + cached in
 // src/berget.js), plus the effective default (admin-configured when valid
@@ -70,16 +71,24 @@ export async function handleMe(env, identity) {
     };
   }
   const isAdmin = identity.isSecretAdmin || identity.role === "admin";
-  // Notification badge (header account button, visible outside /admin too):
-  // pending sign-in approvals + open operational alerts. Admin-only — a
-  // regular user's /api/me response never carries this.
-  let notifications = null;
+  // Notification badge (header account button, visible outside /admin and
+  // the message center too): every identity gets its own unread message
+  // count (quota exhausted/restored, approvals, quota changes — see
+  // src/user-messages.js); admins additionally get pending sign-in
+  // approvals + open operational alerts folded into the same total.
+  const unreadMessages = await countUnreadUserMessages(env, identity.id);
+  let notifications = { unread_messages: unreadMessages, total: unreadMessages };
   if (isAdmin) {
     const [pendingUsers, openAlerts] = await Promise.all([
       countPendingUsers(env),
       countOpenAlerts(env),
     ]);
-    notifications = { pending_users: pendingUsers, open_alerts: openAlerts, total: pendingUsers + openAlerts };
+    notifications = {
+      unread_messages: unreadMessages,
+      pending_users: pendingUsers,
+      open_alerts: openAlerts,
+      total: unreadMessages + pendingUsers + openAlerts,
+    };
   }
   return jsonResponse({
     id: identity.id,
@@ -93,4 +102,29 @@ export async function handleMe(env, identity) {
     notifications,
     db_configured: !!(await getDb(env)),
   });
+}
+
+// GET /api/messages — the personal side of the message center (account.js):
+// quota exhausted/restored, sign-in approved, quota changed by an admin.
+// "Restored" isn't stored — a quota_exceeded row is annotated `resolved`
+// here by checking the caller's CURRENT quota state, so a block that has
+// since lifted reads as good news without a second write. Opening this
+// list marks everything read (same one-shot pattern as the account panel
+// already uses for /api/me).
+export async function handleMessages(env, identity) {
+  const messages = await listUserMessages(env, identity.id, { limit: 50 });
+  let currentBlock = null;
+  if (messages.some((m) => m.type === "quota_exceeded")) {
+    const config = await getConfig(env);
+    const usage = await getUsage(env, identity.id);
+    const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
+    currentBlock = quota ? quotaExceeded(usage, quota) : null;
+  }
+  const out = messages.map((m) => {
+    if (m.type !== "quota_exceeded") return { ...m, resolved: null };
+    const stillBlocked = currentBlock && currentBlock.period === m.period && currentBlock.kind === m.kind;
+    return { ...m, resolved: !stillBlocked };
+  });
+  await markAllRead(env, identity.id);
+  return jsonResponse({ messages: out });
 }

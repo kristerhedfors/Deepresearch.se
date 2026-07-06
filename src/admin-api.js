@@ -1,21 +1,24 @@
 // /api/admin/* — JSON API behind the admin role (enforced in index.js).
 //
 // Endpoints:
-//   GET    /api/admin/overview    users(+usage) + config + totals + alerts
-//   PATCH  /api/admin/users/:id   {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
+//   GET    /api/admin/overview       users(+usage) + config + totals + alerts
+//   GET    /api/admin/notifications  lightweight alerts + pending users, for
+//                                    the in-app message center (account.js)
+//   PATCH  /api/admin/users/:id      {role?, status?, name?, quota?} quota={day:{hours,cost_eur},...}|null
 //   DELETE /api/admin/users/:id
-//   PUT    /api/admin/config      partial config patch -> full config
-//   POST   /api/admin/alerts/:id/ack   dismiss one operational alert
+//   PUT    /api/admin/config         partial config patch -> full config
+//   POST   /api/admin/alerts/:id/ack dismiss one operational alert
 //
 // Accounts are provisioned by Google sign-in (src/google.js) — there is no
 // create-user endpoint; the admin manages roles, status, and quotas.
 
 import { acknowledgeAlert, listAlerts } from "./alerts.js";
-import { deleteUser, listUsers, updateUser } from "./accounts.js";
+import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, saveConfig } from "./config.js";
 import { getUsageAllUsers, getUsageByModel, PERIODS } from "./quota.js";
+import { addUserMessage } from "./user-messages.js";
 
 export async function handleAdminApi(request, env, url, log, identity) {
   const db = await getDb(env);
@@ -37,15 +40,27 @@ export async function handleAdminApi(request, env, url, log, identity) {
     if (path === "/overview" && method === "GET") {
       return overview(env);
     }
+    if (path === "/notifications" && method === "GET") {
+      return notifications(env);
+    }
     const userPath = path.match(/^\/users\/(\d+)$/);
     if (userPath && method === "PATCH") {
       const body = await request.json().catch(() => ({}));
+      const before = await getUserById(env, Number(userPath[1]));
       // Role is deliberately NOT patchable: the only admin is ADMIN_EMAIL,
       // assigned by the Google sign-in flow. Sole-admin-forever policy.
       const patch = { status: body.status, name: body.name };
       if ("quota" in body) patch.quota_json = sanitizeQuota(body.quota);
       const user = await updateUser(env, Number(userPath[1]), patch);
       log.info("admin.user_updated", { user_id: userPath[1] });
+      // Message-center notices for the affected user — structured events
+      // only (src/user-messages.js), never the actual quota numbers.
+      if (before?.status === "pending" && patch.status === "active") {
+        await addUserMessage(env, userPath[1], "account_approved");
+      }
+      if ("quota" in body) {
+        await addUserMessage(env, userPath[1], "quota_changed");
+      }
       return jsonResponse({ user });
     }
     if (userPath && method === "DELETE") {
@@ -99,6 +114,17 @@ async function overview(env) {
     totals,
     alerts,
   });
+}
+
+// Lighter-weight than /overview — just what the in-app message center
+// needs (account.js), so opening it doesn't drag in the full usage/config
+// payload the dedicated /admin dashboard already has cached.
+async function notifications(env) {
+  const [alerts, users] = await Promise.all([listAlerts(env), listUsers(env)]);
+  const pending = users
+    .filter((u) => u.status === "pending")
+    .map((u) => ({ id: u.id, email: u.email, name: u.name }));
+  return jsonResponse({ alerts, pending });
 }
 
 // Per-user quota overrides: keep only known numeric fields (budget_eur
