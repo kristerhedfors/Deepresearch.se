@@ -7,7 +7,8 @@
     "fixtures": "python3 make_fixtures.py",
     "test": "playwright test",
     "test:live": "playwright test --grep @live",
-    "test:mocked": "playwright test --grep-invert @live"
+    "test:mocked": "playwright test --grep-invert @live",
+    "eval:models": "node model-eval.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

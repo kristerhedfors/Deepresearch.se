@@ -226,3 +226,4 @@ node_modules/
 tests/fixtures/
 tests/test-results/
 tests/playwright-report/
+tests/model-eval-results/
