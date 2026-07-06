@@ -77,15 +77,18 @@ const OVERRIDES = {
   },
 };
 
+// Fields whose value is itself a lookup object (phase -> number) rather than
+// a scalar — these need a fresh copy per call instead of a shared reference,
+// and must be listed here so a future nested field can't be added without
+// also teaching getModelProfile() how to merge it.
+const NESTED_OBJECT_FIELDS = ["priorsMs", "maxTokensOverride"];
+
 export function getModelProfile(modelId) {
   const override = OVERRIDES[modelId];
   if (!override) return DEFAULT;
-  return {
-    ...DEFAULT,
-    ...override,
-    priorsMs: override.priorsMs ? { ...override.priorsMs } : DEFAULT.priorsMs,
-    maxTokensOverride: override.maxTokensOverride
-      ? { ...override.maxTokensOverride }
-      : DEFAULT.maxTokensOverride,
-  };
+  const merged = { ...DEFAULT, ...override };
+  for (const field of NESTED_OBJECT_FIELDS) {
+    merged[field] = override[field] ? { ...override[field] } : DEFAULT[field];
+  }
+  return merged;
 }

@@ -18,7 +18,12 @@
 // iteration, accept draft) rather than failing the request.
 //
 // Status events emitted to the UI are documented in CLAUDE.md
-// ("/api/chat SSE protocol").
+// ("/api/chat SSE protocol"). Each phase below is its own function, all
+// sharing one `ctx` object built once in runPipeline() — everything a
+// phase needs to read (env, model, per-request state, the resolved
+// model-profiles.js overrides, the conversation) plus the three UI-emit
+// helpers (emitDelta/step/stepDone), so phase functions take just ctx
+// plus whatever's specific to that call, instead of a long parameter list.
 
 import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
 import { fitsDeadline, recordPhase } from "./budget.js";
@@ -42,100 +47,122 @@ import {
 
 export async function runPipeline(env, log, emit, conversation, model, state) {
   const profile = getModelProfile(model);
-  const reinforceJsonOnly = profile.jsonReinforcement;
-  const lastUser = textOf(lastUserMessage(conversation)?.content);
-  // Image parts of the latest user message ride along into synthesis so a
-  // vision model can research with the image as context.
-  const imageParts = imagePartsOf(lastUserMessage(conversation));
-  const convText = formatConversation(conversation);
-  const emitDelta = (t) => emit({ choices: [{ delta: { content: t } }] });
-  const step = (id, label) => emit({ status: { type: "step_start", id, label } });
-  const stepDone = (id, label, details = []) =>
-    emit({ status: { type: "step_done", id, label, details } });
+  const ctx = {
+    env, log, emit, model, state, profile, conversation,
+    reinforceJsonOnly: profile.jsonReinforcement,
+    lastUser: textOf(lastUserMessage(conversation)?.content),
+    convText: formatConversation(conversation),
+    // Image parts of the latest user message ride along into synthesis so a
+    // vision model can research with the image as context.
+    imageParts: imagePartsOf(lastUserMessage(conversation)),
+    emitDelta: (t) => emit({ choices: [{ delta: { content: t } }] }),
+    step: (id, label) => emit({ status: { type: "step_start", id, label } }),
+    stepDone: (id, label, details = []) =>
+      emit({ status: { type: "step_done", id, label, details } }),
+  };
 
   // Web search off: answer purely from Berget — no triage, no Exa.
-  if (!state.webSearch) {
-    step("plan", "Web search off");
-    stepDone("plan", "Web search off — answering from model knowledge");
-    await streamCompletion(
-      env,
-      [{ role: "system", content: searchOffPrompt() }, ...withImageNudge(conversation)],
-      model,
-      emitDelta,
-      state,
-    );
-    return;
-  }
+  if (!state.webSearch) return runWithoutSearch(ctx);
 
-  // ---- Phase 1: triage ------------------------------------------------
+  const decision = await runTriage(ctx);
+  if (decision.action === "direct") return runDirectReply(ctx);
+  if (decision.action === "clarify") return runClarify(ctx, decision.question);
+
+  // ---- Phase 2: initial search wave -------------------------------------
+  await runSearches(ctx, decision.queries, 1);
+  // ---- Phase 3: gap-check iterations (budgeted) -------------------------
+  await runGapChecks(ctx);
+  // ---- Phase 4: synthesis (streamed draft) -------------------------------
+  const draft = await runSynthesis(ctx);
+  // ---- Phase 5: post-validation (budgeted) -------------------------------
+  await runValidation(ctx, draft);
+}
+
+// ---- phases ------------------------------------------------------------
+
+async function runWithoutSearch(ctx) {
+  ctx.step("plan", "Web search off");
+  ctx.stepDone("plan", "Web search off — answering from model knowledge");
+  await streamCompletion(ctx, [
+    { role: "system", content: searchOffPrompt() },
+    ...withImageNudge(ctx.conversation),
+  ]);
+}
+
+// Phase 1: decide direct reply | clarifying question | research plan, and
+// announce the decision via the "plan" step. For "research" the returned
+// queries are already capped to the budget plan's angle count.
+async function runTriage(ctx) {
+  const { state, lastUser, convText, step, stepDone } = ctx;
   step("plan", "Analyzing request…");
-  const triage = await phase(log, "triage", () =>
-    completeJson(
-      env,
+  const triage = await phase(ctx, "triage", () =>
+    runJsonPhase(
+      ctx,
+      "triage",
+      "triage",
       [
-        { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly }) },
+        { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
         { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
       ],
-      { model, maxTokens: 500 },
-    ).then((r) => {
-      addUsage(state.totals, r.usage);
-      log.info("chat.json_diag", { phase: "triage", model, ...r.diagnostics });
-      return r.value;
-    }),
-    { model, statKey: "triage" },
+      500,
+    ),
+    "triage",
   );
-
   const decision = normalizeTriage(triage, lastUser);
 
   if (decision.action === "direct") {
     stepDone("plan", "Direct reply (no research needed)");
-    await streamCompletion(
-      env,
-      [{ role: "system", content: directPrompt() }, ...withImageNudge(conversation)],
-      model,
-      emitDelta,
-      state,
-    );
-    return;
+    return decision;
   }
-
   if (decision.action === "clarify") {
     stepDone("plan", "Need to narrow the scope first");
-    emitChunked(emitDelta, decision.question);
-    return;
+    return decision;
   }
-
-  // The time-budget plan (src/budget.js) decides how many angles, gap
-  // rounds, and whether validation fits; deadline checks refine at runtime.
-  const plan = state.plan;
-  const est = plan.estimates;
-  const queries = decision.queries.slice(0, plan.queries);
+  const queries = decision.queries.slice(0, state.plan.queries);
   stepDone(
     "plan",
-    `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"} · target ${plan.budgetS}s`,
+    `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"} · target ${state.plan.budgetS}s`,
     queries,
   );
+  return { ...decision, queries };
+}
 
-  // ---- Phase 2: initial search wave -------------------------------------
-  await runSearches(env, log, emit, state, queries, 1);
+async function runDirectReply(ctx) {
+  await streamCompletion(ctx, [
+    { role: "system", content: directPrompt() },
+    ...withImageNudge(ctx.conversation),
+  ]);
+}
 
-  // ---- Phase 3: gap-check iterations (budgeted) --------------------------
+async function runClarify(ctx, question) {
+  emitChunked(ctx, question);
+}
+
+// Phase 3: audits source coverage and runs follow-up searches for the most
+// important gaps, up to plan.gapIterations rounds or until the time budget
+// won't allow another round.
+async function runGapChecks(ctx) {
+  const { log, state, reinforceJsonOnly, lastUser } = ctx;
+  const plan = state.plan;
+  const est = plan.estimates;
+
   for (let it = 1; it <= plan.gapIterations; it++) {
     if (state.searchCount >= plan.maxSearches) break;
     // Skip further digging if this round plus the remaining mandatory
     // phases would blow the time target.
-    const upcoming =
-      est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
+    const upcoming = est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
     if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
       log.info("chat.budget_cut", { cut: "gap_iteration", round: it });
       break;
     }
     const stepId = `gap${it}`;
-    step(stepId, `Checking coverage (round ${it})…`);
+    ctx.step(stepId, `Checking coverage (round ${it})…`);
 
-    const gap = await phase(log, `gap_check_${it}`, () =>
-      completeJson(
-        env,
+    const gap = await phase(ctx, `gap_check_${it}`, () =>
+      runJsonPhase(
+        ctx,
+        `gap_check_${it}`,
+        "gap",
         [
           { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { reinforceJsonOnly }) },
           {
@@ -143,13 +170,9 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
             content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
           },
         ],
-        { model, maxTokens: 400 },
-      ).then((r) => {
-        addUsage(state.totals, r.usage);
-        log.info("chat.json_diag", { phase: `gap_check_${it}`, model, ...r.diagnostics });
-        return r.value;
-      }),
-      { model, statKey: "gap" },
+        400,
+      ),
+      "gap",
     );
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
@@ -157,111 +180,133 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       : gap.queries.filter((q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
 
     if (followups.length === 0) {
-      stepDone(stepId, "Coverage sufficient");
+      ctx.stepDone(stepId, "Coverage sufficient");
       break;
     }
-    stepDone(
+    ctx.stepDone(
       stepId,
       `Digging deeper: ${followups.length} follow-up search${followups.length === 1 ? "" : "es"}`,
       followups,
     );
     state.iterations++;
-    await runSearches(env, log, emit, state, followups, state.iterations);
+    await runSearches(ctx, followups, state.iterations);
   }
+}
 
-  // ---- Phase 4: synthesis (streamed draft) -------------------------------
-  step("synth", "Writing report…");
+// Phase 4: writes the source-grounded draft answer. Returns the full text.
+async function runSynthesis(ctx) {
+  const { state, lastUser, convText, imageParts } = ctx;
+  const plan = state.plan;
+  ctx.step("synth", "Writing report…");
   const digest = sourceDigest(state.sources, plan.digestCap);
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
-  const draft = await streamCompletion(
-    env,
-    [
-      { role: "system", content: synthPrompt() },
-      {
-        role: "user",
-        content: imageParts.length
-          ? [{ type: "text", text: synthText }, ...imageParts]
-          : synthText,
-      },
-    ],
-    model,
-    emitDelta,
-    state,
-  );
-  recordPhase(model, "synth", Date.now() - synthStartedAt);
-  stepDone("synth", "Report drafted");
+  const draft = await streamCompletion(ctx, [
+    { role: "system", content: synthPrompt() },
+    {
+      role: "user",
+      content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,
+    },
+  ]);
+  recordPhase(ctx.model, "synth", Date.now() - synthStartedAt);
+  ctx.stepDone("synth", "Report drafted");
+  return draft;
+}
 
-  // ---- Phase 5: post-validation (budgeted) -------------------------------
+// Phase 5: fact-checks the draft against sources. On "revise" the UI
+// discards the draft and gets the corrected answer; on "pass" it stands;
+// any other outcome (skipped by policy/budget, or this model's validate
+// call failed to produce a usable verdict) keeps the draft as-is —
+// deliberately fail-soft, never a fatal error.
+async function runValidation(ctx, draft) {
+  const { log, state, profile, lastUser } = ctx;
+  const plan = state.plan;
+  const est = plan.estimates;
+
   if (profile.skipValidation) {
     log.info("chat.budget_cut", { cut: "validation_profile_skip" });
-    step("validate", "Validation");
-    stepDone("validate", "Validation skipped for this model");
+    ctx.step("validate", "Validation");
+    ctx.stepDone("validate", "Validation skipped for this model");
     return;
   }
-  const validateNow =
-    plan.validate && fitsDeadline(state.startedAt, plan.budgetMs, est.validate);
+  const validateNow = plan.validate && fitsDeadline(state.startedAt, plan.budgetMs, est.validate);
   if (!validateNow) {
     log.info("chat.budget_cut", { cut: "validation", planned: plan.validate });
-    step("validate", "Validation");
-    stepDone("validate", `Validation skipped to meet the ${plan.budgetS}s time target`);
+    ctx.step("validate", "Validation");
+    ctx.stepDone("validate", `Validation skipped to meet the ${plan.budgetS}s time target`);
     return;
   }
-  step("validate", "Validating claims against sources…");
-  const verdict = await phase(log, "validate", () =>
-    completeJson(
-      env,
+
+  ctx.step("validate", "Validating claims against sources…");
+  const digest = sourceDigest(state.sources, plan.digestCap);
+  const verdict = await phase(ctx, "validate", () =>
+    runJsonPhase(
+      ctx,
+      "validate",
+      "validate",
       [
-        { role: "system", content: validatePrompt({ reinforceJsonOnly }) },
+        { role: "system", content: validatePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
         {
           role: "user",
           content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
         },
       ],
-      { model, maxTokens: profile.maxTokensOverride?.validate ?? 3000 },
-    ).then((r) => {
-      addUsage(state.totals, r.usage);
-      log.info("chat.json_diag", { phase: "validate", model, ...r.diagnostics });
-      return r.value;
-    }),
-    { model, statKey: "validate" },
+      3000,
+    ),
+    "validate",
   );
 
   if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
     const issues = (Array.isArray(verdict.issues) ? verdict.issues : []).map(String).slice(0, 10);
-    stepDone(
+    ctx.stepDone(
       "validate",
       `Fixed ${issues.length || "some"} issue${issues.length === 1 ? "" : "s"} found in fact-check`,
       issues,
     );
-    emit({ status: { type: "discard_text" } });
-    emitChunked(emitDelta, verdict.revised_answer.trim());
+    ctx.emit({ status: { type: "discard_text" } });
+    emitChunked(ctx, verdict.revised_answer.trim());
   } else if (verdict?.verdict === "pass") {
-    stepDone("validate", "All claims verified against sources");
+    ctx.stepDone("validate", "All claims verified against sources");
   } else {
-    stepDone("validate", "Validation inconclusive — draft kept as-is");
+    ctx.stepDone("validate", "Validation inconclusive — draft kept as-is");
   }
 }
 
 // ---- internals -------------------------------------------------------------
 
+// Runs one JSON-mode phase call: the completeJson request, usage
+// accounting, and the parse-mode/finish-reason diagnostic log — every JSON
+// phase (triage, gap-check, validation) follows this exact shape, so it's
+// one call site here instead of three near-identical blocks. `statKey`
+// (budget.js's phase bucket: triage/gap/validate) resolves a per-model
+// max_tokens override if model-profiles.js has one for this model;
+// `diagLabel` is the specific label logged for this call (equal to
+// statKey except gap-check, which logs "gap_check_N" per round).
+async function runJsonPhase(ctx, diagLabel, statKey, messages, defaultMaxTokens) {
+  const maxTokens = ctx.profile.maxTokensOverride?.[statKey] ?? defaultMaxTokens;
+  const r = await completeJson(ctx.env, messages, { model: ctx.model, maxTokens });
+  addUsage(ctx.state.totals, r.usage);
+  ctx.log.info("chat.json_diag", { phase: diagLabel, model: ctx.model, ...r.diagnostics });
+  return r.value;
+}
+
 // Runs a helper phase, logging duration; returns null on failure so the
-// pipeline can degrade instead of breaking. When opts.statKey is given the
+// pipeline can degrade instead of breaking. When statKey is given the
 // duration feeds the per-model rolling stats used by the budget planner.
-async function phase(log, name, fn, opts = {}) {
+async function phase(ctx, name, fn, statKey) {
   const startedAt = Date.now();
   try {
     const result = await fn();
     const duration_ms = Date.now() - startedAt;
-    if (opts.statKey && opts.model) recordPhase(opts.model, opts.statKey, duration_ms);
-    log.info("chat.phase", { phase: name, model: opts.model || null, duration_ms, ok: result != null });
+    if (statKey) recordPhase(ctx.model, statKey, duration_ms);
+    ctx.log.info("chat.phase", { phase: name, model: ctx.model, duration_ms, ok: result != null });
     return result;
   } catch (err) {
-    log.warn("chat.phase_failed", {
+    ctx.log.warn("chat.phase_failed", {
       phase: name,
-      model: opts.model || null,
+      model: ctx.model,
       duration_ms: Date.now() - startedAt,
       error: err?.message || String(err),
     });
@@ -286,7 +331,8 @@ function normalizeTriage(triage, lastUser) {
     : { action: "direct" };
 }
 
-async function runSearches(env, log, emit, state, queries, round) {
+async function runSearches(ctx, queries, round) {
+  const { env, log, emit, state } = ctx;
   for (const raw of queries) {
     const query = String(raw || "").trim();
     if (!query) continue;
@@ -298,7 +344,7 @@ async function runSearches(env, log, emit, state, queries, round) {
 
     emit({ status: { type: "search_start", round, query } });
     const result = await webSearch(env, log, query);
-    recordPhase(state.model, "search", result.durationMs);
+    recordPhase(ctx.model, "search", result.durationMs);
     emit({
       status: {
         type: "search_done",
@@ -343,22 +389,22 @@ function sourceDigest(sources, capChars) {
 }
 
 // Streams one chat completion to the client; returns the full text.
-async function streamCompletion(env, messages, model, emitDelta, state) {
-  const upstream = await chatCompletion(env, messages, { model });
+async function streamCompletion(ctx, messages) {
+  const upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
     throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
   }
-  const { text, usage } = await consumeChatStream(upstream.body, emitDelta);
-  addUsage(state.totals, usage);
+  const { text, usage } = await consumeChatStream(upstream.body, ctx.emitDelta);
+  addUsage(ctx.state.totals, usage);
   return text;
 }
 
 // Emits already-complete text as delta chunks (clarify questions, revised
 // answers) so the client renders it through the same streaming path.
-function emitChunked(emitDelta, text) {
+function emitChunked(ctx, text) {
   for (let i = 0; i < text.length; i += 80) {
-    emitDelta(text.slice(i, i + 80));
+    ctx.emitDelta(text.slice(i, i + 80));
   }
 }
 
