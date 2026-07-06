@@ -53,6 +53,31 @@ rounds — plus runtime deadline checks between phases (budget +15% grace;
 extra gap rounds are cut first, validation last, with a visible
 "Validation skipped" step when it happens).
 
+**Model-specific adaptations (`src/model-profiles.js`):** the pipeline is
+designed to be model-agnostic (no function calling, plain JSON-mode
+calls — see above), but real models still differ in speed and JSON
+reliability. `getModelProfile(modelId)` returns per-model overrides,
+consulted at the few places that need them; models with no entry behave
+exactly as if this module didn't exist. Fields: `priorsMs` (per-phase
+duration overrides `budget.js`'s `phaseEstimates()` falls back to ONLY
+until that model's own in-isolate EWMA has real data — for a model
+evidenced to be much slower than the global priors assume, this makes a
+COLD isolate plan conservatively for it from the first request, not just
+after the EWMA warms up), `jsonReinforcement` (splices an extra "JSON
+object only, no preamble" line into the JSON-mode prompts, for a model
+that tends to preface its JSON with reasoning/prose), `maxTokensOverride`
+(per-phase `max_tokens` bump for `completeJson` calls), and
+`skipValidation` (stop attempting the post-validation phase entirely for
+a model whose validate call has been evidenced to reliably fail to
+produce a usable verdict — same "draft kept as-is" outcome the fail-soft
+path already gives, without the wasted latency/tokens). **Keep this
+evidence-driven**: every entry should trace back to a reproduced finding,
+not a guess. `tests/model-eval.mjs` is the tool for finding them — it
+runs a fixed research-query battery against every model in the live
+catalog and surfaces per-model failure/quirk patterns from the resulting
+SSE traces (see that file's header for methodology and how to re-run it
+when Berget's catalog changes).
+
 ### Code layout
 
 Server (`src/`):
@@ -76,6 +101,7 @@ Server (`src/`):
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
+| `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions, model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
@@ -143,6 +169,26 @@ npm run test:live     # 4 tests, real Berget tokens + one Exa run
   for the re-signing CA, and `--ssl-version-max=tls1.2` because the
   proxy resets Chromium's TLS 1.3 ClientHello; the browser binary is the
   pre-installed `/opt/pw-browsers/chromium`.
+
+**Model-matrix eval (`tests/model-eval.mjs`)**: a separate tool from the
+Playwright suite above — a plain Node script (no deps) that runs a fixed
+battery of 5 research queries against every `up` model from `/api/models`
+directly via the live SSE endpoint, to find per-model behavior
+differences (see `src/model-profiles.js`). Not pass/fail; it's a
+data-collection sweep whose output is read and analyzed by hand.
+
+```bash
+cd tests && npm run eval:models   # BASIC_AUTH_USER/PASS required
+# EVAL_MODELS=id1,id2 EVAL_BUDGET_S=60 EVAL_CONCURRENCY=3 are optional overrides
+```
+
+Results land in `tests/model-eval-results/<timestamp>/` (gitignored — raw
+model output, no lasting repo value): one JSON file per model×query run
+(full SSE event sequence, final answer, a heuristic scan for leaked
+tool-call-shaped tokens) plus a `_summary.json`. Re-run this whenever
+Berget's catalog changes materially (new model, or a model profiled in
+`model-profiles.js` gets updated by its provider) to check whether
+existing overrides still apply and whether new ones are needed.
 
 ## UI notes
 

@@ -254,6 +254,35 @@ The UI slider sends `time_budget_s`; the planner decides how to spend it.
   **budget + 15% grace**. Overruns cut optional work — extra gap rounds
   first, validation last, with a visible "Validation skipped" step.
 
+### 4.3a Per-model adaptations (`src/model-profiles.js`)
+
+The pipeline's model-agnostic design (§4.2) removes the need for
+per-model *architecture*, but real models still differ in raw speed and
+JSON-mode reliability. `getModelProfile(modelId)` returns overrides
+consulted at a few specific points — models with no entry are completely
+unaffected:
+
+- `priorsMs` — per-phase duration overrides that `budget.js`'s
+  `phaseEstimates()` falls back to ONLY until that model's own in-isolate
+  EWMA has real data, so a cold isolate plans conservatively for a model
+  evidenced to be much slower than the global priors assume, instead of
+  only adapting after the EWMA warms up.
+- `jsonReinforcement` — splices an extra "JSON object only, no preamble"
+  line into the JSON-mode prompts (`prompts.js`) for a model that tends
+  to preface its JSON with reasoning/prose.
+- `maxTokensOverride` — per-phase `max_tokens` bump for `completeJson`
+  calls.
+- `skipValidation` — stop attempting post-validation entirely for a
+  model whose validate call has been evidenced to reliably fail to
+  produce a usable verdict; same "draft kept as-is" outcome the fail-soft
+  path already gives, without the wasted latency/tokens.
+
+Every override must trace back to a reproduced finding from
+`tests/model-eval.mjs` — a battery of 5 representative research queries
+run against every `up` model in the live catalog, surfacing per-model
+failure/quirk patterns from the resulting SSE traces (see that file's
+header for methodology; CLAUDE.md documents how to run it).
+
 ### 4.4 SSE protocol
 
 `Content-Type: text/event-stream`; OpenAI-style deltas plus custom `status`
