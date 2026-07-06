@@ -42,6 +42,15 @@ export function defaultModel(env) {
   return env.BERGET_MODEL || DEFAULT_MODEL;
 }
 
+// True when the admin's configured site default model (src/config.js) is
+// still present in the catalog and up — the only condition under which
+// callers should treat it as authoritative over the Worker's built-in
+// default. Shared by chat.js (applying it to an unset request) and
+// user-api.js (reporting it as /api/models' `default`).
+export function adminDefaultModelValid(config, catalog) {
+  return !!(config.default_model && catalog?.some((m) => m.id === config.default_model && m.up));
+}
+
 // Berget's model catalog, filtered to models the chat can use: text models
 // supporting streaming + JSON mode (the research pipeline's planning and
 // validation calls depend on it). Models Berget reports as down are included
@@ -91,23 +100,18 @@ function formatPricing(p) {
   return `${cur}${perM(p.input)} in / ${cur}${perM(p.output)} out per 1M tokens`;
 }
 
-// Starts a streaming chat completion. Pass `tools` to enable function
-// calling, and `model` to override the default.
+// Starts a streaming chat completion. `model` overrides the default.
 //
 // The abort signal bounds only the time to receive a RESPONSE (headers) —
 // once fetch() settles the timer is cleared, so a legitimately long
 // stream can keep being read afterward without getting cut off mid-flight.
-export function chatCompletion(env, messages, { tools, model } = {}) {
+export function chatCompletion(env, messages, { model } = {}) {
   const payload = {
     model: model || defaultModel(env),
     stream: true,
     max_tokens: 4096,
     messages,
   };
-  if (tools) {
-    payload.tools = tools;
-    payload.tool_choice = "auto";
-  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
   return fetch(chatUrl(env), {
@@ -122,10 +126,9 @@ export function chatCompletion(env, messages, { tools, model } = {}) {
 }
 
 // Consumes one OpenAI-style SSE response body. Calls `onText` for each text
-// delta as it arrives, and accumulates tool calls (which stream in fragments,
-// addressed by index), usage stats, and the finish reason.
+// delta as it arrives, and accumulates usage stats and the finish reason.
 //
-// Returns { text, toolCalls, usage, finishReason }.
+// Returns { text, usage, finishReason }.
 export async function consumeChatStream(body, onText) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -133,7 +136,6 @@ export async function consumeChatStream(body, onText) {
   let text = "";
   let usage = null;
   let finishReason = null;
-  const toolCalls = []; // index -> { id, type, function: { name, arguments } }
 
   while (true) {
     const { done, value } = await reader.read();
@@ -175,23 +177,10 @@ export async function consumeChatStream(body, onText) {
           );
         }
       }
-      if (Array.isArray(delta.tool_calls)) {
-        for (const tc of delta.tool_calls) {
-          const i = tc.index ?? 0;
-          const slot = (toolCalls[i] ||= {
-            id: "",
-            type: "function",
-            function: { name: "", arguments: "" },
-          });
-          if (tc.id) slot.id = tc.id;
-          if (tc.function?.name) slot.function.name = tc.function.name;
-          if (tc.function?.arguments) slot.function.arguments += tc.function.arguments;
-        }
-      }
     }
   }
 
-  return { text, toolCalls: toolCalls.filter(Boolean), usage, finishReason };
+  return { text, usage, finishReason };
 }
 
 // Non-streaming completion that asks Berget for a JSON object and parses it.

@@ -419,14 +419,7 @@ export function addSources(state, items) {
       continue;
     }
     state.domainCounts.set(host, count + 1);
-    const entry = {
-      n: state.sources.length + 1,
-      title: item.title || item.url,
-      url: item.url,
-      highlights: (item.highlights || []).slice(0, 3),
-    };
-    state.byUrl.set(item.url, entry);
-    state.sources.push(entry);
+    pushSource(state, item);
   }
 }
 
@@ -440,15 +433,21 @@ export function backfillOverflowSources(state) {
   while (state.sources.length < state.plan.maxSources && overflow.length) {
     const item = overflow.shift();
     if (!item?.url || state.byUrl.has(item.url)) continue;
-    const entry = {
-      n: state.sources.length + 1,
-      title: item.title || item.url,
-      url: item.url,
-      highlights: (item.highlights || []).slice(0, 3),
-    };
-    state.byUrl.set(item.url, entry);
-    state.sources.push(entry);
+    pushSource(state, item);
   }
+}
+
+// Shared by addSources/backfillOverflowSources: numbers and registers one
+// source entry. Assumes the caller has already checked for a duplicate URL.
+function pushSource(state, item) {
+  const entry = {
+    n: state.sources.length + 1,
+    title: item.title || item.url,
+    url: item.url,
+    highlights: (item.highlights || []).slice(0, 3),
+  };
+  state.byUrl.set(item.url, entry);
+  state.sources.push(entry);
 }
 
 export function sourceDigest(sources, capChars) {

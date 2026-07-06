@@ -4,7 +4,7 @@
 
 import { countOpenAlerts } from "./alerts.js";
 import { countPendingUsers } from "./accounts.js";
-import { defaultModel, listModels } from "./berget.js";
+import { adminDefaultModelValid, defaultModel, listModels } from "./berget.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -18,7 +18,7 @@ export async function handleModels(env, log) {
   try {
     const models = await listModels(env);
     const config = await getConfig(env);
-    const configured = config.default_model && models.some((m) => m.id === config.default_model && m.up);
+    const configured = adminDefaultModelValid(config, models);
     log.debug("models.list", { count: models.length });
     return jsonResponse({ models, default: configured ? config.default_model : defaultModel(env) });
   } catch (err) {

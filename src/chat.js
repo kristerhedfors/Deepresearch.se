@@ -7,7 +7,7 @@
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
-import { listModels } from "./berget.js";
+import { adminDefaultModelValid, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
@@ -53,7 +53,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   }
   const config = await getConfig(env);
   // The admin can set a site default model; it only applies when valid & up.
-  if (!body.model && config.default_model && catalog?.some((m) => m.id === config.default_model && m.up)) {
+  if (!body.model && adminDefaultModelValid(config, catalog)) {
     body.model = config.default_model;
   }
   const resolved = resolveModel(body, catalog, env, log);
@@ -76,22 +76,8 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         period: blocked.period,
         kind: blocked.kind,
       });
-      const periodName = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" }[blocked.period];
-      const verb = blocked.period === "h5" ? "frees up around" : "resets";
-      const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
-      // Budget amounts are EUR — admin-only information. Users get the
-      // period and the reset time, nothing about money.
-      const error =
-        blocked.kind === "budget"
-          ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
-          : `You've used your ${periodName} search budget ` +
-            `(${blocked.limit.toLocaleString("en-US")} searches). It ${verb} ${when}.`;
-      const publicQuota =
-        blocked.kind === "budget"
-          ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
-          : blocked;
       await addUserMessage(env, identity.id, "quota_exceeded", { period: blocked.period, kind: blocked.kind });
-      return jsonResponse({ error, quota: publicQuota }, 429);
+      return jsonResponse(quotaBlockedResponse(blocked), 429);
     }
   }
 
@@ -236,6 +222,26 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   }
 
   return sseResponse(stream);
+}
+
+// Builds the 429 payload for a blocked quota window: a plain-language
+// message (period + reset time — budget amounts are EUR, admin-only
+// information, never sent to users) and the public quota object the
+// client renders.
+export function quotaBlockedResponse(blocked) {
+  const periodName = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" }[blocked.period];
+  const verb = blocked.period === "h5" ? "frees up around" : "resets";
+  const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const error =
+    blocked.kind === "budget"
+      ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
+      : `You've used your ${periodName} search budget ` +
+        `(${blocked.limit.toLocaleString("en-US")} searches). It ${verb} ${when}.`;
+  const publicQuota =
+    blocked.kind === "budget"
+      ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
+      : blocked;
+  return { error, quota: publicQuota };
 }
 
 // Mutable per-request state threaded through the pipeline.
