@@ -625,3 +625,49 @@ data" pending a larger, controlled comparison.
    Exa tier used.
 3. The bare "terminated" error on an extreme-duration request — watch
    for recurrence; not yet root-caused.
+
+---
+
+## Round 8 — 2026-07-06 (source-diversity fix verification)
+
+**Run:** targeted re-test of the exact two queries that revealed round
+7's source-dominance finding (`mammoth_project_status`,
+`dire_wolf_de_extinction`), same models (GLM-4.7-FP8, Mistral-Medium-
+3.5-128B), same 450s budget — after deploying the domain-cap +
+mandatory-independent-source-query fix (`77325b9`).
+
+**Findings — the fix works, verified directly against the pre-fix
+baseline:**
+- Mistral-Medium `mammoth_project_status`: colossal.com capped at
+  exactly 3 of 6 citations (down from the pre-fix 4 of 6), the other 3
+  now genuinely independent (Den of Geek, NPR, CBR) — the domain cap
+  engaged at precisely its configured limit (3).
+- Mistral-Medium `dire_wolf_de_extinction`: colossal.com only 2 of 5
+  citations; the rest independent (Business Wire, thecooldown.com,
+  freedombunker.com — the latter two lower-tier outlets, but genuinely
+  independent, not the company's own site).
+- **GLM-4.7-FP8 `dire_wolf_de_extinction`: a clean, complete success** —
+  5 citations, ALL independent, high-quality journalism (NPR, Scientific
+  American, BBC, National Geographic, NBC New York), **zero** colossal.com
+  citations. The BBC source is literally headlined "why scientists fear
+  attempts to resurrect extinct animals may backfire" — exactly the kind
+  of independent scientific skepticism the fix was designed to surface,
+  found via the new mandatory independent-source query rather than left
+  to chance.
+- GLM's `mammoth_project_status` run is inconclusive (not a diversity
+  regression): the answer was truncated mid-list before completing its
+  Sources section — a separate, minor truncation issue (likely ran long
+  on inline detail and hit a token/length limit), unrelated to source
+  selection.
+
+**Decisions:** Source-diversity fix confirmed working as designed in 3
+of 4 verification runs, with one clean before/after (colossal.com 4/6 →
+3/6, hitting the configured cap exactly) and one standout complete
+success (0 company-domain citations, all independent). Considering this
+fix verified; no further changes needed unless a future round finds the
+domain cap or prompt rules failing to engage.
+
+**Carried forward:** the truncated-Sources-section issue seen in GLM's
+mammoth_project_status run — watch for recurrence; if it becomes a
+pattern, worth checking whether long, detailed answers are exhausting
+`max_tokens` before completing the Sources list.
