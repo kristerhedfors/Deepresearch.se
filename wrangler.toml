@@ -36,16 +36,20 @@ run_worker_first = true
 [observability]
 enabled = true
 
-# NOTE: this project is currently on Cloudflare's Workers FREE plan (not
-# Paid, despite usage_model reading "standard" — that's just the unified
-# pricing-model name Cloudflare uses for both tiers now). A [limits]
-# cpu_ms override was tried here to raise the CPU-time ceiling (see
-# tests/MODEL-EVAL-FINDINGS.md round 4) but Cloudflare's deploy API
-# rejects it outright on the Free plan ("CPU limits are not supported for
-# the Free plan", code 100328) — NOT a silent no-op, a hard deploy
-# failure. Confirmed live: it broke every subsequent deploy (git-push
-# auto-deploy included) until reverted. Do not re-add a [limits] section
-# unless/until the account is upgraded to Workers Paid.
+# Raise the CPU-time ceiling to the Workers Paid plan's max (default 30s).
+# Round 4's cybersecurity battery (mid-long 150s time budgets) found
+# Cloudflare killing several models' requests with outcome "exceededCpu"
+# mid-pipeline — a longer time budget legitimately plans deeper research
+# (more searches/gap rounds/a bigger synthesis digest), and the extra
+# processing tipped verbose models' requests past the ceiling before this
+# account was upgraded to Workers Paid. A first attempt at this same
+# config was rejected outright by Cloudflare's deploy API on the
+# then-Free plan ("CPU limits are not supported for the Free plan", code
+# 100328 — a hard deploy failure, not a silent no-op) and had to be
+# reverted; see tests/MODEL-EVAL-FINDINGS.md's round 4 entry. Re-added
+# now that the account is confirmed on Workers Paid.
+[limits]
+cpu_ms = 300_000
 
 # D1 database for accounts and research quotas. The schema applies itself
 # on first use — no migration step. Without this binding the Worker still
