@@ -169,8 +169,9 @@ export async function sendMessage(text, opts) {
     }
   }
   history.push({ role: "user", content });
-  addUserBubble(text, opts.images.map((a) => a.dataUrl), opts.docs.map((d) => d.name));
-  const turn = addAssistantTurn(text);
+  const imageUrls = opts.images.map((a) => a.dataUrl);
+  addUserBubble(text, imageUrls, opts.docs.map((d) => d.name));
+  const turn = addAssistantTurn(text, imageUrls);
   let acc = "";
   inFlight = true;
   const gen = generation;

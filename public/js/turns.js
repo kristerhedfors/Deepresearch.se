@@ -59,8 +59,9 @@ export function addUserBubble(text, imageUrls = [], docNames = []) {
 
 // An assistant turn = collapsible activity panel + streamed content (typing
 // icon until the first token) + Raw/Copy/PDF tools + stats footer.
-// `question` (the user's prompt) becomes the PDF report's title.
-export function addAssistantTurn(question = "") {
+// `question` (the user's prompt) becomes the PDF report's title; `images`
+// (the data URLs sent with it) are embedded in the PDF report.
+export function addAssistantTurn(question = "", images = []) {
   clearEmpty();
   const el = document.createElement("div");
   el.className = "msg assistant";
@@ -90,7 +91,7 @@ export function addAssistantTurn(question = "") {
 
   const turn = {
     el, activityWrap, activity, activityLabel, content, stats,
-    question, model: "",
+    question, images, model: "",
     lastStep: null, steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
   };
   tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));

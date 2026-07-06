@@ -33,7 +33,8 @@ function mdToBlocks(md) {
     } else if (/^\s*[-*•]\s+/.test(line)) {
       blocks.push({ kind: "li", text: line.replace(/^\s*[-*•]\s+/, "") });
     } else if (/^\s*\d+\.\s+/.test(line)) {
-      blocks.push({ kind: "li", text: line.trim() });
+      // Numbered items keep their own "1." marker — no bullet on top.
+      blocks.push({ kind: "li", text: line.trim(), ordered: true });
     } else {
       blocks.push({ kind: "p", text: line });
     }
@@ -110,6 +111,28 @@ export async function downloadReport(turn, meta = {}) {
     y += 18;
   }
 
+  // Images the user attached to the question, embedded as figures under
+  // the title — the same downscaled JPEG data URLs that went to the model.
+  const maxImgH = H - 48 - 66; // printable height between header and footer
+  for (const dataUrl of turn.images || []) {
+    let props;
+    try {
+      props = doc.getImageProperties(dataUrl);
+    } catch {
+      continue; // unreadable image — never block the report over a figure
+    }
+    if (!props?.width || !props?.height) continue;
+    let w = Math.min(bodyW, props.width * 0.75); // px at 96dpi → pt
+    let h = (props.height / props.width) * w;
+    if (h > maxImgH) {
+      w *= maxImgH / h;
+      h = maxImgH;
+    }
+    ensure(h + 6);
+    doc.addImage(dataUrl, "JPEG", M, y, w, h);
+    y += h + 14;
+  }
+
   // Body.
   for (const b of mdToBlocks(turn.text)) {
     if (!b.text.trim()) {
@@ -124,7 +147,7 @@ export async function downloadReport(turn, meta = {}) {
     if (b.kind === "h1") { size = 13; style = "bold"; lead = 20; y += 6; }
     else if (b.kind === "h2") { size = 12; style = "bold"; lead = 18; y += 5; }
     else if (b.kind === "h3" || b.kind === "h4") { size = 11; style = "bold"; lead = 16; y += 4; }
-    else if (b.kind === "li") { indent = 14; prefix = "•  "; }
+    else if (b.kind === "li") { indent = 14; prefix = b.ordered ? "" : "•  "; }
     doc.setFont("helvetica", style);
     doc.setFontSize(size);
     doc.setTextColor(...TEXT);

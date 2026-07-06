@@ -1,0 +1,15 @@
+{
+  "name": "deepresearch-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests against the live site using break-glass Basic Auth. Run: BASIC_AUTH_USER=… BASIC_AUTH_PASS=… npm test",
+  "scripts": {
+    "fixtures": "python3 make_fixtures.py",
+    "test": "playwright test",
+    "test:live": "playwright test --grep @live",
+    "test:mocked": "playwright test --grep-invert @live"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

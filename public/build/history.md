@@ -1223,6 +1223,34 @@ else — the license belongs where the code does.
 
 - Commit: (this entry's own — next continuation's ledger)
 
+### 88. "Create a dense set of end-to-end tests with break glass to upload various combinations of the supported file types…"
+
+The first real test suite. A `tests/` Playwright project (own
+`package.json`, never touching the Worker build) drives the LIVE site
+over break-glass Basic Auth: 29 mocked tests upload every supported
+attachment type — txt, md, pdf (parsed by vendored pdf.js in the
+browser), docx (deflated AND stored ZIP entries, entity/tab/break
+unescaping) — alone and in combination with images, asserting on the
+actual `/api/chat` request payload (sentinel codes baked into generated
+fixtures), plus the caps (4 images, 3 docs, truncation at 9K,
+unsupported types) and the server-side 400s; 4 live tests spend real
+tokens: models echo sentinels back from parsed docs, a vision model
+names the color of an uploaded image, and one budget-capped run
+combines Exa search with a doc + image attachment. The session's
+feature: **PDF reports now embed the images that were attached to the
+question** — the downscaled JPEGs ride on the turn object into jsPDF,
+and the tests verify the exact JPEG bytes appear inside the downloaded
+PDF. Also fixed: numbered lists in reports no longer get a stray bullet
+on top of their own "1." marker. Two sandbox battles worth recording:
+Chromium ignores `HTTPS_PROXY` (the test environment tunnels all egress
+through a TLS-re-signing proxy), and once pointed at it, the proxy RST
+every TLS 1.3 ClientHello from Chromium 141 while curl/openssl sailed
+through — a net-log capture showed the CONNECT succeeding and the hello
+dying, and `--ssl-version-max=tls1.2` on the browser↔proxy leg
+unblocked the whole suite. All 33 tests green against production.
+
+- Commit: (this entry's own — next continuation's ledger)
+
 ## Going-public commit ledger
 
 | # | Commit | Time | Subject |
