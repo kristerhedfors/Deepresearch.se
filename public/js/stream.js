@@ -284,6 +284,13 @@ export async function sendMessage(text, opts) {
       web_search: opts.webSearch,
     };
     if (opts.model) payload.model = opts.model;
+    // Raw GPS coordinates ride separately from the message text — the
+    // Worker resolves them to a place name (src/geocode.js) and appends
+    // that as its own context block, rather than the client guessing.
+    const imageLocations = opts.images
+      .filter((a) => a.gps)
+      .map((a) => ({ name: a.name, lat: a.gps.lat, lon: a.gps.lon }));
+    if (imageLocations.length) payload.imageLocations = imageLocations;
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -21,10 +21,13 @@ const PER_DOC_CHARS = 9000;
 
 let attachBtn;
 let pendingBox;
-// {kind:"image",name,dataUrl,metadata,hasGps} | {kind:"doc",name,ext,text,truncated,metadata}
+// {kind:"image",name,dataUrl,metadata,metadataSensitive,gps} |
+// {kind:"doc",name,ext,text,truncated,metadata,metadataSensitive}
 // `metadata` is a formatted summary string (EXIF for images, docProps/
 // tracked-changes/comments for docx, Info-dict for pdf) or null — see
-// exif.js / docs.js. Included in the outgoing message by stream.js.
+// exif.js / docs.js. Included in the outgoing message by stream.js. `gps`
+// (images only) is the raw {lat,lon}, sent separately to the server for
+// reverse geocoding (src/geocode.js) rather than resolved client-side.
 let attachments = [];
 
 const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
@@ -169,6 +172,7 @@ async function addImageFile(file) {
       dataUrl,
       metadata: exif.summary,
       metadataSensitive: exif.hasGps,
+      gps: exif.gps, // raw {lat,lon} — sent to the server for reverse geocoding (src/geocode.js)
     });
     renderPending();
   } catch {
@@ -179,9 +183,9 @@ async function addImageFile(file) {
 async function extractImageMetadata(file) {
   try {
     const meta = extractExif(await file.arrayBuffer());
-    return { summary: formatExifSummary(meta), hasGps: !!meta?.gps };
+    return { summary: formatExifSummary(meta), hasGps: !!meta?.gps, gps: meta?.gps || null };
   } catch {
-    return { summary: null, hasGps: false }; // never let metadata extraction block the attach
+    return { summary: null, hasGps: false, gps: null }; // never let metadata extraction block the attach
   }
 }
 

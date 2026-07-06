@@ -9,6 +9,7 @@ import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
+import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
 import { getConfig } from "./config.js";
@@ -127,6 +128,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // researching" apart from "nothing will ever come".
     await markAnswerRunning(env, log, requestId, identity.id);
 
+    // Reverse-geocode any attached photo's GPS EXIF (public/js/exif.js)
+    // into a place name every phase below can actually use — independent
+    // of the web_search toggle, since this is enriching the photo's own
+    // metadata, not researching the user's topic.
+    const conversationWithContext = await augmentWithLocations(env, log, conversation, body.imageLocations);
+
     // The JSON helper phases (triage/gap/validation) emit nothing for
     // tens of seconds; idle HTTP connections get dropped by proxies on
     // the way to the client. SSE comment lines (":" prefix) keep bytes
@@ -157,7 +164,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     };
 
     try {
-      await runPipeline(env, log, emit, conversation, model, state);
+      await runPipeline(env, log, emit, conversationWithContext, model, state);
     } catch (err) {
       const errMessage = err?.message || String(err);
       log.error("chat.stream_failed", {

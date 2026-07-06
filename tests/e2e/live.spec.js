@@ -114,3 +114,18 @@ test("@live stop button keeps the partial answer as normal follow-up context", a
   const turn = page.locator(".msg.assistant").last();
   await expect(turn).toContainText("Stopped", { timeout: 15_000 });
 });
+
+test("@live photo GPS EXIF gets reverse-geocoded server-side and reaches the model", async ({ page }) => {
+  // photo.jpg's EXIF (tests/make_fixtures.py) encodes 40.7128, -74.0060 —
+  // Manhattan. The client never resolves this itself (src/geocode.js does,
+  // server-side, via OpenStreetMap Nominatim) — this is the one check that
+  // the resolved place name actually reaches the model, not just that the
+  // raw coordinates were sent (already covered by the mocked spec).
+  await openApp(page, { webSearch: false, budgetS: 15 });
+  await selectModel(page, { wantVision: true });
+  await attach(page, ["photo.jpg"], 1);
+  await send(page, "Based only on this photo's metadata (not its visual content), what city was it taken in?");
+  const turn = await waitForDone(page, 0, ANSWER_TIMEOUT);
+  await expect(turn.locator(".content")).not.toHaveClass(/error-text/);
+  await expect(turn.locator(".content")).toContainText(/new york|manhattan/i);
+});

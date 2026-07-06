@@ -13,6 +13,8 @@ const MAX_IMAGES_PER_REQUEST = 8; // history is resent every turn — keep bound
 // images to fit; these server caps leave headroom for text/history.
 const MAX_IMAGE_CHARS = 300_000; // per image, as a data URL
 const MAX_TOTAL_IMAGE_CHARS = 750_000; // per request
+const MAX_IMAGE_LOCATIONS = 4; // matches MAX_IMAGES_PER_REQUEST's practical ceiling per message
+const MAX_LOCATION_NAME_CHARS = 200;
 
 // Returns an error string for invalid input, or null when acceptable.
 export function validateMessages(messages) {
@@ -71,6 +73,27 @@ export function validateMessages(messages) {
     return "The attached images together exceed the provider's request size limit. Remove an image or start a new chat.";
   }
   return null;
+}
+
+// Sanitizes the client-reported GPS coordinates of attached photos (from
+// public/js/exif.js, forwarded as body.imageLocations) before they're used
+// for anything — untrusted input, arbitrary shape. Silently drops/caps
+// rather than erroring the whole request: a malformed or oversized
+// location list just means less (or no) geocoding context, never a
+// blocked chat. Returns [] for anything not a non-empty array.
+export function validateImageLocations(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (out.length >= MAX_IMAGE_LOCATIONS) break;
+    const lat = Number(item?.lat);
+    const lon = Number(item?.lon);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) continue;
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) continue;
+    const name = typeof item?.name === "string" && item.name ? item.name.slice(0, MAX_LOCATION_NAME_CHARS) : "photo";
+    out.push({ name, lat, lon });
+  }
+  return out;
 }
 
 // Resolves the model for a request against the (possibly null) catalog:

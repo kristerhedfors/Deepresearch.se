@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { validateMessages, resolveModel } from "./validation.js";
+import { validateMessages, resolveModel, validateImageLocations } from "./validation.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 const noopLog = { warn: () => {} };
@@ -158,5 +158,61 @@ describe("resolveModel", () => {
     const messages = [{ role: "user", content: [{ type: "image_url", image_url: { url: "x" } }] }];
     const result = resolveModel({ messages }, catalog, {}, noopLog);
     assert.equal(result.model, DEFAULT_MODEL);
+  });
+});
+
+describe("validateImageLocations", () => {
+  test("non-array input returns an empty list rather than throwing", () => {
+    assert.deepEqual(validateImageLocations(undefined), []);
+    assert.deepEqual(validateImageLocations(null), []);
+    assert.deepEqual(validateImageLocations("not an array"), []);
+    assert.deepEqual(validateImageLocations({}), []);
+  });
+
+  test("passes through valid entries with name/lat/lon", () => {
+    const out = validateImageLocations([{ name: "photo.jpg", lat: 40.7128, lon: -74.006 }]);
+    assert.deepEqual(out, [{ name: "photo.jpg", lat: 40.7128, lon: -74.006 }]);
+  });
+
+  test("drops entries with out-of-range or non-finite lat/lon", () => {
+    const out = validateImageLocations([
+      { name: "a", lat: 91, lon: 0 },
+      { name: "b", lat: 0, lon: 181 },
+      { name: "c", lat: NaN, lon: 0 },
+      { name: "d", lat: "not a number", lon: 0 },
+      { name: "e", lat: 10, lon: 20 }, // the only valid one
+    ]);
+    assert.deepEqual(out, [{ name: "e", lat: 10, lon: 20 }]);
+  });
+
+  test("boundary values (±90 lat, ±180 lon) are accepted, not off-by-one rejected", () => {
+    const out = validateImageLocations([
+      { name: "a", lat: 90, lon: 180 },
+      { name: "b", lat: -90, lon: -180 },
+    ]);
+    assert.equal(out.length, 2);
+  });
+
+  test("caps the list at 4 entries", () => {
+    const raw = Array.from({ length: 10 }, (_, i) => ({ name: `p${i}`, lat: i, lon: i }));
+    const out = validateImageLocations(raw);
+    assert.equal(out.length, 4);
+    assert.equal(out[0].name, "p0");
+  });
+
+  test("a missing/non-string name defaults to 'photo'; an oversized name is truncated", () => {
+    const out = validateImageLocations([
+      { lat: 1, lon: 1 },
+      { name: 42, lat: 2, lon: 2 },
+      { name: "x".repeat(500), lat: 3, lon: 3 },
+    ]);
+    assert.equal(out[0].name, "photo");
+    assert.equal(out[1].name, "photo");
+    assert.equal(out[2].name.length, 200);
+  });
+
+  test("coerces numeric strings but rejects non-numeric ones", () => {
+    const out = validateImageLocations([{ name: "a", lat: "12.5", lon: "-45.5" }]);
+    assert.deepEqual(out, [{ name: "a", lat: 12.5, lon: -45.5 }]);
   });
 });

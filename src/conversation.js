@@ -70,3 +70,25 @@ export function withImageNudge(conversation) {
     },
   ];
 }
+
+// Appends server-resolved context (e.g. geocode.js's reverse-geocoded photo
+// locations) to the LAST message — content the client couldn't have known
+// ahead of time. Handles string content, array content with an existing
+// text part, and array content with none (image-only send). Non-mutating,
+// same convention as withImageNudge; a no-op when there's nothing to add.
+export function withAppendedText(conversation, extraText) {
+  if (!extraText || conversation.length === 0) return conversation;
+  const last = conversation[conversation.length - 1];
+  if (typeof last.content === "string") {
+    return [...conversation.slice(0, -1), { ...last, content: last.content + extraText }];
+  }
+  if (Array.isArray(last.content)) {
+    const idx = last.content.findIndex((p) => p?.type === "text");
+    const content =
+      idx >= 0
+        ? last.content.map((p, i) => (i === idx ? { ...p, text: p.text + extraText } : p))
+        : [{ type: "text", text: extraText }, ...last.content];
+    return [...conversation.slice(0, -1), { ...last, content }];
+  }
+  return conversation;
+}

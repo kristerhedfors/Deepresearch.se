@@ -30,6 +30,10 @@ test("a JPEG's EXIF (GPS, camera, capture time) reaches the payload and is flagg
   expect(textPart.text).toContain("GPS location: 40.7128, -74.006");
   expect(textPart.text).toContain("--- End of image metadata ---");
   expect(msg.content.filter((p) => p.type === "image_url")).toHaveLength(1);
+
+  // Raw coordinates also ride separately, for the Worker to reverse-geocode
+  // (src/geocode.js) — never resolved client-side.
+  expect(payloads[0].imageLocations).toEqual([{ name: "photo.jpg", lat: 40.7128, lon: -74.006 }]);
 });
 
 test("a docx's tracked changes, comments, and core properties reach the payload and are flagged", async ({ page }) => {

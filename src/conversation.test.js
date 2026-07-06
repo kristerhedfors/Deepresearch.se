@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, imagePartsOf, formatConversation, withImageNudge } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, imagePartsOf, formatConversation, withImageNudge, withAppendedText } from "./conversation.js";
 
 describe("textOf", () => {
   test("plain string content passes through", () => {
@@ -100,5 +100,51 @@ describe("withImageNudge", () => {
   test("leaves plain string content and empty conversations alone", () => {
     assert.deepEqual(withImageNudge([{ role: "user", content: "hi" }]), [{ role: "user", content: "hi" }]);
     assert.deepEqual(withImageNudge([]), []);
+  });
+});
+
+describe("withAppendedText", () => {
+  test("appends to string content", () => {
+    const conv = [{ role: "user", content: "hi" }];
+    const out = withAppendedText(conv, "\n\nextra");
+    assert.equal(out[0].content, "hi\n\nextra");
+    assert.equal(conv[0].content, "hi", "original message is untouched");
+  });
+
+  test("appends to an existing text part in array content", () => {
+    const conv = [{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image_url", image_url: { url: "x" } }] }];
+    const out = withAppendedText(conv, "\n\nextra");
+    assert.equal(out[0].content[0].text, "hi\n\nextra");
+    assert.equal(out[0].content[1].type, "image_url");
+  });
+
+  test("adds a new leading text part when array content has none (image-only send)", () => {
+    const conv = [{ role: "user", content: [{ type: "image_url", image_url: { url: "x" } }] }];
+    const out = withAppendedText(conv, "extra");
+    assert.equal(out[0].content[0].type, "text");
+    assert.equal(out[0].content[0].text, "extra");
+    assert.equal(out[0].content[1].type, "image_url");
+  });
+
+  test("returns the same reference when extraText is empty/falsy", () => {
+    const conv = [{ role: "user", content: "hi" }];
+    assert.equal(withAppendedText(conv, ""), conv);
+    assert.equal(withAppendedText(conv, null), conv);
+  });
+
+  test("returns the same reference for an empty conversation", () => {
+    assert.deepEqual(withAppendedText([], "extra"), []);
+  });
+
+  test("only modifies the LAST message, earlier turns are untouched", () => {
+    const conv = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
+    ];
+    const out = withAppendedText(conv, "!");
+    assert.equal(out[0].content, "first");
+    assert.equal(out[1].content, "reply");
+    assert.equal(out[2].content, "second!");
   });
 });

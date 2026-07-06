@@ -427,7 +427,10 @@ Let a battery finish before pushing anything.
     make/model, editing software, and artist/copyright/description tags.
     Must run on the file's ORIGINAL bytes — `attachments.js` calls it
     before the canvas-based downscale, since re-encoding through
-    `<canvas>.toDataURL()` strips all EXIF.
+    `<canvas>.toDataURL()` strips all EXIF. The raw coordinates alone
+    aren't very useful to a model or to Exa, so they're also forwarded
+    separately (`body.imageLocations`) for the Worker to reverse-geocode
+    into an actual place name — see "Reverse geocoding" below.
   - **DOCX**: `docProps/core.xml` (author, last-modified-by, created/
     modified dates, revision, title/subject/keywords) and `docProps/
     app.xml` (company, application), plus — the highest-value case —
@@ -744,6 +747,49 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
     say so plainly when sources are still dominated by one origin despite
     all this, rather than presenting single-origin claims as
     independently established.
+
+## Reverse geocoding — OpenStreetMap Nominatim
+
+A photo's GPS EXIF is only decimal coordinates (`public/js/exif.js`
+extracts them, unchanged, into the image metadata block) — of little use
+on their own to either a model (which can only guess loosely from
+training data) or Exa (which can't search on a lat/lon pair). `src/
+geocode.js` resolves them into an actual place name server-side, giving
+both something concrete to reason and search with.
+
+- **Auth:** none — Nominatim's public API needs no key/secret.
+- **Endpoint:** `GET https://nominatim.openstreetmap.org/reverse` —
+  `format=jsonv2&lat=…&lon=…&zoom=14&addressdetails=0`. `zoom=14`
+  targets neighborhood-level resolution (not house-number precision);
+  `addressdetails=0` skips the structured breakdown since only
+  `display_name` (one human-readable string) is used.
+- **Request shape is deliberately minimal**: only the coordinates cross
+  the wire — never the filename, the user's question, or any account/
+  session identifier. The `User-Agent` is a generic, non-identifying
+  string (`geocode-client/1.0` — no site name, no URL); Nominatim's
+  usage policy requires *some* non-default value to filter unidentified
+  bot traffic, but nothing more specific than that is needed or sent.
+- **Server-side only, same as Berget/Exa** — not called from the
+  browser. Keeps it Worker-mediated (logged, rate-limit-aware) instead
+  of the client talking to a fourth third party directly, and lets
+  `chat.js` decide policy (see below) instead of leaving it to client
+  code.
+- **Runs independent of the web-search toggle.** Unlike Exa (which
+  researches the user's *topic*, gated behind the toggle for the privacy
+  reasons in the section above), this resolves metadata the photo
+  *itself* already carries — closer to parsing document text than to
+  researching a question. `chat.js` calls `augmentWithLocations()` right
+  after `markAnswerRunning`, appending a `Resolved location(s)` block to
+  the conversation (`src/conversation.js`'s `withAppendedText()`) built
+  from `public/js/exif.js`'s GPS output, forwarded separately from the
+  message text as `body.imageLocations` (validated server-side by
+  `validateImageLocations()` — capped at 4 entries, coordinates range-
+  checked) rather than resolved client-side.
+- **Fails soft, same as every other helper phase**: a bad/missing
+  coordinate, a Nominatim timeout (4s) or error, all degrade to "no
+  resolved location" — the raw coordinates the client already included
+  in the image metadata block are still there as a fallback, and the
+  chat is never blocked or delayed meaningfully by this.
 
 ## Access control & accounts — Google sign-in only
 
