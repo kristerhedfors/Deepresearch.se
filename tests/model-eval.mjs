@@ -63,6 +63,15 @@ async function runOne(model, query) {
   const startedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BUDGET_S * 1.15 * 1000 + 30_000);
+  // Captured outside the try block so a mid-stream abort (the common case —
+  // headers arrive immediately since /api/chat returns its Response before
+  // the pipeline even starts, per src/chat.js) still reports which request
+  // hung, instead of silently dropping it in the catch block.
+  let requestId = null;
+  const events = [];
+  let text = "";
+  let streamError = null;
+  let doneStats = null;
   try {
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
@@ -75,7 +84,7 @@ async function runOne(model, query) {
       }),
       signal: controller.signal,
     });
-    const requestId = res.headers.get("x-request-id");
+    requestId = res.headers.get("x-request-id");
     if (!res.ok || !res.body) {
       const detail = await res.text().catch(() => "");
       return {
@@ -88,10 +97,6 @@ async function runOne(model, query) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let text = "";
-    const events = [];
-    let streamError = null;
-    let doneStats = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -132,10 +137,18 @@ async function runOne(model, query) {
       full_answer: text,
     };
   } catch (err) {
+    // Report whatever arrived before the abort — request_id and the last
+    // events seen tell us WHICH PHASE it hung in, which "client-side
+    // timeout" alone does not.
     return {
-      model: model.id, query: query.key, ok: false,
+      model: model.id, query: query.key, request_id: requestId,
+      ok: false,
       error: err.name === "AbortError" ? "client-side timeout" : err.message,
       duration_ms: Date.now() - startedAt,
+      answer_length: text.length,
+      answer_preview: text.slice(0, 500),
+      events: events.map((e) => ({ type: e.type, id: e.id, label: e.label })),
+      last_event: events.at(-1) || null,
     };
   } finally {
     clearTimeout(timeout);
