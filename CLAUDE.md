@@ -154,14 +154,43 @@ unknown `status` types (forward compatibility).
 - `{"error":"…"}` — shown as an error in the bubble
 - Stream terminates with `data: [DONE]`
 
+## Unit tests (`src/*.test.js`)
+
+Node's built-in test runner (`node:test` + `node:assert/strict` — no
+dependency added, matching the project's minimal-dependency stance),
+covering the pure logic that doesn't need Berget/Exa/D1: `budget.js`
+(time-tier planning, deadline grace math), `quota.js` (window
+start/reset including month-boundary wraps, quota merging/clamping,
+breach detection, cost calc), `model-profiles.js` (override merging,
+clone-not-share of nested fields), `alerts.js` (error classification),
+`conversation.js` (message/content helpers), `validation.js` (message
+and image caps, model resolution), `prompts.js` (structural assertions
+on every prompt builder — the anti-injection note, the independent-
+source rule, the JSON-only reinforcement toggle), and `pipeline.js`'s
+exported pure functions (`hostnameOf`, `addSources`,
+`backfillOverflowSources`, `sourceDigest`, `normalizeTriage` — the
+source-registry/domain-diversity logic).
+
+```bash
+npm test   # from the repo root: node --test src/*.test.js
+```
+
+This is additive to, not a replacement for, the live-verification
+convention below: anything touching an external provider or D1 is still
+verified live, since that's where this project's actual bugs have come
+from historically. The root `package.json` exists solely to run this
+suite — it carries no build step or dependencies of its own; deploy
+still reads `src/` as plain JS via `npx wrangler deploy`.
+
 ## End-to-end tests (`tests/`)
 
 Playwright suite that runs against the **live site** using the
 break-glass credentials (`BASIC_AUTH_USER` / `BASIC_AUTH_PASS` env vars;
 sent as an `Authorization: Basic` header on every request — the Worker
 never emits a challenge, so Playwright's `httpCredentials` would not
-work). Self-contained npm project — nothing at the repo root, so the
-Worker build is untouched.
+work). Self-contained npm project of its own (`tests/package.json`) —
+distinct from the root `package.json` above, which only runs the unit
+suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once

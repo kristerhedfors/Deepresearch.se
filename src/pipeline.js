@@ -315,7 +315,7 @@ async function phase(ctx, name, fn, statKey) {
   }
 }
 
-function normalizeTriage(triage, lastUser) {
+export function normalizeTriage(triage, lastUser) {
   if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
     return { action: "clarify", question: triage.question.trim() };
   }
@@ -391,7 +391,7 @@ async function runSearches(ctx, queries, round) {
 // gapPrompt's dominance check) — belt and suspenders, not either/or.
 const DOMAIN_CAP = 3;
 
-function hostnameOf(url) {
+export function hostnameOf(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -406,7 +406,7 @@ function hostnameOf(url) {
 // registry ends up short of maxSources (a niche topic with genuinely few
 // distinct domains shouldn't be starved just to enforce diversity that
 // isn't available).
-function addSources(state, items) {
+export function addSources(state, items) {
   state.domainCounts ||= new Map();
   state.sourceOverflow ||= [];
   for (const item of items || []) {
@@ -435,7 +435,7 @@ function addSources(state, items) {
 // the overflow — diversity that doesn't exist can't be enforced, and a
 // smaller-than-planned source list would otherwise cost the answer real
 // grounding for no benefit.
-function backfillOverflowSources(state) {
+export function backfillOverflowSources(state) {
   const overflow = state.sourceOverflow || [];
   while (state.sources.length < state.plan.maxSources && overflow.length) {
     const item = overflow.shift();
@@ -451,7 +451,7 @@ function backfillOverflowSources(state) {
   }
 }
 
-function sourceDigest(sources, capChars) {
+export function sourceDigest(sources, capChars) {
   const blocks = [];
   let used = 0;
   for (const s of sources) {
