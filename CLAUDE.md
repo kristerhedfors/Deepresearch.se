@@ -922,26 +922,53 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
     all this, rather than presenting single-origin claims as
     independently established.
 
-## Reverse geocoding — OpenStreetMap Nominatim
+## Photo-location enrichment — OpenStreetMap (Nominatim + Overpass) & Street View links
 
 A photo's GPS EXIF is only decimal coordinates (`public/js/exif.js`
 extracts them, unchanged, into the image metadata block) — of little use
 on their own to either a model (which can only guess loosely from
 training data) or Exa (which can't search on a lat/lon pair). `src/
-geocode.js` resolves them into an actual place name server-side, giving
-both something concrete to reason and search with.
+geocode.js` enriches them server-side, three ways per photo (each line of
+the `Resolved location(s)` block):
 
-- **Auth:** none — Nominatim's public API needs no key/secret.
-- **Endpoint:** `GET https://nominatim.openstreetmap.org/reverse` —
-  `format=jsonv2&lat=…&lon=…&zoom=14&addressdetails=0`. `zoom=14`
-  targets neighborhood-level resolution (not house-number precision);
-  `addressdetails=0` skips the structured breakdown since only
-  `display_name` (one human-readable string) is used.
+1. **Reverse geocoding** (Nominatim) → a human-readable place name,
+   giving both the model and Exa something concrete to reason and search
+   with.
+2. **A Street View deep link** (`streetViewUrl()` — Google's Maps URLs
+   API, `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=
+   lat,lon`): a plain, KEYLESS URL that opens the interactive panorama
+   nearest the spot. Nothing is ever fetched from Google by the Worker or
+   the client — the URL only resolves if the user opens it. The client's
+   `formatExifSummary()` includes the same link in the image metadata
+   block, so it's present even with web search off. This is deliberately
+   the no-credential tier of street-level support: actually FETCHING
+   Street View imagery for the pipeline (so a vision model could look
+   around/navigate) requires the Street View Static API — a Google Cloud
+   key + billing ($7/1k images; the metadata endpoint for coverage
+   checks is free but still keyed; the Maps *Embed* API for an
+   interactive in-page panorama is free but also keyed) — and is
+   deliberately NOT implemented until that account decision is made.
+3. **Nearby establishments** (`nearbyEstablishments()` — OpenStreetMap's
+   Overpass API): named amenities/shops/tourism/leisure POIs within
+   250 m, deduped, capped at 20, formatted "Name (kind)". Lets the model
+   answer questions about a photo's surroundings and gives Exa concrete
+   establishment names to search. Free, keyless, same OSM ecosystem —
+   NOT Google Places ($32/1k requests), a deliberate cost/privacy call.
+
+- **Auth:** none — Nominatim's and Overpass's public APIs need no
+  key/secret.
+- **Endpoints:** `GET https://nominatim.openstreetmap.org/reverse` —
+  `format=jsonv2&lat=…&lon=…&zoom=14&addressdetails=0` (`zoom=14`
+  targets neighborhood-level resolution; `addressdetails=0` skips the
+  structured breakdown since only `display_name` is used) and
+  `POST https://overpass-api.de/api/interpreter` (Overpass QL built by
+  `overpassQuery()` — `nwr(around:250,lat,lon)[name][tag]` per tag
+  family).
 - **Request shape is deliberately minimal**: only the coordinates cross
   the wire — never the filename, the user's question, or any account/
   session identifier. The `User-Agent` is a generic, non-identifying
-  string (`geocode-client/1.0` — no site name, no URL); Nominatim's
-  usage policy requires *some* non-default value to filter unidentified
+  string (`geocode-client/1.0` — no site name, no URL); both services'
+  usage policies require *some* non-default value to filter unidentified
   bot traffic, but nothing more specific than that is needed or sent.
 - **Server-side only, same as Berget/Exa** — not called from the
   browser. Keeps it Worker-mediated (logged, rate-limit-aware) instead
@@ -960,10 +987,15 @@ both something concrete to reason and search with.
   `validateImageLocations()` — capped at 4 entries, coordinates range-
   checked) rather than resolved client-side.
 - **Fails soft, same as every other helper phase**: a bad/missing
-  coordinate, a Nominatim timeout (4s) or error, all degrade to "no
-  resolved location" — the raw coordinates the client already included
-  in the image metadata block are still there as a fallback, and the
-  chat is never blocked or delayed meaningfully by this.
+  coordinate, a Nominatim/Overpass timeout (4s each, resolved in
+  parallel) or error, all degrade gracefully — a failed lookup drops
+  just that line, never the whole entry (valid coordinates always yield
+  at least the Street View link), the raw coordinates the client already
+  included in the image metadata block are still there as a fallback,
+  and the chat is never blocked or delayed meaningfully by this.
+- Pure helpers (`streetViewUrl`, `overpassQuery`, `formatNearby`) are
+  unit-tested in `src/geocode.test.js`; the fetch paths follow the
+  live-verification convention.
 
 ## Access control & accounts — Google sign-in only
 

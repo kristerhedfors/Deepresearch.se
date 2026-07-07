@@ -212,6 +212,11 @@ export function formatExifSummary(meta) {
         (altitude != null ? ` (altitude ${altitude} m)` : "") +
         ` — https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=15`,
     );
+    // Keyless Google Maps URLs API deep link — opens the interactive Street
+    // View panorama nearest the photo's coordinates. Nothing is fetched from
+    // Google here; the URL only resolves if the user (or reader of the
+    // answer) chooses to open it.
+    lines.push(`Street View: https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat}%2C${lon}`);
   }
   return lines.length ? lines.join("\n") : null;
 }

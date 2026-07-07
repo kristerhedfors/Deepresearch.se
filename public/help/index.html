@@ -172,9 +172,16 @@
         include what the badge is telling you about. A photo's raw
         coordinates are also resolved server-side into an actual place
         name (via <a href="https://nominatim.openstreetmap.org"
-        target="_blank" rel="noopener">OpenStreetMap Nominatim</a> — only
-        the coordinates are sent, nothing else) since a place name is far
-        more useful for research than bare numbers.</li>
+        target="_blank" rel="noopener">OpenStreetMap Nominatim</a>) and a
+        list of named establishments within ~250&nbsp;m (via OpenStreetMap's
+        <a href="https://overpass-api.de" target="_blank"
+        rel="noopener">Overpass API</a>) — in both cases only the
+        coordinates are sent, nothing else — since a place name and its
+        surroundings are far more useful for research than bare numbers.
+        The answer can also hand you a Google Street View link for the
+        exact spot, so you can look around at street level yourself; that
+        link is just a URL — nothing is sent to Google unless you open
+        it.</li>
       <li><b>Spiderweb knob</b> — the web-search switch, with a spiderweb
         inside the knob: it glows blue when search is on and turns grey
         when off. Tap to toggle; <b>press and hold</b> it for a short

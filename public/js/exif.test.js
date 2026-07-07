@@ -261,6 +261,7 @@ describe("formatExifSummary", () => {
     assert.match(summary, /Captured: 2024-05-01 14:32:00/);
     assert.match(summary, /GPS location: 40\.7128, -74\.006/);
     assert.match(summary, /openstreetmap\.org/);
+    assert.match(summary, /Street View: https:\/\/www\.google\.com\/maps\/@\?api=1&map_action=pano&viewpoint=40\.7128%2C-74\.006/);
   });
 
   test("omits fields that weren't present", () => {
