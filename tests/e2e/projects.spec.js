@@ -21,7 +21,7 @@ async function createProject(page, name) {
 }
 
 async function addNote(page, title, content) {
-  await page.click("#ptext");
+  // The note form is always open in the panel — no toggle button.
   await page.fill("#ptexttitle", title);
   await page.fill("#ptextcontent", content);
   await page.click("#ptextsave");
@@ -65,6 +65,15 @@ test("a project ingests notes, documents and images — indexables indexed, EXIF
   await expect(
     page.locator(".project-file", { hasText: "photo.jpg" }).locator("img.pf-thumb"),
   ).toBeVisible(); // the preview rides inside the encrypted record
+
+  // Rename: double-click the title in the header — no button.
+  await page.dblclick("#projecttitle");
+  await page.fill("#projectrename", "Fieldwork 2026");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#projecttitle")).toHaveText("Fieldwork 2026");
+  await page.click("#projectclose");
+  await page.click("#historybtn");
+  await expect(page.locator("#projectslist")).toContainText("Fieldwork 2026");
 });
 
 test("a chat inside a project retrieves the project's material, carries image EXIF, and is scoped to that project only", async ({ page }) => {

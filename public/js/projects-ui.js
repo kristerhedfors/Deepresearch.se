@@ -65,6 +65,65 @@ export function initProjectsUi(opts = {}) {
   });
   onProjectsChange(updateChip);
   updateChip();
+  wireTitleRename();
+}
+
+// Rename is a double-click on the project name in the header (no button).
+// Desktop fires dblclick natively; iOS historically doesn't, so a manual
+// two-taps-within-350ms detector covers touch. The name swaps to an input
+// in place: Enter or blur saves, Escape cancels.
+function wireTitleRename() {
+  const title = document.getElementById("projecttitle");
+  title.title = "Double-tap to rename";
+  let lastTap = 0;
+  let editing = false;
+
+  async function commit(input, cancel) {
+    if (!editing) return;
+    editing = false;
+    const p = getProject(openPanelId);
+    const name = input.value.trim();
+    input.remove();
+    if (!cancel && p && name && name !== p.name) {
+      await renameProject(p.id, name);
+      renderProjectsList();
+      updateChip();
+    }
+    title.textContent = getProject(openPanelId)?.name || title.textContent;
+  }
+
+  function startEdit() {
+    if (editing || !openPanelId) return;
+    const p = getProject(openPanelId);
+    if (!p) return;
+    editing = true;
+    title.textContent = "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = "projectrename";
+    input.maxLength = 80;
+    input.value = p.name;
+    title.appendChild(input);
+    input.focus();
+    input.select();
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit(input, false);
+      else if (e.key === "Escape") commit(input, true);
+    });
+    input.addEventListener("blur", () => commit(input, false));
+  }
+
+  title.addEventListener("dblclick", startEdit);
+  title.addEventListener("pointerup", () => {
+    if (editing) return;
+    const now = Date.now();
+    if (now - lastTap < 350) {
+      lastTap = 0;
+      startEdit();
+    } else {
+      lastTap = now;
+    }
+  });
 }
 
 function updateChip() {
@@ -170,8 +229,18 @@ async function renderPanel() {
     )
     .join("");
 
+  const CHAT_PLUS_ICON =
+    '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>';
+  const TRASH_ICON =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+  const ADD_ICON =
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+
   // The knob sits AT THE TOP of the open project — the same slide switch
-  // as the account setting, scoped to this project.
+  // as the account setting, scoped to this project. Below it, icon-only
+  // controls: a speech bubble with a plus starts a chat in the project,
+  // the trashcan (confirmed) deletes it; renaming is a double-tap on the
+  // title in the header — no button.
   body.innerHTML = `
     <div class="settings-item project-knob">
       <div class="settings-row">
@@ -184,26 +253,26 @@ async function renderPanel() {
       <p id="projectsyncstatus" class="muted setting-desc"${cloudUsable ? " hidden" : ""}>${cloudUsable ? "" : "Cloud storage isn't available on this account, so this project stays in this browser."}</p>
     </div>
     <div class="project-actions">
-      <button type="button" id="pchat">New chat in project</button>
-      <button type="button" id="pfiles">Add files</button>
-      <button type="button" id="ptext">Add text</button>
-      <button type="button" id="prename">Rename</button>
-      <button type="button" id="pdelete" class="danger">Delete project</button>
+      <button type="button" id="pchat" class="icon-btn" title="New chat in project" aria-label="New chat in project">${CHAT_PLUS_ICON}</button>
+      <span class="flex-spacer"></span>
+      <button type="button" id="pdelete" class="icon-btn danger" title="Delete project" aria-label="Delete project">${TRASH_ICON}</button>
     </div>
     <input type="file" id="pfileinput" multiple hidden>
-    <div id="ptextform" hidden>
-      <input type="text" id="ptexttitle" placeholder="Title" maxlength="120">
-      <textarea id="ptextcontent" rows="5" placeholder="Content"></textarea>
-      <div class="project-actions">
-        <button type="button" id="ptextsave">Save note</button>
-        <button type="button" id="ptextcancel">Cancel</button>
-      </div>
-    </div>
     <p id="pstatus" class="muted" hidden></p>
     <p class="section-lbl">Files &amp; notes</p>
-    <div id="pdrop" class="project-drop">${filesHtml || '<p class="muted">No files yet — add some, or drop them here.</p>'}</div>
+    <div id="pdrop" class="project-drop">
+      ${filesHtml}
+      <button type="button" id="pfiles" class="pf-add" title="Add files" aria-label="Add files">${ADD_ICON}${filesHtml ? "" : '<span class="pf-add-hint">Add files — or drop them here</span>'}</button>
+    </div>
+    <div id="ptextform">
+      <input type="text" id="ptexttitle" placeholder="Note title" maxlength="120">
+      <textarea id="ptextcontent" rows="3" placeholder="Write a note — it's indexed like a document"></textarea>
+      <div class="project-actions">
+        <button type="button" id="ptextsave">Save note</button>
+      </div>
+    </div>
     <p class="section-lbl">Chats in this project</p>
-    ${convHtml || '<p class="muted">No chats yet — "New chat in project" starts one.</p>'}
+    ${convHtml || '<p class="muted">No chats yet — the 💬+ button starts one.</p>'}
   `;
   wirePanel(p);
 
@@ -267,13 +336,6 @@ function wirePanel(p) {
     onNew(true); // keepProject: fresh chat, first send adopts the active project
     closePanel();
   });
-  document.getElementById("prename").addEventListener("click", async () => {
-    const name = prompt("Rename project", p.name);
-    if (!name || !name.trim()) return;
-    await renameProject(p.id, name);
-    await renderPanel();
-    renderProjectsList();
-  });
   document.getElementById("pdelete").addEventListener("click", async () => {
     if (!confirm(`Delete "${p.name}" with its files and chats? This can't be undone.`)) return;
     status("Deleting project…");
@@ -314,13 +376,7 @@ function wirePanel(p) {
     renderProjectsList();
   }
 
-  // ---- add text (title + content) ----------------------------------------
-  const form = document.getElementById("ptextform");
-  document.getElementById("ptext").addEventListener("click", () => {
-    form.hidden = false;
-    document.getElementById("ptexttitle").focus();
-  });
-  document.getElementById("ptextcancel").addEventListener("click", () => { form.hidden = true; });
+  // ---- the note form (always open — no toggle button) ----------------------
   document.getElementById("ptextsave").addEventListener("click", async () => {
     const title = document.getElementById("ptexttitle").value;
     const content = document.getElementById("ptextcontent").value;
@@ -329,7 +385,7 @@ function wirePanel(p) {
     try {
       await addTextToProject(p.id, title, content);
       status("");
-      await renderPanel();
+      await renderPanel(); // also clears the form for the next note
       renderProjectsList();
     } catch (err) {
       status(err?.message || "Could not save the note.");
