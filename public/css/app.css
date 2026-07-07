@@ -494,7 +494,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #composer.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
-#historybtn, #clearbtn, #accountbtn {
+#historybtn, #clearbtn, #accountbtn, #ghostbtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -521,6 +521,20 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 .notif-badge[hidden] { display: none; }
 #historybtn[hidden] { display: none; }
+
+/* Incognito ghost: its own right-aligned mini-row directly below the
+   account button. Pressed (accent) = this conversation is never written
+   to chat history (local or cloud); locked once the first message is
+   sent — the choice is per-conversation and must be made up front. The
+   row itself stays click-transparent like the rest of the header strip. */
+.header-sub { display: flex; justify-content: flex-end; pointer-events: none; }
+#ghostbtn { pointer-events: auto; }
+#ghostbtn[hidden] { display: none; }
+#ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#ghostbtn:disabled { opacity: .4; }
+/* Active incognito stays clearly visible while the chat runs — the lock
+   dims the affordance, not the "nothing is being saved" signal. */
+#ghostbtn.on:disabled { opacity: .85; }
 
 /* Chat history drawer (public/js/history-ui.js): a left-anchored slide-in
    panel, same dimmed backdrop as the account overlay but docked left

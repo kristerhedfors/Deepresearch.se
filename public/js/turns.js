@@ -5,7 +5,7 @@
 import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 
-const EMPTY_TEXT =
+export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
 
 let chat;
