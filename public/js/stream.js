@@ -35,8 +35,10 @@ import {
   deriveTitle,
   imageMetadataBlock,
   inlineDocBlock,
+  isStreamStale,
   ragExcerptBlocks,
   stripOldImages,
+  STREAM_STALL_MS,
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 
@@ -407,11 +409,31 @@ export async function sendMessage(text, opts) {
   controller = new AbortController();
   const signal = controller.signal;
 
-  // iOS suspends network for backgrounded apps/PWAs — the most common
-  // cause of mid-stream drops. Track it so the error can say so.
+  // iOS suspends network for backgrounded apps/PWAs — the most common cause
+  // of mid-stream drops. On return the torn-down socket frequently makes the
+  // next reader.read() HANG with no error, so a plain try/catch would never
+  // notice; the watchdog below detects the silence and switches to recovery.
   let wasHidden = document.hidden;
-  const onVisibility = () => { if (document.hidden) wasHidden = true; };
+  let lastByteAt = Date.now(); // last time the stream produced ANY bytes (incl. keepalives)
+  let staleAbort = false; // set when the watchdog (not the user) aborts, so the catch recovers
+  const onVisibility = () => {
+    if (document.hidden) {
+      wasHidden = true;
+    } else {
+      // Back in the foreground: grant a fresh full stall window for the
+      // connection to resume before the watchdog judges it dead (elapsed
+      // time spent hidden must not count as silence — see isStreamStale).
+      lastByteAt = Date.now();
+    }
+  };
   document.addEventListener("visibilitychange", onVisibility);
+  const reqController = controller; // capture: clearHistory may reassign the module-level one
+  const watchdog = setInterval(() => {
+    if (isStreamStale(lastByteAt, Date.now(), document.hidden, STREAM_STALL_MS)) {
+      staleAbort = true;
+      try { reqController.abort(); } catch { /* already settled */ }
+    }
+  }, 5000);
 
   let requestId = "";
   try {
@@ -451,6 +473,7 @@ export async function sendMessage(text, opts) {
     let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
+      lastByteAt = Date.now(); // any read (data, keepalive, or EOF) proves the socket is live
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
@@ -488,12 +511,21 @@ export async function sendMessage(text, opts) {
         ackAnswer(requestId);
         return;
       }
+      if (staleAbort) {
+        // The watchdog aborted a silent/hung stream (typically a socket
+        // torn down while the app was backgrounded), NOT the user pressing
+        // Stop — the server is still finishing, so recover the answer
+        // rather than treating the partial as a deliberate stop.
+        await handleNetworkFailure(turn, new Error("stream stalled — connection went silent"), acc, requestId, wasHidden, gen, opts);
+        return;
+      }
       await handleStopped(turn, acc, requestId, opts);
       return;
     }
     await handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opts);
   } finally {
     inFlight = false;
+    clearInterval(watchdog);
     document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
   }
@@ -575,8 +607,10 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   setError(
     turn,
     wasHidden
-      ? "Connection lost while the app was in the background — the phone pauses " +
-        "network for backgrounded apps. Keep the app open while research runs. " +
+      ? "The connection dropped while the app was in the background — phones pause " +
+        "network for backgrounded apps, and this one stayed away long enough that the " +
+        "finished answer could no longer be retrieved. The research still completed on " +
+        "the server; a shorter switch away recovers automatically. " +
         (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
       : "Network error: " + e.message + ref,
   );

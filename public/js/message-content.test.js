@@ -3,12 +3,33 @@ import assert from "node:assert/strict";
 
 import {
   EXCERPT_TOTAL_CHARS,
+  STREAM_STALL_MS,
   deriveTitle,
   imageMetadataBlock,
   inlineDocBlock,
+  isStreamStale,
   ragExcerptBlocks,
   stripOldImages,
 } from "./message-content.js";
+
+test("isStreamStale trips only when silent past the window AND in the foreground", () => {
+  const t0 = 1_000_000;
+  // Fresh bytes → alive regardless of foreground state.
+  assert.equal(isStreamStale(t0, t0 + 1000, false), false);
+  // Silent past the window while foregrounded → stale (the watchdog fires).
+  assert.equal(isStreamStale(t0, t0 + STREAM_STALL_MS + 1, false), true);
+  // Same silence but hidden → NOT stale: a backgrounded tab's socket may
+  // resume on return, and its frozen timers can't have advanced anyway.
+  assert.equal(isStreamStale(t0, t0 + STREAM_STALL_MS + 1, true), false);
+  // Just under the window → alive (a quiet phase between 15s keepalives).
+  assert.equal(isStreamStale(t0, t0 + STREAM_STALL_MS - 1, false), false);
+});
+
+test("isStreamStale honors a custom stall window", () => {
+  const t0 = 0;
+  assert.equal(isStreamStale(t0, 5001, false, 5000), true);
+  assert.equal(isStreamStale(t0, 4999, false, 5000), false);
+});
 
 test("deriveTitle uses the first user message's text", () => {
   assert.equal(deriveTitle([{ role: "user", content: "What is the capital of France?" }]), "What is the capital of France?");

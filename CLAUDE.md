@@ -856,6 +856,28 @@ Let a battery finish before pushing anything.
   completed answer. Rows expire after 15 min (`ANSWER_TTL_MS`,
   lazy-purged on every read/write) — the privacy notice discloses this
   explicitly; it is a recovery buffer, not storage.
+- **Client stall watchdog (the "switched to another app" fix)**: server
+  survival + the recovery poll only help if the client actually NOTICES
+  its stream died. On iOS a backgrounded PWA is frozen and its socket
+  torn down; on return the next `reader.read()` frequently HANGS forever
+  with no error, so a plain try/catch never triggers recovery and the
+  user is stuck on a spinner. `public/js/stream.js` stamps `lastByteAt`
+  on every read (data, keepalive, or EOF) and runs a 5s-interval watchdog
+  that aborts the stream once it's been silent past `STREAM_STALL_MS`
+  (30s = 2× the 15s server keepalive plus margin — a healthy stream is
+  never silent that long) via `isStreamStale()` (the pure predicate lives
+  in `message-content.js`, unit-tested). A watchdog abort sets
+  `staleAbort` so the catch routes to `handleNetworkFailure` (recovery),
+  NOT `handleStopped` (which is only for the user's Stop button). The
+  predicate ignores silence while `document.hidden` (a frozen tab's
+  timers can't fire and elapsed hidden time isn't a real stall), and the
+  `visibilitychange`→visible handler resets `lastByteAt` so a returning
+  connection gets a fresh full window to resume before being judged dead.
+  This makes a short app-switch a non-event (recovers automatically);
+  only a background long enough for the PWA to be fully discarded (losing
+  the in-memory request id) still can't recover — the honest limit,
+  since iOS offers web pages no way to keep a stream alive in the
+  background (no service-worker longevity, no Background Fetch on iOS).
 - **Disconnect survival**: the pipeline promise is registered with
   `ctx.waitUntil()` — without it the runtime kills the invocation the
   moment the client vanishes, silently dropping the `chat.complete` log

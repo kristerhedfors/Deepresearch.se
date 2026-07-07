@@ -11,6 +11,29 @@
 // (project-context.js): each piece of research material is its own clearly
 // delimited block, never silently blended into the user's text.
 
+// How long a streaming /api/chat connection may go silent before stream.js
+// treats it as dead and switches to answer recovery. The server emits a
+// `: keepalive` line every 15s even during quiet phases (triage/gap/
+// validation produce no user-visible bytes for tens of seconds), so a
+// healthy stream never goes silent this long — only a torn-down connection
+// does. This is the core of the "switched to another app" fix: iOS freezes
+// a backgrounded PWA and tears down its socket, and on return the dead
+// `reader.read()` often just HANGS with no error, so nothing would trigger
+// recovery without this watchdog. 30s = 2× keepalive plus margin.
+export const STREAM_STALL_MS = 30000;
+
+// Whether a stream should be considered stalled (dead) right now: silent
+// past the stall window AND currently in the foreground. The foreground
+// gate matters because a backgrounded tab's JS is frozen — its timers don't
+// fire while hidden, and elapsed wall-clock time while hidden must not by
+// itself count as a stall (the connection may resume fine on return). On
+// return to foreground stream.js resets the silence clock, granting a fresh
+// full window for the connection to prove it's alive before this trips.
+export function isStreamStale(lastByteAt, now, hidden, stallMs = STREAM_STALL_MS) {
+  if (hidden) return false;
+  return now - lastByteAt > stallMs;
+}
+
 // Per-question excerpt budget for RAG retrieval blocks: generous enough for
 // real answers, small enough that history-resending never approaches the
 // server's 32K message cap.
