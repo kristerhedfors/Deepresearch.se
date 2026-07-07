@@ -196,7 +196,7 @@ async function runClarify(ctx, question) {
 // important gaps, up to plan.gapIterations rounds or until the time budget
 // won't allow another round.
 async function runGapChecks(ctx) {
-  const { log, state, reinforceJsonOnly, lastUser } = ctx;
+  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
 
@@ -221,7 +221,10 @@ async function runGapChecks(ctx) {
           { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { reinforceJsonOnly }) },
           {
             role: "user",
-            content: `Research question:\n${lastUser}\n\nSources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
+            // convText rides along so a bare follow-up ("what's the latest")
+            // is audited against the original question's breadth, not just
+            // the sub-topic the collected sources already cluster on.
+            content: `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\nSources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
           },
         ],
         400,
