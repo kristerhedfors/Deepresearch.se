@@ -1,7 +1,54 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { quotaBlockedResponse, resolveJsonModel } from "./chat.js";
+import { quotaBlockedResponse, resolveJsonModel, summarizeSpend } from "./chat.js";
 import { DEFAULT_MODEL } from "./berget.js";
+
+describe("summarizeSpend", () => {
+  const state = {
+    model: "answer/model",
+    jsonModel: "json/model",
+    visionModel: "vision/model",
+    totals: { prompt_tokens: 1000, completion_tokens: 500 },
+    jsonTotals: { prompt_tokens: 200, completion_tokens: 100 },
+    visionTotals: { prompt_tokens: 30, completion_tokens: 10 },
+  };
+
+  test("sums tokens across all three buckets", () => {
+    const spend = summarizeSpend(state, []);
+    assert.equal(spend.prompt_tokens, 1230);
+    assert.equal(spend.completion_tokens, 610);
+  });
+
+  test("prices each bucket at its OWN model's catalog rate (the split-billing design)", () => {
+    const catalog = [
+      { id: "answer/model", price_in: 2, price_out: 4 },
+      { id: "json/model", price_in: 0.1, price_out: 0.2 },
+      { id: "vision/model", price_in: 1, price_out: 1 },
+    ];
+    const spend = summarizeSpend(state, catalog);
+    // answer: 1000*2 + 500*4 = 4000; json: 200*0.1 + 100*0.2 = 40; vision: 30 + 10 = 40
+    assert.equal(spend.berget_cost, 4080);
+  });
+
+  test("a model missing from the catalog contributes tokens but zero cost", () => {
+    const catalog = [{ id: "answer/model", price_in: 1, price_out: 1 }];
+    const spend = summarizeSpend(state, catalog);
+    assert.equal(spend.berget_cost, 1500);
+    assert.equal(spend.prompt_tokens, 1230);
+  });
+
+  test("no catalog at all yields zero cost, never a throw", () => {
+    const spend = summarizeSpend(state, null);
+    assert.equal(spend.berget_cost, 0);
+  });
+
+  test("a null visionModel (no vision helper ran) is fine — its bucket is just zeros", () => {
+    const s = { ...state, visionModel: null, visionTotals: { prompt_tokens: 0, completion_tokens: 0 } };
+    const spend = summarizeSpend(s, [{ id: "answer/model", price_in: 1, price_out: 1 }]);
+    assert.equal(spend.prompt_tokens, 1200);
+    assert.equal(spend.berget_cost, 1500);
+  });
+});
 
 describe("resolveJsonModel", () => {
   test("routes JSON phases to the default (Mistral) model for any other answer model", () => {
