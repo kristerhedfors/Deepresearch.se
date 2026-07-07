@@ -117,10 +117,10 @@ test("@live stop button keeps the partial answer as normal follow-up context", a
 
 test("@live photo GPS EXIF gets reverse-geocoded server-side and reaches the model", async ({ page }) => {
   // photo.jpg's EXIF (tests/make_fixtures.py) encodes 40.7128, -74.0060 —
-  // Manhattan. The client never resolves this itself (src/geocode.js does,
-  // server-side, via OpenStreetMap Nominatim) — this is the one check that
-  // the resolved place name actually reaches the model, not just that the
-  // raw coordinates were sent (already covered by the mocked spec).
+  // Manhattan. The client never resolves this itself (the Worker does) —
+  // this is the one check that the resolved place name actually reaches
+  // the model, not just that the raw coordinates were sent (already
+  // covered by the mocked spec).
   await openApp(page, { webSearch: false, budgetS: 15 });
   await selectModel(page, { wantVision: true });
   await attach(page, ["photo.jpg"], 1);
@@ -128,4 +128,46 @@ test("@live photo GPS EXIF gets reverse-geocoded server-side and reaches the mod
   const turn = await waitForDone(page, 0, ANSWER_TIMEOUT);
   await expect(turn.locator(".content")).not.toHaveClass(/error-text/);
   await expect(turn.locator(".content")).toContainText(/new york|manhattan/i);
+
+  // The lookup is a visible, service-naming activity step (SSE step_done),
+  // and the resolved location renders as inline map figure(s) loaded via
+  // the Worker's /api/maps/* proxies. Service-name regex is deliberately
+  // loose — the maps provider has changed once already.
+  await expect(turn.locator(".step", { hasText: /photo location/i })).not.toHaveCount(0);
+  await expect(turn.locator(".step", { hasText: /Google Maps|OpenStreetMap|Nominatim/i })).not.toHaveCount(0);
+  expect(await turn.locator(".map-figure img").count()).toBeGreaterThan(0);
+});
+
+test("@live coordinates in the message text trigger the maps lookup and figures", async ({ page }) => {
+  // 59.3293, 18.0686 is central Stockholm. No attachment involved — the
+  // maps enrichment extracts coordinates from the message text itself,
+  // independent of the web-search toggle (like the Shodan enrichment).
+  await openApp(page, { webSearch: false, budgetS: 15 });
+  await send(page, "What is located at 59.3293, 18.0686? Answer from what you know.");
+  const turn = await waitForDone(page, 0, ANSWER_TIMEOUT);
+  await expect(turn.locator(".content")).not.toHaveClass(/error-text/);
+  await expect(turn.locator(".content")).toContainText(/stockholm/i);
+  await expect(turn.locator(".step", { hasText: /Mapped|location/i })).not.toHaveCount(0);
+  expect(await turn.locator(".map-figure img").count()).toBeGreaterThan(0);
+});
+
+test("@live complex prompt: the resolved photo location feeds the research queries", async ({ page }) => {
+  // The whole point of resolving GPS server-side is that the research
+  // pipeline can actually USE the place: with web search ON, the planned
+  // Exa queries must reference the resolved location (a name, neighborhood
+  // or zip near 40.7128,-74.006), not the bare coordinates the model would
+  // otherwise have to guess from. Asserted on the search-step labels
+  // ("Searched “…”") so it holds even when a search returns few results.
+  await openApp(page, { webSearch: true, budgetS: 30 });
+  await selectModel(page, { wantVision: true });
+  await attach(page, ["photo.jpg"], 1);
+  await send(
+    page,
+    "Research notable landmarks and museums within walking distance of where this photo was taken; summarize briefly with sources.",
+  );
+  const turn = await waitForDone(page, 0, ANSWER_TIMEOUT);
+  await expect(turn.locator(".step", { hasText: /photo location/i })).not.toHaveCount(0);
+  await expect(
+    turn.locator(".step", { hasText: /Searched “.*(new york|manhattan|tribeca|100\d\d|city hall|lower manhattan).*”/i }),
+  ).not.toHaveCount(0);
 });
