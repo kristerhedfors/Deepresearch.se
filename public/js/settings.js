@@ -6,7 +6,7 @@
 // or device flipped it — an accepted, self-healing staleness window: the
 // server rejects writes that its own copy of the knob forbids).
 
-let settings = null; // {server_history, available:{storage, rag}}
+let settings = null; // {server_history, street_view, nearby_places, map_context, available:{storage, rag, maps}}
 let loadPromise = null;
 
 export function loadSettings(force = false) {
@@ -44,15 +44,21 @@ export function serverRagAvailable() {
   return settings?.available?.rag === true;
 }
 
-export async function setServerHistory(on) {
+// Generic partial update: patch is any subset of the known knobs, e.g.
+// {street_view: false}. The server echoes the full effective state back.
+export async function setSettings(patch) {
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ server_history: on }),
+    body: JSON.stringify(patch),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || "Could not update the setting.");
   settings = data;
   loadPromise = Promise.resolve(data);
   return data;
+}
+
+export async function setServerHistory(on) {
+  return setSettings({ server_history: on });
 }

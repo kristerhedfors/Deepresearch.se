@@ -71,6 +71,36 @@ export function withImageNudge(conversation) {
   ];
 }
 
+// Appends server-fetched images (src/maps.js's Street View frames / area
+// map) to the LAST user message as labeled image parts: a text block first
+// declares what each appended image shows — models receive image parts
+// without captions, so without the block they couldn't tell a server-added
+// Street View frame from the user's own photo. String content is promoted
+// to a multimodal array. Non-mutating; a no-op when there's nothing to add
+// or the last message isn't the user's.
+export function withAppendedImages(conversation, images) {
+  if (!images?.length || conversation.length === 0) return conversation;
+  const last = conversation[conversation.length - 1];
+  if (last.role !== "user") return conversation;
+
+  const intro =
+    `\n\n--- Server-added street-level & map imagery (the LAST ${images.length} image(s) of this message, in order) ---\n` +
+    images.map((im, i) => `Added image ${i + 1}: ${im.label}`).join("\n") +
+    "\n--- End of server-added imagery ---";
+  const withText = withAppendedText(conversation, intro);
+  const target = withText[withText.length - 1];
+  const parts = typeof target.content === "string"
+    ? [{ type: "text", text: target.content }]
+    : target.content;
+  return [
+    ...withText.slice(0, -1),
+    {
+      ...target,
+      content: [...parts, ...images.map((im) => ({ type: "image_url", image_url: { url: im.dataUrl } }))],
+    },
+  ];
+}
+
 // Appends server-resolved context (e.g. geocode.js's reverse-geocoded photo
 // locations) to the LAST message — content the client couldn't have known
 // ahead of time. Handles string content, array content with an existing

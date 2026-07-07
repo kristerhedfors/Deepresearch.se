@@ -9,10 +9,13 @@ import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
+import { withAppendedImages } from "./conversation.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
+import { collectMapImagery, mapsAvailable, placesNearby } from "./maps.js";
 import { runPipeline } from "./pipeline.js";
 import { getConfig } from "./config.js";
+import { getSettings } from "./settings.js";
 import {
   bergetCost,
   effectiveQuota,
@@ -20,7 +23,7 @@ import {
   quotaExceeded,
   recordUsage,
 } from "./quota.js";
-import { resolveModel, validateMessages } from "./validation.js";
+import { resolveModel, validateImageLocations, validateMessages } from "./validation.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
   if (!env.BERGET_API_TOKEN) {
@@ -60,6 +63,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const resolved = resolveModel(body, catalog, env, log);
   if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
+  // Server-added Street View/map images (src/maps.js) are only fetched for
+  // models that can actually see them; an unreachable catalog reads as
+  // non-vision — skipping the spend is the safe degradation.
+  const visionModel = !!catalog?.find((m) => m.id === model)?.vision;
 
   // ---- research quota (Berget budget + Exa searches per 5h/day/week/month)
   // ADMINS ARE NEVER BLOCKED: their usage is recorded and their bars keep
@@ -128,12 +135,6 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // researching" apart from "nothing will ever come".
     await markAnswerRunning(env, log, requestId, identity.id);
 
-    // Reverse-geocode any attached photo's GPS EXIF (public/js/exif.js)
-    // into a place name every phase below can actually use — independent
-    // of the web_search toggle, since this is enriching the photo's own
-    // metadata, not researching the user's topic.
-    const conversationWithContext = await augmentWithLocations(env, log, conversation, body.imageLocations);
-
     // The JSON helper phases (triage/gap/validation) emit nothing for
     // tens of seconds; idle HTTP connections get dropped by proxies on
     // the way to the client. SSE comment lines (":" prefix) keep bytes
@@ -162,6 +163,48 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         disconnect.gone = true;
       }
     };
+
+    // Photo-location enrichment (independent of the web_search toggle —
+    // this resolves metadata the photo itself carries, it doesn't research
+    // the user's topic): reverse-geocoded place names + Street View link +
+    // nearby establishments as a text block (src/geocode.js, with Google
+    // Places upgrading the free Overpass data when that knob is on), and —
+    // for vision models with the imagery knobs on — actual Street View
+    // frames + an area map appended as labeled image parts (src/maps.js)
+    // so synthesis can literally look at the surroundings. Every part
+    // fails soft; the belt-and-suspenders catch means a bug here degrades
+    // to "no location context", never a dead stream.
+    let conversationWithContext = conversation;
+    const photoLocations = validateImageLocations(body.imageLocations);
+    if (photoLocations.length) {
+      emit({ status: { type: "step_start", id: "location", label: "Resolving photo location…" } });
+      const details = [];
+      try {
+        const settings = getSettings(identity);
+        const maps = mapsAvailable(env);
+        const placesFn =
+          maps && settings.nearby_places ? (lat, lon) => placesNearby(env, log, lat, lon) : null;
+        const enriched = await augmentWithLocations(env, log, conversation, body.imageLocations, { placesFn });
+        conversationWithContext = enriched.conversation;
+        details.push(...enriched.details);
+
+        if (maps && visionModel && (settings.street_view || settings.map_context)) {
+          const imagery = await collectMapImagery(env, log, photoLocations, {
+            streetView: settings.street_view,
+            mapImage: settings.map_context,
+          });
+          const kept = imagesThatFit(conversationWithContext, imagery.images);
+          conversationWithContext = withAppendedImages(conversationWithContext, kept);
+          details.push(...imagery.notes);
+          if (kept.length < imagery.images.length) {
+            details.push(`${imagery.images.length - kept.length} image(s) skipped (request size limit)`);
+          }
+        }
+      } catch (err) {
+        log.warn("chat.location_context_failed", { error: err?.message || String(err) });
+      }
+      emit({ status: { type: "step_done", id: "location", label: "Photo location context", details } });
+    }
 
     try {
       await runPipeline(env, log, emit, conversationWithContext, model, state);
@@ -228,6 +271,24 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   }
 
   return sseResponse(stream);
+}
+
+/// Berget rejects request bodies over ~1MB; the client's own caps keep the
+// user's images under ~700K chars, and this keeps the server-added Street
+// View/map images (src/maps.js) from pushing the total over the edge —
+// images are kept in order until the budget runs out (Street View frames
+// first, the area map last). Exported for unit tests.
+const MAX_REQUEST_CHARS = 900_000;
+export function imagesThatFit(conversation, images, maxChars = MAX_REQUEST_CHARS) {
+  let total = JSON.stringify(conversation).length;
+  const kept = [];
+  for (const im of images) {
+    const size = im.dataUrl.length + 200; // part-envelope + label overhead
+    if (total + size > maxChars) break;
+    kept.push(im);
+    total += size;
+  }
+  return kept;
 }
 
 // Builds the 429 payload for a blocked quota window: a plain-language

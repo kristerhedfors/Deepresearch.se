@@ -125,35 +125,54 @@ export async function nearbyEstablishments(env, log, lat, lon) {
 // link + nearby establishments, resolved in parallel) and appends them to
 // the conversation as one labeled context block, same convention as the
 // client's own image/document metadata blocks — never silently dropped,
-// never silently blended into the main text. Returns the conversation
-// UNCHANGED when there's nothing valid to enrich — this must never block or
-// delay the chat beyond a few resolved-in-parallel lookups. Unlike the
-// original Nominatim-only version, a lookup failure no longer drops the
-// whole entry: valid coordinates always yield at least the Street View link.
-export async function augmentWithLocations(env, log, conversation, rawLocations) {
+// never silently blended into the main text. Returns
+// {conversation, details}: the conversation UNCHANGED (details []) when
+// there's nothing valid to enrich — this must never block or delay the
+// chat beyond a few resolved-in-parallel lookups; details are short
+// per-photo summaries for the UI's step_done event. A lookup failure
+// drops just its line: valid coordinates always yield at least the
+// Street View link.
+//
+// `placesFn` (optional, injected by chat.js when the nearby_places knob is
+// on and GOOGLE_MAPS_API_KEY exists — src/maps.js's placesNearby) is tried
+// FIRST for establishments: richer data (ratings, open/closed-permanently)
+// and fresher than OSM. Overpass stays the fallback whenever it returns
+// nothing (null failure or genuinely empty), so switching the knob off —
+// or a Google outage — degrades to exactly the keyless behavior.
+export async function augmentWithLocations(env, log, conversation, rawLocations, { placesFn } = {}) {
   const locations = validateImageLocations(rawLocations);
-  if (!locations.length) return conversation;
+  if (!locations.length) return { conversation, details: [] };
 
   const entries = await Promise.all(
     locations.map(async ({ name, lat, lon }) => {
-      const [place, nearby] = await Promise.all([
-        reverseGeocode(env, log, lat, lon),
-        nearbyEstablishments(env, log, lat, lon),
-      ]);
+      const nearbyLookup = async () => {
+        if (placesFn) {
+          const viaGoogle = await placesFn(lat, lon);
+          if (viaGoogle?.length) return { source: "Google Places", list: viaGoogle };
+        }
+        const viaOsm = await nearbyEstablishments(env, log, lat, lon);
+        return viaOsm.length ? { source: "OpenStreetMap", list: viaOsm } : null;
+      };
+      const [place, nearby] = await Promise.all([reverseGeocode(env, log, lat, lon), nearbyLookup()]);
       const lines = [
         place ? `${name}: near ${place}` : `${name}: at coordinates ${lat}, ${lon}`,
         `  Street View (open to look around at street level): ${streetViewUrl(lat, lon)}`,
       ];
-      if (nearby.length) {
-        lines.push(`  Establishments within ${NEARBY_RADIUS_M} m: ${nearby.join("; ")}`);
+      if (nearby) {
+        lines.push(`  Establishments within ${NEARBY_RADIUS_M} m (via ${nearby.source}): ${nearby.list.join("; ")}`);
       }
-      return lines.join("\n");
+      return {
+        text: lines.join("\n"),
+        detail:
+          `${name}: ${place || `${lat}, ${lon}`}` +
+          (nearby ? ` — ${nearby.list.length} nearby place(s) via ${nearby.source}` : ""),
+      };
     }),
   );
 
   const block =
-    "\n\n--- Resolved location(s) (via OpenStreetMap) ---\n" +
-    entries.join("\n") +
+    "\n\n--- Resolved location(s) ---\n" +
+    entries.map((e) => e.text).join("\n") +
     "\n--- End of resolved location(s) ---";
-  return withAppendedText(conversation, block);
+  return { conversation: withAppendedText(conversation, block), details: entries.map((e) => e.detail) };
 }

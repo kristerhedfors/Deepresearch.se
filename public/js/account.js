@@ -16,7 +16,7 @@
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
-import { loadSettings, setServerHistory } from "./settings.js";
+import { loadSettings, setServerHistory, setSettings } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
 export function initAccountPanel() {
@@ -136,6 +136,7 @@ export function initAccountPanel() {
       }
     }
     const usable = !!s?.available?.storage;
+    const mapsUsable = !!s?.available?.maps;
     const note = !me?.email
       ? "Settings need a signed-in account (break-glass sessions have none)."
       : s === null
@@ -159,8 +160,49 @@ export function initAccountPanel() {
           copies.</p>
         <p id="syncstatus" class="muted" hidden></p>
         ${note ? `<p class="muted">${note}</p>` : ""}
+      </div>
+      <div class="settings-item">
+        <p class="section-lbl">Photo location features</p>
+        ${settingRow({ id: "streetviewknob", label: "Street-level views (Google Street View)", checked: !!s?.street_view, disabled: !mapsUsable })}
+        ${settingRow({ id: "placesknob", label: "Nearby place details (Google Places)", checked: !!s?.nearby_places, disabled: !mapsUsable })}
+        ${settingRow({ id: "mapknob", label: "Area map context (Google Maps)", checked: !!s?.map_context, disabled: !mapsUsable })}
+        <p class="muted setting-desc">These enrich questions about photos that carry GPS
+          coordinates: the research pipeline fetches Street View images of the
+          spot (so vision models can look around), rated nearby establishments,
+          and a marked area map. While any of them is on, an attached photo's
+          <b>coordinates</b> are sent to Google server-side — never your
+          question, files, or identity. Off: the free OpenStreetMap lookups
+          and the plain Street View link still work.</p>
+        ${!mapsUsable && me?.email ? `<p class="muted">Not configured on this server (no Google Maps API key).</p>` : ""}
+        <p id="mapsstatus" class="muted" hidden></p>
       </div>`;
     document.getElementById("settingsbackbtn").addEventListener("click", () => show("summary"));
+
+    if (mapsUsable) {
+      const mapsStatus = document.getElementById("mapsstatus");
+      for (const [id, knobName] of [
+        ["streetviewknob", "street_view"],
+        ["placesknob", "nearby_places"],
+        ["mapknob", "map_context"],
+      ]) {
+        const el = document.getElementById(id);
+        el.addEventListener("change", async () => {
+          const on = el.checked;
+          el.disabled = true;
+          try {
+            await setSettings({ [knobName]: on });
+            mapsStatus.hidden = true;
+          } catch (err) {
+            el.checked = !on; // the setting didn't change server-side
+            mapsStatus.hidden = false;
+            mapsStatus.textContent = err?.message || "Could not update the setting.";
+          } finally {
+            el.disabled = false;
+          }
+        });
+      }
+    }
+
     if (!usable) return;
 
     const knob = document.getElementById("cloudknob");

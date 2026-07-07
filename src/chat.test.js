@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { quotaBlockedResponse } from "./chat.js";
+import { imagesThatFit, quotaBlockedResponse } from "./chat.js";
 
 describe("quotaBlockedResponse", () => {
   test("budget kind: message omits amounts, public quota carries no limit", () => {
@@ -30,5 +30,27 @@ describe("quotaBlockedResponse", () => {
       const res = quotaBlockedResponse({ period, kind: "budget", reset_at: Date.now() });
       assert.match(res.error, /resets/);
     }
+  });
+});
+
+describe("imagesThatFit", () => {
+  const conv = [{ role: "user", content: "q" }]; // tiny baseline
+  const img = (n) => ({ label: `i${n}`, dataUrl: "x".repeat(n) });
+
+  test("keeps everything when the budget allows", () => {
+    const images = [img(1000), img(1000)];
+    assert.equal(imagesThatFit(conv, images).length, 2);
+  });
+
+  test("stops at the first image that would overflow, keeping order", () => {
+    const images = [img(400), img(400), img(400)];
+    // budget fits conv + two images (400+200 each) but not three
+    const kept = imagesThatFit(conv, images, JSON.stringify(conv).length + 1300);
+    assert.deepEqual(kept, images.slice(0, 2));
+  });
+
+  test("a conversation already at the cap keeps nothing", () => {
+    const bigConv = [{ role: "user", content: "y".repeat(2000) }];
+    assert.deepEqual(imagesThatFit(bigConv, [img(100)], 1000), []);
   });
 });

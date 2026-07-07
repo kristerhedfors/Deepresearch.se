@@ -26,12 +26,18 @@
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
+import { mapsAvailable } from "./maps.js";
 
-const DEFAULTS = { server_history: true };
+// Every knob is a boolean defaulting ON — only a stored, explicit `false`
+// opts out. The three maps knobs gate the Google Maps Platform photo
+// features (src/maps.js): street_view (panorama frames for vision models),
+// nearby_places (Places New enrichment of the resolved-location block),
+// map_context (a marked road-map image for vision models).
+const BOOL_KNOBS = ["server_history", "street_view", "nearby_places", "map_context"];
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
-// defaults. Only a stored, explicit `false` switches the knob off — an
+// defaults. Only a stored, explicit `false` switches a knob off — an
 // absent or malformed value means the default (on). Exported for unit tests.
 export function parseSettings(json) {
   let raw = {};
@@ -41,16 +47,18 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return { server_history: raw.server_history !== false };
+  return Object.fromEntries(BOOL_KNOBS.map((k) => [k, raw[k] !== false]));
 }
 
 // What the server can actually offer this identity right now. `storage`
 // needs the R2 binding plus a D1 user row to hang the setting on (the
 // break-glass identity has neither a row nor a personal history to sync);
-// `rag` additionally needs the Vectorize binding for server-side retrieval.
+// `rag` additionally needs the Vectorize binding for server-side retrieval;
+// `maps` needs the GOOGLE_MAPS_API_KEY secret (identity-independent — the
+// break-glass admin gets the features too, on defaults).
 export function storageAvailability(env, identity) {
   const storage = !!(env.STORAGE && identity.user);
-  return { storage, rag: !!(storage && env.RAG_INDEX) };
+  return { storage, rag: !!(storage && env.RAG_INDEX), maps: mapsAvailable(env) };
 }
 
 export function getSettings(identity) {
@@ -77,11 +85,15 @@ async function saveSettings(env, userId, settings) {
 // The payload reports the EFFECTIVE state, not the raw stored flag: with
 // the default ON, an identity that can't actually use cloud storage
 // (break-glass, or a server without the R2 binding) must read as off —
-// otherwise every such client would dutifully dual-write into 503s.
+// otherwise every such client would dutifully dual-write into 503s. The
+// maps knobs read the same way: no GOOGLE_MAPS_API_KEY means off.
 function settingsPayload(env, identity, settings) {
   const available = storageAvailability(env, identity);
   return {
     server_history: available.storage && settings.server_history,
+    street_view: available.maps && settings.street_view,
+    nearby_places: available.maps && settings.nearby_places,
+    map_context: available.maps && settings.map_context,
     available,
   };
 }
@@ -91,9 +103,11 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body {server_history: boolean}. Turning it on
-// requires the storage backing to actually exist; a knob that can be
-// switched on with nowhere to store anything would silently lose data.
+// PUT /api/settings — body is any subset of the known knobs, each a
+// boolean (e.g. {server_history: false} or {street_view: false,
+// map_context: true}). Turning a knob on requires its backing to actually
+// exist: a storage knob with nowhere to store anything would silently lose
+// data; a maps knob with no API key would silently do nothing.
 export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
@@ -104,18 +118,32 @@ export async function handleSettingsPut(request, env, log, identity) {
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
-  if (typeof body?.server_history !== "boolean") {
-    return jsonResponse({ error: "Expected {server_history: boolean}." }, 400);
+  const patch = {};
+  for (const knob of BOOL_KNOBS) {
+    if (body?.[knob] === undefined) continue;
+    if (typeof body[knob] !== "boolean") {
+      return jsonResponse({ error: `Expected ${knob} to be a boolean.` }, 400);
+    }
+    patch[knob] = body[knob];
+  }
+  if (!Object.keys(patch).length) {
+    return jsonResponse({ error: `Expected at least one of: ${BOOL_KNOBS.join(", ")}.` }, 400);
   }
   const available = storageAvailability(env, identity);
-  if (body.server_history && !available.storage) {
+  if (patch.server_history && !available.storage) {
     return jsonResponse(
       { error: "Cloud storage is not configured on this server (R2 binding missing)." },
       503,
     );
   }
-  const settings = { ...getSettings(identity), server_history: body.server_history };
+  if ((patch.street_view || patch.nearby_places || patch.map_context) && !available.maps) {
+    return jsonResponse(
+      { error: "Google Maps features are not configured on this server (GOOGLE_MAPS_API_KEY missing)." },
+      503,
+    );
+  }
+  const settings = { ...getSettings(identity), ...patch };
   await saveSettings(env, identity.user.id, settings);
-  log.info("settings.updated", { user_id: identity.id, server_history: settings.server_history });
+  log.info("settings.updated", { user_id: identity.id, ...patch });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

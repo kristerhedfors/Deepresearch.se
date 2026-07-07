@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, imagePartsOf, formatConversation, withImageNudge, withAppendedText } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImages } from "./conversation.js";
 
 describe("textOf", () => {
   test("plain string content passes through", () => {
@@ -146,5 +146,52 @@ describe("withAppendedText", () => {
     assert.equal(out[0].content, "first");
     assert.equal(out[1].content, "reply");
     assert.equal(out[2].content, "second!");
+  });
+});
+
+describe("withAppendedImages", () => {
+  const img = (label, url) => ({ label, dataUrl: url });
+
+  test("string content is promoted to multimodal with a labeled intro block", () => {
+    const conv = [{ role: "user", content: "where is this?" }];
+    const out = withAppendedImages(conv, [img("Street View facing north (0°)", "data:image/jpeg;base64,AAA")]);
+    const parts = out[0].content;
+    assert.equal(parts[0].type, "text");
+    assert.match(parts[0].text, /^where is this\?/);
+    assert.match(parts[0].text, /Server-added street-level & map imagery \(the LAST 1 image\(s\)/);
+    assert.match(parts[0].text, /Added image 1: Street View facing north \(0°\)/);
+    assert.equal(parts[1].type, "image_url");
+    assert.equal(parts[1].image_url.url, "data:image/jpeg;base64,AAA");
+  });
+
+  test("appends AFTER the user's own image parts, labels in order", () => {
+    const conv = [
+      { role: "user", content: [{ type: "text", text: "q" }, { type: "image_url", image_url: { url: "user-photo" } }] },
+    ];
+    const out = withAppendedImages(conv, [img("a", "u1"), img("b", "u2")]);
+    const urls = out[0].content.filter((p) => p.type === "image_url").map((p) => p.image_url.url);
+    assert.deepEqual(urls, ["user-photo", "u1", "u2"]);
+    assert.match(out[0].content[0].text, /Added image 1: a\nAdded image 2: b/);
+  });
+
+  test("no-ops on empty image list, empty conversation, or a non-user last message", () => {
+    const conv = [{ role: "assistant", content: "answer" }];
+    assert.equal(withAppendedImages(conv, [img("a", "u")]), conv);
+    const userConv = [{ role: "user", content: "hi" }];
+    assert.equal(withAppendedImages(userConv, []), userConv);
+    assert.equal(withAppendedImages(userConv, null), userConv);
+    assert.deepEqual(withAppendedImages([], [img("a", "u")]), []);
+  });
+
+  test("earlier turns are untouched", () => {
+    const conv = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "reply" },
+      { role: "user", content: "second" },
+    ];
+    const out = withAppendedImages(conv, [img("map", "u")]);
+    assert.equal(out[0].content, "first");
+    assert.equal(out[1].content, "reply");
+    assert.equal(out[2].content.filter((p) => p.type === "image_url").length, 1);
   });
 });
