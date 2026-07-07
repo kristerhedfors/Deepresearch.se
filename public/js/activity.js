@@ -123,11 +123,40 @@ export function renderStats(turn, s) {
   turn.stats.textContent = parts.join(" · ");
 }
 
+// Stop any step still showing a spinner now that the run is over. Every step
+// normally gets its own step_done, but a RECOVERED answer (a stream that
+// dropped and finished server-side) doesn't replay the step_done events for
+// whatever was mid-flight when the connection died — so that step (a gap
+// check, a search, synthesis) would spin FOREVER beside a finished answer,
+// making a completed run look like it's still processing (the reported bug).
+// Settle them neutrally: remove the spinner and add a muted mark, not the
+// green ✓ (we don't have the step's verified result, only that the run has
+// ended). Idempotent and safe to call on already-finished steps.
+function settlePendingSteps(turn) {
+  const settle = (step) => {
+    if (!step || step.details.classList.contains("finished")) return;
+    step.summary.querySelector(".spin")?.remove();
+    step.details.classList.add("finished");
+    if (!step.summary.querySelector(".check, .settled")) {
+      const mark = document.createElement("span");
+      mark.className = "settled";
+      mark.textContent = "✓";
+      step.summary.prepend(mark);
+    }
+  };
+  for (const id in turn.steps) settle(turn.steps[id]);
+  if (turn.pendingSearchSteps) {
+    for (const [, step] of turn.pendingSearchSteps) settle(step);
+    turn.pendingSearchSteps.clear();
+  }
+}
+
 // Collapse the live activity bars into one expandable summary once the
 // answer is complete. Leaves a lone bar (e.g. a direct reply) as-is. The
 // .done class keeps the summary bar visible when re-expanded, so the group
 // can always be folded back to a single bar.
 export function collapseActivity(turn) {
+  settlePendingSteps(turn); // stop any spinner a dropped/recovered run left behind
   const steps = turn.activity.querySelectorAll(":scope > .step");
   if (steps.length <= 1) return;
   const searches = turn.searchCount;

@@ -423,6 +423,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
     setText(turn, recovered.text);
     if (recovered.stats) {
       turn.model = recovered.stats.model || "";
+      turn.doneStats = recovered.stats;
       renderStats(turn, recovered.stats);
     }
     history.push({ role: "assistant", content: recovered.text });
@@ -796,6 +797,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
     setText(turn, acc);
     if (recovered.stats) {
       turn.model = recovered.stats.model || "";
+      turn.doneStats = recovered.stats;
       renderStats(turn, recovered.stats);
     }
     history.push({ role: "assistant", content: acc });

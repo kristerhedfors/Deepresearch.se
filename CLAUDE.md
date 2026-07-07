@@ -868,7 +868,13 @@ Let a battery finish before pushing anything.
   `GET /api/chat/answer?id=…` after a died stream to re-render the
   completed answer. Rows expire after 15 min (`ANSWER_TTL_MS`,
   lazy-purged on every read/write) — the privacy notice discloses this
-  explicitly; it is a recovery buffer, not storage.
+  explicitly; it is a recovery buffer, not storage. A recovered payload is
+  only the final text + stats, so it does NOT replay the `step_done` events
+  for whatever phase was mid-flight when the stream dropped — those steps
+  would otherwise spin forever beside a finished answer (a reported "is it
+  still processing?" bug). `activity.js`'s `collapseActivity` therefore
+  calls `settlePendingSteps` on every run-end path, stopping any leftover
+  spinner and marking the step with a muted (not green ✓) settled mark.
 - **Heartbeat / dead-run detection (the "stuck on recovering…" fix)**:
   the poller must distinguish a server still legitimately researching a
   long budget from one whose isolate DIED mid-run (a rare event now that
