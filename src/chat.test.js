@@ -1,6 +1,33 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { quotaBlockedResponse } from "./chat.js";
+import { quotaBlockedResponse, resolveJsonModel } from "./chat.js";
+import { DEFAULT_MODEL } from "./berget.js";
+
+describe("resolveJsonModel", () => {
+  test("routes JSON phases to the default (Mistral) model for any other answer model", () => {
+    const catalog = [{ id: "zai-org/GLM-4.7-FP8", up: true }, { id: DEFAULT_MODEL, up: true }];
+    assert.equal(resolveJsonModel(catalog, "zai-org/GLM-4.7-FP8"), DEFAULT_MODEL);
+  });
+
+  test("no-ops when the answer model already IS the default JSON model", () => {
+    assert.equal(resolveJsonModel(null, DEFAULT_MODEL), DEFAULT_MODEL);
+  });
+
+  test("stays optimistic (default model) when the catalog is unavailable", () => {
+    assert.equal(resolveJsonModel(null, "some/model"), DEFAULT_MODEL);
+    assert.equal(resolveJsonModel(undefined, "some/model"), DEFAULT_MODEL);
+  });
+
+  test("falls back to the user's model when the default JSON model is down", () => {
+    const catalog = [{ id: "some/model", up: true }, { id: DEFAULT_MODEL, up: false }];
+    assert.equal(resolveJsonModel(catalog, "some/model"), "some/model");
+  });
+
+  test("falls back to the user's model when this deployment doesn't offer the default model", () => {
+    const catalog = [{ id: "some/model", up: true }];
+    assert.equal(resolveJsonModel(catalog, "some/model"), "some/model");
+  });
+});
 
 describe("quotaBlockedResponse", () => {
   test("budget kind: message omits amounts, public quota carries no limit", () => {

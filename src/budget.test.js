@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { clampBudget, fitsDeadline, planResearch, MIN_BUDGET_S, MAX_BUDGET_S, DEFAULT_BUDGET_S } from "./budget.js";
+import { clampBudget, fitsDeadline, planResearch, recordPhase, MIN_BUDGET_S, MAX_BUDGET_S, DEFAULT_BUDGET_S } from "./budget.js";
 
 describe("clampBudget", () => {
   test("clamps below the floor", () => {
@@ -30,6 +30,28 @@ describe("planResearch — depth scales with budget tier", () => {
     assert.equal(plan.searchDepth.numResults, 5);
     assert.equal(plan.searchDepth.type, "auto");
     assert.equal(plan.searchDepth.costMultiplier, 1);
+  });
+
+  test("a slow answer model with a fast JSON model plans MORE work than if the slow model did triage too", () => {
+    // The JSON phases (triage/gap/validate) are estimated against jsonModel,
+    // so a slow reasoning model as the answer model no longer makes the
+    // planner over-reserve for triage a fast Mistral now handles.
+    const slow = "test/slow-answer-model-" + Math.random();
+    const fast = "test/fast-json-model-" + Math.random();
+    // Prime EWMA: slow model's triage is very slow; the fast model's is quick.
+    for (let i = 0; i < 20; i++) {
+      recordPhase(slow, "triage", 90_000);
+      recordPhase(fast, "triage", 4_000);
+    }
+    const mixed = planResearch(slow, 120, fast);
+    const allSlow = planResearch(slow, 120); // jsonModel defaults to the slow model
+    assert.ok(
+      mixed.queries >= allSlow.queries,
+      `mixed (${mixed.queries}) should plan at least as many angles as all-slow (${allSlow.queries})`,
+    );
+    // The mixed plan's triage estimate reflects the fast JSON model.
+    assert.ok(mixed.estimates.triage <= 10_000);
+    assert.ok(allSlow.estimates.triage >= 80_000);
   });
 
   test("default budget (60s) plans a moderate search depth", () => {

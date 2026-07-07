@@ -68,8 +68,16 @@ export function clampBudget(value) {
 // initial angles (up to 6), more follow-ups per gap round (up to 5), more
 // gap rounds (up to 4), a bigger search cap, and a larger source registry
 // and digest for synthesis.
-export function planResearch(model, budgetS) {
-  const t = phaseEstimates(model);
+export function planResearch(model, budgetS, jsonModel = model) {
+  // The JSON planning phases (triage/gap/validate) run on jsonModel (a fixed
+  // reliable model — see pipeline.js), while synthesis runs on the user's
+  // chosen `model`; search is Exa (model-independent, recorded under the user
+  // model). Estimate each phase against the model that actually runs it so a
+  // slow reasoning model as `model` doesn't make the planner over-reserve for
+  // triage that a fast Mistral now handles.
+  const u = phaseEstimates(model);
+  const j = jsonModel === model ? u : phaseEstimates(jsonModel);
+  const t = { triage: j.triage, gap: j.gap, validate: j.validate, synth: u.synth, search: u.search };
   const budgetMs = budgetS * 1000;
   const plan = {
     budgetMs,

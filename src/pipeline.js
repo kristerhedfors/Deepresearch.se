@@ -50,6 +50,14 @@ import {
 
 export async function runPipeline(env, log, emit, conversation, model, state) {
   const profile = getModelProfile(model);
+  // The JSON planning phases (triage/gap/validate) run on a fixed reliable
+  // model (state.jsonModel — Mistral Small, resolved in chat.js) rather than
+  // the user's chosen answer model, so a reasoning model's flaky JSON can't
+  // corrupt triage. Synthesis/direct replies still run on `model`. Each has
+  // its own profile so the right JSON-reinforcement / max-tokens / validation
+  // policy applies to the model that actually runs each phase.
+  const jsonModel = state.jsonModel || model;
+  const jsonProfile = getModelProfile(jsonModel);
   const step = (id, label) => emit({ status: { type: "step_start", id, label } });
   const stepDone = (id, label, details = []) =>
     emit({ status: { type: "step_done", id, label, details } });
@@ -64,8 +72,8 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, conversation, state);
 
   const ctx = {
-    env, log, emit, model, state, profile, conversation: convo,
-    reinforceJsonOnly: profile.jsonReinforcement,
+    env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
+    reinforceJsonOnly: jsonProfile.jsonReinforcement,
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
     // Image parts of the latest user message ride along into synthesis so a
@@ -268,11 +276,14 @@ async function runSynthesis(ctx) {
 // call failed to produce a usable verdict) keeps the draft as-is —
 // deliberately fail-soft, never a fatal error.
 async function runValidation(ctx, draft) {
-  const { log, state, profile, lastUser } = ctx;
+  const { log, state, jsonProfile, lastUser } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
 
-  if (profile.skipValidation) {
+  // Validation runs on the JSON model, so its skip policy comes from THAT
+  // model's profile — a profile that skipped validation because its own JSON
+  // was unreliable no longer applies once a reliable model does the check.
+  if (jsonProfile.skipValidation) {
     log.info("chat.budget_cut", { cut: "validation_profile_skip" });
     ctx.step("validate", "Validation");
     ctx.stepDone("validate", "Validation skipped for this model");
@@ -332,28 +343,32 @@ async function runValidation(ctx, draft) {
 // `diagLabel` is the specific label logged for this call (equal to
 // statKey except gap-check, which logs "gap_check_N" per round).
 async function runJsonPhase(ctx, diagLabel, statKey, messages, defaultMaxTokens) {
-  const maxTokens = ctx.profile.maxTokensOverride?.[statKey] ?? defaultMaxTokens;
-  const r = await completeJson(ctx.env, messages, { model: ctx.model, maxTokens });
-  addUsage(ctx.state.totals, r.usage);
-  ctx.log.info("chat.json_diag", { phase: diagLabel, model: ctx.model, ...r.diagnostics });
+  // JSON phases run on the fixed JSON model with ITS profile; their tokens go
+  // to state.jsonTotals so chat.js can bill them at that model's rate.
+  const maxTokens = ctx.jsonProfile.maxTokensOverride?.[statKey] ?? defaultMaxTokens;
+  const r = await completeJson(ctx.env, messages, { model: ctx.jsonModel, maxTokens });
+  addUsage(ctx.state.jsonTotals, r.usage);
+  ctx.log.info("chat.json_diag", { phase: diagLabel, model: ctx.jsonModel, ...r.diagnostics });
   return r.value;
 }
 
 // Runs a helper phase, logging duration; returns null on failure so the
 // pipeline can degrade instead of breaking. When statKey is given the
-// duration feeds the per-model rolling stats used by the budget planner.
+// duration feeds the per-model rolling stats used by the budget planner —
+// keyed by ctx.jsonModel, since phase() only wraps the JSON planning phases
+// (triage/gap/validate), which run on that model.
 async function phase(ctx, name, fn, statKey) {
   const startedAt = Date.now();
   try {
     const result = await fn();
     const duration_ms = Date.now() - startedAt;
-    if (statKey) recordPhase(ctx.model, statKey, duration_ms);
-    ctx.log.info("chat.phase", { phase: name, model: ctx.model, duration_ms, ok: result != null });
+    if (statKey) recordPhase(ctx.jsonModel, statKey, duration_ms);
+    ctx.log.info("chat.phase", { phase: name, model: ctx.jsonModel, duration_ms, ok: result != null });
     return result;
   } catch (err) {
     ctx.log.warn("chat.phase_failed", {
       phase: name,
-      model: ctx.model,
+      model: ctx.jsonModel,
       duration_ms: Date.now() - startedAt,
       error: err?.message || String(err),
     });
@@ -373,19 +388,19 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
   if (triage?.action === "direct") return { action: "direct" };
 
   // Triage failed to produce usable JSON — decide a fallback WITHOUT a model.
-  // The trap this guards against (the reported bug): in an ongoing
-  // conversation, a short latest message is almost always a back-reference
-  // ("undersök saken", "tell me more", "why?") whose literal text is a
-  // meaningless search query — web search never sees the conversation, only
-  // the string. So when there IS a prior user turn and the latest message is
-  // short, seed the search from that prior question (the established, self-
-  // contained topic) instead of the referential phrase. This can re-search
-  // the earlier topic rather than the exact new angle, but it stays on-topic
-  // — far better than a garbage literal search, and only on this rare
-  // parse-failure path (triagePrompt's FOLLOWUP_RESOLUTION_RULE handles the
-  // normal case where triage parses). A substantial standalone message is
-  // researched as-is; a short message with no prior context has nothing to
-  // resolve against, so answer directly.
+  // A SHORT latest message in an ongoing conversation is almost always a
+  // pure back-reference ("undersök saken", "det då?") with no searchable
+  // content of its own, so seed the search from the prior question (the
+  // established, self-contained topic) rather than the referential phrase.
+  // A LONGER follow-up is deliberately left as-is: it carries its own
+  // content words (e.g. "…hur det ser ut för sd" — the entity "sd" is right
+  // there), which a fuzzy search can use, so replacing it with the prior
+  // topic would only DROP that focus. The real fix for an ugly unresolved
+  // query is triage itself producing a clean one (triagePrompt's
+  // FOLLOWUP_RESOLUTION_RULE + per-model JSON reliability, model-profiles.js)
+  // — this fallback only runs on the rare parse-failure path and just avoids
+  // the worst case (a bare pronoun going to the web). A short message with no
+  // prior context has nothing to resolve against, so answer directly.
   const cur = lastUser.trim();
   const prior = (priorUser || "").trim();
   const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;

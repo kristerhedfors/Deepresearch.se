@@ -7,7 +7,7 @@
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
-import { adminDefaultModelValid, listModels } from "./berget.js";
+import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -61,6 +61,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const resolved = resolveModel(body, catalog, env, log);
   if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
+  // The JSON planning phases (triage / gap check / validation) always run on
+  // a fixed, JSON-reliable model regardless of which model the user picked to
+  // reason/answer — some capable answer models (notably reasoning models like
+  // GLM) produce unreliable JSON, which was corrupting triage into echoing
+  // the raw user message as the search query. Mistral Small is fast, cheap
+  // and reliable at JSON mode. Falls back to the user's model only if Mistral
+  // is explicitly down in the catalog (never route JSON to a model that isn't
+  // up); when the catalog is unreachable we stay optimistic (fail-soft covers
+  // a genuinely-down JSON model).
+  const jsonModel = resolveJsonModel(catalog, model);
 
   // ---- research quota (Berget budget + Exa searches per 5h/day/week/month)
   // ADMINS ARE NEVER BLOCKED: their usage is recorded and their bars keep
@@ -126,7 +136,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
 
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
-    const state = newRequestState(model, webSearchEnabled, budgetS, shodanOn);
+    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, shodanOn);
     disconnect.state = state;
 
     // Recovery marker (metadata only): lets the poller tell "still
@@ -199,6 +209,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       log.info("chat.complete", {
         user_id: identity.id,
         model,
+        json_model: jsonModel,
         rounds: state.iterations,
         searches: state.searchCount,
         cached_searches: state.cachedSearchCount || 0,
@@ -208,14 +219,21 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         client_gone: disconnect.gone,
       });
       // Usage accounting for quotas (fails soft; never breaks the stream).
+      // Synthesis/direct tokens are priced at the user's model; the JSON
+      // planning phases at jsonModel (Mistral) — each at its own catalog rate.
       const entry = catalog?.find((m) => m.id === model);
+      const jsonEntry = catalog?.find((m) => m.id === jsonModel);
+      const prompt_tokens = state.totals.prompt_tokens + state.jsonTotals.prompt_tokens;
+      const completion_tokens = state.totals.completion_tokens + state.jsonTotals.completion_tokens;
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
-        prompt_tokens: state.totals.prompt_tokens,
-        completion_tokens: state.totals.completion_tokens,
+        prompt_tokens,
+        completion_tokens,
         searches: billedSearches,
-        berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
+        berget_cost:
+          bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens) +
+          bergetCost(jsonEntry, state.jsonTotals.prompt_tokens, state.jsonTotals.completion_tokens),
         // The admin-configured per-search price is priced for Exa's
         // standard tier; a request whose time budget bought a costlier
         // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
@@ -231,8 +249,8 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         rounds: state.iterations,
         searches: state.searchCount,
         duration_ms,
-        prompt_tokens: state.totals.prompt_tokens,
-        completion_tokens: state.totals.completion_tokens,
+        prompt_tokens, // sum across the answer model and the JSON model
+        completion_tokens,
       };
       emit({ status: stats });
       // Park the finished answer for recovery. The client DELETEs it the
@@ -271,21 +289,39 @@ export function quotaBlockedResponse(blocked) {
   return { error, quota: publicQuota };
 }
 
+// Which model runs the JSON planning phases (triage/gap/validate): the fixed
+// reliable DEFAULT_MODEL (Mistral Small) unless it's explicitly down in the
+// catalog, in which case fall back to the user's model rather than route JSON
+// to a model that isn't up. Catalog unreachable → optimistic (fail-soft).
+export function resolveJsonModel(catalog, userModel) {
+  if (userModel === DEFAULT_MODEL) return DEFAULT_MODEL; // already the reliable JSON model
+  if (!Array.isArray(catalog)) return DEFAULT_MODEL;
+  const entry = catalog.find((m) => m.id === DEFAULT_MODEL);
+  if (!entry) return userModel; // this deployment doesn't offer it — don't route to a missing model
+  return entry.up === false ? userModel : DEFAULT_MODEL;
+}
+
 // Mutable per-request state threaded through the pipeline.
-function newRequestState(model, webSearch, budgetS, shodan) {
+function newRequestState(model, jsonModel, webSearch, budgetS, shodan) {
   return {
     startedAt: Date.now(),
     model,
+    jsonModel, // fixed model for the JSON planning phases (see resolveJsonModel)
     webSearch,
     shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
     shodanCount: 0, // hosts Shodan actually returned data for
-    plan: planResearch(model, budgetS),
+    plan: planResearch(model, budgetS, jsonModel),
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     iterations: 1, // search waves (initial + gap rounds that ran)
     ranQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
+    // Synthesis/direct token usage (the user's model) and JSON-phase token
+    // usage (jsonModel) are tracked separately so each is billed at its own
+    // model's price — the JSON phases on cheap Mistral shouldn't be charged at
+    // a premium answer model's rate.
     totals: { prompt_tokens: 0, completion_tokens: 0 },
+    jsonTotals: { prompt_tokens: 0, completion_tokens: 0 },
   };
 }

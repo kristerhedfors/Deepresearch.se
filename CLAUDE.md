@@ -41,6 +41,37 @@ Helper phases fail soft (degrade to fewer searches / accepted draft — never
 break the request). Search/round caps come from the time-budget planner
 (`src/budget.js`).
 
+**Split model routing — JSON phases run on a fixed reliable model.** The
+three JSON planning phases (triage, gap check, validation) always run on
+`DEFAULT_MODEL` (Mistral Small — fast, cheap, dependable at JSON mode),
+regardless of which model the user picked to reason/answer; only the
+SYNTHESIS (and direct/search-off replies) run on the user's chosen model.
+The reason: some capable answer models — reasoning models like GLM
+especially — produce unreliable JSON, and a production report showed GLM's
+triage corrupting into echoing the raw user message ("Berätta mer om hur
+det ser ut för sd", "…tack") straight to Exa as the search query. Routing
+JSON to Mistral fixes that class of bug at the source AND speeds up the
+pipeline for slow reasoning models (their slow triage is replaced by
+Mistral's quick one). `chat.js`'s `resolveJsonModel(catalog, userModel)`
+picks it — the default model unless it's explicitly *down* in the catalog
+(then it falls back to the user's model rather than route to something not
+up; catalog unreachable → optimistic, fail-soft covers a genuinely-down
+JSON model). Consequences threaded through the code: (a) token accounting
+is split — `state.jsonTotals` (JSON phases, billed at Mistral's rate) vs
+`state.totals` (synthesis, the user's model), summed for the token
+counters but priced per-model in `recordUsage`; (b) `budget.js`'s
+`planResearch(model, budgetS, jsonModel)` estimates triage/gap/validate
+against `jsonModel` and synth against the user model, and `recordPhase`
+attributes each phase's duration to the model that ran it, so the EWMA and
+priors stay correct; (c) the JSON phases consult `jsonModel`'s
+model-profile (`jsonReinforcement` / `maxTokensOverride` / `skipValidation`
+now key off the model that actually runs them), while synthesis keeps the
+user model's `maxCompletionAttempts`. A nice side effect: because EVERY
+request's JSON phases run on Mistral, its per-phase EWMA warms up fast and
+accurately. `normalizeTriage`'s fallback (raw message / prior-question seed)
+still exists as the last-ditch net for the rare case Mistral's JSON also
+fails.
+
 **Time budget:** the UI slider (15 s–10 min; the clock symbol IS the thumb;
 position maps quadratically to seconds for fine low-end granularity;
 persisted) sends `time_budget_s` with each request; `src/budget.js` plans

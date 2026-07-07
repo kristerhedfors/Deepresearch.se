@@ -50,6 +50,15 @@ const OVERRIDES = {
   // Approximate, not exact: derived from a handful of live observations,
   // not precise per-phase instrumentation. Expected to keep improving via
   // the existing EWMA mechanism as real traffic accumulates.
+  // Only `synth` (and `search`) priors are consulted for GLM now: the JSON
+  // planning phases (triage/gap/validate) run on the fixed reliable JSON
+  // model (Mistral Small — see pipeline.js/chat.js), NOT on GLM, precisely
+  // because GLM's reasoning made its triage JSON unreliable in production
+  // (it was echoing the raw user message as the search query). The
+  // triage/gap/validate priors below are therefore effectively dead for GLM
+  // (planResearch takes those from the JSON model) — kept only so the entry
+  // stays a complete, self-documenting record; GLM's real remaining cost is
+  // its slow synthesis.
   "zai-org/GLM-4.7-FP8": {
     priorsMs: { triage: 45_000, search: 3_000, gap: 12_000, synth: 40_000, validate: 25_000 },
   },
