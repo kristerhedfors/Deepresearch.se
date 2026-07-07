@@ -17,8 +17,10 @@
 //     devices); the local copy stays as a lazy cache and fallback.
 //
 // The RAG index is NOT encrypted (in either location): retrieval needs
-// readable chunk text. Conversations themselves stay encrypted regardless
-// (history-store.js) — the settings UI spells out this split.
+// readable chunk text. Conversations outside projects stay encrypted
+// regardless (history-store.js); PROJECT chats are themselves indexed
+// (chat-rag.js) and therefore follow the same readable-when-indexed rule
+// as documents — the settings UI spells out this split.
 //
 // The pure helpers (chunkText, cosineSim, topKChunks, f32/b64 codecs) are
 // exported for the Node unit suite — keep this module import-safe outside
@@ -170,6 +172,10 @@ export async function hasDoc(docId) {
   return !!(await reqToPromise((await store("docs", "readonly")).get(docId)));
 }
 
+export async function getDoc(docId) {
+  return (await reqToPromise((await store("docs", "readonly")).get(docId))) || null;
+}
+
 export async function listDocs() {
   return reqToPromise((await store("docs", "readonly")).getAll());
 }
@@ -257,6 +263,46 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
     }
   }
   return { chunkCount: chunks.length, truncated };
+}
+
+// Incrementally extend an indexed doc (creating it on first call) — the
+// growing-source case (project chats, chat-rag.js): only the NEW text is
+// chunked and embedded, appended after the existing chunks. `meta` fields
+// ride on the doc row (chat-rag.js keeps its srcMsgs progress counter
+// there). The server mirror re-pushes the WHOLE doc — /api/rag/index
+// replaces per docId and vectors travel along, so nothing is re-embedded;
+// for turn-sized increments that's bandwidth, not spend.
+export async function appendToDoc(docId, name, text, { meta = {}, cloud = true } = {}) {
+  const existing = await getDoc(docId);
+  const startSeq = existing?.chunkCount || 0;
+  const pieces = chunkText(text)
+    .map((c) => ({ seq: startSeq + c.seq, text: c.text }))
+    .slice(0, Math.max(0, MAX_CHUNKS - startSeq)); // server per-doc cap
+  if (!pieces.length) return { chunkCount: startSeq, appended: 0 };
+  const vectors = new Array(pieces.length);
+  for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
+    const batch = pieces.slice(i, i + EMBED_BATCH);
+    const { vectors: vs } = await embedBatch(batch.map((c) => c.text), "passage");
+    vs.forEach((v, j) => { vectors[i + j] = v; });
+  }
+  const doc = {
+    id: docId,
+    name,
+    chunkCount: startSeq + pieces.length,
+    dims: vectors[0].length,
+    chars: (existing?.chars || 0) + text.length,
+    addedAt: existing?.addedAt || Date.now(),
+    ...meta,
+  };
+  await putDocLocally(doc, pieces, vectors);
+  if (cloud && serverHistoryOn() && serverRagAvailable()) {
+    try {
+      await pushDocToServer(docId);
+    } catch (err) {
+      console.warn("rag: server mirror failed, keeping local index", err);
+    }
+  }
+  return { chunkCount: doc.chunkCount, appended: pieces.length };
 }
 
 // ---- retrieval --------------------------------------------------------------

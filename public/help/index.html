@@ -138,6 +138,18 @@
         simply doesn't appear — conversations still work, they just don't
         persist across a reload, the previous behavior.</li>
     </ul>
+    <h3>The exception: chats inside a project</h3>
+    <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the
+    same way project documents and notes are — so your other chats in that
+    project can automatically draw on what was worked out in it. The index
+    keeps growing as the conversation does: each new exchange is added to
+    it. Because a search index needs readable text, indexed material is
+    stored <b>readable, not encrypted</b> — and that includes project chats
+    themselves, in this browser and (when cloud storage is on) in the cloud
+    copy. Chats outside projects are not indexed and stay encrypted exactly
+    as described above. If a conversation shouldn't be readable at rest —
+    or retrievable from your other chats — keep it outside projects, or use
+    the incognito ghost toggle.</p>
   </section>
 
   <section>
@@ -266,11 +278,14 @@
       your account. Each is a single line; press and hold (or click) the
       <b>ⓘ</b> next to a switch for the full explanation.</p>
     <ul>
-      <li><b>Store history in the cloud</b> (on by default) — keeps an
-        encrypted copy of your conversations, files and search index in this
-        site's storage so your history follows your account across devices.
-        Switching it off downloads everything to this browser and deletes the
-        cloud copies. See "Chat history" above for how the encryption works.</li>
+      <li><b>Store history in the cloud</b> (on by default) — keeps a copy of
+        your conversations, files and search index in this site's storage so
+        your history follows your account across devices. Conversations and
+        files are stored encrypted; indexed material — large documents,
+        project files and notes, project chats, and the search index itself —
+        is stored readable, since retrieval needs readable text. Switching it
+        off downloads everything to this browser and deletes the cloud copies.
+        See "Chat history" above for how the encryption works.</li>
       <li><b>Shodan host intelligence</b> (off by default) — when on, if a
         question mentions an IP address or hostname, the site looks it up on
         <a href="https://www.shodan.io" target="_blank" rel="noopener">Shodan</a>
@@ -289,7 +304,10 @@
       <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
         answers; never stored on our server. Saved locally in your browser,
         encrypted (see "Chat history" above) — erased only when you delete
-        a conversation there or clear this browser's site data.</li>
+        a conversation there or clear this browser's site data. Chats inside
+        a <b>project</b> are the exception: they're indexed for retrieval and
+        stored readable, like the project's documents (see "The exception"
+        above).</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an

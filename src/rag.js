@@ -225,7 +225,11 @@ export async function handleRag(request, env, url, log, identity) {
 }
 
 // POST /api/rag/index — store one document's chunks + vectors: Vectorize
-// upsert (batched) + the exportable R2 copy. Idempotent per docId.
+// upsert (batched) + the exportable R2 copy. REPLACE semantics per docId:
+// a re-push with fewer chunks than the stored copy (a chat doc fully
+// re-indexed on another device can chunk on different boundaries —
+// public/js/chat-rag.js) also deletes the now-orphaned tail vectors, so
+// stale text can't keep matching queries.
 async function ragIndex(request, env, log, identity, uid, available) {
   if (!available.rag) {
     return jsonResponse({ error: "Server-side RAG is not configured (Vectorize binding missing)." }, 503);
@@ -255,6 +259,17 @@ async function ragIndex(request, env, log, identity, uid, available) {
   }));
   for (let i = 0; i < rows.length; i += 500) {
     await env.RAG_INDEX.upsert(rows.slice(i, i + 500));
+  }
+
+  // Shrinking replace: drop the previous copy's tail vectors.
+  const prev = await env.STORAGE.head(ragKey(uid, docId));
+  const prevCount = Number(prev?.customMetadata?.chunkCount) || 0;
+  if (prevCount > chunks.length) {
+    const stale = [];
+    for (let seq = chunks.length; seq < prevCount; seq++) stale.push(vectorId(uid, docId, seq));
+    for (let i = 0; i < stale.length; i += 900) {
+      await env.RAG_INDEX.deleteByIds(stale.slice(i, i + 900));
+    }
   }
 
   await env.STORAGE.put(

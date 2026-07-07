@@ -15,9 +15,12 @@
 // material the research pipeline is meant to use.
 //
 // Scope is the invariant to protect: a chat inside a project retrieves
-// across THAT project's indexed docs plus its own attachments — never
+// across THAT project's indexed docs, its sibling chats in the project
+// (indexed as they grow — chat-rag.js), plus its own attachments — never
 // another project's (retrieval is by explicit docId list, so isolation is
-// structural, and the e2e suite asserts it).
+// structural, and the e2e suite asserts it). Because project chats are
+// indexed, their records rest READABLE like every other indexed material
+// (history-store.js documents the rule).
 //
 // The per-project cloud knob is a SCOPED version of the account knob:
 // serverStorage !== false means the project follows the account setting;
@@ -26,6 +29,7 @@
 // sync skips it, and flipping it off drains what was already up there;
 // public/js/sync.js implements the bulk moves).
 
+import { deleteChatIndex } from "./chat-rag.js";
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import {
@@ -387,6 +391,7 @@ export async function deleteProject(id) {
     await removeFileFromProject(id, f.id).catch(() => {});
   }
   for (const c of await conversationsOfProject(id)) {
+    await deleteChatIndex(c.id).catch(() => {}); // its slice of the RAG index, both rests
     await deleteConversation(c.id).catch(() => {});
   }
   await deleteProjectRecord(id);

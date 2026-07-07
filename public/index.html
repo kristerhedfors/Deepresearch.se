@@ -98,7 +98,10 @@
       <div id="historylist" class="history-list"><p class="muted">Loading…</p></div>
       <p class="history-footnote">Encrypted with a key this server never sees in
         the clear — stored in this browser, plus (by default) an encrypted cloud
-        copy you can switch off in Settings. <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
+        copy you can switch off in Settings. Chats inside a project are the
+        exception: they're indexed so the project's other chats can draw on
+        them, and indexed material is stored readable.
+        <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
     </aside>
   </div>
 
@@ -144,9 +147,11 @@
       for how that works), and — by default — an encrypted copy is also kept
       in this site's Cloudflare storage so your history follows your account
       across devices. Attached files, images included, are stored encrypted
-      the same way; the one readable exception is large documents indexed for
-      search, together with the search index itself (indexing needs readable
-      text). You can switch cloud storage off in Account &amp; usage → Settings:
+      the same way; the readable exceptions are what's indexed for search —
+      large documents, project files and notes, and chats inside a project
+      (indexed so the project's other chats can draw on them) — together with
+      the search index itself (indexing needs readable text).
+      You can switch cloud storage off in Account &amp; usage → Settings:
       everything is then downloaded to this browser and the cloud copies are
       deleted — after that, deleting a conversation here or clearing this
       browser's site data erases it for good, with no copy to recover.

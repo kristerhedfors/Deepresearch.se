@@ -3,12 +3,14 @@
 // own knob (projects.js):
 //
 //   account knob ON  → syncToServer(): push every eligible local record —
-//     conversations and project records (still encrypted; the ciphertext
-//     blob moves as-is), OPFS-stored original files (in storage form:
-//     encrypted except RAG-indexed docs), and locally-indexed RAG documents
-//     (vectors included, so nothing is re-embedded). "Eligible" excludes
-//     everything belonging to a project whose own knob is OFF. Local
-//     copies STAY — they're the lazy cache the app keeps reading first.
+//     conversations and project records in their STORED FORM (encrypted
+//     ciphertext moved as-is; project chats rest readable because they're
+//     RAG-indexed — history-store.js), OPFS-stored original files (also in
+//     storage form: encrypted except RAG-indexed docs), and locally-indexed
+//     RAG documents including chat docs (vectors included, so nothing is
+//     re-embedded). "Eligible" excludes everything belonging to a project
+//     whose own knob is OFF. Local copies STAY — they're the lazy cache
+//     the app keeps reading first.
 //   account knob OFF → syncToClient(): pull everything down (newer
 //     records, missing files, missing RAG docs), then wipe the server
 //     side with one DELETE /api/storage.
@@ -26,6 +28,7 @@
 // Everything is last-write-wins by updatedAt and per-item fail-soft: one
 // failed item is counted and skipped, never a wedged sync.
 
+import { chatConvId, chatDocId } from "./chat-rag.js";
 import {
   encryptBytes,
   exportEncryptedProjectRecords,
@@ -42,11 +45,18 @@ async function jsonOrNull(res) {
   return res.ok ? res.json().catch(() => null) : null;
 }
 
+// Records move in their stored form: encrypted {iv, ciphertext} for
+// everything except project chats, which rest readable ({data}) because
+// they're RAG-indexed (history-store.js explains the rule).
 const putRecord = (family, rec) =>
   fetch(`/api/${family}/` + encodeURIComponent(rec.id), {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ iv: rec.iv, ciphertext: rec.ciphertext, updatedAt: rec.updatedAt }),
+    body: JSON.stringify(
+      rec.data
+        ? { data: rec.data, updatedAt: rec.updatedAt }
+        : { iv: rec.iv, ciphertext: rec.ciphertext, updatedAt: rec.updatedAt },
+    ),
   });
 
 // ---- knob ON: local → server -------------------------------------------------
@@ -147,14 +157,28 @@ export async function syncToServer(onProgress = () => {}, scopeProjectId = null)
     errors.push("file upload");
   }
 
-  // RAG index (vectors ride along — no re-embedding).
+  // RAG index (vectors ride along — no re-embedding). Chat docs
+  // (`chat-<convId>` — indexed project-chat turns, chat-rag.js) take their
+  // eligibility from their conversation's project; one whose conversation
+  // no longer exists locally is an orphan and stays local.
   if (serverRagAvailable()) {
     onProgress("Uploading document index…");
     try {
+      let convProject = new Map();
+      try {
+        convProject = new Map((await exportEncryptedRecords()).map((r) => [r.id, r.projectId || null]));
+      } catch {
+        // chat docs simply won't push this pass; files still do
+      }
+      const docOk = (docId) => {
+        const cid = chatConvId(docId);
+        if (cid !== null) return convProject.has(cid) && projectOk(convProject.get(cid));
+        return fileOk(docId);
+      };
       const remoteDocs = (await jsonOrNull(await fetch("/api/rag/docs")))?.docs || [];
       const remoteIds = new Set(remoteDocs.map((d) => d.id));
       for (const doc of await listDocs()) {
-        if (!fileOk(doc.id)) continue;
+        if (!docOk(doc.id)) continue;
         if (remoteIds.has(doc.id)) continue;
         try {
           await pushDocToServer(doc.id);
@@ -289,13 +313,33 @@ export async function drainProjectScope(projectId, onProgress = () => {}) {
   await listProjects();
   const project = getProject(projectId);
 
-  // Conversations of this project.
+  // Conversations of this project — each one's record, plus its slice of
+  // the RAG index (project chats are indexed, chat-rag.js): the chat doc is
+  // pulled down first if this browser is missing it, same confirm-then-
+  // delete rule as files below.
   try {
     const mine = (await exportEncryptedRecords()).filter((r) => r.projectId === projectId);
     const remoteIds = new Set(
       ((await jsonOrNull(await fetch("/api/convos")))?.conversations || []).map((c) => c.id),
     );
+    const remoteDocIds = new Set(
+      ((await jsonOrNull(await fetch("/api/rag/docs")))?.docs || []).map((d) => d.id),
+    );
     for (const rec of mine) {
+      const docId = chatDocId(rec.id);
+      if (remoteDocIds.has(docId)) {
+        try {
+          if (!(await hasDoc(docId))) {
+            const data = await jsonOrNull(await fetch("/api/rag/docs/" + encodeURIComponent(docId)));
+            if (data) await importDoc(data);
+          }
+          const delDoc = await fetch("/api/rag/docs/" + encodeURIComponent(docId), { method: "DELETE" });
+          if (delDoc.ok || delDoc.status === 404) removed++;
+          else errors.push("chat index " + rec.id.slice(0, 8));
+        } catch {
+          errors.push("chat index " + rec.id.slice(0, 8));
+        }
+      }
       if (!remoteIds.has(rec.id)) continue;
       const res = await fetch("/api/convos/" + encodeURIComponent(rec.id), { method: "DELETE" });
       if (res.ok || res.status === 404) removed++;

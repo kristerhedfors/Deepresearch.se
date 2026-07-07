@@ -22,7 +22,8 @@ import {
   setError,
   setText,
 } from "./turns.js";
-import { saveConversation } from "./history-store.js";
+import { listConversations, saveConversation } from "./history-store.js";
+import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
 import {
   activeProjectId,
   getProject,
@@ -162,6 +163,19 @@ async function persistConversation(opts) {
     // See comment above — history storage being unavailable must never
     // surface as a chat error.
   }
+  // Project chats are RAG-indexed as they grow (chat-rag.js): only the
+  // turns not yet indexed are embedded, so this is one small embed call
+  // per exchange. Fire-and-forget and fail-soft — an indexing hiccup
+  // leaves srcMsgs where it was and the same turns retry after the next
+  // exchange; it must never surface as a chat error.
+  if (convProjectId && currentId) {
+    indexChatTurns({
+      convId: currentId,
+      title: convTitle,
+      messages: history.slice(),
+      cloud: projectCloudOn(convProjectId),
+    }).catch(() => {});
+  }
 }
 
 // True while a /api/chat stream is running — downloads must wait (on iOS
@@ -294,10 +308,30 @@ async function buildRagBlocks(questionText, newRagDocs) {
   const project = convProjectId ? getProject(convProjectId) : null;
   const names = new Map(convRagDocs.map((d) => [d.id, d.name]));
   for (const f of project?.files || []) names.set(f.id, f.name);
+  // Sibling chats: the project's OTHER conversations are indexed too
+  // (chat-rag.js), so what was worked out in one project chat is
+  // retrievable in this one. The current conversation is excluded — it's
+  // already the context.
+  let chatDocs = [];
+  if (project) {
+    try {
+      chatDocs = siblingChatDocs(await listConversations(), convProjectId, currentId);
+      for (const d of chatDocs) names.set(d.id, d.name);
+    } catch {
+      chatDocs = []; // sibling chats are optional context, never a blocker
+    }
+  }
   // Retrieval scope: this conversation's attached docs PLUS its project's
-  // indexed material — and nothing else (no other project can leak in;
-  // the docId list IS the scope).
-  const docIds = [...new Set([...convRagDocs.map((d) => d.id), ...projectDocIds(project)])];
+  // indexed material (documents, notes, sibling chats) — and nothing else
+  // (no other project can leak in; the docId list IS the scope). Capped at
+  // the server query's 20-docId limit, project material first.
+  const docIds = [
+    ...new Set([
+      ...convRagDocs.map((d) => d.id),
+      ...projectDocIds(project),
+      ...chatDocs.map((d) => d.id),
+    ]),
+  ].slice(0, 20);
   const metaByDoc = new Map(newRagDocs.filter((d) => d.metadata).map((d) => [d.docId, d.metadata]));
   let matches = [];
   try {
@@ -311,7 +345,7 @@ async function buildRagBlocks(questionText, newRagDocs) {
     }
   }
   if (!matches.length) return "";
-  return ragExcerptBlocks(matches, names, metaByDoc);
+  return ragExcerptBlocks(matches, names, metaByDoc, undefined, new Set(chatDocs.map((d) => d.id)));
 }
 
 // One send: text plus attachments already collected by the composer.
@@ -349,7 +383,7 @@ export async function sendMessage(text, opts) {
   if (project) {
     apiText += buildProjectContext(project);
   }
-  if (convRagDocs.length || projectDocIds(project).length) {
+  if (convRagDocs.length || project) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
   for (const a of opts.images) {

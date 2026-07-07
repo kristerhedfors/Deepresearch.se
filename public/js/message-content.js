@@ -76,9 +76,12 @@ export function imageMetadataBlock(image) {
 // the retrieved `matches` ({docId, seq, text}) back under their documents,
 // enforces a per-excerpt cap and a total char budget, and formats one
 // labeled block per document. `names` maps docId → display name and
-// `metaByDoc` maps docId → extracted metadata (both Maps). Returns "" when
+// `metaByDoc` maps docId → extracted metadata (both Maps). `chatDocIds`
+// (a Set) marks docs that are indexed PROJECT CHATS (chat-rag.js) — those
+// get a header saying what they actually are (an earlier conversation in
+// this project) instead of the attached-document one. Returns "" when
 // nothing survives the budget.
-export function ragExcerptBlocks(matches, names, metaByDoc, totalBudget = EXCERPT_TOTAL_CHARS) {
+export function ragExcerptBlocks(matches, names, metaByDoc, totalBudget = EXCERPT_TOTAL_CHARS, chatDocIds = new Set()) {
   const byDoc = new Map();
   let used = 0;
   for (const m of matches) {
@@ -92,8 +95,17 @@ export function ragExcerptBlocks(matches, names, metaByDoc, totalBudget = EXCERP
 
   let out = "";
   for (const [docId, excerpts] of byDoc) {
-    const name = names.get(docId) || "document";
     const meta = metaByDoc.get(docId);
+    if (chatDocIds.has(docId)) {
+      const name = names.get(docId) || "Untitled chat";
+      out +=
+        `\n\n--- Related project chat: ${name} (an earlier conversation in this project, ` +
+        `indexed for retrieval — showing the excerpts most relevant to this question) ---\n` +
+        excerpts.map((e) => `[Excerpt — part ${e.seq + 1}]\n${e.text}`).join("\n\n") +
+        "\n--- End of chat excerpts ---";
+      continue;
+    }
+    const name = names.get(docId) || "document";
     out +=
       `\n\n--- Attached document: ${name} (large document, indexed for retrieval — ` +
       `showing the excerpts most relevant to this question) ---\n` +

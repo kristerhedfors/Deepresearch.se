@@ -132,9 +132,11 @@ export function initAccountPanel() {
     <b>On (default):</b> conversations, attached files and the document index are
     kept in this site's Cloudflare storage, so your history follows your account
     across devices. Conversations <b>and</b> attached files (images included) stay
-    <b>encrypted</b> with the same key mechanism they have in this browser; the one
-    readable exception is large documents indexed for search — and the search
-    index itself — since retrieval needs readable text.<br>
+    <b>encrypted</b> with the same key mechanism they have in this browser; the
+    readable exceptions are what's indexed for search — large documents, project
+    files and notes, and chats inside a project (indexed so the project's other
+    chats can draw on them) — plus the search index itself, since retrieval
+    needs readable text.<br>
     <b>Off:</b> everything lives only in this browser — switching off downloads it
     all here and deletes the cloud copies.`;
 

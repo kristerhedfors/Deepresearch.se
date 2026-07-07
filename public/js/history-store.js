@@ -26,6 +26,15 @@
 // local IndexedDB copy always stays (lazy cache + the only copy when the
 // knob is off). Bulk moves in either direction live in sync.js; this
 // module only dual-writes the record it just touched.
+//
+// THE ONE EXCEPTION — project chats rest READABLE, in both locations.
+// Conversations inside a project are RAG-indexed (chat-rag.js) so the
+// project's other chats can retrieve from them, and this app's storage
+// rule is that indexed material rests readable (the index already holds
+// its text in the clear — encrypting the record would protect nothing
+// the index doesn't expose; same rule as RAG-indexed documents). Their
+// records are stored as {data} instead of {iv, ciphertext}. Everything
+// outside a project keeps the encrypted-always posture above.
 
 import { serverHistoryOn } from "./settings.js";
 
@@ -141,20 +150,28 @@ function reqToPromise(req) {
   });
 }
 
-// Sidebar listing: every conversation must be decrypted just to read its
-// title (the title lives inside the ciphertext, same as the rest of the
-// content — it can reveal the topic, so it isn't left in the clear).
-// Fine at the scale a single person's chat history reaches; a record that
-// fails to decrypt (corrupted, or encrypted under a since-rotated secret)
-// is skipped rather than crashing the whole list.
-export async function listConversations() {
+// One stored row → its conversation data, whichever form it rests in:
+// readable {data} for project chats (see the header), encrypted
+// {iv, ciphertext} for everything else.
+async function readRecordData(r) {
+  if (r.data) return r.data;
   const key = await historyKey();
+  return decryptRecord(key, r.iv, r.ciphertext);
+}
+
+// Sidebar listing: every encrypted conversation must be decrypted just to
+// read its title (the title lives inside the ciphertext, same as the rest
+// of the content — it can reveal the topic, so it isn't left in the
+// clear). Fine at the scale a single person's chat history reaches; a
+// record that fails to decrypt (corrupted, or encrypted under a
+// since-rotated secret) is skipped rather than crashing the whole list.
+export async function listConversations() {
   const db = await openDb();
   const records = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
   const items = [];
   for (const r of records) {
     try {
-      const data = await decryptRecord(key, r.iv, r.ciphertext);
+      const data = await readRecordData(r);
       items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt, projectId: r.projectId || null });
     } catch {
       // Undecryptable — leave it out of the list rather than break the sidebar.
@@ -165,31 +182,40 @@ export async function listConversations() {
 }
 
 export async function loadConversation(id) {
-  const key = await historyKey();
   const db = await openDb();
   const r = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
   if (!r) return null;
-  return decryptRecord(key, r.iv, r.ciphertext);
+  return readRecordData(r);
 }
 
 // data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt,
 // ragDocs, projectId}. The row keeps projectId OUTSIDE the ciphertext —
-// LOCALLY ONLY (never uploaded; the cloud body below carries just
-// iv/ciphertext/timestamps): it's a random uuid revealing grouping, not
+// LOCALLY ONLY (never uploaded; the cloud body below carries just the
+// stored form + timestamps): it's a random uuid revealing grouping, not
 // content, and sync needs it to honor a project's cloud-off knob without
-// decrypting every record. opts.cloud=false skips the cloud mirror even
-// when the account knob is on — that's the per-project opt-out
-// (public/js/projects.js decides).
+// decrypting every record. A conversation WITH a projectId is a project
+// chat — RAG-indexed for cross-chat retrieval, so its record rests
+// readable ({data}) instead of encrypted (the header explains the rule).
+// opts.cloud=false skips the cloud mirror even when the account knob is
+// on — that's the per-project opt-out (public/js/projects.js decides).
 export async function saveConversation(id, data, { cloud = true } = {}) {
-  const key = await historyKey();
   const db = await openDb();
-  const enc = await encryptRecord(key, data);
+  let stored;
+  let body;
+  if (data.projectId) {
+    stored = { data };
+    body = { data, updatedAt: data.updatedAt, createdAt: data.createdAt };
+  } else {
+    const key = await historyKey();
+    const enc = await encryptRecord(key, data);
+    stored = { iv: enc.iv, ciphertext: enc.ciphertext };
+    body = { iv: enc.iv, ciphertext: enc.ciphertext, updatedAt: data.updatedAt, createdAt: data.createdAt };
+  }
   const record = {
     id,
     updatedAt: data.updatedAt,
     projectId: data.projectId || null,
-    iv: enc.iv,
-    ciphertext: enc.ciphertext,
+    ...stored,
   };
   await reqToPromise(
     db.transaction(STORE, "readwrite").objectStore(STORE).put(record),
@@ -200,12 +226,7 @@ export async function saveConversation(id, data, { cloud = true } = {}) {
     fetch("/api/convos/" + encodeURIComponent(id), {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        iv: enc.iv,
-        ciphertext: enc.ciphertext,
-        updatedAt: data.updatedAt,
-        createdAt: data.createdAt,
-      }),
+      body: JSON.stringify(body),
     }).catch(() => {});
   }
 }
@@ -218,9 +239,10 @@ export async function deleteConversation(id) {
   }
 }
 
-// ---- raw (still-encrypted) record access for sync.js ------------------------
-// Sync moves ciphertext blobs as-is — no decrypt/re-encrypt round trip, and
-// no need for the key at all on the bulk path.
+// ---- raw (storage-form) record access for sync.js ---------------------------
+// Sync moves records in their stored form as-is — ciphertext blobs without
+// a decrypt/re-encrypt round trip (no need for the key on the bulk path),
+// readable {data} records (project chats) verbatim.
 
 export async function exportEncryptedRecords() {
   const db = await openDb();
@@ -231,33 +253,44 @@ export async function exportEncryptedRecords() {
     projectId: r.projectId || null,
     iv: r.iv,
     ciphertext: r.ciphertext,
+    data: r.data,
   }));
 }
 
-// Imports one server-side record, last-write-wins by updatedAt. Returns
-// true when the local store actually changed. The projectId row field is
-// recovered by decrypting the incoming record (this device has the key) —
-// the cloud copy deliberately doesn't carry it in the clear.
+// Imports one server-side record (either stored form), last-write-wins by
+// updatedAt. Returns true when the local store actually changed. For an
+// encrypted record the projectId row field is recovered by decrypting the
+// incoming blob (this device has the key) — the cloud copy deliberately
+// doesn't carry it in the clear; a readable project-chat record carries it
+// in its data.
 export async function importEncryptedRecord(id, record) {
-  if (!record?.iv || !record?.ciphertext) return false;
+  const isPlain = record?.data && typeof record.data === "object";
+  if (!isPlain && (!record?.iv || !record?.ciphertext)) return false;
   const db = await openDb();
   const existing = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
   const updatedAt = Number(record.updatedAt) || 0;
   if (existing && existing.updatedAt >= updatedAt) return false;
   let projectId = existing?.projectId || null;
-  try {
-    const key = await historyKey();
-    const data = await decryptRecord(key, record.iv, record.ciphertext);
-    projectId = data.projectId || null;
-  } catch {
-    // Undecryptable content still imports (it may decrypt after a key
-    // becomes available again); it just can't be project-scoped yet.
+  let stored;
+  if (isPlain) {
+    projectId = record.data.projectId || null;
+    stored = { data: record.data };
+  } else {
+    stored = { iv: record.iv, ciphertext: record.ciphertext };
+    try {
+      const key = await historyKey();
+      const data = await decryptRecord(key, record.iv, record.ciphertext);
+      projectId = data.projectId || null;
+    } catch {
+      // Undecryptable content still imports (it may decrypt after a key
+      // becomes available again); it just can't be project-scoped yet.
+    }
   }
   await reqToPromise(
     db
       .transaction(STORE, "readwrite")
       .objectStore(STORE)
-      .put({ id, updatedAt, projectId, iv: record.iv, ciphertext: record.ciphertext }),
+      .put({ id, updatedAt, projectId, ...stored }),
   );
   return true;
 }

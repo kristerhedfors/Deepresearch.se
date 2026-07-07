@@ -9,15 +9,20 @@
 //       belong to a project is therefore invisible server-side — the
 //       per-project drain is client-driven (it knows the ids and deletes
 //       them individually through the endpoints below).
-//   convos/{uid}/{convId} — one conversation record as JSON
-//       {iv, ciphertext, updatedAt, createdAt}. The record is the SAME
+//   convos/{uid}/{convId} — one conversation record as JSON. Two stored
+//       forms, chosen by the client the same way it chooses a file's
+//       x-file-enc: {iv, ciphertext, updatedAt, createdAt} — the SAME
 //       encrypted blob the client stores in its own IndexedDB
 //       (public/js/history-store.js): AES-256-GCM ciphertext under the
 //       per-user key from /api/history-key. The server stores it, lists
 //       it, serves it back — it never holds the key material to read it
 //       (only the secret a live server could re-derive it from; see
 //       src/history-key.js's threat model). Titles included: they live
-//       inside the ciphertext here exactly as they do client-side.
+//       inside the ciphertext here exactly as they do client-side. OR
+//       {data, updatedAt, createdAt} — a READABLE record: project chats,
+//       which are RAG-indexed for cross-chat retrieval and therefore rest
+//       readable like every other indexed material (the index would hold
+//       their text in the clear anyway — public/js/chat-rag.js).
 //   files/{uid}/{fileId} — an attached file's ORIGINAL bytes, as-is
 //       (name/type in customMetadata). Not encrypted — disclosed in the
 //       settings UI; the server needs readable bytes to serve them back
@@ -140,15 +145,26 @@ async function putEncRecord(request, env, log, identity, uid, family, id) {
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
-  if (typeof body?.iv !== "string" || typeof body?.ciphertext !== "string") {
-    return jsonResponse({ error: "Expected {iv, ciphertext, updatedAt}." }, 400);
+  // Either stored form (see the header): the encrypted {iv, ciphertext}
+  // blob, or a readable {data} record (project chats — RAG-indexed, so
+  // they rest readable). The client decides per record; the server just
+  // stores what it's given, same as x-file-enc on files.
+  const isPlain = body?.data && typeof body.data === "object" && !Array.isArray(body.data);
+  if (!isPlain && (typeof body?.iv !== "string" || typeof body?.ciphertext !== "string")) {
+    return jsonResponse({ error: "Expected {iv, ciphertext, updatedAt} or {data, updatedAt}." }, 400);
   }
-  const record = {
-    iv: body.iv.slice(0, 64),
-    ciphertext: body.ciphertext,
-    updatedAt: Number(body.updatedAt) || Date.now(),
-    createdAt: Number(body.createdAt) || undefined,
-  };
+  const record = isPlain
+    ? {
+        data: body.data,
+        updatedAt: Number(body.updatedAt) || Date.now(),
+        createdAt: Number(body.createdAt) || undefined,
+      }
+    : {
+        iv: body.iv.slice(0, 64),
+        ciphertext: body.ciphertext,
+        updatedAt: Number(body.updatedAt) || Date.now(),
+        createdAt: Number(body.createdAt) || undefined,
+      };
   const json = JSON.stringify(record);
   if (json.length > CONVO_MAX_BYTES) {
     return jsonResponse({ error: "Record too large." }, 413);

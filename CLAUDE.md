@@ -147,14 +147,18 @@ COMPLETE response for pasting into Claude Code: the research process AND
 the full resulting generation AND every error, server- or client-side),
 `markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
-(IndexedDB + AES-GCM: the encrypted conversation store itself, now also
+(IndexedDB + AES-GCM: the conversation store itself — encrypted, except
+project chats which rest readable because they're RAG-indexed — now also
 dual-writing each record to the cloud while the knob is on),
 `history-ui.js` (the left history sidebar: list/rename/delete/load),
 `settings.js` (cached `/api/settings` client; `serverHistoryOn()` is the
 synchronous question every storage-touching module asks), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
-server-index push/import), `sync.js` (bulk sync when the account knob
+server-index push/import), `chat-rag.js` (project-chat RAG: incremental
+turn indexing as a conversation grows, the `chat-<convId>` doc ids, the
+sibling-chat retrieval scope, index deletion — pure text-extraction core
+Node-tested), `sync.js` (bulk sync when the account knob
 flips, either direction, + `pullNewer` reconciliation + the per-project
 `pushProjectScope`/`drainProjectScope`), `projects.js` (project records,
 file/note ingestion + indexing, the per-project knob, scope helpers),
@@ -164,10 +168,18 @@ knob at top, dropzone, add-text form, file/chat lists, header chip).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
-### Chat history — always encrypted; browser-local, with an opt-out cloud copy
+### Chat history — encrypted (project chats excepted); browser-local, with an opt-out cloud copy
 
-Conversations are ALWAYS encrypted client-side before they rest anywhere
-(the cloud-storage mode below stores the same ciphertext) — and unlike
+Conversations are encrypted client-side before they rest anywhere
+(the cloud-storage mode below stores the same ciphertext), with ONE
+deliberate exception: **chats inside a project rest READABLE**, in both
+locations, because they are RAG-indexed for cross-chat retrieval (see
+"Projects" below) and the app's storage rule is that indexed material
+rests readable — the index already holds the text in the clear, so
+encrypting the record would protect nothing the index doesn't expose
+(the same exception RAG-indexed documents have always had; disclosed in
+the sidebar footnote, `/help/`, the privacy notice, and the cloud-knob
+popover). Unlike
 the original ephemeral-only design (history erased by "New chat" or a
 reload), every conversation **persists across reloads inside the
 browser itself**, listed in a left-side history panel (`history-ui.js`)
@@ -179,10 +191,12 @@ this browser ONLY — nothing conversation-derived server-side.
 **Storage**: IndexedDB (`history-store.js`, database `dr_history`) — the
 modern, higher-capacity, async successor to `localStorage`, appropriate
 here since a conversation with attached images can be sizeable. Every
-record is AES-256-GCM encrypted before it is written; even the title
+non-project record is AES-256-GCM encrypted before it is written; even
+the title
 (which can reveal the topic) lives inside the ciphertext, so listing
 conversations for the sidebar means decrypting each one — fine at the
-scale one person's history reaches.
+scale one person's history reaches. Project chats are stored as a
+readable `{data}` row instead (`readRecordData` handles both forms).
 
 **Key hierarchy — the actual security property being engineered for**:
 the encryption key is deterministically derived server-side
@@ -270,9 +284,13 @@ server-side.
 
 **The storage split is the point to preserve when touching any of this:**
 - **Conversations** (`src/storage.js`, R2 `convos/{uid}/{convId}`): the
-  SAME `{iv, ciphertext}` blob the browser writes to its own IndexedDB —
-  encrypted under the same `/api/history-key` mechanism regardless of
-  where it rests. `history-store.js` dual-writes each save and propagates
+  SAME record the browser writes to its own IndexedDB — the encrypted
+  `{iv, ciphertext}` blob (under the same `/api/history-key` mechanism
+  regardless of where it rests) for ordinary chats, a readable `{data}`
+  record for project chats (RAG-indexed — the exception above; the
+  client chooses the form per record, the server stores what it's
+  given, the same posture as `x-file-enc` on files). `history-store.js`
+  dual-writes each save and propagates
   deletes; `sync.js`'s `pullNewer()` (on sidebar open) downloads records
   written from other devices — cloud mode is therefore also cross-device
   history sync, which local-only mode deliberately never was.
@@ -347,9 +365,10 @@ retrieval misses entirely still contributes its opening chunks
 (`firstChunks`) so it is never silently absent from its own turn.
 
 **Encryption asymmetry, stated once more because it's the design**:
-conversations AND attached-file originals (images included) are
-ciphertext in BOTH locations; the RAG index and the RAG-indexed
-documents' originals are the ONLY plaintext, in both locations, because
+non-project conversations AND attached-file originals (images included)
+are ciphertext in BOTH locations; the plaintext, in both locations, is
+exactly what's indexed — the RAG index itself, RAG-indexed documents'
+originals, and project-chat records (indexed by `chat-rag.js`) — because
 retrieval requires readable text. Keep the settings UI, `/help/`, and
 the privacy notice consistent with that whenever any of it changes.
 
@@ -367,7 +386,23 @@ nothing project-specific was invented storage-side:
   conversations, `src/storage.js`). Conversation rows carry a `projectId`
   — plaintext LOCALLY only (a random uuid revealing grouping, not
   content; sync needs it to honor project knobs without decrypting), and
-  additionally inside the ciphertext (the copy that leaves the browser).
+  additionally inside the record data. The project's CONVERSATIONS are
+  the readable exception documented under "Chat history" — their records
+  rest plaintext because of the chat indexing below.
+- **Chats are indexed too** (`public/js/chat-rag.js`): every conversation
+  in a project is a RAG doc of its own (`chat-<convId>`, named by the
+  chat's title), **growing with the conversation** — after each persisted
+  exchange, `stream.js` calls `indexChatTurns`, which chunks/embeds ONLY
+  the turns not yet indexed (the doc row's `srcMsgs` counter tracks
+  progress; a failed embed retries on the next exchange) and appends them
+  (`rag.js`'s `appendToDoc`; the cloud mirror re-pushes the whole doc —
+  vectors ride along, nothing re-embeds). Indexed text is the user's
+  actual questions (appended context blocks stripped — re-indexing
+  retrieval excerpts would echo documents back as second-hand chunks)
+  plus the full answers, with the title leading the first increment.
+  Incognito chats are never indexed (nothing persists at all), and
+  deleting a conversation/project deletes its chat docs from both rests
+  (`deleteChatIndex`).
 - **Materials**: added via picker or drag-drop onto the panel, or as a
   text note (title + content). Documents and notes are ALWAYS indexed
   (project material is reference material — no 9K inline cutoff logic
@@ -375,7 +410,11 @@ nothing project-specific was invented storage-side:
   get EXIF extracted (`exif.js`) into the inventory and their originals
   encrypted; unsupported types are archived encrypted, unindexed.
 - **Scope**: a chat inside a project retrieves across the project's
-  indexed docs PLUS its own attachments — never another project's
+  indexed docs, its SIBLING CHATS in the project (`siblingChatDocs` —
+  newest first, capped; the current conversation is excluded since it IS
+  the context; excerpts render under a "Related project chat" header,
+  `message-content.js`), PLUS its own attachments — never another
+  project's
   (retrieval is by explicit docId list; isolation is structural and
   e2e-asserted). Each send also carries the project-materials block
   (inventory + image EXIF — how a text pipeline "sees" project images).
@@ -389,8 +428,10 @@ nothing project-specific was invented storage-side:
   moves (`sync.js`: `pushProjectScope` / `drainProjectScope` — the drain
   deletes ONLY that project's cloud objects, item by item, after
   confirming local copies; never the account-wide wipe).
-- **Deleting a project** removes its files, index entries, conversations
-  and record from BOTH rests.
+- **Deleting a project** removes its files, index entries (chat docs
+  included), conversations and record from BOTH rests; the per-project
+  drain (`drainProjectScope`) likewise pulls down and deletes the
+  project's chat docs alongside its files and records.
 
 ### /api/chat SSE protocol
 
@@ -445,9 +486,12 @@ comment extraction), `rag.js`'s pure core (`chunkText` coverage/
 overlap/termination properties, `cosineSim`, `topKChunks`, the vector
 codec — the module is written to be import-safe outside a browser),
 `project-context.js` (the project-materials block builder, doc-id
-scoping, note/name normalization), and `message-content.js` (the
+scoping, note/name normalization), `chat-rag.js`'s pure core (chat doc
+ids, the appended-block-stripping turn-text extraction, the
+sibling-chat scope picker), and `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
-RAG-excerpt blocks — plus `deriveTitle` and `stripOldImages`, the pure
+RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`
+and `stripOldImages`, the pure
 core extracted out of `stream.js`'s send path), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated

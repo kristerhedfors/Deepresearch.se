@@ -145,6 +145,34 @@ test("ragExcerptBlocks skips whitespace-only excerpts and returns '' when nothin
   assert.equal(ragExcerptBlocks([], new Map(), new Map()), "");
 });
 
+test("ragExcerptBlocks labels project-chat docs as conversations, not documents", () => {
+  const matches = [
+    { docId: "chat-c1", seq: 0, text: "we concluded X in that chat" },
+    { docId: "d1", seq: 0, text: "doc chunk" },
+  ];
+  const names = new Map([["chat-c1", "Earlier analysis"], ["d1", "alpha.pdf"]]);
+  const out = ragExcerptBlocks(matches, names, new Map(), undefined, new Set(["chat-c1"]));
+
+  assert.ok(out.includes("--- Related project chat: Earlier analysis (an earlier conversation in this project"));
+  assert.ok(out.includes("we concluded X in that chat"));
+  assert.ok(out.includes("--- End of chat excerpts ---"));
+  // The ordinary doc keeps the document header alongside it.
+  assert.ok(out.includes("--- Attached document: alpha.pdf (large document"));
+  assert.ok(out.includes("--- End of document excerpts ---"));
+});
+
+test("ragExcerptBlocks falls back to 'Untitled chat' for an unnamed chat doc", () => {
+  const out = ragExcerptBlocks(
+    [{ docId: "chat-x", seq: 2, text: "text" }],
+    new Map(),
+    new Map(),
+    undefined,
+    new Set(["chat-x"]),
+  );
+  assert.ok(out.includes("--- Related project chat: Untitled chat"));
+  assert.ok(out.includes("[Excerpt — part 3]\ntext"));
+});
+
 test("EXCERPT_TOTAL_CHARS is the documented default budget", () => {
   assert.equal(EXCERPT_TOTAL_CHARS, 12000);
 });
