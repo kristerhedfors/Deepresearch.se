@@ -55,6 +55,17 @@ export function shodanAvailable() {
   return settings?.available?.shodan === true;
 }
 
+// Google Maps enrichment knob (Places + Street View + Static Maps; default
+// off; needs the server's GOOGLE_MAPS_API_KEY, so it reads unavailable when
+// the server has no key).
+export function googleMapsOn() {
+  return settings?.google_maps === true;
+}
+
+export function googleMapsAvailable() {
+  return settings?.available?.google_maps === true;
+}
+
 // Generic partial update: PUT one or both knobs, refresh the cache from the
 // server's authoritative (effective) response.
 async function updateSetting(patch) {
@@ -76,4 +87,8 @@ export function setServerHistory(on) {
 
 export function setShodanMcp(on) {
   return updateSetting({ shodan_mcp: on });
+}
+
+export function setGoogleMaps(on) {
+  return updateSetting({ google_maps: on });
 }

@@ -3,22 +3,25 @@ import assert from "node:assert/strict";
 
 import {
   featureAvailability,
+  googleMapsEnabled,
   parseSettings,
   serverHistoryEnabled,
   shodanEnabled,
   storageAvailability,
 } from "./settings.js";
 
-test("parseSettings defaults: history on, shodan off", () => {
-  assert.deepEqual(parseSettings(null), { server_history: true, shodan_mcp: false });
-  assert.deepEqual(parseSettings(undefined), { server_history: true, shodan_mcp: false });
-  assert.deepEqual(parseSettings(""), { server_history: true, shodan_mcp: false });
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false };
+
+test("parseSettings defaults: history on, shodan off, google_maps off", () => {
+  assert.deepEqual(parseSettings(null), DEFAULTS);
+  assert.deepEqual(parseSettings(undefined), DEFAULTS);
+  assert.deepEqual(parseSettings(""), DEFAULTS);
 });
 
 test("parseSettings survives malformed JSON (falls back to defaults)", () => {
-  assert.deepEqual(parseSettings("{not json"), { server_history: true, shodan_mcp: false });
-  assert.deepEqual(parseSettings("[1,2,3]"), { server_history: true, shodan_mcp: false });
-  assert.deepEqual(parseSettings('"a string"'), { server_history: true, shodan_mcp: false });
+  assert.deepEqual(parseSettings("{not json"), DEFAULTS);
+  assert.deepEqual(parseSettings("[1,2,3]"), DEFAULTS);
+  assert.deepEqual(parseSettings('"a string"'), DEFAULTS);
 });
 
 test("parseSettings: only an explicit stored false opts out of history", () => {
@@ -37,6 +40,14 @@ test("parseSettings: only an explicit stored true enables shodan", () => {
   assert.equal(parseSettings('{"shodan_mcp":"true"}').shodan_mcp, false);
 });
 
+test("parseSettings: only an explicit stored true enables google_maps", () => {
+  assert.equal(parseSettings('{"google_maps":true}').google_maps, true);
+  assert.equal(parseSettings('{"google_maps":false}').google_maps, false);
+  // Non-boolean junk means the default (off), not on.
+  assert.equal(parseSettings('{"google_maps":1}').google_maps, false);
+  assert.equal(parseSettings('{"google_maps":"true"}').google_maps, false);
+});
+
 test("serverHistoryEnabled is the effective state: binding AND user AND setting", () => {
   const env = { STORAGE: {} };
   const optedOut = { user: { id: 1, settings_json: '{"server_history":false}' } };
@@ -49,7 +60,7 @@ test("serverHistoryEnabled is the effective state: binding AND user AND setting"
 
 test("parseSettings drops unknown keys", () => {
   const s = parseSettings('{"server_history":true,"evil":"x"}');
-  assert.deepEqual(Object.keys(s).sort(), ["server_history", "shodan_mcp"]);
+  assert.deepEqual(Object.keys(s).sort(), ["google_maps", "server_history", "shodan_mcp"]);
 });
 
 test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
@@ -62,20 +73,43 @@ test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
   assert.equal(shodanEnabled(env, {}), false); // break-glass: no user row
 });
 
-test("featureAvailability reports storage, rag, and shodan independently", () => {
+test("featureAvailability reports storage, rag, shodan, and google_maps independently", () => {
   const user = { id: 1 };
-  assert.deepEqual(featureAvailability({}, { user }), { storage: false, rag: false, shodan: false });
+  assert.deepEqual(featureAvailability({}, { user }), {
+    storage: false,
+    rag: false,
+    shodan: false,
+    google_maps: false,
+  });
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k" }, { user }), {
     storage: false,
     rag: false,
     shodan: true,
+    google_maps: false,
   });
-  // Shodan needs a user row too (break-glass has none).
-  assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k" }, {}), {
+  assert.deepEqual(featureAvailability({ GOOGLE_MAPS_API_KEY: "k" }, { user }), {
     storage: false,
     rag: false,
     shodan: false,
+    google_maps: true,
   });
+  // Each feature needs a user row too (break-glass has none).
+  assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k" }, {}), {
+    storage: false,
+    rag: false,
+    shodan: false,
+    google_maps: false,
+  });
+});
+
+test("googleMapsEnabled: needs the key, a user row, AND the knob on", () => {
+  const env = { GOOGLE_MAPS_API_KEY: "k" };
+  const on = { user: { id: 1, settings_json: '{"google_maps":true}' } };
+  const off = { user: { id: 2, settings_json: null } }; // default off
+  assert.equal(googleMapsEnabled(env, on), true);
+  assert.equal(googleMapsEnabled(env, off), false); // default off
+  assert.equal(googleMapsEnabled({}, on), false); // no GOOGLE_MAPS_API_KEY
+  assert.equal(googleMapsEnabled(env, {}), false); // break-glass: no user row
 });
 
 test("storageAvailability needs both the binding and a user row", () => {

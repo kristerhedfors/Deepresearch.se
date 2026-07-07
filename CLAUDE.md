@@ -476,7 +476,8 @@ unknown `status` types (forward compatibility).
   - The `id` names the phase/service so the user sees which external
     source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
     phases), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
-    (Shodan host lookup). The client records every `status` event — plus
+    (Shodan host lookup), `maps` (Google Maps Platform lookup — Places +
+    Street View + Static Maps). The client records every `status` event — plus
     the full generated answer and every error (server- or client-side,
     funnelled through `turns.js`'s single `setError` sink) — into a per-turn
     structured log for the "Copy research JSON" debug button
@@ -1295,6 +1296,63 @@ context every phase can use.
   Shodan — never the user's question, filename, or any account/session
   identifier. Server-side only (Worker-mediated, logged, timeout-bounded),
   the key never reaches the browser.
+
+## Google Maps — the opt-in `google_maps` knob (default OFF)
+
+An opt-in per-user setting (account panel's **Settings** sub-view, "Google
+Maps & Street View") that enriches a research question with Google Maps
+Platform data whenever the question names a street address, or an attached
+photo carries GPS. It was added because the site kept (correctly) replying
+that it "can't access Street View" even though a `GOOGLE_MAPS_API_KEY` was
+configured — the key had no code behind it. Wired the same deterministic,
+no-function-calling way as the reverse-geocoder and Shodan: the location is
+extracted deterministically, three Maps Platform APIs (sharing the one key)
+are called server-side, and the result is folded into the conversation as one
+labeled `--- Google Maps ---` block every phase can reason and search with.
+`src/googlemaps.js` is the client; `src/pipeline.js`'s `runGoogleMapsEnrichment`
+wires it (before any model call, alongside the Shodan enrichment).
+
+- **The knob** (`src/settings.js`): a third key alongside `server_history`
+  and `shodan_mcp` in `users.settings_json`. **Default OFF** (only an explicit
+  stored `true` enables it — the mirror of `shodan_mcp`) because a lookup
+  sends the address/coordinates to a third party and the imagery fetches are
+  billed. `/api/settings` reports the EFFECTIVE state via `featureAvailability`:
+  off unless the `GOOGLE_MAPS_API_KEY` secret is set AND the caller has a real
+  D1 user row. `googleMapsEnabled(env, identity)` is the gate `chat.js`
+  consults. Absent the secret, the feature is invisible (the UI hides the knob),
+  exactly like Shodan.
+- **`GOOGLE_MAPS_API_KEY`** is a dashboard secret (never in the repo). It needs
+  these Google Cloud APIs enabled: **Places API** (`places.googleapis.com`),
+  **Maps Static API** (`static-maps-backend.googleapis.com`) and **Street View
+  Static API** (`street-view-image-backend.googleapis.com`).
+- **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
+  pure + unit-tested): parses a single geocodable street-address candidate out
+  of the latest message (a "<words> <number>" span whose word before the number
+  is a known Swedish street morpheme — …vägen/…gatan — or an exact English
+  street word — Street/Road/Avenue). Leading filler is trimmed to Capitalized
+  locality words, so "what's at Maskinistvägen 11" → "Maskinistvägen 11". A
+  photo's validated GPS coordinates (`body.imageLocations`) take precedence over
+  a parsed address (`pickLookup`).
+- **Lookup** (`runGoogleMapsLookup`): Places Text Search canonicalises the
+  address (display name, formatted address, primary type, rating, business
+  status, precise coordinates); the coordinates then key the FREE Street View
+  metadata check (coverage + capture date) and, for a **vision-capable** answer
+  model whose message isn't already carrying user images, the billed Street
+  View photo and a Static Map road image (both JPEG, small, appended via
+  `conversation.js`'s new `withAppendedImage` so they flow into synthesis). The
+  context block also carries keyless Google Maps / Street View links the user
+  can open. `state.mapsCount` rides into the `chat.complete` log.
+- **Runs independent of the web-search toggle** — like the geocoder and Shodan,
+  it resolves a location the message *names*, not a topic to research.
+- **Fails soft in every branch**: no key, no address/photo, a Places miss with
+  no Street View coverage (a false-positive address), a timeout or API error
+  all degrade to the conversation unchanged (no spurious step for an ordinary
+  question — the step shows only once a real location is being checked).
+- **Minimal outbound request**: only the address (or a photo's coordinates)
+  crosses the wire to Google — never the user's whole question, filename, or any
+  account/session identifier. Server-side only; the API key is used solely for
+  the internal fetches and never appears in a log, a context block, or the
+  citable links (those are Google's keyless Maps URLs).
 
 ## Access control & accounts — Google sign-in only
 

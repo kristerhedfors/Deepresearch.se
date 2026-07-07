@@ -16,7 +16,7 @@
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
-import { loadSettings, setServerHistory, setShodanMcp } from "./settings.js";
+import { loadSettings, setServerHistory, setShodanMcp, setGoogleMaps } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
 export function initAccountPanel() {
@@ -151,6 +151,21 @@ export function initAccountPanel() {
     question or anything about your account. It runs only when your message
     actually names a host, and independently of the web-search switch.`;
 
+  const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
+    <b>On:</b> when your message names a street address (or you attach a photo
+    with GPS location), the site looks it up on Google
+    <a href="https://developers.google.com/maps" target="_blank" rel="noopener">Maps
+    Platform</a> — resolving it with the Places API (name, address, type,
+    rating), confirming Street View coverage and its capture date, and pulling
+    a road map — then adds those details and clickable Maps/Street View links
+    to the research, handing the Street View and map images to a vision-capable
+    model to describe.<br>
+    <b>Off (default):</b> nothing is sent to Google.<br>
+    <b>Privacy:</b> only the address itself (or a photo's coordinates) is sent
+    to Google — never your whole question or anything about your account. It
+    runs only when your message names an address or you attach a located photo,
+    and independently of the web-search switch.`;
+
   async function loadSettingsView() {
     body.innerHTML = `
       <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
@@ -168,6 +183,7 @@ export function initAccountPanel() {
     }
     const usable = !!s?.available?.storage;
     const shodanUsable = !!s?.available?.shodan;
+    const googleMapsUsable = !!s?.available?.google_maps;
     const note = !me?.email
       ? "Settings need a signed-in account (break-glass sessions have none)."
       : s === null
@@ -179,6 +195,9 @@ export function initAccountPanel() {
     const shodanNote = shodanUsable
       ? ""
       : `<p class="muted setting-note">Shodan isn't configured on this server (no API key), so this stays off.</p>`;
+    const googleMapsNote = googleMapsUsable
+      ? ""
+      : `<p class="muted setting-note">Google Maps isn't configured on this server (no Google Maps API key), so this stays off.</p>`;
 
     body.innerHTML = `
       <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
@@ -203,6 +222,16 @@ export function initAccountPanel() {
       })}
       ${shodanNote}
       <p id="shodanstatus" class="muted setting-note" hidden></p>
+      ${settingRow({
+        id: "gmapsknob",
+        label: "Google Maps & Street View",
+        checked: googleMapsUsable && s?.google_maps,
+        disabled: !googleMapsUsable,
+        popId: "gmapspop",
+        info: GOOGLEMAPS_INFO,
+      })}
+      ${googleMapsNote}
+      <p id="gmapsstatus" class="muted setting-note" hidden></p>
       ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
     document.getElementById("settingsbackbtn").addEventListener("click", () => show("summary"));
     wireSettingPopovers(body);
@@ -252,6 +281,27 @@ export function initAccountPanel() {
           status.textContent = on
             ? "Shodan is on — IPs and hostnames you mention are looked up during research."
             : "Shodan is off — nothing is sent to Shodan.";
+        } catch (err) {
+          knob.checked = !on;
+          status.textContent = err?.message || "Could not update the setting.";
+        } finally {
+          knob.disabled = false;
+        }
+      });
+    }
+
+    if (googleMapsUsable) {
+      const knob = document.getElementById("gmapsknob");
+      const status = document.getElementById("gmapsstatus");
+      knob.addEventListener("change", async () => {
+        const on = knob.checked;
+        knob.disabled = true;
+        status.hidden = false;
+        try {
+          await setGoogleMaps(on);
+          status.textContent = on
+            ? "Google Maps is on — addresses you mention (and located photos) are looked up on Google Maps & Street View."
+            : "Google Maps is off — nothing is sent to Google.";
         } catch (err) {
           knob.checked = !on;
           status.textContent = err?.message || "Could not update the setting.";

@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage } from "./conversation.js";
 
 describe("previousUserText", () => {
   test("returns the user message before the latest one", () => {
@@ -171,5 +171,49 @@ describe("withAppendedText", () => {
     assert.equal(out[0].content, "first");
     assert.equal(out[1].content, "reply");
     assert.equal(out[2].content, "second!");
+  });
+});
+
+describe("withAppendedImage", () => {
+  test("turns string content into a two-part array (text + image)", () => {
+    const conv = [{ role: "user", content: "look here" }];
+    const out = withAppendedImage(conv, "data:image/jpeg;base64,x");
+    assert.equal(out[0].content[0].type, "text");
+    assert.equal(out[0].content[0].text, "look here");
+    assert.equal(out[0].content[1].type, "image_url");
+    assert.equal(out[0].content[1].image_url.url, "data:image/jpeg;base64,x");
+    assert.equal(conv[0].content, "look here", "original message is untouched");
+  });
+
+  test("empty string content yields an image-only array", () => {
+    const conv = [{ role: "user", content: "" }];
+    const out = withAppendedImage(conv, "data:image/jpeg;base64,x");
+    assert.equal(out[0].content.length, 1);
+    assert.equal(out[0].content[0].type, "image_url");
+  });
+
+  test("pushes the image onto existing array content", () => {
+    const conv = [{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image_url", image_url: { url: "a" } }] }];
+    const out = withAppendedImage(conv, "b");
+    assert.equal(out[0].content.length, 3);
+    assert.equal(out[0].content[2].image_url.url, "b");
+    assert.equal(conv[0].content.length, 2, "original array untouched");
+  });
+
+  test("returns the same reference when url is falsy or conversation empty", () => {
+    const conv = [{ role: "user", content: "hi" }];
+    assert.equal(withAppendedImage(conv, ""), conv);
+    assert.equal(withAppendedImage(conv, null), conv);
+    assert.deepEqual(withAppendedImage([], "x"), []);
+  });
+
+  test("only touches the last message", () => {
+    const conv = [
+      { role: "user", content: "first" },
+      { role: "user", content: "second" },
+    ];
+    const out = withAppendedImage(conv, "x");
+    assert.equal(out[0].content, "first");
+    assert.equal(Array.isArray(out[1].content), true);
   });
 });

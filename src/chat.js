@@ -20,8 +20,8 @@ import {
   quotaExceeded,
   recordUsage,
 } from "./quota.js";
-import { resolveModel, validateMessages } from "./validation.js";
-import { shodanEnabled } from "./settings.js";
+import { resolveModel, validateImageLocations, validateMessages } from "./validation.js";
+import { shodanEnabled, googleMapsEnabled } from "./settings.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
   if (!env.BERGET_API_TOKEN) {
@@ -101,6 +101,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // per-request body flag (src/settings.js) — gated here so the pipeline
   // only ever attempts it when both the knob is on and the key is present.
   const shodanOn = shodanEnabled(env, identity);
+  // Google Maps enrichment (Places + Street View + Static Maps) is another
+  // opt-in per-user knob (src/settings.js). Vision capability of the CHOSEN
+  // answer model decides whether the fetched imagery is attached for the model
+  // to describe (only vision models can receive it); the resolved photo GPS
+  // coordinates give a precise location to look up when a photo is attached.
+  const googleMapsOn = googleMapsEnabled(env, identity);
+  const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
+  const imageLocations = validateImageLocations(body.imageLocations);
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -136,7 +144,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
 
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
-    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, shodanOn);
+    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, shodanOn, {
+      googleMaps: googleMapsOn,
+      vision: modelIsVision,
+      imageLocations,
+    });
     disconnect.state = state;
 
     // Recovery marker (metadata only): lets the poller tell "still
@@ -215,6 +227,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         cached_searches: state.cachedSearchCount || 0,
         sources: state.sources.length,
         shodan_hosts: state.shodanCount,
+        google_maps: state.mapsCount,
         duration_ms,
         client_gone: disconnect.gone,
       });
@@ -302,7 +315,7 @@ export function resolveJsonModel(catalog, userModel) {
 }
 
 // Mutable per-request state threaded through the pipeline.
-function newRequestState(model, jsonModel, webSearch, budgetS, shodan) {
+function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
   return {
     startedAt: Date.now(),
     model,
@@ -310,6 +323,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan) {
     webSearch,
     shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
     shodanCount: 0, // hosts Shodan actually returned data for
+    googleMaps: !!extras.googleMaps, // opt-in Google Maps enrichment (src/settings.js)
+    mapsCount: 0, // 1 when Google Maps data was found & folded in
+    vision: !!extras.vision, // chosen answer model supports image input
+    imageLocations: extras.imageLocations || [], // validated attached-photo GPS coords
+
     plan: planResearch(model, budgetS, jsonModel),
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
