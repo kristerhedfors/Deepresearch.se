@@ -15,6 +15,7 @@ import {
   conversationsOfProject,
   createProject,
   deleteProject,
+  ensureThumb,
   getProject,
   listProjects,
   onProjectsChange,
@@ -141,9 +142,16 @@ async function renderPanel() {
       const badge = f.metadata
         ? `<span class="att-meta-badge" title="${escapeHtml(f.metadata)}">ℹ️ metadata</span>`
         : "";
+      // Images show their actual (tiny, record-embedded) preview — the
+      // same look as an attachment card — falling back to the kind icon
+      // only when no thumbnail could be made.
+      const visual =
+        f.kind === "image" && f.thumb
+          ? `<img class="pf-thumb" src="${f.thumb}" alt="">`
+          : `<span class="icon">${KIND_ICON[f.kind] || "📎"}</span>`;
       return `
       <div class="project-file" data-id="${f.id}">
-        <span class="icon">${KIND_ICON[f.kind] || "📎"}</span>
+        ${visual}
         <div class="meta"><div class="name">${escapeHtml(f.name)}</div>
           <div class="sub">${escapeHtml(sub)} ${badge}</div></div>
         <button type="button" class="pf-remove" data-id="${f.id}" aria-label="Remove ${escapeHtml(f.name)}">✕</button>
@@ -198,6 +206,15 @@ async function renderPanel() {
     ${convHtml || '<p class="muted">No chats yet — "New chat in project" starts one.</p>'}
   `;
   wirePanel(p);
+
+  // Images added before thumbnails existed: rebuild previews from the
+  // OPFS originals in the background and re-render once if any appeared.
+  const missing = (p.files || []).filter((f) => f.kind === "image" && !f.thumb);
+  if (missing.length) {
+    Promise.all(missing.map((f) => ensureThumb(p.id, f.id).catch(() => false))).then((made) => {
+      if (made.some(Boolean) && openPanelId === p.id) renderPanel();
+    });
+  }
 }
 
 function status(msg) {

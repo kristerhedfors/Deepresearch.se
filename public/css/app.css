@@ -751,3 +751,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border: 1px solid var(--border); border-radius: 10px;
   padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
 }
+.project-file .pf-thumb {
+  width: 34px; height: 34px; object-fit: cover; border-radius: 8px; flex: none;
+  box-shadow: 0 1px 3px rgba(4, 30, 60, .25);
+}
