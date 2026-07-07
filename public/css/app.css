@@ -688,6 +688,13 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border-radius: 14px; padding: 1.1rem 1.25rem;
   max-width: 560px; font-size: .88rem; line-height: 1.55;
   box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+  /* Taller than a phone screen; the overlay is fixed, so the card must
+     scroll internally or its top is simply unreachable. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .privacy-card p { margin: .55rem 0; }
 .privacy-card a { color: var(--accent); }
