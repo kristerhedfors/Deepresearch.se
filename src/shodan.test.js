@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { extractTargets, shodanAvailable } from "./shodan.js";
+import { extractTargets, shodanAvailable, isSharedHostingOrg } from "./shodan.js";
 
 test("shodanAvailable reflects the SHODAN_API_KEY secret", () => {
   assert.equal(shodanAvailable({}), false);
@@ -64,4 +64,18 @@ test("extractTargets caps hostnames at 4", () => {
 test("extractTargets lowercases hostnames and trims a trailing dot", () => {
   const { hostnames } = extractTargets("Scan Example.COM. now");
   assert.deepEqual(hostnames, ["example.com"]);
+});
+
+test("isSharedHostingOrg flags cloud/CDN providers, case-insensitively, across fields", () => {
+  assert.equal(isSharedHostingOrg("Amazon.com, Inc.", "", "AS16509"), true);
+  assert.equal(isSharedHostingOrg("", "CLOUDFLARE", ""), true);
+  assert.equal(isSharedHostingOrg("Fastly"), true);
+  assert.equal(isSharedHostingOrg("Google LLC"), true);
+});
+
+test("isSharedHostingOrg is false for a dedicated/unknown host and empty input", () => {
+  assert.equal(isSharedHostingOrg("Sentor MSS AB", "Some Swedish ISP", "AS12345"), false);
+  assert.equal(isSharedHostingOrg("", "", ""), false);
+  assert.equal(isSharedHostingOrg(), false);
+  assert.equal(isSharedHostingOrg(null, undefined, 42), false);
 });

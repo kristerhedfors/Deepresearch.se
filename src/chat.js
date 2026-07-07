@@ -270,6 +270,12 @@ function newRequestState(model, webSearch, budgetS, shodan) {
     shodanCount: 0, // hosts Shodan actually returned data for
     plan: planResearch(model, budgetS),
     searchCount: 0,
+    // Search-backend health (src/pipeline.js's noteSearchBackendHealth): set
+    // when Exa itself fails (out of credits, bad key) so synthesis can be
+    // honest that an empty source list is an outage, not a niche topic.
+    searchBackendErrors: 0,
+    searchBackendKind: null,
+    searchAlertRaised: false,
     iterations: 1, // search waves (initial + gap rounds that ran)
     ranQueries: new Set(),
     sources: [], // numbered registry, deduped by URL

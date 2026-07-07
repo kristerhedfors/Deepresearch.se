@@ -965,6 +965,49 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
     say so plainly when sources are still dominated by one origin despite
     all this, rather than presenting single-origin claims as
     independently established.
+- **A search-backend outage is never invisible, and never looks like a
+  niche topic.** A round 8 OSINT assessment (prompted by a domain
+  question — "what's going on with sentor.se" — that ran 20 consecutive
+  zero-result searches) traced the emptiness to the **Exa account being
+  out of credits**: a 402 makes EVERY query return nothing, so the run
+  degrades to an ungrounded answer that is indistinguishable, from an
+  empty source list alone, from a genuinely obscure subject — and, like
+  the Berget wallet incident, with no visible signal that the *provider*
+  is the problem. Fixed three ways: (1) `src/exa.js`'s `exaErrorKind()`
+  classifies each failure (`no_credits` / `auth` / `rate_limit` / `http`
+  / `network`) and rides back on the search result as `errorKind`, so a
+  backend failure is distinct from a real 200-with-zero-results (which
+  stays `errorKind: null`); the `search_done` SSE event carries it as
+  `error` so the "Copy research JSON" export shows *why* a query found
+  nothing. (2) `src/pipeline.js`'s `noteSearchBackendHealth()` raises an
+  operational alert once per request on a credit/auth failure
+  (`alerts.js`'s `exaSearchAlert()` → `exa_insufficient_credits` /
+  `exa_auth_failed`, the Exa analogue of `berget_insufficient_balance`),
+  so the admin notification center surfaces it. (3) When a run collects
+  zero sources *because* the backend failed, `emptySourcesNote()` tells
+  synthesis so up front — the answer states web search was unavailable and
+  labels any general-knowledge fallback as not source-backed, instead of
+  quietly answering as if the topic had no coverage.
+- **OSINT query hygiene — web search is not a DNS/WHOIS tool.** The same
+  assessment found the model had shaped all 20 dead queries as
+  infrastructure lookups (`<domain> WHOIS 2026-07-07`, `<domain> DNS A
+  record`, `site:<domain>`, `is <domain> down July 2026`) — none of which
+  Exa's neural page index can answer, so even *with* credits they would
+  have returned little. `triagePrompt`'s `SEARCH_CAPABILITY_NOTE` (and a
+  matching `gapPrompt` rule) now steer the planner away from
+  operator/exact-date/infra-lookup shapes and toward natural-language
+  queries about the *organization behind* a domain; live infrastructure
+  (DNS, ports, hosting) is supplied separately by the Shodan block, so no
+  web-search angle should be spent on it.
+- **Infrastructure co-residence is not a relationship.** In that same run
+  the model concluded the target "redirects to" an unrelated magazine that
+  merely shared its Amazon CloudFront edge IP. Shared cloud/CDN IPs serve
+  thousands of unrelated domains, so co-resident hostnames carry no
+  relationship signal. Guarded in two places: `src/shodan.js`'s
+  `isSharedHostingOrg()` annotates the Shodan block's `Hostnames:` line
+  inline when the host is on a known shared-cloud/CDN provider, and
+  `synthPrompt`'s `CO_RESIDENCE_NOTE` forbids inferring ownership /
+  redirection / any connection between domains from a shared IP alone.
 
 ## Reverse geocoding — OpenStreetMap Nominatim
 
@@ -1192,16 +1235,23 @@ rendered with a plain-language description AND a suggested remediation
 (not just a raw error) — this is meant to be acted on, not skimmed:
 - **Pending sign-in approvals** — existing `status: 'pending'` users,
   each with an inline Approve button (same action as the Users list's).
-- **Operational alerts** — `chat.js`'s top-level pipeline catch
-  classifies the caught error (`classifyChatError`) into one of a small,
-  stable set of types — `berget_insufficient_balance` (critical),
-  `chat_empty_completion`, `chat_dropped_stream`, or a generic
-  `chat_stream_failed` fallback — and upserts a row keyed by `type`: a
-  repeat occurrence bumps `count`/`last_seen_at` and un-acknowledges the
-  row (worth re-surfacing) rather than piling up duplicate rows. A
-  `REMEDIATIONS` lookup in `alerts.js` attaches a suggested action per
-  type at READ time (not stored on the row), so wording improvements
-  apply retroactively without a migration.
+- **Operational alerts** — two sources feed the same `alerts` table.
+  `chat.js`'s top-level pipeline catch classifies the caught error
+  (`classifyChatError`) into one of a small, stable set of types —
+  `berget_insufficient_balance` (critical), `chat_empty_completion`,
+  `chat_dropped_stream`, or a generic `chat_stream_failed` fallback. The
+  **search backend** raises its own, since an Exa failure is swallowed
+  into a fail-soft empty result rather than thrown: `pipeline.js`'s
+  `noteSearchBackendHealth()` calls `alerts.js`'s `exaSearchAlert()` on a
+  credit/auth failure → `exa_insufficient_credits` (critical, the Exa
+  analogue of Berget wallet depletion — a 402 zeroes out every search) or
+  `exa_auth_failed` (bad key); transient kinds (rate-limit / one-off HTTP
+  / network) return null so they don't flap the badge. Every type upserts
+  a row keyed by `type`: a repeat occurrence bumps `count`/`last_seen_at`
+  and un-acknowledges the row (worth re-surfacing) rather than piling up
+  duplicate rows. A `REMEDIATIONS` lookup in `alerts.js` attaches a
+  suggested action per type at READ time (not stored on the row), so
+  wording improvements apply retroactively without a migration.
 
 `/api/admin/overview` includes the alert list; `POST
 /api/admin/alerts/:id/ack` dismisses one. `/api/me` adds a

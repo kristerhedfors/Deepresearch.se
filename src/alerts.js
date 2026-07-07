@@ -43,6 +43,33 @@ export function classifyChatError(message) {
   };
 }
 
+// Maps an Exa search-backend failure (src/exa.js's exaErrorKind) to a
+// stable operational alert, or null for transient kinds not worth
+// surfacing to an admin. The Exa credit-exhaustion case is the direct
+// analogue of Berget wallet depletion above: a 402 makes EVERY search
+// return zero results, so a research run silently degrades to an ungrounded
+// answer with no visible signal that the search provider is the problem —
+// exactly the kind of invisible outage this alert center exists to catch.
+// Rate-limits and one-off HTTP/network blips are transient and return null
+// so they don't flap the notification badge.
+export function exaSearchAlert(kind) {
+  if (kind === "no_credits") {
+    return {
+      type: "exa_insufficient_credits",
+      severity: "critical",
+      message: "Exa web-search credits are exhausted — every research query returns zero results, so answers fall back to ungrounded model knowledge until credits are topped up at dashboard.exa.ai.",
+    };
+  }
+  if (kind === "auth") {
+    return {
+      type: "exa_auth_failed",
+      severity: "critical",
+      message: "Exa rejected the API key (401/403) — web search is failing for every request until the EXA_API_KEY secret is fixed.",
+    };
+  }
+  return null;
+}
+
 // Suggested remediation per alert type — looked up at READ time (not
 // stored on the row) so wording improvements apply retroactively to
 // existing rows and don't require a migration. Keyed by the same stable
@@ -58,6 +85,10 @@ const REMEDIATIONS = {
     "Known Berget-side connection instability for certain models, not fixable from this codebase — see tests/MODEL-EVAL-FINDINGS.md's open issues. No action needed unless the rate climbs sharply; that would suggest a new, different root cause worth investigating via Workers Logs.",
   chat_stream_failed:
     "Check Workers Logs for the chat.stream_failed event (search by request id or timeframe) to see the actual error — this is a catch-all for failures that don't match a more specific known pattern yet.",
+  exa_insufficient_credits:
+    "Top up Exa search credits at dashboard.exa.ai — until then every query returns HTTP 402 and research answers are ungrounded (no web sources). Confirm it's resolved by running any web-search request and checking the sources list is populated again.",
+  exa_auth_failed:
+    "Verify the EXA_API_KEY secret in the Cloudflare dashboard (Worker → Settings → Variables and Secrets) — Exa is returning 401/403, so the key is missing, revoked, or wrong. Re-set it, then send any web-search request to confirm results return.",
 };
 const DEFAULT_REMEDIATION = "Check Workers Logs for this alert's timeframe to see the underlying error in full.";
 

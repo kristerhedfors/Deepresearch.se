@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { hostnameOf, addSources, backfillOverflowSources, sourceDigest, normalizeTriage } from "./pipeline.js";
+import { hostnameOf, addSources, backfillOverflowSources, sourceDigest, normalizeTriage, emptySourcesNote } from "./pipeline.js";
 
 function freshState(maxSources = 10) {
   return {
@@ -190,5 +190,22 @@ describe("normalizeTriage", () => {
     const long = "x".repeat(400);
     const result = normalizeTriage({}, long);
     assert.equal(result.queries[0].length, 300);
+  });
+});
+
+describe("emptySourcesNote", () => {
+  test("a genuinely empty run reads as 'nothing usable', not an outage", () => {
+    assert.match(emptySourcesNote({ searchBackendKind: null }), /nothing usable/);
+    assert.match(emptySourcesNote({}), /nothing usable/);
+    assert.match(emptySourcesNote(undefined), /nothing usable/);
+  });
+
+  test("a credit/auth backend outage tells synthesis web search FAILED", () => {
+    for (const kind of ["no_credits", "auth", "http", "network", "rate_limit"]) {
+      const note = emptySourcesNote({ searchBackendKind: kind });
+      assert.match(note, /web-search backend FAILED/);
+      assert.match(note, new RegExp(kind));
+      assert.match(note, /NOT genuine/);
+    }
   });
 });

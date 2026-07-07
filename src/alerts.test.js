@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classifyChatError } from "./alerts.js";
+import { classifyChatError, exaSearchAlert } from "./alerts.js";
 
 describe("classifyChatError", () => {
   test("Berget wallet depletion classifies as critical", () => {
@@ -38,5 +38,28 @@ describe("classifyChatError", () => {
     assert.doesNotThrow(() => classifyChatError(undefined));
     assert.doesNotThrow(() => classifyChatError(null));
     assert.equal(classifyChatError(undefined).type, "chat_stream_failed");
+  });
+});
+
+describe("exaSearchAlert", () => {
+  test("out-of-credits raises a critical, actionable alert", () => {
+    const a = exaSearchAlert("no_credits");
+    assert.equal(a.type, "exa_insufficient_credits");
+    assert.equal(a.severity, "critical");
+    assert.match(a.message, /dashboard\.exa\.ai/);
+  });
+
+  test("auth failure raises a distinct critical alert", () => {
+    const a = exaSearchAlert("auth");
+    assert.equal(a.type, "exa_auth_failed");
+    assert.equal(a.severity, "critical");
+  });
+
+  test("transient kinds (rate_limit/http/network) do NOT raise an alert", () => {
+    assert.equal(exaSearchAlert("rate_limit"), null);
+    assert.equal(exaSearchAlert("http"), null);
+    assert.equal(exaSearchAlert("network"), null);
+    assert.equal(exaSearchAlert(null), null);
+    assert.equal(exaSearchAlert(undefined), null);
   });
 });

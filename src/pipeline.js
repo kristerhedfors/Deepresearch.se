@@ -25,6 +25,7 @@
 // helpers (emitDelta/step/stepDone), so phase functions take just ctx
 // plus whatever's specific to that call, instead of a long parameter list.
 
+import { exaSearchAlert, raiseAlert } from "./alerts.js";
 import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
 import { fitsDeadline, recordPhase } from "./budget.js";
 import {
@@ -247,7 +248,7 @@ async function runSynthesis(ctx) {
   const digest = sourceDigest(state.sources, plan.digestCap);
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-    `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
+    `Numbered sources:\n${digest || emptySourcesNote(state)}\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
     { role: "system", content: synthPrompt() },
@@ -414,9 +415,44 @@ async function runSearches(ctx, queries, round) {
         results: result.resultCount,
         duration_ms: result.durationMs,
         sources: result.sources,
+        // Surfaces a backend failure (e.g. Exa out of credits) distinctly
+        // from a genuine 0-result search, so the activity panel and the
+        // "Copy research JSON" debug export show WHY a query found nothing.
+        ...(result.errorKind ? { error: result.errorKind } : {}),
       },
     });
     addSources(state, result.items);
+  }
+  await noteSearchBackendHealth(ctx, results);
+}
+
+// Records whether the search backend itself failed this batch (as opposed
+// to genuinely finding nothing) and, on the first credit/auth failure of a
+// request, raises an operational alert — the Exa analogue of chat.js's
+// Berget wallet-depletion alert. Without this, an exhausted Exa account
+// (HTTP 402 on every query) is invisible: the run just comes back with zero
+// sources that look identical to a niche topic, and the admin never learns
+// the provider is down. state.searchBackendKind is read by synthesis so the
+// answer says web search was unavailable rather than presenting an empty
+// source list as established fact.
+async function noteSearchBackendHealth(ctx, results) {
+  const { env, log, state } = ctx;
+  for (const r of results) {
+    if (!r?.errorKind) continue;
+    state.searchBackendErrors = (state.searchBackendErrors || 0) + 1;
+    // Remember the most actionable kind seen (credits/auth over transient).
+    if (!state.searchBackendKind || r.errorKind === "no_credits" || r.errorKind === "auth") {
+      state.searchBackendKind = r.errorKind;
+    }
+    const alert = exaSearchAlert(r.errorKind);
+    if (alert && !state.searchAlertRaised) {
+      state.searchAlertRaised = true;
+      log.error("exa.backend_alert", { kind: r.errorKind, type: alert.type });
+      // Awaited (once per request, only on an outage) so the row actually
+      // lands before the isolate can be torn down; raiseAlert is already
+      // best-effort internally, so an alerting hiccup can't break the stream.
+      await raiseAlert(env, alert.type, alert.severity, alert.message, `exa search failed: ${r.errorKind}`);
+    }
   }
 }
 
@@ -435,6 +471,29 @@ async function runSearches(ctx, queries, round) {
 // in prompts.js (triagePrompt's mandatory independent-source query,
 // gapPrompt's dominance check) — belt and suspenders, not either/or.
 const DOMAIN_CAP = 3;
+
+// The placeholder that stands in for the numbered-source digest when a run
+// collected nothing. When the emptiness is a search-backend OUTAGE (Exa out
+// of credits or a rejected key) rather than a genuinely obscure topic, say
+// so plainly so synthesis tells the user web search was unavailable instead
+// of quietly answering from model knowledge as if the topic simply had no
+// coverage — the two are indistinguishable from an empty list alone, and
+// conflating them is exactly what made an exhausted-credits outage look like
+// "this domain has no web presence". Exported (pure) for unit testing.
+export function emptySourcesNote(state) {
+  const kind = state?.searchBackendKind;
+  if (kind === "no_credits" || kind === "auth" || kind === "http" || kind === "network" || kind === "rate_limit") {
+    return (
+      "(none — the web-search backend FAILED for every query this run " +
+      `(provider error: ${kind}); these are NOT genuine \"no results\". Do NOT ` +
+      "present the absence of sources as evidence about the topic. State up " +
+      "front that live web search was unavailable for this request, answer " +
+      "only from general knowledge clearly labeled as not source-backed, and " +
+      "suggest retrying once search is restored.)"
+    );
+  }
+  return "(none — searches returned nothing usable)";
+}
 
 export function hostnameOf(url) {
   try {

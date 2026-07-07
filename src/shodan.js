@@ -186,6 +186,25 @@ function summarizeHost(data, resolvedFrom) {
   };
 }
 
+// Organizations/ISPs that run shared cloud or CDN infrastructure, where one
+// edge IP legitimately serves thousands of unrelated domains. When a host
+// belongs to one of these, its co-resident `hostnames` list is NOT evidence
+// that those domains are related to the target the user asked about — a
+// distinction models otherwise get wrong (observed live: a domain on an
+// Amazon CloudFront edge reported as "redirecting to" an unrelated site that
+// merely shared the edge IP). Substring match against org/isp/asn text,
+// case-insensitive. Exported (pure) for unit testing.
+const SHARED_HOSTING_ORGS = [
+  "amazon", "cloudfront", "aws", "cloudflare", "fastly", "akamai", "google",
+  "microsoft", "azure", "digitalocean", "linode", "hetzner", "ovh", "vercel",
+  "netlify", "github", "wordpress", "shopify", "squarespace", "wix", "fly.io",
+];
+
+export function isSharedHostingOrg(...fields) {
+  const hay = fields.filter((s) => typeof s === "string").join(" ").toLowerCase();
+  return SHARED_HOSTING_ORGS.some((needle) => hay.includes(needle));
+}
+
 // Renders one summarized host as compact, readable lines for the context
 // block. Deliberately plain text — the same convention as geocode.js's and
 // the client's own metadata blocks.
@@ -196,7 +215,15 @@ function renderHost(h) {
   if (h.asn) lines.push(`  ASN: ${h.asn}`);
   if (h.location) lines.push(`  Location: ${h.location}`);
   if (h.os) lines.push(`  OS: ${h.os}`);
-  if (h.hostnames.length) lines.push(`  Hostnames: ${h.hostnames.join(", ")}`);
+  if (h.hostnames.length) {
+    // On shared cloud/CDN infra, co-resident hostnames carry no relationship
+    // to the target — flag it inline so the model doesn't infer a connection.
+    const shared = isSharedHostingOrg(h.org, h.isp, h.asn);
+    const caveat = shared && h.hostnames.length > 1
+      ? " (shared cloud/CDN edge — these co-resident domains are NOT necessarily related to the target)"
+      : "";
+    lines.push(`  Hostnames: ${h.hostnames.join(", ")}${caveat}`);
+  }
   if (h.ports.length) lines.push(`  Open ports: ${h.ports.join(", ")}`);
   if (h.products.length) lines.push(`  Services: ${h.products.join(", ")}`);
   if (h.vulns.length) lines.push(`  Known CVEs: ${h.vulns.join(", ")}`);
