@@ -73,6 +73,21 @@ export function stripOldImages(history) {
   });
 }
 
+// A user message's content split into display text + image data URLs — for
+// re-hydrating the assistant turn on a boot resume (stream.js), so its PDF
+// report keeps the title/images a live turn would have had. Handles both
+// string content and multimodal arrays.
+export function splitUserContent(content) {
+  if (typeof content === "string") return { text: content, imageUrls: [] };
+  if (Array.isArray(content)) {
+    return {
+      text: content.filter((p) => p?.type === "text").map((p) => p.text).join("\n"),
+      imageUrls: content.filter((p) => p?.type === "image_url").map((p) => p.image_url?.url).filter(Boolean),
+    };
+  }
+  return { text: "", imageUrls: [] };
+}
+
 // One inline (non-RAG) document as a labeled text block: the doc's parsed
 // text, its extracted metadata (docProps / tracked changes / PDF Info dict —
 // see docs.js) as its own sub-block, and a truncation marker when the parse

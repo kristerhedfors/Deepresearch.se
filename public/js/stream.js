@@ -40,10 +40,12 @@ import {
   inlineDocBlock,
   isStreamStale,
   ragExcerptBlocks,
+  splitUserContent,
   stripOldImages,
   STREAM_STALL_MS,
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
+import { createSseParser } from "./sse.js";
 
 const history = []; // {role, content} pairs sent to the API
 
@@ -353,20 +355,6 @@ function armPendingRecovery(requestId, opts) {
   });
 }
 
-// The user's latest message split into display text + image data URLs, for
-// re-hydrating the assistant turn on a boot resume (so its PDF report keeps
-// the title/images a live turn would have had).
-function lastUserParts(content) {
-  if (typeof content === "string") return { text: content, imageUrls: [] };
-  if (Array.isArray(content)) {
-    return {
-      text: content.filter((p) => p?.type === "text").map((p) => p.text).join("\n"),
-      imageUrls: content.filter((p) => p?.type === "image_url").map((p) => p.image_url?.url).filter(Boolean),
-    };
-  }
-  return { text: "", imageUrls: [] };
-}
-
 // Called once on boot (app.js): if a previous session left an in-flight
 // answer that a full app relaunch interrupted, reopen that conversation and
 // poll the server-parked answer back. This is what lets a long research run
@@ -414,7 +402,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
     try { onLoad(record); } catch { /* settings restore is best-effort */ }
   }
 
-  const { text, imageUrls } = lastUserParts(msgs[msgs.length - 1].content);
+  const { text, imageUrls } = splitUserContent(msgs[msgs.length - 1].content);
   const turn = addAssistantTurn(text, imageUrls);
   scrollDown(true);
 
@@ -678,21 +666,13 @@ export async function sendMessage(text, opts) {
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    const parser = createSseParser(); // line buffering + [DONE]/keepalive filtering (sse.js)
     while (true) {
       const { done, value } = await reader.read();
       lastByteAt = Date.now(); // any read (data, keepalive, or EOF) proves the socket is live
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          acc = handleEvent(turn, JSON.parse(data), acc);
-        } catch { /* ignore keep-alive / non-JSON lines */ }
+      for (const evt of parser.push(decoder.decode(value, { stream: true }))) {
+        acc = handleEvent(turn, evt, acc);
       }
     }
 

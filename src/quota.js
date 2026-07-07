@@ -221,6 +221,16 @@ export function quotaExceeded(usage, quota, now = Date.now()) {
 
 // ---- recording -------------------------------------------------------------
 
+// Accumulates one Berget usage report into a running {prompt_tokens,
+// completion_tokens} totals bucket. The pipeline keeps a separate bucket per
+// model that ran (answer / JSON planning / vision helper) so each is billed
+// at its own catalog rate — see summarizeSpend in chat.js.
+export function addUsage(totals, usage) {
+  if (!usage) return;
+  totals.prompt_tokens += usage.prompt_tokens || 0;
+  totals.completion_tokens += usage.completion_tokens || 0;
+}
+
 // Berget prices are EUR per token in the catalog (price_in/price_out).
 export function bergetCost(catalogEntry, promptTokens, completionTokens) {
   if (!catalogEntry) return 0;

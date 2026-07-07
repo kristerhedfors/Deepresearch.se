@@ -1293,3 +1293,27 @@ documents.
   in Safari on the Cloudflare dashboard, bindings verified with a
   dry-run before the merge, and the deploy confirmed live by running
   the full 38-test mocked e2e suite against production — all green.
+
+## Deep refactoring pass: clarity and modularity (2026-07-07)
+
+A pure-refactoring session — no behavior change, verified by the unit
+suite growing from 327 to 346 passing tests — that pulled the pieces
+with lives of their own out of the two biggest modules:
+
+- **`src/pipeline.js` (746 → ~490 lines)** now owns only the research
+  phase FLOW. The cross-search **source registry** (URL dedup,
+  arrival-order citation numbering, the per-domain diversity cap and
+  its overflow backfill, the numbered digest) moved to `src/sources.js`,
+  and the opt-in **pre-pipeline enrichments** (Shodan host intelligence,
+  Google Maps incl. the Street View vision-describe helper) moved to
+  `src/enrichment.js` — each with its tests alongside.
+- **`src/chat.js`**: the split-billing token/cost summation (answer
+  model + JSON planner + vision helper, each priced at its own catalog
+  rate) is now one pure, unit-tested `summarizeSpend()` instead of
+  inline arithmetic in the stream's finally block; the `addUsage`
+  accumulator lives in `src/quota.js` with the rest of the accounting.
+- **`public/js/stream.js`**: the SSE line-buffer parsing (partial-line
+  carry between reads, keepalive/`[DONE]` filtering, malformed-JSON
+  tolerance) is extracted to `public/js/sse.js` as a pure, Node-tested
+  core — the same pattern `message-content.js` established — and the
+  boot-resume message splitter moved there as `splitUserContent`.
