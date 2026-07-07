@@ -787,15 +787,16 @@ Let a battery finish before pushing anything.
   — only the arrow button sends; grows to ~6 lines), beneath it the
   controls row — the attach and camera buttons (round), the **model
   selector** (moved here from the header; fills the remaining space) —
-  then a third row of its own for the
+  then a third row of its own — the slider filling the remaining space,
+  the spelled-out time value (slider/value dim while search is off),
+  and on its right end the
   **web-search knob** (default on; sends `web_search: false` when off →
   the Worker skips triage/Exa entirely and streams one Berget
   completion; a spiderweb sits inside the knob — accent blue with a
   soft glow when on, grey when off — and press-and-holding the knob
   opens the info popover that used to hang off a separate 🔍 button,
-  removed to give the slider its footer space) with the slider filling the
-  remaining space and the spelled-out time value (slider/value dim
-  while search is off), and back on the controls row a round accent
+  removed to give the slider its footer space) — and back on the controls
+  row a round accent
   **arrow send button** that becomes
   a **square stop button** (same element, swapped icon, never disabled)
   while a response is streaming — clicking it aborts the in-flight
