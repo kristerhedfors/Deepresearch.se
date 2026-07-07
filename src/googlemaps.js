@@ -111,21 +111,61 @@ const SWEDISH_STREET_TOKEN_RE =
 // "the Square" — since here no house number anchors them).
 const ENGLISH_STREET_PHRASE_RE =
   /\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*){0,2}\s+(?:Street|Road|Avenue|Lane|Boulevard|Highway|Terrace|Parkway)\b/gu;
-// A trailing locality after a bare street name: "…, Kallhäll", "… in Kallhäll",
-// "… i Kallhäll". Up to two Capitalized words are captured as the place.
-const LOCALITY_RE =
-  /^[\s,]*(?:,|\bin\b|\bi\b|\bpå\b|\bvid\b|\bnear\b)?\s*(\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*)?)/u;
+// Filler / intent words that are never part of an address. Used to trim
+// leading noise ("show street view of …") and to reject a bad trailing capture.
+// Lowercase, accents included; localities like "kallhäll"/"järfälla" are NOT
+// here, so a lowercase locality survives (the bug that sent bare
+// "Maskinistvägen 11" to Google and resolved to the wrong city).
+const STOPWORDS = new Set([
+  // English intent/filler
+  "show", "street", "streets", "view", "streetview", "google", "maps", "map", "of", "the", "a",
+  "an", "at", "on", "for", "me", "my", "please", "pls", "can", "could", "would", "you", "we", "i",
+  "what", "whats", "where", "which", "is", "are", "was", "were", "do", "does", "get", "give", "see",
+  "look", "looks", "around", "find", "near", "in", "to", "from", "with", "and", "this", "that",
+  "here", "there", "no", "not", "yes",
+  // Swedish intent/filler
+  "visa", "mig", "se", "titta", "vad", "finns", "det", "den", "här", "där", "ligger", "är", "och",
+  "på", "pa", "vid", "gatuvy", "kan", "du", "jag", "vi", "var", "hur", "nej", "ja", "en", "ett",
+]);
+
+const normWord = (w) => (w || "").toLowerCase().replace(/[^\p{L}]/gu, "");
+
+// A trailing locality after the street span. Case-INSENSITIVE (users type
+// "in järfälla", "i kallhäll" lowercase): a connector (comma / in / i / på /
+// vid / near) followed by up to two place words, OR a bare Capitalized proper
+// noun ("… Kallhäll"). A trailing stopword the capture grabbed ("Alnö is") is
+// trimmed off.
+const CONNECTOR_LOCALITY_RE =
+  /^\s*(?:,|\b(?:in|i|på|pa|vid|near|kommun)\b)\s*([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
+const BARE_CAP_LOCALITY_RE =
+  /^\s+(\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*)?)/u;
 
 // Given a matched street span and the text right after it, append a trailing
-// locality when one is present, so "Maskinistvägen in Kallhäll" resolves as
-// "Maskinistvägen, Kallhäll" rather than a bare, ambiguous street name.
+// locality when one is present, so "Maskinistvägen 11 in järfälla" resolves as
+// "Maskinistvägen 11, järfälla" rather than a bare, ambiguous street name.
 function withTrailingLocality(street, rest) {
-  const m = rest.match(LOCALITY_RE);
+  const m = rest.match(CONNECTOR_LOCALITY_RE) || rest.match(BARE_CAP_LOCALITY_RE);
   if (!m || !m[1]) return street;
-  const locality = m[1].trim();
-  // Don't repeat a word the street span already ends with.
-  if (street.toLowerCase().endsWith(locality.toLowerCase())) return street;
+  const words = m[1].trim().split(/\s+/).filter(Boolean);
+  while (words.length && STOPWORDS.has(normWord(words[words.length - 1]))) words.pop();
+  const locality = words.join(" ");
+  if (!locality || street.toLowerCase().includes(locality.toLowerCase())) return street;
   return `${street}, ${locality}`;
+}
+
+// Preceding place-name words right before a street token ("kallhäll
+// maskinistvägen"), walking back over non-stopwords (case-insensitive) up to
+// two words. Returns "" when the words before the street are all filler.
+function leadingLocality(before) {
+  const words = before.trim().split(/\s+/).filter(Boolean);
+  const kept = [];
+  for (let i = words.length - 1; i >= 0 && kept.length < 2; i--) {
+    const nw = normWord(words[i]);
+    // Stop at filler or a token with no letters (a bare house number "5").
+    if (!nw || STOPWORDS.has(nw)) break;
+    kept.unshift(words[i]);
+  }
+  return kept.join(" ");
 }
 
 // Pulls a single geocodable street-address / street-name candidate out of free
@@ -147,13 +187,14 @@ export function extractPlace(text) {
     const words = m[0].trim().replace(/\s+/g, " ").split(" ");
     if (words.length < 2) continue;
     const streetIdx = words.length - 2;
-    const streetWord = (words[streetIdx] || "").toLowerCase().replace(/[^\p{L}]/gu, "");
+    const streetWord = normWord(words[streetIdx]);
     if (!SWEDISH_STREET_SUFFIX_RE.test(streetWord) && !ENGLISH_STREET_WORDS.has(streetWord)) continue;
-    // The regex may have swept up filler words before the street name ("what's
-    // at Maskinistvägen 11"). Keep only Capitalized preceding words — a
-    // locality like "Kallhäll" or "Main" — and drop lowercase filler.
+    // The regex may have swept up filler words before the street name ("show
+    // street view of kallhäll maskinistvägen 11"). Walk back over preceding
+    // words that are NOT filler — a locality like "kallhäll" or "Main" is kept
+    // (even lowercase), and filler ("of", "view") stops the walk.
     let start = streetIdx;
-    while (start > 0 && /^\p{Lu}/u.test(words[start - 1])) start--;
+    while (start > 0 && !STOPWORDS.has(normWord(words[start - 1]))) start--;
     const street = words.slice(start).join(" ");
     const rest = raw.slice(m.index + m[0].length);
     return withTrailingLocality(street, rest).slice(0, MAX_LOCATION_CHARS);
@@ -165,7 +206,8 @@ export function extractPlace(text) {
   const en = firstMatch(raw, ENGLISH_STREET_PHRASE_RE);
   const hit = sv && en ? (sv.index <= en.index ? sv : en) : sv || en;
   if (hit) {
-    const street = hit[0].trim();
+    const lead = leadingLocality(raw.slice(0, hit.index));
+    const street = (lead ? lead + " " : "") + hit[0].trim();
     const rest = raw.slice(hit.index + hit[0].length);
     return withTrailingLocality(street, rest).slice(0, MAX_LOCATION_CHARS);
   }
@@ -439,11 +481,14 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   // there's coverage and a real point to center on).
   const embed = svOk && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 
+  // Prefer the formatted address (includes the city) so the activity detail
+  // reveals WHICH "Maskinistvägen 11" Google resolved — makes a wrong-city hit
+  // visible instead of showing a bare, ambiguous street name.
   const bits = [];
-  if (place) bits.push(place.name || place.address || "place found");
+  if (place) bits.push(place.address || place.name || "place found");
   if (svOk) bits.push(`Street View${svMeta.date ? ` (${svMeta.date})` : ""}`);
   bits.push("road map");
-  const details = [`${displayQuery} — ${bits.join(", ")}`];
+  const details = [`${displayQuery} → ${bits.join(", ")}`];
 
   return {
     displayQuery,

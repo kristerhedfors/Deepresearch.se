@@ -38,6 +38,14 @@ describe("extractPlace", () => {
     assert.equal(extractPlace("The office is at Main Street 5"), "Main Street 5");
   });
 
+  test("keeps a LOWERCASE locality so Google resolves the right city", () => {
+    // Users type localities lowercase; dropping them sent bare "Maskinistvägen
+    // 11" to Google and resolved to the wrong city (reported bug).
+    assert.equal(extractPlace("Show street view of kallhäll maskinistvägen 11"), "kallhäll maskinistvägen 11");
+    assert.equal(extractPlace("No maskinistvägen 11 in järfälla"), "maskinistvägen 11, järfälla");
+    assert.equal(extractPlace("maskinistvägen 11 i kallhäll"), "maskinistvägen 11, kallhäll");
+  });
+
   test("pulls a STANDALONE Swedish street name (no house number)", () => {
     assert.equal(extractPlace("street view of Maskinistvägen in Kallhäll"), "Maskinistvägen, Kallhäll");
     assert.equal(extractPlace("Maskinistvägen, Kallhäll"), "Maskinistvägen, Kallhäll");
