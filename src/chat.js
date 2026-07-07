@@ -186,11 +186,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     } finally {
       clearInterval(keepalive);
       const duration_ms = Date.now() - state.startedAt;
+      // Searches served from the Exa result cache cost nothing, so they
+      // don't consume the user's Exa search quota or add Exa cost — only the
+      // live searches that actually hit Exa are billed.
+      const billedSearches = Math.max(0, state.searchCount - (state.cachedSearchCount || 0));
       log.info("chat.complete", {
         user_id: identity.id,
         model,
         rounds: state.iterations,
         searches: state.searchCount,
+        cached_searches: state.cachedSearchCount || 0,
         sources: state.sources.length,
         shodan_hosts: state.shodanCount,
         duration_ms,
@@ -203,7 +208,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         model,
         prompt_tokens: state.totals.prompt_tokens,
         completion_tokens: state.totals.completion_tokens,
-        searches: state.searchCount,
+        searches: billedSearches,
         berget_cost: bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens),
         // The admin-configured per-search price is priced for Exa's
         // standard tier; a request whose time budget bought a costlier
@@ -211,7 +216,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         // recorded cost scaled by that tier's real price ratio, so a long
         // budget's genuinely higher Exa spend doesn't go under-counted
         // against the user's opaque budget bar or the admin's cost totals.
-        exa_cost: state.searchCount * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1),
+        exa_cost: billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1),
         duration_ms,
       });
       const stats = {
@@ -270,6 +275,7 @@ function newRequestState(model, webSearch, budgetS, shodan) {
     shodanCount: 0, // hosts Shodan actually returned data for
     plan: planResearch(model, budgetS),
     searchCount: 0,
+    cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     iterations: 1, // search waves (initial + gap rounds that ran)
     ranQueries: new Set(),
     sources: [], // numbered registry, deduped by URL

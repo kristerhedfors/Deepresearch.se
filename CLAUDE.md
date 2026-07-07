@@ -984,6 +984,31 @@ changes (an Exa ZDR enterprise plan would obsolete these warnings).
   `search_start` events can now arrive before any `search_done` (not
   strictly paired) — `public/js/activity.js` tracks pending search steps
   in a `Map` keyed by query text instead of a single "last started" slot.
+- **Identical searches are cached across requests** (`src/exa.js`'s
+  `webSearch`, keyed by `searchCacheKey`). The in-request dedup
+  (`state.ranQueries`) only stops repeats *within one* `/api/chat` call; a
+  follow-up turn is a SEPARATE request, so before this a follow-up that
+  re-issued an earlier query (e.g. triage's fallback re-searching the prior
+  question — see "context-dependent follow-ups") hit Exa and billed the
+  user again for the identical search. `webSearch` now checks the Workers
+  Cache API (`caches.default` — durable across requests in a colo, shared
+  across isolates, no binding needed) before calling Exa and stores each
+  successful, non-empty result under a normalized key (query lowercased +
+  whitespace-collapsed — matching the dedup normalization — plus the depth
+  tier, so a deeper re-run isn't served a shallower cached result), TTL
+  `CACHE_TTL_S` (10 min: absorbs a same-session follow-up without staling
+  "latest"-type queries). Everything is fail-soft — any cache miss/error
+  falls through to a live search. A cache hit returns `cached:true`;
+  `runSearches` counts it into `state.cachedSearchCount` and `chat.js`
+  subtracts those from the billed Exa searches (cost AND search-quota
+  usage) since nothing was actually spent at Exa — a cached search still
+  counts as a logical search for the `maxSearches` cap and the activity UI
+  (the angle was covered), it just isn't charged. `search_done` carries a
+  `cached` flag (forward-compatible; clients ignore unknown fields). Only
+  good results are cached — errors and empty results are left uncached so a
+  retry can still find something. Verify live via Workers Logs
+  (`exa.cache_hit` / `exa.cache_write_failed`), the platform-integration
+  convention this project uses.
 - **Source diversity is enforced, not just requested.** A round 7
   assessment found that even a thorough, 19-search "deep" run on a
   company's own product still cited that company's own site for most of

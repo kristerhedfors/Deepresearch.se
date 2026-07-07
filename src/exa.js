@@ -6,6 +6,32 @@
 
 const EXA_URL = "https://api.exa.ai/search";
 
+// Cross-request search cache. A follow-up turn is a SEPARATE /api/chat
+// request, so the in-request dedup (pipeline.js's state.ranQueries) can't
+// stop it re-issuing a query an earlier turn already ran — the reported
+// "exact same web search again". Caching the RESULTS keyed by the query
+// makes that repeat a free, instant cache hit instead of a paid Exa call.
+// Uses the Workers Cache API (caches.default): durable across requests in a
+// colo, shared across isolates, TTL'd via Cache-Control, and needs no
+// binding. Everything here is fail-soft — any cache error just falls
+// through to a normal live search.
+const CACHE_TTL_S = 600; // 10 min: long enough to absorb a follow-up
+// re-issuing the same query within one research session, short enough that
+// "latest"-type queries don't serve staled results across sessions.
+
+// Stable cache key for a search. The query is normalized (trimmed,
+// lowercased, whitespace collapsed) — the SAME normalization pipeline.js
+// uses for its in-request dedup — so trivially-different spellings of the
+// same search share one entry and the depth tier (type + numResults) is
+// part of the key so a deeper re-run isn't served a shallower cached result.
+// Exported for unit testing; the .internal host is a synthetic key namespace
+// that never leaves the isolate.
+export function searchCacheKey(query, type, numResults) {
+  const q = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const params = new URLSearchParams({ q, t: String(type), n: String(numResults) });
+  return `https://exa-search-cache.internal/search?${params.toString()}`;
+}
+
 // Runs a search and returns:
 //   content    — compact LLM-friendly string (numbered title/URL/highlights);
 //                errors come back as strings too, so the pipeline can carry
@@ -40,6 +66,30 @@ export async function webSearch(env, log, query, depth = {}) {
   }
 
   log.debug("exa.search_query", { query }); // user content: debug level only
+
+  // Serve an identical earlier search from the edge cache if it's still
+  // fresh — a repeated query (e.g. a follow-up turn) costs nothing and
+  // returns instantly. Fail-soft: any cache miss/error falls through to a
+  // live search below.
+  const cache = globalThis.caches?.default;
+  const cacheKey = searchCacheKey(query, type, numResults);
+  if (cache) {
+    try {
+      const hit = await cache.match(new Request(cacheKey));
+      if (hit) {
+        const payload = await hit.json();
+        log.info("exa.cache_hit", {
+          duration_ms: Date.now() - startedAt,
+          results: payload.resultCount,
+          query_chars: query.length,
+          type,
+        });
+        return { ...payload, durationMs: Date.now() - startedAt, cached: true };
+      }
+    } catch (err) {
+      log.warn("exa.cache_read_failed", { error: err?.message || String(err) });
+    }
+  }
 
   let resp;
   try {
@@ -96,7 +146,7 @@ export async function webSearch(env, log, query, depth = {}) {
     })
     .join("\n\n");
 
-  return {
+  const result = {
     content,
     items: results.map((r) => ({
       title: r.title || r.url,
@@ -105,6 +155,27 @@ export async function webSearch(env, log, query, depth = {}) {
     })),
     sources: results.map((r) => ({ title: r.title || r.url, url: r.url })),
     resultCount: results.length,
-    durationMs,
   };
+
+  // Cache the successful, non-empty result so a later identical query is a
+  // free hit. Only good results are cached (errors and empty results return
+  // early above and are deliberately left uncached so a retry can find
+  // something). Fail-soft: a cache write error never affects the response.
+  if (cache) {
+    try {
+      await cache.put(
+        new Request(cacheKey),
+        new Response(JSON.stringify(result), {
+          headers: {
+            "content-type": "application/json",
+            "cache-control": `max-age=${CACHE_TTL_S}`,
+          },
+        }),
+      );
+    } catch (err) {
+      log.warn("exa.cache_write_failed", { error: err?.message || String(err) });
+    }
+  }
+
+  return { ...result, durationMs, cached: false };
 }

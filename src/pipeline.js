@@ -426,6 +426,12 @@ async function runSearches(ctx, queries, round) {
     const query = batch[i];
     const result = results[i];
     recordPhase(ctx.model, "search", result.durationMs);
+    // A cache hit (result.cached) cost nothing at Exa; count it so the user
+    // isn't billed/quota-charged for a repeated search (chat.js subtracts
+    // these when recording Exa cost and search usage). It still counts as a
+    // logical search for the maxSearches cap and the activity UI — the angle
+    // was still covered.
+    if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
     emit({
       status: {
         type: "search_done",
@@ -434,6 +440,7 @@ async function runSearches(ctx, queries, round) {
         results: result.resultCount,
         duration_ms: result.durationMs,
         sources: result.sources,
+        cached: !!result.cached,
       },
     });
     addSources(state, result.items);
