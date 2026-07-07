@@ -81,7 +81,7 @@ export const gapPrompt = (pastQueries, maxFollowups, { reinforceJsonOnly = false
 export const synthPrompt = () =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
-  "Format in Markdown (the UI renders it):\n" +
+  "Format in Markdown (the UI renders it). Use REAL line breaks: a blank line between paragraphs and before every heading, and — critically — put each table on its own lines with a blank line before it and EACH ROW ON ITS OWN LINE (header row, the |---|---| separator row, then one line per data row). Never run a heading or a table onto the end of a sentence.\n" +
   "- Start with a 1-3 sentence conclusion in bold.\n" +
   "- Then the key findings as short sections or bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n" +
   '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n' +

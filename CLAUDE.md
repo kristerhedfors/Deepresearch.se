@@ -691,6 +691,14 @@ Let a battery finish before pushing anything.
 - Assistant answers render as **Markdown by default** (synthesis prompt asks
   for Markdown). Rendering is client-side with vendored `marked` +
   `DOMPurify` (`public/vendor/` — no CDN; everything stays behind auth).
+  `markdown.js`'s `normalizeLlmMarkdown` repairs one real-world model quirk
+  before parsing: GLM-4.7 streamed a whole GFM table on ONE line with its
+  rows joined by `||` and no blank line before it, so CommonMark rendered it
+  as literal `| … |` text (reported bug). The normalizer splits joined rows,
+  detaches a table header glued to the preceding paragraph, and guarantees a
+  blank line before the table — anchored on the `|---|` separator row so it's
+  a strict no-op on well-formed markdown or text with no table (unit-tested).
+  `synthPrompt` also now explicitly asks for each table row on its own line.
   Always sanitize: answers can quote hostile web content. Each answer has
   Raw (plain-text toggle), Copy, and **PDF** buttons — PDF generates a
   branded DeepResearch.se report client-side via vendored jsPDF
