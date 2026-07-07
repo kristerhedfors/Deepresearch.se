@@ -74,33 +74,84 @@ const WORD = "[\\p{L}][\\p{L}\\p{M}'’.-]*";
 // along ("Kallhäll Maskinistvägen 11").
 const ADDRESS_RE = new RegExp(`(?:${WORD}\\s+){1,4}\\d{1,4}[a-zA-Z]?\\b`, "gu");
 
-// Pulls a single geocodable street-address candidate out of free text, or
-// returns "" when the message names no address. Deliberately conservative: it
-// accepts a "<words> <number>" span ONLY when the word right before the
-// number carries a known street suffix (Maskinistvägen, Main Street) — so
-// ordinary "<noun> <number>" phrases ("iPhone 15", "Article 5", "top 10",
-// "on May 5") don't get mistaken for addresses and sent to Google. Only this
-// candidate ever crosses the wire, never the whole message — the same
-// minimal-request privacy posture shodan.js/geocode.js keep. Returns the
-// first plausible candidate.
+// A STANDALONE Swedish street name — a single word ending in a street morpheme
+// (Maskinistvägen, Storgatan, Björkstigen). No house number needed: a word
+// ending "…vägen"/"…gatan"/etc. is an unambiguous street signal, and people
+// routinely ask about a street without a number ("street view of X in Y").
+const SWEDISH_STREET_TOKEN_RE =
+  /[\p{L}][\p{L}\p{M}-]*(?:vägen|väg|gatan|gata|gränden|gränd|stigen|stig|allén|allé|backen|backe|liden|torget|torg)\b/giu;
+// A STANDALONE English street phrase — 1-3 Capitalized words then a Capitalized
+// street type ("Abbey Road", "Main Street"). Requiring the type word to be
+// capitalized keeps ordinary prose ("down the road") from matching, and the
+// type list is limited to the unambiguous ones (dropping Drive/Place/Way/
+// Court/Square, which double as common capitalized words — "Please Drive",
+// "the Square" — since here no house number anchors them).
+const ENGLISH_STREET_PHRASE_RE =
+  /\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*){0,2}\s+(?:Street|Road|Avenue|Lane|Boulevard|Highway|Terrace|Parkway)\b/gu;
+// A trailing locality after a bare street name: "…, Kallhäll", "… in Kallhäll",
+// "… i Kallhäll". Up to two Capitalized words are captured as the place.
+const LOCALITY_RE =
+  /^[\s,]*(?:,|\bin\b|\bi\b|\bpå\b|\bvid\b|\bnear\b)?\s*(\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*)?)/u;
+
+// Given a matched street span and the text right after it, append a trailing
+// locality when one is present, so "Maskinistvägen in Kallhäll" resolves as
+// "Maskinistvägen, Kallhäll" rather than a bare, ambiguous street name.
+function withTrailingLocality(street, rest) {
+  const m = rest.match(LOCALITY_RE);
+  if (!m || !m[1]) return street;
+  const locality = m[1].trim();
+  // Don't repeat a word the street span already ends with.
+  if (street.toLowerCase().endsWith(locality.toLowerCase())) return street;
+  return `${street}, ${locality}`;
+}
+
+// Pulls a single geocodable street-address / street-name candidate out of free
+// text, or returns "" when the message names no street. Three shapes, most
+// specific first:
+//   1. a numbered address ("Kallhäll Maskinistvägen 11", "Main Street 5"),
+//   2. a standalone Swedish street name ("Maskinistvägen", optionally "… in
+//      Kallhäll"),
+//   3. a standalone English street phrase ("Abbey Road", optionally "… London").
+// Deliberately conservative so ordinary "<noun> <number>" phrases ("iPhone 15",
+// "Article 5", "on May 5") and plain prose don't get mistaken for addresses.
+// Only this candidate ever crosses the wire, never the whole message — the same
+// minimal-request privacy posture shodan.js/geocode.js keep.
 export function extractPlace(text) {
   const raw = typeof text === "string" ? text : "";
+
+  // 1) Numbered street address (most specific).
   for (const m of raw.matchAll(ADDRESS_RE)) {
     const words = m[0].trim().replace(/\s+/g, " ").split(" ");
     if (words.length < 2) continue;
-    // The word just before the trailing number token, letters only.
     const streetIdx = words.length - 2;
     const streetWord = (words[streetIdx] || "").toLowerCase().replace(/[^\p{L}]/gu, "");
     if (!SWEDISH_STREET_SUFFIX_RE.test(streetWord) && !ENGLISH_STREET_WORDS.has(streetWord)) continue;
     // The regex may have swept up filler words before the street name ("what's
     // at Maskinistvägen 11"). Keep only Capitalized preceding words — a
-    // locality like "Kallhäll" or "Main" — and drop lowercase filler, so the
-    // candidate sent to Google is the address, not the whole clause.
+    // locality like "Kallhäll" or "Main" — and drop lowercase filler.
     let start = streetIdx;
     while (start > 0 && /^\p{Lu}/u.test(words[start - 1])) start--;
-    return words.slice(start).join(" ").slice(0, MAX_LOCATION_CHARS);
+    const street = words.slice(start).join(" ");
+    const rest = raw.slice(m.index + m[0].length);
+    return withTrailingLocality(street, rest).slice(0, MAX_LOCATION_CHARS);
+  }
+
+  // 2) & 3) Standalone street name — pick whichever (Swedish token / English
+  // phrase) appears earliest in the message.
+  const sv = firstMatch(raw, SWEDISH_STREET_TOKEN_RE);
+  const en = firstMatch(raw, ENGLISH_STREET_PHRASE_RE);
+  const hit = sv && en ? (sv.index <= en.index ? sv : en) : sv || en;
+  if (hit) {
+    const street = hit[0].trim();
+    const rest = raw.slice(hit.index + hit[0].length);
+    return withTrailingLocality(street, rest).slice(0, MAX_LOCATION_CHARS);
   }
   return "";
+}
+
+function firstMatch(raw, re) {
+  re.lastIndex = 0;
+  return re.exec(raw);
 }
 
 // ---- pure link/block builders (exported for unit tests) --------------------

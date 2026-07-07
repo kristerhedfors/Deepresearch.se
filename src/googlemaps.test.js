@@ -17,14 +17,29 @@ test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
 });
 
 describe("extractPlace", () => {
-  test("pulls a Swedish street address (street word ends in a street morpheme)", () => {
+  test("pulls a numbered Swedish street address", () => {
     assert.equal(extractPlace("Kallhäll Maskinistvägen 11"), "Kallhäll Maskinistvägen 11");
     assert.equal(extractPlace("Vad finns på Maskinistvägen 11?"), "Maskinistvägen 11");
     assert.equal(extractPlace("Storgatan 4B ligger i centrum"), "Storgatan 4B");
   });
 
-  test("pulls an English street address (exact street word before the number)", () => {
+  test("pulls a numbered English street address (exact street word before the number)", () => {
     assert.equal(extractPlace("The office is at Main Street 5"), "Main Street 5");
+  });
+
+  test("pulls a STANDALONE Swedish street name (no house number)", () => {
+    assert.equal(extractPlace("street view of Maskinistvägen in Kallhäll"), "Maskinistvägen, Kallhäll");
+    assert.equal(extractPlace("Maskinistvägen, Kallhäll"), "Maskinistvägen, Kallhäll");
+    assert.equal(extractPlace("what does Storgatan look like?"), "Storgatan");
+  });
+
+  test("pulls a STANDALONE English street phrase (no house number)", () => {
+    assert.equal(extractPlace("show me Abbey Road in London"), "Abbey Road, London");
+    assert.equal(extractPlace("the office on Main Street"), "Main Street");
+  });
+
+  test("a number-first street name still resolves via the standalone path", () => {
+    assert.equal(extractPlace("5 Maskinistvägen"), "Maskinistvägen");
   });
 
   test("does NOT mistake ordinary '<noun> <number>' phrases for addresses", () => {
@@ -35,8 +50,10 @@ describe("extractPlace", () => {
     assert.equal(extractPlace("top 10 list"), "");
   });
 
-  test("no false positive when the number comes first (US house-number style unsupported)", () => {
-    assert.equal(extractPlace("5 Maskinistvägen"), "");
+  test("does NOT match ordinary prose that merely capitalizes a street-ish word", () => {
+    assert.equal(extractPlace("Please Drive carefully"), "");
+    assert.equal(extractPlace("we walked down the road"), "");
+    assert.equal(extractPlace("give me the Square footage"), "");
   });
 
   test("returns empty string for non-string / no-address input", () => {
