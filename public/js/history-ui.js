@@ -100,8 +100,31 @@ export function initHistorySidebar(opts = {}) {
     refresh();
   }
 
+  // Pin the drawer's ✕ to the exact screen rect of the header's history
+  // button, so on a phone the same tap position opens and closes the
+  // drawer (the fixed-position styling lives in app.css).
+  function placeCloseBtn() {
+    const r = btn.getBoundingClientRect();
+    if (!r.width) return; // button hidden/unlaid-out: keep the CSS fallback
+    closeBtn.style.top = r.top + "px";
+    closeBtn.style.left = r.left + "px";
+    closeBtn.style.width = r.width + "px";
+    closeBtn.style.height = r.height + "px";
+  }
+
+  // Slide animation (app.css): .open drives the panel/backdrop transition;
+  // hidden is only flipped once the slide-out has finished so the drawer
+  // animates instead of popping. Kept at ~180ms — fast, just not abrupt.
+  const ANIM_MS = 200;
+  let hideTimer = null;
+
   function open() {
+    clearTimeout(hideTimer);
+    placeCloseBtn();
     overlay.hidden = false;
+    // Two frames so the browser paints the closed state first — adding
+    // .open in the same frame would skip the transition entirely.
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("open")));
     refresh();
     // Cloud-storage accounts: quietly fetch anything newer written from
     // another device (no-op while the knob is off) and re-render if it
@@ -109,7 +132,9 @@ export function initHistorySidebar(opts = {}) {
     pullNewer().then((n) => { if (n && !overlay.hidden) refresh(); }).catch(() => {});
   }
   function close() {
-    overlay.hidden = true;
+    overlay.classList.remove("open");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { overlay.hidden = true; }, ANIM_MS);
   }
 
   btn.addEventListener("click", open);
@@ -120,6 +145,9 @@ export function initHistorySidebar(opts = {}) {
   });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
+  });
+  window.addEventListener("resize", () => {
+    if (!overlay.hidden) placeCloseBtn();
   });
 
   return {
