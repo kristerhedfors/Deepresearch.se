@@ -59,6 +59,39 @@ test("oversized txt is RAG-indexed and sends retrieved excerpts, not the whole t
   expect(text.length).toBeLessThanOrEqual(16_000);
 });
 
+// Attached originals rest ENCRYPTED (OPFS here, R2 in cloud mode): the
+// stored bytes of a normal attachment must not contain its plaintext.
+// The one deliberate exception is a RAG-indexed document — its search
+// index needs readable text anyway, so its original stays readable.
+test("attached originals rest encrypted in OPFS — except RAG-indexed docs", async ({ page }) => {
+  await openApp(page);
+  await mockEmbed(page);
+  await attach(page, ["sample.txt"], 1); // small doc → encrypted original
+  await attach(page, ["big.txt"], 2); // large doc → RAG-indexed, readable original
+  await expect(page.locator("#pending .att-card .sub").nth(1)).toContainText("indexed", { timeout: 30_000 });
+
+  const readOpfs = () =>
+    page.evaluate(async ([txtSent, bigSent]) => {
+      try {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle("originals");
+        const out = [];
+        for await (const [name, handle] of dir.entries()) {
+          if (handle.kind !== "file") continue;
+          const text = await (await handle.getFile()).text();
+          out.push({ name, txt: text.includes(txtSent), big: text.includes(bigSent) });
+        }
+        return out;
+      } catch {
+        return [];
+      }
+    }, [SENTINEL.txt, SENTINEL.bigtxt]);
+  await expect.poll(readOpfs, { timeout: 15_000 }).toHaveLength(2); // archival is fire-and-forget
+  const files = await readOpfs();
+  expect(files.some((f) => f.big), "RAG doc's original stays readable").toBeTruthy();
+  expect(files.some((f) => f.txt), "small doc's original must be ciphertext").toBeFalsy();
+});
+
 test("image cap: 5th image is rejected with an explanation", async ({ page }) => {
   const { dialogs } = await openApp(page);
   await selectModel(page, { wantVision: true });

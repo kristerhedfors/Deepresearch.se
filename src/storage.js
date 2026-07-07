@@ -161,6 +161,7 @@ async function listFiles(env, uid) {
     id: o.key.split("/").pop(),
     name: o.customMetadata?.name || "",
     type: o.customMetadata?.type || "application/octet-stream",
+    enc: o.customMetadata?.enc === "1",
     size: o.size,
   }));
   return jsonResponse({ files: items });
@@ -169,16 +170,25 @@ async function listFiles(env, uid) {
 async function getFile(env, uid, id) {
   const obj = await env.STORAGE.get(fileKey(uid, id));
   if (!obj) return jsonResponse({ error: "Not found." }, 404);
+  const enc = obj.customMetadata?.enc === "1";
   return new Response(obj.body, {
     headers: {
-      "content-type": obj.customMetadata?.type || "application/octet-stream",
+      // Encrypted blobs are opaque bytes — advertising the original MIME
+      // type on them would just confuse anything that tries to render one.
+      "content-type": enc ? "application/octet-stream" : obj.customMetadata?.type || "application/octet-stream",
       "x-file-name": encodeURIComponent(obj.customMetadata?.name || id),
+      "x-file-type": obj.customMetadata?.type || "application/octet-stream",
+      "x-file-enc": enc ? "1" : "0",
     },
   });
 }
 
-// PUT /api/files/:id — raw bytes in the body; the original filename and MIME
-// type ride in headers so the body stays a clean byte stream.
+// PUT /api/files/:id — the file's STORAGE-FORM bytes in the body: AES-GCM
+// ciphertext under the client-held history key for everything except
+// RAG-indexed documents (x-file-enc says which — the server just stores
+// the flag; it can't tell the difference and never needs to). The original
+// filename and MIME type ride in headers so the body stays a clean byte
+// stream.
 async function putFile(request, env, log, identity, uid, id) {
   if (!serverHistoryEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
@@ -189,12 +199,13 @@ async function putFile(request, env, log, identity, uid, id) {
   if (bytes.byteLength > FILE_MAX_BYTES) return jsonResponse({ error: "File too large." }, 413);
   const name = decodeURIComponent(request.headers.get("x-file-name") || "").slice(0, 200) || id;
   const type = (request.headers.get("x-file-type") || "application/octet-stream").slice(0, 100);
+  const enc = request.headers.get("x-file-enc") === "1" ? "1" : "0";
   const key = fileKey(uid, id);
   if (!(await env.STORAGE.head(key)) && (await countUnder(env, `files/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
     return jsonResponse({ error: "Cloud file limit reached." }, 409);
   }
-  await env.STORAGE.put(key, bytes, { customMetadata: { name, type } });
-  log.debug("storage.file_put", { user_id: identity.id, size: bytes.byteLength });
+  await env.STORAGE.put(key, bytes, { customMetadata: { name, type, enc } });
+  log.debug("storage.file_put", { user_id: identity.id, size: bytes.byteLength, enc: enc === "1" });
   return jsonResponse({ ok: true, id, size: bytes.byteLength });
 }
 

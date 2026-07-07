@@ -7,11 +7,16 @@
 // file handles, streaming writes, no structured-clone copies of
 // multi-MB blobs through the IDB transaction machinery).
 //
-// NOT encrypted — unlike conversation records (history-store.js), these
-// are the raw inputs to document indexing, and the RAG design needs
-// readable bytes/text (disclosed in the settings UI). What's stored here
-// never leaves the browser unless the user's cloud-storage knob is ON
-// (public/js/sync.js mirrors originals to R2 then).
+// This module is a dumb byte store: callers hand it the STORAGE FORM of
+// the file. For everything except RAG-indexed documents that form is
+// AES-GCM ciphertext under the never-persisted history key
+// (attachments.js encrypts via history-store.js's encryptBytes before
+// calling in; `meta.enc` records which form a file is in). RAG-indexed
+// documents are the ONE class stored readable — their search index needs
+// readable text anyway, and that asymmetry is disclosed in the settings
+// UI. What's stored here never leaves the browser unless the user's
+// cloud-storage knob is ON (public/js/sync.js mirrors the same stored
+// bytes, encrypted or not, to R2).
 //
 // Fails soft everywhere: no OPFS (older Safari) just means originals
 // aren't archived — attachments keep working exactly as before.
@@ -39,8 +44,11 @@ export async function opfsAvailable() {
   }
 }
 
-// Store one original file. `meta` = {name, type, size} — kept in IndexedDB
-// so listing never has to walk OPFS.
+// Store one file in its storage form (already encrypted unless it's a
+// RAG-indexed document — see the header). `meta` = {name, type, enc} —
+// kept in IndexedDB so listing never has to walk OPFS; `type` is the
+// ORIGINAL MIME type (the stored bytes may be ciphertext), `enc` says
+// which form the bytes are in.
 export async function saveOriginal(id, blob, meta) {
   const d = await dir(true);
   const handle = await d.getFileHandle(id, { create: true });
@@ -51,6 +59,7 @@ export async function saveOriginal(id, blob, meta) {
     id,
     name: meta?.name || id,
     type: meta?.type || blob.type || "application/octet-stream",
+    enc: meta?.enc === true,
     size: blob.size,
     addedAt: Date.now(),
   });
