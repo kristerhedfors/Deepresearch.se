@@ -70,6 +70,8 @@ initAttachments(
   document.getElementById("attach"),
   document.getElementById("file"),
   document.getElementById("pending"),
+  document.getElementById("camera"),
+  document.getElementById("camerafile"),
 );
 initAccountPanel();
 // Account settings (the cloud-storage knob): fetched once at boot so the

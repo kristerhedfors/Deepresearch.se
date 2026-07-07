@@ -27,6 +27,7 @@ const PER_DOC_CHARS = 9000;
 const RAG_PARSE_MAX_CHARS = 8_000_000;
 
 let attachBtn;
+let cameraBtn;
 let pendingBox;
 // {kind:"image",name,dataUrl,metadata,metadataSensitive,gps} |
 // {kind:"doc",name,ext,text,truncated,metadata,metadataSensitive}
@@ -41,24 +42,41 @@ const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i
 const images = () => attachments.filter((a) => a.kind === "image");
 const docs = () => attachments.filter((a) => a.kind === "doc");
 
-export function initAttachments(attachBtnEl, fileInputEl, pendingBoxEl) {
+export function initAttachments(attachBtnEl, fileInputEl, pendingBoxEl, cameraBtnEl, cameraInputEl) {
   attachBtn = attachBtnEl;
+  cameraBtn = cameraBtnEl;
   pendingBox = pendingBoxEl;
   attachBtn.addEventListener("click", () => fileInputEl.click());
-  fileInputEl.addEventListener("change", async () => {
-    const files = [...fileInputEl.files];
-    fileInputEl.value = "";
+  wireFileInput(fileInputEl, { imagesOnly: false });
+  // Camera: an image-only input carrying capture="environment", so a phone
+  // opens the camera directly to snap a photo (desktop falls back to an
+  // image picker). A snapped photo is just an image attachment — it reuses
+  // the exact same downscale / EXIF / vision-fallback path as a picked one.
+  if (cameraBtn && cameraInputEl) {
+    cameraBtn.addEventListener("click", () => cameraInputEl.click());
+    wireFileInput(cameraInputEl, { imagesOnly: true });
+  }
+  syncAttachState();
+}
+
+// Wire one hidden <input type=file> to the ingest path. `imagesOnly` (the
+// camera input) rejects non-image captures instead of trying to parse them
+// as documents.
+function wireFileInput(inputEl, { imagesOnly }) {
+  inputEl.addEventListener("change", async () => {
+    const files = [...inputEl.files];
+    inputEl.value = "";
     for (const file of files) {
       if (file.size > MAX_RAW_BYTES) {
         alert(file.name + " is too large.");
         continue;
       }
       if (isImageFile(file)) await addImageFile(file);
+      else if (imagesOnly) alert(file.name + ": not an image.");
       else if (isParsableDoc(file)) await addDocFile(file);
       else alert(file.name + ": unsupported type. Use images or pdf, docx, md, txt.");
     }
   });
-  syncAttachState();
 }
 
 export function hasPending() {
@@ -96,6 +114,12 @@ export function syncAttachState() {
   attachBtn.title = vision
     ? "Attach images or documents (pdf, docx, md, txt)"
     : "Attach documents (pdf, docx, md, txt) — images need a vision model";
+  // The camera only ever produces images; on a non-vision model it stays
+  // tappable (the snap path offers a one-tap switch) but dims to signal it.
+  if (cameraBtn) {
+    cameraBtn.title = vision ? "Take a photo" : "Take a photo — needs a vision model";
+    cameraBtn.classList.toggle("dim", !vision);
+  }
   if (!vision && images().length) {
     attachments = attachments.filter((a) => a.kind !== "image");
     renderPending();

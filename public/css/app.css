@@ -330,7 +330,7 @@ button:disabled { opacity: .5; cursor: default; }
   font-size: .8rem;
   color: var(--muted);
 }
-#attach {
+#attach, #camera {
   background: rgba(255, 255, 255, .35);
   border: 1px solid rgba(255, 255, 255, .6);
   color: var(--text);
@@ -342,7 +342,7 @@ button:disabled { opacity: .5; cursor: default; }
 }
 /* Dimmed (not disabled): stays tappable on mobile so the tap can explain
    and offer a switch to a vision-capable model. */
-#attach.dim { opacity: .5; }
+#attach.dim, #camera.dim { opacity: .5; }
 #send {
   border-radius: 50%;
   width: 34px; height: 34px; flex: none;
