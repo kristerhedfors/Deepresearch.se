@@ -856,6 +856,29 @@ Let a battery finish before pushing anything.
   completed answer. Rows expire after 15 min (`ANSWER_TTL_MS`,
   lazy-purged on every read/write) — the privacy notice discloses this
   explicitly; it is a recovery buffer, not storage.
+- **Heartbeat / dead-run detection (the "stuck on recovering…" fix)**:
+  the poller must distinguish a server still legitimately researching a
+  long budget from one the runtime KILLED (the Workers Free-plan CPU
+  ceiling is most likely to bite a high-budget deep run — see round 4).
+  Both look identical as a bare `running` marker, so before this the
+  client polled a static "recovering…" step for the whole `budget+120s`
+  deadline (up to 12 min at a 600s budget) for an answer that would never
+  come. Now `chat.js` heartbeats the row every 15s (piggybacked on the
+  keepalive tick but BEFORE its `disconnect.gone` early-return, so it
+  keeps firing after the client leaves — exactly when the poller needs
+  it); `heartbeatAnswer` bumps `ts` only for `running` rows. `GET
+  /api/chat/answer` runs `projectAnswer(row, now)` (pure, unit-tested):
+  a `running` row whose `ts` is older than `RUNNING_STALE_MS` (50s ≈ 3
+  missed beats) returns `{status:"lost"}` — the isolate died, its
+  heartbeat stopped. The client's `recoverAnswer` now returns
+  `{data, reason}` (done/lost/gone/empty/timeout/aborted): on `lost` it
+  stops within ~50-65s (not 12 min) with an honest "interrupted on the
+  server — lower the time budget" message, and while genuinely `running`
+  it ticks a live "Still researching on the server… (Ns)" label
+  (`updateGenericStep`) so a long wait reads as progress, not a frozen
+  app. This does NOT fix the underlying Free-plan kill (that needs
+  Workers Paid — see round 4) — it makes the failure fast and truthful
+  instead of an indefinite spinner.
 - **Client stall watchdog (the "switched to another app" fix)**: server
   survival + the recovery poll only help if the client actually NOTICES
   its stream died. On iOS a backgrounded PWA is frozen and its socket

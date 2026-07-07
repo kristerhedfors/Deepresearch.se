@@ -21,6 +21,14 @@ export function startGenericStep(turn, id, label) {
   turn.steps[id] = { details, summary, label: lab };
 }
 
+// Updates an in-progress step's label in place (spinner kept) — e.g. the
+// recovery step ticking "Still researching… (Ns)" so a long wait reads as
+// live progress, not a frozen screen. No-op if the step doesn't exist.
+export function updateGenericStep(turn, id, label) {
+  const step = turn.steps[id];
+  if (step) step.label.textContent = label;
+}
+
 // Shared by finishGenericStep/finishSearchStep: marks a step's details/
 // summary as finished — adds the "finished" class and swaps the spinner
 // for a checkmark. Doesn't touch "expandable"; callers add that based on

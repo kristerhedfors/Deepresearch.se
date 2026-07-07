@@ -5,7 +5,7 @@
 // `[DONE]`, then records the usage event for quota accounting.
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
-import { markAnswerRunning, saveAnswer } from "./answers.js";
+import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
@@ -139,6 +139,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // flowing — every SSE client ignores them. Started before geocoding
     // so even the pre-pipeline maps lookup is covered.
     const keepalive = setInterval(() => {
+      // Heartbeat the recovery row FIRST, regardless of client presence: a
+      // poller (or a relaunch) uses its freshness to tell a still-running
+      // server from one the runtime killed. This must keep firing after a
+      // disconnect — that's exactly when the poller needs it — so it runs
+      // before the disconnect.gone early-return below. Fire-and-forget.
+      heartbeatAnswer(env, log, requestId, identity.id);
       if (disconnect.gone) return;
       try {
         controller.enqueue(encoder.encode(": keepalive\n\n"));

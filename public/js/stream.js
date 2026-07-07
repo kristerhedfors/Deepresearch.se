@@ -12,6 +12,7 @@ import {
   renderStats,
   startGenericStep,
   startSearchStep,
+  updateGenericStep,
 } from "./activity.js";
 import {
   addAssistantTurn,
@@ -230,36 +231,52 @@ function ackAnswer(requestId) {
 // to completion server-side), so keep polling until well past the time
 // budget. Repeated 404s mean recovery isn't available (no DB, or expired).
 // `gen` ends the poll early if the user starts a new chat meanwhile.
+// Polls the server-parked answer. Returns { data, reason } where reason is:
+//   "done"    — data holds the recovered answer
+//   "lost"    — the server confirmed the run died (stale heartbeat)
+//   "gone"    — no recovery row (no DB, or already expired/purged)
+//   "empty"   — the run finished but produced nothing
+//   "timeout" — still running when the deadline passed
+//   "aborted" — a new chat/load ended the poll
+// While the server reports "running" the step ticks a live elapsed counter
+// so a legitimately long research run reads as progress, not a frozen app.
 async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connection lost — recovering the answer…") {
-  if (!requestId) return null;
+  if (!requestId) return { data: null, reason: "gone" };
   startGenericStep(turn, "recover", startLabel);
-  const deadline = Date.now() + ((budgetS || 60) + 120) * 1000;
+  const startedAt = Date.now();
+  const deadline = startedAt + ((budgetS || 60) + 120) * 1000;
   let misses = 0;
+  let reason = "timeout";
   // Poll immediately first: on a boot resume the server usually finished
   // while we were away, so the answer is already parked and the very first
-  // poll returns it — no 4s wait, and the resume race window shrinks to
-  // near-zero. Only if it's still running do we sleep and re-poll.
+  // poll returns it — no wait. Only if it's still running do we sleep/re-poll.
   while (Date.now() < deadline && gen === generation) {
     try {
       const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
       if (res.status === 404) {
-        if (++misses >= 3) break;
+        if (++misses >= 3) { reason = "gone"; break; }
       } else if (res.ok) {
         const data = await res.json();
         if (data.status === "done") {
-          if (!data.text) break; // pipeline produced nothing — treat as failed
+          if (!data.text) { reason = "empty"; break; }
           finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
-          return data;
+          return { data, reason: "done" };
         }
-        misses = 0; // still researching — keep waiting
+        if (data.status === "lost") { reason = "lost"; break; } // server run died
+        misses = 0; // still researching — keep waiting, showing live elapsed time
+        updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
       }
     } catch {
       // still offline — keep trying until the deadline
     }
     await sleep(4000);
   }
-  finishGenericStep(turn, { id: "recover", label: "Could not recover the answer" });
-  return null;
+  if (gen !== generation) reason = "aborted";
+  finishGenericStep(turn, {
+    id: "recover",
+    label: reason === "lost" ? "Research was interrupted on the server" : "Could not recover the answer",
+  });
+  return { data: null, reason };
 }
 
 // Arm resume-across-relaunch for the in-flight send: persist the question to
@@ -376,13 +393,14 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   // as Stop, not a competing send that would race the recovered answer.
   inFlight = true;
   let recovered = null;
+  let reason = "timeout";
   try {
-    recovered = await recoverAnswer(turn, pending.requestId, pending.budgetS, gen, "Resuming your research…");
+    ({ data: recovered, reason } = await recoverAnswer(turn, pending.requestId, pending.budgetS, gen, "Resuming your research…"));
   } finally {
     inFlight = false;
     collapseActivity(turn);
   }
-  if (gen !== generation) return false; // user navigated away while polling
+  if (gen !== generation || reason === "aborted") return false; // user navigated away while polling
   clearPending();
   if (recovered) {
     setText(turn, recovered.text);
@@ -397,8 +415,12 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   }
   setError(
     turn,
-    "Couldn't resume your previous research — it either finished after the 15-minute " +
-      "recovery window closed or was interrupted. Your question is still here; just send it again.",
+    reason === "lost"
+      ? "Your previous research was interrupted on the server before it finished — a long " +
+        "time budget can exceed the hosting plan's per-request limit. Your question is still " +
+        "here; try again, lowering the time budget if it recurs."
+      : "Couldn't resume your previous research — it either finished after the 15-minute " +
+        "recovery window closed or was interrupted. Your question is still here; just send it again.",
   );
   return false;
 }
@@ -733,15 +755,16 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   // The server finishes the research even when our connection dies and
   // parks the answer in a short-lived recovery cache — poll it back
   // before bothering the user.
-  const recovered = await recoverAnswer(turn, requestId, opts.budgetS, gen);
+  const { data: recovered, reason } = await recoverAnswer(turn, requestId, opts.budgetS, gen);
   recordResearchEvent(turn, {
     event: "stream_dropped",
     error: String(e?.message || e),
     was_hidden: wasHidden,
     received_chars: acc.length,
     recovered: !!recovered,
+    recover_reason: reason,
   });
-  if (gen !== generation) {
+  if (gen !== generation || reason === "aborted") {
     // Chat was cleared while recovery was polling — drop the result.
     ackAnswer(requestId);
     return;
@@ -767,13 +790,18 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   const ref = requestId ? " (ref " + requestId.slice(0, 8) + ")" : "";
   setError(
     turn,
-    wasHidden
-      ? "The connection dropped while the app was in the background — phones pause " +
-        "network for backgrounded apps, and this one stayed away long enough that the " +
-        "finished answer could no longer be retrieved. The research still completed on " +
-        "the server; a shorter switch away recovers automatically. " +
-        (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
-      : "Network error: " + e.message + ref,
+    reason === "lost"
+      ? "The research was interrupted on the server before it could finish — a long time " +
+        "budget can exceed the hosting plan's per-request limit. Please try again, and if it " +
+        "keeps happening, lower the time budget (the slider). " +
+        (acc ? "The partial answer above stays in context." : "") + ref
+      : wasHidden
+        ? "The connection dropped while the app was in the background — phones pause " +
+          "network for backgrounded apps, and this one stayed away long enough that the " +
+          "finished answer could no longer be retrieved. The research still completed on " +
+          "the server; a shorter switch away recovers automatically. " +
+          (acc ? "The partial answer above stays in context — just ask a follow-up." : "Please send again.") + ref
+        : "Network error: " + e.message + ref,
   );
   if (acc) {
     // Keep whatever streamed before the connection dropped: the partial

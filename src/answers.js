@@ -18,6 +18,37 @@ import { jsonResponse } from "./http.js";
 
 export const ANSWER_TTL_MS = 15 * 60 * 1000;
 
+// How long a `running` row may go without a heartbeat before the poller
+// treats the run as DEAD rather than merely slow. chat.js heartbeats the
+// row every 15s for as long as the isolate is alive (even after the client
+// disconnects); if the runtime kills the isolate — the Workers Free-plan
+// CPU ceiling is most likely to bite a long, high-budget research run —
+// the heartbeat stops and `ts` freezes. Past this window a poller can stop
+// spinning on a "recovering…" step that would otherwise wait out the full
+// budget+120s deadline for an answer that will never come. 50s = ~3 missed
+// beats.
+export const RUNNING_STALE_MS = 50 * 1000;
+
+// Pure projection of a stored answer row into the GET response shape, given
+// the current time. Split out so the running/lost/done decision is
+// unit-tested without D1. Returns null for a missing row (404 upstream).
+export function projectAnswer(row, now, staleMs = RUNNING_STALE_MS) {
+  if (!row) return null;
+  if (row.status !== "done") {
+    // A `running` row whose heartbeat has gone stale means the server-side
+    // run died (killed isolate / expired waitUntil) — tell the client so it
+    // stops waiting instead of polling to the deadline.
+    return now - Number(row.ts || 0) > staleMs ? { status: "lost" } : { status: "running" };
+  }
+  let stats = null;
+  try {
+    stats = row.stats_json ? JSON.parse(row.stats_json) : null;
+  } catch {
+    stats = null;
+  }
+  return { status: "done", text: row.text || "", stats };
+}
+
 // Called at stream start (metadata only — no content yet): gives the
 // recovery poller something to distinguish "still researching" from
 // "nothing will ever come".
@@ -32,6 +63,23 @@ export async function markAnswerRunning(env, log, requestId, userId) {
       .run();
   } catch (err) {
     log.warn("answers.mark_failed", { error: err?.message || String(err) });
+  }
+}
+
+// Called periodically by chat.js while the pipeline runs (independent of
+// client presence): refreshes `ts` so a poller can tell a still-alive run
+// from one the runtime killed (see RUNNING_STALE_MS). Guarded to `running`
+// rows so it can never resurrect or disturb a completed answer.
+export async function heartbeatAnswer(env, log, requestId, userId) {
+  try {
+    const db = await getDb(env);
+    if (!db) return;
+    await db
+      .prepare("UPDATE answers SET ts = ? WHERE request_id = ? AND user_id = ? AND status = 'running'")
+      .bind(Date.now(), requestId, String(userId))
+      .run();
+  } catch (err) {
+    log.warn("answers.heartbeat_failed", { error: err?.message || String(err) });
   }
 }
 
@@ -60,18 +108,12 @@ export async function handleAnswerGet(env, url, identity) {
   if (!db || !id) return jsonResponse({ error: "Not found." }, 404);
   await purgeExpired(db);
   const row = await db
-    .prepare("SELECT status, text, stats_json FROM answers WHERE request_id = ? AND user_id = ?")
+    .prepare("SELECT status, ts, text, stats_json FROM answers WHERE request_id = ? AND user_id = ?")
     .bind(id, String(identity.id))
     .first();
-  if (!row) return jsonResponse({ error: "Not found." }, 404);
-  if (row.status !== "done") return jsonResponse({ status: "running" });
-  let stats = null;
-  try {
-    stats = row.stats_json ? JSON.parse(row.stats_json) : null;
-  } catch {
-    stats = null;
-  }
-  return jsonResponse({ status: "done", text: row.text || "", stats });
+  const projected = projectAnswer(row, Date.now());
+  if (!projected) return jsonResponse({ error: "Not found." }, 404);
+  return jsonResponse(projected);
 }
 
 // DELETE /api/chat/answer?id=… — the client acks a fully received answer so
