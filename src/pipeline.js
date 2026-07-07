@@ -32,10 +32,12 @@ import {
   imagePartsOf,
   lastUserMessage,
   textOf,
+  withAppendedText,
   withImageNudge,
 } from "./conversation.js";
 import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
+import { extractTargets, runShodanLookup } from "./shodan.js";
 import {
   directPrompt,
   gapPrompt,
@@ -47,18 +49,30 @@ import {
 
 export async function runPipeline(env, log, emit, conversation, model, state) {
   const profile = getModelProfile(model);
+  const step = (id, label) => emit({ status: { type: "step_start", id, label } });
+  const stepDone = (id, label, details = []) =>
+    emit({ status: { type: "step_done", id, label, details } });
+
+  // Opt-in Shodan host-intelligence enrichment (src/settings.js's shodan_mcp
+  // knob). Runs BEFORE any model call so triage, search, and synthesis all
+  // see the resolved infrastructure data; it's appended to the conversation
+  // as one labeled context block, the same convention geocode.js uses for a
+  // photo's resolved location. Fully fail-soft — the conversation comes back
+  // unchanged if there's nothing to look up or Shodan can't be reached.
+  let convo = conversation;
+  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, conversation, state);
+
   const ctx = {
-    env, log, emit, model, state, profile, conversation,
+    env, log, emit, model, state, profile, conversation: convo,
     reinforceJsonOnly: profile.jsonReinforcement,
-    lastUser: textOf(lastUserMessage(conversation)?.content),
-    convText: formatConversation(conversation),
+    lastUser: textOf(lastUserMessage(convo)?.content),
+    convText: formatConversation(convo),
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
-    imageParts: imagePartsOf(lastUserMessage(conversation)),
+    imageParts: imagePartsOf(lastUserMessage(convo)),
     emitDelta: (t) => emit({ choices: [{ delta: { content: t } }] }),
-    step: (id, label) => emit({ status: { type: "step_start", id, label } }),
-    stepDone: (id, label, details = []) =>
-      emit({ status: { type: "step_done", id, label, details } }),
+    step,
+    stepDone,
   };
 
   // Web search off: answer purely from Berget — no triage, no Exa.
@@ -79,6 +93,37 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 }
 
 // ---- phases ------------------------------------------------------------
+
+// Shodan enrichment: resolve any host/IP the latest message names into
+// live infrastructure data and append it as a labeled context block. Stays
+// SILENT (no step, no conversation change) when the message names nothing
+// host-shaped — so an ordinary question with the knob left on costs
+// nothing and shows no spurious step. Otherwise it emits a visible activity
+// step whose expandable details list each host, and returns the augmented
+// conversation. Every failure mode degrades to the original conversation.
+async function runShodanEnrichment(env, log, step, stepDone, conversation, state) {
+  const lastUser = textOf(lastUserMessage(conversation)?.content);
+  const { ips, hostnames } = extractTargets(lastUser);
+  if (!ips.length && !hostnames.length) return conversation;
+
+  step("shodan", "Querying Shodan…");
+  let result = null;
+  try {
+    result = await runShodanLookup(env, log, conversation);
+  } catch (err) {
+    log.warn("shodan.phase_failed", { error: err?.message || String(err) });
+  }
+  if (!result) {
+    stepDone("shodan", "Shodan lookup unavailable — continuing without it");
+    return conversation;
+  }
+  state.shodanCount = result.count;
+  const label = result.count
+    ? `Shodan: ${result.count} host${result.count === 1 ? "" : "s"} found`
+    : "Shodan: no records for the host(s) named";
+  stepDone("shodan", label, result.details);
+  return withAppendedText(conversation, result.block);
+}
 
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");

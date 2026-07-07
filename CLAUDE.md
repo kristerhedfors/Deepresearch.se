@@ -126,6 +126,7 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
+| `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
@@ -223,12 +224,19 @@ gaps.
 ### Cloud storage — the per-account `server_history` knob (default ON)
 
 `/api/settings` (`src/settings.js`, stored in `users.settings_json`)
-carries one knob, rendered in the account panel's **Settings sub-view**
+carries two knobs, rendered in the account panel's **Settings sub-view**
 (its own level below the summary, like "Full usage & history" — a list
 of `.settings-row` slide-switch rows, the ORIGINAL pre-spiderweb toggle
 design as generic `.switch` classes, so future settings just add rows):
-**"Store history in the cloud"**. It is remembered server-side (follows
-the account). **ON is the default** (an explicit product decision when
+**"Store history in the cloud"** (documented here) and **"Shodan host
+intelligence"** (default OFF — see "Shodan host intelligence" below). PUT
+accepts a partial body (`{server_history?, shodan_mcp?}`) so each knob
+saves independently. Each row is a SINGLE line — label, an **ⓘ** glyph,
+and the switch — with the full explanation behind a press-and-hold (or
+click-the-ⓘ) popover, the same gesture the composer's web-search knob
+uses (`wireSettingPopovers` in `public/js/account.js`); the popover keeps
+the panel compact as knobs are added. The cloud knob is remembered
+server-side (follows the account). **ON is the default** (an explicit product decision when
 the feature shipped — only a stored, explicit `false` opts out; absent/
 malformed settings mean on), and `/api/settings` reports the EFFECTIVE
 state: an identity that can't use storage (break-glass, missing R2
@@ -964,6 +972,71 @@ both something concrete to reason and search with.
   resolved location" — the raw coordinates the client already included
   in the image metadata block are still there as a fallback, and the
   chat is never blocked or delayed meaningfully by this.
+
+## Shodan host intelligence — the opt-in `shodan_mcp` knob (default OFF)
+
+An opt-in per-user setting (surfaced in the account panel's **Settings**
+sub-view as "Shodan host intelligence", disclosed as the "Shodan MCP" the
+task asked for) that enriches a research question with live
+infrastructure data from Shodan whenever the question names a host. Like
+the reverse geocoder, it's wired the deterministic, no-function-calling
+way this pipeline requires — NOT a live MCP transport (a Cloudflare
+Worker can't hold a stdio MCP process), but the same *capability* Shodan's
+MCP server exposes (host lookup, DNS resolve, ports/services/vulns),
+delivered through Shodan's REST API and folded into the pipeline as
+context every phase can use.
+
+- **The knob** (`src/settings.js`): a second key alongside `server_history`
+  in the same `users.settings_json` column. **Default OFF** (only an
+  explicit stored `true` enables it — the mirror of `server_history`'s
+  default-on/explicit-false) because enriching a query sends the host/IP
+  to a third party, an opt-in a security-minded user should choose
+  deliberately. `/api/settings` reports the EFFECTIVE state: it reads off
+  unless the `SHODAN_API_KEY` secret is set AND the caller has a real D1
+  user row (break-glass has none), via `featureAvailability()` (kept
+  separate from `storageAvailability()` so that function's tested
+  `{storage, rag}` shape stays stable). `shodanEnabled(env, identity)` is
+  the gate `chat.js` consults.
+- **`SHODAN_API_KEY`** is a dashboard secret, same as Berget/Exa — never
+  in the repo. Absent, the feature is invisible: `/api/settings` reports
+  it unavailable and the UI hides the knob (exactly like the storage
+  bindings). No `wrangler.toml` binding is needed (it's a secret, not a
+  resource binding).
+- **Deterministic target extraction** (`src/shodan.js`'s `extractTargets`,
+  pure + unit-tested): pulls publicly-routable IPv4s and plausible
+  hostnames from the latest user message. De-noised — private/loopback/
+  link-local/multicast/CGNAT/reserved IPs, out-of-range octets, file names
+  that look like domains (`report.pdf`), and email-address domains are all
+  excluded; deduped and capped (≤4 IPs, ≤4 hostnames, ≤6 unique IPs
+  actually looked up).
+- **Lookup** (`runShodanLookup`): batch-resolves hostnames via `/dns/resolve`
+  (no query credits), then `/shodan/host/{ip}` per unique IP. The payload
+  is summarized to a bounded subset (≤24 ports, ≤10 distinct services,
+  ≤15 CVEs) — open ports, running services, org/ISP/ASN, OS, location,
+  known CVEs, last-seen date. `vulns` arrives as either an array or a
+  CVE-keyed object; both are handled. Each host carries its citable
+  `https://www.shodan.io/host/{ip}` URL.
+- **Pipeline wiring** (`src/pipeline.js`'s `runShodanEnrichment`): runs
+  BEFORE any model call so triage/search/synthesis all see the data, and
+  appends it as one labeled "Shodan host intelligence" context block to
+  the conversation (`withAppendedText`, the SAME convention as the
+  geocoder's resolved-location block and the client's metadata blocks —
+  never blended into the user's text). Emits a visible activity step
+  (`step`/`stepDone` with an expandable per-host details list) — but ONLY
+  when the message actually names a host, so an ordinary question with the
+  knob left on costs nothing and shows no spurious step. `state.shodanCount`
+  (hosts found) rides into the `chat.complete` log.
+- **Runs independent of the web-search toggle** — like the geocoder, this
+  resolves data about a host the message *names*, not a topic to research,
+  so it isn't gated behind the Exa privacy toggle. It has its own knob.
+- **Fails soft in every branch**: no key, no targets, a bad host, a
+  timeout (8s) or a 404 (host simply not in Shodan's DB) all degrade to
+  the conversation unchanged (or an honest "no Shodan records" note so the
+  model doesn't invent infrastructure) — never a blocked or delayed chat.
+- **Minimal outbound request**: only the IP/hostname crosses the wire to
+  Shodan — never the user's question, filename, or any account/session
+  identifier. Server-side only (Worker-mediated, logged, timeout-bounded),
+  the key never reaches the browser.
 
 ## Access control & accounts — Google sign-in only
 

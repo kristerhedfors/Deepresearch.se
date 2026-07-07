@@ -26,13 +26,21 @@
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
+import { shodanAvailable } from "./shodan.js";
 
-const DEFAULTS = { server_history: true };
+// Two knobs today:
+//  - server_history: default ON  (only an explicit stored `false` opts out).
+//  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
+//    sends the host/IP to a third party, so it stays off until asked for;
+//    only an explicit stored `true` enables it).
+const DEFAULTS = { server_history: true, shodan_mcp: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
-// defaults. Only a stored, explicit `false` switches the knob off — an
-// absent or malformed value means the default (on). Exported for unit tests.
+// defaults. server_history is on unless an explicit stored `false` says
+// otherwise; shodan_mcp is off unless an explicit stored `true` enables it
+// (their opposite defaults are why each tests against its own literal).
+// Exported for unit tests.
 export function parseSettings(json) {
   let raw = {};
   try {
@@ -41,7 +49,10 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return { server_history: raw.server_history !== false };
+  return {
+    server_history: raw.server_history !== false,
+    shodan_mcp: raw.shodan_mcp === true,
+  };
 }
 
 // What the server can actually offer this identity right now. `storage`
@@ -51,6 +62,18 @@ export function parseSettings(json) {
 export function storageAvailability(env, identity) {
   const storage = !!(env.STORAGE && identity.user);
   return { storage, rag: !!(storage && env.RAG_INDEX) };
+}
+
+// The full availability map reported to the client: storage/rag plus the
+// Shodan feature, which needs the SHODAN_API_KEY secret and — like every
+// per-user setting — a D1 user row to persist the knob against (break-glass
+// has none). Kept separate from storageAvailability so that function's
+// tested shape stays stable.
+export function featureAvailability(env, identity) {
+  return {
+    ...storageAvailability(env, identity),
+    shodan: !!(shodanAvailable(env) && identity.user),
+  };
 }
 
 export function getSettings(identity) {
@@ -65,6 +88,14 @@ export function serverHistoryEnabled(env, identity) {
   return storageAvailability(env, identity).storage && getSettings(identity).server_history;
 }
 
+// The effective Shodan-MCP state for a request: the knob must be on AND the
+// server must actually be able to run it (SHODAN_API_KEY set, real user
+// row). A knob left on in D1 after the secret was removed reads as off, so
+// the pipeline never attempts a lookup it can't perform.
+export function shodanEnabled(env, identity) {
+  return featureAvailability(env, identity).shodan && getSettings(identity).shodan_mcp;
+}
+
 async function saveSettings(env, userId, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -74,14 +105,18 @@ async function saveSettings(env, userId, settings) {
     .run();
 }
 
-// The payload reports the EFFECTIVE state, not the raw stored flag: with
-// the default ON, an identity that can't actually use cloud storage
-// (break-glass, or a server without the R2 binding) must read as off —
-// otherwise every such client would dutifully dual-write into 503s.
+// The payload reports the EFFECTIVE state, not the raw stored flags: with
+// the default ON for server_history, an identity that can't actually use
+// cloud storage (break-glass, or a server without the R2 binding) must read
+// as off — otherwise every such client would dutifully dual-write into
+// 503s. shodan_mcp is likewise forced off when the feature is unavailable
+// (no SHODAN_API_KEY / break-glass), so the UI never shows a knob that
+// would do nothing.
 function settingsPayload(env, identity, settings) {
-  const available = storageAvailability(env, identity);
+  const available = featureAvailability(env, identity);
   return {
     server_history: available.storage && settings.server_history,
+    shodan_mcp: available.shodan && settings.shodan_mcp,
     available,
   };
 }
@@ -91,9 +126,12 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body {server_history: boolean}. Turning it on
-// requires the storage backing to actually exist; a knob that can be
-// switched on with nowhere to store anything would silently lose data.
+// PUT /api/settings — body may carry either knob (partial updates allowed):
+// {server_history?: boolean, shodan_mcp?: boolean}. Turning a knob ON
+// requires its backing to actually exist — cloud storage needs the R2
+// binding, Shodan needs the SHODAN_API_KEY secret — so a knob can't be
+// switched on with nothing behind it (which would silently lose data or do
+// nothing).
 export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
@@ -104,18 +142,38 @@ export async function handleSettingsPut(request, env, log, identity) {
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
-  if (typeof body?.server_history !== "boolean") {
-    return jsonResponse({ error: "Expected {server_history: boolean}." }, 400);
+  const hasHistory = body?.server_history !== undefined;
+  const hasShodan = body?.shodan_mcp !== undefined;
+  if (!hasHistory && !hasShodan) {
+    return jsonResponse({ error: "Expected {server_history?: boolean, shodan_mcp?: boolean}." }, 400);
   }
-  const available = storageAvailability(env, identity);
-  if (body.server_history && !available.storage) {
+  if (hasHistory && typeof body.server_history !== "boolean") {
+    return jsonResponse({ error: "server_history must be a boolean." }, 400);
+  }
+  if (hasShodan && typeof body.shodan_mcp !== "boolean") {
+    return jsonResponse({ error: "shodan_mcp must be a boolean." }, 400);
+  }
+  const available = featureAvailability(env, identity);
+  if (hasHistory && body.server_history && !available.storage) {
     return jsonResponse(
       { error: "Cloud storage is not configured on this server (R2 binding missing)." },
       503,
     );
   }
-  const settings = { ...getSettings(identity), server_history: body.server_history };
+  if (hasShodan && body.shodan_mcp && !available.shodan) {
+    return jsonResponse(
+      { error: "Shodan is not configured on this server (SHODAN_API_KEY missing)." },
+      503,
+    );
+  }
+  const settings = { ...getSettings(identity) };
+  if (hasHistory) settings.server_history = body.server_history;
+  if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   await saveSettings(env, identity.user.id, settings);
-  log.info("settings.updated", { user_id: identity.id, server_history: settings.server_history });
+  log.info("settings.updated", {
+    user_id: identity.id,
+    server_history: settings.server_history,
+    shodan_mcp: settings.shodan_mcp,
+  });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

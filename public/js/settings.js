@@ -1,12 +1,13 @@
-// Per-account settings (GET/PUT /api/settings — src/settings.js). One knob
-// today: server_history, default OFF. The cached copy answers the hot-path
-// question every storage-touching module asks — "is cloud storage on?" —
-// without a fetch per call; the answer only ever changes through
-// setServerHistory below (this tab) or on the next page load (another tab
-// or device flipped it — an accepted, self-healing staleness window: the
-// server rejects writes that its own copy of the knob forbids).
+// Per-account settings (GET/PUT /api/settings — src/settings.js). Two knobs
+// today: server_history (cloud storage) and shodan_mcp (Shodan host-intel
+// enrichment). The cached copy answers the hot-path question every
+// storage-touching module asks — "is cloud storage on?" — without a fetch
+// per call; the answer only ever changes through updateSetting below (this
+// tab) or on the next page load (another tab or device flipped it — an
+// accepted, self-healing staleness window: the server rejects writes that
+// its own copy of the knob forbids).
 
-let settings = null; // {server_history, available:{storage, rag}}
+let settings = null; // {server_history, shodan_mcp, available:{storage, rag, shodan}}
 let loadPromise = null;
 
 export function loadSettings(force = false) {
@@ -44,15 +45,35 @@ export function serverRagAvailable() {
   return settings?.available?.rag === true;
 }
 
-export async function setServerHistory(on) {
+// Shodan host-intelligence enrichment knob (default off; needs the server's
+// SHODAN_API_KEY, so it reads unavailable when the server has no key).
+export function shodanOn() {
+  return settings?.shodan_mcp === true;
+}
+
+export function shodanAvailable() {
+  return settings?.available?.shodan === true;
+}
+
+// Generic partial update: PUT one or both knobs, refresh the cache from the
+// server's authoritative (effective) response.
+async function updateSetting(patch) {
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ server_history: on }),
+    body: JSON.stringify(patch),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || "Could not update the setting.");
   settings = data;
   loadPromise = Promise.resolve(data);
   return data;
+}
+
+export function setServerHistory(on) {
+  return updateSetting({ server_history: on });
+}
+
+export function setShodanMcp(on) {
+  return updateSetting({ shodan_mcp: on });
 }

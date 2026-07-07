@@ -260,6 +260,29 @@
     </ul>
   </section>
 
+  <section id="settings">
+    <h2>Settings</h2>
+    <p>Account &amp; usage → <b>Settings</b> holds the on/off switches for
+      your account. Each is a single line; press and hold (or click) the
+      <b>ⓘ</b> next to a switch for the full explanation.</p>
+    <ul>
+      <li><b>Store history in the cloud</b> (on by default) — keeps an
+        encrypted copy of your conversations, files and search index in this
+        site's storage so your history follows your account across devices.
+        Switching it off downloads everything to this browser and deletes the
+        cloud copies. See "Chat history" above for how the encryption works.</li>
+      <li><b>Shodan host intelligence</b> (off by default) — when on, if a
+        question mentions an IP address or hostname, the site looks it up on
+        <a href="https://www.shodan.io" target="_blank" rel="noopener">Shodan</a>
+        and folds what it finds — open ports, running services, the hosting
+        organization and ASN, location, and any known CVEs — into the research
+        so the answer can use and cite it. Only the IP or hostname itself is
+        ever sent to Shodan, never your question or anything about your
+        account, and only when your message actually names a host. It works
+        whether or not web search is on.</li>
+    </ul>
+  </section>
+
   <section>
     <h2>Privacy, in full</h2>
     <ul>
@@ -272,6 +295,11 @@
         <b>Exa retains queries by default</b> (zero data retention is an
         enterprise-only Exa feature we don't currently have) — see
         "Sensitive topics" above for the two-step workflow.</li>
+      <li><b>Shodan lookups</b>: only if you turn on <b>Shodan host
+        intelligence</b> in Settings (off by default). Then, when a message
+        names an IP or hostname, that IP/hostname alone is sent to Shodan to
+        fetch its public infrastructure record — never your question or
+        anything identifying you.</li>
       <li><b>What our server keeps</b>: your account (Google email, name)
         and per-request usage numbers — token counts, search counts,
         durations — used for the quota bars. No message text, ever.</li>

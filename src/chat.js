@@ -21,6 +21,7 @@ import {
   recordUsage,
 } from "./quota.js";
 import { resolveModel, validateMessages } from "./validation.js";
+import { shodanEnabled } from "./settings.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
   if (!env.BERGET_API_TOKEN) {
@@ -86,6 +87,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
+  // Shodan host-intelligence enrichment is an opt-in per-user setting, not a
+  // per-request body flag (src/settings.js) — gated here so the pipeline
+  // only ever attempts it when both the knob is on and the key is present.
+  const shodanOn = shodanEnabled(env, identity);
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -121,7 +126,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
 
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
-    const state = newRequestState(model, webSearchEnabled, budgetS);
+    const state = newRequestState(model, webSearchEnabled, budgetS, shodanOn);
     disconnect.state = state;
 
     // Recovery marker (metadata only): lets the poller tell "still
@@ -183,6 +188,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         rounds: state.iterations,
         searches: state.searchCount,
         sources: state.sources.length,
+        shodan_hosts: state.shodanCount,
         duration_ms,
         client_gone: disconnect.gone,
       });
@@ -251,11 +257,13 @@ export function quotaBlockedResponse(blocked) {
 }
 
 // Mutable per-request state threaded through the pipeline.
-function newRequestState(model, webSearch, budgetS) {
+function newRequestState(model, webSearch, budgetS, shodan) {
   return {
     startedAt: Date.now(),
     model,
     webSearch,
+    shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
+    shodanCount: 0, // hosts Shodan actually returned data for
     plan: planResearch(model, budgetS),
     searchCount: 0,
     iterations: 1, // search waves (initial + gap rounds that ran)
