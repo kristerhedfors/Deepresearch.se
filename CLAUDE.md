@@ -215,6 +215,20 @@ client hides the History button entirely (`historyAvailable()` in
 `history-store.js`) rather than silently storing conversations
 unencrypted. A plaintext fallback would defeat the point of the feature.
 
+**Incognito (the ghost toggle)**: a ghost button in the upper right,
+directly below the account button (`#ghostbtn`, wired in `app.js`,
+state in `stream.js`). Pressed BEFORE the first message of a fresh
+conversation, that conversation is never written to chat history at
+all — `persistConversation` is a no-op for it, so neither the encrypted
+local store nor the cloud copy ever sees it; it exists only in the
+tab's memory until "New chat"/reload discards it. The choice locks once
+the conversation has started (button disabled, in either direction — an
+ordinary chat can't retroactively vanish, an incognito one can't
+retroactively persist) and resets to off on every new chat; loading a
+saved conversation is by definition not incognito. Hidden entirely when
+encrypted history isn't available (same `historyAvailable()` check as
+the history button — with no store there's nothing to keep out of).
+
 **What's stored per conversation**: title, the same `{role, content}`
 message array `stream.js` already sends to `/api/chat`, plus the model /
 time-budget / web-search settings it was sent with (restored when you

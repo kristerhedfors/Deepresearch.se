@@ -70,6 +70,30 @@ let convTitle = null;
 let convCreatedAt = null;
 let onHistoryChange = () => {};
 
+// Incognito (the header's ghost toggle): while true, persistConversation
+// is a no-op — the conversation exists only in this tab's memory, never
+// written to the encrypted local store or the cloud copy. Set only before
+// the first message of a fresh conversation (app.js locks the toggle once
+// the conversation has started) and reset by clearHistory / loading a
+// saved conversation, so a chat can't retroactively vanish and a
+// supposedly-incognito one can't retroactively persist.
+let convIncognito = false;
+
+export function setIncognito(on) {
+  convIncognito = !!on;
+}
+
+export function isIncognito() {
+  return convIncognito;
+}
+
+// True once the current conversation has content (a message in flight or
+// landed, or a saved conversation loaded) — the point past which the
+// incognito choice is locked.
+export function conversationStarted() {
+  return history.length > 0 || currentId !== null;
+}
+
 export function initStream(scrollFn, opts = {}) {
   scrollDown = scrollFn;
   onHistoryChange = opts.onHistoryChange || onHistoryChange;
@@ -95,6 +119,7 @@ export function applyLoadedConversation(record) {
   convTitle = record.title;
   convCreatedAt = record.createdAt;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
+  convIncognito = false; // a saved conversation is by definition not incognito
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
@@ -110,6 +135,7 @@ export function applyLoadedConversation(record) {
 // (server not configured, or IndexedDB blocked) — the conversation still
 // works for this tab, it just won't survive a reload.
 async function persistConversation(opts) {
+  if (convIncognito) return; // ghost toggle: this conversation is never written anywhere
   if (!history.length) return;
   if (!currentId) currentId = crypto.randomUUID();
   if (!convTitle) convTitle = deriveTitle(history);
@@ -157,6 +183,7 @@ export function clearHistory() {
   convCreatedAt = null;
   convRagDocs = [];
   convProjectId = null; // the next send re-adopts whatever project is active
+  convIncognito = false; // incognito is chosen per conversation, never inherited
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —

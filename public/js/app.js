@@ -20,10 +20,20 @@ import { initProjectsUi } from "./projects-ui.js";
 import { loadSettings } from "./settings.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
+import { historyAvailable } from "./history-store.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
-import { clearHistory, initStream, isStreaming, sendMessage, stopGeneration } from "./stream.js";
+import {
+  clearHistory,
+  conversationStarted,
+  initStream,
+  isIncognito,
+  isStreaming,
+  sendMessage,
+  setIncognito,
+  stopGeneration,
+} from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
-import { clearChatDom, initTurns } from "./turns.js";
+import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -153,6 +163,46 @@ document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
 
+// ---- Incognito (ghost) toggle ---------------------------------------------
+// Upper right, directly below the account button: pressed BEFORE the first
+// message, the conversation is never written to chat history — not the
+// encrypted local store, not the cloud copy (stream.js's persistConversation
+// is a no-op for it). Locked once the conversation has started, in either
+// direction: an ordinary chat can't retroactively vanish, an incognito one
+// can't retroactively persist. Hidden entirely when encrypted history isn't
+// available (nothing would be saved anyway, same check as the history button).
+
+const ghostBtn = document.getElementById("ghostbtn");
+historyAvailable().then((ok) => { ghostBtn.hidden = !ok; }).catch(() => {});
+
+function syncGhostState() {
+  const locked = conversationStarted();
+  const on = isIncognito();
+  ghostBtn.disabled = locked;
+  ghostBtn.classList.toggle("on", on);
+  ghostBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  ghostBtn.title = on
+    ? "Incognito — this conversation won't be saved to chat history"
+    : locked
+      ? "Incognito is only available before the first message — start a new chat to use it"
+      : "Incognito chat — keep this conversation out of chat history";
+}
+
+ghostBtn.addEventListener("click", () => {
+  if (conversationStarted()) return;
+  setIncognito(!isIncognito());
+  // The empty-state notice doubles as the on/off confirmation (a title
+  // attribute alone is invisible on touch devices).
+  const empty = chat.querySelector(".empty");
+  if (empty) {
+    empty.textContent = isIncognito()
+      ? "Incognito chat — this conversation won't be saved to chat history. Ask a research question to get started."
+      : EMPTY_TEXT;
+  }
+  syncGhostState();
+});
+syncGhostState();
+
 // ---- Header: clear chat / chat history / projects ---------------------------
 
 // The header's "New chat" leaves any project context (a plain chat);
@@ -160,8 +210,9 @@ document.addEventListener("click", (e) => {
 // conversation adopts the project it was started from.
 function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
-  clearHistory();
+  clearHistory(); // also resets incognito — the ghost choice is per conversation
   clearChatDom();
+  syncGhostState();
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
@@ -180,6 +231,7 @@ function applyRecordSettings(record) {
   webSearchBox.checked = record.webSearch !== false;
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
   syncSearchToggle();
+  syncGhostState(); // loaded conversation → started, not incognito → ghost locks
 }
 
 // Encrypted local history sidebar (public/js/history-ui.js + history-store.js).
@@ -241,6 +293,9 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   autogrow();
   setSendMode(true);
+  // The first message is going out — lock the incognito choice right away
+  // (conversationStarted() only flips once sendMessage pushes the message).
+  ghostBtn.disabled = true;
   const { images, docs } = takeAttachments();
   await sendMessage(text, {
     images,
@@ -250,6 +305,9 @@ form.addEventListener("submit", async (e) => {
     webSearch: webSearchBox.checked,
   });
   setSendMode(false);
+  // Re-sync rather than assume locked: a send that failed outright pops
+  // itself back out of the history, making the ghost available again.
+  syncGhostState();
   input.focus();
 });
 
