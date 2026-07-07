@@ -9,7 +9,7 @@ import { markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, listModels } from "./berget.js";
 import { clampBudget, planResearch } from "./budget.js";
-import { augmentWithLocations } from "./geocode.js";
+import { augmentWithLocations } from "./maps.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
 import { getConfig } from "./config.js";
@@ -165,11 +165,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
 
     try {
       // Reverse-geocode any attached photo's GPS EXIF (public/js/exif.js)
-      // into a place name every phase below can actually use — independent
-      // of the web_search toggle, since this is enriching the photo's own
-      // metadata, not researching the user's topic. Emits its own visible
-      // step (naming OpenStreetMap Nominatim) via the same emit as the
-      // pipeline, so the user sees which service is being contacted.
+      // into a place name — plus a map + Street View image — every phase
+      // below can use (src/maps.js, Google Maps with a Nominatim fallback).
+      // Independent of the web_search toggle, since this enriches the photo's
+      // own metadata, not the user's topic. Emits its own visible step and a
+      // `map` image event via the same emit as the pipeline.
       const conversationWithContext = await augmentWithLocations(
         env, log, emit, conversation, body.imageLocations,
       );

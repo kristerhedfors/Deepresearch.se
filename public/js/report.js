@@ -133,6 +133,35 @@ export async function downloadReport(turn, meta = {}) {
     y += h + 14;
   }
 
+  // Map / Street View figures the maps enrichment resolved (src/maps.js).
+  // These are Worker proxy paths, not data URLs, so fetch each with the
+  // session cookie and embed the PNG. Fail-soft per image — a tile that
+  // can't be fetched is simply skipped, never blocks the report.
+  for (const img of turn.mapImages || []) {
+    const dataUrl = await urlToDataUrl(img.url);
+    if (!dataUrl) continue;
+    let props;
+    try {
+      props = doc.getImageProperties(dataUrl);
+    } catch {
+      continue;
+    }
+    if (!props?.width || !props?.height) continue;
+    let w = Math.min(bodyW, props.width * 0.5);
+    let h = (props.height / props.width) * w;
+    if (h > maxImgH) { w *= maxImgH / h; h = maxImgH; }
+    ensure(h + 20);
+    if (img.caption) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9.5);
+      doc.setTextColor(...MUTED);
+      doc.text(img.caption, M, y);
+      y += 13;
+    }
+    doc.addImage(dataUrl, "PNG", M, y, w, h);
+    y += h + 14;
+  }
+
   // Body.
   for (const b of mdToBlocks(turn.text)) {
     if (!b.text.trim()) {
@@ -162,6 +191,25 @@ export async function downloadReport(turn, meta = {}) {
 
   const stamp = now.toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
   await savePdf(doc, `deepresearch-report-${stamp}.pdf`);
+}
+
+// Fetch a same-origin URL (a /api/maps/... proxy tile) and read it as a data
+// URL for jsPDF. Returns null on any failure — the report never blocks over a
+// figure it couldn't load.
+async function urlToDataUrl(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(typeof r.result === "string" ? r.result : null);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
 }
 
 // NEVER use jsPDF's doc.save(): its Safari fallback navigates the page to

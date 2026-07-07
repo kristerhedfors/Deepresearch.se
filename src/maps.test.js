@@ -4,6 +4,10 @@ import {
   extractCoordinates,
   extractPlaceQueries,
   messageHasMapTargets,
+  mapsAvailable,
+  staticMapProxyPath,
+  streetViewProxyPath,
+  handleMapsProxy,
 } from "./maps.js";
 
 // These batteries ARE the "user stories & prompts" for the maps capability:
@@ -111,6 +115,7 @@ describe("extractPlaceQueries — forward-geocode triggers (strong cues)", () =>
     ["What's the location of Machu Picchu?", ["Machu Picchu"]],
     ["gps coordinates for mount everest", ["mount everest"]],
     ["I need the latitude and longitude of Reykjavik", ["Reykjavik"]],
+    ["Street view of the Colosseum", ["Colosseum"]],
   ];
   for (const [msg, expected] of cases) {
     test(msg, () => assert.deepEqual(extractPlaceQueries(msg), expected));
@@ -252,6 +257,82 @@ describe("extractPlaceQueries — negatives (must NOT fire)", () => {
   test("caps at 3 places", () => {
     const msg = "map of Paris, map of Rome, map of Berlin, map of Madrid, map of Lisbon";
     assert.ok(extractPlaceQueries(msg).length <= 3);
+  });
+});
+
+describe("proxy path builders — the browser never sees the API key", () => {
+  test("static map path is key-free and carries the coordinate", () => {
+    const p = staticMapProxyPath({ lat: 48.8584, lon: 2.2945, zoom: 15 });
+    assert.match(p, /^\/api\/maps\/static\?/);
+    assert.match(p, /lat=48.8584/);
+    assert.match(p, /lon=2.2945/);
+    assert.match(p, /zoom=15/);
+    assert.doesNotMatch(p, /key=/i);
+  });
+
+  test("street view path is key-free", () => {
+    const p = streetViewProxyPath({ lat: 40.7128, lon: -74.006 });
+    assert.match(p, /^\/api\/maps\/streetview\?/);
+    assert.doesNotMatch(p, /key=/i);
+  });
+});
+
+describe("handleMapsProxy — validation and key injection", () => {
+  const log = { info() {}, warn() {} };
+  const mkUrl = (p) => ({
+    pathname: p.split("?")[0],
+    searchParams: new URLSearchParams(p.split("?")[1] || ""),
+  });
+
+  test("no API key → 404 (feature invisible)", async () => {
+    const r = await handleMapsProxy({}, {}, mkUrl("/api/maps/static?lat=1&lon=2"), log);
+    assert.equal(r.status, 404);
+  });
+
+  test("out-of-range coordinates → 400", async () => {
+    const env = { GOOGLE_MAPS_API_KEY: "K" };
+    const r = await handleMapsProxy({}, env, mkUrl("/api/maps/static?lat=999&lon=2"), log);
+    assert.equal(r.status, 400);
+  });
+
+  test("valid static request injects the key server-side and streams the tile", async () => {
+    const env = { GOOGLE_MAPS_API_KEY: "SECRETKEY" };
+    let requested = "";
+    const orig = globalThis.fetch;
+    globalThis.fetch = async (u) => {
+      requested = String(u);
+      return { ok: true, body: "PNG", headers: { get: () => "image/png" } };
+    };
+    try {
+      const r = await handleMapsProxy({}, env, mkUrl("/api/maps/static?lat=48.8584&lon=2.2945&zoom=15"), log);
+      assert.equal(r.status, 200);
+      assert.equal(r.headers.get("content-type"), "image/png");
+      // The key goes to Google, never into the response the browser receives.
+      assert.match(requested, /key=SECRETKEY/);
+      assert.match(requested, /staticmap/);
+      assert.match(requested, /size=640x400/);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  test("a Google error degrades to 502, not a crash", async () => {
+    const env = { GOOGLE_MAPS_API_KEY: "K" };
+    const orig = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: false, status: 403, headers: { get: () => null } });
+    try {
+      const r = await handleMapsProxy({}, env, mkUrl("/api/maps/streetview?lat=1&lon=2"), log);
+      assert.equal(r.status, 502);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+});
+
+describe("mapsAvailable", () => {
+  test("true only when the key is set", () => {
+    assert.equal(mapsAvailable({ GOOGLE_MAPS_API_KEY: "x" }), true);
+    assert.equal(mapsAvailable({}), false);
   });
 });
 

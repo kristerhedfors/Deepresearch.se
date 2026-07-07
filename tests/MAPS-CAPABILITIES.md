@@ -1,7 +1,12 @@
 # Maps capabilities — user stories, trigger prompts, and hillclimb ledger
 
-The app's mapping capability is built on **OpenStreetMap Nominatim** (no key,
-Worker-mediated — see `CLAUDE.md` → "Reverse geocoding" and the maps section).
+The app's mapping capability is built on the **Google Maps Platform** —
+**Places API (New)** (forward + reverse geocoding), **Maps Static API** (map
+images), and **Street View Static API** (street-level images), keyed by the
+`GOOGLE_MAPS_API_KEY` Worker secret. OpenStreetMap Nominatim survives only as
+the reverse-geocode fallback when that key is absent. See `CLAUDE.md` → "Maps
+— Google Maps Platform".
+
 This file is the durable record of the maps *user stories*, the prompts that
 should trigger each capability, and the round-by-round improvements made so
 that they actually do. It plays the same role for the maps feature that
@@ -15,13 +20,16 @@ below. Run it with `node --test src/maps.test.js`.
 
 ## The capabilities
 
-Nominatim exposes two primitives; this app drives both, from three sources:
+This app drives Places (forward + reverse) plus Static Maps and Street View
+imagery, from three trigger sources:
 
-| # | Capability | Nominatim call | Trigger source | Toggle |
+| # | Capability | Google API | Trigger source | Toggle |
 |---|---|---|---|---|
-| 1 | Reverse geocode a **photo's** GPS EXIF | `/reverse` | `body.imageLocations` (client EXIF) | independent (`src/geocode.js`) |
-| 2 | Reverse geocode **coordinates typed in the message** | `/reverse` | text (`src/maps.js`) | independent |
-| 3 | Forward geocode a **named place / address** | `/search` | text (`src/maps.js`) | gated by web-search |
+| 1 | Reverse geocode a **photo's** GPS EXIF (+ map + Street View) | Places Nearby (New) | `body.imageLocations` (client EXIF) | independent |
+| 2 | Reverse geocode **coordinates typed in the message** (+ map + Street View) | Places Nearby (New) | text | independent |
+| 3 | Forward geocode a **named place / address** (+ map + Street View) | Places Text Search (New) | text | gated by web-search |
+| — | **Map image** for any resolved location | Maps Static API | every resolved location | — |
+| — | **Street View image** where imagery exists | Street View Static (+ free metadata check) | every resolved location | — |
 
 **Privacy boundary** (the reason capability 3 is gated): reverse geocoding
 resolves numbers the message already contains — a point on a map, revealing
@@ -29,7 +37,10 @@ nothing about intent — so it runs regardless of the web-search toggle, like
 the photo geocoder. Forward geocoding sends a *place token derived from the
 user's question* to a third party, so it sits behind the same web-search
 toggle as Exa. Only the extracted token/coordinates ever cross the wire —
-never the full question.
+never the full question. **The API key never reaches the browser**: map and
+Street View tiles are served through the Worker's own key-free proxy
+(`/api/maps/static`, `/api/maps/streetview`), which range-checks params and
+injects the key server-side.
 
 ## User stories → trigger prompts
 
@@ -115,6 +126,45 @@ Swept a wider realistic battery and fixed:
   followed by whitespace). Widened the number token to `\d{1,5}[a-z]?(-…)?`.
 
 Battery now 63 cases, all green. The full-suite run (`npm test`) stays green.
+
+### Round 4 — 2026-07-07 — migrate to the Google Maps Platform + add imagery
+
+The deployment gained a Google Maps API key with **Places API (New)**, **Maps
+Static API**, and **Street View Static API** enabled. Reworked the whole
+capability onto Google (Nominatim kept only as the reverse-geocode fallback),
+which upgrades the data AND — the big win — adds real map + Street View
+imagery:
+
+- **Forward geocoding** → Places Text Search (New): canonical `displayName`,
+  `formattedAddress`, place `types`, Google `rating`, and a `googleMapsUri`,
+  where Nominatim gave only a display string + OSM category.
+- **Reverse geocoding** (photo EXIF + typed coords) → Places Nearby Search
+  (New), distance-ranked in a 200 m circle. Falls back to Nominatim `/reverse`
+  when the key is absent/fails, so nothing regresses without a key. Imagery is
+  centered on the ORIGINAL coordinate, not the nearest POI.
+- **Imagery** → for every resolved location, a Maps Static map image (red
+  marker) and — only when the free Street View `metadata` check returns `OK`,
+  so no grey "no imagery" tile — a Street View image. The **API key never
+  reaches the browser**: tiles are served through the Worker's key-free proxy
+  (`/api/maps/static`, `/api/maps/streetview`), which range-checks lat/lon,
+  bounds zoom, fixes the size, and injects the key server-side. Delivered to
+  the client via a new `map` SSE event; rendered under the answer, embedded in
+  the PDF report, and captured in the "Copy research JSON" export.
+
+The pure extractors (`extractCoordinates`/`extractPlaceQueries`) are
+provider-agnostic and carried over unchanged — all 63 trigger cases stayed
+green. New tests cover the proxy path builders (assert the browser-facing path
+carries no `key=`), `handleMapsProxy` (no-key→404, bad-coords→400, valid→200
+with the key injected only into the Google-facing URL, Google-error→502), and
+`mapsAvailable`. Battery now 70 cases; `npm test` green (306).
+
+**New user stories this round** (imagery):
+- "Where was this photo taken?" (GPS photo) → place name **+ a map + Street
+  View of the spot**, shown under the answer and in the PDF.
+- "Show me a map of Kyoto" / "Street view of the Colosseum" → the map/Street
+  View image is now the literal answer to the request, not just text.
+- "What's at 59.3293, 18.0686?" → nearest Google place + a marked map + Street
+  View of the exact point.
 
 ## Accepted limitations (deliberate precision/recall trade-offs)
 

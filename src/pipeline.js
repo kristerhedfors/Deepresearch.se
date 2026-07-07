@@ -70,7 +70,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // the web-search toggle; forward geocoding (place name → coordinates) is
   // gated behind it, since the place token derives from the user's topic —
   // the same privacy boundary Exa sits behind. Fully fail-soft.
-  convo = await runMapsEnrichment(env, log, step, stepDone, convo, state);
+  convo = await runMapsEnrichment(env, log, emit, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, state, profile, conversation: convo,
@@ -142,7 +142,7 @@ async function runShodanEnrichment(env, log, step, stepDone, conversation, state
 // computed from the pure extractors first (no network) so the step only
 // appears when there's genuinely something to look up. Every failure mode
 // degrades to the original conversation.
-async function runMapsEnrichment(env, log, step, stepDone, conversation, state) {
+async function runMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const lastUser = textOf(lastUserMessage(conversation)?.content);
   const hasCoords = extractCoordinates(lastUser).length > 0;
   const hasPlaces = state.webSearch && extractPlaceQueries(lastUser).length > 0;
@@ -162,9 +162,12 @@ async function runMapsEnrichment(env, log, step, stepDone, conversation, state) 
   const resolved = result.forwardCount + result.reverseCount;
   state.mapsCount = resolved;
   const label = resolved
-    ? `Mapped ${resolved} location${resolved === 1 ? "" : "s"} via OpenStreetMap Nominatim`
+    ? `Mapped ${resolved} location${resolved === 1 ? "" : "s"} via Google Maps`
     : "No place resolved for the location(s) named";
   stepDone("maps", label, result.details);
+  // Deliver the map / Street View imagery to the client to render + embed in
+  // the PDF report (the model sees only the text block — kept model-agnostic).
+  if (result.images?.length) emit({ status: { type: "map", id: "maps", images: result.images } });
   return withAppendedText(conversation, result.block);
 }
 

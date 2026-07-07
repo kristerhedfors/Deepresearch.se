@@ -124,6 +124,24 @@ test("buildResearchDebugJson keeps the full ordered timeline", () => {
   assert.deepEqual(ts, [...ts].sort((a, b) => a - b));
 });
 
+test("buildResearchDebugJson surfaces map figures, deduped by url", () => {
+  const turn = {
+    question: "where is the Eiffel Tower?",
+    researchLog: [
+      { t: 10, type: "map", id: "maps", images: [
+        { kind: "map", label: "Eiffel Tower", url: "/api/maps/static?lat=48.8584&lon=2.2945" },
+        { kind: "streetview", label: "Eiffel Tower", url: "/api/maps/streetview?lat=48.8584&lon=2.2945" },
+      ] },
+      { t: 20, type: "map", id: "maps", images: [
+        { kind: "map", label: "Eiffel Tower", url: "/api/maps/static?lat=48.8584&lon=2.2945" }, // dup
+      ] },
+    ],
+  };
+  const out = buildResearchDebugJson(turn);
+  assert.equal(out.maps.length, 2);
+  assert.deepEqual(out.maps.map((m) => m.kind), ["map", "streetview"]);
+});
+
 test("buildResearchDebugJson is safe on an empty turn", () => {
   const out = buildResearchDebugJson({});
   assert.deepEqual(out, {
@@ -133,6 +151,7 @@ test("buildResearchDebugJson is safe on an empty turn", () => {
     steps: [],
     searches: [],
     sources: [],
+    maps: [],
     answer: "",
     answerChars: 0,
     errored: false,

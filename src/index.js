@@ -33,6 +33,7 @@ import { handleAnswerAck, handleAnswerGet } from "./answers.js";
 import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
 import { handleChat } from "./chat.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
+import { handleMapsProxy } from "./maps.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { acceptTerms } from "./accounts.js";
@@ -251,6 +252,11 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);
+  }
+  // Key-free image proxy for the Google Static Maps + Street View tiles the
+  // maps enrichment references — the API key stays server-side (src/maps.js).
+  if (url.pathname.startsWith("/api/maps/") && request.method === "GET") {
+    return handleMapsProxy(request, env, url, log);
   }
 
   // Admin-only: the JSON API and the admin UI assets.

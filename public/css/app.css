@@ -162,6 +162,27 @@ header {
 .msg .content { white-space: pre-wrap; }
 .msg .content.error-text { color: #9a1c1c; }
 
+/* Map / Street View figures (src/maps.js, delivered via the `map` SSE event) */
+.map-figures {
+  display: flex;
+  gap: .55rem;
+  flex-wrap: wrap;
+}
+.map-figures[hidden] { display: none; }
+.map-figure { margin: 0; max-width: 320px; flex: 1 1 240px; }
+.map-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.map-figure figcaption {
+  margin-top: .3rem;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
 /* Rendered markdown (default answer view) */
 .content.md { white-space: normal; }
 .content.md > :first-child { margin-top: 0; }

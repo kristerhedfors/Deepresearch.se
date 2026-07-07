@@ -117,15 +117,20 @@ export function addAssistantTurn(question = "", images = []) {
   tools.className = "msg-tools";
   const content = document.createElement("div");
   showTyping(content);
+  // Map / Street View figures resolved by the maps enrichment (src/maps.js),
+  // delivered via the `map` SSE event. Hidden until the first image arrives.
+  const mapFigures = document.createElement("div");
+  mapFigures.className = "map-figures";
+  mapFigures.hidden = true;
   const stats = document.createElement("div");
   stats.className = "stats";
-  el.append(activityWrap, tools, content, stats);
+  el.append(activityWrap, tools, content, mapFigures, stats);
   chat.appendChild(el);
   scrollDown();
 
   const turn = {
-    el, activityWrap, activity, activityLabel, content, stats,
-    question, images, model: "",
+    el, activityWrap, activity, activityLabel, content, mapFigures, stats,
+    question, images, mapImages: [], model: "",
     steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
     // Structured, ordered log of every research event this turn saw (steps,
     // searches, service lookups, the final stats) — the source for the
@@ -261,4 +266,41 @@ export function resetForRevision(turn) {
   turn.errored = false;
   turn.el.classList.remove("has-text");
   showTyping(turn.content);
+}
+
+// Render the map / Street View figures delivered by the `map` SSE event
+// (src/maps.js). Each image is a Worker proxy path (/api/maps/...) the browser
+// loads with the session cookie — the Google API key never reaches here. The
+// same list is stored on the turn for the PDF report and the debug JSON.
+// Deduped by url so a coordinate that appears in more than one place isn't
+// shown twice.
+export function addMapImages(turn, images) {
+  if (!Array.isArray(images) || !images.length) return;
+  const seen = new Set(turn.mapImages.map((i) => i.url));
+  for (const img of images) {
+    if (!img || typeof img.url !== "string" || seen.has(img.url)) continue;
+    seen.add(img.url);
+    turn.mapImages.push(img);
+
+    const fig = document.createElement("figure");
+    fig.className = "map-figure";
+    const a = document.createElement("a");
+    a.href = img.url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    const el = document.createElement("img");
+    el.src = img.url;
+    el.alt = img.caption || img.label || "map";
+    el.loading = "lazy";
+    // A tile that fails (e.g. no Street View despite the metadata check) just
+    // removes its figure rather than showing a broken-image icon.
+    el.addEventListener("error", () => fig.remove());
+    a.appendChild(el);
+    const cap = document.createElement("figcaption");
+    cap.textContent = img.caption || img.label || "";
+    fig.append(a, cap);
+    turn.mapFigures.appendChild(fig);
+  }
+  if (turn.mapFigures.children.length) turn.mapFigures.hidden = false;
+  scrollDown();
 }

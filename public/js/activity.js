@@ -184,6 +184,18 @@ export function buildResearchDebugJson(turn) {
   // response, not just its metadata.
   const answer = turn.text || "";
   const errors = log.filter((e) => e.event === "error").map((e) => e.error);
+  // Map / Street View figures the maps enrichment resolved (src/maps.js) —
+  // deduped by url, the same list the PDF report embeds.
+  const mapSeen = new Set();
+  const maps = [];
+  for (const e of log.filter((e) => e.type === "map")) {
+    for (const img of Array.isArray(e.images) ? e.images : []) {
+      if (img?.url && !mapSeen.has(img.url)) {
+        mapSeen.add(img.url);
+        maps.push({ kind: img.kind, label: img.label, url: img.url });
+      }
+    }
+  }
   return {
     question: turn.question || "",
     model: turn.model || d?.model || "",
@@ -191,6 +203,7 @@ export function buildResearchDebugJson(turn) {
     steps,
     searches,
     sources,
+    maps,
     answer,
     answerChars: answer.length,
     errored: !!turn.errored,
