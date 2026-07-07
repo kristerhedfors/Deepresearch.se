@@ -193,6 +193,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         searches: state.searchCount,
         sources: state.sources.length,
         shodan_hosts: state.shodanCount,
+        maps_locations: state.mapsCount,
         duration_ms,
         client_gone: disconnect.gone,
       });
@@ -268,6 +269,7 @@ function newRequestState(model, webSearch, budgetS, shodan) {
     webSearch,
     shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
     shodanCount: 0, // hosts Shodan actually returned data for
+    mapsCount: 0, // place/coordinate lookups OpenStreetMap resolved (src/maps.js)
     plan: planResearch(model, budgetS),
     searchCount: 0,
     iterations: 1, // search waves (initial + gap rounds that ran)

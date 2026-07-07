@@ -126,6 +126,8 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
+| `geocode.js` | Reverse geocode a photo's GPS EXIF → place name via OpenStreetMap Nominatim (`augmentWithLocations`) — see "Reverse geocoding" below |
+| `maps.js` | Text-driven maps: reverse geocode typed coordinates + forward geocode named places/addresses via Nominatim (`runMapsLookup` + pure extractors) — see "Text-driven maps" below |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
@@ -389,8 +391,10 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"step_done","id":"plan","label":"Planned 3 search angles","details":["query …"]}}` — checkmark; `details` renders as an expandable list
   - The `id` names the phase/service so the user sees which external
     source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
-    phases), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
-    (Shodan host lookup). The client records every `status` event — plus
+    phases), `geocode` (OpenStreetMap Nominatim reverse-geocode of a photo's
+    GPS EXIF), `maps` (OpenStreetMap Nominatim lookup of coordinates or place
+    names the *message* names — `src/maps.js`), `shodan` (Shodan host lookup).
+    The client records every `status` event — plus
     the full generated answer and every error (server- or client-side,
     funnelled through `turns.js`'s single `setError` sink) — into a per-turn
     structured log for the "Copy research JSON" debug button
@@ -420,8 +424,12 @@ source rule, the JSON-only reinforcement toggle), `chat.js`'s
 `quotaBlockedResponse`, `pipeline.js`'s exported pure functions
 (`hostnameOf`, `addSources`, `backfillOverflowSources`, `sourceDigest`,
 `normalizeTriage` — the source-registry/domain-diversity logic),
-`settings.js` (`parseSettings` coercion, `storageAvailability`), and
-`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec).
+`settings.js` (`parseSettings` coercion, `storageAvailability`),
+`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
+and `maps.js` (`extractCoordinates`/`extractPlaceQueries`/
+`messageHasMapTargets` — the deterministic text→coordinate/place-name
+triggers for the maps enrichment; the battery doubles as the maps
+capability's user-story suite, see `tests/MAPS-CAPABILITIES.md`).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -1002,6 +1010,64 @@ both something concrete to reason and search with.
   resolved location" — the raw coordinates the client already included
   in the image metadata block are still there as a fallback, and the
   chat is never blocked or delayed meaningfully by this.
+
+### Text-driven maps — `src/maps.js` (coordinates & place names in the message)
+
+The reverse geocoder above handles the ONE location a *photo* carries in its
+EXIF. `src/maps.js` handles the locations a user's *message* names in words —
+the same OpenStreetMap Nominatim service, extended to its two other natural
+triggers so a location question typed in text isn't silently ignored. Wired
+the same deterministic, no-function-calling, fail-soft way as the geocoder and
+the Shodan enrichment: pure unit-tested extractors pull targets from the latest
+user message; the Worker resolves them and appends ONE labeled
+`--- Map lookup (via OpenStreetMap Nominatim) ---` context block every phase
+sees; a visible `maps` activity step names the service. `tests/
+MAPS-CAPABILITIES.md` is the durable user-story/prompt/hillclimb ledger;
+`src/maps.test.js` is its executable form (run it to see exactly which
+phrasings trigger).
+
+Two capabilities, three triggers total across this module and `geocode.js`:
+
+- **Reverse geocode of coordinates typed into the message** ("what's at
+  59.3293, 18.0686?", "reverse geocode 40.7128, -74.006") — `/reverse`, reusing
+  `geocode.js`'s `reverseGeocode`. `extractCoordinates()` reads three
+  notations: hemisphere (`51.5074° N, 0.1278° W`), labeled (`lat 40.71 lon
+  -74`), and plain decimal pairs. The hemisphere/labeled forms are
+  self-evident; the plain-pair form is ambiguous with version/ratio/pH lists,
+  so it fires only with a location cue — and with a *weak* cue (`at`, `near`,
+  `distance`) only when the numbers carry GPS-like ≥3-decimal precision, so
+  "the ratio settled at 1.5, 2.5" stays quiet while "what's at 59.3293,
+  18.0686" resolves. Range-checked, deduped, capped at 4.
+- **Forward geocode of a named place / address** ("where is the Eiffel
+  Tower?", "coordinates of Machu Picchu", "map of Kyoto", "1600 Pennsylvania
+  Avenue", "how far is Paris from London") — Nominatim `/search`, returning the
+  canonical name, coordinates, OSM category, and a citable
+  `openstreetmap.org/…` link. `extractPlaceQueries()` mines strong cues
+  ("coordinates/location/map/directions of/to X" — accept any capture),
+  distance/route pairs ("from A to B", "between A and B", "how far is A from
+  B"), street addresses (letter-suffix/range house numbers included), the
+  "what/which country is X in" phrasing, and one *weak* cue ("where is X",
+  which requires a proper-noun-ish capture to avoid firing on "where is my
+  phone" / "where is the bug"). A non-place stoplist and clause-boundary stops
+  keep captures tight. Capped at 3.
+
+- **Privacy boundary — the reason the two capabilities are gated
+  differently.** Reverse geocoding resolves numbers the message already
+  contains (a point on a map, nothing about intent) so it runs **independent
+  of the web-search toggle**, exactly like the photo geocoder. Forward
+  geocoding sends a place token *derived from the user's question* to a third
+  party, so it is **gated behind the web-search toggle**, exactly like Exa.
+  Only the extracted token/coordinates cross the wire — never the full
+  question, filename, or any account/session identifier.
+- **Wiring** (`src/pipeline.js`'s `runMapsEnrichment`): runs right after the
+  Shodan phase, before triage, so every phase sees the block. The pure
+  extractors gate it first (no network), so an ordinary question does zero
+  work and shows no step. `state.mapsCount` (locations resolved) rides into the
+  `chat.complete` log as `maps_locations`.
+- **Fails soft in every branch**: a bad coordinate, an unresolvable place, a
+  Nominatim timeout (4s) or error all degrade to "no location context" — never
+  a blocked or delayed chat. Unresolvable named places are surfaced honestly
+  ("No map match was found for X") so the model doesn't invent a location.
 
 ## Shodan host intelligence — the opt-in `shodan_mcp` knob (default OFF)
 

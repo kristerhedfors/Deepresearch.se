@@ -38,6 +38,7 @@ import {
 import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
+import { extractCoordinates, extractPlaceQueries, runMapsLookup } from "./maps.js";
 import {
   directPrompt,
   gapPrompt,
@@ -60,7 +61,16 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // photo's resolved location. Fully fail-soft — the conversation comes back
   // unchanged if there's nothing to look up or Shodan can't be reached.
   let convo = conversation;
-  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, conversation, state);
+  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, convo, state);
+
+  // Maps enrichment (src/maps.js): resolve any coordinates or place names the
+  // latest message *itself* names into an OpenStreetMap context block, the
+  // same deterministic pattern as Shodan above and the photo geocoder in
+  // chat.js. Reverse geocoding (typed coordinates → place) runs regardless of
+  // the web-search toggle; forward geocoding (place name → coordinates) is
+  // gated behind it, since the place token derives from the user's topic —
+  // the same privacy boundary Exa sits behind. Fully fail-soft.
+  convo = await runMapsEnrichment(env, log, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, state, profile, conversation: convo,
@@ -122,6 +132,39 @@ async function runShodanEnrichment(env, log, step, stepDone, conversation, state
     ? `Shodan: ${result.count} host${result.count === 1 ? "" : "s"} found`
     : "Shodan: no records for the host(s) named";
   stepDone("shodan", label, result.details);
+  return withAppendedText(conversation, result.block);
+}
+
+// Maps enrichment: resolve any coordinates or place names the latest message
+// names into an OpenStreetMap context block. Stays SILENT (no step, no
+// conversation change) when the message names nothing mappable — so an
+// ordinary question shows no spurious step and costs nothing. The gate is
+// computed from the pure extractors first (no network) so the step only
+// appears when there's genuinely something to look up. Every failure mode
+// degrades to the original conversation.
+async function runMapsEnrichment(env, log, step, stepDone, conversation, state) {
+  const lastUser = textOf(lastUserMessage(conversation)?.content);
+  const hasCoords = extractCoordinates(lastUser).length > 0;
+  const hasPlaces = state.webSearch && extractPlaceQueries(lastUser).length > 0;
+  if (!hasCoords && !hasPlaces) return conversation;
+
+  step("maps", "Looking up location (OpenStreetMap)…");
+  let result = null;
+  try {
+    result = await runMapsLookup(env, log, conversation, state.webSearch);
+  } catch (err) {
+    log.warn("maps.phase_failed", { error: err?.message || String(err) });
+  }
+  if (!result) {
+    stepDone("maps", "Map lookup unavailable — continuing without it");
+    return conversation;
+  }
+  const resolved = result.forwardCount + result.reverseCount;
+  state.mapsCount = resolved;
+  const label = resolved
+    ? `Mapped ${resolved} location${resolved === 1 ? "" : "s"} via OpenStreetMap Nominatim`
+    : "No place resolved for the location(s) named";
+  stepDone("maps", label, result.details);
   return withAppendedText(conversation, result.block);
 }
 
