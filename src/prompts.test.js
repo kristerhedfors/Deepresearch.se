@@ -109,4 +109,39 @@ describe("directPrompt / searchOffPrompt", () => {
     assert.ok(p.startsWith(directPrompt()));
     assert.match(p, /Web search is currently disabled/);
   });
+
+  describe("capabilities grounding", () => {
+    const p = directPrompt();
+
+    test("constrains capability answers to the factual list, not invention", () => {
+      assert.match(p, /answer ONLY from this factual list/);
+      assert.match(p, /never invent capabilities beyond it/);
+      assert.match(p, /does NOT run code/);
+    });
+
+    test("names every implemented integration", () => {
+      assert.match(p, /Exa search/);
+      assert.match(p, /Shodan/);
+      assert.match(p, /OpenStreetMap Nominatim/);
+      assert.match(p, /vision/i);
+      assert.match(p, /PDF, DOCX, MD, TXT/);
+      assert.match(p, /EXIF/);
+      assert.match(p, /tracked-change/);
+      assert.match(p, /Projects/);
+    });
+
+    test("states where each toggleable feature is turned on or off", () => {
+      // web search knob, time slider, Shodan setting, cloud-storage setting,
+      // incognito ghost toggle — the five user-facing switches.
+      assert.match(p, /spiderweb knob in the composer/);
+      assert.match(p, /slider in the composer/);
+      assert.match(p, /"Shodan host intelligence", OFF by default/);
+      assert.match(p, /"Store history in the cloud", ON by default/);
+      assert.match(p, /ghost\/incognito toggle/);
+    });
+
+    test("searchOffPrompt inherits the capabilities note via directPrompt", () => {
+      assert.match(searchOffPrompt(), /answer ONLY from this factual list/);
+    });
+  });
 });

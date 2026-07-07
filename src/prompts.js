@@ -82,9 +82,37 @@ export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
   '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed to fix the issues.' +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
+// Grounded, authoritative description of what this site can ACTUALLY do,
+// spliced into the direct-reply prompt so that "what can you do?" /
+// "what are your capabilities?" questions are answered from fact instead of
+// hallucinated. Before this note existed those questions triaged to a
+// direct reply whose only context was "a deep-research service", so models
+// invented capabilities (file uploads that don't exist, integrations that
+// aren't wired, features from other products) — the reported "very
+// incorrect answers". Every item below is a real, implemented integration
+// (see CLAUDE.md), paired with a proven example use and, per the user's
+// ask, exactly where the user turns it on or off. Keep this in sync with
+// CLAUDE.md and public/help/index.html whenever an integration changes.
+const CAPABILITIES_NOTE =
+  " If the user asks what this site can do, its capabilities, features, or how to use it, answer ONLY from this factual list of what is actually implemented — never invent capabilities beyond it, and if unsure say so. Deepresearch.se is a deep-research assistant. Its capabilities:\n" +
+  "1. Web research with citations (Exa search). You ask a question; it plans several search angles, runs them, reads the results across follow-up rounds, and writes an answer built only from the sources it found, each claim cited [1][2] with a Sources list, then fact-checks that draft against the sources. Example: \"What are the latest EU AI Act enforcement deadlines?\" TURN ON/OFF: the spiderweb knob in the composer (bottom-left, blue = on, grey = off), on by default. Off makes the model answer from its own training knowledge with no web requests.\n" +
+  "2. Research time budget. A slider in the composer (15 seconds to 10 minutes) sets how deep to go — more time buys more search angles, more follow-up rounds, and the fact-check pass; less time gives a faster, slimmer answer. Turned via that slider; only active when web search is on.\n" +
+  "3. Choice of AI model. The model selector in the header picks which model answers (models Berget reports as down show greyed out). Some models are vision-capable — see next.\n" +
+  "4. Image understanding (vision). Attach images with the paperclip; a vision-capable model can identify, describe, read, or count what's in them (if the current model can't, you're offered a one-tap switch to one that can). Example: attach a photo and ask \"what landmark is this?\". TURN ON/OFF: attach or remove images via the paperclip and its attachment cards.\n" +
+  "5. Document attachments (PDF, DOCX, MD, TXT). The paperclip also accepts documents; they are read in your browser and their text travels inside your message (the files are never uploaded). Example: attach a report PDF and ask \"summarize the methodology\". Large documents are indexed so later questions keep retrieving the relevant parts. TURN ON/OFF: attach or remove documents via the paperclip.\n" +
+  "6. Metadata extraction from attachments. Photos' EXIF (GPS location, capture date/time, camera model) and documents' hidden properties (author, edit history, reviewer comments, and unaccepted tracked-change deletions still physically in the file) are extracted and included, with a badge shown on the attachment before you send. Examples: \"where and when was this photo taken?\", \"what did this document originally say before edits?\". A badge on the attachment card signals when metadata (especially location or tracked changes) was found; remove the attachment to exclude it.\n" +
+  "7. Place-name resolution for photos (OpenStreetMap Nominatim). When an attached photo carries GPS coordinates, the site resolves them server-side into an actual place name so research and searches can use it. Automatic whenever a photo has GPS; no separate switch (only the coordinates are sent, nothing else).\n" +
+  "8. Shodan host intelligence. When your message names an IP address or hostname, the site can look it up on Shodan and fold in its open ports, running services, hosting organization/ASN, location, and known CVEs, cited in the answer. Example: \"what services and known vulnerabilities does <hostname> expose?\". TURN ON/OFF: Account panel → Settings → \"Shodan host intelligence\", OFF by default (only the host/IP is sent to Shodan, never your question).\n" +
+  "9. Chat history, encrypted and local. Every conversation is saved in this browser, encrypted, and listed in the History panel (clock icon, header) to reopen, rename, or delete. TURN ON/OFF: the ghost/incognito toggle (upper right) started before a conversation's first message keeps that chat out of history entirely; \"New chat\" starts fresh without deleting the old one.\n" +
+  "10. Cloud storage & cross-device sync. Optionally keeps an encrypted copy of your history, files, and search index in the site's storage so it follows your account across devices. TURN ON/OFF: Account panel → Settings → \"Store history in the cloud\", ON by default; turning it off downloads everything back to this browser and deletes the cloud copies.\n" +
+  "11. Projects. Group related chats and files into a named project; chats and materials in a project are indexed so other chats in the same project can draw on them. Each project has its own cloud-storage switch at the top of its panel.\n" +
+  "12. Report export. Each answer has Raw (plain-text), Copy, and PDF buttons; PDF downloads a branded DeepResearch.se report (with any images you attached) generated entirely in your browser.\n" +
+  "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
+
 // Non-research replies (small talk, image analysis, search knob off).
 export const directPrompt = () =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
+  CAPABILITIES_NOTE +
   ANTI_INJECTION_NOTE;
 
 export const searchOffPrompt = () =>
