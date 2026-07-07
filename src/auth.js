@@ -19,8 +19,25 @@
 // The cookie is HttpOnly and server-set, which also exempts it from
 // Safari/ITP's 7-day cap on script-writable storage.
 //
-// Everything fails closed when the admin secrets are unset (they also key
-// the HMAC — rotating them invalidates all sessions).
+// Cookie/state HMAC key — SESSION_SECRET, NOT the admin password:
+// the signing key is the dedicated high-entropy `SESSION_SECRET` secret.
+// The break-glass ADMIN_USER/ADMIN_PASS pair is a HUMAN-typed, typically
+// low-entropy, rotation-averse Basic Auth credential; keying the cookie
+// HMAC with it turned every issued cookie into an offline crack oracle for
+// those credentials (known message `<uid>.<exp>` + tag sit side by side in
+// the cookie; HMAC-SHA-256 is a single fast hash, so a weak ADMIN_PASS
+// falls to a GPU in seconds — and cracking the key IS the admin credential
+// AND lets an attacker forge any session). A random SESSION_SECRET breaks
+// that link: a cracked cookie yields nothing usable, and ADMIN_PASS risk
+// is confined to the online, rate-limitable Basic Auth path.
+//
+// Backward compat: if SESSION_SECRET is unset we fall back to the legacy
+// admin-credential key so nothing breaks on deploy; and verification always
+// ALSO accepts the legacy key, so cookies minted before SESSION_SECRET
+// existed keep verifying (no forced logout) — new cookies are signed with
+// SESSION_SECRET the moment it's set. Everything still fails closed when
+// the admin secrets are unset (break-glass and the legacy key both need
+// them).
 
 import { getUserById } from "./accounts.js";
 
@@ -82,7 +99,7 @@ export async function identify(request, env) {
 
 export async function createSessionCookie(env, uid = ADMIN_ID) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_S;
-  const sig = await hmacHex(env, `${uid}.${exp}`);
+  const sig = await signHmac(env, `${uid}.${exp}`);
   return (
     `${COOKIE_NAME}=u.${uid}.${exp}.${sig}; Max-Age=${SESSION_TTL_S}; Path=/; ` +
     "Secure; HttpOnly; SameSite=Lax"
@@ -95,12 +112,12 @@ export function clearSessionCookie() {
 
 // HMAC helpers for the OAuth state cookie (src/google.js).
 export async function signState(env, state) {
-  return hmacHex(env, `state.${state}`);
+  return signHmac(env, `state.${state}`);
 }
 export async function verifyState(env, state, cookieValue) {
   const [cState, cSig] = String(cookieValue).split(".");
   if (!cState || !cSig || !safeEqual(cState, state)) return false;
-  return safeEqual(cSig, await hmacHex(env, `state.${state}`));
+  return verifyHmac(env, `state.${state}`, cSig);
 }
 
 function parseBasicHeader(request) {
@@ -130,32 +147,63 @@ async function verifySessionCookie(request, env) {
     const [, uid, expStr, sig] = parts;
     const exp = parseInt(expStr, 10);
     if (!uid || !Number.isFinite(exp) || exp * 1000 < Date.now()) return null;
-    const expected = await hmacHex(env, `${uid}.${expStr}`);
-    return safeEqual(sig, expected) ? { uid, exp } : null;
+    return (await verifyHmac(env, `${uid}.${expStr}`, sig)) ? { uid, exp } : null;
   }
 
   if (parts.length === 2) {
     const [expStr, sig] = parts;
     const exp = parseInt(expStr, 10);
     if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return null;
-    const expected = await hmacHex(env, expStr);
-    return safeEqual(sig, expected) ? { uid: ADMIN_ID, exp } : null;
+    return (await verifyHmac(env, expStr, sig)) ? { uid: ADMIN_ID, exp } : null;
   }
   return null;
 }
 
-async function hmacHex(env, message) {
-  const creds = adminCreds(env);
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
+function importHmacKey(rawBytes) {
+  return crypto.subtle.importKey(
     "raw",
-    enc.encode(`${creds.user} ${creds.pass}`),
+    rawBytes,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Candidate HMAC keys, strongest first: the dedicated SESSION_SECRET when
+// configured, then the legacy admin-credential-derived key. Signing uses
+// the first; verification accepts any, so cookies minted under the legacy
+// key still validate after SESSION_SECRET is introduced (no forced logout).
+async function sessionHmacKeys(env) {
+  const enc = new TextEncoder();
+  const keys = [];
+  if (env.SESSION_SECRET) {
+    keys.push(await importHmacKey(enc.encode(env.SESSION_SECRET)));
+  }
+  const creds = adminCreds(env);
+  if (creds) {
+    keys.push(await importHmacKey(enc.encode(`${creds.user} ${creds.pass}`)));
+  }
+  return keys;
+}
+
+function toHex(buf) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function signHmac(env, message) {
+  const [key] = await sessionHmacKeys(env);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return toHex(sig);
+}
+
+// True if the tag matches under ANY candidate key (preferred or legacy).
+async function verifyHmac(env, message, sig) {
+  const bytes = new TextEncoder().encode(message);
+  for (const key of await sessionHmacKeys(env)) {
+    const expected = toHex(await crypto.subtle.sign("HMAC", key, bytes));
+    if (safeEqual(sig, expected)) return true;
+  }
+  return false;
 }
 
 // Constant-time-ish comparison to avoid trivial timing leaks.

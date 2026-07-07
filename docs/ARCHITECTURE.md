@@ -120,12 +120,17 @@ Every request flows through `src/index.js`
    flow with a signed single-use state cookie), `GET /auth/google/callback`
    (finishes it). Reachable without identity by design.
 4. **Identity gate** (`src/auth.js`) — resolves *who* is calling, and
-   **fails closed** (missing admin secrets ⇒ everything is denied, since
-   they also key the session HMAC):
+   **fails closed** (missing admin secrets ⇒ everything is denied — they
+   back break-glass Basic Auth and the legacy HMAC key):
    - **Users**: D1 accounts provisioned by Google sign-in (no passwords
      stored — Google proves the email). Identified by the session cookie
-     `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed
-     from the admin credential pair, **365-day TTL with sliding renewal**
+     `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed by
+     the dedicated `SESSION_SECRET` (a random secret, NOT the admin
+     password — the cookie exposes `<uid>.<exp>` and the tag together, so a
+     password-derived key would be offline-crackable straight out of any
+     cookie; falls back to the legacy admin-credential key when
+     `SESSION_SECRET` is unset, and verifies against both so old cookies
+     survive its introduction), **365-day TTL with sliding renewal**
      (any authenticated request past the half-life gets a fresh cookie) —
      so an installed PWA never shows a login screen again while in use.
      HttpOnly + server-set also exempts it from Safari ITP's 7-day cap.

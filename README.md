@@ -93,13 +93,14 @@ for local dev). Copy the client ID and secret.
 ### 5. Secrets and variables
 
 Set on the Worker (Settings → Variables and Secrets in the dashboard, or
-`npx wrangler secret put <NAME>`). All six secrets are required:
+`npx wrangler secret put <NAME>`). All are required:
 
 | Secret | Purpose |
 |---|---|
 | `BERGET_API_TOKEN` | Berget.ai API auth (sent as `Authorization: Bearer`) |
 | `EXA_API_KEY` | Exa web search (sent as `x-api-key`) |
-| `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — **also key the session-cookie HMAC, so the Worker fails closed without them**; rotating `ADMIN_PASS` invalidates every session |
+| `SESSION_SECRET` | **The session-cookie / OAuth-state HMAC key.** A dedicated high-entropy random string — generate with `openssl rand -hex 32`. Kept SEPARATE from the admin password on purpose: because `<uid>.<exp>` and the tag both sit in every cookie, keying the HMAC with a human-typed `ADMIN_PASS` would make each cookie an offline crack oracle for the break-glass credentials (HMAC-SHA-256 is one fast hash, so a weak password falls to a GPU quickly). With a random `SESSION_SECRET`, a cracked cookie yields nothing usable and rotating `ADMIN_PASS` no longer forges sessions. Rotating `SESSION_SECRET` invalidates every session. **Backward-compatible**: if unset, the HMAC falls back to the legacy admin-credential key (old behavior), and cookies minted under that key keep verifying after you add `SESSION_SECRET` — so no forced logout. |
+| `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — the Worker **fails closed without them** (they also back the legacy HMAC key when `SESSION_SECRET` is unset). With `SESSION_SECRET` set, cookie security no longer depends on the strength of `ADMIN_PASS`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The OAuth client from step 4 |
 
 Optional but recommended — enables encrypted, client-side chat history
@@ -163,6 +164,7 @@ Local secrets go in `.dev.vars` (gitignored):
 ```
 BERGET_API_TOKEN=...
 EXA_API_KEY=...
+SESSION_SECRET=...
 ADMIN_USER=...
 ADMIN_PASS=...
 GOOGLE_CLIENT_ID=...

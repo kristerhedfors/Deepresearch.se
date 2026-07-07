@@ -11,7 +11,10 @@
 >   quotas are the cost boundary, and the admin can disable users.
 > - Sessions are 365-day sliding cookies so PWA users never re-log-in.
 > - `ADMIN_USER`/`ADMIN_PASS` remain as break-glass Basic Auth (scripts,
->   emergencies) and still key the session HMAC.
+>   emergencies). The session/state HMAC is now keyed by a dedicated
+>   `SESSION_SECRET` (random, `openssl rand -hex 32`), NOT the admin
+>   password — see the note in §2 — with a legacy fallback to the admin
+>   key when `SESSION_SECRET` is unset.
 >
 > §1 (console setup), §2 (secrets), §3 (flow), and the pitfalls checklist
 > below remain accurate and are the operational reference.
@@ -54,6 +57,19 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 (Or dashboard → Worker → Settings → Variables and Secrets.) Presence of
 these two secrets is the feature flag: when set, the login and invite pages
 show the Google button; when unset, nothing changes.
+
+**Also set `SESSION_SECRET`** (`npx wrangler secret put SESSION_SECRET`, or
+the dashboard) — a dedicated random HMAC key for the session cookie and the
+OAuth state cookie, `openssl rand -hex 32`. It is deliberately NOT the admin
+password: every issued cookie carries `<uid>.<exp>` and its HMAC tag side by
+side, so keying the HMAC with a human-typed `ADMIN_PASS` would make each
+cookie an offline brute-force oracle for the break-glass credentials
+(HMAC-SHA-256 is a single fast hash — a weak password falls quickly on a
+GPU, and recovering the key both leaks the admin credential and lets an
+attacker forge any session, including admin). `src/auth.js` prefers
+`SESSION_SECRET`, falls back to the legacy admin-credential key when it's
+unset, and always verifies against both — so introducing it does not log
+existing sessions out.
 
 ## 3. The flow to implement (server-side OAuth code flow + OIDC)
 

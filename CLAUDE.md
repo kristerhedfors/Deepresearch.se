@@ -1111,15 +1111,28 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   **365 days, sliding** — any authenticated request past the half-life
   gets a fresh cookie appended, so an installed PWA opened at least twice
   a year never re-logs-in. HttpOnly + server-set also exempts it from
-  Safari ITP's 7-day cap on script-writable storage. HMAC is keyed from
-  the admin credential pair — rotating `ADMIN_PASS` logs everyone out.
+  Safari ITP's 7-day cap on script-writable storage. **The HMAC is keyed by
+  the dedicated `SESSION_SECRET` secret, deliberately NOT the admin
+  password.** The cookie carries `<uid>.<exp>` and its HMAC tag together,
+  so keying it with a human-typed `ADMIN_PASS` made every issued cookie an
+  offline brute-force oracle for the break-glass credentials (HMAC-SHA-256
+  is one fast hash — a weak password cracks quickly on a GPU, and the
+  recovered key both leaks the admin credential and forges any session,
+  admin included). Even a low-privilege / never-approved user gets a signed
+  cookie (`google.js` mints it before approval), so this was crackable by
+  anyone who could sign in at all. `src/auth.js` prefers `SESSION_SECRET`,
+  falls back to the legacy admin-credential key when it's unset, and always
+  verifies against BOTH — so adding the secret does not log existing
+  sessions out (cookies minted under the old key keep verifying), and
+  rotating `SESSION_SECRET` invalidates all sessions. Round-trip +
+  backward-compat + decoupling asserted in `src/auth.test.js`.
 - **Break-glass**: the `ADMIN_USER` / `ADMIN_PASS` secrets (legacy
   fallback `BASIC_AUTH_USER`/`BASIC_AUTH_PASS`) still work over HTTP Basic
   Auth (`curl -u …`; never via any form) — for scripts and emergencies;
   needs no DB, no Google; exempt from quotas (usage still recorded as
   user `admin`). The Worker **fails closed** if these secrets are unset
-  (they also key the session HMAC). No `WWW-Authenticate` challenge is
-  ever emitted.
+  (they back break-glass Basic Auth and, when `SESSION_SECRET` is unset,
+  the legacy HMAC key). No `WWW-Authenticate` challenge is ever emitted.
 - `GOOGLE_AUTH_URL` / `GOOGLE_TOKEN_URL` env overrides exist solely so
   local tests can point the flow at a mock; production uses the defaults.
 
