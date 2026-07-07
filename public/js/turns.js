@@ -240,6 +240,15 @@ export function setText(turn, text) {
 }
 
 export function setError(turn, message) {
+  // setError is the single sink for EVERY error a turn can hit — server
+  // errors (via stream.js's handleEvent), and the client-only ones that
+  // never touch handleEvent (non-OK response, empty stream, network drop,
+  // stop-before-any-output). Record each here so the "Copy research JSON"
+  // debug export captures them all, with the same relative timestamp
+  // convention as the rest of the research log.
+  if (Array.isArray(turn.researchLog)) {
+    turn.researchLog.push({ t: Date.now() - (turn.startedAt || Date.now()), event: "error", error: String(message) });
+  }
   const text = turn.text ? turn.text + "\n\n[" + message + "]" : message;
   turn.errored = true;
   setText(turn, text);

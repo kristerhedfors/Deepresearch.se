@@ -54,6 +54,32 @@ test("buildResearchDebugJson captures question, model and final stats", () => {
   assert.equal(out.answerChars, "The answer body.".length);
 });
 
+test("buildResearchDebugJson includes the full resulting generation", () => {
+  const turn = sampleTurn();
+  turn.text = "The full answer, with [1] citations and a Sources list.";
+  const out = buildResearchDebugJson(turn);
+  assert.equal(out.answer, "The full answer, with [1] citations and a Sources list.");
+  assert.equal(out.answerChars, turn.text.length);
+  assert.equal(out.errored, false);
+  assert.deepEqual(out.errors, []);
+});
+
+test("buildResearchDebugJson surfaces every error (server and client) and the errored flag", () => {
+  const turn = sampleTurn();
+  turn.errored = true;
+  turn.text = "partial answer\n\n[Network error: connection lost (ref a1b2c3d4)]";
+  turn.researchLog.push({ t: 4000, event: "error", error: "Worker error: Berget returned an empty response" });
+  turn.researchLog.push({ t: 9000, event: "error", error: "Network error: connection lost (ref a1b2c3d4)" });
+  const out = buildResearchDebugJson(turn);
+  assert.equal(out.errored, true);
+  assert.deepEqual(out.errors, [
+    "Worker error: Berget returned an empty response",
+    "Network error: connection lost (ref a1b2c3d4)",
+  ]);
+  // The generation (including the appended error marker) rides along too.
+  assert.ok(out.answer.includes("[Network error: connection lost (ref a1b2c3d4)]"));
+});
+
 test("buildResearchDebugJson projects the completed steps, naming each service", () => {
   const out = buildResearchDebugJson(sampleTurn());
   const ids = out.steps.map((s) => s.id);
@@ -98,7 +124,7 @@ test("buildResearchDebugJson keeps the full ordered timeline", () => {
   assert.deepEqual(ts, [...ts].sort((a, b) => a - b));
 });
 
-test("buildResearchDebugJson is safe on an empty / errored turn", () => {
+test("buildResearchDebugJson is safe on an empty turn", () => {
   const out = buildResearchDebugJson({});
   assert.deepEqual(out, {
     question: "",
@@ -107,7 +133,10 @@ test("buildResearchDebugJson is safe on an empty / errored turn", () => {
     steps: [],
     searches: [],
     sources: [],
+    answer: "",
     answerChars: 0,
+    errored: false,
+    errors: [],
     timeline: [],
   });
   // JSON-serializable (the whole point — it gets copied to the clipboard).

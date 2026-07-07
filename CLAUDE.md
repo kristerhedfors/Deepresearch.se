@@ -143,7 +143,9 @@ downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
 load), `activity.js` (step bars, stats, collapse, and
 `buildResearchDebugJson` — the "Copy research JSON" export of a turn's
-whole research process for pasting into Claude Code), `markdown.js`
+COMPLETE response for pasting into Claude Code: the research process AND
+the full resulting generation AND every error, server- or client-side),
+`markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the encrypted conversation store itself, now also
 dual-writing each record to the cloud while the knob is on),
@@ -388,9 +390,12 @@ unknown `status` types (forward compatibility).
   - The `id` names the phase/service so the user sees which external
     source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
     phases), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
-    (Shodan host lookup). The client also records every `status` event into
-    a per-turn structured log for the "Copy research JSON" debug button
-    (`public/js/activity.js`'s `buildResearchDebugJson`).
+    (Shodan host lookup). The client records every `status` event — plus
+    the full generated answer and every error (server- or client-side,
+    funnelled through `turns.js`'s single `setError` sink) — into a per-turn
+    structured log for the "Copy research JSON" debug button
+    (`public/js/activity.js`'s `buildResearchDebugJson`), so the export is
+    the COMPLETE response, not just its live activity.
 - `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
@@ -431,7 +436,8 @@ outgoing-message block builders — inline document, image-metadata, and
 RAG-excerpt blocks — plus `deriveTitle` and `stripOldImages`, the pure
 core extracted out of `stream.js`'s send path), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
-projection, per-round searches, URL-deduped sources, ordered timeline).
+projection, per-round searches, URL-deduped sources, the full generated
+`answer`, the `errored` flag + `errors` list, and the ordered timeline).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.

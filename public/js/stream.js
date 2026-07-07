@@ -217,8 +217,7 @@ async function recoverAnswer(turn, requestId, budgetS, gen) {
 // text accumulator.
 function handleEvent(turn, evt, acc) {
   if (evt.error) {
-    recordResearchEvent(turn, { event: "error", error: evt.error });
-    setError(turn, evt.error);
+    setError(turn, evt.error); // setError records it into researchLog
     return acc;
   }
   if (evt.status) {
@@ -446,6 +445,7 @@ export async function sendMessage(text, opts) {
 // (src/chat.js's ctx.waitUntil), so purge its recovery copy — nobody will
 // poll for it.
 async function handleStopped(turn, acc, requestId, opts) {
+  recordResearchEvent(turn, { event: "stopped", received_chars: acc.length });
   ackAnswer(requestId);
   if (acc) {
     const stopped = acc + "\n\n*(Stopped.)*";
@@ -485,6 +485,13 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   // parks the answer in a short-lived recovery cache — poll it back
   // before bothering the user.
   const recovered = await recoverAnswer(turn, requestId, opts.budgetS, gen);
+  recordResearchEvent(turn, {
+    event: "stream_dropped",
+    error: String(e?.message || e),
+    was_hidden: wasHidden,
+    received_chars: acc.length,
+    recovered: !!recovered,
+  });
   if (gen !== generation) {
     // Chat was cleared while recovery was polling — drop the result.
     ackAnswer(requestId);

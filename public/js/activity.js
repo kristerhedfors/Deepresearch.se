@@ -177,6 +177,13 @@ export function buildResearchDebugJson(turn) {
         completion_tokens: d.completion_tokens,
       }
     : null;
+  // Every error the turn hit, server- or client-side (setError records them
+  // all into the log). `answer` is the full resulting generation exactly as
+  // rendered — including any post-validation revision, a "*(Stopped.)*"
+  // marker, or an appended "[…error…]" note — so the export is the complete
+  // response, not just its metadata.
+  const answer = turn.text || "";
+  const errors = log.filter((e) => e.event === "error").map((e) => e.error);
   return {
     question: turn.question || "",
     model: turn.model || d?.model || "",
@@ -184,7 +191,10 @@ export function buildResearchDebugJson(turn) {
     steps,
     searches,
     sources,
-    answerChars: (turn.text || "").length,
+    answer,
+    answerChars: answer.length,
+    errored: !!turn.errored,
+    errors,
     timeline: log,
   };
 }
