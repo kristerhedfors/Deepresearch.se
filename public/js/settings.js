@@ -1,12 +1,14 @@
-// Per-account settings (GET/PUT /api/settings — src/settings.js). One knob
-// today: server_history, default OFF. The cached copy answers the hot-path
-// question every storage-touching module asks — "is cloud storage on?" —
-// without a fetch per call; the answer only ever changes through
-// setServerHistory below (this tab) or on the next page load (another tab
-// or device flipped it — an accepted, self-healing staleness window: the
-// server rejects writes that its own copy of the knob forbids).
+// Per-account settings (GET/PUT /api/settings — src/settings.js). Knobs
+// today: server_history (cloud storage), shodan_mcp (Shodan host-intel
+// enrichment), and the three Google Maps photo-feature knobs (street_view,
+// nearby_places, map_context). The cached copy answers the hot-path question every
+// storage-touching module asks — "is cloud storage on?" — without a fetch
+// per call; the answer only ever changes through updateSetting below (this
+// tab) or on the next page load (another tab or device flipped it — an
+// accepted, self-healing staleness window: the server rejects writes that
+// its own copy of the knob forbids).
 
-let settings = null; // {server_history, street_view, nearby_places, map_context, available:{storage, rag, maps}}
+let settings = null; // {server_history, shodan_mcp, street_view, nearby_places, map_context, available:{storage, rag, shodan, maps}}
 let loadPromise = null;
 
 export function loadSettings(force = false) {
@@ -44,9 +46,25 @@ export function serverRagAvailable() {
   return settings?.available?.rag === true;
 }
 
-// Generic partial update: patch is any subset of the known knobs, e.g.
-// {street_view: false}. The server echoes the full effective state back.
+// Shodan host-intelligence enrichment knob (default off; needs the server's
+// SHODAN_API_KEY, so it reads unavailable when the server has no key).
+export function shodanOn() {
+  return settings?.shodan_mcp === true;
+}
+
+export function shodanAvailable() {
+  return settings?.available?.shodan === true;
+}
+
+// Generic partial update: PUT any subset of the knobs, refresh the cache
+// from the server's authoritative (effective) response. Exported for the
+// account panel's per-row handlers (the named setters below stay for the
+// call sites that predate it).
 export async function setSettings(patch) {
+  return updateSetting(patch);
+}
+
+async function updateSetting(patch) {
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -59,6 +77,10 @@ export async function setSettings(patch) {
   return data;
 }
 
-export async function setServerHistory(on) {
-  return setSettings({ server_history: on });
+export function setServerHistory(on) {
+  return updateSetting({ server_history: on });
+}
+
+export function setShodanMcp(on) {
+  return updateSetting({ shodan_mcp: on });
 }

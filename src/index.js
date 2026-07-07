@@ -16,7 +16,7 @@
 //   src/quota.js     — usage accounting + quota enforcement
 //   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
 //   src/history-key.js — per-user key for the client's encrypted local history
-//   src/settings.js  — per-user settings (/api/settings: server_history knob)
+//   src/settings.js  — per-user settings (/api/settings: server_history + shodan_mcp knobs)
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/admin-api.js — /api/admin/* JSON API
@@ -222,7 +222,7 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/messages" && request.method === "GET") {
     return handleMessages(env, identity);
   }
-  // Per-user settings (currently just the server_history knob).
+  // Per-user settings (server_history + shodan_mcp knobs).
   if (url.pathname === "/api/settings" && request.method === "GET") {
     return handleSettingsGet(env, identity);
   }

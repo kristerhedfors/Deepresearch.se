@@ -27,18 +27,32 @@
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { mapsAvailable } from "./maps.js";
+import { shodanAvailable } from "./shodan.js";
 
-// Every knob is a boolean defaulting ON — only a stored, explicit `false`
-// opts out. The three maps knobs gate the Google Maps Platform photo
-// features (src/maps.js): street_view (panorama frames for vision models),
-// nearby_places (Places New enrichment of the resolved-location block),
-// map_context (a marked road-map image for vision models).
-const BOOL_KNOBS = ["server_history", "street_view", "nearby_places", "map_context"];
+// One row per knob: its default (default-ON knobs opt out via an explicit
+// stored `false`; default-OFF knobs opt in via an explicit stored `true` —
+// anything else means the default), which availability flag gates turning
+// it on, and the 503 text when that backing is missing.
+//  - server_history: ON  (cloud history is the normal mode).
+//  - shodan_mcp:     OFF (enriching a query with Shodan sends the host/IP
+//    to a third party, so it stays off until asked for).
+//  - street_view / nearby_places / map_context: ON (the Google Maps photo
+//    features, src/maps.js — they only ever send an attached photo's GPS
+//    coordinates, which the free OSM lookups already send elsewhere; the
+//    knobs are the per-user opt-out).
+const MAPS_MISSING = "Google Maps features are not configured on this server (GOOGLE_MAPS_API_KEY missing).";
+const KNOBS = [
+  { key: "server_history", def: true, needs: "storage", missing: "Cloud storage is not configured on this server (R2 binding missing)." },
+  { key: "shodan_mcp", def: false, needs: "shodan", missing: "Shodan is not configured on this server (SHODAN_API_KEY missing)." },
+  { key: "street_view", def: true, needs: "maps", missing: MAPS_MISSING },
+  { key: "nearby_places", def: true, needs: "maps", missing: MAPS_MISSING },
+  { key: "map_context", def: true, needs: "maps", missing: MAPS_MISSING },
+];
+const DEFAULTS = Object.fromEntries(KNOBS.map((k) => [k.key, k.def]));
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
-// defaults. Only a stored, explicit `false` switches a knob off — an
-// absent or malformed value means the default (on). Exported for unit tests.
+// defaults. Exported for unit tests.
 export function parseSettings(json) {
   let raw = {};
   try {
@@ -47,18 +61,33 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return Object.fromEntries(BOOL_KNOBS.map((k) => [k, raw[k] !== false]));
+  return Object.fromEntries(
+    KNOBS.map(({ key, def }) => [key, def ? raw[key] !== false : raw[key] === true]),
+  );
 }
 
 // What the server can actually offer this identity right now. `storage`
 // needs the R2 binding plus a D1 user row to hang the setting on (the
 // break-glass identity has neither a row nor a personal history to sync);
-// `rag` additionally needs the Vectorize binding for server-side retrieval;
-// `maps` needs the GOOGLE_MAPS_API_KEY secret (identity-independent — the
-// break-glass admin gets the features too, on defaults).
+// `rag` additionally needs the Vectorize binding for server-side retrieval.
 export function storageAvailability(env, identity) {
   const storage = !!(env.STORAGE && identity.user);
-  return { storage, rag: !!(storage && env.RAG_INDEX), maps: mapsAvailable(env) };
+  return { storage, rag: !!(storage && env.RAG_INDEX) };
+}
+
+// The full availability map reported to the client: storage/rag plus the
+// keyed features — Shodan (SHODAN_API_KEY) and the Google Maps photo
+// features (GOOGLE_MAPS_API_KEY) — each of which, like every per-user
+// setting, needs a D1 user row to persist the knob against (break-glass
+// has none; note src/chat.js still grants break-glass the maps DEFAULTS,
+// since the features themselves don't need a row). Kept separate from
+// storageAvailability so that function's tested shape stays stable.
+export function featureAvailability(env, identity) {
+  return {
+    ...storageAvailability(env, identity),
+    shodan: !!(shodanAvailable(env) && identity.user),
+    maps: !!(mapsAvailable(env) && identity.user),
+  };
 }
 
 export function getSettings(identity) {
@@ -73,6 +102,14 @@ export function serverHistoryEnabled(env, identity) {
   return storageAvailability(env, identity).storage && getSettings(identity).server_history;
 }
 
+// The effective Shodan-MCP state for a request: the knob must be on AND the
+// server must actually be able to run it (SHODAN_API_KEY set, real user
+// row). A knob left on in D1 after the secret was removed reads as off, so
+// the pipeline never attempts a lookup it can't perform.
+export function shodanEnabled(env, identity) {
+  return featureAvailability(env, identity).shodan && getSettings(identity).shodan_mcp;
+}
+
 async function saveSettings(env, userId, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -82,18 +119,16 @@ async function saveSettings(env, userId, settings) {
     .run();
 }
 
-// The payload reports the EFFECTIVE state, not the raw stored flag: with
-// the default ON, an identity that can't actually use cloud storage
-// (break-glass, or a server without the R2 binding) must read as off —
-// otherwise every such client would dutifully dual-write into 503s. The
-// maps knobs read the same way: no GOOGLE_MAPS_API_KEY means off.
+// The payload reports the EFFECTIVE state, not the raw stored flags: with
+// the default ON for server_history, an identity that can't actually use
+// cloud storage (break-glass, or a server without the R2 binding) must read
+// as off — otherwise every such client would dutifully dual-write into
+// 503s. Every other knob is likewise forced off when its feature is
+// unavailable, so the UI never shows a knob that would do nothing.
 function settingsPayload(env, identity, settings) {
-  const available = storageAvailability(env, identity);
+  const available = featureAvailability(env, identity);
   return {
-    server_history: available.storage && settings.server_history,
-    street_view: available.maps && settings.street_view,
-    nearby_places: available.maps && settings.nearby_places,
-    map_context: available.maps && settings.map_context,
+    ...Object.fromEntries(KNOBS.map(({ key, needs }) => [key, !!(available[needs] && settings[key])])),
     available,
   };
 }
@@ -103,11 +138,11 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body is any subset of the known knobs, each a
-// boolean (e.g. {server_history: false} or {street_view: false,
-// map_context: true}). Turning a knob on requires its backing to actually
-// exist: a storage knob with nowhere to store anything would silently lose
-// data; a maps knob with no API key would silently do nothing.
+// PUT /api/settings — body may carry any subset of the known knobs
+// (partial updates), each a boolean. Turning a knob ON requires its
+// backing to actually exist — cloud storage needs the R2 binding, Shodan
+// its key, the maps features theirs — so a knob can't be switched on with
+// nothing behind it (which would silently lose data or do nothing).
 export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
@@ -119,28 +154,22 @@ export async function handleSettingsPut(request, env, log, identity) {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
   const patch = {};
-  for (const knob of BOOL_KNOBS) {
-    if (body?.[knob] === undefined) continue;
-    if (typeof body[knob] !== "boolean") {
-      return jsonResponse({ error: `Expected ${knob} to be a boolean.` }, 400);
+  for (const { key } of KNOBS) {
+    if (body?.[key] === undefined) continue;
+    if (typeof body[key] !== "boolean") {
+      return jsonResponse({ error: `${key} must be a boolean.` }, 400);
     }
-    patch[knob] = body[knob];
+    patch[key] = body[key];
   }
   if (!Object.keys(patch).length) {
-    return jsonResponse({ error: `Expected at least one of: ${BOOL_KNOBS.join(", ")}.` }, 400);
-  }
-  const available = storageAvailability(env, identity);
-  if (patch.server_history && !available.storage) {
     return jsonResponse(
-      { error: "Cloud storage is not configured on this server (R2 binding missing)." },
-      503,
+      { error: `Expected at least one of: ${KNOBS.map((k) => k.key).join(", ")}.` },
+      400,
     );
   }
-  if ((patch.street_view || patch.nearby_places || patch.map_context) && !available.maps) {
-    return jsonResponse(
-      { error: "Google Maps features are not configured on this server (GOOGLE_MAPS_API_KEY missing)." },
-      503,
-    );
+  const available = featureAvailability(env, identity);
+  for (const { key, needs, missing } of KNOBS) {
+    if (patch[key] && !available[needs]) return jsonResponse({ error: missing }, 503);
   }
   const settings = { ...getSettings(identity), ...patch };
   await saveSettings(env, identity.user.id, settings);

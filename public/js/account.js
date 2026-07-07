@@ -16,7 +16,7 @@
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
-import { loadSettings, setServerHistory, setSettings } from "./settings.js";
+import { loadSettings, setServerHistory, setSettings, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
 export function initAccountPanel() {
@@ -105,20 +105,77 @@ export function initAccountPanel() {
   // future settings just add rows. The switch itself is the original
   // slide-toggle design the composer's web-search knob used before it
   // became the spiderweb (generic .switch classes, not tied to the
-  // composer). Cloud storage is ON by default; the row is shown disabled
-  // (forced off) when the account can't use it — break-glass identity or a
-  // server without the storage bindings — rather than hidden, so the state
-  // is explainable.
-  function settingRow({ id, label, checked, disabled }) {
+  // composer). Each row is a SINGLE line — one label, one info glyph, one
+  // switch — with the full explanation tucked into a press-and-hold
+  // popover (the same gesture the composer's web-search knob uses), so the
+  // panel stays compact no matter how many knobs it grows. A row is shown
+  // disabled (forced off) when the account can't use it — break-glass
+  // identity, or a server missing the feature's backing — rather than
+  // hidden, so the state stays explainable.
+  function settingRow({ id, label, checked, disabled, popId, info }) {
     return `
-      <div class="settings-row">
-        <span class="settings-label">${label}</span>
-        <label class="switch">
-          <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-        </label>
+      <div class="settings-item">
+        <div class="settings-row">
+          <span class="settings-label">${label}
+            <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${label}”">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="${popId}" hidden>${info}</div>
       </div>`;
   }
+
+  const CLOUD_INFO = `<strong>Store history in the cloud</strong><br>
+    <b>On (default):</b> conversations, attached files and the document index are
+    kept in this site's Cloudflare storage, so your history follows your account
+    across devices. Conversations <b>and</b> attached files (images included) stay
+    <b>encrypted</b> with the same key mechanism they have in this browser; the one
+    readable exception is large documents indexed for search — and the search
+    index itself — since retrieval needs readable text.<br>
+    <b>Off:</b> everything lives only in this browser — switching off downloads it
+    all here and deletes the cloud copies.`;
+
+  // The three Google Maps photo-feature knobs share one privacy story: only
+  // an attached photo's GPS coordinates are ever sent to Google, and only
+  // while the knob is on. Each row explains its own feature.
+  const STREETVIEW_INFO = `<strong>Street-level views (Google Street View)</strong><br>
+    <b>On (default):</b> when you attach a photo that carries GPS coordinates,
+    the research pipeline fetches Street View images of that spot (looking
+    north, east, south and west) so vision-capable models can literally look
+    around the location and describe what's there. Every answer also gets a
+    clickable Street View link either way.<br>
+    <b>Off:</b> no Street View images are fetched.<br>
+    <b>Privacy:</b> only the photo's <b>coordinates</b> are sent to Google —
+    never your question, your files, or anything about your account.`;
+
+  const PLACES_INFO = `<strong>Nearby place details (Google Places)</strong><br>
+    <b>On (default):</b> establishments around a photo's location come from
+    Google Places — with ratings, review counts, open-now and
+    permanently-closed status — instead of only the free OpenStreetMap data
+    (which remains the fallback).<br>
+    <b>Off:</b> nearby places still appear, from OpenStreetMap only.<br>
+    <b>Privacy:</b> only the photo's <b>coordinates</b> are sent to Google.`;
+
+  const MAP_INFO = `<strong>Area map context (Google Maps)</strong><br>
+    <b>On (default):</b> vision-capable models also get a road-map image of the
+    photo's location (marked with a pin) so answers can reason about the
+    area's layout — street names, distances, what's around the corner.<br>
+    <b>Off:</b> no map image is fetched.<br>
+    <b>Privacy:</b> only the photo's <b>coordinates</b> are sent to Google.`;
+
+  const SHODAN_INFO = `<strong>Shodan host intelligence (MCP)</strong><br>
+    <b>On:</b> when a question mentions an IP address or hostname, the site looks it
+    up on <a href="https://www.shodan.io" target="_blank" rel="noopener">Shodan</a>
+    and adds what it finds — open ports, running services, organization/ASN,
+    hosting location and known CVEs — to the research so the answer can use and
+    cite it.<br>
+    <b>Off (default):</b> nothing is sent to Shodan.<br>
+    <b>Privacy:</b> only the IP/hostname itself is sent to Shodan — never your
+    question or anything about your account. It runs only when your message
+    actually names a host, and independently of the web-search switch.`;
 
   async function loadSettingsView() {
     body.innerHTML = `
@@ -136,105 +193,195 @@ export function initAccountPanel() {
       }
     }
     const usable = !!s?.available?.storage;
+    const shodanUsable = !!s?.available?.shodan;
     const mapsUsable = !!s?.available?.maps;
     const note = !me?.email
       ? "Settings need a signed-in account (break-glass sessions have none)."
       : s === null
         ? "Could not load settings — try again in a moment."
-        : usable
-          ? ""
-          : "Cloud storage isn't configured on this server, so history stays in this browser only.";
+        : "";
+    const cloudNote = usable
+      ? ""
+      : `<p class="muted setting-note">Cloud storage isn't configured on this server, so history stays in this browser only.</p>`;
+    const shodanNote = shodanUsable
+      ? ""
+      : `<p class="muted setting-note">Shodan isn't configured on this server (no API key), so this stays off.</p>`;
+    const mapsNote = mapsUsable
+      ? ""
+      : `<p class="muted setting-note">Google Maps features aren't configured on this server (no API key), so these stay off.</p>`;
+
     body.innerHTML = `
       <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
       <p class="section-lbl">Settings</p>
-      <div class="settings-item">
-        ${settingRow({ id: "cloudknob", label: "Store history in the cloud", checked: usable && s.server_history, disabled: !usable })}
-        <p class="muted setting-desc">On (default): conversations, attached files and the
-          document index are kept in this site's Cloudflare storage, so history
-          follows your account across devices. Conversations <b>and</b> attached
-          files (images included) stay <b>encrypted</b> with the same key mechanism
-          they have in this browser; the one readable exception is large
-          documents indexed for search — and the search index itself — since
-          retrieval needs readable text. Off: everything lives only in this
-          browser — switching off downloads it all here and deletes the cloud
-          copies.</p>
-        <p id="syncstatus" class="muted" hidden></p>
-        ${note ? `<p class="muted">${note}</p>` : ""}
-      </div>
-      <div class="settings-item">
-        <p class="section-lbl">Photo location features</p>
-        ${settingRow({ id: "streetviewknob", label: "Street-level views (Google Street View)", checked: !!s?.street_view, disabled: !mapsUsable })}
-        ${settingRow({ id: "placesknob", label: "Nearby place details (Google Places)", checked: !!s?.nearby_places, disabled: !mapsUsable })}
-        ${settingRow({ id: "mapknob", label: "Area map context (Google Maps)", checked: !!s?.map_context, disabled: !mapsUsable })}
-        <p class="muted setting-desc">These enrich questions about photos that carry GPS
-          coordinates: the research pipeline fetches Street View images of the
-          spot (so vision models can look around), rated nearby establishments,
-          and a marked area map. While any of them is on, an attached photo's
-          <b>coordinates</b> are sent to Google server-side — never your
-          question, files, or identity. Off: the free OpenStreetMap lookups
-          and the plain Street View link still work.</p>
-        ${!mapsUsable && me?.email ? `<p class="muted">Not configured on this server (no Google Maps API key).</p>` : ""}
-        <p id="mapsstatus" class="muted" hidden></p>
-      </div>`;
+      ${settingRow({
+        id: "cloudknob",
+        label: "Store history in the cloud",
+        checked: usable && s?.server_history,
+        disabled: !usable,
+        popId: "cloudpop",
+        info: CLOUD_INFO,
+      })}
+      ${cloudNote}
+      <p id="syncstatus" class="muted setting-note" hidden></p>
+      ${settingRow({
+        id: "shodanknob",
+        label: "Shodan host intelligence",
+        checked: shodanUsable && s?.shodan_mcp,
+        disabled: !shodanUsable,
+        popId: "shodanpop",
+        info: SHODAN_INFO,
+      })}
+      ${shodanNote}
+      <p id="shodanstatus" class="muted setting-note" hidden></p>
+      ${settingRow({
+        id: "streetviewknob",
+        label: "Street-level views",
+        checked: mapsUsable && s?.street_view,
+        disabled: !mapsUsable,
+        popId: "streetviewpop",
+        info: STREETVIEW_INFO,
+      })}
+      ${settingRow({
+        id: "placesknob",
+        label: "Nearby place details",
+        checked: mapsUsable && s?.nearby_places,
+        disabled: !mapsUsable,
+        popId: "placespop",
+        info: PLACES_INFO,
+      })}
+      ${settingRow({
+        id: "mapknob",
+        label: "Area map context",
+        checked: mapsUsable && s?.map_context,
+        disabled: !mapsUsable,
+        popId: "mappop",
+        info: MAP_INFO,
+      })}
+      ${mapsNote}
+      <p id="mapsstatus" class="muted setting-note" hidden></p>
+      ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
     document.getElementById("settingsbackbtn").addEventListener("click", () => show("summary"));
+    wireSettingPopovers(body);
+
+    if (usable) {
+      const knob = document.getElementById("cloudknob");
+      const status = document.getElementById("syncstatus");
+      const progress = (msg) => { status.textContent = msg; };
+      knob.addEventListener("change", async () => {
+        const on = knob.checked;
+        knob.disabled = true;
+        status.hidden = false;
+        try {
+          await setServerHistory(on);
+          if (on) {
+            const r = await syncToServer(progress);
+            status.textContent =
+              `Cloud storage is on — ${r.pushed} item(s) uploaded.` +
+              (r.errors.length ? ` ${r.errors.length} item(s) failed and will retry on the next sync.` : "");
+          } else {
+            const r = await syncToClient(progress);
+            status.textContent = r.wiped
+              ? r.checked
+                ? `Cloud storage is off — all ${r.checked} cloud item(s) are in this browser` +
+                  ` (${r.pulled} newly downloaded, the rest were already here); cloud copies removed.`
+                : "Cloud storage is off — the cloud held nothing to download; cloud copies removed."
+              : "Downloaded what was reachable, but some items failed — the cloud copies were kept. Toggle again to retry.";
+          }
+        } catch (err) {
+          knob.checked = !on; // the setting didn't change server-side
+          status.textContent = err?.message || "Could not update the setting.";
+        } finally {
+          knob.disabled = false;
+        }
+      });
+    }
+
+    if (shodanUsable) {
+      const knob = document.getElementById("shodanknob");
+      const status = document.getElementById("shodanstatus");
+      knob.addEventListener("change", async () => {
+        const on = knob.checked;
+        knob.disabled = true;
+        status.hidden = false;
+        try {
+          await setShodanMcp(on);
+          status.textContent = on
+            ? "Shodan is on — IPs and hostnames you mention are looked up during research."
+            : "Shodan is off — nothing is sent to Shodan.";
+        } catch (err) {
+          knob.checked = !on;
+          status.textContent = err?.message || "Could not update the setting.";
+        } finally {
+          knob.disabled = false;
+        }
+      });
+    }
 
     if (mapsUsable) {
-      const mapsStatus = document.getElementById("mapsstatus");
-      for (const [id, knobName] of [
-        ["streetviewknob", "street_view"],
-        ["placesknob", "nearby_places"],
-        ["mapknob", "map_context"],
+      const status = document.getElementById("mapsstatus");
+      for (const [id, key, name] of [
+        ["streetviewknob", "street_view", "Street-level views"],
+        ["placesknob", "nearby_places", "Nearby place details"],
+        ["mapknob", "map_context", "Area map context"],
       ]) {
-        const el = document.getElementById(id);
-        el.addEventListener("change", async () => {
-          const on = el.checked;
-          el.disabled = true;
+        const knob = document.getElementById(id);
+        knob.addEventListener("change", async () => {
+          const on = knob.checked;
+          knob.disabled = true;
           try {
-            await setSettings({ [knobName]: on });
-            mapsStatus.hidden = true;
+            await setSettings({ [key]: on });
+            status.hidden = true;
           } catch (err) {
-            el.checked = !on; // the setting didn't change server-side
-            mapsStatus.hidden = false;
-            mapsStatus.textContent = err?.message || "Could not update the setting.";
+            knob.checked = !on; // the setting didn't change server-side
+            status.hidden = false;
+            status.textContent = err?.message || `Could not update “${name}”.`;
           } finally {
-            el.disabled = false;
+            knob.disabled = false;
           }
         });
       }
     }
+  }
 
-    if (!usable) return;
-
-    const knob = document.getElementById("cloudknob");
-    const status = document.getElementById("syncstatus");
-    const progress = (msg) => { status.textContent = msg; };
-    knob.addEventListener("change", async () => {
-      const on = knob.checked;
-      knob.disabled = true;
-      status.hidden = false;
-      try {
-        await setServerHistory(on);
-        if (on) {
-          const r = await syncToServer(progress);
-          status.textContent =
-            `Cloud storage is on — ${r.pushed} item(s) uploaded.` +
-            (r.errors.length ? ` ${r.errors.length} item(s) failed and will retry on the next sync.` : "");
-        } else {
-          const r = await syncToClient(progress);
-          status.textContent = r.wiped
-            ? r.checked
-              ? `Cloud storage is off — all ${r.checked} cloud item(s) are in this browser` +
-                ` (${r.pulled} newly downloaded, the rest were already here); cloud copies removed.`
-              : "Cloud storage is off — the cloud held nothing to download; cloud copies removed."
-            : "Downloaded what was reachable, but some items failed — the cloud copies were kept. Toggle again to retry.";
-        }
-      } catch (err) {
-        knob.checked = !on; // the setting didn't change server-side
-        status.textContent = err?.message || "Could not update the setting.";
-      } finally {
-        knob.disabled = false;
+  // Press-and-hold (or click the ⓘ) on a settings row opens its detail
+  // popover — the same gesture the composer's web-search knob uses. Only one
+  // popover is open at a time; a click anywhere outside closes it.
+  function wireSettingPopovers(root) {
+    const closeAll = () => root.querySelectorAll(".setting-pop").forEach((p) => (p.hidden = true));
+    root.querySelectorAll(".setting-info").forEach((btn) => {
+      const pop = root.querySelector(`#${btn.dataset.pop}`);
+      if (!pop) return;
+      let holdTimer = 0;
+      const open = () => {
+        const wasHidden = pop.hidden;
+        closeAll();
+        pop.hidden = !wasHidden;
+      };
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        open();
+      });
+      btn.addEventListener("pointerdown", () => {
+        holdTimer = setTimeout(() => {
+          closeAll();
+          pop.hidden = false;
+        }, 500);
+      });
+      for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+        btn.addEventListener(ev, () => clearTimeout(holdTimer));
       }
     });
+    // The info-button handlers above are on freshly rendered elements each
+    // time, but the outside-click closer lives on the persistent
+    // #account-body — bind it once so re-opening Settings doesn't stack it.
+    if (!root._popCloserBound) {
+      root._popCloserBound = true;
+      root.addEventListener("click", (e) => {
+        if (!e.target.closest(".setting-pop") && !e.target.closest(".setting-info")) {
+          root.querySelectorAll(".setting-pop").forEach((p) => (p.hidden = true));
+        }
+      });
+    }
   }
 
   const show = (view) => {

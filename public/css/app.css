@@ -674,9 +674,29 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    the ORIGINAL toggle design the composer's web-search knob had before it
    became the spiderweb — kept here as generic classes so every future
    setting reuses it. */
-.settings-item { margin: .3rem 0 .6rem; }
+.settings-item { margin: .3rem 0 .5rem; position: relative; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .3rem 0; }
-.settings-label { font-size: .95em; }
+.settings-label { font-size: .95em; display: inline-flex; align-items: center; gap: .35rem; }
+/* The ⓘ affordance: a single-line row's "more info" trigger — click, or
+   press-and-hold, opens the row's detail popover (the same gesture the
+   composer's web-search knob uses). */
+.setting-info {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--muted); font-size: .95em; line-height: 1;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.setting-info:hover { color: var(--accent); }
+.setting-pop {
+  margin: .1rem 0 .4rem; z-index: 5;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .6rem .75rem; font-size: .8rem; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(4, 30, 60, .18);
+}
+.setting-pop[hidden] { display: none; }
+.setting-pop a { color: var(--accent); }
+.setting-note { font-size: .8em; margin: .1rem 0 .4rem; }
 .switch { cursor: pointer; display: inline-flex; flex: none; -webkit-user-select: none; user-select: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch-track {
