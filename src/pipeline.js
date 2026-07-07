@@ -33,7 +33,6 @@ import {
   lastUserMessage,
   previousUserText,
   textOf,
-  withAppendedImage,
   withAppendedText,
   withImageNudge,
 } from "./conversation.js";
@@ -141,6 +140,11 @@ async function runShodanEnrichment(env, log, step, stepDone, conversation, state
   return withAppendedText(conversation, result.block);
 }
 
+// The most images to hand the vision-describe helper in one request — the
+// client's own per-message image cap, which Berget vision models accept
+// reliably (a report of 5 attached frames drew a Berget 400).
+const MAX_MAPS_IMAGES = 4;
+
 // Google Maps enrichment: resolve a location the message is about (a street
 // address parsed from it, or an attached photo's GPS coordinates) into Google
 // Maps data — Places (canonical place details + coordinates), Street View
@@ -156,15 +160,16 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   const target = pickLookup(conversation, state.imageLocations);
   if (!target) return conversation;
 
-  // Fetch imagery if we can actually USE it: attach it to a vision answer
-  // model, or run it through the vision-describe helper for a non-vision one
-  // (e.g. the default Mistral Small). Skip when the message already carries
-  // user images (server-injected images add to the body and stacking them on
-  // top of user photos risks Berget's ~1 MB cap) or no vision model exists.
+  // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
+  // isn't already carrying user images). We deliberately do NOT attach the
+  // Street View frames to the ANSWER model — a report showed attaching several
+  // frames making the answer call fail with a Berget 400 (too many images on
+  // one message). Instead a vision helper looks at the frames and only its
+  // TEXT description reaches the answer model, so the answer call is always
+  // image-free and can't fail from maps imagery. Works uniformly for vision
+  // and non-vision answer models.
   const alreadyHasImages = imagePartsOf(lastUserMessage(conversation)).length > 0;
-  const canAttach = state.vision && !alreadyHasImages;
-  const canDescribe = !state.vision && !!state.visionModel && !alreadyHasImages;
-  const fetchImages = canAttach || canDescribe;
+  const fetchImages = !!state.visionModel && !alreadyHasImages;
 
   step("maps", "Checking Google Maps…");
   let result = null;
@@ -192,34 +197,33 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   }
 
   state.mapsCount = result.count;
-  const images = [...result.streetViewImages, result.staticMapImage].filter(Boolean);
+  // Cap the images handed to the vision helper to what a single vision request
+  // reliably accepts (the client's own per-message cap is 4). Street View
+  // frames first, road map last.
+  const images = [...result.streetViewImages, result.staticMapImage].filter(Boolean).slice(0, MAX_MAPS_IMAGES);
 
-  // Non-vision answer model: have the vision helper describe the imagery so the
-  // answer can still convey what the place looks like (this is what makes
-  // "describe this street view" work on the default, non-vision model).
+  // Describe the imagery with the vision helper so the answer model (vision or
+  // not) gets a factual look-around as TEXT — this is what makes "describe this
+  // street view" work, and keeps the answer call free of the images that broke
+  // it. Fail-soft: no description → the block points at the keyless link.
   let description = "";
-  if (canDescribe && images.length) {
+  if (images.length) {
     description = await describeStreetView(env, log, state, result.displayQuery, images);
   }
 
-  const attach = canAttach && images.length > 0;
   const block = buildMapsBlock(result.displayQuery, {
     place: result.place,
     lat: result.lat,
     lng: result.lng,
     streetView: result.streetView,
-    streetViewCount: attach ? result.streetViewImages.length : 0,
-    hasMap: attach ? !!result.staticMapImage : false,
+    streetViewCount: 0,
+    hasMap: false,
     description,
   });
 
   stepDone(
     "maps",
-    attach
-      ? "Google Maps data and imagery attached"
-      : description
-        ? "Google Maps data + Street View described"
-        : "Google Maps data found",
+    description ? "Google Maps data + Street View described" : "Google Maps data found",
     result.details,
   );
 
@@ -232,9 +236,7 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
     emit({ status: { type: "streetview_embed", lat: result.embed.lat, lng: result.embed.lng } });
   }
 
-  let convo = withAppendedText(conversation, block);
-  if (attach) for (const url of images) convo = withAppendedImage(convo, url);
-  return convo;
+  return withAppendedText(conversation, block);
 }
 
 // Runs the Street View / map images through a vision-capable helper model to
