@@ -85,23 +85,6 @@ header {
   pointer-events: none;
 }
 .header-right, #composer { pointer-events: auto; }
-#model {
-  background: rgba(255, 255, 255, .3);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  backdrop-filter: blur(14px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, .55);
-  box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
-  color: var(--text);
-  border-radius: 10px;
-  padding: .35rem .5rem;
-  font: inherit;
-  font-size: .85rem;
-  font-weight: 400;
-  /* Fills all space between New chat (left) and account (right). */
-  flex: 1;
-  min-width: 0;
-}
-#model[hidden] { display: none; }
 #chat {
   flex: 1;
   overflow-y: auto;
@@ -294,7 +277,8 @@ header {
 .stats:empty { display: none; }
 
 /* Composer: ONE glass pane — single-line input on top, controls beneath
-   (attach · spiderweb web-search knob · time slider+value · send arrow). */
+   (attach · camera · model selector · send arrow), then the search row
+   (spiderweb web-search knob · time slider+value) on its own line. */
 #composer {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
@@ -337,19 +321,33 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: .5; cursor: default; }
-#composer-row {
+#composer-row, #search-row {
   display: flex;
   align-items: center;
   gap: .55rem;
   font-size: .8rem;
   color: var(--muted);
 }
+/* Model selector — fills the space between the camera and send buttons. */
+#model {
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .35rem .5rem;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 400;
+  flex: 1;
+  min-width: 0;
+}
+#model[hidden] { display: none; }
 #attach, #camera {
   background: rgba(255, 255, 255, .35);
   border: 1px solid rgba(255, 255, 255, .6);
   color: var(--text);
   border-radius: 50%;
-  /* Same diameter as the spiderweb knob disc and the send button. */
+  /* Same diameter as the send button. */
   width: 34px; height: 34px; flex: none;
   padding: 0;
   display: grid; place-items: center;
@@ -441,21 +439,21 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 #searchtoggle input { position: absolute; opacity: 0; pointer-events: none; }
 .knob-track {
-  width: 62px; height: 38px; border-radius: 19px;
+  width: 53px; height: 32px; border-radius: 16px;
   background: var(--border);
   position: relative; flex: none;
   transition: background .15s ease;
 }
 #websearch:checked + .knob-track { background: var(--accent); }
 .knob {
-  position: absolute; top: 2px; left: 2px;
-  width: 34px; height: 34px; border-radius: 50%;
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2398a6b3' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M10 1.2v17.6M1.2 10h17.6M3.78 3.78l12.44 12.44M16.22 3.78L3.78 16.22'/%3E%3Cpolygon points='13.2 10 12.26 12.26 10 13.2 7.74 12.26 6.8 10 7.74 7.74 10 6.8 12.26 7.74'/%3E%3Cpolygon points='16 10 14.24 14.24 10 16 5.76 14.24 4 10 5.76 5.76 10 4 14.24 5.76'/%3E%3Cpolygon points='18.8 10 16.22 16.22 10 18.8 3.78 16.22 1.2 10 3.78 3.78 10 1.2 16.22 3.78'/%3E%3C/svg%3E") center / 28px 28px no-repeat;
+  position: absolute; top: 1.5px; left: 1.5px;
+  width: 29px; height: 29px; border-radius: 50%;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2398a6b3' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M10 1.2v17.6M1.2 10h17.6M3.78 3.78l12.44 12.44M16.22 3.78L3.78 16.22'/%3E%3Cpolygon points='13.2 10 12.26 12.26 10 13.2 7.74 12.26 6.8 10 7.74 7.74 10 6.8 12.26 7.74'/%3E%3Cpolygon points='16 10 14.24 14.24 10 16 5.76 14.24 4 10 5.76 5.76 10 4 14.24 5.76'/%3E%3Cpolygon points='18.8 10 16.22 16.22 10 18.8 3.78 16.22 1.2 10 3.78 3.78 10 1.2 16.22 3.78'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
   box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
   transition: left .15s ease, box-shadow .15s ease;
 }
 #websearch:checked + .knob-track .knob {
-  left: 26px;
+  left: 22.5px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%230d4fa0' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M10 1.2v17.6M1.2 10h17.6M3.78 3.78l12.44 12.44M16.22 3.78L3.78 16.22'/%3E%3Cpolygon points='13.2 10 12.26 12.26 10 13.2 7.74 12.26 6.8 10 7.74 7.74 10 6.8 12.26 7.74'/%3E%3Cpolygon points='16 10 14.24 14.24 10 16 5.76 14.24 4 10 5.76 5.76 10 4 14.24 5.76'/%3E%3Cpolygon points='18.8 10 16.22 16.22 10 18.8 3.78 16.22 1.2 10 3.78 3.78 10 1.2 16.22 3.78'/%3E%3C/svg%3E");
   box-shadow: 0 1px 2px rgba(4, 30, 60, .35), 0 0 10px 3px rgba(126, 201, 255, .95);
 }
@@ -498,6 +496,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #composer.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
+/* With the model selector moved into the composer, the account button
+   anchors the row's right edge on its own. */
+#accountbtn { margin-left: auto; }
 #historybtn, #clearbtn, #accountbtn, #ghostbtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);

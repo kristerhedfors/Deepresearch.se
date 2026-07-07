@@ -773,27 +773,30 @@ Let a battery finish before pushing anything.
   stays visible between the items and through their translucency. The
   header stacks TWO rows: the brand as plain characters (no pane, soft
   white text-glow, never captures clicks) and beneath it the glass
-  controls row (history, New chat, model selector, account button). `#chat`
+  controls row (history, New chat, account button). `#chat`
   carries top/bottom padding (5.6rem / 8rem) so the first and last
   messages can scroll clear of the fixed items.
 - **Background life:** `body::before` drifts a repeating diagonal gradient
   (tiny white/navy alphas) across the sky blue — one full 280px period per
   26s loop so it's seamless; disabled under `prefers-reduced-motion`.
 - **Glass chrome:** the header is transparent with the title in smaller
-  type and each control (history, New chat, model selector, account) as
+  type and each control (history, New chat, account) as
   its own frosted-glass container; the whole input area is ONE glass pane
   (`#composer`, rounded, backdrop-blur over the drifting waves): a
   single-line auto-growing text input on top (Enter inserts a LINE BREAK
-  — only the arrow button sends; grows to ~6 lines), and beneath it the
-  attach button (round),
+  — only the arrow button sends; grows to ~6 lines), beneath it the
+  controls row — the attach and camera buttons (round), the **model
+  selector** (moved here from the header; fills the remaining space) —
+  then a third row of its own for the
   **web-search knob** (default on; sends `web_search: false` when off →
   the Worker skips triage/Exa entirely and streams one Berget
   completion; a spiderweb sits inside the knob — accent blue with a
   soft glow when on, grey when off — and press-and-holding the knob
   opens the info popover that used to hang off a separate 🔍 button,
-  removed to give the slider its footer space), the slider filling the
-  remaining space, then the spelled-out time value (slider/value dim
-  while search is off), and a round accent **arrow send button** that becomes
+  removed to give the slider its footer space) with the slider filling the
+  remaining space and the spelled-out time value (slider/value dim
+  while search is off), and back on the controls row a round accent
+  **arrow send button** that becomes
   a **square stop button** (same element, swapped icon, never disabled)
   while a response is streaming — clicking it aborts the in-flight
   request (`stream.js`'s `stopGeneration()`) but keeps whatever streamed
@@ -809,8 +812,10 @@ Let a battery finish before pushing anything.
   control explained with real screenshots (`public/help/img/`, captured
   via Playwright) and the privacy meaning of each — linked from the
   account panel. Re-capture the screenshots when the composer/header
-  changes visibly (the header screenshot is now stale after adding the
-  history button — not yet recaptured).
+  changes visibly (the header and composer screenshots are now stale —
+  the history button was added, then the model selector moved from the
+  header into the composer row with the search knob/slider on their own
+  row below — not yet recaptured).
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
   demonstration of building a SaaS-style app over a weekend, **entirely
