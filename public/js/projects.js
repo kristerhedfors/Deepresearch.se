@@ -29,13 +29,14 @@
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import {
+  decryptBytes,
   deleteConversation,
   deleteProjectRecord,
   listConversations,
   listProjectRecords,
   saveProjectRecord,
 } from "./history-store.js";
-import { archiveFile, purgeFile } from "./opfs.js";
+import { archiveFile, listOriginals, loadOriginal, purgeFile } from "./opfs.js";
 import { buildProjectContext, normalizeProjectName, noteToText, projectDocIds } from "./project-context.js";
 import { deleteDoc, indexDocument } from "./rag.js";
 import { serverHistoryOn } from "./settings.js";
@@ -203,6 +204,10 @@ async function addOneFile(project, file, onProgress = () => {}) {
     } catch {
       // metadata extraction must never block the add
     }
+    // A small preview rides INSIDE the encrypted project record (a few KB
+    // of JPEG data URL), so the panel can show the picture itself — the
+    // OPFS/R2 original is ciphertext and can't be used as an <img> src.
+    entry.thumb = await makeThumb(file);
     await archiveFile(fileId, file, { cloud });
     return entry;
   }
@@ -288,6 +293,66 @@ export async function addTextToProject(id, title, content) {
   p.files = [...(p.files || []), entry];
   await persistProject(p);
   return entry;
+}
+
+// Thumbnail for the panel's file list: canvas-downscaled to ~112px JPEG,
+// capped to a few KB so a project full of photos keeps its record small.
+// (Same canvas approach as attachments.js's downscaleImage, tuned for a
+// list preview instead of a model input.) Returns null when the bytes
+// aren't decodable as an image.
+async function makeThumb(blob) {
+  try {
+    const img = await createImageBitmap(blob).catch(
+      () =>
+        new Promise((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = reject;
+          el.src = URL.createObjectURL(blob);
+        }),
+    );
+    const w = img.width || img.naturalWidth;
+    const h = img.height || img.naturalHeight;
+    if (!w || !h) return null;
+    const scale = Math.min(1, 112 / Math.max(w, h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    for (const q of [0.75, 0.6, 0.45]) {
+      const url = canvas.toDataURL("image/jpeg", q);
+      if (url.length <= 24_000) return url;
+    }
+  } catch {
+    // undecodable — the list falls back to the kind icon
+  }
+  return null;
+}
+
+// Backfill for images added before thumbnails existed: rebuild the preview
+// from the OPFS original (decrypting it — image originals rest encrypted)
+// and persist it into the record. Returns true when the record changed.
+export async function ensureThumb(projectId, fileId) {
+  const p = getProject(projectId);
+  const f = (p?.files || []).find((x) => x.id === fileId);
+  if (!f || f.kind !== "image" || f.thumb) return false;
+  let blob = await loadOriginal(fileId);
+  if (!blob) return false;
+  try {
+    const meta = (await listOriginals()).find((m) => m.id === fileId);
+    if (meta?.enc) {
+      blob = new Blob([await decryptBytes(new Uint8Array(await blob.arrayBuffer()))], {
+        type: f.type || "image/jpeg",
+      });
+    }
+  } catch {
+    return false; // key unavailable — keep the icon
+  }
+  const thumb = await makeThumb(blob);
+  if (!thumb) return false;
+  f.thumb = thumb;
+  await persistProject(p);
+  return true;
 }
 
 export async function removeFileFromProject(id, fileId) {

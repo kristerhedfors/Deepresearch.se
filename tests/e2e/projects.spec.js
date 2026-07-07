@@ -50,6 +50,10 @@ test("a project ingests notes, documents and images — indexables indexed, EXIF
   const imgRow = page.locator(".project-file", { hasText: "photo.jpg" });
   await expect(imgRow.locator(".sub")).toContainText("image", { timeout: 20_000 });
   await expect(imgRow.locator(".att-meta-badge")).toBeVisible(); // EXIF found
+  // The row shows the actual (downscaled) picture, not just a kind icon.
+  await expect(imgRow.locator("img.pf-thumb")).toBeVisible();
+  const thumbSrc = await imgRow.locator("img.pf-thumb").getAttribute("src");
+  expect(thumbSrc).toMatch(/^data:image\/jpeg;base64,/);
 
   // Everything persists across a reload (encrypted project record +
   // IndexedDB index + OPFS originals).
@@ -58,6 +62,9 @@ test("a project ingests notes, documents and images — indexables indexed, EXIF
   await openProjectFromSidebar(page, "Fieldwork");
   await expect(page.locator(".project-file")).toHaveCount(3);
   await expect(page.locator(".project-file", { hasText: "Alpha note" }).locator(".sub")).toContainText("indexed");
+  await expect(
+    page.locator(".project-file", { hasText: "photo.jpg" }).locator("img.pf-thumb"),
+  ).toBeVisible(); // the preview rides inside the encrypted record
 });
 
 test("a chat inside a project retrieves the project's material, carries image EXIF, and is scoped to that project only", async ({ page }) => {
