@@ -172,7 +172,20 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   }
   if (!result) {
     stepDone("maps", "No Google Maps data for that location");
-    return conversation;
+    // We only reach here with the knob ON, but the lookup returned nothing.
+    // Inject an honest note so the model doesn't wrongly tell the user to
+    // enable an already-enabled feature (a reported bug: empty lookups — often
+    // a Google Cloud API/billing gap — made the model claim Maps was off and
+    // hand out enable instructions).
+    const q = target.address || target.coords;
+    return withAppendedText(
+      conversation,
+      "\n\n--- Google Maps ---\n" +
+        `Google Maps & Street View is ENABLED and was checked for "${q}", but Google returned no usable data for this location ` +
+        "(it may be unrecognized, have no Street View coverage, or the required Google Maps APIs may not be fully enabled on the server). " +
+        "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
+        "--- End of Google Maps ---",
+    );
   }
 
   state.mapsCount = result.count;
