@@ -108,6 +108,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // coordinates give a precise location to look up when a photo is attached.
   const googleMapsOn = googleMapsEnabled(env, identity);
   const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
+  // A vision helper for DESCRIBING Street View imagery when the chosen answer
+  // model can't see images (e.g. the default Mistral Small): the user's own
+  // model when it's already vision, else the first up + vision-capable catalog
+  // model, else null (no describe — the block then just points at the link).
+  // This is why "describe this street view" works regardless of model choice.
+  const visionModel = modelIsVision ? model : catalog?.find((m) => m.vision && m.up)?.id || null;
   const imageLocations = validateImageLocations(body.imageLocations);
 
   // Client-disconnect detection: when the reader goes away (backgrounded
@@ -147,6 +153,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, shodanOn, {
       googleMaps: googleMapsOn,
       vision: modelIsVision,
+      visionModel,
       imageLocations,
     });
     disconnect.state = state;
@@ -236,8 +243,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       // planning phases at jsonModel (Mistral) — each at its own catalog rate.
       const entry = catalog?.find((m) => m.id === model);
       const jsonEntry = catalog?.find((m) => m.id === jsonModel);
-      const prompt_tokens = state.totals.prompt_tokens + state.jsonTotals.prompt_tokens;
-      const completion_tokens = state.totals.completion_tokens + state.jsonTotals.completion_tokens;
+      // The Street View vision-describe helper (if it ran) is its own model.
+      const visionEntry = catalog?.find((m) => m.id === state.visionModel);
+      const prompt_tokens =
+        state.totals.prompt_tokens + state.jsonTotals.prompt_tokens + state.visionTotals.prompt_tokens;
+      const completion_tokens =
+        state.totals.completion_tokens + state.jsonTotals.completion_tokens + state.visionTotals.completion_tokens;
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
@@ -246,7 +257,8 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         searches: billedSearches,
         berget_cost:
           bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens) +
-          bergetCost(jsonEntry, state.jsonTotals.prompt_tokens, state.jsonTotals.completion_tokens),
+          bergetCost(jsonEntry, state.jsonTotals.prompt_tokens, state.jsonTotals.completion_tokens) +
+          bergetCost(visionEntry, state.visionTotals.prompt_tokens, state.visionTotals.completion_tokens),
         // The admin-configured per-search price is priced for Exa's
         // standard tier; a request whose time budget bought a costlier
         // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
@@ -326,6 +338,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     googleMaps: !!extras.googleMaps, // opt-in Google Maps enrichment (src/settings.js)
     mapsCount: 0, // 1 when Google Maps data was found & folded in
     vision: !!extras.vision, // chosen answer model supports image input
+    visionModel: extras.visionModel || null, // helper model to describe Street View for a non-vision answer model
+    // Tokens for the Street View vision-describe helper — its own model, so
+    // billed at its own catalog rate (like jsonTotals), summed for the counters.
+    visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: extras.imageLocations || [], // validated attached-photo GPS coords
 
     plan: planResearch(model, budgetS, jsonModel),

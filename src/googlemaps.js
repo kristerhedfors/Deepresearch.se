@@ -217,20 +217,29 @@ export function buildMapsBlock(query, parts) {
     if (parts.streetView.date) lines.push(`Street View imagery captured: ${parts.streetView.date}`);
   }
   const svCount = parts.streetViewCount || 0;
-  const imgs = [];
-  if (svCount) {
-    imgs.push(
-      svCount === 1
-        ? "one Street View photo"
-        : `${svCount} Street View photos looking ${STREETVIEW_HEADINGS.slice(0, svCount).map((h) => h.dir).join(", ")} from the spot`,
-    );
+  if (parts.description) {
+    // A vision model already looked at the imagery for a non-vision answer
+    // model — hand over its description so the answer can relay it.
+    lines.push(`Visual description of the Street View imagery (auto-generated): ${parts.description}`);
+  } else {
+    const imgs = [];
+    if (svCount) {
+      imgs.push(
+        svCount === 1
+          ? "one Street View photo"
+          : `${svCount} Street View photos looking ${STREETVIEW_HEADINGS.slice(0, svCount).map((h) => h.dir).join(", ")} from the spot`,
+      );
+    }
+    if (parts.hasMap) imgs.push("a road map");
+    if (imgs.length) {
+      lines.push(`Attached to this message for you to describe: ${imgs.join(" and ")}.`);
+    } else if (parts.streetView) {
+      lines.push("Street View imagery exists here; to see it the user can open the Street View link above (the answering model can't view images).");
+    }
   }
-  if (parts.hasMap) imgs.push("a road map");
-  if (imgs.length) {
-    lines.push(`Attached to this message for you to describe: ${imgs.join(" and ")}.`);
-  } else if (parts.streetView) {
-    lines.push("Street View imagery exists here (images not attached — the answering model has no vision).");
-  }
+  // The knob is on (this block only exists when it is). Stop the model from
+  // wrongly telling the user to enable an already-enabled feature.
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
@@ -358,12 +367,13 @@ function staticMapUrl(env, location) {
 
 // Orchestrates one Maps lookup. Exactly one of `coords` ("lat,lng" of an
 // attached photo) or `address` (a parsed street address) drives it; `coords`
-// wins when both are present. `wantImages` gates the (billed) imagery fetches
-// — true only when the answer model can use them (vision) and the message
-// isn't already carrying user images. Returns:
-//   { block, details, images, count } when something resolved,
-//   null when nothing did (or any failure) — the caller stays silent.
-export async function runGoogleMapsLookup(env, log, { coords, address, wantImages }) {
+// wins when both are present. `fetchImages` gates the (billed) imagery fetches
+// — set when the caller will either attach them to a vision answer model or
+// run them through the vision-describe helper. Returns the resolved data
+// ({ displayQuery, place, lat, lng, streetView, streetViewImages,
+// staticMapImage, embed, details, count }) or null when nothing resolved (or
+// any failure) — the caller stays silent / builds the block itself.
+export async function runGoogleMapsLookup(env, log, { coords, address, fetchImages }) {
   if (!googleMapsAvailable(env)) return null;
 
   // Resolve a place + coordinates. A photo's coords are used directly; an
@@ -404,12 +414,14 @@ export async function runGoogleMapsLookup(env, log, { coords, address, wantImage
   // are always a valid map point, so they always produce at least a map.
   if (!coords && !place && !svOk) return null;
 
-  // Capture imagery for a vision model: one Street View frame per cardinal
-  // heading (a full look around the spot) plus a road map. Fetched
-  // concurrently; each is independently fail-soft (a missing frame just drops).
+  // Capture imagery when asked: one Street View frame per cardinal heading (a
+  // full look around the spot) plus a road map. Fetched concurrently; each is
+  // independently fail-soft (a missing frame just drops). The CALLER decides
+  // whether to attach these to a vision answer model or run them through the
+  // vision-describe helper — this just fetches them.
   let streetViewImages = [];
   let staticMapImage = null;
-  if (wantImages) {
+  if (fetchImages) {
     const svJobs = svOk
       ? STREETVIEW_HEADINGS.map((h) =>
           fetchImageDataUrl(env, log, streetViewImageUrl(env, imageryLocation, h.deg), "googlemaps.streetview_image_error"),
@@ -423,17 +435,6 @@ export async function runGoogleMapsLookup(env, log, { coords, address, wantImage
     staticMapImage = mapResult;
   }
 
-  const parts = {
-    place,
-    lat,
-    lng,
-    streetView: svOk ? { date: svMeta.date || "" } : null,
-    streetViewCount: streetViewImages.length,
-    hasMap: !!staticMapImage,
-  };
-  const block = buildMapsBlock(displayQuery, parts);
-  const images = [...streetViewImages, staticMapImage].filter(Boolean);
-
   // Coordinates for the client's interactive Street View embed (only when
   // there's coverage and a real point to center on).
   const embed = svOk && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
@@ -444,7 +445,18 @@ export async function runGoogleMapsLookup(env, log, { coords, address, wantImage
   bits.push("road map");
   const details = [`${displayQuery} — ${bits.join(", ")}`];
 
-  return { block, details, images, embed, count: 1 };
+  return {
+    displayQuery,
+    place,
+    lat,
+    lng,
+    streetView: svOk ? { date: svMeta.date || "" } : null,
+    streetViewImages,
+    staticMapImage,
+    embed,
+    details,
+    count: 1,
+  };
 }
 
 // Convenience used by the pipeline: derive the lookup inputs from a

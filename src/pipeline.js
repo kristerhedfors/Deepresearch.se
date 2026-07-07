@@ -40,7 +40,7 @@ import {
 import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
-import { googleMapsEmbedKey, pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
+import { buildMapsBlock, googleMapsEmbedKey, pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
 import {
   directPrompt,
   gapPrompt,
@@ -156,17 +156,20 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   const target = pickLookup(conversation, state.imageLocations);
   if (!target) return conversation;
 
-  // Only fetch the (billed) imagery when the answer model can see it AND the
-  // message isn't already carrying user images — server-injected images add to
-  // the request body, and stacking them on top of several user photos risks
-  // Berget's ~1 MB body limit. A text-only model still gets the block + links.
+  // Fetch imagery if we can actually USE it: attach it to a vision answer
+  // model, or run it through the vision-describe helper for a non-vision one
+  // (e.g. the default Mistral Small). Skip when the message already carries
+  // user images (server-injected images add to the body and stacking them on
+  // top of user photos risks Berget's ~1 MB cap) or no vision model exists.
   const alreadyHasImages = imagePartsOf(lastUserMessage(conversation)).length > 0;
-  const wantImages = state.vision && !alreadyHasImages;
+  const canAttach = state.vision && !alreadyHasImages;
+  const canDescribe = !state.vision && !!state.visionModel && !alreadyHasImages;
+  const fetchImages = canAttach || canDescribe;
 
   step("maps", "Checking Google Maps…");
   let result = null;
   try {
-    result = await runGoogleMapsLookup(env, log, { ...target, wantImages });
+    result = await runGoogleMapsLookup(env, log, { ...target, fetchImages });
   } catch (err) {
     log.warn("googlemaps.phase_failed", { error: err?.message || String(err) });
   }
@@ -189,11 +192,37 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   }
 
   state.mapsCount = result.count;
+  const images = [...result.streetViewImages, result.staticMapImage].filter(Boolean);
+
+  // Non-vision answer model: have the vision helper describe the imagery so the
+  // answer can still convey what the place looks like (this is what makes
+  // "describe this street view" work on the default, non-vision model).
+  let description = "";
+  if (canDescribe && images.length) {
+    description = await describeStreetView(env, log, state, result.displayQuery, images);
+  }
+
+  const attach = canAttach && images.length > 0;
+  const block = buildMapsBlock(result.displayQuery, {
+    place: result.place,
+    lat: result.lat,
+    lng: result.lng,
+    streetView: result.streetView,
+    streetViewCount: attach ? result.streetViewImages.length : 0,
+    hasMap: attach ? !!result.staticMapImage : false,
+    description,
+  });
+
   stepDone(
     "maps",
-    result.images.length ? "Google Maps data and imagery attached" : "Google Maps data found",
+    attach
+      ? "Google Maps data and imagery attached"
+      : description
+        ? "Google Maps data + Street View described"
+        : "Google Maps data found",
     result.details,
   );
+
   // Hand the client the coordinates for an inline, navigable Street View embed
   // — but ONLY when the browser-exposed embed key is configured (otherwise the
   // client can't build the iframe and the keyless link in the block stands).
@@ -202,9 +231,43 @@ async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversat
   if (result.embed && googleMapsEmbedKey(env)) {
     emit({ status: { type: "streetview_embed", lat: result.embed.lat, lng: result.embed.lng } });
   }
-  let convo = withAppendedText(conversation, result.block);
-  for (const url of result.images) convo = withAppendedImage(convo, url);
+
+  let convo = withAppendedText(conversation, block);
+  if (attach) for (const url of images) convo = withAppendedImage(convo, url);
   return convo;
+}
+
+// Runs the Street View / map images through a vision-capable helper model to
+// produce a short factual description, so a NON-vision answer model (e.g. the
+// default Mistral Small) can still tell the user what the location looks like.
+// Its tokens go to state.visionTotals so chat.js bills them at that model's
+// rate. Fully fail-soft: any error yields "" and the block falls back to the
+// keyless Street View link.
+async function describeStreetView(env, log, state, label, images) {
+  try {
+    const content = [
+      {
+        type: "text",
+        text:
+          `These are Google Street View photos (looking in different directions) and a road map of ${label}. ` +
+          "Describe the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, " +
+          "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
+          "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",
+      },
+      ...images.map((url) => ({ type: "image_url", image_url: { url } })),
+    ];
+    const upstream = await chatCompletion(env, [{ role: "user", content }], { model: state.visionModel });
+    if (!upstream.ok || !upstream.body) {
+      log.warn("googlemaps.describe_failed", { status: upstream.status });
+      return "";
+    }
+    const { text, usage } = await consumeChatStream(upstream.body, () => {});
+    addUsage(state.visionTotals, usage);
+    return (text || "").trim();
+  } catch (err) {
+    log.warn("googlemaps.describe_failed", { error: err?.message || String(err) });
+    return "";
+  }
 }
 
 async function runWithoutSearch(ctx) {

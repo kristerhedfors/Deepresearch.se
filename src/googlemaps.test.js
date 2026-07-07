@@ -110,13 +110,33 @@ describe("buildMapsBlock", () => {
     assert.match(block, /--- End of Google Maps ---/);
   });
 
+  test("every block tells the model Maps is already enabled", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 1, lng: 2, streetView: null, streetViewCount: 0, hasMap: false });
+    assert.match(block, /already enabled — do NOT suggest the user enable it/);
+  });
+
   test("singular wording for a single frame", () => {
     const block = buildMapsBlock("x", { place: null, lat: 59.4, lng: 17.9, streetView: { date: "" }, streetViewCount: 1, hasMap: false });
     assert.match(block, /one Street View photo/);
-    assert.ok(!/photos/.test(block));
+    assert.ok(!/Street View photos/.test(block));
   });
 
-  test("notes when Street View exists but no images were attached (text-only model)", () => {
+  test("renders a vision-generated description when provided (non-vision answer model)", () => {
+    const block = buildMapsBlock("Lidbecksgatan 10", {
+      place: { name: "", address: "Lidbecksgatan 10, Hallstahammar" },
+      lat: 59.6,
+      lng: 16.2,
+      streetView: { date: "2021-12" },
+      streetViewCount: 0,
+      hasMap: false,
+      description: "A three-storey yellow-brick apartment block on a quiet residential street.",
+    });
+    assert.match(block, /Visual description of the Street View imagery \(auto-generated\): A three-storey yellow-brick/);
+    assert.ok(!block.includes("Attached to this message"));
+    assert.ok(!/open the Street View link/.test(block));
+  });
+
+  test("notes when Street View exists but nothing could be shown (no vision at all)", () => {
     const block = buildMapsBlock("59.4,17.9", {
       place: null,
       lat: 59.4,
@@ -125,7 +145,7 @@ describe("buildMapsBlock", () => {
       streetViewCount: 0,
       hasMap: false,
     });
-    assert.match(block, /images not attached/);
+    assert.match(block, /open the Street View link/);
     assert.ok(!block.includes("Attached to this message"));
   });
 });

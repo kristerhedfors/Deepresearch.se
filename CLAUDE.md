@@ -1361,6 +1361,19 @@ wires it (before any model call, alongside the Shodan enrichment).
   `conversation.js`'s `withAppendedImage` so they flow into synthesis. The
   context block also carries keyless Google Maps / Street View links the user
   can open. `state.mapsCount` rides into the `chat.complete` log.
+- **Vision-describe fallback** (`pipeline.js`'s `describeStreetView`): the
+  DEFAULT answer model (Mistral Small) is NOT vision-capable, so attaching the
+  frames to it wouldn't help — it can't see them. When the chosen answer model
+  can't do vision, the imagery is instead run through a vision *helper* model
+  (`state.visionModel` — the user's model if it's vision, else the first
+  `vision && up` catalog model; resolved in `chat.js`) which returns a short
+  factual description that's injected into the block as text. This is what makes
+  "describe this Street View" work regardless of model choice. The helper's
+  tokens go to `state.visionTotals`, billed at that model's own catalog rate
+  (the same split-billing pattern as `jsonTotals`). Fully fail-soft: no vision
+  model / a failed call → the block just points at the keyless link. The block
+  ALSO always tells the model Maps is already enabled, so an empty-or-imageless
+  result never makes it hand the user bogus "enable it in Settings" steps.
 - **Inline interactive embed** (the `streetview_embed` SSE event): when Street
   View coverage exists AND a **`GOOGLE_MAPS_EMBED_KEY`** is configured, the
   pipeline emits the pano coordinates and the client renders a navigable Maps
