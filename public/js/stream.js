@@ -110,6 +110,14 @@ export function currentConversationId() {
   return currentId;
 }
 
+// Read-only snapshot of the on-screen conversation — the same {role,
+// content} array sent to the API. Used by the header's copy-conversation
+// button (app.js), which formats it via message-content.js's
+// conversationCopyText.
+export function conversationMessages() {
+  return history.slice();
+}
+
 // Sidebar "load": replace the on-screen conversation with a previously
 // saved one. Aborts any in-flight request and bumps `generation` exactly
 // like clearHistory, so a stream from the conversation being replaced can

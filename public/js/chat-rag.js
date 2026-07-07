@@ -20,6 +20,7 @@
 // and the sibling-chat scope picker) are unit-tested in Node — keep this
 // module import-safe outside a browser, same as rag.js.
 
+import { messagePlainText } from "./message-content.js";
 import { appendToDoc, deleteDoc, getDoc } from "./rag.js";
 import { serverHistoryOn } from "./settings.js";
 
@@ -43,29 +44,14 @@ export function chatConvId(docId) {
     : null;
 }
 
-// Context blocks the client appends to the outgoing user message
-// (message-content.js / project-context.js). They are stripped before
-// indexing: their sources (documents, project materials, other chats,
-// image metadata) are already indexed or carried elsewhere — re-indexing
-// retrieval excerpts through the chat would echo them back into the index
-// as duplicate, second-hand chunks.
-const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project chat:|Image metadata:)/;
-
 // The indexable text of one message: the text itself for assistant turns,
-// the user's actual question (appended context blocks stripped, text parts
-// of multimodal content joined) for user turns.
+// the user's actual question for user turns. The appended context blocks
+// (documents, project materials, other chats, image metadata) are stripped
+// by message-content.js's messagePlainText — their sources are already
+// indexed or carried elsewhere, so re-indexing retrieval excerpts through
+// the chat would echo them back into the index as second-hand chunks.
 export function messageIndexText(message) {
-  const c = message?.content;
-  let text =
-    typeof c === "string"
-      ? c
-      : (Array.isArray(c) ? c : [])
-          .filter((p) => p?.type === "text")
-          .map((p) => p.text || "")
-          .join("\n");
-  const cut = text.search(APPENDED_BLOCK);
-  if (cut >= 0) text = text.slice(0, cut);
-  return text.trim();
+  return messagePlainText(message);
 }
 
 // The indexable text of messages[fromMsg..]: labeled turns, empty ones

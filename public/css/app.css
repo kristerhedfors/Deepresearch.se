@@ -498,7 +498,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #composer.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
-#historybtn, #clearbtn, #accountbtn, #ghostbtn {
+#historybtn, #clearbtn, #accountbtn, #ghostbtn, #copybtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -526,14 +526,17 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .notif-badge[hidden] { display: none; }
 #historybtn[hidden] { display: none; }
 
-/* Incognito ghost: its own right-aligned mini-row directly below the
-   account button. Pressed (accent) = this conversation is never written
-   to chat history (local or cloud); locked once the first message is
-   sent — the choice is per-conversation and must be made up front. The
-   row itself stays click-transparent like the rest of the header strip. */
-.header-sub { display: flex; justify-content: flex-end; pointer-events: none; }
-#ghostbtn { pointer-events: auto; }
-#ghostbtn[hidden] { display: none; }
+/* Incognito ghost + copy-conversation: a right-aligned mini-row directly
+   below the account button. Ghost pressed (accent) = this conversation is
+   never written to chat history (local or cloud); the choice is
+   per-conversation and must be made up front, so once the first message
+   is sent the ghost gives way to the copy button (plain-text transcript
+   to the clipboard) — an active incognito chat keeps its ghost beside it
+   as the "nothing is being saved" signal. The row itself stays
+   click-transparent like the rest of the header strip. */
+.header-sub { display: flex; justify-content: flex-end; gap: .5rem; pointer-events: none; }
+#ghostbtn, #copybtn { pointer-events: auto; }
+#ghostbtn[hidden], #copybtn[hidden] { display: none; }
 #ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #ghostbtn:disabled { opacity: .4; }
 /* Active incognito stays clearly visible while the chat runs — the lock

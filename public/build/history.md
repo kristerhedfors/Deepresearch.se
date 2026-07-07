@@ -1293,3 +1293,20 @@ documents.
   in Safari on the Cloudflare dashboard, bindings verified with a
   dry-run before the merge, and the deploy confirmed live by running
   the full 38-test mocked e2e suite against production — all green.
+
+## The ghost gives way to a copy button (2026-07-07)
+
+A small header refinement: the incognito ghost is only a meaningful
+control *before* the first message (the choice locks there, by design),
+so once a conversation has started the locked ghost was just dead
+chrome. It now disappears at the first send and its spot becomes a
+**copy-conversation button** — one tap puts the whole exchange on the
+clipboard as plain `User: …` / `Assistant: …` lines, messages and
+replies only: the integration blocks that ride along to the API
+(attached-document text, project materials, retrieval excerpts, image
+metadata) are stripped, reusing the exact same appended-block stripper
+the project-chat indexer already had (it moved into
+`message-content.js` so both features share one definition, with unit
+tests). The one exception: an active incognito chat keeps its ghost
+visible beside the copy button — there it isn't a control but the
+"nothing is being saved" signal, and that shouldn't vanish.

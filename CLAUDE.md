@@ -267,12 +267,25 @@ conversation, that conversation is never written to chat history at
 all — `persistConversation` is a no-op for it, so neither the encrypted
 local store nor the cloud copy ever sees it; it exists only in the
 tab's memory until "New chat"/reload discards it. The choice locks once
-the conversation has started (button disabled, in either direction — an
-ordinary chat can't retroactively vanish, an incognito one can't
-retroactively persist) and resets to off on every new chat; loading a
-saved conversation is by definition not incognito. Hidden entirely when
+the conversation has started (in either direction — an ordinary chat
+can't retroactively vanish, an incognito one can't retroactively
+persist) and resets to off on every new chat; loading a saved
+conversation is by definition not incognito. Hidden entirely when
 encrypted history isn't available (same `historyAvailable()` check as
 the history button — with no store there's nothing to keep out of).
+**Once the conversation has started, the (now locked) ghost gives way
+to a copy-conversation button** (`#copybtn`, same mini-row): it puts
+the whole conversation on the clipboard as plain `User: …` /
+`Assistant: …` lines — messages and replies only, the appended
+integration blocks (documents, project materials, RAG excerpts, image
+metadata) stripped by `message-content.js`'s `conversationCopyText`
+(built on `messagePlainText`, the appended-block stripper that moved
+there from `chat-rag.js` so indexing and copying share one
+definition — `messageIndexText` now delegates to it). The one
+exception to the swap: an ACTIVE incognito chat keeps its ghost
+visible beside the copy button — it's the "nothing is being saved"
+signal, not a control. The copy button doesn't depend on
+`historyAvailable()` (copying works without a store).
 
 **What's stored per conversation**: title, the same `{role, content}`
 message array `stream.js` already sends to `/api/chat`, plus the model /
@@ -521,8 +534,9 @@ scoping, note/name normalization), `chat-rag.js`'s pure core (chat doc
 ids, the appended-block-stripping turn-text extraction, the
 sibling-chat scope picker), and `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
-RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`
-and `stripOldImages`, the pure
+RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
+`stripOldImages`, `messagePlainText`, and `conversationCopyText` (the
+header copy button's `User:`/`Assistant:` transcript), the pure
 core extracted out of `stream.js`'s send path), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated

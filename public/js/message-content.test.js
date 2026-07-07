@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
+  conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
   inlineDocBlock,
   isStreamStale,
+  messagePlainText,
   ragExcerptBlocks,
   stripOldImages,
 } from "./message-content.js";
@@ -196,4 +198,61 @@ test("ragExcerptBlocks falls back to 'Untitled chat' for an unnamed chat doc", (
 
 test("EXCERPT_TOTAL_CHARS is the documented default budget", () => {
   assert.equal(EXCERPT_TOTAL_CHARS, 12000);
+});
+
+test("messagePlainText reads string and multimodal content and strips appended blocks", () => {
+  assert.equal(messagePlainText({ role: "user", content: "  plain question  " }), "plain question");
+  assert.equal(
+    messagePlainText({
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64,AA" } },
+        { type: "text", text: "what is in this photo?" },
+      ],
+    }),
+    "what is in this photo?",
+  );
+  const blocks = [
+    "\n\n--- Attached document: a.pdf ---\nbody\n--- End of document ---",
+    "\n\n--- Project: Alpha ---\ninventory\n--- End of project materials ---",
+    "\n\n--- Related project chat: Earlier ---\nexcerpt\n--- End of chat excerpts ---",
+    "\n\n--- Image metadata: p.jpg ---\nGPS\n--- End of image metadata ---",
+  ];
+  for (const block of blocks) {
+    assert.equal(messagePlainText({ role: "user", content: "the real question" + block }), "the real question");
+  }
+  assert.equal(messagePlainText({ role: "user", content: [] }), "");
+  assert.equal(messagePlainText(null), "");
+});
+
+test("conversationCopyText formats User:/Assistant: lines, messages and replies only", () => {
+  const messages = [
+    { role: "user", content: "What is X?\n\n--- Attached document: a.pdf ---\nbody\n--- End of document ---" },
+    { role: "assistant", content: "X is Y." },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Follow-up?" },
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64,AA" } },
+      ],
+    },
+    { role: "assistant", content: "Answer with\ntwo lines." },
+  ];
+  assert.equal(
+    conversationCopyText(messages),
+    "User: What is X?\nAssistant: X is Y.\nUser: Follow-up?\nAssistant: Answer with\ntwo lines.",
+  );
+});
+
+test("conversationCopyText skips empty and non-chat turns and handles missing input", () => {
+  assert.equal(
+    conversationCopyText([
+      { role: "system", content: "never copied" },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/jpeg;base64,AA" } }] },
+      { role: "user", content: "only real turn" },
+    ]),
+    "User: only real turn",
+  );
+  assert.equal(conversationCopyText([]), "");
+  assert.equal(conversationCopyText(null), "");
 });

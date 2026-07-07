@@ -73,6 +73,46 @@ export function stripOldImages(history) {
   });
 }
 
+// Context blocks appended to the outgoing user message by the builders in
+// this module and project-context.js. messagePlainText strips them back
+// out — both for chat indexing (chat-rag.js: re-indexing retrieval
+// excerpts would echo documents back into the index as second-hand chunks)
+// and for the header's copy-conversation button (the copy is the exchange
+// as the user saw it, not the integration blocks that rode along to the
+// API).
+const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project chat:|Image metadata:)/;
+
+// The plain text of one message: the text itself for assistant turns, the
+// user's actual question (appended context blocks stripped, text parts of
+// multimodal content joined) for user turns.
+export function messagePlainText(message) {
+  const c = message?.content;
+  let text =
+    typeof c === "string"
+      ? c
+      : (Array.isArray(c) ? c : [])
+          .filter((p) => p?.type === "text")
+          .map((p) => p.text || "")
+          .join("\n");
+  const cut = text.search(APPENDED_BLOCK);
+  if (cut >= 0) text = text.slice(0, cut);
+  return text.trim();
+}
+
+// The whole conversation as clipboard text — "User: …" / "Assistant: …"
+// lines, messages and replies only: appended context blocks are stripped
+// and images/attachments are omitted. Empty turns are skipped.
+export function conversationCopyText(messages) {
+  const parts = [];
+  for (const m of messages || []) {
+    if (m?.role !== "user" && m?.role !== "assistant") continue;
+    const text = messagePlainText(m);
+    if (!text) continue;
+    parts.push((m.role === "assistant" ? "Assistant: " : "User: ") + text);
+  }
+  return parts.join("\n");
+}
+
 // One inline (non-RAG) document as a labeled text block: the doc's parsed
 // text, its extracted metadata (docProps / tracked changes / PDF Info dict —
 // see docs.js) as its own sub-block, and a truncation marker when the parse

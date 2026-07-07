@@ -25,6 +25,7 @@ import { initModels, selectedModelId, selectModel } from "./models.js";
 import { readPending } from "./pending-answer.js";
 import {
   clearHistory,
+  conversationMessages,
   conversationStarted,
   initStream,
   isIncognito,
@@ -34,6 +35,7 @@ import {
   setIncognito,
   stopGeneration,
 } from "./stream.js";
+import { conversationCopyText } from "./message-content.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 
@@ -165,30 +167,57 @@ document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
 
-// ---- Incognito (ghost) toggle ---------------------------------------------
+// ---- Incognito (ghost) toggle + copy-conversation button -------------------
 // Upper right, directly below the account button: pressed BEFORE the first
 // message, the conversation is never written to chat history — not the
 // encrypted local store, not the cloud copy (stream.js's persistConversation
-// is a no-op for it). Locked once the conversation has started, in either
-// direction: an ordinary chat can't retroactively vanish, an incognito one
-// can't retroactively persist. Hidden entirely when encrypted history isn't
+// is a no-op for it). Hidden entirely when encrypted history isn't
 // available (nothing would be saved anyway, same check as the history button).
+// Once the conversation has started (the point where the incognito choice
+// locks, in either direction) the ghost gives way to a copy button that
+// puts the whole conversation on the clipboard as plain "User: …" /
+// "Assistant: …" lines — messages and replies only, the appended context
+// blocks stripped (message-content.js's conversationCopyText). The one
+// exception: an ACTIVE incognito chat keeps its ghost visible beside the
+// copy button — it's the "nothing is being saved" signal, not a control.
 
 const ghostBtn = document.getElementById("ghostbtn");
-historyAvailable().then((ok) => { ghostBtn.hidden = !ok; }).catch(() => {});
+const copyBtn = document.getElementById("copybtn");
+let ghostAvailable = false;
+historyAvailable().then((ok) => { ghostAvailable = ok; syncGhostState(); }).catch(() => {});
 
-function syncGhostState() {
-  const locked = conversationStarted();
+// `started` can be forced true by the submit handler: the first message is
+// on its way out, but conversationStarted() only flips once sendMessage
+// pushes it into the history.
+function syncGhostState(started = conversationStarted()) {
   const on = isIncognito();
-  ghostBtn.disabled = locked;
+  ghostBtn.disabled = started;
   ghostBtn.classList.toggle("on", on);
   ghostBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  ghostBtn.hidden = !ghostAvailable || (started && !on);
+  copyBtn.hidden = !started;
   ghostBtn.title = on
     ? "Incognito — this conversation won't be saved to chat history"
-    : locked
-      ? "Incognito is only available before the first message — start a new chat to use it"
-      : "Incognito chat — keep this conversation out of chat history";
+    : "Incognito chat — keep this conversation out of chat history";
 }
+
+// Icon-only feedback, same 1.5s rhythm as the answer tools' Copy button
+// (turns.js): a checkmark on success — clipboard denial just leaves the
+// icon alone.
+const CONV_COPY_ICON = copyBtn.innerHTML;
+const CONV_COPIED_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+copyBtn.addEventListener("click", async () => {
+  const text = conversationCopyText(conversationMessages());
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    return;
+  }
+  copyBtn.innerHTML = CONV_COPIED_ICON;
+  setTimeout(() => { copyBtn.innerHTML = CONV_COPY_ICON; }, 1500);
+});
 
 ghostBtn.addEventListener("click", () => {
   if (conversationStarted()) return;
@@ -307,9 +336,10 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   autogrow();
   setSendMode(true);
-  // The first message is going out — lock the incognito choice right away
-  // (conversationStarted() only flips once sendMessage pushes the message).
-  ghostBtn.disabled = true;
+  // The first message is going out — lock the incognito choice and swap in
+  // the copy button right away (conversationStarted() only flips once
+  // sendMessage pushes the message).
+  syncGhostState(true);
   const { images, docs } = takeAttachments();
   await sendMessage(text, {
     images,
