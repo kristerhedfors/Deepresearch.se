@@ -238,8 +238,12 @@ function ackAnswer(requestId) {
 //   "empty"   — the run finished but produced nothing
 //   "timeout" — still running when the deadline passed
 //   "aborted" — a new chat/load ended the poll
-// While the server reports "running" the step ticks a live elapsed counter
-// so a legitimately long research run reads as progress, not a frozen app.
+// Once the server confirms the run is still going, the step shows a live
+// elapsed counter so a long research run reads as progress, not a frozen
+// app. The counter is driven by its OWN 1-second ticker, decoupled from the
+// (slower, latency-variable) network poll below — otherwise the number
+// would lurch by the poll interval (4s → 7s → 12s…) instead of ticking
+// evenly second by second.
 async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connection lost — recovering the answer…") {
   if (!requestId) return { data: null, reason: "gone" };
   startGenericStep(turn, "recover", startLabel);
@@ -247,29 +251,42 @@ async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connec
   const deadline = startedAt + ((budgetS || 60) + 120) * 1000;
   let misses = 0;
   let reason = "timeout";
-  // Poll immediately first: on a boot resume the server usually finished
-  // while we were away, so the answer is already parked and the very first
-  // poll returns it — no wait. Only if it's still running do we sleep/re-poll.
-  while (Date.now() < deadline && gen === generation) {
-    try {
-      const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
-      if (res.status === 404) {
-        if (++misses >= 3) { reason = "gone"; break; }
-      } else if (res.ok) {
-        const data = await res.json();
-        if (data.status === "done") {
-          if (!data.text) { reason = "empty"; break; }
-          finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
-          return { data, reason: "done" };
-        }
-        if (data.status === "lost") { reason = "lost"; break; } // server run died
-        misses = 0; // still researching — keep waiting, showing live elapsed time
-        updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
-      }
-    } catch {
-      // still offline — keep trying until the deadline
+  let running = false; // flips true once the server confirms it's still researching
+
+  // Smooth per-second counter, independent of the poll cadence.
+  const ticker = setInterval(() => {
+    if (running) {
+      updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
     }
-    await sleep(4000);
+  }, 1000);
+
+  try {
+    // Poll immediately first: on a boot resume the server usually finished
+    // while we were away, so the answer is already parked and the very first
+    // poll returns it — no wait. Only if it's still running do we sleep/re-poll.
+    while (Date.now() < deadline && gen === generation) {
+      try {
+        const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
+        if (res.status === 404) {
+          if (++misses >= 3) { reason = "gone"; break; }
+        } else if (res.ok) {
+          const data = await res.json();
+          if (data.status === "done") {
+            if (!data.text) { reason = "empty"; break; }
+            finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
+            return { data, reason: "done" };
+          }
+          if (data.status === "lost") { reason = "lost"; break; } // server run died
+          misses = 0; // still researching — the ticker shows live elapsed time
+          running = true;
+        }
+      } catch {
+        // still offline — keep trying until the deadline
+      }
+      await sleep(4000);
+    }
+  } finally {
+    clearInterval(ticker);
   }
   if (gen !== generation) reason = "aborted";
   finishGenericStep(turn, {

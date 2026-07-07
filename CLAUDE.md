@@ -889,8 +889,13 @@ Let a battery finish before pushing anything.
   (done/lost/gone/empty/timeout/aborted): on `lost` it stops within
   ~50-65s (not 12 min) with an honest "interrupted on the server — try
   again, lower the budget if it recurs" message, and while genuinely
-  `running` it ticks a live "Still researching on the server… (Ns)" label
+  `running` it shows a live "Still researching on the server… (Ns)" label
   (`updateGenericStep`) so a long wait reads as progress, not a frozen app.
+  The counter is driven by its OWN 1-second ticker inside `recoverAnswer`,
+  deliberately decoupled from the 4s network poll — otherwise the number
+  lurched by the poll interval (4s → 7s → 12s…) instead of ticking evenly.
+  (The SERVER-side D1 heartbeat stays at 15s — it only needs to beat often
+  enough for the 50s stale window; a per-second D1 write would be wasteful.)
   It makes an interrupted run fail fast and truthfully instead of hanging
   on an indefinite spinner.
 - **Client stall watchdog (the "switched to another app" fix)**: server
