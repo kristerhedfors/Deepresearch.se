@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { imagesThatFit, quotaBlockedResponse } from "./chat.js";
+import { imagesThatFit, pickContextImages, quotaBlockedResponse } from "./chat.js";
 
 describe("quotaBlockedResponse", () => {
   test("budget kind: message omits amounts, public quota carries no limit", () => {
@@ -37,20 +37,57 @@ describe("imagesThatFit", () => {
   const conv = [{ role: "user", content: "q" }]; // tiny baseline
   const img = (n) => ({ label: `i${n}`, dataUrl: "x".repeat(n) });
 
-  test("keeps everything when the budget allows", () => {
+  test("keeps everything when both budgets allow", () => {
     const images = [img(1000), img(1000)];
-    assert.equal(imagesThatFit(conv, images).length, 2);
+    assert.equal(imagesThatFit(conv, images, 4).length, 2);
   });
 
   test("stops at the first image that would overflow, keeping order", () => {
     const images = [img(400), img(400), img(400)];
     // budget fits conv + two images (400+200 each) but not three
-    const kept = imagesThatFit(conv, images, JSON.stringify(conv).length + 1300);
+    const kept = imagesThatFit(conv, images, 4, JSON.stringify(conv).length + 1300);
     assert.deepEqual(kept, images.slice(0, 2));
   });
 
-  test("a conversation already at the cap keeps nothing", () => {
+  test("a conversation already at the char cap keeps nothing", () => {
     const bigConv = [{ role: "user", content: "y".repeat(2000) }];
-    assert.deepEqual(imagesThatFit(bigConv, [img(100)], 1000), []);
+    assert.deepEqual(imagesThatFit(bigConv, [img(100)], 4, 1000), []);
+  });
+
+  test("the per-model image cap counts the user's own images in the message", () => {
+    const part = { type: "image_url", image_url: { url: "u" } };
+    const withOwn = [{ role: "user", content: [{ type: "text", text: "q" }, part] }];
+    // cap 2 with 1 user image already present -> only 1 appended image fits
+    const kept = imagesThatFit(withOwn, [img(10), img(10)], 2);
+    assert.equal(kept.length, 1);
+    // cap 2 on a plain-string message -> both fit
+    assert.equal(imagesThatFit(conv, [img(10), img(10)], 2).length, 2);
+  });
+});
+
+describe("pickContextImages", () => {
+  const conv = [{ role: "user", content: "q" }];
+  const sv = (n) => ({ kind: "streetview", label: `sv${n}`, dataUrl: "x".repeat(50) });
+  const map = { kind: "map", label: "map", dataUrl: "m".repeat(50) };
+
+  test("under a tight cap the map takes the last slot from a street view frame", () => {
+    const kept = pickContextImages(conv, [sv(1), sv(2), sv(3), sv(4), map], 4);
+    assert.deepEqual(kept.map((i) => i.label), ["sv1", "sv2", "sv3", "map"]);
+  });
+
+  test("no swap when the map already fits, or when there is no map", () => {
+    assert.deepEqual(
+      pickContextImages(conv, [sv(1), map], 4).map((i) => i.label),
+      ["sv1", "map"],
+    );
+    assert.deepEqual(
+      pickContextImages(conv, [sv(1), sv(2)], 1).map((i) => i.label),
+      ["sv1"],
+    );
+  });
+
+  test("a single available slot stays with the first street view frame", () => {
+    const kept = pickContextImages(conv, [sv(1), sv(2), map], 1);
+    assert.deepEqual(kept.map((i) => i.label), ["sv1"]);
   });
 });

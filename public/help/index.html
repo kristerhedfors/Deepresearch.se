@@ -287,6 +287,21 @@
         ever sent to Shodan, never your question or anything about your
         account, and only when your message actually names a host. It works
         whether or not web search is on.</li>
+      <li><b>Street-level views</b> (on by default) — when you attach a
+        photo that carries GPS coordinates, the site fetches Google Street
+        View images of that exact spot (looking north, east, south and
+        west) so vision-capable models can literally look around the
+        location: read signage, describe buildings, confirm what's
+        physically there. Only the coordinates are sent to Google.</li>
+      <li><b>Nearby place details</b> (on by default) — establishments
+        around a photo's location come from Google Places, with ratings,
+        review counts, open-now and permanently-closed status. Switched
+        off, the same list still appears from OpenStreetMap (free, but
+        without ratings or freshness). Only the coordinates are sent.</li>
+      <li><b>Area map context</b> (on by default) — vision-capable models
+        also get a road map of the photo's location with a marker on the
+        exact spot, so answers can reason about street layout and
+        distances. Only the coordinates are sent.</li>
     </ul>
   </section>
 
@@ -307,6 +322,12 @@
         names an IP or hostname, that IP/hostname alone is sent to Shodan to
         fetch its public infrastructure record — never your question or
         anything identifying you.</li>
+      <li><b>Photo locations</b>: when a photo you attach carries GPS
+        coordinates, those coordinates alone go to OpenStreetMap (place
+        name + nearby establishments) and — while the Settings switches
+        above are on — to Google (Street View images, place details, a
+        map). Never the photo itself, your question, or anything about
+        your account. Photos without GPS metadata trigger none of this.</li>
       <li><b>What our server keeps</b>: your account (Google email, name)
         and per-request usage numbers — token counts, search counts,
         durations — used for the quota bars. No message text, ever.</li>

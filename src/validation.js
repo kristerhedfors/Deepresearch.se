@@ -3,6 +3,7 @@
 
 import { defaultModel } from "./berget.js";
 import { countImages } from "./conversation.js";
+import { getModelProfile } from "./model-profiles.js";
 
 const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
@@ -134,6 +135,24 @@ export function resolveModel(body, catalog, env, log) {
         error:
           `${entry.name} does not support image input.` +
           (alternatives ? ` Vision-capable models: ${alternatives}.` : ""),
+        status: 400,
+      };
+    }
+    // Some models take fewer images per message than the global cap above
+    // (model-profiles.js, evidence-driven — e.g. Berget's Mistral Medium
+    // 400s any message with more than 2). Reject clearly here instead of
+    // letting the pipeline fail mid-stream with an opaque provider error.
+    const perMessageCap = getModelProfile(activeModel).maxMessageImages;
+    const worstMessage = Math.max(
+      0,
+      ...body.messages.map((m) =>
+        Array.isArray(m?.content) ? m.content.filter((p) => p?.type === "image_url").length : 0,
+      ),
+    );
+    if (worstMessage > perMessageCap) {
+      log.warn("chat.model_image_cap", { model: activeModel.slice(0, 120), images: worstMessage });
+      return {
+        error: `${entry?.name || activeModel} accepts at most ${perMessageCap} images per message (you attached ${worstMessage}). Remove some images or pick another vision model.`,
         status: 400,
       };
     }

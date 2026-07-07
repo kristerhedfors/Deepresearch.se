@@ -46,3 +46,8 @@ describe("getModelProfile", () => {
     assert.equal(profile.maxTokensOverride, null);
   });
 });
+
+test("maxMessageImages: Mistral Medium capped at 2, unknown models at the default 4", () => {
+  assert.equal(getModelProfile("mistralai/Mistral-Medium-3.5-128B").maxMessageImages, 2);
+  assert.equal(getModelProfile("nonexistent/model").maxMessageImages, 4);
+});

@@ -23,6 +23,7 @@ import {
   recordUsage,
 } from "./quota.js";
 import { resolveModel, validateImageLocations, validateMessages } from "./validation.js";
+import { getModelProfile } from "./model-profiles.js";
 import { getSettings, shodanEnabled } from "./settings.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
@@ -197,11 +198,15 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             streetView: settings.street_view,
             mapImage: settings.map_context,
           });
-          const kept = imagesThatFit(conversationWithContext, imagery.images);
+          const kept = pickContextImages(
+            conversationWithContext,
+            imagery.images,
+            getModelProfile(model).maxMessageImages,
+          );
           conversationWithContext = withAppendedImages(conversationWithContext, kept);
           details.push(...imagery.notes);
           if (kept.length < imagery.images.length) {
-            details.push(`${imagery.images.length - kept.length} image(s) skipped (request size limit)`);
+            details.push(`${imagery.images.length - kept.length} image(s) skipped (model image/size limits)`);
           }
         }
       } catch (err) {
@@ -299,20 +304,44 @@ export function quotaBlockedResponse(blocked) {
 }
 
 // Mutable per-request state threaded through the pipeline.
-// Berget rejects request bodies over ~1MB; the client's own caps keep the
-// user's images under ~700K chars, and this keeps the server-added Street
-// View/map images (src/maps.js) from pushing the total over the edge —
-// images are kept in order until the budget runs out (Street View frames
-// first, the area map last). Exported for unit tests.
+// Street View frames come first in collectMapImagery's order, so under a
+// tight per-model image cap they'd squeeze the area map out entirely —
+// but one map plus N-1 street-level views is better context than N views
+// with no spatial anchor. When the map didn't make the cut and at least
+// two slots were filled, the last kept frame yields its slot to the map
+// (re-checked against the size budget, since the map's encoding may be
+// larger than the frame it replaces). Exported for unit tests.
+export function pickContextImages(conversation, images, maxImages) {
+  let kept = imagesThatFit(conversation, images, maxImages);
+  const map = images.find((im) => im.kind === "map");
+  if (map && !kept.includes(map) && kept.length >= 2) {
+    kept = imagesThatFit(conversation, [...kept.slice(0, -1), map], maxImages);
+  }
+  return kept;
+}
+
+// Two ceilings guard the server-added Street View/map images (src/maps.js):
+// Berget rejects request bodies over ~1MB (the client's own caps keep the
+// user's images under ~700K chars), and some models reject messages
+// carrying more than N images (model-profiles.js maxMessageImages,
+// live-bisected — Berget's Mistral Medium 400s at 3+). Images are kept in
+// order until either budget runs out (Street View frames first, the area
+// map last), counting the user's own images already in the message.
+// Exported for unit tests.
 const MAX_REQUEST_CHARS = 900_000;
-export function imagesThatFit(conversation, images, maxChars = MAX_REQUEST_CHARS) {
+export function imagesThatFit(conversation, images, maxImages, maxChars = MAX_REQUEST_CHARS) {
   let total = JSON.stringify(conversation).length;
+  const last = conversation[conversation.length - 1];
+  let count = Array.isArray(last?.content)
+    ? last.content.filter((p) => p?.type === "image_url").length
+    : 0;
   const kept = [];
   for (const im of images) {
     const size = im.dataUrl.length + 200; // part-envelope + label overhead
-    if (total + size > maxChars) break;
+    if (total + size > maxChars || count >= maxImages) break;
     kept.push(im);
     total += size;
+    count += 1;
   }
   return kept;
 }

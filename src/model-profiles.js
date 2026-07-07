@@ -33,6 +33,12 @@ const DEFAULT = {
   // content) — see round 4/5's model-eval findings for the failure mode
   // this guards against. 2 = today's universal one-retry behavior.
   maxCompletionAttempts: 2,
+  // Most images one message may carry for this model — matches
+  // validation.js's MAX_IMAGES_PER_MESSAGE by default. chat.js consults it
+  // when appending server-fetched Street View/map images (src/maps.js) and
+  // validation.js when checking the user's own attachments, so both are
+  // capped before Berget can 400.
+  maxMessageImages: 4,
 };
 
 const OVERRIDES = {
@@ -65,6 +71,18 @@ const OVERRIDES = {
   "moonshotai/Kimi-K2.6": {
     priorsMs: { triage: 15_000, search: 2_500, gap: 8_000, synth: 35_000, validate: 20_000 },
     maxCompletionAttempts: 3,
+  },
+
+  // Live-bisected 2026-07-07 (while building the Street View feature):
+  // Berget's Mistral Medium 400s ("invalid_request") any message carrying
+  // MORE THAN 2 images — 1 and 2 identical small JPEGs answered fine, 3
+  // and 4 drew the 400; Kimi-K2.6 and gemma-4 accepted 4 of the same
+  // images in the same request shape, so it's this model, not the
+  // gateway. Capping here keeps both user attachments and server-added
+  // Street View/map imagery under the ceiling instead of failing the
+  // whole request.
+  "mistralai/Mistral-Medium-3.5-128B": {
+    maxMessageImages: 2,
   },
 
   // gpt-oss-120b's post-validation phase returned neither "pass" nor a

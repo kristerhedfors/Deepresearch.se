@@ -1293,3 +1293,30 @@ documents.
   in Safari on the Cloudflare dashboard, bindings verified with a
   dry-run before the merge, and the deploy confirmed live by running
   the full 38-test mocked e2e suite against production — all green.
+
+## Photos that see their surroundings (2026-07-07)
+
+A photo with GPS coordinates now buys the research pipeline actual
+street-level sight, not just a place name. Built in one session across
+two tiers:
+
+- **Keyless tier** (works for everyone, always): the coordinates
+  resolve to a place name (OpenStreetMap Nominatim), a clickable Google
+  Street View link (a plain URL — nothing fetched unless opened), and
+  named establishments within 250 m (OpenStreetMap Overpass).
+- **Keyed tier** (Google Cloud key on the Worker, three per-account
+  knobs in Settings, default on): the pipeline fetches **Street View
+  frames facing north/east/south/west** of the exact spot plus a
+  **marked area map**, and attaches them to the message so
+  vision-capable models literally look around — live tests had models
+  reading storefront banners off the panorama. Nearby establishments
+  upgrade to **Google Places** data with ratings, review counts and
+  open/permanently-closed status; OpenStreetMap stays the automatic
+  fallback. Only the photo's coordinates ever go to Google.
+- **A model quirk found the hard way, then encoded**: Berget's Mistral
+  Medium rejects any message carrying more than 2 images (bisected
+  live: 2 fine, 3+ fail, while Kimi and Gemma take 4+). It's now a
+  per-model profile field — server-added imagery respects it, the area
+  map takes priority over the fourth street view when slots run out,
+  and a user attaching too many images gets a clear error naming the
+  limit instead of a dead stream.

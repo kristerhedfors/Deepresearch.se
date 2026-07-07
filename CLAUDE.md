@@ -127,6 +127,7 @@ Server (`src/`):
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
+| `maps.js` | Google Maps Platform client (Street View Static frames + metadata, Maps Static area map, Places (New) nearby) — the keyed, knob-gated tier of photo-location enrichment |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
@@ -224,14 +225,19 @@ gaps.
 ### Cloud storage — the per-account `server_history` knob (default ON)
 
 `/api/settings` (`src/settings.js`, stored in `users.settings_json`)
-carries two knobs, rendered in the account panel's **Settings sub-view**
+carries the knobs, rendered in the account panel's **Settings sub-view**
 (its own level below the summary, like "Full usage & history" — a list
 of `.settings-row` slide-switch rows, the ORIGINAL pre-spiderweb toggle
 design as generic `.switch` classes, so future settings just add rows):
-**"Store history in the cloud"** (documented here) and **"Shodan host
-intelligence"** (default OFF — see "Shodan host intelligence" below). PUT
-accepts a partial body (`{server_history?, shodan_mcp?}`) so each knob
-saves independently. Each row is a SINGLE line — label, an **ⓘ** glyph,
+**"Store history in the cloud"** (documented here), **"Shodan host
+intelligence"** (default OFF — see "Shodan host intelligence" below),
+and the three Google Maps photo-feature knobs (**street-level views /
+nearby place details / area map context**, default ON — see
+"Photo-location enrichment" below). All knobs live in one spec table
+(`KNOBS` in `src/settings.js`: per-knob default, required availability
+flag, 503 text) — a new knob is one row there plus its client row. PUT
+accepts a partial body (any subset of the knobs) so each saves
+independently. Each row is a SINGLE line — label, an **ⓘ** glyph,
 and the switch — with the full explanation behind a press-and-hold (or
 click-the-ⓘ) popover, the same gesture the composer's web-search knob
 uses (`wireSettingPopovers` in `public/js/account.js`); the popover keeps
@@ -948,20 +954,72 @@ the `Resolved location(s)` block):
    nearest the spot. Nothing is ever fetched from Google by the Worker or
    the client — the URL only resolves if the user opens it. The client's
    `formatExifSummary()` includes the same link in the image metadata
-   block, so it's present even with web search off. This is deliberately
-   the no-credential tier of street-level support: actually FETCHING
-   Street View imagery for the pipeline (so a vision model could look
-   around/navigate) requires the Street View Static API — a Google Cloud
-   key + billing ($7/1k images; the metadata endpoint for coverage
-   checks is free but still keyed; the Maps *Embed* API for an
-   interactive in-page panorama is free but also keyed) — and is
-   deliberately NOT implemented until that account decision is made.
+   block, so it's present even with web search off. This is the
+   no-credential tier of street-level support, always available; the
+   KEYED tier — actually fetching Street View imagery so a vision model
+   can look around — is `src/maps.js`, below.
 3. **Nearby establishments** (`nearbyEstablishments()` — OpenStreetMap's
    Overpass API): named amenities/shops/tourism/leisure POIs within
    250 m, deduped, capped at 20, formatted "Name (kind)". Lets the model
    answer questions about a photo's surroundings and gives Exa concrete
    establishment names to search. Free, keyless, same OSM ecosystem —
-   NOT Google Places ($32/1k requests), a deliberate cost/privacy call.
+   and the permanent FALLBACK when the keyed Google Places lookup below
+   is off, unconfigured, or fails.
+
+### The keyed tier — `src/maps.js` (Google Maps Platform, per-user knobs)
+
+With the `GOOGLE_MAPS_API_KEY` secret set (Google Cloud project with
+Street View Static API, Places API (New) and Maps Static API enabled),
+three more enrichments run — each behind its own per-user knob (default
+ON; `src/settings.js`), each fail-soft, each sending ONLY coordinates
+(plus the key) to Google. Without the key the module is invisible
+(knobs read unavailable/off) and everything above still works:
+
+- **Street View frames** (`street_view` knob): a FREE metadata call
+  confirms imagery coverage (and pins the exact `pano_id` + capture
+  date, surfaced in the activity step), then up to four 640x400 JPEG
+  frames of that one panorama (headings N/E/S/W) are fetched, base64d,
+  and appended to the LAST user message as labeled image parts
+  (`withAppendedImages` in `src/conversation.js` — a text block declares
+  what each appended image is, so models can tell server-added frames
+  from the user's own photo). VISION MODELS ONLY (`catalog.vision`;
+  unreachable catalog = skip). Live-verified: models read signage and
+  describe layout from these frames. $7/1k images (Essentials SKU, 10k
+  free/month).
+- **Area map** (`map_context` knob): one Maps Static road-map JPEG with
+  a labeled marker per photo location (explicit zoom 16 for a single
+  location, auto-fit for several), appended the same way. $2/1k
+  (Essentials, 10k free/month).
+- **Google Places nearby** (`nearby_places` knob): Places API (New)
+  `searchNearby` (POST, `X-Goog-FieldMask` header) upgrades the
+  establishments line — ratings, review counts, open-now,
+  permanently/temporarily-closed (the freshness OSM can't give). Tried
+  FIRST; Overpass fills in whenever it returns nothing. **The field
+  mask IS the billing SKU**: including rating/userRatingCount/
+  currentOpeningHours bills as Nearby Search ENTERPRISE (~$40/1k, only
+  1k free/month) vs Pro ($32/1k, 5k free) without them — a deliberate
+  choice at this site's volume, flagged in the module header; trim the
+  mask if volume ever grows.
+
+Image budgets: appended images are capped by BOTH the ~1MB Berget
+request ceiling and the model's per-message image limit
+(`maxMessageImages` in `src/model-profiles.js` — live-bisected 2026-07-07:
+Berget's Mistral Medium 400s any message with >2 images while Kimi and
+Gemma take 4+; `resolveModel` also rejects over-cap CLIENT images with a
+clear 400 instead of letting Berget fail mid-stream). When the cap
+squeezes the map out, the last Street View frame yields its slot
+(`pickContextImages` in `src/chat.js`) — views plus a spatial anchor
+beat one more view. The whole enrichment renders as a visible
+"Resolving photo location…" activity step whose details name the place,
+the source and count of nearby places, the frames fetched (with imagery
+date), and anything skipped.
+
+Deliberately NOT implemented (decide separately if ever wanted): Place
+Photos (Enterprise SKU, 1k free), the Maps Embed interactive iframe
+(free but a Google iframe inside an auth-gated app is a posture change),
+multi-step "walking" navigation (repeated SV fetches along a bearing —
+possible with the same Static API, budget-gated, just not built), and
+Google Geocoding (Nominatim already covers it keyless).
 
 - **Auth:** none — Nominatim's and Overpass's public APIs need no
   key/secret.

@@ -185,7 +185,7 @@ export async function streetViewImages(env, log, panoId) {
     SV_HEADINGS.map(async ({ deg, label }) => {
       const url = `${SV_IMAGE_URL}?${streetViewParams(panoId, deg)}&key=${env.GOOGLE_MAPS_API_KEY}`;
       const dataUrl = await fetchImageAsDataUrl(url, log, "maps.sv_image_error");
-      return dataUrl ? { label: `Street View ${label} (${deg}°)`, dataUrl } : null;
+      return dataUrl ? { kind: "streetview", label: `Street View ${label} (${deg}°)`, dataUrl } : null;
     }),
   );
   return frames.filter(Boolean);
@@ -195,7 +195,7 @@ export async function streetViewImages(env, log, panoId) {
 export async function staticMapImage(env, log, locations) {
   const url = `${STATIC_MAP_URL}?${staticMapParams(locations)}&key=${env.GOOGLE_MAPS_API_KEY}`;
   const dataUrl = await fetchImageAsDataUrl(url, log, "maps.static_map_error");
-  return dataUrl ? { label: mapLabel(locations), dataUrl } : null;
+  return dataUrl ? { kind: "map", label: mapLabel(locations), dataUrl } : null;
 }
 
 export function mapLabel(locations) {
