@@ -296,6 +296,17 @@
         ever sent to Shodan, never your question or anything about your
         account, and only when your message actually names a host. It works
         whether or not web search is on.</li>
+      <li><b>Hugging Face models &amp; datasets</b> — if a question names a
+        Hugging Face model or dataset (a link like
+        <code>huggingface.co/meta-llama/Llama-3.1-8B-Instruct</code>,
+        or just the id <code>google/gemma-2-9b</code>), the site
+        looks it up on the
+        <a href="https://huggingface.co" target="_blank" rel="noopener">Hugging
+        Face Hub</a> and folds the live details — task, library, licence, size,
+        downloads, likes, tags — into the research so the answer reflects the
+        real, current record rather than the model's memory of it. Only the
+        model/dataset id is sent, never your question. Like web search, this
+        runs only while <b>web search is on</b>.</li>
     </ul>
   </section>
 
@@ -311,6 +322,10 @@
         <b>Exa retains queries by default</b> (zero data retention is an
         enterprise-only Exa feature we don't currently have) — see
         "Sensitive topics" above for the two-step workflow.</li>
+      <li><b>Hugging Face lookups</b>: only while web search is ON, and only
+        when your message names a Hugging Face model or dataset. Just that
+        model/dataset id is sent to the Hugging Face Hub — never your question
+        or anything about your account.</li>
       <li><b>Shodan lookups</b>: only if you turn on <b>Shodan host
         intelligence</b> in Settings (off by default). Then, when a message
         names an IP or hostname, that IP/hostname alone is sent to Shodan to

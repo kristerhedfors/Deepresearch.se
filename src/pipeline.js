@@ -39,6 +39,7 @@ import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 import { extractCoordinates, extractPlaceQueries, runMapsLookup } from "./maps.js";
+import { hfAvailable, extractHfRepos, runHuggingFaceLookup } from "./huggingface.js";
 import {
   directPrompt,
   gapPrompt,
@@ -71,6 +72,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // gated behind it, since the place token derives from the user's topic —
   // the same privacy boundary Exa sits behind. Fully fail-soft.
   convo = await runMapsEnrichment(env, log, emit, step, stepDone, convo, state);
+
+  // Hugging Face Hub enrichment (src/huggingface.js): resolve any HF model /
+  // dataset the message names into live Hub metadata. Gated behind the
+  // web-search toggle — the repo id derives from the user's topic and is sent
+  // to a third party, the same privacy boundary Exa and the maps forward
+  // geocode sit behind. Fully fail-soft.
+  if (state.webSearch) convo = await runHuggingFaceEnrichment(env, log, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, state, profile, conversation: convo,
@@ -168,6 +176,36 @@ async function runMapsEnrichment(env, log, emit, step, stepDone, conversation, s
   // Deliver the map / Street View imagery to the client to render + embed in
   // the PDF report (the model sees only the text block — kept model-agnostic).
   if (result.images?.length) emit({ status: { type: "map", id: "maps", images: result.images } });
+  return withAppendedText(conversation, result.block);
+}
+
+// Hugging Face Hub enrichment: resolve any HF model/dataset the latest message
+// names into live Hub metadata and append it as a labeled context block. Stays
+// SILENT (no step, no conversation change) when the message names no repo — so
+// an ordinary question costs nothing and shows no spurious step. Gated by the
+// caller behind the web-search toggle. Every failure mode degrades to the
+// original conversation.
+async function runHuggingFaceEnrichment(env, log, step, stepDone, conversation, state) {
+  if (!hfAvailable(env)) return conversation;
+  const lastUser = textOf(lastUserMessage(conversation)?.content);
+  if (!extractHfRepos(lastUser).length) return conversation;
+
+  step("huggingface", "Querying Hugging Face Hub…");
+  let result = null;
+  try {
+    result = await runHuggingFaceLookup(env, log, conversation);
+  } catch (err) {
+    log.warn("hf.phase_failed", { error: err?.message || String(err) });
+  }
+  if (!result) {
+    stepDone("huggingface", "Hugging Face lookup unavailable — continuing without it");
+    return conversation;
+  }
+  state.hfCount = result.count;
+  const label = result.count
+    ? `Hugging Face: ${result.count} repo${result.count === 1 ? "" : "s"} found`
+    : "Hugging Face: no Hub record for the repo(s) named";
+  stepDone("huggingface", label, result.details);
   return withAppendedText(conversation, result.block);
 }
 

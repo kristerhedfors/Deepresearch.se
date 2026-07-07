@@ -129,6 +129,7 @@ Server (`src/`):
 | `geocode.js` | OpenStreetMap Nominatim reverse-geocode — now only the FALLBACK for `maps.js` when the Google key is absent/fails |
 | `maps.js` | Google Maps Platform: Places (New) forward/reverse geocode + Maps Static & Street View imagery + the key-free image proxy (`handleMapsProxy`) + pure text extractors — see "Maps" below |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
+| `huggingface.js` | Hugging Face Hub client + repo-id extraction: resolves models/datasets a question names into live Hub metadata — see "Hugging Face Hub" below |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
@@ -393,7 +394,8 @@ unknown `status` types (forward compatibility).
     source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
     phases), `geocode` (Google Maps reverse-geocode of a photo's GPS EXIF),
     `maps` (Google Maps lookup of coordinates or place names the *message*
-    names — `src/maps.js`), `shodan` (Shodan host lookup).
+    names — `src/maps.js`), `shodan` (Shodan host lookup), `huggingface`
+    (Hugging Face Hub model/dataset lookup — `src/huggingface.js`).
     The client records every `status` event — plus
     the full generated answer and every error (server- or client-side,
     funnelled through `turns.js`'s single `setError` sink) — into a per-turn
@@ -430,11 +432,14 @@ source rule, the JSON-only reinforcement toggle), `chat.js`'s
 `normalizeTriage` — the source-registry/domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
-and `maps.js` (`extractCoordinates`/`extractPlaceQueries`/
+`maps.js` (`extractCoordinates`/`extractPlaceQueries`/
 `messageHasMapTargets` — the deterministic text→coordinate/place-name
 triggers; plus the `handleMapsProxy` validation/key-injection and the
 key-free proxy-path builders; the battery doubles as the maps capability's
-user-story suite, see `tests/MAPS-CAPABILITIES.md`).
+user-story suite, see `tests/MAPS-CAPABILITIES.md`), and `huggingface.js`
+(`extractHfRepos` repo-id extraction from URLs / cued / versioned tokens with
+the `x/y`-bigram stoplist, plus `lookupRepo`/`runHuggingFaceLookup` against a
+stubbed Hub — summary shaping, model→dataset fallback, honest not-found).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -1131,6 +1136,57 @@ context every phase can use.
   identifier. Server-side only (Worker-mediated, logged, timeout-bounded),
   the key never reaches the browser.
 
+## Hugging Face Hub — model/dataset enrichment (`src/huggingface.js`)
+
+Resolves any **Hugging Face model or dataset a research question names** into
+live Hub metadata (task/pipeline, library, license, parameter count, monthly
+downloads, likes, tags, gated status, last update), so an AI/ML question is
+answered against the real Hub record rather than the model's training-cutoff
+memory of it. Wired the same deterministic, no-function-calling, fail-soft way
+as the Shodan and Maps enrichments: pure unit-tested extractors pull repo ids
+from the latest user message; the Worker resolves them via the Hugging Face Hub
+REST API and appends ONE labeled context block every phase sees. A visible
+`huggingface` activity step names the service.
+
+- **`HUGGINGFACE_API_TOKEN`** is a dashboard secret, same as
+  Berget/Exa/Shodan/Google Maps — never in the repo, no `wrangler.toml`
+  binding. `hfAvailable(env)` gates the feature; absent, it's invisible (no
+  step, no lookup). When present it's sent as a `Bearer` token for higher rate
+  limits and access to any gated repos the token is entitled to (the Hub's
+  public read endpoints work tokenless, but the token is what turns the feature
+  on and keeps it from being rate-limited).
+- **Deterministic repo-id extraction** (`extractHfRepos`, pure + unit-tested):
+  pulls `{ id, kind }` from (1) explicit Hub URLs
+  (`huggingface.co/…`, `hf.co/…` — Spaces and reserved page paths like `docs/`
+  excluded; `/datasets/` → dataset), and (2) bare `owner/name` tokens. A bare
+  token fires when a **strong** HF cue is present ("hugging face"/"hf" → any
+  token), a **weak** ML cue is present ("model"/"dataset"/"checkpoint"/… →
+  repo-ish token), or the token is **versioned-looking on its own** (a hyphen
+  AND a digit, e.g. `meta-llama/Llama-3.1-8B-Instruct` — unmistakably a repo,
+  so no cue needed). A stoplist of common `x/y` bigrams (`and/or`, `tcp/ip`,
+  `24/7`, `he/she`, …) and a URL-strip-before-scan (so a URL's tail isn't
+  re-sliced) keep precision high. Deduped, capped at 5.
+- **Lookup** (`lookupRepo`): a `model`/`dataset` hint hits that endpoint
+  directly; an `unknown` (bare owner/name) tries `/api/models/{id}` then
+  `/api/datasets/{id}`. `summarize()` bounds the payload to the research-useful
+  fields (task, library, license from `cardData`/`license:` tag, param count
+  from `safetensors.total`, downloads, likes, cleaned topic tags, gated, last
+  update) plus the citable `huggingface.co/{id}` URL.
+- **Pipeline wiring** (`src/pipeline.js`'s `runHuggingFaceEnrichment`): runs
+  right after the maps phase, before triage, so every phase sees the block. The
+  pure extractor gates it first (no network), so an ordinary question does zero
+  work and shows no step. `state.hfCount` rides into the `chat.complete` log as
+  `hf_repos`.
+- **Gated behind the web-search toggle** — the repo id is derived from the
+  user's topic and sent to a third party, the same privacy boundary Exa and the
+  maps forward geocode sit behind (unlike Shodan/reverse-geocode, which resolve
+  an entity the message hands over directly and have their own gating). Only
+  the repo id crosses the wire — never the user's question or any identifier.
+- **Fails soft in every branch**: no token, no repo ids, a repo not on the Hub
+  (404), a gated repo without access (401/403), a timeout (8s) or an API error
+  all degrade to the conversation unchanged (or an honest "not on the Hub" note
+  so the model doesn't invent a model card) — never a blocked or delayed chat.
+
 ## Access control & accounts — Google sign-in only
 
 The whole site (UI + API) is gated; `run_worker_first = true` ensures auth
@@ -1257,7 +1313,8 @@ sign-in bounces with a clear message, no quotas.
 Secrets are set in the dashboard (Worker → Settings → Variables and
 Secrets) or via CLI: `ADMIN_USER`, `ADMIN_PASS`, `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET` (plus `BERGET_API_TOKEN`, `EXA_API_KEY`, and the
-optional `SHODAN_API_KEY` / `GOOGLE_MAPS_API_KEY` enrichment keys).
+optional `SHODAN_API_KEY` / `GOOGLE_MAPS_API_KEY` / `HUGGINGFACE_API_TOKEN`
+enrichment keys).
 `ADMIN_EMAIL` is a plaintext dashboard *variable* (not in wrangler.toml,
 so it stays out of the public repo). The full from-scratch install guide
 is in `README.md`.
