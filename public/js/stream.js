@@ -22,7 +22,8 @@ import {
   setError,
   setText,
 } from "./turns.js";
-import { listConversations, saveConversation } from "./history-store.js";
+import { deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
+import { clearPending, readPending, writePending } from "./pending-answer.js";
 import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
 import {
   activeProjectId,
@@ -123,6 +124,7 @@ export function applyLoadedConversation(record) {
   convCreatedAt = record.createdAt;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   convIncognito = false; // a saved conversation is by definition not incognito
+  clearPending(); // opening another conversation cancels any pending-answer resume
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
@@ -194,6 +196,7 @@ export function clearHistory() {
   generation++;
   controller?.abort();
   controller = null;
+  clearPending(); // "New chat" abandons any pending-answer resume too
   currentId = null;
   convTitle = null;
   convCreatedAt = null;
@@ -227,33 +230,177 @@ function ackAnswer(requestId) {
 // to completion server-side), so keep polling until well past the time
 // budget. Repeated 404s mean recovery isn't available (no DB, or expired).
 // `gen` ends the poll early if the user starts a new chat meanwhile.
-async function recoverAnswer(turn, requestId, budgetS, gen) {
+async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connection lost — recovering the answer…") {
   if (!requestId) return null;
-  startGenericStep(turn, "recover", "Connection lost — recovering the answer…");
-  const deadline = Date.now() + (budgetS + 120) * 1000;
+  startGenericStep(turn, "recover", startLabel);
+  const deadline = Date.now() + ((budgetS || 60) + 120) * 1000;
   let misses = 0;
+  // Poll immediately first: on a boot resume the server usually finished
+  // while we were away, so the answer is already parked and the very first
+  // poll returns it — no 4s wait, and the resume race window shrinks to
+  // near-zero. Only if it's still running do we sleep and re-poll.
   while (Date.now() < deadline && gen === generation) {
-    await sleep(4000);
     try {
       const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
       if (res.status === 404) {
         if (++misses >= 3) break;
-        continue;
+      } else if (res.ok) {
+        const data = await res.json();
+        if (data.status === "done") {
+          if (!data.text) break; // pipeline produced nothing — treat as failed
+          finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
+          return data;
+        }
+        misses = 0; // still researching — keep waiting
       }
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.status === "done") {
-        if (!data.text) break; // pipeline produced nothing — treat as failed
-        finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
-        return data;
-      }
-      misses = 0; // still researching — keep waiting
     } catch {
       // still offline — keep trying until the deadline
     }
+    await sleep(4000);
   }
   finishGenericStep(turn, { id: "recover", label: "Could not recover the answer" });
   return null;
+}
+
+// Arm resume-across-relaunch for the in-flight send: persist the question to
+// encrypted history NOW (so a cold boot after a PWA discard can show it) and
+// drop a metadata-only pointer (pending-answer.js) the next boot polls the
+// server-parked answer from. Incognito persists nothing anywhere, so it opts
+// out entirely (no encrypted record to reopen, no pointer written). Both
+// writes are fire-and-forget so the stream is never delayed.
+// A send that produced NO answer at all (empty completion, or a drop we
+// couldn't recover): revert the unanswered question so a retry starts clean,
+// and keep the encrypted record consistent with that. armPendingRecovery may
+// have already persisted the question at stream start, so — unlike a plain
+// pop — reconcile the stored record too: re-persist the reverted history for
+// a follow-up, or delete the just-created record for a lone first message.
+async function abandonUnanswered(opts) {
+  clearPending();
+  history.pop();
+  if (!currentId) return; // nothing was persisted (incognito, or never armed)
+  if (history.length) {
+    await persistConversation(opts); // follow-up: store the reverted history
+  } else {
+    const id = currentId;
+    currentId = null;
+    convTitle = null;
+    convCreatedAt = null;
+    convRagDocs = [];
+    convProjectId = null; // the discarded conversation is gone; next send starts fresh
+    try { await deleteConversation(id); } catch { /* best effort */ }
+    onHistoryChange(id);
+  }
+}
+
+function armPendingRecovery(requestId, opts) {
+  if (convIncognito || !requestId) return;
+  if (!currentId) currentId = crypto.randomUUID();
+  persistConversation(opts).catch(() => {}); // question-only for now; re-persisted with the answer on completion
+  writePending({
+    convId: currentId,
+    requestId,
+    startedAt: Date.now(),
+    model: opts.model || "",
+    budgetS: opts.budgetS ?? null,
+    webSearch: opts.webSearch !== false,
+  });
+}
+
+// The user's latest message split into display text + image data URLs, for
+// re-hydrating the assistant turn on a boot resume (so its PDF report keeps
+// the title/images a live turn would have had).
+function lastUserParts(content) {
+  if (typeof content === "string") return { text: content, imageUrls: [] };
+  if (Array.isArray(content)) {
+    return {
+      text: content.filter((p) => p?.type === "text").map((p) => p.text).join("\n"),
+      imageUrls: content.filter((p) => p?.type === "image_url").map((p) => p.image_url?.url).filter(Boolean),
+    };
+  }
+  return { text: "", imageUrls: [] };
+}
+
+// Called once on boot (app.js): if a previous session left an in-flight
+// answer that a full app relaunch interrupted, reopen that conversation and
+// poll the server-parked answer back. This is what lets a long research run
+// survive the PWA being discarded while backgrounded — it finished on the
+// server, and here the next launch collects it. Returns true if it resumed
+// something. Fail-soft: any problem clears the pointer and returns false so
+// boot proceeds normally.
+export async function resumePendingAnswer({ onLoad } = {}) {
+  if (inFlight) return false; // a live send is already going — don't fight it
+  const pending = readPending();
+  if (!pending) return false;
+
+  let record = null;
+  try {
+    record = await loadConversation(pending.convId);
+  } catch {
+    record = null;
+  }
+  // The record must exist and still be awaiting its answer (a trailing user
+  // turn, no assistant reply). If it already carries the answer, or is gone,
+  // there's nothing to resume.
+  const msgs = record?.messages;
+  const awaiting = Array.isArray(msgs) && msgs.length > 0 && msgs[msgs.length - 1]?.role === "user";
+  if (!awaiting) {
+    clearPending();
+    return false;
+  }
+
+  // Reopen the conversation, mirroring applyLoadedConversation.
+  controller?.abort();
+  controller = null;
+  generation++;
+  const gen = generation;
+  history.length = 0;
+  history.push(...msgs);
+  currentId = pending.convId;
+  convTitle = record.title || null;
+  convCreatedAt = record.createdAt || Date.now();
+  convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
+  convIncognito = false;
+  convProjectId = record.projectId || null;
+  setActiveProject(convProjectId);
+  renderStoredConversation(msgs);
+  if (onLoad) {
+    try { onLoad(record); } catch { /* settings restore is best-effort */ }
+  }
+
+  const { text, imageUrls } = lastUserParts(msgs[msgs.length - 1].content);
+  const turn = addAssistantTurn(text, imageUrls);
+  scrollDown(true);
+
+  const opts = { model: pending.model, budgetS: pending.budgetS, webSearch: pending.webSearch };
+  // Mark the app as streaming while polling so the composer treats a click
+  // as Stop, not a competing send that would race the recovered answer.
+  inFlight = true;
+  let recovered = null;
+  try {
+    recovered = await recoverAnswer(turn, pending.requestId, pending.budgetS, gen, "Resuming your research…");
+  } finally {
+    inFlight = false;
+    collapseActivity(turn);
+  }
+  if (gen !== generation) return false; // user navigated away while polling
+  clearPending();
+  if (recovered) {
+    setText(turn, recovered.text);
+    if (recovered.stats) {
+      turn.model = recovered.stats.model || "";
+      renderStats(turn, recovered.stats);
+    }
+    history.push({ role: "assistant", content: recovered.text });
+    ackAnswer(pending.requestId);
+    await persistConversation(opts);
+    return true;
+  }
+  setError(
+    turn,
+    "Couldn't resume your previous research — it either finished after the 15-minute " +
+      "recovery window closed or was interrupted. Your question is still here; just send it again.",
+  );
+  return false;
 }
 
 // Dispatch one SSE event to the turn/activity renderers. Returns the updated
@@ -468,6 +615,13 @@ export async function sendMessage(text, opts) {
       return;
     }
 
+    // The stream is live and the server will finish + park this answer even
+    // if we vanish. Make it resumable after a FULL app relaunch (iOS can
+    // discard a backgrounded PWA, losing all in-memory state): persist the
+    // question to encrypted history now and drop a metadata-only pointer the
+    // next boot polls from. Fire-and-forget — never delays the stream.
+    armPendingRecovery(requestId, opts);
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -497,10 +651,11 @@ export async function sendMessage(text, opts) {
     if (acc) {
       history.push({ role: "assistant", content: acc });
       ackAnswer(requestId); // delivered intact — purge the server's recovery copy
+      clearPending(); // delivered — no relaunch resume needed
       await persistConversation(opts);
     } else if (isTyping(turn)) {
       setError(turn, "No response received.");
-      history.pop();
+      await abandonUnanswered(opts);
     }
   } catch (e) {
     if (e?.name === "AbortError") {
@@ -540,6 +695,7 @@ export async function sendMessage(text, opts) {
 async function handleStopped(turn, acc, requestId, opts) {
   recordResearchEvent(turn, { event: "stopped", received_chars: acc.length });
   ackAnswer(requestId);
+  clearPending(); // user stopped deliberately — no relaunch resume
   if (acc) {
     const stopped = acc + "\n\n*(Stopped.)*";
     setText(turn, stopped);
@@ -590,6 +746,11 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
     ackAnswer(requestId);
     return;
   }
+  // Reaching here means this tab is alive and handled the drop in-session
+  // (the PWA-discard case never runs any of this — the page is gone — so
+  // its pointer survives untouched for the next boot to resume). Either way
+  // the outcome is now decided here, so the pointer has done its job.
+  clearPending();
   if (recovered) {
     acc = recovered.text;
     setText(turn, acc);
@@ -625,7 +786,8 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
     });
     await persistConversation(opts);
   } else {
-    // Nothing arrived at all — drop the question so a retry starts clean.
-    history.pop();
+    // Nothing arrived at all — drop the question so a retry starts clean
+    // (and reconcile the record armPendingRecovery may have persisted).
+    await abandonUnanswered(opts);
   }
 }

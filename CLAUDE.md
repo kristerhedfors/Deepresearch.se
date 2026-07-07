@@ -873,16 +873,42 @@ Let a battery finish before pushing anything.
   timers can't fire and elapsed hidden time isn't a real stall), and the
   `visibilitychange`→visible handler resets `lastByteAt` so a returning
   connection gets a fresh full window to resume before being judged dead.
-  This makes a short app-switch a non-event (recovers automatically);
-  only a background long enough for the PWA to be fully discarded (losing
-  the in-memory request id) still can't recover — the honest limit,
-  since iOS offers web pages no way to keep a stream alive in the
-  background (no service-worker longevity, no Background Fetch on iOS).
+  This makes a short app-switch a non-event (recovers automatically).
 - **Disconnect survival**: the pipeline promise is registered with
   `ctx.waitUntil()` — without it the runtime kills the invocation the
   moment the client vanishes, silently dropping the `chat.complete` log
   AND the `usage_events` accounting row (observed in production: a trace
   that just stops mid-pipeline). With it, the finally block always runs.
+- **Resume across a full app relaunch (`public/js/pending-answer.js`)**:
+  the stall watchdog above only helps while the tab is still ALIVE. iOS
+  can DISCARD a backgrounded PWA outright — a cold relaunch loses all
+  in-memory state (the request id, the on-screen turn), so before this
+  the server-finished answer expired unclaimed. Now, at stream start
+  (`stream.js`'s `armPendingRecovery`, only once the response is
+  confirmed live) the client persists the question to encrypted history
+  and drops a **metadata-only** pointer in `localStorage`
+  (`dr_pending_answer`: conv id, request id, settings, timestamp — NEVER
+  message text, which stays in the encrypted IndexedDB record; incognito
+  chats persist nothing, so no pointer is written for them). On the next
+  boot `app.js` calls `resumePendingAnswer`, which — if the pointer is
+  still fresh (`PENDING_TTL_MS` = 15 min, matching `ANSWER_TTL_MS`) and
+  the record is still awaiting its answer — reopens that conversation and
+  polls the parked answer back via the same `recoverAnswer` path. So a
+  long research run genuinely survives the PWA being reclaimed: it
+  finished on the server (`ctx.waitUntil`), and the next launch collects
+  it. `localStorage` (not sessionStorage/in-memory) precisely because it
+  must survive the discard+relaunch; single-slot (one in-flight answer at
+  a time). Because the question is now persisted at stream start rather
+  than only on completion, the "nothing arrived at all" failure paths go
+  through `abandonUnanswered`, which reconciles the stored record
+  (re-persist the reverted history for a follow-up, delete the
+  just-created record for a lone first message) instead of a bare
+  in-memory `history.pop()`. `parsePending`'s shape/freshness validation
+  is unit-tested; the localStorage/boot wiring is verified live. The one
+  remaining un-recoverable case: a discard that outlasts the 15-min
+  window (the parked answer is purged by then) — the honest limit, since
+  iOS offers web pages no way to keep a stream itself alive in the
+  background (no service-worker longevity, no Background Fetch on iOS).
 - Stream errors shown in the UI carry a short `(ref xxxxxxxx)` — the
   first 8 chars of the request id, quotable straight into a log search.
 - `BERGET_URL` env override exists solely so local tests can point the

@@ -324,7 +324,12 @@
       <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
         <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
       <li><b>In your browser only</b>: model choice, time target, and the
-        web-search switch position (localStorage).</li>
+        web-search switch position (localStorage). If you switch away
+        mid-research, a small marker (the conversation and request ids plus
+        those same settings — never any message text) is also kept there
+        briefly so the app can pick the finished answer back up when you
+        return, even if the phone closed it in the background; it clears
+        itself once the answer arrives, and expires within 15 minutes.</li>
       <li><b>Sign-in</b>: Google only. We receive your verified email and
         name from Google; we never see your Google password.</li>
     </ul>

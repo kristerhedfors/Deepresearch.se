@@ -22,12 +22,14 @@ import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { historyAvailable } from "./history-store.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
+import { readPending } from "./pending-answer.js";
 import {
   clearHistory,
   conversationStarted,
   initStream,
   isIncognito,
   isStreaming,
+  resumePendingAnswer,
   sendMessage,
   setIncognito,
   stopGeneration,
@@ -244,6 +246,18 @@ const historySidebar = initHistorySidebar({
 initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
 refreshProjects().catch(() => {});
 initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });
+
+// Resume-across-relaunch: if a previous session kicked off research and was
+// discarded (a backgrounded PWA iOS reclaimed) before the answer arrived,
+// reopen that conversation and poll the server-parked answer back. The
+// research finished on the server regardless (src/chat.js's ctx.waitUntil);
+// this collects it. Fire-and-forget and fail-soft — never blocks boot. The
+// button reflects the streaming state so a tap Stops rather than sends,
+// resetting whatever the outcome.
+if (readPending()) setSendMode(true);
+resumePendingAnswer({ onLoad: applyRecordSettings })
+  .catch(() => {})
+  .finally(() => setSendMode(false));
 
 // ---- First-visit privacy notice (acknowledgement kept in a cookie) --------
 
