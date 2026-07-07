@@ -19,25 +19,15 @@
 // The cookie is HttpOnly and server-set, which also exempts it from
 // Safari/ITP's 7-day cap on script-writable storage.
 //
-// Cookie/state HMAC key — SESSION_SECRET, NOT the admin password:
-// the signing key is the dedicated high-entropy `SESSION_SECRET` secret.
-// The break-glass ADMIN_USER/ADMIN_PASS pair is a HUMAN-typed, typically
-// low-entropy, rotation-averse Basic Auth credential; keying the cookie
-// HMAC with it turned every issued cookie into an offline crack oracle for
-// those credentials (known message `<uid>.<exp>` + tag sit side by side in
-// the cookie; HMAC-SHA-256 is a single fast hash, so a weak ADMIN_PASS
-// falls to a GPU in seconds — and cracking the key IS the admin credential
-// AND lets an attacker forge any session). A random SESSION_SECRET breaks
-// that link: a cracked cookie yields nothing usable, and ADMIN_PASS risk
-// is confined to the online, rate-limitable Basic Auth path.
-//
-// Backward compat: if SESSION_SECRET is unset we fall back to the legacy
-// admin-credential key so nothing breaks on deploy; and verification always
-// ALSO accepts the legacy key, so cookies minted before SESSION_SECRET
-// existed keep verifying (no forced logout) — new cookies are signed with
-// SESSION_SECRET the moment it's set. Everything still fails closed when
-// the admin secrets are unset (break-glass and the legacy key both need
-// them).
+// Cookie/state HMAC key: the dedicated `SESSION_SECRET` secret (a random,
+// high-entropy value — deliberately not the admin password, which the
+// cookie would otherwise expose to offline brute force). If SESSION_SECRET
+// is unset, signing falls back to a key derived from the admin credentials.
+// Verification accepts EITHER key, so cookies minted under the fallback
+// keep verifying once SESSION_SECRET is added (no forced logout); new
+// cookies are signed with SESSION_SECRET as soon as it's set. Rotating
+// SESSION_SECRET invalidates all sessions. Everything fails closed when the
+// admin secrets are unset (break-glass and the fallback key both need them).
 
 import { getUserById } from "./accounts.js";
 

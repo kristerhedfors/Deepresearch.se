@@ -99,8 +99,8 @@ Set on the Worker (Settings → Variables and Secrets in the dashboard, or
 |---|---|
 | `BERGET_API_TOKEN` | Berget.ai API auth (sent as `Authorization: Bearer`) |
 | `EXA_API_KEY` | Exa web search (sent as `x-api-key`) |
-| `SESSION_SECRET` | **The session-cookie / OAuth-state HMAC key.** A dedicated high-entropy random string — generate with `openssl rand -hex 32`. Kept SEPARATE from the admin password on purpose: because `<uid>.<exp>` and the tag both sit in every cookie, keying the HMAC with a human-typed `ADMIN_PASS` would make each cookie an offline crack oracle for the break-glass credentials (HMAC-SHA-256 is one fast hash, so a weak password falls to a GPU quickly). With a random `SESSION_SECRET`, a cracked cookie yields nothing usable and rotating `ADMIN_PASS` no longer forges sessions. Rotating `SESSION_SECRET` invalidates every session. **Backward-compatible**: if unset, the HMAC falls back to the legacy admin-credential key (old behavior), and cookies minted under that key keep verifying after you add `SESSION_SECRET` — so no forced logout. |
-| `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — the Worker **fails closed without them** (they also back the legacy HMAC key when `SESSION_SECRET` is unset). With `SESSION_SECRET` set, cookie security no longer depends on the strength of `ADMIN_PASS`. |
+| `SESSION_SECRET` | HMAC key for the session cookie and OAuth-state cookie — a high-entropy random string, `openssl rand -hex 32`. Rotating it invalidates every session. If unset, the HMAC falls back to the admin-credential key, and cookies stay valid after you later add it (verified against both keys). |
+| `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — the Worker **fails closed without them**. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The OAuth client from step 4 |
 
 Optional but recommended — enables encrypted, client-side chat history

@@ -125,12 +125,9 @@ Every request flows through `src/index.js`
    - **Users**: D1 accounts provisioned by Google sign-in (no passwords
      stored — Google proves the email). Identified by the session cookie
      `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed by
-     the dedicated `SESSION_SECRET` (a random secret, NOT the admin
-     password — the cookie exposes `<uid>.<exp>` and the tag together, so a
-     password-derived key would be offline-crackable straight out of any
-     cookie; falls back to the legacy admin-credential key when
-     `SESSION_SECRET` is unset, and verifies against both so old cookies
-     survive its introduction), **365-day TTL with sliding renewal**
+     the dedicated `SESSION_SECRET` (falls back to the admin-credential key
+     when unset, and verifies against both so old cookies survive its
+     introduction), **365-day TTL with sliding renewal**
      (any authenticated request past the half-life gets a fresh cookie) —
      so an installed PWA never shows a login screen again while in use.
      HttpOnly + server-set also exempts it from Safari ITP's 7-day cap.
