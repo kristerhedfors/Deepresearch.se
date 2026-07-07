@@ -30,6 +30,13 @@ import {
   setActiveProject,
 } from "./projects.js";
 import { buildProjectContext, projectDocIds } from "./project-context.js";
+import {
+  deriveTitle,
+  imageMetadataBlock,
+  inlineDocBlock,
+  ragExcerptBlocks,
+  stripOldImages,
+} from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 
 const history = []; // {role, content} pairs sent to the API
@@ -47,10 +54,6 @@ let convRagDocs = []; // [{id, name}]
 // (inventory + image EXIF) rides in each message, and persistence honors
 // the project's cloud knob.
 let convProjectId = null;
-
-// Per-question excerpt budget: generous enough for real answers, small
-// enough that history-resending never approaches the 32K message cap.
-const EXCERPT_TOTAL_CHARS = 12000;
 
 let scrollDown = () => {};
 let inFlight = false;
@@ -98,15 +101,6 @@ export function applyLoadedConversation(record) {
   setActiveProject(convProjectId);
   renderStoredConversation(record.messages);
   scrollDown(true);
-}
-
-function deriveTitle(hist) {
-  const first = hist.find((m) => m.role === "user");
-  const text =
-    typeof first?.content === "string"
-      ? first.content
-      : (first?.content || []).find((p) => p.type === "text")?.text || "";
-  return text.trim().slice(0, 60) || "New conversation";
 }
 
 // Persists the current conversation after every completed exchange
@@ -252,23 +246,6 @@ function handleEvent(turn, evt, acc) {
   return acc;
 }
 
-// Keep images only on the latest message when sending: history is resent
-// every turn and would otherwise re-inflate each request past the
-// provider's ~1 MB body limit. Older turns keep their text plus a marker.
-function messagesForApi() {
-  return history.map((m, i) => {
-    if (i === history.length - 1 || m.role !== "user" || typeof m.content === "string") return m;
-    const text = m.content
-      .filter((p) => p.type === "text")
-      .map((p) => p.text)
-      .join("\n");
-    return {
-      role: "user",
-      content: (text ? text + "\n" : "") + "[image was attached earlier in this conversation]",
-    };
-  });
-}
-
 // Builds the labeled excerpt blocks for every RAG-indexed document in this
 // conversation: semantic retrieval against the question, a positional
 // fallback for a newly attached doc retrieval missed entirely (a doc the
@@ -295,30 +272,7 @@ async function buildRagBlocks(questionText, newRagDocs) {
     }
   }
   if (!matches.length) return "";
-
-  const byDoc = new Map();
-  let used = 0;
-  for (const m of matches) {
-    if (used >= EXCERPT_TOTAL_CHARS) break;
-    const excerpt = m.text.slice(0, Math.min(1600, EXCERPT_TOTAL_CHARS - used));
-    if (!excerpt.trim()) continue;
-    used += excerpt.length;
-    if (!byDoc.has(m.docId)) byDoc.set(m.docId, []);
-    byDoc.get(m.docId).push({ seq: m.seq, text: excerpt });
-  }
-
-  let out = "";
-  for (const [docId, excerpts] of byDoc) {
-    const name = names.get(docId) || "document";
-    const meta = metaByDoc.get(docId);
-    out +=
-      `\n\n--- Attached document: ${name} (large document, indexed for retrieval — ` +
-      `showing the excerpts most relevant to this question) ---\n` +
-      (meta ? `[Document metadata]\n${meta}\n\n` : "") +
-      excerpts.map((e) => `[Excerpt — part ${e.seq + 1}]\n${e.text}`).join("\n\n") +
-      "\n--- End of document excerpts ---";
-  }
-  return out;
+  return ragExcerptBlocks(matches, names, metaByDoc);
 }
 
 // One send: text plus attachments already collected by the composer.
@@ -348,11 +302,7 @@ export async function sendMessage(text, opts) {
   let apiText = text;
   for (const d of opts.docs) {
     if (d.rag) continue; // excerpts appended below
-    apiText +=
-      `\n\n--- Attached document: ${d.name}${d.truncated ? " (truncated)" : ""} ---\n` +
-      (d.metadata ? `[Document metadata]\n${d.metadata}\n\n` : "") +
-      d.text +
-      "\n--- End of document ---";
+    apiText += inlineDocBlock(d);
   }
   // Project materials: inventory + extracted image metadata (EXIF) as
   // context, then the same retrieval mechanism attachments use pulls the
@@ -364,9 +314,7 @@ export async function sendMessage(text, opts) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
   for (const a of opts.images) {
-    if (a.metadata) {
-      apiText += `\n\n--- Image metadata: ${a.name} ---\n${a.metadata}\n--- End of image metadata ---`;
-    }
+    apiText += imageMetadataBlock(a);
   }
   let content = apiText;
   if (opts.images.length) {
@@ -395,7 +343,7 @@ export async function sendMessage(text, opts) {
   let requestId = "";
   try {
     const payload = {
-      messages: messagesForApi(),
+      messages: stripOldImages(history),
       time_budget_s: opts.budgetS,
       web_search: opts.webSearch,
     };

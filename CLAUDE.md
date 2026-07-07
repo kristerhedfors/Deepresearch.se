@@ -135,6 +135,9 @@ Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
 search knob, composer), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn),
+`message-content.js` (pure builders for the outgoing message: labeled
+document / image-metadata / RAG-excerpt blocks, title derivation, history
+image-stripping — the Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
@@ -413,9 +416,12 @@ timestamp extraction, byte-order handling, malformed-input safety) and
 `docs.js` (the docx ZIP reader + core/app property and tracked-change/
 comment extraction), `rag.js`'s pure core (`chunkText` coverage/
 overlap/termination properties, `cosineSim`, `topKChunks`, the vector
-codec — the module is written to be import-safe outside a browser), and
+codec — the module is written to be import-safe outside a browser),
 `project-context.js` (the project-materials block builder, doc-id
-scoping, note/name normalization).
+scoping, note/name normalization), and `message-content.js` (the
+outgoing-message block builders — inline document, image-metadata, and
+RAG-excerpt blocks — plus `deriveTitle` and `stripOldImages`, the pure
+core extracted out of `stream.js`'s send path).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
