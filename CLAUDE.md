@@ -894,14 +894,18 @@ Let a battery finish before pushing anything.
   client's `recoverAnswer` now returns `{data, reason}`
   (done/lost/gone/empty/timeout/aborted): on `lost` it stops within
   ~50-65s (not 12 min) with an honest "interrupted on the server — try
-  again, lower the budget if it recurs" message, and while genuinely
-  `running` it shows a live "Still researching on the server… (Ns)" label
-  (`updateGenericStep`) so a long wait reads as progress, not a frozen app.
-  The counter is driven by its OWN 1-second ticker inside `recoverAnswer`,
-  deliberately decoupled from the 4s network poll — otherwise the number
-  lurched by the poll interval (4s → 7s → 12s…) instead of ticking evenly.
-  (The SERVER-side D1 heartbeat stays at 15s — it only needs to beat often
-  enough for the 50s stale window; a per-second D1 write would be wasteful.)
+  again, lower the budget if it recurs" message. `recoverAnswer` polls
+  SILENTLY by default (`startLabel` null): an in-session drop keeps showing
+  exactly the research banners already on screen (plan ✓, search ✓, gap
+  check spinning…) — the research genuinely continued server-side, so "the
+  same view as before" is the honest one, with no "connection lost" overlay;
+  the turn's own typing icon already signals in-progress. A banner (with a
+  live "Still researching… (Ns)" counter, driven by its own 1-second ticker
+  decoupled from the 4s poll so it ticks evenly) is shown ONLY for a boot
+  RESUME (`resumePendingAnswer`), where the page reloaded and there are no
+  existing banners to keep. (The SERVER-side D1 heartbeat stays at 15s — it
+  only needs to beat often enough for the 50s stale window; a per-second D1
+  write would be wasteful.)
   It makes an interrupted run fail fast and truthfully instead of hanging
   on an indefinite spinner.
 - **Client stall watchdog (the "switched to another app" fix)**: server

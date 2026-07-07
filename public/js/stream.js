@@ -240,25 +240,35 @@ function ackAnswer(requestId) {
 //   "aborted" — a new chat/load ended the poll
 // Once the server confirms the run is still going, the step shows a live
 // elapsed counter so a long research run reads as progress, not a frozen
-// app. The counter is driven by its OWN 1-second ticker, decoupled from the
-// (slower, latency-variable) network poll below — otherwise the number
-// would lurch by the poll interval (4s → 7s → 12s…) instead of ticking
-// evenly second by second.
-async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connection lost — recovering the answer…") {
+// app.
+//
+// `startLabel` null → SILENT recovery: poll WITHOUT adding any banner, so an
+// in-session drop keeps showing exactly the research banners already on
+// screen (plan ✓, search ✓, gap check spinning…) — the research genuinely
+// continued on the server, so "the same view as before" is the honest one,
+// no "connection lost" overlay. The turn's own typing icon already signals
+// in-progress. A banner is shown only for a boot RESUME, where the page
+// reloaded and there are NO existing banners to keep; there its counter is
+// driven by its own 1-second ticker, decoupled from the (slower,
+// latency-variable) network poll so it ticks evenly instead of lurching by
+// the poll interval.
+async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = null) {
   if (!requestId) return { data: null, reason: "gone" };
-  startGenericStep(turn, "recover", startLabel);
+  const showStep = !!startLabel;
+  if (showStep) startGenericStep(turn, "recover", startLabel);
   const startedAt = Date.now();
   const deadline = startedAt + ((budgetS || 60) + 120) * 1000;
   let misses = 0;
   let reason = "timeout";
   let running = false; // flips true once the server confirms it's still researching
 
-  // Smooth per-second counter, independent of the poll cadence.
-  const ticker = setInterval(() => {
-    if (running) {
-      updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
-    }
-  }, 1000);
+  const ticker = showStep
+    ? setInterval(() => {
+        if (running) {
+          updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
+        }
+      }, 1000)
+    : null;
 
   try {
     // Poll immediately first: on a boot resume the server usually finished
@@ -273,11 +283,11 @@ async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connec
           const data = await res.json();
           if (data.status === "done") {
             if (!data.text) { reason = "empty"; break; }
-            finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
+            if (showStep) finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
             return { data, reason: "done" };
           }
           if (data.status === "lost") { reason = "lost"; break; } // server run died
-          misses = 0; // still researching — the ticker shows live elapsed time
+          misses = 0; // still researching
           running = true;
         }
       } catch {
@@ -286,13 +296,15 @@ async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = "Connec
       await sleep(4000);
     }
   } finally {
-    clearInterval(ticker);
+    if (ticker) clearInterval(ticker);
   }
   if (gen !== generation) reason = "aborted";
-  finishGenericStep(turn, {
-    id: "recover",
-    label: reason === "lost" ? "Research was interrupted on the server" : "Could not recover the answer",
-  });
+  if (showStep) {
+    finishGenericStep(turn, {
+      id: "recover",
+      label: reason === "lost" ? "Research was interrupted on the server" : "Could not recover the answer",
+    });
+  }
   return { data: null, reason };
 }
 
