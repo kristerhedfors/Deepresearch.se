@@ -225,7 +225,9 @@ export async function pushDocToServer(docId) {
 
 // Chunk + embed + store one document. onProgress(done, total) drives the
 // attachment card's indexing badge. Returns {chunkCount, truncated}.
-export async function indexDocument(docId, name, fullText, { onProgress } = {}) {
+// opts.cloud=false skips the server mirror even when the account knob is
+// on — the per-project storage opt-out (public/js/projects.js decides).
+export async function indexDocument(docId, name, fullText, { onProgress, cloud = true } = {}) {
   const chunks = chunkText(fullText);
   if (!chunks.length) throw new Error("No indexable text.");
   const truncated = chunks.length >= MAX_CHUNKS; // chunker stops there — tail unindexed
@@ -247,7 +249,7 @@ export async function indexDocument(docId, name, fullText, { onProgress } = {}) 
   await putDocLocally(doc, chunks, vectors);
   // Mirror to the server index when cloud storage is on — fail-soft: a
   // hiccup here leaves a perfectly working local index (sync.js re-pushes).
-  if (serverHistoryOn() && serverRagAvailable()) {
+  if (cloud && serverHistoryOn() && serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {

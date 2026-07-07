@@ -113,7 +113,7 @@ Server (`src/`):
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage knob — `GET/PUT /api/settings` |
-| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation records (`/api/convos*`), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
+| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
@@ -146,8 +146,13 @@ dual-writing each record to the cloud while the knob is on),
 synchronous question every storage-touching module asks), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
-server-index push/import), `sync.js` (bulk sync when the knob flips,
-either direction, + `pullNewer` reconciliation on sidebar open).
+server-index push/import), `sync.js` (bulk sync when the account knob
+flips, either direction, + `pullNewer` reconciliation + the per-project
+`pushProjectScope`/`drainProjectScope`), `projects.js` (project records,
+file/note ingestion + indexing, the per-project knob, scope helpers),
+`project-context.js` (pure builders: the project-materials block,
+`projectDocIds` — Node-testable), `projects-ui.js` (the project panel:
+knob at top, dropzone, add-text form, file/chat lists, header chip).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
@@ -319,6 +324,45 @@ documents' originals are the ONLY plaintext, in both locations, because
 retrieval requires readable text. Keep the settings UI, `/help/`, and
 the privacy notice consistent with that whenever any of it changes.
 
+### Projects — collections of chats and files, with their own cloud knob
+
+A project (`public/js/projects.js` data/rules, `projects-ui.js` panel,
+`project-context.js` pure builders) is a named collection of
+conversations and materials. Everything reuses the machinery above —
+nothing project-specific was invented storage-side:
+
+- **The record**: one encrypted blob per project (name, file inventory
+  incl. extracted metadata, the per-project knob — all inside the
+  ciphertext), in the `dr_history` IndexedDB's `projects` store (DB v2)
+  and mirrored to R2 `projects/{uid}/{id}` (same handler as
+  conversations, `src/storage.js`). Conversation rows carry a `projectId`
+  — plaintext LOCALLY only (a random uuid revealing grouping, not
+  content; sync needs it to honor project knobs without decrypting), and
+  additionally inside the ciphertext (the copy that leaves the browser).
+- **Materials**: added via picker or drag-drop onto the panel, or as a
+  text note (title + content). Documents and notes are ALWAYS indexed
+  (project material is reference material — no 9K inline cutoff logic
+  here), their originals stored readable per the RAG exception; images
+  get EXIF extracted (`exif.js`) into the inventory and their originals
+  encrypted; unsupported types are archived encrypted, unindexed.
+- **Scope**: a chat inside a project retrieves across the project's
+  indexed docs PLUS its own attachments — never another project's
+  (retrieval is by explicit docId list; isolation is structural and
+  e2e-asserted). Each send also carries the project-materials block
+  (inventory + image EXIF — how a text pipeline "sees" project images).
+  A fresh chat adopts the ACTIVE project on its first send; reopening a
+  conversation re-enters its project (header chip shows which).
+- **The per-project knob** (top of the open project panel, same slide
+  switch): `serverStorage !== false` follows the account setting; an
+  explicit false keeps the whole project — record, conversations, files,
+  index — out of the cloud. Dual-writes consult it (`projectCloudOn`),
+  bulk sync skips cloud-off projects, and flipping it drives the scoped
+  moves (`sync.js`: `pushProjectScope` / `drainProjectScope` — the drain
+  deletes ONLY that project's cloud objects, item by item, after
+  confirming local copies; never the account-wide wipe).
+- **Deleting a project** removes its files, index entries, conversations
+  and record from BOTH rests.
+
 ### /api/chat SSE protocol
 
 OpenAI-style text deltas plus custom `status` events that the UI renders as
@@ -359,9 +403,11 @@ Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
 timestamp extraction, byte-order handling, malformed-input safety) and
 `docs.js` (the docx ZIP reader + core/app property and tracked-change/
-comment extraction), and `rag.js`'s pure core (`chunkText` coverage/
+comment extraction), `rag.js`'s pure core (`chunkText` coverage/
 overlap/termination properties, `cosineSim`, `topKChunks`, the vector
-codec — the module is written to be import-safe outside a browser).
+codec — the module is written to be import-safe outside a browser), and
+`project-context.js` (the project-materials block builder, doc-id
+scoping, note/name normalization).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -391,7 +437,7 @@ suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once
-npm run test:mocked   # 40 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
+npm run test:mocked   # 43 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
 npm run test:live     # 5 tests, real Berget tokens + one Exa run
 ```
 

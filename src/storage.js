@@ -2,6 +2,13 @@
 // `server_history` knob (src/settings.js). Three key families, all
 // namespaced per user id:
 //
+//   projects/{uid}/{projectId} — one PROJECT record as JSON, same encrypted
+//       {iv, ciphertext} shape as a conversation: the project's name, file
+//       inventory (incl. extracted image metadata), notes, and per-project
+//       cloud knob all live inside the ciphertext. Which files/convos
+//       belong to a project is therefore invisible server-side — the
+//       per-project drain is client-driven (it knows the ids and deletes
+//       them individually through the endpoints below).
 //   convos/{uid}/{convId} — one conversation record as JSON
 //       {iv, ciphertext, updatedAt, createdAt}. The record is the SAME
 //       encrypted blob the client stores in its own IndexedDB
@@ -44,7 +51,12 @@ const MAX_OBJECTS_PER_USER = 1000; // per key family — sanity backstop, not a 
 // rejected before it can become a key path segment.
 const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
 
-const convoKey = (uid, id) => `convos/${uid}/${id}`;
+// Two families share the encrypted-record shape and handlers below:
+// "convos" (one conversation each) and "projects" (one project's metadata
+// record each — name, file inventory, notes, per-project knob — all inside
+// the ciphertext; the server can't tell them apart and doesn't need to).
+const ENC_FAMILIES = { convos: "conversations", projects: "projects" }; // family -> list key
+const encKey = (family, uid, id) => `${family}/${uid}/${id}`;
 const fileKey = (uid, id) => `files/${uid}/${id}`;
 
 // Router for /api/convos*, /api/files*, DELETE /api/storage — called from
@@ -65,11 +77,11 @@ export async function handleStorage(request, env, url, log, identity) {
   }
   if (id !== null && !idOk(id)) return jsonResponse({ error: "Invalid id." }, 400);
 
-  if (family === "convos") {
-    if (!id && method === "GET") return listConvos(env, uid);
-    if (id && method === "GET") return getConvo(env, uid, id);
-    if (id && method === "PUT") return putConvo(request, env, log, identity, uid, id);
-    if (id && method === "DELETE") return deleteObject(env, convoKey(uid, id));
+  if (ENC_FAMILIES[family]) {
+    if (!id && method === "GET") return listEncRecords(env, uid, family);
+    if (id && method === "GET") return getEncRecord(env, uid, family, id);
+    if (id && method === "PUT") return putEncRecord(request, env, log, identity, uid, family, id);
+    if (id && method === "DELETE") return deleteObject(env, encKey(family, uid, id));
   }
   if (family === "files") {
     if (!id && method === "GET") return listFiles(env, uid);
@@ -97,28 +109,28 @@ async function countUnder(env, prefix) {
   return (await listAll(env, prefix)).length;
 }
 
-// ---- conversations ---------------------------------------------------------
+// ---- encrypted records (conversations + project records) -------------------
 
-async function listConvos(env, uid) {
-  const objects = await listAll(env, `convos/${uid}/`, ["customMetadata"]);
+async function listEncRecords(env, uid, family) {
+  const objects = await listAll(env, `${family}/${uid}/`, ["customMetadata"]);
   const items = objects.map((o) => ({
     id: o.key.split("/").pop(),
     updatedAt: Number(o.customMetadata?.updatedAt) || o.uploaded?.getTime?.() || 0,
     size: o.size,
   }));
   items.sort((a, b) => b.updatedAt - a.updatedAt);
-  return jsonResponse({ conversations: items });
+  return jsonResponse({ [ENC_FAMILIES[family]]: items });
 }
 
-async function getConvo(env, uid, id) {
-  const obj = await env.STORAGE.get(convoKey(uid, id));
+async function getEncRecord(env, uid, family, id) {
+  const obj = await env.STORAGE.get(encKey(family, uid, id));
   if (!obj) return jsonResponse({ error: "Not found." }, 404);
   return new Response(obj.body, {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
 
-async function putConvo(request, env, log, identity, uid, id) {
+async function putEncRecord(request, env, log, identity, uid, family, id) {
   if (!serverHistoryEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
   }
@@ -139,17 +151,17 @@ async function putConvo(request, env, log, identity, uid, id) {
   };
   const json = JSON.stringify(record);
   if (json.length > CONVO_MAX_BYTES) {
-    return jsonResponse({ error: "Conversation record too large." }, 413);
+    return jsonResponse({ error: "Record too large." }, 413);
   }
-  const key = convoKey(uid, id);
-  if (!(await env.STORAGE.head(key)) && (await countUnder(env, `convos/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
-    return jsonResponse({ error: "Cloud conversation limit reached." }, 409);
+  const key = encKey(family, uid, id);
+  if (!(await env.STORAGE.head(key)) && (await countUnder(env, `${family}/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
+    return jsonResponse({ error: "Cloud record limit reached." }, 409);
   }
   await env.STORAGE.put(key, json, {
     httpMetadata: { contentType: "application/json" },
     customMetadata: { updatedAt: String(record.updatedAt) },
   });
-  log.debug("storage.convo_put", { user_id: identity.id, size: json.length });
+  log.debug("storage.record_put", { user_id: identity.id, family, size: json.length });
   return jsonResponse({ ok: true, id, updatedAt: record.updatedAt });
 }
 
@@ -220,7 +232,7 @@ async function deleteObject(env, key) {
 // completes, everything this user ever stored server-side (conversations,
 // files, RAG exports AND their Vectorize vectors) is removed in one call.
 async function wipeAll(env, log, identity, uid) {
-  const prefixes = [`convos/${uid}/`, `files/${uid}/`];
+  const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
   for (const prefix of prefixes) {
     const objects = await listAll(env, prefix);

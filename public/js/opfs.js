@@ -21,7 +21,9 @@
 // Fails soft everywhere: no OPFS (older Safari) just means originals
 // aren't archived — attachments keep working exactly as before.
 
+import { encryptBytes } from "./history-store.js";
 import { filesMetaStore } from "./rag.js";
+import { serverHistoryOn } from "./settings.js";
 
 const DIR = "originals";
 
@@ -87,4 +89,60 @@ export async function deleteOriginal(id) {
 
 export async function listOriginals() {
   return filesMetaStore.getAll();
+}
+
+// One-stop archival used by attachments.js AND projects.js: original bytes
+// → OPFS (and, when both the account knob and the caller's scope allow it,
+// mirrored to R2). Pure archival — never blocks or fails the caller.
+//
+// Everything is AES-GCM ENCRYPTED under the same never-persisted history
+// key conversations use, before it rests anywhere — with ONE deliberate
+// exception: `plaintext: true`, used only for RAG-indexed documents, whose
+// search index needs readable text anyway (disclosed in the settings UI).
+// Images especially always take the encrypted path. If the key is
+// unavailable, the encrypted class stores NOTHING at all — never a
+// plaintext fallback. `cloud: false` skips the R2 mirror even when the
+// account knob is on (the per-project storage opt-out).
+export async function archiveFile(fileId, file, { plaintext = false, cloud = true } = {}) {
+  try {
+    let stored = file;
+    let enc = false;
+    if (!plaintext) {
+      try {
+        stored = new Blob([await encryptBytes(await file.arrayBuffer())], {
+          type: "application/octet-stream",
+        });
+        enc = true;
+      } catch {
+        return; // no key — store nothing rather than plaintext
+      }
+    }
+    if (await opfsAvailable()) {
+      await saveOriginal(fileId, stored, { name: file.name, type: file.type, enc });
+    }
+    if (cloud && serverHistoryOn()) {
+      fetch("/api/files/" + encodeURIComponent(fileId), {
+        method: "PUT",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-file-name": encodeURIComponent(file.name),
+          "x-file-type": file.type || "application/octet-stream",
+          "x-file-enc": enc ? "1" : "0",
+        },
+        body: stored,
+      }).catch(() => {});
+    }
+  } catch {
+    // no OPFS / storage denied — the caller's flow continues unaffected
+  }
+}
+
+// Remove a file everywhere it can rest: OPFS + meta row, and (when the
+// account knob is on) the R2 copy. Used by projects.js when a file is
+// removed from a project or the project is deleted.
+export async function purgeFile(fileId) {
+  await deleteOriginal(fileId);
+  if (serverHistoryOn()) {
+    fetch("/api/files/" + encodeURIComponent(fileId), { method: "DELETE" }).catch(() => {});
+  }
 }

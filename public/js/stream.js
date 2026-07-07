@@ -23,6 +23,13 @@ import {
   setText,
 } from "./turns.js";
 import { saveConversation } from "./history-store.js";
+import {
+  activeProjectId,
+  getProject,
+  projectCloudOn,
+  setActiveProject,
+} from "./projects.js";
+import { buildProjectContext, projectDocIds } from "./project-context.js";
 import { firstChunks, retrieve } from "./rag.js";
 
 const history = []; // {role, content} pairs sent to the API
@@ -32,6 +39,14 @@ const history = []; // {role, content} pairs sent to the API
 // their ids/names are conversation state, persisted in the encrypted
 // record (`ragDocs`) and restored on load.
 let convRagDocs = []; // [{id, name}]
+
+// The project this conversation belongs to (null = none): adopted from the
+// active project on the FIRST send of a fresh conversation, persisted in
+// the encrypted record, restored on load. Project scope means: retrieval
+// runs across the project's indexed docs too, the project-materials block
+// (inventory + image EXIF) rides in each message, and persistence honors
+// the project's cloud knob.
+let convProjectId = null;
 
 // Per-question excerpt budget: generous enough for real answers, small
 // enough that history-resending never approaches the 32K message cap.
@@ -77,6 +92,10 @@ export function applyLoadedConversation(record) {
   convTitle = record.title;
   convCreatedAt = record.createdAt;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
+  // Reopening a project conversation re-enters that project's context
+  // (and leaving one, a plain conversation leaves it).
+  convProjectId = record.projectId || null;
+  setActiveProject(convProjectId);
   renderStoredConversation(record.messages);
   scrollDown(true);
 }
@@ -103,16 +122,21 @@ async function persistConversation(opts) {
   const now = Date.now();
   if (!convCreatedAt) convCreatedAt = now;
   try {
-    await saveConversation(currentId, {
-      title: convTitle,
-      messages: history,
-      model: opts?.model || "",
-      budgetS: opts?.budgetS ?? null,
-      webSearch: opts?.webSearch !== false,
-      ragDocs: convRagDocs,
-      createdAt: convCreatedAt,
-      updatedAt: now,
-    });
+    await saveConversation(
+      currentId,
+      {
+        title: convTitle,
+        messages: history,
+        model: opts?.model || "",
+        budgetS: opts?.budgetS ?? null,
+        webSearch: opts?.webSearch !== false,
+        ragDocs: convRagDocs,
+        projectId: convProjectId,
+        createdAt: convCreatedAt,
+        updatedAt: now,
+      },
+      { cloud: projectCloudOn(convProjectId) },
+    );
     onHistoryChange(currentId);
   } catch {
     // See comment above — history storage being unavailable must never
@@ -138,6 +162,7 @@ export function clearHistory() {
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
+  convProjectId = null; // the next send re-adopts whatever project is active
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -250,11 +275,17 @@ function messagesForApi() {
 // user JUST attached must never be silently absent from its own turn),
 // and a hard total-size budget.
 async function buildRagBlocks(questionText, newRagDocs) {
+  const project = convProjectId ? getProject(convProjectId) : null;
   const names = new Map(convRagDocs.map((d) => [d.id, d.name]));
+  for (const f of project?.files || []) names.set(f.id, f.name);
+  // Retrieval scope: this conversation's attached docs PLUS its project's
+  // indexed material — and nothing else (no other project can leak in;
+  // the docId list IS the scope).
+  const docIds = [...new Set([...convRagDocs.map((d) => d.id), ...projectDocIds(project)])];
   const metaByDoc = new Map(newRagDocs.filter((d) => d.metadata).map((d) => [d.docId, d.metadata]));
   let matches = [];
   try {
-    matches = await retrieve(convRagDocs.map((d) => d.id), questionText || "the attached document", 8);
+    matches = await retrieve(docIds, questionText || "the attached document", 8);
   } catch {
     matches = [];
   }
@@ -303,6 +334,11 @@ export async function sendMessage(text, opts) {
   // Large documents don't ride inline: they were RAG-indexed at attach
   // time (attachments.js / rag.js) and contribute retrieved excerpts here
   // instead — on this turn and on every follow-up in this conversation.
+  // A fresh conversation adopts the project that's active when its first
+  // message is sent; after that the conversation's own projectId rules.
+  if (!currentId && !convProjectId) convProjectId = activeProjectId();
+  const project = convProjectId ? getProject(convProjectId) : null;
+
   const newRagDocs = (opts.docs || []).filter((d) => d.rag && d.docId);
   for (const d of newRagDocs) {
     if (!convRagDocs.some((r) => r.id === d.docId)) {
@@ -318,7 +354,13 @@ export async function sendMessage(text, opts) {
       d.text +
       "\n--- End of document ---";
   }
-  if (convRagDocs.length) {
+  // Project materials: inventory + extracted image metadata (EXIF) as
+  // context, then the same retrieval mechanism attachments use pulls the
+  // relevant excerpts out of the project's indexed docs/notes.
+  if (project) {
+    apiText += buildProjectContext(project);
+  }
+  if (convRagDocs.length || projectDocIds(project).length) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
   for (const a of opts.images) {
