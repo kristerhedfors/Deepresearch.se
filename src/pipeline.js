@@ -33,12 +33,14 @@ import {
   lastUserMessage,
   previousUserText,
   textOf,
+  withAppendedImage,
   withAppendedText,
   withImageNudge,
 } from "./conversation.js";
 import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
+import { pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
 import {
   directPrompt,
   gapPrompt,
@@ -69,7 +71,12 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // photo's resolved location. Fully fail-soft — the conversation comes back
   // unchanged if there's nothing to look up or Shodan can't be reached.
   let convo = conversation;
-  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, conversation, state);
+  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, convo, state);
+  // Opt-in Google Maps enrichment (src/settings.js's google_maps knob). Also
+  // runs BEFORE ctx build so its context block — and, for a vision model, the
+  // fetched Street View / road-map images — flow into every downstream phase
+  // including synthesis (ctx.imageParts is read from `convo` just below).
+  if (state.googleMaps) convo = await runGoogleMapsEnrichment(env, log, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
@@ -132,6 +139,51 @@ async function runShodanEnrichment(env, log, step, stepDone, conversation, state
     : "Shodan: no records for the host(s) named";
   stepDone("shodan", label, result.details);
   return withAppendedText(conversation, result.block);
+}
+
+// Google Maps enrichment: resolve a location the message is about (a street
+// address parsed from it, or an attached photo's GPS coordinates) into Google
+// Maps data — Places (canonical place details + coordinates), Street View
+// (coverage + capture date), and a road map — and append it as one labeled
+// context block, plus, for a vision-capable answer model, the Street View and
+// road-map images so they can be described. Stays SILENT (no step, no
+// conversation change) when the message names no address and carries no photo
+// location, or when the named address resolves to nothing — so an ordinary
+// question with the knob left on shows no spurious step and (beyond one free
+// Street View metadata check) costs nothing. Every failure mode degrades to
+// the original conversation.
+async function runGoogleMapsEnrichment(env, log, step, stepDone, conversation, state) {
+  const target = pickLookup(conversation, state.imageLocations);
+  if (!target) return conversation;
+
+  // Only fetch the (billed) imagery when the answer model can see it AND the
+  // message isn't already carrying user images — server-injected images add to
+  // the request body, and stacking them on top of several user photos risks
+  // Berget's ~1 MB body limit. A text-only model still gets the block + links.
+  const alreadyHasImages = imagePartsOf(lastUserMessage(conversation)).length > 0;
+  const wantImages = state.vision && !alreadyHasImages;
+
+  step("maps", "Checking Google Maps…");
+  let result = null;
+  try {
+    result = await runGoogleMapsLookup(env, log, { ...target, wantImages });
+  } catch (err) {
+    log.warn("googlemaps.phase_failed", { error: err?.message || String(err) });
+  }
+  if (!result) {
+    stepDone("maps", "No Google Maps data for that location");
+    return conversation;
+  }
+
+  state.mapsCount = result.count;
+  stepDone(
+    "maps",
+    result.images.length ? "Google Maps data and imagery attached" : "Google Maps data found",
+    result.details,
+  );
+  let convo = withAppendedText(conversation, result.block);
+  for (const url of result.images) convo = withAppendedImage(convo, url);
+  return convo;
 }
 
 async function runWithoutSearch(ctx) {

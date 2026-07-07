@@ -295,6 +295,19 @@
         ever sent to Shodan, never your question or anything about your
         account, and only when your message actually names a host. It works
         whether or not web search is on.</li>
+      <li><b>Google Maps &amp; Street View</b> (off by default) — when on, if a
+        question names a street address (or you attach a photo carrying GPS
+        location), the site looks it up on
+        <a href="https://developers.google.com/maps" target="_blank" rel="noopener">Google
+        Maps Platform</a>: it resolves the place with the Places API (name,
+        address, type, rating), confirms Google Street View coverage and its
+        imagery capture date, and pulls a road map — then folds those details
+        and clickable Maps/Street View links into the research, and hands the
+        Street View and map images to a vision-capable model to describe. Only
+        the address itself (or a photo's coordinates) is ever sent to Google,
+        never your whole question or anything about your account, and only when
+        your message actually names an address. It works whether or not web
+        search is on.</li>
     </ul>
   </section>
 
@@ -318,6 +331,12 @@
         names an IP or hostname, that IP/hostname alone is sent to Shodan to
         fetch its public infrastructure record — never your question or
         anything identifying you.</li>
+      <li><b>Google Maps lookups</b>: only if you turn on <b>Google Maps &amp;
+        Street View</b> in Settings (off by default). Then, when a message names
+        a street address (or you attach a located photo), that address alone
+        (or the photo's coordinates) is sent to Google Maps Platform to fetch
+        the place, its Street View coverage and a road map — never your whole
+        question or anything identifying you.</li>
       <li><b>What our server keeps</b>: your account (Google email, name)
         and per-request usage numbers — token counts, search counts,
         durations — used for the quota bars. No message text, ever.</li>

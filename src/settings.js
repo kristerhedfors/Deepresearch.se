@@ -27,20 +27,25 @@
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { shodanAvailable } from "./shodan.js";
+import { googleMapsAvailable } from "./googlemaps.js";
 
-// Two knobs today:
+// Three knobs today:
 //  - server_history: default ON  (only an explicit stored `false` opts out).
 //  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
 //    sends the host/IP to a third party, so it stays off until asked for;
 //    only an explicit stored `true` enables it).
-const DEFAULTS = { server_history: true, shodan_mcp: false };
+//  - google_maps:    default OFF (opt-in — a named address / photo location is
+//    sent to Google Maps Platform (Places + Street View + Static Maps) and the
+//    imagery fetches are billed, so it stays off until asked for; only an
+//    explicit stored `true` enables it).
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
 // defaults. server_history is on unless an explicit stored `false` says
-// otherwise; shodan_mcp is off unless an explicit stored `true` enables it
-// (their opposite defaults are why each tests against its own literal).
-// Exported for unit tests.
+// otherwise; shodan_mcp and google_maps are off unless an explicit stored
+// `true` enables them (their opposite defaults are why each tests against its
+// own literal). Exported for unit tests.
 export function parseSettings(json) {
   let raw = {};
   try {
@@ -52,6 +57,7 @@ export function parseSettings(json) {
   return {
     server_history: raw.server_history !== false,
     shodan_mcp: raw.shodan_mcp === true,
+    google_maps: raw.google_maps === true,
   };
 }
 
@@ -65,14 +71,16 @@ export function storageAvailability(env, identity) {
 }
 
 // The full availability map reported to the client: storage/rag plus the
-// Shodan feature, which needs the SHODAN_API_KEY secret and — like every
-// per-user setting — a D1 user row to persist the knob against (break-glass
-// has none). Kept separate from storageAvailability so that function's
-// tested shape stays stable.
+// Shodan and Google Maps features. Each third-party feature needs its secret
+// (SHODAN_API_KEY / GOOGLE_MAPS_API_KEY) and — like every per-user setting —
+// a D1 user row to persist the knob against (break-glass has none). Kept
+// separate from storageAvailability so that function's tested shape stays
+// stable.
 export function featureAvailability(env, identity) {
   return {
     ...storageAvailability(env, identity),
     shodan: !!(shodanAvailable(env) && identity.user),
+    google_maps: !!(googleMapsAvailable(env) && identity.user),
   };
 }
 
@@ -96,6 +104,13 @@ export function shodanEnabled(env, identity) {
   return featureAvailability(env, identity).shodan && getSettings(identity).shodan_mcp;
 }
 
+// The effective Google Maps state for a request: the knob on AND the server
+// able to run it (GOOGLE_MAPS_API_KEY set, real user row). A knob left on in
+// D1 after the secret was removed reads as off.
+export function googleMapsEnabled(env, identity) {
+  return featureAvailability(env, identity).google_maps && getSettings(identity).google_maps;
+}
+
 async function saveSettings(env, userId, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -117,6 +132,7 @@ function settingsPayload(env, identity, settings) {
   return {
     server_history: available.storage && settings.server_history,
     shodan_mcp: available.shodan && settings.shodan_mcp,
+    google_maps: available.google_maps && settings.google_maps,
     available,
   };
 }
@@ -144,14 +160,21 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   const hasHistory = body?.server_history !== undefined;
   const hasShodan = body?.shodan_mcp !== undefined;
-  if (!hasHistory && !hasShodan) {
-    return jsonResponse({ error: "Expected {server_history?: boolean, shodan_mcp?: boolean}." }, 400);
+  const hasGoogleMaps = body?.google_maps !== undefined;
+  if (!hasHistory && !hasShodan && !hasGoogleMaps) {
+    return jsonResponse(
+      { error: "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean}." },
+      400,
+    );
   }
   if (hasHistory && typeof body.server_history !== "boolean") {
     return jsonResponse({ error: "server_history must be a boolean." }, 400);
   }
   if (hasShodan && typeof body.shodan_mcp !== "boolean") {
     return jsonResponse({ error: "shodan_mcp must be a boolean." }, 400);
+  }
+  if (hasGoogleMaps && typeof body.google_maps !== "boolean") {
+    return jsonResponse({ error: "google_maps must be a boolean." }, 400);
   }
   const available = featureAvailability(env, identity);
   if (hasHistory && body.server_history && !available.storage) {
@@ -166,14 +189,22 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
+  if (hasGoogleMaps && body.google_maps && !available.google_maps) {
+    return jsonResponse(
+      { error: "Google Maps is not configured on this server (GOOGLE_MAPS_API_KEY missing)." },
+      503,
+    );
+  }
   const settings = { ...getSettings(identity) };
   if (hasHistory) settings.server_history = body.server_history;
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
+  if (hasGoogleMaps) settings.google_maps = body.google_maps;
   await saveSettings(env, identity.user.id, settings);
   log.info("settings.updated", {
     user_id: identity.id,
     server_history: settings.server_history,
     shodan_mcp: settings.shodan_mcp,
+    google_maps: settings.google_maps,
   });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

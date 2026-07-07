@@ -102,3 +102,26 @@ export function withAppendedText(conversation, extraText) {
   }
   return conversation;
 }
+
+// Appends a server-fetched image (e.g. googlemaps.js's Street View / map) as
+// an image_url part on the LAST message, so a vision model can see it exactly
+// like a user-attached image. String content becomes a two-part array (its
+// text plus the image); array content gets the image pushed on the end.
+// Non-mutating, same convention as withAppendedText; a no-op when there's no
+// url or no last message. Callers must only use this when the answering model
+// is vision-capable (Berget rejects images on text-only models).
+export function withAppendedImage(conversation, url) {
+  if (!url || conversation.length === 0) return conversation;
+  const last = conversation[conversation.length - 1];
+  const part = { type: "image_url", image_url: { url } };
+  if (typeof last.content === "string") {
+    const content = last.content
+      ? [{ type: "text", text: last.content }, part]
+      : [part];
+    return [...conversation.slice(0, -1), { ...last, content }];
+  }
+  if (Array.isArray(last.content)) {
+    return [...conversation.slice(0, -1), { ...last, content: [...last.content, part] }];
+  }
+  return conversation;
+}

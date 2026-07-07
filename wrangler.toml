@@ -16,11 +16,15 @@ routes = [
 ]
 
 # Non-secret configuration. Secrets (BERGET_API_TOKEN, EXA_API_KEY,
-# BASIC_AUTH_USER, BASIC_AUTH_PASS, HISTORY_KEY_SECRET, and the optional
-# SHODAN_API_KEY that enables the per-user Shodan host-intelligence knob)
-# are set in the dashboard, never here. Without SHODAN_API_KEY the Shodan
-# feature is simply invisible: /api/settings reports it unavailable and the
-# UI hides the knob.
+# BASIC_AUTH_USER, BASIC_AUTH_PASS, HISTORY_KEY_SECRET, the optional
+# SHODAN_API_KEY that enables the per-user Shodan host-intelligence knob, and
+# the optional GOOGLE_MAPS_API_KEY that enables the per-user Google Maps &
+# Street View knob) are set in the dashboard, never here. Without
+# SHODAN_API_KEY / GOOGLE_MAPS_API_KEY those features are simply invisible:
+# /api/settings reports them unavailable and the UI hides the knob. The
+# GOOGLE_MAPS_API_KEY needs these Google Cloud APIs enabled: Places API
+# (places.googleapis.com), Maps Static API (static-maps-backend.googleapis.com)
+# and Street View Static API (street-view-image-backend.googleapis.com).
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on
