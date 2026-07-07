@@ -5,6 +5,7 @@ import {
   buildMapsBlock,
   extractPlace,
   googleMapsAvailable,
+  googleMapsEmbedKey,
   mapLink,
   panoLink,
   pickLookup,
@@ -14,6 +15,16 @@ test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
   assert.equal(googleMapsAvailable({}), false);
   assert.equal(googleMapsAvailable({ GOOGLE_MAPS_API_KEY: "" }), false);
   assert.equal(googleMapsAvailable({ GOOGLE_MAPS_API_KEY: "k" }), true);
+});
+
+test("googleMapsEmbedKey prefers the dedicated key, else falls back to the main key", () => {
+  assert.equal(googleMapsEmbedKey({}), ""); // neither set
+  assert.equal(googleMapsEmbedKey({ GOOGLE_MAPS_API_KEY: "main" }), "main"); // fallback
+  assert.equal(googleMapsEmbedKey({ GOOGLE_MAPS_EMBED_KEY: "embed" }), "embed"); // dedicated
+  assert.equal(
+    googleMapsEmbedKey({ GOOGLE_MAPS_API_KEY: "main", GOOGLE_MAPS_EMBED_KEY: "embed" }),
+    "embed", // dedicated wins
+  );
 });
 
 describe("extractPlace", () => {

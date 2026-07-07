@@ -56,14 +56,18 @@ export function googleMapsAvailable(env) {
   return !!env.GOOGLE_MAPS_API_KEY;
 }
 
-// The SEPARATE, browser-exposed key for the interactive Maps Embed iframe.
-// Deliberately NOT the server GOOGLE_MAPS_API_KEY (which has Places/Static
-// billing enabled and must stay server-side): this one is meant to be public,
-// so it MUST be locked to the site's HTTP referrer and restricted to the Maps
-// Embed API in the Google Cloud console. Empty string when unset — the client
-// then shows only the keyless Street View link, no inline embed.
+// The browser-exposed key for the interactive Maps Embed iframe. Prefers a
+// dedicated GOOGLE_MAPS_EMBED_KEY when set (ideal: a key restricted to the Maps
+// Embed API only); otherwise FALLS BACK to the main GOOGLE_MAPS_API_KEY. The
+// fallback is safe only because that key is HTTP-referrer-locked to the site
+// (*.deepresearch.se/*), which is the mitigation for exposing it to the
+// browser — without that referrer restriction, exposing the server key would
+// let anyone run its billed Places/Static APIs. Empty string when neither is
+// set — the client then shows only the keyless Street View link, no embed.
 export function googleMapsEmbedKey(env) {
-  return typeof env.GOOGLE_MAPS_EMBED_KEY === "string" ? env.GOOGLE_MAPS_EMBED_KEY : "";
+  const embed = typeof env.GOOGLE_MAPS_EMBED_KEY === "string" ? env.GOOGLE_MAPS_EMBED_KEY : "";
+  if (embed) return embed;
+  return typeof env.GOOGLE_MAPS_API_KEY === "string" ? env.GOOGLE_MAPS_API_KEY : "";
 }
 
 // ---- deterministic address extraction (pure — exported for unit tests) -----

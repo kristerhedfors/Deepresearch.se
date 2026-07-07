@@ -1332,11 +1332,15 @@ wires it (before any model call, alongside the Shodan enrichment).
   (`places.googleapis.com`), **Maps Static API**
   (`static-maps-backend.googleapis.com`) and **Street View Static API**
   (`street-view-image-backend.googleapis.com`).
-- **`GOOGLE_MAPS_EMBED_KEY`** is an OPTIONAL, SEPARATE dashboard secret for the
-  inline interactive Street View iframe. It is intentionally exposed to the
-  browser (via `/api/settings`), so it MUST be HTTP-referrer-restricted to the
-  site and limited to the **Maps Embed API** only. Without it, the imagery and
-  data still work; only the inline navigable embed is absent.
+- **`GOOGLE_MAPS_EMBED_KEY`** is an OPTIONAL dashboard secret for the inline
+  interactive Street View iframe. It is intentionally exposed to the browser
+  (via `/api/settings`), so it MUST be HTTP-referrer-restricted to the site.
+  **It defaults to `GOOGLE_MAPS_API_KEY` when unset** (`googleMapsEmbedKey`) —
+  fine as long as that key is itself referrer-locked to `*.deepresearch.se/*`
+  (it is), which is the mitigation for browser exposure. Set a dedicated
+  Embed-API-only key only if you want to narrow the browser-exposed key's
+  scope. Either way the inline navigable embed then works; with neither key
+  (no Maps configured at all) only the keyless link shows.
 - **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
   pure + unit-tested): parses a single geocodable street-address candidate out
   of the latest message (a "<words> <number>" span whose word before the number

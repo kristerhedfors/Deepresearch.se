@@ -133,10 +133,11 @@ function settingsPayload(env, identity, settings) {
     server_history: available.storage && settings.server_history,
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
-    // Browser key for the interactive Street View embed — public by design
-    // (referrer-locked, Embed-API-only). Sent only when the caller can use
-    // Maps and the key is configured; empty string otherwise (client then
-    // shows the keyless link only). NOT the server GOOGLE_MAPS_API_KEY.
+    // Browser key for the interactive Street View embed — public by design,
+    // safe because the key is HTTP-referrer-locked to the site. Prefers a
+    // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY
+    // (see googleMapsEmbedKey). Sent only when the caller can use Maps; empty
+    // string otherwise (client then shows the keyless link only).
     maps_embed_key: available.google_maps ? googleMapsEmbedKey(env) : "",
     available,
   };

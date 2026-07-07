@@ -25,10 +25,11 @@ routes = [
 # server-side GOOGLE_MAPS_API_KEY needs these Google Cloud APIs enabled: Places
 # API (places.googleapis.com), Maps Static API
 # (static-maps-backend.googleapis.com) and Street View Static API
-# (street-view-image-backend.googleapis.com). An OPTIONAL, SEPARATE
-# GOOGLE_MAPS_EMBED_KEY enables the inline navigable Street View iframe; it is
-# exposed to the browser, so it MUST be HTTP-referrer-locked to the site and
-# restricted to the Maps Embed API only.
+# (street-view-image-backend.googleapis.com). The inline navigable Street View
+# iframe uses an OPTIONAL GOOGLE_MAPS_EMBED_KEY, which defaults to
+# GOOGLE_MAPS_API_KEY when unset — safe as long as that key is HTTP-referrer-
+# locked to *.deepresearch.se/* (the mitigation for browser exposure). Set a
+# dedicated Embed-API-only key only to narrow the browser-exposed scope.
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on
