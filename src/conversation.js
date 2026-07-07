@@ -36,6 +36,16 @@ export function lastUserMessage(conversation) {
   return [...conversation].reverse().find((m) => m.role === "user");
 }
 
+// Text of the user message BEFORE the latest one (the prior turn's question),
+// or "" when there is no earlier user turn. Triage's fallback uses it to seed
+// a search from the established topic when the latest message is a bare
+// back-reference ("undersök saken", "tell me more") whose literal text would
+// be a meaningless query on its own.
+export function previousUserText(conversation) {
+  const users = conversation.filter((m) => m?.role === "user");
+  return users.length >= 2 ? textOf(users[users.length - 2].content) : "";
+}
+
 // Image parts of a message's multimodal content (empty for string content).
 export function imagePartsOf(message) {
   return Array.isArray(message?.content)

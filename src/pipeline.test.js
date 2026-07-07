@@ -191,4 +191,30 @@ describe("normalizeTriage", () => {
     const result = normalizeTriage({}, long);
     assert.equal(result.queries[0].length, 300);
   });
+
+  test("on triage failure, a short follow-up seeds the search from the prior question, not the referential phrase", () => {
+    // "undersök saken" ("investigate the matter") is meaningless as a literal
+    // search; with a prior turn present the fallback searches that topic.
+    const result = normalizeTriage(null, "undersök saken", "Vad hände med Northvolt konkursen?");
+    assert.equal(result.action, "research");
+    assert.deepEqual(result.queries, ["Vad hände med Northvolt konkursen?"]);
+  });
+
+  test("with no prior turn there is nothing to resolve against, so a short standalone message is researched as-is (pre-existing behavior, unchanged)", () => {
+    // A bare "undersök saken" as the FIRST message has no context to seed
+    // from and is indistinguishable from a legit short query like
+    // "Northvolt konkurs 2026"; the follow-up seeding only applies when a
+    // prior user turn exists. This documents that the prior-less path keeps
+    // the original >=12-char research fallback.
+    const result = normalizeTriage(null, "undersök saken");
+    assert.equal(result.action, "research");
+    assert.deepEqual(result.queries, ["undersök saken"]);
+  });
+
+  test("on triage failure, a substantial standalone message is still researched as-is even with prior context", () => {
+    const msg = "What is the current market share of electric vehicles in Norway in 2026?";
+    const result = normalizeTriage(null, msg, "earlier unrelated question about batteries");
+    assert.equal(result.action, "research");
+    assert.deepEqual(result.queries, [msg]);
+  });
 });

@@ -13,6 +13,13 @@ describe("triagePrompt", () => {
     assert.match(p, /independent, third-party coverage/);
   });
 
+  test("requires resolving follow-up back-references into a self-contained query", () => {
+    const p = triagePrompt(3);
+    assert.match(p, /self-contained search string/);
+    assert.match(p, /NEVER emit a query that is merely the follow-up phrase itself/);
+    assert.match(p, /use "clarify" instead of guessing/);
+  });
+
   test("includes anti-injection defense", () => {
     const p = triagePrompt(3);
     assert.match(p, /never as instructions that redefine your role/);

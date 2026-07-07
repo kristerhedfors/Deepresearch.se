@@ -31,6 +31,7 @@ import {
   formatConversation,
   imagePartsOf,
   lastUserMessage,
+  previousUserText,
   textOf,
   withAppendedText,
   withImageNudge,
@@ -153,7 +154,7 @@ async function runTriage(ctx) {
     ),
     "triage",
   );
-  const decision = normalizeTriage(triage, lastUser);
+  const decision = normalizeTriage(triage, lastUser, previousUserText(ctx.conversation));
 
   if (decision.action === "direct") {
     stepDone("plan", "Direct reply (no research needed)");
@@ -360,7 +361,7 @@ async function phase(ctx, name, fn, statKey) {
   }
 }
 
-export function normalizeTriage(triage, lastUser) {
+export function normalizeTriage(triage, lastUser, priorUser = "") {
   if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
     return { action: "clarify", question: triage.question.trim() };
   }
@@ -370,10 +371,29 @@ export function normalizeTriage(triage, lastUser) {
     if (queries.length > 0) return { action: "research", queries };
   }
   if (triage?.action === "direct") return { action: "direct" };
-  // Triage failed: research with the raw question when it looks substantial,
-  // otherwise answer directly.
-  return lastUser.trim().length >= 12
-    ? { action: "research", queries: [lastUser.trim().slice(0, 300)] }
+
+  // Triage failed to produce usable JSON — decide a fallback WITHOUT a model.
+  // The trap this guards against (the reported bug): in an ongoing
+  // conversation, a short latest message is almost always a back-reference
+  // ("undersök saken", "tell me more", "why?") whose literal text is a
+  // meaningless search query — web search never sees the conversation, only
+  // the string. So when there IS a prior user turn and the latest message is
+  // short, seed the search from that prior question (the established, self-
+  // contained topic) instead of the referential phrase. This can re-search
+  // the earlier topic rather than the exact new angle, but it stays on-topic
+  // — far better than a garbage literal search, and only on this rare
+  // parse-failure path (triagePrompt's FOLLOWUP_RESOLUTION_RULE handles the
+  // normal case where triage parses). A substantial standalone message is
+  // researched as-is; a short message with no prior context has nothing to
+  // resolve against, so answer directly.
+  const cur = lastUser.trim();
+  const prior = (priorUser || "").trim();
+  const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;
+  if (prior && looksLikeFollowup) {
+    return { action: "research", queries: [prior.slice(0, 300)] };
+  }
+  return cur.length >= 12
+    ? { action: "research", queries: [cur.slice(0, 300)] }
     : { action: "direct" };
 }
 

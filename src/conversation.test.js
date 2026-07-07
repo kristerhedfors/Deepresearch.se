@@ -1,6 +1,31 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, imagePartsOf, formatConversation, withImageNudge, withAppendedText } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText } from "./conversation.js";
+
+describe("previousUserText", () => {
+  test("returns the user message before the latest one", () => {
+    const convo = [
+      { role: "user", content: "first question about Northvolt" },
+      { role: "assistant", content: "some answer" },
+      { role: "user", content: "undersök saken" },
+    ];
+    assert.equal(previousUserText(convo), "first question about Northvolt");
+  });
+
+  test("returns empty string when there is only one user turn", () => {
+    assert.equal(previousUserText([{ role: "user", content: "only message" }]), "");
+    assert.equal(previousUserText([]), "");
+  });
+
+  test("reads text out of multimodal content", () => {
+    const convo = [
+      { role: "user", content: [{ type: "text", text: "look at this" }, { type: "image_url", image_url: { url: "data:," } }] },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "and now?" },
+    ];
+    assert.match(previousUserText(convo), /look at this/);
+  });
+});
 
 describe("textOf", () => {
   test("plain string content passes through", () => {
