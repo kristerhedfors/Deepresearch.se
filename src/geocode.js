@@ -50,22 +50,43 @@ export async function reverseGeocode(env, log, lat, lon) {
 // UNCHANGED when there's nothing valid to resolve or nothing resolves
 // (Nominatim down, bad coordinates, etc.) — this must never block or
 // delay the chat beyond a few resolved-in-parallel lookups.
-export async function augmentWithLocations(env, log, conversation, rawLocations) {
+//
+// Emits a visible activity step (step_start/step_done, same SSE contract as
+// the pipeline's own steps and the Shodan enrichment) that NAMES the service
+// being contacted — OpenStreetMap Nominatim — so the user has the same
+// "which external source is being checked" visibility for the maps lookup
+// that they already have for web search and Shodan. Stays SILENT (no step)
+// when there's no photo location to resolve, so an ordinary question shows
+// no spurious step. `emit` is optional — a plain no-op keeps the function
+// usable/testable outside the SSE path.
+export async function augmentWithLocations(env, log, emit, conversation, rawLocations) {
   const locations = validateImageLocations(rawLocations);
   if (!locations.length) return conversation;
 
-  const lines = await Promise.all(
-    locations.map(async ({ name, lat, lon }) => {
-      const place = await reverseGeocode(env, log, lat, lon);
-      return place ? `${name}: near ${place}` : null;
-    }),
-  );
-  const usable = lines.filter(Boolean);
-  if (!usable.length) return conversation;
+  const step = typeof emit === "function" ? emit : () => {};
+  step({ status: { type: "step_start", id: "geocode", label: "Resolving photo location (OpenStreetMap)…" } });
 
+  const resolved = await Promise.all(
+    locations.map(async ({ name, lat, lon }) => ({ name, place: await reverseGeocode(env, log, lat, lon) })),
+  );
+  const usable = resolved.filter((r) => r.place);
+  const details = usable.map((r) => `${r.name}: near ${r.place}`);
+
+  step({
+    status: {
+      type: "step_done",
+      id: "geocode",
+      label: usable.length
+        ? `Resolved ${usable.length} photo location${usable.length === 1 ? "" : "s"} via OpenStreetMap Nominatim`
+        : "No place name resolved for the photo location(s)",
+      details,
+    },
+  });
+
+  if (!usable.length) return conversation;
   const block =
     "\n\n--- Resolved location(s) (via OpenStreetMap Nominatim) ---\n" +
-    usable.join("\n") +
+    details.join("\n") +
     "\n--- End of resolved location(s) ---";
   return withAppendedText(conversation, block);
 }

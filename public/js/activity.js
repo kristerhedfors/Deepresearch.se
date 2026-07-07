@@ -126,6 +126,90 @@ export function collapseActivity(turn) {
   turn.activityLabel.textContent = searches
     ? `Research process · ${steps.length} steps · ${searches} search${searches === 1 ? "" : "es"}`
     : `Research process · ${steps.length} steps`;
+  // A debug affordance that lives at the top of the expanded step list:
+  // copies a full JSON record of every research task this run performed
+  // (steps, queries, service lookups, timings, sources, stats) for pasting
+  // into Claude Code. Only added once, and only for real multi-step runs.
+  if (!turn.activity.querySelector(":scope > .activity-debug")) {
+    turn.activity.prepend(makeCopyDebugButton(turn));
+  }
   turn.activityWrap.classList.add("done");
   turn.activityWrap.open = false;
+}
+
+// Structured, JSON-serializable record of a turn's whole research process —
+// the source for the copy button below. Pure (reads only plain turn fields,
+// no DOM), so it's unit-testable. `timeline` is the raw ordered event log;
+// `steps`/`searches`/`sources` are convenience projections of it.
+export function buildResearchDebugJson(turn) {
+  const log = Array.isArray(turn.researchLog) ? turn.researchLog : [];
+  const searches = log
+    .filter((e) => e.type === "search_done")
+    .map((e) => ({
+      round: e.round,
+      query: e.query,
+      results: e.results,
+      duration_ms: e.duration_ms,
+      sources: (e.sources || []).map((s) => ({ title: s.title, url: s.url })),
+    }));
+  const steps = log
+    .filter((e) => e.type === "step_done")
+    .map((e) => ({ id: e.id, label: e.label, details: Array.isArray(e.details) ? e.details : [] }));
+  // Every cited source, deduped by URL across all search rounds.
+  const seen = new Set();
+  const sources = [];
+  for (const s of searches) {
+    for (const src of s.sources) {
+      if (src.url && !seen.has(src.url)) {
+        seen.add(src.url);
+        sources.push(src);
+      }
+    }
+  }
+  const d = turn.doneStats;
+  const stats = d
+    ? {
+        model: d.model,
+        rounds: d.rounds,
+        searches: d.searches,
+        duration_ms: d.duration_ms,
+        prompt_tokens: d.prompt_tokens,
+        completion_tokens: d.completion_tokens,
+      }
+    : null;
+  return {
+    question: turn.question || "",
+    model: turn.model || d?.model || "",
+    stats,
+    steps,
+    searches,
+    sources,
+    answerChars: (turn.text || "").length,
+    timeline: log,
+  };
+}
+
+function makeCopyDebugButton(turn) {
+  const bar = document.createElement("div");
+  bar.className = "activity-debug";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "debug-copy-btn";
+  btn.textContent = "Copy research JSON";
+  btn.title =
+    "Copy a JSON record of every research task this run performed — paste into Claude Code to debug";
+  btn.addEventListener("click", async (e) => {
+    // Inside the <details> content, so a click here must not toggle it.
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(buildResearchDebugJson(turn), null, 2));
+      btn.textContent = "Copied ✓";
+    } catch {
+      btn.textContent = "Copy failed";
+    }
+    setTimeout(() => { btn.textContent = "Copy research JSON"; }, 1500);
+  });
+  bar.appendChild(btn);
+  return bar;
 }

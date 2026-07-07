@@ -127,6 +127,13 @@ export function addAssistantTurn(question = "", images = []) {
     el, activityWrap, activity, activityLabel, content, stats,
     question, images, model: "",
     steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
+    // Structured, ordered log of every research event this turn saw (steps,
+    // searches, service lookups, the final stats) — the source for the
+    // "Copy research JSON" debug button (activity.js). startedAt anchors the
+    // per-event relative timestamps.
+    startedAt: Date.now(),
+    researchLog: [],
+    doneStats: null,
   };
   tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));
   return turn;

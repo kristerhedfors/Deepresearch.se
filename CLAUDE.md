@@ -141,7 +141,9 @@ image-stripping — the Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
-load), `activity.js` (step bars, stats, collapse), `markdown.js`
+load), `activity.js` (step bars, stats, collapse, and
+`buildResearchDebugJson` — the "Copy research JSON" export of a turn's
+whole research process for pasting into Claude Code), `markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the encrypted conversation store itself, now also
 dual-writing each record to the cloud while the knob is on),
@@ -383,6 +385,12 @@ unknown `status` types (forward compatibility).
 - `{"choices":[{"delta":{"content":"…"}}]}` — text chunk
 - `{"status":{"type":"step_start","id":"plan","label":"Analyzing request…"}}` — pipeline step spinner
 - `{"status":{"type":"step_done","id":"plan","label":"Planned 3 search angles","details":["query …"]}}` — checkmark; `details` renders as an expandable list
+  - The `id` names the phase/service so the user sees which external
+    source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
+    phases), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
+    (Shodan host lookup). The client also records every `status` event into
+    a per-turn structured log for the "Copy research JSON" debug button
+    (`public/js/activity.js`'s `buildResearchDebugJson`).
 - `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
@@ -421,7 +429,9 @@ codec — the module is written to be import-safe outside a browser),
 scoping, note/name normalization), and `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
 RAG-excerpt blocks — plus `deriveTitle` and `stripOldImages`, the pure
-core extracted out of `stream.js`'s send path).
+core extracted out of `stream.js`'s send path), and `activity.js`'s
+`buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
+projection, per-round searches, URL-deduped sources, ordered timeline).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -967,12 +977,20 @@ both something concrete to reason and search with.
   reasons in the section above), this resolves metadata the photo
   *itself* already carries — closer to parsing document text than to
   researching a question. `chat.js` calls `augmentWithLocations()` right
-  after `markAnswerRunning`, appending a `Resolved location(s)` block to
-  the conversation (`src/conversation.js`'s `withAppendedText()`) built
-  from `public/js/exif.js`'s GPS output, forwarded separately from the
-  message text as `body.imageLocations` (validated server-side by
+  after setting up the SSE `emit` (before the pipeline), appending a
+  `Resolved location(s)` block to the conversation
+  (`src/conversation.js`'s `withAppendedText()`) built from
+  `public/js/exif.js`'s GPS output, forwarded separately from the message
+  text as `body.imageLocations` (validated server-side by
   `validateImageLocations()` — capped at 4 entries, coordinates range-
   checked) rather than resolved client-side.
+- **Emits a visible activity step that NAMES the service.** Like the
+  Shodan enrichment, `augmentWithLocations` takes the `emit` and fires
+  `step_start`/`step_done` (id `geocode`) whose label names *OpenStreetMap
+  Nominatim* explicitly — so the user gets the same "which external source
+  is being checked" visibility for the maps lookup that web search and
+  Shodan already give. Stays SILENT (no step) when there's no photo
+  location to resolve, so an ordinary question shows no spurious step.
 - **Fails soft, same as every other helper phase**: a bad/missing
   coordinate, a Nominatim timeout (4s) or error, all degrade to "no
   resolved location" — the raw coordinates the client already included

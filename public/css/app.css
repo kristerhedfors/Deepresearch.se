@@ -256,6 +256,16 @@ header {
 .step li { margin: .15rem 0; }
 .step a { color: var(--accent); text-decoration: none; }
 .step a:hover { text-decoration: underline; }
+/* "Copy research JSON" — a debug affordance at the top of the expanded
+   step list; only shown once a research run has collapsed. */
+.activity-debug { display: flex; justify-content: flex-end; }
+.debug-copy-btn {
+  background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 6px;
+  padding: .12rem .55rem; font-size: .74rem; font-weight: 500;
+  cursor: pointer;
+}
+.debug-copy-btn:hover { color: var(--text); }
 /* Processing indicator: a tiny site icon that pulses in and out, each
    pulse screwing the inner yellow spiral inward (grow, twist clockwise)
    and back outward (shrink, untwist) via alternate direction. */

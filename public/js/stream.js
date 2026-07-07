@@ -217,17 +217,20 @@ async function recoverAnswer(turn, requestId, budgetS, gen) {
 // text accumulator.
 function handleEvent(turn, evt, acc) {
   if (evt.error) {
+    recordResearchEvent(turn, { event: "error", error: evt.error });
     setError(turn, evt.error);
     return acc;
   }
   if (evt.status) {
     const s = evt.status;
+    recordResearchEvent(turn, s);
     if (s.type === "search_start") startSearchStep(turn, s.query || "");
     else if (s.type === "search_done") finishSearchStep(turn, s);
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
+      turn.doneStats = s; // final stats for the debug-JSON export
       renderStats(turn, s);
     }
     else if (s.type === "discard_text") {
@@ -244,6 +247,16 @@ function handleEvent(turn, evt, acc) {
     setText(turn, acc);
   }
   return acc;
+}
+
+// Append one research event to the turn's structured log, stamped with a
+// relative timestamp (ms since the turn started). Text deltas are NOT
+// recorded — this log is the research PROCESS (which services were queried,
+// with what, in what order, how long each took), the source for the
+// "Copy research JSON" debug button (activity.js).
+function recordResearchEvent(turn, entry) {
+  if (!turn.researchLog) return;
+  turn.researchLog.push({ t: Date.now() - (turn.startedAt || Date.now()), ...entry });
 }
 
 // Builds the labeled excerpt blocks for every RAG-indexed document in this
