@@ -610,30 +610,43 @@ than per-model:
   itself (not reachable from this codebase); see the findings ledger for
   that as an accepted open issue.
 
+> **Plan status (current): this Cloudflare account is on Workers PAID.**
+> `wrangler.toml` sets `[limits] cpu_ms = 300_000` (the Paid maximum, 5
+> min of CPU time per request). The round-4 narrative below is kept as the
+> historical record of how the exceededCpu problem was found and fixed; the
+> Free-plan constraints it describes are **no longer in effect**. When
+> reasoning about a request being killed today, do NOT assume the old 10ms
+> Free ceiling — CPU headroom is now 5 minutes (and note nearly all
+> wall-clock here is idle fetch waiting, which never counted as CPU anyway),
+> so an isolate dying is rare and not the routine outcome it once was.
+
 **Round 4 (`cybersecurity` query set, mid-long 150s time budgets) found
 the deeper root cause of round 2/3's "silent mid-stream drop" pattern**:
 Workers Logs showed these requests killed by Cloudflare itself with
-`outcome: exceededCpu` — this account is on the Workers **Free** plan
-(a hard 10ms CPU-time-per-request ceiling; confirmed via a direct
+`outcome: exceededCpu` — the account was on the Workers **Free** plan at
+the time (a hard 10ms CPU-time-per-request ceiling; confirmed via a direct
 `wrangler deploy` attempt, not just the docs). Nearly all wall-clock time
 in this pipeline is idle waiting on Berget/Exa fetches, which doesn't
 count as CPU time — but a longer time budget legitimately plans deeper
 research (more searches, more gap rounds, a bigger synthesis digest),
 and the extra JSON parsing/decoding/digest-building for verbose models on
-complex topics can tip over 10ms. Once it does, Cloudflare tears down the
-isolate before any of our own error handling can run — unlike the
+complex topics could tip over 10ms. Once it did, Cloudflare tore down the
+isolate before any of our own error handling could run — unlike the
 finish_reason case above, this one genuinely can't be caught from inside
 the Worker, only prevented. Added a `STREAM_MAX_CHARS` safety valve in
 `berget.js` (bounds a runaway/degenerate generation) — real but
-insufficient alone, since the exhaustion is often cumulative across the
-whole request rather than from one oversized stream. **The actual fix
-requires upgrading this Cloudflare account to Workers Paid ($5/month)**,
-which raises the default ceiling to 30s and allows configuring it up to
-5 minutes via `wrangler.toml`'s `[limits] cpu_ms` — do NOT add that
-section while still on the Free plan, since Cloudflare's deploy API
-rejects it outright and breaks every subsequent deploy (confirmed the
-hard way; see `tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry for the
-full incident and revert).
+insufficient alone, since the exhaustion was often cumulative across the
+whole request rather than from one oversized stream. **The actual fix was
+upgrading the Cloudflare account to Workers Paid ($5/month)** — DONE — which
+raised the default ceiling to 30s and allowed configuring it up to 5
+minutes via `wrangler.toml`'s `[limits] cpu_ms` (now set to `300_000`; a
+confirmation battery afterward showed `exceededCpu` gone). Historical
+caveat that still matters if the plan ever changes: Cloudflare's deploy API
+rejects `[limits] cpu_ms` outright on the **Free** plan (code 100328, "CPU
+limits are not supported for the Free plan") and that broke every
+subsequent deploy until reverted — so if the account is ever downgraded,
+remove that section first (see `tests/MODEL-EVAL-FINDINGS.md`'s round 4/5
+entries for the full incident, revert, and re-add after the upgrade).
 
 **Don't commit (or otherwise deploy) mid-battery.** A push to `main`
 triggers Cloudflare's auto-deploy, which can silently truncate in-flight
@@ -858,27 +871,28 @@ Let a battery finish before pushing anything.
   explicitly; it is a recovery buffer, not storage.
 - **Heartbeat / dead-run detection (the "stuck on recovering…" fix)**:
   the poller must distinguish a server still legitimately researching a
-  long budget from one the runtime KILLED (the Workers Free-plan CPU
-  ceiling is most likely to bite a high-budget deep run — see round 4).
-  Both look identical as a bare `running` marker, so before this the
-  client polled a static "recovering…" step for the whole `budget+120s`
-  deadline (up to 12 min at a 600s budget) for an answer that would never
-  come. Now `chat.js` heartbeats the row every 15s (piggybacked on the
-  keepalive tick but BEFORE its `disconnect.gone` early-return, so it
-  keeps firing after the client leaves — exactly when the poller needs
-  it); `heartbeatAnswer` bumps `ts` only for `running` rows. `GET
-  /api/chat/answer` runs `projectAnswer(row, now)` (pure, unit-tested):
-  a `running` row whose `ts` is older than `RUNNING_STALE_MS` (50s ≈ 3
-  missed beats) returns `{status:"lost"}` — the isolate died, its
-  heartbeat stopped. The client's `recoverAnswer` now returns
-  `{data, reason}` (done/lost/gone/empty/timeout/aborted): on `lost` it
-  stops within ~50-65s (not 12 min) with an honest "interrupted on the
-  server — lower the time budget" message, and while genuinely `running`
-  it ticks a live "Still researching on the server… (Ns)" label
-  (`updateGenericStep`) so a long wait reads as progress, not a frozen
-  app. This does NOT fix the underlying Free-plan kill (that needs
-  Workers Paid — see round 4) — it makes the failure fast and truthful
-  instead of an indefinite spinner.
+  long budget from one whose isolate DIED mid-run (a rare event now that
+  the account is on Workers Paid with a 5-min CPU ceiling — see the plan
+  note in the round-4 section — but still possible: a runtime eviction, a
+  waitUntil that outlives its budget, an unhandled crash). Both look
+  identical as a bare `running` marker, so before this the client polled a
+  static "recovering…" step for the whole `budget+120s` deadline (up to 12
+  min at a 600s budget) for an answer that might never come. Now `chat.js`
+  heartbeats the row every 15s (piggybacked on the keepalive tick but
+  BEFORE its `disconnect.gone` early-return, so it keeps firing after the
+  client leaves — exactly when the poller needs it); `heartbeatAnswer`
+  bumps `ts` only for `running` rows. `GET /api/chat/answer` runs
+  `projectAnswer(row, now)` (pure, unit-tested): a `running` row whose `ts`
+  is older than `RUNNING_STALE_MS` (50s ≈ 3 missed beats) returns
+  `{status:"lost"}` — the isolate died, its heartbeat stopped. The
+  client's `recoverAnswer` now returns `{data, reason}`
+  (done/lost/gone/empty/timeout/aborted): on `lost` it stops within
+  ~50-65s (not 12 min) with an honest "interrupted on the server — try
+  again, lower the budget if it recurs" message, and while genuinely
+  `running` it ticks a live "Still researching on the server… (Ns)" label
+  (`updateGenericStep`) so a long wait reads as progress, not a frozen app.
+  It makes an interrupted run fail fast and truthfully instead of hanging
+  on an indefinite spinner.
 - **Client stall watchdog (the "switched to another app" fix)**: server
   survival + the recovery poll only help if the client actually NOTICES
   its stream died. On iOS a backgrounded PWA is frozen and its socket

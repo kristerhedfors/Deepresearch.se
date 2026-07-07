@@ -337,28 +337,29 @@ A round 3 battery found two more universal (not per-model) gaps:
 mid-long time-budget battery (150s) against cybersecurity research
 queries showed several models failing far more often than in prior
 rounds — Workers Logs traced the deaths to Cloudflare killing the
-invocation itself with `outcome: exceededCpu`. This Cloudflare account is
-on the Workers **Free** plan: a hard 10ms CPU-time-per-request ceiling,
-confirmed by a direct `wrangler deploy` attempt to raise it (Cloudflare's
-deploy API rejects `[limits] cpu_ms` outright on Free — "CPU limits are
-not supported for the Free plan", code 100328 — this is a hard deploy
-failure, not a silent no-op, and broke every subsequent deploy for one
+invocation itself with `outcome: exceededCpu`. At the time this Cloudflare
+account was on the Workers **Free** plan: a hard 10ms CPU-time-per-request
+ceiling, confirmed by a direct `wrangler deploy` attempt to raise it
+(Cloudflare's deploy API rejects `[limits] cpu_ms` outright on Free — "CPU
+limits are not supported for the Free plan", code 100328 — a hard deploy
+failure, not a silent no-op, and it broke every subsequent deploy for one
 commit until reverted). Almost all of this pipeline's wall-clock time is
 idle waiting on Berget/Exa fetches (which costs no CPU time), but a
 longer time budget legitimately plans deeper research — more searches,
 more gap rounds, a bigger synthesis digest — and the extra JSON
-parsing/decoding/digest-building this requires can tip a verbose model's
-request over 10ms. Once it does, Cloudflare tears the isolate down before
-any of this app's own error handling runs — genuinely uncatchable from
+parsing/decoding/digest-building this requires could tip a verbose model's
+request over 10ms. Once it did, Cloudflare tore the isolate down before
+any of this app's own error handling ran — genuinely uncatchable from
 inside the Worker, unlike the finish_reason case above. Added a
 `STREAM_MAX_CHARS` safety valve to `consumeChatStream` (bounds a
 runaway/degenerate generation) as real but partial insurance — a
 confirmation test showed the exhaustion is often cumulative across the
 whole request, not from one oversized stream, so this alone did not
-resolve it. The actual fix — upgrading to Workers Paid ($5/month, raises
-the default to 30s and allows configuring up to 5 minutes) — is a
-billing decision for the site owner, not a code change; full incident
-detail in `tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry.
+resolve it. **Resolved: the account was upgraded to Workers Paid and
+`wrangler.toml` now sets `[limits] cpu_ms = 300_000` (5 min), after which
+a confirmation battery showed `exceededCpu` gone.** So the Free-plan
+constraints above are historical, not current; full incident detail in
+`tests/MODEL-EVAL-FINDINGS.md`'s round 4/5 entries.
 
 `tests/MODEL-EVAL-FINDINGS.md` is the durable, append-only ledger of
 every `model-eval.mjs` round — read it before starting a new round so

@@ -21,12 +21,12 @@ export const ANSWER_TTL_MS = 15 * 60 * 1000;
 // How long a `running` row may go without a heartbeat before the poller
 // treats the run as DEAD rather than merely slow. chat.js heartbeats the
 // row every 15s for as long as the isolate is alive (even after the client
-// disconnects); if the runtime kills the isolate — the Workers Free-plan
-// CPU ceiling is most likely to bite a long, high-budget research run —
-// the heartbeat stops and `ts` freezes. Past this window a poller can stop
-// spinning on a "recovering…" step that would otherwise wait out the full
-// budget+120s deadline for an answer that will never come. 50s = ~3 missed
-// beats.
+// disconnects); if the runtime kills the isolate for any reason (rare on
+// the Workers Paid plan's 5-min CPU ceiling, but still possible — eviction,
+// a waitUntil outliving its budget, a crash), the heartbeat stops and `ts`
+// freezes. Past this window a poller can stop spinning on a "recovering…"
+// step that would otherwise wait out the full budget+120s deadline for an
+// answer that will never come. 50s = ~3 missed beats.
 export const RUNNING_STALE_MS = 50 * 1000;
 
 // Pure projection of a stored answer row into the GET response shape, given
