@@ -15,6 +15,8 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
+import { refreshProjects, setActiveProject } from "./projects.js";
+import { initProjectsUi } from "./projects-ui.js";
 import { loadSettings } from "./settings.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
@@ -149,33 +151,44 @@ document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
 
-// ---- Header: clear chat / chat history ------------------------------------
+// ---- Header: clear chat / chat history / projects ---------------------------
 
-function newChat() {
+// The header's "New chat" leaves any project context (a plain chat);
+// "New chat in project" (projects-ui.js) passes keepProject so the fresh
+// conversation adopts the project it was started from.
+function newChat(keepProject = false) {
+  if (keepProject !== true) setActiveProject(null);
   clearHistory();
   clearChatDom();
   input.focus();
 }
-document.getElementById("clearbtn").addEventListener("click", newChat);
+document.getElementById("clearbtn").addEventListener("click", () => newChat());
 
-// Encrypted local history sidebar (public/js/history-ui.js + history-store.js):
-// loading a saved conversation also restores the model/time-target/web-search
-// settings it was sent with, same as re-opening a real chat-app conversation.
+// Loading a saved conversation restores the model/time-target/web-search
+// settings it was sent with, same as re-opening a real chat-app
+// conversation. Shared by the history sidebar and the project panel.
+function applyRecordSettings(record) {
+  if (record.model) selectModel(record.model);
+  if (Number.isFinite(record.budgetS) && record.budgetS >= BUDGET_MIN_S && record.budgetS <= BUDGET_MAX_S) {
+    budgetS = record.budgetS;
+    budgetSlider.value = secondsToPos(budgetS);
+    updateBudgetVal();
+    localStorage.setItem("budget_s", String(budgetS));
+  }
+  webSearchBox.checked = record.webSearch !== false;
+  localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+  syncSearchToggle();
+}
+
+// Encrypted local history sidebar (public/js/history-ui.js + history-store.js).
 const historySidebar = initHistorySidebar({
   onNew: newChat,
-  onLoad: (record) => {
-    if (record.model) selectModel(record.model);
-    if (Number.isFinite(record.budgetS) && record.budgetS >= BUDGET_MIN_S && record.budgetS <= BUDGET_MAX_S) {
-      budgetS = record.budgetS;
-      budgetSlider.value = secondsToPos(budgetS);
-      updateBudgetVal();
-      localStorage.setItem("budget_s", String(budgetS));
-    }
-    webSearchBox.checked = record.webSearch !== false;
-    localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
-    syncSearchToggle();
-  },
+  onLoad: applyRecordSettings,
 });
+// Projects (public/js/projects.js + projects-ui.js): collections of chats
+// and files with their own cloud knob and retrieval scope.
+initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
+refreshProjects().catch(() => {});
 initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });
 
 // ---- First-visit privacy notice (acknowledgement kept in a cookie) --------

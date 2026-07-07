@@ -7,10 +7,9 @@
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
-import { encryptBytes } from "./history-store.js";
-import { opfsAvailable, saveOriginal } from "./opfs.js";
+import { archiveFile } from "./opfs.js";
+import { activeProjectCloudOn } from "./projects.js";
 import { indexDocument } from "./rag.js";
-import { serverHistoryOn } from "./settings.js";
 
 const MAX_IMAGES = 4;
 const MAX_DOCS = 3;
@@ -73,48 +72,12 @@ export function indexingBusy() {
   return attachments.some((a) => a.indexing);
 }
 
-// Original bytes → OPFS (and, when the cloud knob is on, mirrored to R2).
-// Pure archival — never blocks or fails the attach itself.
-//
-// Everything is AES-GCM ENCRYPTED under the same never-persisted history
-// key conversations use, before it rests anywhere — with ONE deliberate
-// exception: `plaintext: true`, used only for RAG-indexed documents,
-// whose search index needs readable text anyway (disclosed in the
-// settings UI). Images especially always take the encrypted path. If the
-// key is unavailable, the encrypted class stores NOTHING at all — never
-// a plaintext fallback (same fail-closed rule as the history store).
-async function archiveOriginal(fileId, file, { plaintext = false } = {}) {
-  try {
-    let stored = file;
-    let enc = false;
-    if (!plaintext) {
-      try {
-        stored = new Blob([await encryptBytes(await file.arrayBuffer())], {
-          type: "application/octet-stream",
-        });
-        enc = true;
-      } catch {
-        return; // no key — store nothing rather than plaintext
-      }
-    }
-    if (await opfsAvailable()) {
-      await saveOriginal(fileId, stored, { name: file.name, type: file.type, enc });
-    }
-    if (serverHistoryOn()) {
-      fetch("/api/files/" + encodeURIComponent(fileId), {
-        method: "PUT",
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-file-name": encodeURIComponent(file.name),
-          "x-file-type": file.type || "application/octet-stream",
-          "x-file-enc": enc ? "1" : "0",
-        },
-        body: stored,
-      }).catch(() => {});
-    }
-  } catch {
-    // no OPFS / storage denied — the attachment still works normally
-  }
+// Archival of originals lives in opfs.js's archiveFile (encrypted except
+// RAG-indexed docs). Attachments made inside a project chat inherit that
+// project's cloud opt-out — a cloud-off project's attachments never reach
+// R2, matching the per-project knob's promise.
+function archiveOriginal(fileId, file, { plaintext = false } = {}) {
+  return archiveFile(fileId, file, { plaintext, cloud: activeProjectCloudOn() });
 }
 
 // Hand over everything pending for a send and clear the row.
@@ -307,6 +270,7 @@ async function addDocFile(file) {
     renderPending();
     try {
       const { chunkCount } = await indexDocument(fileId, file.name, text, {
+        cloud: activeProjectCloudOn(),
         onProgress: (done, total) => {
           att.progress = Math.round((100 * done) / total);
           renderPending();

@@ -13,6 +13,7 @@ import {
   loadConversation,
   saveConversation,
 } from "./history-store.js";
+import { renderProjectsList } from "./projects-ui.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
 
@@ -31,8 +32,11 @@ export function initHistorySidebar(opts = {}) {
 
   async function refresh() {
     list.innerHTML = '<p class="muted">Loading…</p>';
+    renderProjectsList().catch(() => {});
     const items = await listConversations();
-    renderList(items);
+    // Project conversations live inside their project's panel — the main
+    // list shows plain chats only, so nothing appears twice.
+    renderList(items.filter((c) => !c.projectId));
   }
 
   function renderList(items) {

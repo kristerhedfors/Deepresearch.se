@@ -30,8 +30,11 @@
 import { serverHistoryOn } from "./settings.js";
 
 const DB_NAME = "dr_history";
-const DB_VERSION = 1;
+// v2 adds the "projects" store (public/js/projects.js): one encrypted
+// record per project, same {iv, ciphertext} shape as a conversation.
+const DB_VERSION = 2;
 const STORE = "conversations";
+const PROJECTS = "projects";
 
 let dbPromise = null;
 let keyPromise = null;
@@ -45,6 +48,9 @@ function openDb() {
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: "id" });
         store.createIndex("updatedAt", "updatedAt");
+      }
+      if (!db.objectStoreNames.contains(PROJECTS)) {
+        db.createObjectStore(PROJECTS, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -149,7 +155,7 @@ export async function listConversations() {
   for (const r of records) {
     try {
       const data = await decryptRecord(key, r.iv, r.ciphertext);
-      items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt });
+      items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt, projectId: r.projectId || null });
     } catch {
       // Undecryptable — leave it out of the list rather than break the sidebar.
     }
@@ -166,18 +172,31 @@ export async function loadConversation(id) {
   return decryptRecord(key, r.iv, r.ciphertext);
 }
 
-// data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt, ragDocs}
-export async function saveConversation(id, data) {
+// data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt,
+// ragDocs, projectId}. The row keeps projectId OUTSIDE the ciphertext —
+// LOCALLY ONLY (never uploaded; the cloud body below carries just
+// iv/ciphertext/timestamps): it's a random uuid revealing grouping, not
+// content, and sync needs it to honor a project's cloud-off knob without
+// decrypting every record. opts.cloud=false skips the cloud mirror even
+// when the account knob is on — that's the per-project opt-out
+// (public/js/projects.js decides).
+export async function saveConversation(id, data, { cloud = true } = {}) {
   const key = await historyKey();
   const db = await openDb();
   const enc = await encryptRecord(key, data);
-  const record = { id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext };
+  const record = {
+    id,
+    updatedAt: data.updatedAt,
+    projectId: data.projectId || null,
+    iv: enc.iv,
+    ciphertext: enc.ciphertext,
+  };
   await reqToPromise(
     db.transaction(STORE, "readwrite").objectStore(STORE).put(record),
   );
   // Cloud mirror (fire-and-forget): a failed push must never surface as a
   // chat error — sync.js reconciles by updatedAt on the next opportunity.
-  if (serverHistoryOn()) {
+  if (serverHistoryOn() && cloud) {
     fetch("/api/convos/" + encodeURIComponent(id), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -206,21 +225,118 @@ export async function deleteConversation(id) {
 export async function exportEncryptedRecords() {
   const db = await openDb();
   const records = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
-  return records.map((r) => ({ id: r.id, updatedAt: r.updatedAt, iv: r.iv, ciphertext: r.ciphertext }));
+  return records.map((r) => ({
+    id: r.id,
+    updatedAt: r.updatedAt,
+    projectId: r.projectId || null,
+    iv: r.iv,
+    ciphertext: r.ciphertext,
+  }));
 }
 
 // Imports one server-side record, last-write-wins by updatedAt. Returns
-// true when the local store actually changed.
+// true when the local store actually changed. The projectId row field is
+// recovered by decrypting the incoming record (this device has the key) —
+// the cloud copy deliberately doesn't carry it in the clear.
 export async function importEncryptedRecord(id, record) {
   if (!record?.iv || !record?.ciphertext) return false;
   const db = await openDb();
   const existing = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
   const updatedAt = Number(record.updatedAt) || 0;
   if (existing && existing.updatedAt >= updatedAt) return false;
+  let projectId = existing?.projectId || null;
+  try {
+    const key = await historyKey();
+    const data = await decryptRecord(key, record.iv, record.ciphertext);
+    projectId = data.projectId || null;
+  } catch {
+    // Undecryptable content still imports (it may decrypt after a key
+    // becomes available again); it just can't be project-scoped yet.
+  }
   await reqToPromise(
     db
       .transaction(STORE, "readwrite")
       .objectStore(STORE)
+      .put({ id, updatedAt, projectId, iv: record.iv, ciphertext: record.ciphertext }),
+  );
+  return true;
+}
+
+// ---- project records (public/js/projects.js owns the shape) ----------------
+// Same encrypted-record pattern as conversations, in their own store and
+// their own R2 family. `data`: {name, files, notes?, serverStorage,
+// createdAt, updatedAt} — everything, name included, inside the ciphertext.
+
+export async function saveProjectRecord(id, data, { cloud = true } = {}) {
+  const key = await historyKey();
+  const db = await openDb();
+  const enc = await encryptRecord(key, data);
+  await reqToPromise(
+    db
+      .transaction(PROJECTS, "readwrite")
+      .objectStore(PROJECTS)
+      .put({ id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext }),
+  );
+  if (serverHistoryOn() && cloud) {
+    fetch("/api/projects/" + encodeURIComponent(id), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: data.updatedAt,
+        createdAt: data.createdAt,
+      }),
+    }).catch(() => {});
+  }
+}
+
+export async function listProjectRecords() {
+  const key = await historyKey();
+  const db = await openDb();
+  const records = await reqToPromise(
+    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).getAll(),
+  );
+  const items = [];
+  for (const r of records) {
+    try {
+      items.push({ id: r.id, ...(await decryptRecord(key, r.iv, r.ciphertext)) });
+    } catch {
+      // Undecryptable — skip rather than break the projects list.
+    }
+  }
+  items.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return items;
+}
+
+export async function deleteProjectRecord(id, { cloud = true } = {}) {
+  const db = await openDb();
+  await reqToPromise(db.transaction(PROJECTS, "readwrite").objectStore(PROJECTS).delete(id));
+  if (serverHistoryOn() && cloud) {
+    fetch("/api/projects/" + encodeURIComponent(id), { method: "DELETE" }).catch(() => {});
+  }
+}
+
+export async function exportEncryptedProjectRecords() {
+  const db = await openDb();
+  const records = await reqToPromise(
+    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).getAll(),
+  );
+  return records.map((r) => ({ id: r.id, updatedAt: r.updatedAt, iv: r.iv, ciphertext: r.ciphertext }));
+}
+
+export async function importEncryptedProjectRecord(id, record) {
+  if (!record?.iv || !record?.ciphertext) return false;
+  const db = await openDb();
+  const existing = await reqToPromise(
+    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).get(id),
+  );
+  const updatedAt = Number(record.updatedAt) || 0;
+  if (existing && existing.updatedAt >= updatedAt) return false;
+  await reqToPromise(
+    db
+      .transaction(PROJECTS, "readwrite")
+      .objectStore(PROJECTS)
       .put({ id, updatedAt, iv: record.iv, ciphertext: record.ciphertext }),
   );
   return true;

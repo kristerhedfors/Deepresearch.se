@@ -237,10 +237,12 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname.startsWith("/api/rag/")) {
     return handleRag(request, env, url, log, identity);
   }
-  // Opt-in cloud storage: encrypted conversation records + original files.
+  // Opt-in cloud storage: encrypted conversation/project records + files.
   if (
     url.pathname === "/api/convos" ||
     url.pathname.startsWith("/api/convos/") ||
+    url.pathname === "/api/projects" ||
+    url.pathname.startsWith("/api/projects/") ||
     url.pathname === "/api/files" ||
     url.pathname.startsWith("/api/files/") ||
     url.pathname === "/api/storage"

@@ -27,6 +27,7 @@
         <button id="clearbtn" type="button" title="New chat" aria-label="New chat">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>
         </button>
+        <button id="projectchip" type="button" class="project-chip" title="Open project" hidden></button>
         <select id="model" title="Model" hidden></select>
         <button id="accountbtn" type="button" title="Account &amp; usage" aria-label="Account and usage">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
@@ -79,10 +80,26 @@
         <button id="historyclose" type="button" aria-label="Close">✕</button>
       </div>
       <button id="historynewbtn" type="button" class="history-new">+ New chat</button>
+      <button id="projectnewbtn" type="button" class="history-new">+ New project</button>
+      <div id="projectcreate" hidden>
+        <input id="projectcreatename" type="text" placeholder="Project name" maxlength="80">
+        <button id="projectcreatego" type="button">Create</button>
+      </div>
+      <div id="projectslist"></div>
       <div id="historylist" class="history-list"><p class="muted">Loading…</p></div>
       <p class="history-footnote">Encrypted with a key this server never sees in
         the clear — stored in this browser, plus (by default) an encrypted cloud
         copy you can switch off in Settings. <a href="/help/#history" target="_blank" rel="noopener">Learn more</a></p>
+    </aside>
+  </div>
+
+  <div id="projectpanel" hidden>
+    <aside class="history-panel project-panel">
+      <div class="history-head">
+        <strong id="projecttitle">Project</strong>
+        <button id="projectclose" type="button" aria-label="Close">✕</button>
+      </div>
+      <div id="projectbody" class="project-body"><p class="muted">Loading…</p></div>
     </aside>
   </div>
 

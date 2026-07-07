@@ -695,3 +695,59 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .switch input:checked + .switch-track .switch-thumb { left: 20px; }
 .switch input:disabled + .switch-track { opacity: .45; cursor: not-allowed; }
 .setting-desc { font-size: .82em; line-height: 1.45; margin: .15rem 0 .4rem; }
+
+/* Projects (public/js/projects-ui.js): the panel overlay reuses the
+   history drawer's glass panel, docked wider; the chip sits in the header
+   next to the model selector while a project chat is active. */
+#projectpanel {
+  position: fixed; inset: 0; z-index: 11;
+  background: rgba(10, 46, 92, .45);
+}
+#projectpanel[hidden] { display: none; }
+.project-panel { width: min(420px, 92vw); }
+.project-body { display: flex; flex-direction: column; gap: .55rem; min-height: 0; }
+.project-body .section-lbl { margin: .5rem 0 .1rem; font-size: .78rem; font-weight: 700; color: var(--muted); }
+.project-knob { background: rgba(255, 255, 255, .28); border: 1px solid rgba(255, 255, 255, .5); border-radius: 12px; padding: .45rem .7rem; }
+.project-chip {
+  max-width: 9.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: rgba(255, 255, 255, .3); border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 999px; padding: .35rem .7rem; font: inherit; font-size: .78rem; font-weight: 600;
+  color: var(--text); cursor: pointer;
+}
+.project-chip[hidden] { display: none; }
+.project-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+.project-actions button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
+}
+.project-actions button.danger { color: #a33; border-color: #d9b1b1; }
+#ptextform { display: flex; flex-direction: column; gap: .4rem; }
+#ptextform input, #ptextform textarea {
+  font: inherit; font-size: .85rem; padding: .45rem .6rem;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
+}
+.project-drop {
+  display: flex; flex-direction: column; gap: .35rem;
+  min-height: 3.2rem; border: 1.5px dashed var(--border); border-radius: 12px; padding: .5rem;
+}
+.project-drop.dragging { border-color: var(--accent); background: rgba(126, 201, 255, .18); }
+.project-file {
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(255, 255, 255, .35); border-radius: 10px; padding: .35rem .5rem;
+}
+.project-file .icon { font-size: 1rem; }
+.project-file .meta { flex: 1; min-width: 0; }
+.project-file .name { font-size: .82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-file .sub { font-size: .7rem; color: var(--muted); }
+.project-file .pf-remove { background: none; border: 0; color: var(--muted); font-size: .9rem; padding: .15rem .3rem; cursor: pointer; }
+#projectcreate { display: flex; gap: .4rem; }
+#projectcreate input {
+  flex: 1; min-width: 0; font: inherit; font-size: .85rem; padding: .45rem .6rem;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
+}
+#projectcreate button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
+}
