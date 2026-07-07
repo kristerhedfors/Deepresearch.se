@@ -242,9 +242,18 @@ server-side.
   deletes; `sync.js`'s `pullNewer()` (on sidebar open) downloads records
   written from other devices — cloud mode is therefore also cross-device
   history sync, which local-only mode deliberately never was.
-- **Original attached files** (`files/{uid}/{fileId}`): raw bytes,
-  NOT encrypted (the server must be able to serve/index them) —
-  disclosed in the settings UI and privacy notice.
+- **Original attached files** (`files/{uid}/{fileId}`): stored in
+  STORAGE FORM — AES-GCM ciphertext under the same never-persisted
+  history key (raw-bytes helpers in `history-store.js`; `attachments.js`
+  encrypts before anything rests anywhere, OPFS included) for EVERY file
+  — images especially — except the ONE deliberate exception: RAG-indexed
+  documents, whose search index needs readable text anyway. The `enc`
+  flag rides in `x-file-enc` / R2 customMetadata / the OPFS meta rows;
+  sync moves the stored bytes as-is (no decrypt/re-encrypt round trip),
+  and `syncToServer` self-heals legacy plaintext (re-encrypts in place,
+  re-uploads a remote copy in the wrong form). A file that should be
+  encrypted but can't be (no key) is stored NOWHERE — never a plaintext
+  fallback.
 - **RAG index** (`src/rag.js`): vectors in **Vectorize** (ids
   `{uid}:{docId}:{seq}`, metadata `{u, d, seq, text}`, metadata index on
   `u`), plus one exportable JSON copy per document in R2
@@ -303,11 +312,12 @@ index if the server comes up empty or errors. A newly attached doc that
 retrieval misses entirely still contributes its opening chunks
 (`firstChunks`) so it is never silently absent from its own turn.
 
-**Encryption asymmetry, stated once more because it's the design**: the
-RAG index and stored files are plaintext in BOTH locations (retrieval
-requires readable text); conversations are ciphertext in BOTH locations.
-Keep the settings UI, `/help/`, and the privacy notice consistent with
-that whenever any of it changes.
+**Encryption asymmetry, stated once more because it's the design**:
+conversations AND attached-file originals (images included) are
+ciphertext in BOTH locations; the RAG index and the RAG-indexed
+documents' originals are the ONLY plaintext, in both locations, because
+retrieval requires readable text. Keep the settings UI, `/help/`, and
+the privacy notice consistent with that whenever any of it changes.
 
 ### /api/chat SSE protocol
 
@@ -381,7 +391,7 @@ suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once
-npm run test:mocked   # 39 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
+npm run test:mocked   # 40 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
 npm run test:live     # 5 tests, real Berget tokens + one Exa run
 ```
 

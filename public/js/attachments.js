@@ -7,6 +7,7 @@
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
+import { encryptBytes } from "./history-store.js";
 import { opfsAvailable, saveOriginal } from "./opfs.js";
 import { indexDocument } from "./rag.js";
 import { serverHistoryOn } from "./settings.js";
@@ -74,10 +75,30 @@ export function indexingBusy() {
 
 // Original bytes → OPFS (and, when the cloud knob is on, mirrored to R2).
 // Pure archival — never blocks or fails the attach itself.
-async function archiveOriginal(fileId, file) {
+//
+// Everything is AES-GCM ENCRYPTED under the same never-persisted history
+// key conversations use, before it rests anywhere — with ONE deliberate
+// exception: `plaintext: true`, used only for RAG-indexed documents,
+// whose search index needs readable text anyway (disclosed in the
+// settings UI). Images especially always take the encrypted path. If the
+// key is unavailable, the encrypted class stores NOTHING at all — never
+// a plaintext fallback (same fail-closed rule as the history store).
+async function archiveOriginal(fileId, file, { plaintext = false } = {}) {
   try {
+    let stored = file;
+    let enc = false;
+    if (!plaintext) {
+      try {
+        stored = new Blob([await encryptBytes(await file.arrayBuffer())], {
+          type: "application/octet-stream",
+        });
+        enc = true;
+      } catch {
+        return; // no key — store nothing rather than plaintext
+      }
+    }
     if (await opfsAvailable()) {
-      await saveOriginal(fileId, file, { name: file.name, type: file.type });
+      await saveOriginal(fileId, stored, { name: file.name, type: file.type, enc });
     }
     if (serverHistoryOn()) {
       fetch("/api/files/" + encodeURIComponent(fileId), {
@@ -86,8 +107,9 @@ async function archiveOriginal(fileId, file) {
           "content-type": "application/octet-stream",
           "x-file-name": encodeURIComponent(file.name),
           "x-file-type": file.type || "application/octet-stream",
+          "x-file-enc": enc ? "1" : "0",
         },
-        body: file,
+        body: stored,
       }).catch(() => {});
     }
   } catch {
@@ -242,7 +264,10 @@ async function addDocFile(file) {
     // on how much text actually comes out, not on file size.
     const { text, truncated, metadata, hasTrackedDeletions } = await parseDocFile(file, RAG_PARSE_MAX_CHARS);
     const fileId = crypto.randomUUID();
-    archiveOriginal(fileId, file); // fire-and-forget — see above
+    // Fire-and-forget archival (see archiveOriginal). Only the RAG path
+    // below stores the original readable — an inline doc's original is
+    // encrypted like any other file.
+    archiveOriginal(fileId, file, { plaintext: text.length > PER_DOC_CHARS });
 
     if (text.length <= PER_DOC_CHARS) {
       // Small document: the original inline path, unchanged.
@@ -294,6 +319,10 @@ async function addDocFile(file) {
       att.docId = null;
       att.text = text.slice(0, PER_DOC_CHARS);
       att.truncated = true;
+      // Not a RAG doc after all — replace the readable archived copy with
+      // an encrypted one (the plaintext exception exists only for indexed
+      // documents).
+      archiveOriginal(fileId, file);
     } finally {
       att.indexing = false;
       renderPending();

@@ -150,11 +150,13 @@ export function initAccountPanel() {
         ${settingRow({ id: "cloudknob", label: "Store history in the cloud", checked: usable && s.server_history, disabled: !usable })}
         <p class="muted setting-desc">On (default): conversations, attached files and the
           document index are kept in this site's Cloudflare storage, so history
-          follows your account across devices — conversations stay <b>encrypted</b>
-          exactly as they are in this browser; attached files and the document
-          search index are stored <b>unencrypted</b> (retrieval needs readable
-          text). Off: everything lives only in this browser — switching off
-          downloads it all here and deletes the cloud copies.</p>
+          follows your account across devices. Conversations <b>and</b> attached
+          files (images included) stay <b>encrypted</b> with the same key mechanism
+          they have in this browser; the one readable exception is large
+          documents indexed for search — and the search index itself — since
+          retrieval needs readable text. Off: everything lives only in this
+          browser — switching off downloads it all here and deletes the cloud
+          copies.</p>
         <p id="syncstatus" class="muted" hidden></p>
         ${note ? `<p class="muted">${note}</p>` : ""}
       </div>`;
@@ -178,7 +180,10 @@ export function initAccountPanel() {
         } else {
           const r = await syncToClient(progress);
           status.textContent = r.wiped
-            ? `Cloud storage is off — ${r.pulled} item(s) downloaded and the cloud copies removed.`
+            ? r.checked
+              ? `Cloud storage is off — all ${r.checked} cloud item(s) are in this browser` +
+                ` (${r.pulled} newly downloaded, the rest were already here); cloud copies removed.`
+              : "Cloud storage is off — the cloud held nothing to download; cloud copies removed."
             : "Downloaded what was reachable, but some items failed — the cloud copies were kept. Toggle again to retry.";
         }
       } catch (err) {

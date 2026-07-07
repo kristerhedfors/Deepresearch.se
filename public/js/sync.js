@@ -22,7 +22,7 @@
 // Everything is last-write-wins by updatedAt and per-item fail-soft: one
 // failed item is counted and skipped, never a wedged sync.
 
-import { exportEncryptedRecords, importEncryptedRecord } from "./history-store.js";
+import { encryptBytes, exportEncryptedRecords, importEncryptedRecord } from "./history-store.js";
 import { listOriginals, loadOriginal, opfsAvailable, saveOriginal } from "./opfs.js";
 import { exportDoc, hasDoc, importDoc, listDocs, pushDocToServer } from "./rag.js";
 import { serverHistoryOn, serverRagAvailable } from "./settings.js";
@@ -58,14 +58,36 @@ export async function syncToServer(onProgress = () => {}) {
     errors.push("conversation list");
   }
 
-  // Original files (OPFS → R2).
+  // Original files (OPFS → R2, in storage form — encrypted for everything
+  // except RAG-indexed documents). This pass is also the self-healing
+  // migration for that rule: a file stored readable before the rule
+  // existed (or by an older client) is re-encrypted in place first, and a
+  // remote copy whose form doesn't match gets re-uploaded — so legacy
+  // plaintext images heal on the next boot reconcile without any manual
+  // step. A file that SHOULD be encrypted but can't be (no key) is
+  // skipped entirely, never uploaded readable.
   onProgress("Uploading files…");
   try {
     if (await opfsAvailable()) {
       const remoteFiles = (await jsonOrNull(await fetch("/api/files")))?.files || [];
-      const remoteIds = new Set(remoteFiles.map((f) => f.id));
+      const remoteEnc = new Map(remoteFiles.map((f) => [f.id, f.enc === true]));
+      const ragIds = new Set((await listDocs()).map((d) => d.id));
       for (const meta of await listOriginals()) {
-        if (remoteIds.has(meta.id)) continue;
+        let enc = meta.enc === true;
+        if (!enc && !ragIds.has(meta.id)) {
+          try {
+            const plain = await loadOriginal(meta.id);
+            if (!plain) continue;
+            const stored = new Blob([await encryptBytes(await plain.arrayBuffer())], {
+              type: "application/octet-stream",
+            });
+            await saveOriginal(meta.id, stored, { ...meta, enc: true });
+            enc = true;
+          } catch {
+            continue; // no key — leave it local-only rather than upload readable
+          }
+        }
+        if (remoteEnc.get(meta.id) === enc) continue; // present, and in the right form
         const blob = await loadOriginal(meta.id);
         if (!blob) continue;
         const res = await fetch("/api/files/" + encodeURIComponent(meta.id), {
@@ -74,6 +96,7 @@ export async function syncToServer(onProgress = () => {}) {
             "content-type": "application/octet-stream",
             "x-file-name": encodeURIComponent(meta.name || meta.id),
             "x-file-type": meta.type || "application/octet-stream",
+            "x-file-enc": enc ? "1" : "0",
           },
           body: blob,
         });
@@ -110,13 +133,21 @@ export async function syncToServer(onProgress = () => {}) {
 
 // ---- knob OFF: server → local, then wipe --------------------------------------
 
+// Returns {checked, pulled, errors, wiped}: `checked` counts every cloud
+// item examined, `pulled` only those that actually had to come down —
+// items the browser already held (the normal case for the device that
+// wrote them) are verified present, not re-downloaded. The distinction
+// matters for the status line: "0 downloaded" out of 12 checked means
+// "everything was already here", not "nothing was preserved".
 export async function syncToClient(onProgress = () => {}) {
   const errors = [];
   let pulled = 0;
+  let checked = 0;
 
   onProgress("Downloading conversations…");
   try {
     const remote = (await jsonOrNull(await fetch("/api/convos")))?.conversations || [];
+    checked += remote.length;
     for (const item of remote) {
       const record = await jsonOrNull(await fetch("/api/convos/" + encodeURIComponent(item.id)));
       if (record && (await importEncryptedRecord(item.id, record))) pulled++;
@@ -132,6 +163,7 @@ export async function syncToClient(onProgress = () => {}) {
     if (await opfsAvailable()) {
       const localIds = new Set((await listOriginals()).map((f) => f.id));
       const remoteFiles = (await jsonOrNull(await fetch("/api/files")))?.files || [];
+      checked += remoteFiles.length;
       for (const f of remoteFiles) {
         if (localIds.has(f.id)) continue;
         const res = await fetch("/api/files/" + encodeURIComponent(f.id));
@@ -139,7 +171,13 @@ export async function syncToClient(onProgress = () => {}) {
           errors.push("file " + (f.name || f.id));
           continue;
         }
-        await saveOriginal(f.id, await res.blob(), { name: f.name, type: f.type });
+        // Bytes move in storage form (encrypted unless it's a RAG doc) —
+        // no decrypt/re-encrypt round trip, the enc flag just rides along.
+        await saveOriginal(f.id, await res.blob(), {
+          name: f.name,
+          type: f.type,
+          enc: f.enc === true,
+        });
         pulled++;
       }
     }
@@ -150,6 +188,7 @@ export async function syncToClient(onProgress = () => {}) {
   onProgress("Downloading document index…");
   try {
     const remoteDocs = (await jsonOrNull(await fetch("/api/rag/docs")))?.docs || [];
+    checked += remoteDocs.length;
     for (const d of remoteDocs) {
       if (await hasDoc(d.id)) continue;
       const data = await jsonOrNull(await fetch("/api/rag/docs/" + encodeURIComponent(d.id)));
@@ -172,7 +211,7 @@ export async function syncToClient(onProgress = () => {}) {
     }
   }
 
-  return { pulled, errors, wiped: !errors.length };
+  return { checked, pulled, errors, wiped: !errors.length };
 }
 
 // ---- steady-state reconciliation ----------------------------------------------

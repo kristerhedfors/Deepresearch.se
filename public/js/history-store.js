@@ -106,6 +106,28 @@ async function decryptRecord(key, iv, ciphertext) {
   return JSON.parse(new TextDecoder().decode(plain));
 }
 
+// Raw-bytes variants for original attached files (attachments.js /
+// sync.js): same key, same AES-GCM, but binary in/out — the 12-byte IV is
+// prepended to the ciphertext so one opaque byte blob is the whole stored
+// form. Throws when the key is unavailable; callers must then store
+// NOTHING rather than fall back to plaintext (same fail-closed rule as
+// the conversation store).
+export async function encryptBytes(buf) {
+  const key = await historyKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, buf));
+  const out = new Uint8Array(12 + cipher.length);
+  out.set(iv, 0);
+  out.set(cipher, 12);
+  return out;
+}
+
+export async function decryptBytes(bytes) {
+  const key = await historyKey();
+  const iv = bytes.slice(0, 12);
+  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, bytes.slice(12)));
+}
+
 function reqToPromise(req) {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
