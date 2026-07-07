@@ -608,6 +608,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   padding: .5rem .7rem; font: inherit; font-size: .85rem; font-weight: 600;
   text-align: left;
 }
+/* New chat is the speech-bubble-with-a-plus icon (same glyph as the
+   header's New chat and the project panel's new-chat-in-project). */
+#historynewbtn { display: flex; align-items: center; justify-content: center; line-height: 0; }
 .history-list { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-height: 0; }
 .history-list .muted { color: var(--muted); font-size: .82rem; }
 .history-item {
