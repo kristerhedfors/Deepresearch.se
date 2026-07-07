@@ -22,9 +22,13 @@ routes = [
 # Street View knob) are set in the dashboard, never here. Without
 # SHODAN_API_KEY / GOOGLE_MAPS_API_KEY those features are simply invisible:
 # /api/settings reports them unavailable and the UI hides the knob. The
-# GOOGLE_MAPS_API_KEY needs these Google Cloud APIs enabled: Places API
-# (places.googleapis.com), Maps Static API (static-maps-backend.googleapis.com)
-# and Street View Static API (street-view-image-backend.googleapis.com).
+# server-side GOOGLE_MAPS_API_KEY needs these Google Cloud APIs enabled: Places
+# API (places.googleapis.com), Maps Static API
+# (static-maps-backend.googleapis.com) and Street View Static API
+# (street-view-image-backend.googleapis.com). An OPTIONAL, SEPARATE
+# GOOGLE_MAPS_EMBED_KEY enables the inline navigable Street View iframe; it is
+# exposed to the browser, so it MUST be HTTP-referrer-locked to the site and
+# restricted to the Maps Embed API only.
 [vars]
 LOG_LEVEL = "info" # debug | info | warn | error
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on

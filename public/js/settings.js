@@ -66,6 +66,13 @@ export function googleMapsAvailable() {
   return settings?.available?.google_maps === true;
 }
 
+// Browser key for the interactive Street View embed iframe (public by design —
+// referrer-locked, Embed-API-only). Empty string when not configured; the
+// stream renderer then skips the inline embed and the keyless link stands.
+export function mapsEmbedKey() {
+  return settings?.maps_embed_key || "";
+}
+
 // Generic partial update: PUT one or both knobs, refresh the cache from the
 // server's authoritative (effective) response.
 async function updateSetting(patch) {

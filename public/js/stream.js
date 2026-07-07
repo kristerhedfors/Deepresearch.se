@@ -10,6 +10,7 @@ import {
   finishGenericStep,
   finishSearchStep,
   renderStats,
+  renderStreetViewEmbed,
   startGenericStep,
   startSearchStep,
   updateGenericStep,
@@ -469,6 +470,7 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "search_done") finishSearchStep(turn, s);
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
+    else if (s.type === "streetview_embed") renderStreetViewEmbed(turn, s);
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export

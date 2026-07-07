@@ -40,7 +40,7 @@ import {
 import { webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
-import { pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
+import { googleMapsEmbedKey, pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
 import {
   directPrompt,
   gapPrompt,
@@ -76,7 +76,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // runs BEFORE ctx build so its context block — and, for a vision model, the
   // fetched Street View / road-map images — flow into every downstream phase
   // including synthesis (ctx.imageParts is read from `convo` just below).
-  if (state.googleMaps) convo = await runGoogleMapsEnrichment(env, log, step, stepDone, convo, state);
+  if (state.googleMaps) convo = await runGoogleMapsEnrichment(env, log, emit, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
@@ -152,7 +152,7 @@ async function runShodanEnrichment(env, log, step, stepDone, conversation, state
 // question with the knob left on shows no spurious step and (beyond one free
 // Street View metadata check) costs nothing. Every failure mode degrades to
 // the original conversation.
-async function runGoogleMapsEnrichment(env, log, step, stepDone, conversation, state) {
+async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations);
   if (!target) return conversation;
 
@@ -181,6 +181,14 @@ async function runGoogleMapsEnrichment(env, log, step, stepDone, conversation, s
     result.images.length ? "Google Maps data and imagery attached" : "Google Maps data found",
     result.details,
   );
+  // Hand the client the coordinates for an inline, navigable Street View embed
+  // — but ONLY when the browser-exposed embed key is configured (otherwise the
+  // client can't build the iframe and the keyless link in the block stands).
+  // The key is NOT sent here: the client holds it from /api/settings, so it
+  // never lands in the "Copy research JSON" debug export (which records events).
+  if (result.embed && googleMapsEmbedKey(env)) {
+    emit({ status: { type: "streetview_embed", lat: result.embed.lat, lng: result.embed.lng } });
+  }
   let convo = withAppendedText(conversation, result.block);
   for (const url of result.images) convo = withAppendedImage(convo, url);
   return convo;

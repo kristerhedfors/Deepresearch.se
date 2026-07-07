@@ -276,6 +276,20 @@ header {
 .stats { font-size: .75rem; color: var(--muted); }
 .stats:empty { display: none; }
 
+/* Inline, navigable Street View embed (Maps Embed API iframe) rendered beside
+   an answer when the Google Maps enrichment resolved a location with coverage. */
+.streetview-embed { margin: .6rem 0 .2rem; }
+.streetview-embed-label { font-size: .75rem; color: var(--muted); margin-bottom: .3rem; }
+.streetview-embed iframe {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 420px;
+  border: 0;
+  border-radius: 14px;
+  display: block;
+  background: rgba(0, 0, 0, .04);
+}
+
 /* Composer: ONE glass pane — single-line input on top, controls beneath
    (attach · camera · model selector · send arrow), then the search row
    (spiderweb web-search knob · time slider+value) on its own line. */

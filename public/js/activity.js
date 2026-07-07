@@ -3,6 +3,40 @@
 // into a single expandable summary bar. All functions operate on the `turn`
 // object created by turns.js; scrolling is the caller's concern.
 
+import { mapsEmbedKey } from "./settings.js";
+
+// Interactive Street View embed, from a `streetview_embed` status event. Unlike
+// the activity steps (which collapse when the run finishes), this is inserted
+// into the turn body so it PERSISTS beside the answer. Uses the browser embed
+// key from /api/settings (referrer-locked, Embed-API-only) — no key means no
+// inline embed, just the keyless Street View link the answer already carries.
+// Live-session only: a reloaded conversation shows the answer + link, not the
+// iframe (same as the step traces).
+export function renderStreetViewEmbed(turn, s) {
+  const key = mapsEmbedKey();
+  if (!key || !turn?.el || turn._svEmbed) return;
+  const lat = Number(s.lat);
+  const lng = Number(s.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "streetview-embed";
+  const label = document.createElement("div");
+  label.className = "streetview-embed-label";
+  label.textContent = "Street View — drag to look around";
+  const iframe = document.createElement("iframe");
+  iframe.loading = "lazy";
+  iframe.allow = "fullscreen";
+  iframe.title = "Google Street View";
+  const params = new URLSearchParams({ key, location: `${lat},${lng}` });
+  if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
+  iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
+  wrap.append(label, iframe);
+  // After the answer text, before the stats footer.
+  turn.el.insertBefore(wrap, turn.stats);
+  turn._svEmbed = wrap;
+}
+
 // Generic pipeline steps (plan / gap check / synthesis / validation).
 export function startGenericStep(turn, id, label) {
   const details = document.createElement("details");

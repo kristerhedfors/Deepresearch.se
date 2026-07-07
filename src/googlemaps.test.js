@@ -77,14 +77,14 @@ describe("panoLink / mapLink", () => {
 });
 
 describe("buildMapsBlock", () => {
-  test("renders place details, coordinates, links and imagery note", () => {
+  test("renders place details, coordinates, links and a multi-frame imagery note", () => {
     const block = buildMapsBlock("Maskinistvägen 11", {
       place: { name: "Some Place", address: "Maskinistvägen 11, Kallhäll", type: "point of interest", rating: 4.3, ratingCount: 88, status: "OPERATIONAL" },
       lat: 59.4,
       lng: 17.9,
       streetView: { date: "2022-06" },
-      streetViewImage: "data:image/jpeg;base64,aaa",
-      staticMapImage: "data:image/jpeg;base64,bbb",
+      streetViewCount: 4,
+      hasMap: true,
     });
     assert.match(block, /--- Google Maps ---/);
     assert.match(block, /Place: Some Place/);
@@ -94,20 +94,27 @@ describe("buildMapsBlock", () => {
     assert.match(block, /Map link: /);
     assert.match(block, /Street View link: /);
     assert.match(block, /captured: 2022-06/);
-    assert.match(block, /Attached to this message/);
+    assert.match(block, /4 Street View photos looking north, east, south, west/);
+    assert.match(block, /a road map/);
     assert.match(block, /--- End of Google Maps ---/);
   });
 
-  test("notes when Street View exists but no image was attached (text-only model)", () => {
+  test("singular wording for a single frame", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 59.4, lng: 17.9, streetView: { date: "" }, streetViewCount: 1, hasMap: false });
+    assert.match(block, /one Street View photo/);
+    assert.ok(!/photos/.test(block));
+  });
+
+  test("notes when Street View exists but no images were attached (text-only model)", () => {
     const block = buildMapsBlock("59.4,17.9", {
       place: null,
       lat: 59.4,
       lng: 17.9,
       streetView: { date: "" },
-      streetViewImage: null,
-      staticMapImage: null,
+      streetViewCount: 0,
+      hasMap: false,
     });
-    assert.match(block, /image not attached/);
+    assert.match(block, /images not attached/);
     assert.ok(!block.includes("Attached to this message"));
   });
 });

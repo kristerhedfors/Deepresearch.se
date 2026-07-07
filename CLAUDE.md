@@ -485,6 +485,12 @@ unknown `status` types (forward compatibility).
     the COMPLETE response, not just its live activity.
 - `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
+- `{"status":{"type":"streetview_embed","lat":59.4,"lng":17.9}}` — the Google
+  Maps enrichment resolved a location with Street View coverage; the client
+  renders an inline, navigable Maps Embed iframe beside the answer (using the
+  browser embed key it holds from `/api/settings` — the key is deliberately
+  NOT in this event, so it never enters the "Copy research JSON" export). No
+  embed key configured → the client ignores it and the keyless link stands.
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer
@@ -1321,10 +1327,16 @@ wires it (before any model call, alongside the Shodan enrichment).
   D1 user row. `googleMapsEnabled(env, identity)` is the gate `chat.js`
   consults. Absent the secret, the feature is invisible (the UI hides the knob),
   exactly like Shodan.
-- **`GOOGLE_MAPS_API_KEY`** is a dashboard secret (never in the repo). It needs
-  these Google Cloud APIs enabled: **Places API** (`places.googleapis.com`),
-  **Maps Static API** (`static-maps-backend.googleapis.com`) and **Street View
-  Static API** (`street-view-image-backend.googleapis.com`).
+- **`GOOGLE_MAPS_API_KEY`** is a dashboard secret (never in the repo), used
+  SERVER-side only. It needs these Google Cloud APIs enabled: **Places API**
+  (`places.googleapis.com`), **Maps Static API**
+  (`static-maps-backend.googleapis.com`) and **Street View Static API**
+  (`street-view-image-backend.googleapis.com`).
+- **`GOOGLE_MAPS_EMBED_KEY`** is an OPTIONAL, SEPARATE dashboard secret for the
+  inline interactive Street View iframe. It is intentionally exposed to the
+  browser (via `/api/settings`), so it MUST be HTTP-referrer-restricted to the
+  site and limited to the **Maps Embed API** only. Without it, the imagery and
+  data still work; only the inline navigable embed is absent.
 - **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
   pure + unit-tested): parses a single geocodable street-address candidate out
   of the latest message (a "<words> <number>" span whose word before the number
@@ -1337,11 +1349,28 @@ wires it (before any model call, alongside the Shodan enrichment).
   address (display name, formatted address, primary type, rating, business
   status, precise coordinates); the coordinates then key the FREE Street View
   metadata check (coverage + capture date) and, for a **vision-capable** answer
-  model whose message isn't already carrying user images, the billed Street
-  View photo and a Static Map road image (both JPEG, small, appended via
-  `conversation.js`'s new `withAppendedImage` so they flow into synthesis). The
+  model whose message isn't already carrying user images, the billed imagery:
+  **four Street View frames at the cardinal headings** (0/90/180/270°, a full
+  look around the spot so the model can query façade/neighbours/across-the-
+  street — not one fixed frame) plus a Static Map road image (all JPEG, 512px
+  frames / 600×400 map to stay under Berget's ~1 MB body cap), appended via
+  `conversation.js`'s `withAppendedImage` so they flow into synthesis. The
   context block also carries keyless Google Maps / Street View links the user
   can open. `state.mapsCount` rides into the `chat.complete` log.
+- **Inline interactive embed** (the `streetview_embed` SSE event): when Street
+  View coverage exists AND a **`GOOGLE_MAPS_EMBED_KEY`** is configured, the
+  pipeline emits the pano coordinates and the client renders a navigable Maps
+  Embed API iframe beside the answer (`public/js/activity.js`'s
+  `renderStreetViewEmbed`, styled in `app.css`). This key is SEPARATE from the
+  server `GOOGLE_MAPS_API_KEY` and is deliberately **browser-exposed** —
+  `googleMapsEmbedKey(env)` surfaces it in the `/api/settings` payload
+  (`maps_embed_key`, only when the caller can use Maps), and the client holds
+  it (`public/js/settings.js`'s `mapsEmbedKey()`). Because it's public it MUST
+  be locked to the site's HTTP referrer and restricted to the **Maps Embed
+  API** only in the Google Cloud console; the powerful server key never reaches
+  the browser. Unset → no inline embed, just the keyless link. The embed is
+  live-session only (a reloaded conversation keeps the answer + link, not the
+  iframe — same as the step traces).
 - **Runs independent of the web-search toggle** — like the geocoder and Shodan,
   it resolves a location the message *names*, not a topic to research.
 - **Fails soft in every branch**: no key, no address/photo, a Places miss with

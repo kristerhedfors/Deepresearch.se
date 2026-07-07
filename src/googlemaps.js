@@ -39,12 +39,31 @@ const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/met
 const STREETVIEW_IMAGE_URL = "https://maps.googleapis.com/maps/api/streetview";
 const STATICMAP_URL = "https://maps.googleapis.com/maps/api/staticmap";
 const TIMEOUT_MS = 6000;
-const STREETVIEW_SIZE = "640x640";
+const STREETVIEW_SIZE = "512x512"; // per frame; 4 frames + a map must fit Berget's ~1MB body
 const STATICMAP_SIZE = "600x400"; // JPEG below — small enough to attach alongside Street View
 const MAX_LOCATION_CHARS = 200;
+// Four cardinal headings give the vision model a full look around the spot
+// (what's across the street, the façade, neighbours) — the "multi-angle
+// capture" that makes Street View actually queryable, not one fixed frame.
+const STREETVIEW_HEADINGS = [
+  { deg: 0, dir: "north" },
+  { deg: 90, dir: "east" },
+  { deg: 180, dir: "south" },
+  { deg: 270, dir: "west" },
+];
 
 export function googleMapsAvailable(env) {
   return !!env.GOOGLE_MAPS_API_KEY;
+}
+
+// The SEPARATE, browser-exposed key for the interactive Maps Embed iframe.
+// Deliberately NOT the server GOOGLE_MAPS_API_KEY (which has Places/Static
+// billing enabled and must stay server-side): this one is meant to be public,
+// so it MUST be locked to the site's HTTP referrer and restricted to the Maps
+// Embed API in the Google Cloud console. Empty string when unset — the client
+// then shows only the keyless Street View link, no inline embed.
+export function googleMapsEmbedKey(env) {
+  return typeof env.GOOGLE_MAPS_EMBED_KEY === "string" ? env.GOOGLE_MAPS_EMBED_KEY : "";
 }
 
 // ---- deterministic address extraction (pure — exported for unit tests) -----
@@ -193,13 +212,20 @@ export function buildMapsBlock(query, parts) {
     if (Number.isFinite(lat) && Number.isFinite(lng)) lines.push(`Street View link: ${panoLink(lat, lng)}`);
     if (parts.streetView.date) lines.push(`Street View imagery captured: ${parts.streetView.date}`);
   }
+  const svCount = parts.streetViewCount || 0;
   const imgs = [];
-  if (parts.streetViewImage) imgs.push("a Street View photo");
-  if (parts.staticMapImage) imgs.push("a road map");
+  if (svCount) {
+    imgs.push(
+      svCount === 1
+        ? "one Street View photo"
+        : `${svCount} Street View photos looking ${STREETVIEW_HEADINGS.slice(0, svCount).map((h) => h.dir).join(", ")} from the spot`,
+    );
+  }
+  if (parts.hasMap) imgs.push("a road map");
   if (imgs.length) {
     lines.push(`Attached to this message for you to describe: ${imgs.join(" and ")}.`);
   } else if (parts.streetView) {
-    lines.push("Street View imagery exists here (image not attached — the answering model has no vision).");
+    lines.push("Street View imagery exists here (images not attached — the answering model has no vision).");
   }
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
@@ -300,10 +326,12 @@ export async function streetViewMetadata(env, log, location) {
   }
 }
 
-function streetViewImageUrl(env, location) {
+function streetViewImageUrl(env, location, heading) {
   const qs = new URLSearchParams({
     size: STREETVIEW_SIZE,
     location,
+    heading: String(heading),
+    fov: "90",
     key: env.GOOGLE_MAPS_API_KEY,
     return_error_code: "true",
   });
@@ -372,23 +400,39 @@ export async function runGoogleMapsLookup(env, log, { coords, address, wantImage
   // are always a valid map point, so they always produce at least a map.
   if (!coords && !place && !svOk) return null;
 
-  const [streetViewImage, staticMapImage] = wantImages
-    ? await Promise.all([
-        svOk ? fetchImageDataUrl(env, log, streetViewImageUrl(env, imageryLocation), "googlemaps.streetview_image_error") : null,
-        fetchImageDataUrl(env, log, staticMapUrl(env, imageryLocation), "googlemaps.staticmap_error"),
-      ])
-    : [null, null];
+  // Capture imagery for a vision model: one Street View frame per cardinal
+  // heading (a full look around the spot) plus a road map. Fetched
+  // concurrently; each is independently fail-soft (a missing frame just drops).
+  let streetViewImages = [];
+  let staticMapImage = null;
+  if (wantImages) {
+    const svJobs = svOk
+      ? STREETVIEW_HEADINGS.map((h) =>
+          fetchImageDataUrl(env, log, streetViewImageUrl(env, imageryLocation, h.deg), "googlemaps.streetview_image_error"),
+        )
+      : [];
+    const [svResults, mapResult] = await Promise.all([
+      Promise.all(svJobs),
+      fetchImageDataUrl(env, log, staticMapUrl(env, imageryLocation), "googlemaps.staticmap_error"),
+    ]);
+    streetViewImages = svResults.filter(Boolean);
+    staticMapImage = mapResult;
+  }
 
   const parts = {
     place,
     lat,
     lng,
     streetView: svOk ? { date: svMeta.date || "" } : null,
-    streetViewImage,
-    staticMapImage,
+    streetViewCount: streetViewImages.length,
+    hasMap: !!staticMapImage,
   };
   const block = buildMapsBlock(displayQuery, parts);
-  const images = [streetViewImage, staticMapImage].filter(Boolean);
+  const images = [...streetViewImages, staticMapImage].filter(Boolean);
+
+  // Coordinates for the client's interactive Street View embed (only when
+  // there's coverage and a real point to center on).
+  const embed = svOk && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 
   const bits = [];
   if (place) bits.push(place.name || place.address || "place found");
@@ -396,7 +440,7 @@ export async function runGoogleMapsLookup(env, log, { coords, address, wantImage
   bits.push("road map");
   const details = [`${displayQuery} — ${bits.join(", ")}`];
 
-  return { block, details, images, count: 1 };
+  return { block, details, images, embed, count: 1 };
 }
 
 // Convenience used by the pipeline: derive the lookup inputs from a

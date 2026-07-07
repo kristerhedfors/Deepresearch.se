@@ -27,7 +27,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { shodanAvailable } from "./shodan.js";
-import { googleMapsAvailable } from "./googlemaps.js";
+import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 
 // Three knobs today:
 //  - server_history: default ON  (only an explicit stored `false` opts out).
@@ -133,6 +133,11 @@ function settingsPayload(env, identity, settings) {
     server_history: available.storage && settings.server_history,
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
+    // Browser key for the interactive Street View embed — public by design
+    // (referrer-locked, Embed-API-only). Sent only when the caller can use
+    // Maps and the key is configured; empty string otherwise (client then
+    // shows the keyless link only). NOT the server GOOGLE_MAPS_API_KEY.
+    maps_embed_key: available.google_maps ? googleMapsEmbedKey(env) : "",
     available,
   };
 }
