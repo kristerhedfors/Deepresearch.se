@@ -671,3 +671,66 @@ domain cap or prompt rules failing to engage.
 mammoth_project_status run — watch for recurrence; if it becomes a
 pattern, worth checking whether long, detailed answers are exhausting
 `max_tokens` before completing the Sources list.
+
+## Round 9 — 2026-07-07 (production incident: sentor.se OSINT / Exa credits / Workers Paid)
+
+Triggered by a user report, not a battery: a domain question ("what's
+going on with sentor.se") ran 20 consecutive zero-result searches.
+Root-caused from production Workers Logs (queried via the observability
+telemetry API, not the battery harness).
+
+**Findings**
+- **Exa was out of credits.** `exa.error status=402` with tag
+  `NO_MORE_CREDITS` at 13:09 UTC; a successful `deep` search had run at
+  08:47, so credits drained midday. A 402 makes EVERY query return 0
+  results, so the whole run looked identical to a genuinely niche topic —
+  the same class of invisible provider outage as the round-4 Berget wallet
+  incident, but on the search side and previously with NO alert path.
+- **Query quality was also poor** (would have underperformed even with
+  credits): the planner shaped all 20 queries as infra lookups
+  (`<domain> WHOIS 2026-07-07`, `<domain> DNS A record`, `site:<domain>`,
+  `is <domain> down July 2026`) — none answerable by Exa's neural page
+  index.
+- **A CDN co-residence false positive**: the model claimed sentor.se
+  "redirects to" livingcitymagazine.com, which merely shared its Amazon
+  CloudFront edge IP.
+
+**Fixes shipped** (branch `claude/sentor-se-osint-improve-caaxy1`, pure
+logic all unit-tested, 265 green):
+1. `exa.js` `exaErrorKind()` classifies failures (no_credits/auth/
+   rate_limit/http/network); result carries `errorKind`; `search_done`
+   carries `error` for the debug export.
+2. `alerts.js` `exaSearchAlert()` + `pipeline.js` `noteSearchBackendHealth()`
+   raise `exa_insufficient_credits`/`exa_auth_failed` (the Exa analogue of
+   `berget_insufficient_balance`).
+3. `pipeline.js` `emptySourcesNote()` tells synthesis when empty == outage
+   so the answer says web search was unavailable instead of answering
+   ungrounded.
+4. `prompts.js` `SEARCH_CAPABILITY_NOTE` (triage+gap) steers off
+   DNS/WHOIS/operator/exact-date shapes; `CO_RESIDENCE_NOTE` (synth) +
+   `shodan.js` `isSharedHostingOrg()` guard the shared-IP false positive.
+
+**Live verification**: after the user topped up, a live `/api/chat`
+web-search request returned `results:5` on every query (13:55 UTC), and
+the new `error:"no_credits"` field was confirmed surfacing on the earlier
+failed run. The `exa_insufficient_credits` alert does not auto-clear (by
+design, like the Berget one); admin acks it.
+
+**Workers CPU ceiling — RESOLVED.** The account was upgraded to Workers
+Paid, raising the Free plan's 10ms ceiling to a 30s default and making the
+already-committed `wrangler.toml` `[limits] cpu_ms = 300_000` section valid
+(on Free that section is a hard deploy failure, code 100328 — which is also
+why this branch's fixes only reached production once the account was
+upgraded, at 13:35 UTC). The 300_000 (5-min max) is deliberate maximum
+headroom and harmless (`cpu_ms` is a ceiling, billed on actual use). The
+30s default alone would already suffice with enormous margin:
+`$workers.cpuTimeMs` over the 7-day window is median 1ms, p90 4ms, max
+237ms — ~0.8% of the default, ~0.08% of the configured ceiling. The
+round-4 `exceededCpu` "silent mid-stream drop" root cause is therefore
+closed by the plan change; `STREAM_MAX_CHARS` stays as defense-in-depth.
+Caveat for the future: if the account ever reverts to Free, the `[limits]`
+section must be removed first or every deploy fails.
+
+**Open**: none new. The Berget-side mid-stream instability (round 3) and
+the occasional truncated-Sources-section (round 8) remain the standing
+watch items.

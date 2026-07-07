@@ -582,14 +582,26 @@ finish_reason case above, this one genuinely can't be caught from inside
 the Worker, only prevented. Added a `STREAM_MAX_CHARS` safety valve in
 `berget.js` (bounds a runaway/degenerate generation) — real but
 insufficient alone, since the exhaustion is often cumulative across the
-whole request rather than from one oversized stream. **The actual fix
-requires upgrading this Cloudflare account to Workers Paid ($5/month)**,
-which raises the default ceiling to 30s and allows configuring it up to
-5 minutes via `wrangler.toml`'s `[limits] cpu_ms` — do NOT add that
-section while still on the Free plan, since Cloudflare's deploy API
-rejects it outright and breaks every subsequent deploy (confirmed the
-hard way; see `tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry for the
-full incident and revert).
+whole request rather than from one oversized stream.
+
+**RESOLVED (2026-07-07): the account is now on Workers Paid.** This
+raises the Free plan's 10ms CPU ceiling to a 30s default and makes
+`wrangler.toml`'s `[limits] cpu_ms` section VALID (on Free it was a hard
+deploy failure — code 100328 — so its mere presence broke every deploy;
+that is also why the branch's fixes only went live once the account was
+upgraded). `wrangler.toml` sets `cpu_ms = 300_000` (the 5-minute max) —
+deliberate maximum headroom, and safe because `cpu_ms` is a *ceiling*
+(you're billed for CPU actually used, not the ceiling). The 30s default
+alone would already suffice with enormous margin: measured per-request CPU
+for this I/O-bound pipeline (Workers Logs `$workers.cpuTimeMs`, 7-day
+window) is median **1ms**, p90 **4ms**, heaviest single run **237ms** —
+~0.8% of the default, ~0.08% of the configured ceiling. So the round-4
+`exceededCpu` "silent mid-stream drop" root cause is closed by the plan
+change; `STREAM_MAX_CHARS` stays as defense-in-depth against a runaway
+generation (the one path that could otherwise burn CPU up toward the
+ceiling). **If the account ever reverts to Free, the `[limits]` section
+must be removed first or every deploy will fail** (see
+`tests/MODEL-EVAL-FINDINGS.md`'s round 4 entry).
 
 **Don't commit (or otherwise deploy) mid-battery.** A push to `main`
 triggers Cloudflare's auto-deploy, which can silently truncate in-flight
