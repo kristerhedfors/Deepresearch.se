@@ -160,6 +160,17 @@ describe("synthPrompt", () => {
     assert.match(p, /Sources:/);
   });
 
+  test("superlative questions owe their data: dates for 'latest', measurements for 'fastest'", () => {
+    // User requirement (2026-07-08): a "latest diffusion models" answer
+    // carried no dates and a "which is fastest" answer carried almost no
+    // figures — despite hub highlights carrying updated-dates.
+    const p = synthPrompt();
+    assert.match(p, /Match the answer's DATA to the question's superlative/);
+    assert.match(p, /LATEST\/newest.*concrete date/);
+    assert.match(p, /FASTEST.*tokens\/second/);
+    assert.match(p, /never presented bare/);
+  });
+
   test("treats platform-hosted artifacts as first-class findings for platform-targeted questions", () => {
     // Production trace: "Search hf for the latest ... on cybersecurity"
     // produced an answer citing zero hub artifacts despite the registry
