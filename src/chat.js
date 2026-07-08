@@ -6,6 +6,7 @@
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
+import { recordChatLog } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./berget.js";
 import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
@@ -94,6 +95,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   }
 
   const conversation = body.messages;
+  // The ghost (incognito) toggle, forwarded by the client: an incognito
+  // conversation is never written to the server-side chat log (chatlog.js)
+  // — the anonymous-chat escape hatch from the otherwise-default full
+  // question/answer logging. Metadata-only Workers Logs still fire.
+  const incognito = body.incognito === true;
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
@@ -201,10 +207,15 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // discard_text reset), so the recovery cache holds exactly what a
     // connected client would have rendered.
     const answer = { text: "" };
+    // Errors for the chat log (chatlog.js): a thrown stream failure, or the
+    // last fail-soft `{error}` event the pipeline emitted instead of throwing.
+    let streamError = null;
+    let emittedError = null;
     const emit = (obj) => {
       const chunk = obj.choices?.[0]?.delta?.content;
       if (chunk) answer.text += chunk;
       else if (obj.status?.type === "discard_text") answer.text = "";
+      if (obj.error) emittedError = String(obj.error);
       if (disconnect.gone) return; // client gone: finish anyway, park in the cache
       try {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
@@ -226,6 +237,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       await runPipeline(env, log, emit, conversationWithContext, model, state);
     } catch (err) {
       const errMessage = err?.message || String(err);
+      streamError = errMessage;
       log.error("chat.stream_failed", {
         user_id: identity.id,
         error: errMessage,
@@ -252,9 +264,22 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         google_maps: state.mapsCount,
         duration_ms,
         client_gone: disconnect.gone,
+        incognito,
       });
       // Usage accounting for quotas (fails soft; never breaks the stream).
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
+      // The admin-configured per-search price is priced for Exa's
+      // standard tier; a request whose time budget bought a costlier
+      // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
+      // recorded cost scaled by that tier's real price ratio, so a long
+      // budget's genuinely higher Exa spend doesn't go under-counted
+      // against the user's opaque budget bar or the admin's cost totals.
+      // Live searches at their depth-tier price, PLUS the budget-gated
+      // full-content fetch (Exa /contents) priced per URL at the cheaper
+      // contents rate — so the top-tier full-read spend is counted too.
+      const exa_cost =
+        billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
+        (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER;
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
@@ -262,20 +287,46 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         completion_tokens,
         searches: billedSearches,
         berget_cost,
-        // The admin-configured per-search price is priced for Exa's
-        // standard tier; a request whose time budget bought a costlier
-        // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
-        // recorded cost scaled by that tier's real price ratio, so a long
-        // budget's genuinely higher Exa spend doesn't go under-counted
-        // against the user's opaque budget bar or the admin's cost totals.
-        // Live searches at their depth-tier price, PLUS the budget-gated
-        // full-content fetch (Exa /contents) priced per URL at the cheaper
-        // contents rate — so the top-tier full-read spend is counted too.
-        exa_cost:
-          billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
-          (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER,
+        exa_cost,
         duration_ms,
       });
+      // Full-visibility interaction log (src/chatlog.js): the complete
+      // question, answer, conversation, research metadata, and any error —
+      // skipped entirely for incognito (ghost) conversations. Fails soft.
+      if (!incognito) {
+        await recordChatLog(env, log, {
+          request_id: requestId,
+          user_id: identity.id,
+          channel: "chat",
+          model,
+          json_model: jsonModel,
+          conversation,
+          answer: answer.text,
+          status: streamError || emittedError ? "error" : disconnect.gone ? "disconnected" : "ok",
+          error: streamError || emittedError,
+          web_search: webSearchEnabled,
+          budget_s: budgetS,
+          rounds: state.iterations,
+          searches: state.searchCount,
+          sources: state.sources.length,
+          prompt_tokens,
+          completion_tokens,
+          duration_ms,
+          client_gone: disconnect.gone,
+          meta: {
+            queries: [...state.ranQueries],
+            sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
+            complexity: state.complexity,
+            subquestions: state.subquestions,
+            conflicts: state.conflicts,
+            shodan_hosts: state.shodanCount,
+            google_maps: state.mapsCount,
+            cached_searches: state.cachedSearchCount || 0,
+            berget_cost,
+            exa_cost,
+          },
+        });
+      }
       const stats = {
         type: "done",
         model,
