@@ -967,6 +967,19 @@ async function runAuxSearch(ctx, source, batch, round) {
   addSources(state, items);
 }
 
+// The answer stream's inter-chunk inactivity bound. A production report
+// (2026-07-08, screenshot: "stuck after a few response tokens") exposed the
+// remaining unguarded hang: the round-2 fix bounds time-to-FIRST-response
+// only, so a Berget stream that goes silent MID-generation (socket open, no
+// chunks, no EOF) hung the pipeline forever — and because /api/chat's 15s
+// SSE keepalives kept flowing, the CLIENT's stall watchdog (which stamps
+// lastByteAt on keepalives too) never fired either: a truly infinite
+// spinner on both sides. 60s of inter-chunk silence is far beyond anything
+// a healthy stream does (slow models pause single-digit seconds between
+// tokens) and cheap insurance. The enrichment describe call has its own
+// bound already (src/enrichment.js).
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
 // Streams one chat completion to the client; returns the full text.
 async function streamCompletion(ctx, messages) {
   const maxAttempts = ctx.profile.maxCompletionAttempts;
@@ -976,7 +989,36 @@ async function streamCompletion(ctx, messages) {
       const detail = await upstream.text().catch(() => "");
       throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
     }
-    const { text, usage, finishReason } = await consumeChatStream(upstream.body, ctx.emitDelta);
+    let streamed;
+    let received = 0;
+    try {
+      streamed = await consumeChatStream(
+        upstream.body,
+        (t) => {
+          received += t.length;
+          ctx.emitDelta(t);
+        },
+        { idleMs: STREAM_IDLE_TIMEOUT_MS },
+      );
+    } catch (err) {
+      // A hang caught by the idle guard right at the START of the answer
+      // (the reported case: a handful of tokens, then silence) is worth one
+      // cheap retry — the same transient-blip reasoning as the empty-
+      // completion retry below, and the user has barely seen any text. A
+      // hang deep into a long answer is NOT retried (regenerated text would
+      // visibly diverge from what is already on screen) — it surfaces as an
+      // honest error with a (ref …) instead of an infinite spinner. The
+      // client is told to discard the few rendered tokens (discard_text —
+      // the same event the validation revise path uses) so the retried
+      // answer doesn't append after them.
+      ctx.log.warn("chat.stream_stalled", { model: ctx.model, attempt, received, error: err?.message || String(err) });
+      if (attempt < maxAttempts && received < 400) {
+        if (received) ctx.emit({ status: { type: "discard_text" } });
+        continue;
+      }
+      throw err;
+    }
+    const { text, usage, finishReason } = streamed;
     addUsage(ctx.state.totals, usage);
     if (!finishReason) {
       // A round 3 model-eval battery found Berget's connection can drop
