@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { windowStart, windowReset, effectiveQuota, quotaExceeded, bergetCost, PERIODS } from "./quota.js";
+import { addUsage, windowStart, windowReset, effectiveQuota, quotaExceeded, bergetCost, PERIODS } from "./quota.js";
 
 describe("windowStart / windowReset", () => {
   // A Wednesday, well clear of month/week/day boundaries.
@@ -143,5 +143,26 @@ describe("bergetCost", () => {
   test("missing price fields default to 0 rather than NaN", () => {
     const entry = { price_in: 0.000001 };
     assert.equal(bergetCost(entry, 1000, 500), 0.001);
+  });
+});
+
+describe("addUsage", () => {
+  test("accumulates prompt and completion tokens into the totals bucket", () => {
+    const totals = { prompt_tokens: 10, completion_tokens: 5 };
+    addUsage(totals, { prompt_tokens: 100, completion_tokens: 50 });
+    assert.deepEqual(totals, { prompt_tokens: 110, completion_tokens: 55 });
+  });
+
+  test("a missing usage report is a no-op, never a throw", () => {
+    const totals = { prompt_tokens: 1, completion_tokens: 2 };
+    addUsage(totals, null);
+    addUsage(totals, undefined);
+    assert.deepEqual(totals, { prompt_tokens: 1, completion_tokens: 2 });
+  });
+
+  test("missing fields in the usage report count as zero", () => {
+    const totals = { prompt_tokens: 0, completion_tokens: 0 };
+    addUsage(totals, { prompt_tokens: 7 });
+    assert.deepEqual(totals, { prompt_tokens: 7, completion_tokens: 0 });
   });
 });

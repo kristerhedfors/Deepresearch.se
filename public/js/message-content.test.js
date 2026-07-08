@@ -9,6 +9,7 @@ import {
   inlineDocBlock,
   isStreamStale,
   ragExcerptBlocks,
+  splitUserContent,
   stripOldImages,
 } from "./message-content.js";
 
@@ -196,4 +197,30 @@ test("ragExcerptBlocks falls back to 'Untitled chat' for an unnamed chat doc", (
 
 test("EXCERPT_TOTAL_CHARS is the documented default budget", () => {
   assert.equal(EXCERPT_TOTAL_CHARS, 12000);
+});
+
+test("splitUserContent: string content is all text, no images", () => {
+  assert.deepEqual(splitUserContent("hello"), { text: "hello", imageUrls: [] });
+});
+
+test("splitUserContent: multimodal array splits text parts and image URLs", () => {
+  const content = [
+    { type: "text", text: "line one" },
+    { type: "image_url", image_url: { url: "data:image/jpeg;base64,AAA" } },
+    { type: "text", text: "line two" },
+  ];
+  assert.deepEqual(splitUserContent(content), {
+    text: "line one\nline two",
+    imageUrls: ["data:image/jpeg;base64,AAA"],
+  });
+});
+
+test("splitUserContent: malformed parts are skipped, never a throw", () => {
+  const content = [null, { type: "image_url" }, { type: "text", text: "ok" }];
+  assert.deepEqual(splitUserContent(content), { text: "ok", imageUrls: [] });
+});
+
+test("splitUserContent: non-string, non-array content yields empty", () => {
+  assert.deepEqual(splitUserContent(undefined), { text: "", imageUrls: [] });
+  assert.deepEqual(splitUserContent({ weird: true }), { text: "", imageUrls: [] });
 });

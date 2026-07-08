@@ -35,7 +35,7 @@ const JSON_ONLY_REINFORCEMENT =
 // progress update, say) even when independent verification is exactly
 // what's missing. Making it unconditional for entity-attached claims, not
 // contingent on the model judging the topic "risky", is the fix; src/
-// pipeline.js's addSources() enforces a hard per-domain cap as a backstop
+// sources.js's addSources() enforces a hard per-domain cap as a backstop
 // for whenever a model doesn't reliably follow this anyway.
 const INDEPENDENT_SOURCE_RULE =
   "If the topic centers on a specific company, organization, product, or a self-reported claim/achievement, at least one query MUST specifically target independent, third-party coverage (e.g. independent journalism, outside experts' or researchers' commentary, regulatory or academic assessment) rather than only the entity's own site or its official announcements — official/primary-source queries alone tend to surface only the entity's own materials.";

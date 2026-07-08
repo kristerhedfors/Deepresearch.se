@@ -239,26 +239,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         client_gone: disconnect.gone,
       });
       // Usage accounting for quotas (fails soft; never breaks the stream).
-      // Synthesis/direct tokens are priced at the user's model; the JSON
-      // planning phases at jsonModel (Mistral) — each at its own catalog rate.
-      const entry = catalog?.find((m) => m.id === model);
-      const jsonEntry = catalog?.find((m) => m.id === jsonModel);
-      // The Street View vision-describe helper (if it ran) is its own model.
-      const visionEntry = catalog?.find((m) => m.id === state.visionModel);
-      const prompt_tokens =
-        state.totals.prompt_tokens + state.jsonTotals.prompt_tokens + state.visionTotals.prompt_tokens;
-      const completion_tokens =
-        state.totals.completion_tokens + state.jsonTotals.completion_tokens + state.visionTotals.completion_tokens;
+      const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
         prompt_tokens,
         completion_tokens,
         searches: billedSearches,
-        berget_cost:
-          bergetCost(entry, state.totals.prompt_tokens, state.totals.completion_tokens) +
-          bergetCost(jsonEntry, state.jsonTotals.prompt_tokens, state.jsonTotals.completion_tokens) +
-          bergetCost(visionEntry, state.visionTotals.prompt_tokens, state.visionTotals.completion_tokens),
+        berget_cost,
         // The admin-configured per-search price is priced for Exa's
         // standard tier; a request whose time budget bought a costlier
         // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
@@ -317,6 +305,30 @@ export function quotaBlockedResponse(blocked) {
       ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
       : blocked;
   return { error, quota: publicQuota };
+}
+
+// Sums the request's token totals and Berget cost across the up-to-three
+// models that ran: synthesis/direct on the user's model, the JSON planning
+// phases on jsonModel (Mistral), and the Street View vision-describe helper
+// on its own model — the split-billing design, each bucket priced at its own
+// catalog rate (tokens alone can't cap spend when models price differently).
+// Pure (state + catalog in, totals out), unit-tested in chat.test.js.
+export function summarizeSpend(state, catalog) {
+  const buckets = [
+    [state.model, state.totals],
+    [state.jsonModel, state.jsonTotals],
+    [state.visionModel, state.visionTotals],
+  ];
+  let prompt_tokens = 0;
+  let completion_tokens = 0;
+  let berget_cost = 0;
+  for (const [modelId, totals] of buckets) {
+    prompt_tokens += totals.prompt_tokens;
+    completion_tokens += totals.completion_tokens;
+    const entry = catalog?.find((m) => m.id === modelId);
+    berget_cost += bergetCost(entry, totals.prompt_tokens, totals.completion_tokens);
+  }
+  return { prompt_tokens, completion_tokens, berget_cost };
 }
 
 // Which model runs the JSON planning phases (triage/gap/validate): the fixed

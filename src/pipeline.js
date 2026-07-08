@@ -24,6 +24,11 @@
 // model-profiles.js overrides, the conversation) plus the three UI-emit
 // helpers (emitDelta/step/stepDone), so phase functions take just ctx
 // plus whatever's specific to that call, instead of a long parameter list.
+//
+// This module owns the phase FLOW only. The pieces with lives of their
+// own are split out: the source registry (dedup, domain-diversity cap,
+// digest) in sources.js, and the opt-in pre-pipeline context enrichments
+// (Shodan, Google Maps) in enrichment.js.
 
 import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
 import {
@@ -41,9 +46,11 @@ import {
   textOf,
   withImageNudge,
 } from "./conversation.js";
-import { runEnrichments } from "./enrichments/index.js";
+import { runGoogleMapsEnrichment, runShodanEnrichment } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
 import { getModelProfile } from "./model-profiles.js";
+import { addUsage } from "./quota.js";
+import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
 import { extractNotes, mergeNotes, notesDigest, notesEntities } from "./notes.js";
 import { arrayOf, boolean, object, oneOf, string, stringEnum, validate } from "./schema.js";
 import {
@@ -116,16 +123,16 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   const stepDone = (id, label, details = []) =>
     emit({ status: { type: "step_done", id, label, details } });
 
-  // Opt-in in-pipeline enrichments (Shodan host intelligence, Google Maps /
-  // Street View — src/enrichments/*), driven through the enrichment registry.
-  // Each runs BEFORE any model call so triage, search, and synthesis all see
-  // the resolved data; each appends one labeled context block and emits a
-  // named activity step only when its detector finds a real target. Gating is
-  // by the pre-resolved state flags chat.js sets (state.shodan /
-  // state.googleMaps). Fully fail-soft — a source that finds nothing or errors
-  // leaves the conversation unchanged. (The reverse-geocode enrichment runs
-  // pre-pipeline in chat.js and is deliberately not in this registry yet.)
-  const convo = await runEnrichments(env, log, emit, conversation, state);
+  // Opt-in context enrichments (src/enrichment.js): Shodan host intelligence
+  // and Google Maps, each gated by its per-user knob (src/settings.js). Both
+  // run BEFORE any model call — and before the ctx build below — so their
+  // labeled context blocks flow into every downstream phase, triage included
+  // (ctx.lastUser / ctx.convText / ctx.imageParts are all read from `convo`).
+  // Fully fail-soft — the conversation comes back unchanged if there's
+  // nothing to look up or the service can't be reached.
+  let convo = conversation;
+  if (state.shodan) convo = await runShodanEnrichment(env, log, step, stepDone, convo, state);
+  if (state.googleMaps) convo = await runGoogleMapsEnrichment(env, log, emit, step, stepDone, convo, state);
 
   const ctx = {
     env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
@@ -780,93 +787,6 @@ async function runSearches(ctx, queries, round) {
   }
 }
 
-// A round 7 assessment found that MORE and DEEPER searches don't
-// automatically buy more independent verification — a genuinely
-// well-researched, 19-search "deep" run on a company's own product still
-// ended up citing that company's own site 4 of 6 times, because Exa's
-// relevance ranking naturally surfaces whoever has published the most
-// content about themselves. This is the classic relevance-vs-diversity
-// tension search engines have long addressed with result diversification
-// (Carbonell & Goldstein's Maximal Marginal Relevance is the canonical
-// technique) — capping how many results from one origin can dominate a
-// result set, independent of how a caller phrases its queries. Doing it
-// here as a hard cap (not a prompt instruction) guarantees it regardless
-// of whether a given model reliably follows the softer prompt-level asks
-// in prompts.js (triagePrompt's mandatory independent-source query,
-// gapPrompt's dominance check) — belt and suspenders, not either/or.
-const DOMAIN_CAP = 3;
-
-export function hostnameOf(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-// Cross-search source registry: deduped by URL, numbered in arrival order so
-// citations stay stable between synthesis and validation. Sources beyond
-// DOMAIN_CAP for their origin are held in an overflow list rather than
-// dropped outright — backfillOverflowSources() uses them if the capped
-// registry ends up short of maxSources (a niche topic with genuinely few
-// distinct domains shouldn't be starved just to enforce diversity that
-// isn't available).
-export function addSources(state, items) {
-  state.domainCounts ||= new Map();
-  state.sourceOverflow ||= [];
-  for (const item of items || []) {
-    if (!item?.url || state.byUrl.has(item.url)) continue;
-    if (state.sources.length >= state.plan.maxSources) return;
-    const host = hostnameOf(item.url);
-    const count = state.domainCounts.get(host) || 0;
-    if (count >= DOMAIN_CAP) {
-      state.sourceOverflow.push(item);
-      continue;
-    }
-    state.domainCounts.set(host, count + 1);
-    pushSource(state, item);
-  }
-}
-
-// Called once before synthesis: if the domain cap left the registry short
-// of maxSources (few distinct domains for a niche topic), backfill from
-// the overflow — diversity that doesn't exist can't be enforced, and a
-// smaller-than-planned source list would otherwise cost the answer real
-// grounding for no benefit.
-export function backfillOverflowSources(state) {
-  const overflow = state.sourceOverflow || [];
-  while (state.sources.length < state.plan.maxSources && overflow.length) {
-    const item = overflow.shift();
-    if (!item?.url || state.byUrl.has(item.url)) continue;
-    pushSource(state, item);
-  }
-}
-
-// Shared by addSources/backfillOverflowSources: numbers and registers one
-// source entry. Assumes the caller has already checked for a duplicate URL.
-function pushSource(state, item) {
-  const entry = {
-    n: state.sources.length + 1,
-    title: item.title || item.url,
-    url: item.url,
-    highlights: (item.highlights || []).slice(0, 3),
-  };
-  state.byUrl.set(item.url, entry);
-  state.sources.push(entry);
-}
-
-export function sourceDigest(sources, capChars) {
-  const blocks = [];
-  let used = 0;
-  for (const s of sources) {
-    const block = `[${s.n}] ${s.title}\n${s.url}\n${s.highlights.join(" … ")}`.trim();
-    if (used + block.length > capChars) break;
-    blocks.push(block);
-    used += block.length + 2;
-  }
-  return blocks.join("\n\n");
-}
-
 // Streams one chat completion to the client; returns the full text.
 async function streamCompletion(ctx, messages) {
   const maxAttempts = ctx.profile.maxCompletionAttempts;
@@ -914,10 +834,4 @@ function emitChunked(ctx, text) {
   for (let i = 0; i < text.length; i += 80) {
     ctx.emitDelta(text.slice(i, i + 80));
   }
-}
-
-function addUsage(totals, usage) {
-  if (!usage) return;
-  totals.prompt_tokens += usage.prompt_tokens || 0;
-  totals.completion_tokens += usage.completion_tokens || 0;
 }

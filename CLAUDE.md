@@ -84,8 +84,10 @@ Server (`src/`):
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
-| `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording |
-| `pipeline.js` | The research pipeline (triage → search → gap → synth → validate) |
+| `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
+| `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate) |
+| `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-domain diversity cap + overflow backfill, the numbered digest |
+| `enrichment.js` | Opt-in pre-pipeline context enrichments (Shodan, Google Maps incl. the Street View vision-describe helper) — appended as labeled blocks before any model call |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
@@ -102,9 +104,11 @@ Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
 search knob, composer), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn),
-`message-content.js` (pure builders for the outgoing message: labeled
-document / image-metadata / RAG-excerpt blocks, title derivation, history
-image-stripping — the Node-testable core `stream.js` orchestrates around),
+`sse.js` (the pure SSE line-buffer parser `stream.js`'s read loop feeds —
+Node-tested), `message-content.js` (pure builders for the outgoing
+message: labeled document / image-metadata / RAG-excerpt blocks, title
+derivation, history image-stripping, `splitUserContent` — the
+Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
@@ -147,10 +151,11 @@ clone-not-share of nested fields), `alerts.js` (error classification),
 `conversation.js` (message/content helpers), `validation.js` (message
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
-source rule, the JSON-only reinforcement toggle), `chat.js`'s
-`quotaBlockedResponse`, `pipeline.js`'s exported pure functions
-(`hostnameOf`, `addSources`, `backfillOverflowSources`, `sourceDigest`,
-`normalizeTriage` — the source-registry/domain-diversity logic),
+source rule, the JSON-only reinforcement toggle), `chat.js`
+(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`),
+`pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
+`sources.js` (the source registry: `hostnameOf`, `addSources`,
+`backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`), and
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec).
 
@@ -164,11 +169,13 @@ codec — the module is written to be import-safe outside a browser),
 `project-context.js` (the project-materials block builder, doc-id
 scoping, note/name normalization), `chat-rag.js`'s pure core (chat doc
 ids, the appended-block-stripping turn-text extraction, the
-sibling-chat scope picker), and `message-content.js` (the
+sibling-chat scope picker), `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
-RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`
-and `stripOldImages`, the pure
-core extracted out of `stream.js`'s send path), and `activity.js`'s
+RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
+`stripOldImages`, and `splitUserContent`, the pure
+core extracted out of `stream.js`'s send path), `sse.js` (the SSE
+line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
+malformed-JSON tolerance), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
 `answer`, the `errored` flag + `errors` list, and the ordered timeline).

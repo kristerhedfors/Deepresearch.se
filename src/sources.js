@@ -1,0 +1,93 @@
+// The cross-search source registry: every search result the pipeline
+// collects lands here — deduped by URL, numbered in arrival order so [n]
+// citations stay stable between synthesis and validation, and diversity-
+// capped per domain. Pure data logic (no fetches, no model calls), extracted
+// from pipeline.js so the registry rules are readable and testable on their
+// own (sources.test.js).
+
+// A round 7 assessment found that MORE and DEEPER searches don't
+// automatically buy more independent verification — a genuinely
+// well-researched, 19-search "deep" run on a company's own product still
+// ended up citing that company's own site 4 of 6 times, because Exa's
+// relevance ranking naturally surfaces whoever has published the most
+// content about themselves. This is the classic relevance-vs-diversity
+// tension search engines have long addressed with result diversification
+// (Carbonell & Goldstein's Maximal Marginal Relevance is the canonical
+// technique) — capping how many results from one origin can dominate a
+// result set, independent of how a caller phrases its queries. Doing it
+// here as a hard cap (not a prompt instruction) guarantees it regardless
+// of whether a given model reliably follows the softer prompt-level asks
+// in prompts.js (triagePrompt's mandatory independent-source query,
+// gapPrompt's dominance check) — belt and suspenders, not either/or.
+const DOMAIN_CAP = 3;
+
+export function hostnameOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+// Adds search-result items to the registry. Sources beyond DOMAIN_CAP for
+// their origin are held in an overflow list rather than dropped outright —
+// backfillOverflowSources() uses them if the capped registry ends up short
+// of maxSources (a niche topic with genuinely few distinct domains
+// shouldn't be starved just to enforce diversity that isn't available).
+export function addSources(state, items) {
+  state.domainCounts ||= new Map();
+  state.sourceOverflow ||= [];
+  for (const item of items || []) {
+    if (!item?.url || state.byUrl.has(item.url)) continue;
+    if (state.sources.length >= state.plan.maxSources) return;
+    const host = hostnameOf(item.url);
+    const count = state.domainCounts.get(host) || 0;
+    if (count >= DOMAIN_CAP) {
+      state.sourceOverflow.push(item);
+      continue;
+    }
+    state.domainCounts.set(host, count + 1);
+    pushSource(state, item);
+  }
+}
+
+// Called once before synthesis: if the domain cap left the registry short
+// of maxSources (few distinct domains for a niche topic), backfill from
+// the overflow — diversity that doesn't exist can't be enforced, and a
+// smaller-than-planned source list would otherwise cost the answer real
+// grounding for no benefit.
+export function backfillOverflowSources(state) {
+  const overflow = state.sourceOverflow || [];
+  while (state.sources.length < state.plan.maxSources && overflow.length) {
+    const item = overflow.shift();
+    if (!item?.url || state.byUrl.has(item.url)) continue;
+    pushSource(state, item);
+  }
+}
+
+// Shared by addSources/backfillOverflowSources: numbers and registers one
+// source entry. Assumes the caller has already checked for a duplicate URL.
+function pushSource(state, item) {
+  const entry = {
+    n: state.sources.length + 1,
+    title: item.title || item.url,
+    url: item.url,
+    highlights: (item.highlights || []).slice(0, 3),
+  };
+  state.byUrl.set(item.url, entry);
+  state.sources.push(entry);
+}
+
+// The numbered-source block handed to the gap-check / synthesis / validation
+// prompts, bounded to capChars (the budget plan's digestCap).
+export function sourceDigest(sources, capChars) {
+  const blocks = [];
+  let used = 0;
+  for (const s of sources) {
+    const block = `[${s.n}] ${s.title}\n${s.url}\n${s.highlights.join(" … ")}`.trim();
+    if (used + block.length > capChars) break;
+    blocks.push(block);
+    used += block.length + 2;
+  }
+  return blocks.join("\n\n");
+}
