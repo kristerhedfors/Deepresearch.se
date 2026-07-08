@@ -1,3 +1,4 @@
+// @ts-check
 // Research quotas and usage accounting. Goal: complete, real-cost-grounded
 // cost control. (Global config defaults live in src/config.js.)
 //
@@ -21,12 +22,27 @@
 
 import { getDb } from "./db.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {"h5" | "day" | "week" | "month"} Period */
+/** @typedef {{ budget_eur: number, searches: number }} QuotaLimit */
+/** @typedef {Record<string, QuotaLimit>} QuotaMap */
+/** @typedef {{ tokens: number, searches: number, berget_cost: number, exa_cost: number, hours: number, requests: number }} UsageWindow */
+/** @typedef {{ h5: UsageWindow, day: UsageWindow, week: UsageWindow, month: UsageWindow, h5_oldest: number | null }} Usage */
+
+/** @type {Period[]} */
 export const PERIODS = ["h5", "day", "week", "month"];
 const H5_MS = 5 * 3600 * 1000;
 
 // ---- windows ---------------------------------------------------------------
 // h5 is a rolling window (last 5 hours); day/week/month are UTC calendar.
 
+/**
+ * Start timestamp (ms) of a quota window: rolling for h5, UTC calendar else.
+ * @param {string} period
+ * @param {number} [now]
+ * @returns {number}
+ */
 export function windowStart(period, now = Date.now()) {
   if (period === "h5") return now - H5_MS;
   const d = new Date(now);
@@ -42,6 +58,13 @@ export function windowStart(period, now = Date.now()) {
 
 // For the rolling window the "reset" is when the oldest event inside it
 // ages out — pass that timestamp (getUsage exposes it as h5_oldest).
+/**
+ * When a window resets: for h5, when the oldest event ages out.
+ * @param {string} period
+ * @param {number} [now]
+ * @param {number | null} [h5Oldest]
+ * @returns {number}
+ */
 export function windowReset(period, now = Date.now(), h5Oldest = null) {
   if (period === "h5") return (h5Oldest || now) + H5_MS;
   const d = new Date(now);
@@ -59,6 +82,12 @@ export function windowReset(period, now = Date.now(), h5Oldest = null) {
 
 // A user's quota_json can override any subset:
 //   {"h5":{"budget_eur":1},"day":{"searches":200}}
+/**
+ * Merges a user's quota_json overrides onto the global config defaults.
+ * @param {{ quotas: QuotaMap }} config
+ * @param {{ quota_json?: string | null } | null | undefined} user
+ * @returns {QuotaMap}
+ */
 export function effectiveQuota(config, user) {
   const out = structuredClone(config.quotas);
   let override = null;
@@ -84,13 +113,24 @@ export function effectiveQuota(config, user) {
 // month does, and the rolling 5h window can reach past midnight or the
 // start of the month.
 
+/**
+ * @param {number} now
+ * @returns {{ starts: Record<string, number>, minStart: number }}
+ */
 function windowStarts(now) {
-  const starts = Object.fromEntries(PERIODS.map((p) => [p, windowStart(p, now)]));
+  const starts = Object.fromEntries(
+    PERIODS.map((p) => /** @type {[string, number]} */ ([p, windowStart(p, now)])),
+  );
   return { starts, minStart: Math.min(...Object.values(starts)) };
 }
 
 // SELECT columns bucketing each (expr → alias) pair into every period:
 // `SUM(CASE WHEN ts >= <start> THEN <expr> ELSE 0 END) AS <period>_<alias>`.
+/**
+ * @param {Record<string, number>} starts
+ * @param {Record<string, string>} exprs alias -> SQL expression
+ * @returns {string}
+ */
 function bucketCols(starts, exprs) {
   return PERIODS.flatMap((p) =>
     Object.entries(exprs).map(
@@ -107,6 +147,7 @@ const USAGE_EXPRS = {
   ms: "duration_ms",
 };
 
+/** @returns {UsageWindow} */
 const emptyWindow = () => ({
   tokens: 0,
   searches: 0,
@@ -119,8 +160,16 @@ const emptyWindow = () => ({
 // One user's usage per window, for quota checks and the account panel.
 // Also returns h5_oldest (oldest event inside the rolling window) for the
 // rolling reset estimate.
+/**
+ * One user's usage per window, plus h5_oldest for the rolling reset estimate.
+ * @param {Env} env
+ * @param {string | number} userId
+ * @param {number} [now]
+ * @returns {Promise<Usage>}
+ */
 export async function getUsage(env, userId, now = Date.now()) {
   const db = await getDb(env);
+  /** @type {Usage} */
   const out = { h5: emptyWindow(), day: emptyWindow(), week: emptyWindow(), month: emptyWindow(), h5_oldest: null };
   if (!db) return out;
   const { starts, minStart } = windowStarts(now);
@@ -148,6 +197,12 @@ export async function getUsage(env, userId, now = Date.now()) {
 // Site-wide per-user aggregates for the admin dashboard: counts AND costs
 // for every window. Keys: <period>_tokens/_searches/_berget_cost/_exa_cost/
 // _ms + month_requests.
+/**
+ * Site-wide per-user usage aggregates for the admin dashboard.
+ * @param {Env} env
+ * @param {number} [now]
+ * @returns {Promise<any[]>}
+ */
 export async function getUsageAllUsers(env, now = Date.now()) {
   const db = await getDb(env);
   if (!db) return [];
@@ -166,6 +221,12 @@ export async function getUsageAllUsers(env, now = Date.now()) {
 // Per-model breakdown for the admin: token counts and Berget cost per
 // window, plus prompt/completion split for the month — the granular
 // ground truth behind the cost budgets. Sorted by month cost.
+/**
+ * Per-model token/cost breakdown for the admin, sorted by month cost.
+ * @param {Env} env
+ * @param {number} [now]
+ * @returns {Promise<any[]>}
+ */
 export async function getUsageByModel(env, now = Date.now()) {
   const db = await getDb(env);
   if (!db) return [];
@@ -195,6 +256,13 @@ export async function getUsageByModel(env, now = Date.now()) {
 // kind "budget" compares accumulated Berget COST against budget_eur (real
 // cost grounding — models price tokens differently); kind "searches" is a
 // straight count. Callers must not expose budget limit/used to users.
+/**
+ * First breached window/dimension, or null when within all quotas.
+ * @param {Usage} usage
+ * @param {QuotaMap} quota
+ * @param {number} [now]
+ * @returns {{ period: string, kind: "budget" | "searches", limit: number, used: number, reset_at: number } | null}
+ */
 export function quotaExceeded(usage, quota, now = Date.now()) {
   for (const p of PERIODS) {
     if (quota[p].budget_eur > 0 && usage[p].berget_cost >= quota[p].budget_eur) {
@@ -222,6 +290,13 @@ export function quotaExceeded(usage, quota, now = Date.now()) {
 // ---- recording -------------------------------------------------------------
 
 // Berget prices are EUR per token in the catalog (price_in/price_out).
+/**
+ * Berget cost (EUR) for a token spend against a catalog entry's prices.
+ * @param {{ price_in?: number, price_out?: number } | null | undefined} catalogEntry
+ * @param {number} promptTokens
+ * @param {number} completionTokens
+ * @returns {number}
+ */
 export function bergetCost(catalogEntry, promptTokens, completionTokens) {
   if (!catalogEntry) return 0;
   return (
@@ -230,6 +305,14 @@ export function bergetCost(catalogEntry, promptTokens, completionTokens) {
   );
 }
 
+/**
+ * Records one usage_events row. Never throws — accounting must not break a
+ * served answer.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {any} evt the usage record ({ user_id, model?, prompt_tokens?, ... })
+ * @returns {Promise<void>}
+ */
 export async function recordUsage(env, log, evt) {
   try {
     const db = await getDb(env);
@@ -254,6 +337,6 @@ export async function recordUsage(env, log, evt) {
       .run();
   } catch (err) {
     // Accounting must never break a served answer.
-    log.error("quota.record_failed", { error: err?.message || String(err) });
+    log.error("quota.record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }

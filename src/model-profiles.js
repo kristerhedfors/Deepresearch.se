@@ -1,3 +1,4 @@
+// @ts-check
 // Per-model behavioral/performance overrides layered on top of the
 // pipeline's default, model-agnostic behavior. Unknown models get DEFAULT
 // unchanged — this module exists ONLY to patch specific, empirically
@@ -10,6 +11,7 @@
 // finding. Unknown/new models always get DEFAULT — behavior for them is
 // exactly what it was before this module existed.
 
+/** @type {import('./types.js').ModelProfile} */
 const DEFAULT = {
   // Per-phase prior duration overrides (ms), consulted by budget.js's
   // phaseEstimates() ONLY until the model has its own in-isolate EWMA
@@ -35,6 +37,7 @@ const DEFAULT = {
   maxCompletionAttempts: 2,
 };
 
+/** @type {Record<string, Partial<import('./types.js').ModelProfile>>} */
 const OVERRIDES = {
   // 2026-07-06 battery: both models measured far slower than the global
   // priors. GLM's triage alone took 24-95s in isolated single-phase runs
@@ -105,14 +108,23 @@ const OVERRIDES = {
 // a scalar — these need a fresh copy per call instead of a shared reference,
 // and must be listed here so a future nested field can't be added without
 // also teaching getModelProfile() how to merge it.
+/** @type {Array<"priorsMs" | "maxTokensOverride">} */
 const NESTED_OBJECT_FIELDS = ["priorsMs", "maxTokensOverride"];
 
+/**
+ * Returns the effective profile for a model: DEFAULT for an unknown model,
+ * else DEFAULT merged with its override (nested lookup fields deep-copied).
+ * @param {string} modelId
+ * @returns {import('./types.js').ModelProfile}
+ */
 export function getModelProfile(modelId) {
   const override = OVERRIDES[modelId];
   if (!override) return DEFAULT;
+  /** @type {import('./types.js').ModelProfile} */
   const merged = { ...DEFAULT, ...override };
   for (const field of NESTED_OBJECT_FIELDS) {
-    merged[field] = override[field] ? { ...override[field] } : DEFAULT[field];
+    const o = override[field];
+    merged[field] = o ? { ...o } : DEFAULT[field];
   }
   return merged;
 }

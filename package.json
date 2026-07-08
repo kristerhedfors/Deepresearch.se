@@ -2,8 +2,13 @@
   "name": "deepresearch-se",
   "private": true,
   "type": "module",
-  "description": "Deep-research Cloudflare Worker. No build step — deployed via `npx wrangler deploy`, reading src/ as plain JS. This package.json exists only to run the unit test suite.",
+  "description": "Deep-research Cloudflare Worker. No build step — deployed via `npx wrangler deploy`, reading src/ as plain JS. This package.json exists only to run the unit test suite and the type-checker (both dev-only; neither is part of the deploy).",
   "scripts": {
-    "test": "node --test src/*.test.js public/js/*.test.js"
+    "test": "node --test src/*.test.js public/js/*.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest"
   }
 }

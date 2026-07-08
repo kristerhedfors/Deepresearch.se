@@ -219,6 +219,7 @@ __marimo__/
 
 # Node / Cloudflare Workers
 node_modules/
+*.tsbuildinfo
 .wrangler/
 .dev.vars
 

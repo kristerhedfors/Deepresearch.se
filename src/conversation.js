@@ -1,12 +1,28 @@
+// @ts-check
 // Utilities over the OpenAI-style message array: content is either a plain
 // string or a multimodal array of {type:"text",text} and
 // {type:"image_url",image_url:{url}} parts.
+//
+// These traversal helpers manipulate content parts dynamically (mapping over
+// a mixed part array, editing the text part in place), so they type content
+// as `string | any[]` rather than the precise discriminated `ContentPart`
+// union from types.d.ts — that union documents the shape for the pipeline,
+// but narrowing it across filter/map here would need casts that add noise
+// without adding safety. The precise Conversation/Message types are still
+// used where property access is straightforward.
+
+/** @typedef {string | any[]} Content */
+/** @typedef {{ role?: string, content?: Content }} Msg */
 
 const HISTORY_TURNS = 8; // conversation turns included in LLM prompts
 
 // Text view of a message's content; multimodal arrays become concatenated
 // text parts plus an "[N image(s) attached]" marker. Used by the JSON-mode
 // helper phases, which are text-only.
+/**
+ * @param {Content} [content]
+ * @returns {string}
+ */
 export function textOf(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -22,6 +38,10 @@ export function textOf(content) {
   return "";
 }
 
+/**
+ * @param {Msg[]} messages
+ * @returns {number}
+ */
 export function countImages(messages) {
   let n = 0;
   for (const m of messages) {
@@ -32,6 +52,10 @@ export function countImages(messages) {
   return n;
 }
 
+/**
+ * @param {Msg[]} conversation
+ * @returns {Msg | undefined}
+ */
 export function lastUserMessage(conversation) {
   return [...conversation].reverse().find((m) => m.role === "user");
 }
@@ -41,18 +65,30 @@ export function lastUserMessage(conversation) {
 // a search from the established topic when the latest message is a bare
 // back-reference ("undersök saken", "tell me more") whose literal text would
 // be a meaningless query on its own.
+/**
+ * @param {Msg[]} conversation
+ * @returns {string}
+ */
 export function previousUserText(conversation) {
   const users = conversation.filter((m) => m?.role === "user");
   return users.length >= 2 ? textOf(users[users.length - 2].content) : "";
 }
 
 // Image parts of a message's multimodal content (empty for string content).
+/**
+ * @param {Msg} [message]
+ * @returns {any[]}
+ */
 export function imagePartsOf(message) {
   return Array.isArray(message?.content)
     ? message.content.filter((p) => p?.type === "image_url")
     : [];
 }
 
+/**
+ * @param {Msg[]} conversation
+ * @returns {string}
+ */
 export function formatConversation(conversation) {
   return conversation
     .slice(-HISTORY_TURNS)
@@ -63,6 +99,10 @@ export function formatConversation(conversation) {
 // Image-only sends ("what is this?" implied) otherwise read as an empty
 // message and get ignored: give the model an explicit instruction. Only the
 // outgoing copy is modified.
+/**
+ * @param {Msg[]} conversation
+ * @returns {Msg[]}
+ */
 export function withImageNudge(conversation) {
   const last = conversation[conversation.length - 1];
   if (!last || last.role !== "user" || !Array.isArray(last.content)) return conversation;
@@ -86,6 +126,11 @@ export function withImageNudge(conversation) {
 // ahead of time. Handles string content, array content with an existing
 // text part, and array content with none (image-only send). Non-mutating,
 // same convention as withImageNudge; a no-op when there's nothing to add.
+/**
+ * @param {Msg[]} conversation
+ * @param {string} extraText
+ * @returns {Msg[]}
+ */
 export function withAppendedText(conversation, extraText) {
   if (!extraText || conversation.length === 0) return conversation;
   const last = conversation[conversation.length - 1];
@@ -110,6 +155,11 @@ export function withAppendedText(conversation, extraText) {
 // Non-mutating, same convention as withAppendedText; a no-op when there's no
 // url or no last message. Callers must only use this when the answering model
 // is vision-capable (Berget rejects images on text-only models).
+/**
+ * @param {Msg[]} conversation
+ * @param {string} url
+ * @returns {Msg[]}
+ */
 export function withAppendedImage(conversation, url) {
   if (!url || conversation.length === 0) return conversation;
   const last = conversation[conversation.length - 1];

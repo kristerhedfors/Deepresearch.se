@@ -1,3 +1,4 @@
+// @ts-check
 // Request validation for POST /api/chat: message/content shape, image caps,
 // and model resolution (catalog membership, availability, vision).
 
@@ -17,6 +18,10 @@ const MAX_IMAGE_LOCATIONS = 4; // matches MAX_IMAGES_PER_REQUEST's practical cei
 const MAX_LOCATION_NAME_CHARS = 200;
 
 // Returns an error string for invalid input, or null when acceptable.
+/**
+ * @param {any} messages untrusted request body field
+ * @returns {string | null} an error message, or null when acceptable
+ */
 export function validateMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return "Expected a non-empty `messages` array.";
@@ -81,6 +86,10 @@ export function validateMessages(messages) {
 // rather than erroring the whole request: a malformed or oversized
 // location list just means less (or no) geocoding context, never a
 // blocked chat. Returns [] for anything not a non-empty array.
+/**
+ * @param {any} raw untrusted client-reported GPS coordinates
+ * @returns {import('./types.js').ImageLocation[]}
+ */
 export function validateImageLocations(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
@@ -101,6 +110,13 @@ export function validateImageLocations(raw) {
 // conversation carries images. Returns { model } on success or
 // { error, status } to reject. Catalog unreachable → fall back to the
 // default and let Berget be the judge downstream.
+/**
+ * @param {any} body the parsed request body ({ model?, messages })
+ * @param {import('./types.js').ModelCatalogEntry[] | null | undefined} catalog
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @returns {{ model: string } | { error: string, status: number }}
+ */
 export function resolveModel(body, catalog, env, log) {
   let model = typeof body.model === "string" && body.model ? body.model : null;
 
