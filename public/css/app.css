@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h7;
+  --css-version: h8;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -785,16 +785,20 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    over the row's right edge on hover. pan-y keeps vertical list
    scrolling native.
 
-   iOS RENDERING CONSTRAINT (2026-07-08, real-device incident — the
-   fix that finally stuck): chat rows rendered INVISIBLE on a real
-   iPhone — present in the DOM, selectable — while the project rows,
-   identical except for not PERMANENTLY containing the (opacity:0)
-   absolute action strip, painted fine; Linux WebKit never reproduced
-   it. The surviving rule: a row AT REST must be structurally identical
-   to a project row (just the open button — history-ui.js mounts the
-   strip, the overflow clipping, the transform and the transition ONLY
-   during an interaction and removes them after). Don't reintroduce any
-   permanent overlay/transform/clip without checking a real iOS device. */
+   iOS RENDERING CONSTRAINT (2026-07-08, real-device incident, FOUR
+   iterations deep — the rules that finally stuck): chat rows rendered
+   INVISIBLE on a real iPhone — present in the DOM, selectable — while
+   the project rows, identical except for not PERMANENTLY containing
+   the (opacity:0) absolute action strip, painted fine; and a TRANSFORM
+   on the card (even transient, during the drag) broke painting again
+   (h7: card flickered instead of sliding). Linux WebKit reproduces
+   none of this. The surviving rules: (1) a row AT REST must be
+   structurally identical to a project row — just the open button;
+   history-ui.js mounts the strip/clip ONLY during an interaction and
+   removes them after; (2) the slide is pure LAYOUT — negative
+   margin-left — never transform/position/z-index, so no new
+   compositing layer ever appears inside the blurred panel. Don't
+   reintroduce either without checking a real iOS device. */
 .history-item {
   position: relative;
   border-radius: 8px;
@@ -810,23 +814,24 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border-radius: 8px; padding: .45rem .55rem;
   display: flex; flex-direction: column; gap: .1rem;
 }
-/* The slide (touch): the card carries an inline transform while the
+/* The slide (touch): the card carries an inline margin-left while the
    finger drags (no transition), then these rules take over — .swiped
-   parks it 88px left, and .swiping supplies the settle animation. The
-   transformed card paints ABOVE the earlier-sibling strip, so it
-   covers it at rest and uncovers it as it slides. */
+   parks it 88px left, and .swiping supplies the settle animation.
+   Margin is pure layout: no transform, no compositing layer (see the
+   iOS constraint above — transforms here break painting on iPhones). */
 .history-item.swiping .history-open, .history-item.swiped .history-open {
-  transition: transform .18s ease;
+  transition: margin-left .18s ease;
 }
-.history-item.swiped .history-open { transform: translateX(-88px); }
+.history-item.swiped .history-open { margin-left: -88px; }
 .history-item:hover .history-open, .history-open:focus-visible { background: rgba(255, 255, 255, .35); }
 .history-title {
   font-size: .85rem; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .history-when { font-size: .7rem; color: var(--muted); }
-/* Mounted on demand by history-ui.js (inserted BEFORE the open button,
-   so a transformed card covers it); width matches its REVEAL_PX. */
+/* Mounted on demand by history-ui.js; width matches its REVEAL_PX.
+   Positioned, so it paints above the (static) card — its opacity
+   follows the drag so it fades in as the gap opens. */
 .history-actions {
   position: absolute; top: 0; bottom: 0; right: 0;
   width: 88px;

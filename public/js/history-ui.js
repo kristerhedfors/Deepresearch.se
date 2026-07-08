@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h7 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
+    parts.push(`[h8 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -168,7 +168,7 @@ export function initHistorySidebar(opts = {}) {
     if (item.classList.contains("swiped")) {
       item.classList.add("swiping"); // keeps clip + transition during the slide-back
       item.classList.remove("swiped");
-      row.style.transform = "";
+      row.style.marginLeft = "";
     }
     setTimeout(() => {
       if (item.classList.contains("swiped")) return; // re-opened meanwhile
@@ -182,10 +182,10 @@ export function initHistorySidebar(opts = {}) {
   // action strip's width, exposing rename + delete. Swiping back (or
   // tapping the row, or swiping any other row) closes it. Mouse users
   // keep the hover reveal; this only drives touch/pen. The card follows
-  // the finger (inline transform, transition suppressed), then settles
-  // parked at -REVEAL_PX (.swiped) or back at rest — where every
-  // interaction artifact (strip, clip, transform) is removed again, the
-  // iOS-safe rest state renderList's comment explains.
+  // the finger via inline margin-left — pure layout, NEVER transform
+  // (transforms on these rows break painting on real iOS, see app.css) —
+  // then settles parked at -REVEAL_PX (.swiped) or back at rest, where
+  // every interaction artifact (strip, clip, margin) is removed again.
   const REVEAL_PX = 88; // matches .history-actions width in app.css
   function attachSwipe(item) {
     const row = item.querySelector(".history-open");
@@ -221,23 +221,30 @@ export function initHistorySidebar(opts = {}) {
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
       row.style.transition = "none"; // follow the finger, no easing lag
-      row.style.transform = `translateX(${offset}px)`;
+      row.style.marginLeft = offset + "px";
+      // The strip (painting above the static card) fades in as the gap opens.
+      const strip = item.querySelector(".history-actions");
+      if (strip) strip.style.opacity = String(Math.min(1, -offset / REVEAL_PX));
     });
 
     function settle(e) {
       if (!tracking) return;
       tracking = false;
       if (axis !== "x") return;
-      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
-      const offset = from + (e.clientX - startX);
       row.style.transition = ""; // hand easing back to the .swiping/.swiped rules
+      const strip = item.querySelector(".history-actions");
+      if (strip) strip.style.opacity = "";
+      // pointercancel's coordinates are unreliable (iOS often reports 0):
+      // treat it as an aborted gesture and snap back.
+      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
+      const offset = e.type === "pointercancel" ? 0 : from + (e.clientX - startX);
       if (offset < -REVEAL_PX / 2) {
-        row.style.transform = ""; // .swiped's -88px takes over (animated)
+        row.style.marginLeft = ""; // .swiped's -88px takes over (animated)
         item.classList.add("swiped");
         setTimeout(() => { item.classList.remove("swiping"); }, 200);
       } else {
         item.classList.remove("swiped");
-        row.style.transform = "";
+        row.style.marginLeft = "";
         closeActions(item);
       }
       // Let the click that follows this pointerup see the lock, then clear it.
