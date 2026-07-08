@@ -95,8 +95,26 @@ Standing fixes (keep them intact):
   `max-age=3600` for icons/media.
 - `public/index.html` inline boot guard + `window.__appReady` (set at the
   END of app.js) — until the module graph has linked, native submits are
-  blocked and a "tap to reload" banner shows. Any future graph failure is
-  LOUD instead of eating queries.
+  blocked and a "tap to reload" banner shows (PROACTIVELY ~4s after load,
+  not only on a send attempt). Any future graph failure is LOUD instead of
+  eating queries.
+- The banner's "Tap to reload" REPAIRS the cache, it doesn't just reload
+  (second wave of the same incident, later that day): devices that cached
+  the module graph BEFORE the no-cache policy existed kept serving the
+  stale mix heuristically — `location.reload()` does NOT bypass the HTTP
+  cache, so those devices were wedged "every time" while a fresh client
+  linked the same deploy cleanly (verified live with a Playwright boot +
+  a full module-graph fetch/parse audit). The guard now walks the module
+  graph with `fetch(url, {cache:"reload"})` — which bypasses AND
+  overwrites each cached entry — then reloads into the repaired graph.
+
+Debugging tip that found the second wave: fetch `/` with break-glass
+auth, extract the module entrypoint, transitively fetch every imported
+module, assert HTTP 200 + parseable + every named import exported by its
+target — then boot the site in the sandbox Chromium (tests/ has the
+proxy/TLS quirks) and check `window.__appReady === true`. If all that
+passes but a device still fails, the problem is that device's cache, not
+the deploy.
 
 Cloudflare "Development Mode" is NOT part of this fix and doesn't cover
 this class: it bypasses the zone EDGE cache (which was never the problem —

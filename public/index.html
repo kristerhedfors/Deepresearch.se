@@ -182,25 +182,85 @@
     // attached and tapping Send falls through to the browser's NATIVE form
     // submit: a full page reload that looks like the chat silently resetting
     // to a blank new conversation. app.js sets window.__appReady when it has
-    // finished wiring; until then, block native submits and offer a reload
-    // (which, with the no-cache asset policy in src/index.js, fetches a
-    // consistent fresh module graph).
-    window.addEventListener("submit", function (e) {
-      if (window.__appReady) return;
-      e.preventDefault();
-      if (document.getElementById("boot-guard")) return;
-      var bar = document.createElement("div");
-      bar.id = "boot-guard";
-      bar.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:#b3261e;color:#fff;padding:10px 16px;border-radius:12px;font:14px/1.4 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:88%";
-      bar.textContent = "The app didn't finish loading (stale cached file). ";
-      var link = document.createElement("a");
-      link.href = "#";
-      link.textContent = "Tap to reload";
-      link.style.cssText = "color:#fff;text-decoration:underline;font-weight:600";
-      link.addEventListener("click", function (ev) { ev.preventDefault(); location.reload(); });
-      bar.appendChild(link);
-      document.body.appendChild(bar);
-    }, true);
+    // finished wiring; until then native submits are blocked and this banner
+    // shows — PROACTIVELY a few seconds after load, not only when a send is
+    // attempted (reported: a user lost queries "every time" before anything
+    // told them the app was dead).
+    //
+    // "Tap to reload" REPAIRS the cache, it doesn't just reload:
+    // location.reload() still serves heuristically-cached modules, so a
+    // device that cached the module graph BEFORE the no-cache asset policy
+    // (src/index.js) existed can stay wedged on a stale mix for hours,
+    // reloading forever (the reported case — verified live: the deployed
+    // graph linked cleanly on a fresh client while the device kept failing).
+    // fetch(url, {cache:"reload"}) bypasses the HTTP cache AND replaces the
+    // cached entry with the fresh response, so walking the module graph with
+    // it un-sticks the device permanently; the reload afterwards then links
+    // the repaired, consistent graph.
+    (function () {
+      function repairAndReload() {
+        // Never hang on "Refreshing…" — reload regardless after 10s.
+        setTimeout(function () { location.reload(); }, 10000);
+        var seen = {};
+        function refresh(path, depth) {
+          if (seen[path] || depth > 4) return Promise.resolve();
+          seen[path] = true;
+          return fetch(path, { cache: "reload" })
+            .then(function (res) { return res.text(); })
+            .then(function (src) {
+              var jobs = [];
+              // Any quoted relative .js path — static or dynamic import.
+              // Over-inclusive on purpose; an extra fresh fetch is harmless.
+              var re = /["'](\.\/[\w./-]+\.js)["']/g;
+              var m;
+              while ((m = re.exec(src))) {
+                jobs.push(refresh(new URL(m[1], location.origin + path).pathname, depth + 1));
+              }
+              return Promise.all(jobs);
+            })
+            .catch(function () {});
+        }
+        Promise.all([
+          refresh("/js/app.js", 0),
+          fetch("/vendor/marked.min.js", { cache: "reload" }).catch(function () {}),
+          fetch("/vendor/purify.min.js", { cache: "reload" }).catch(function () {}),
+          fetch("/", { cache: "reload" }).catch(function () {}),
+        ]).then(function () { location.reload(); }, function () { location.reload(); });
+      }
+
+      function showBootGuard() {
+        if (window.__appReady || document.getElementById("boot-guard")) return;
+        var bar = document.createElement("div");
+        bar.id = "boot-guard";
+        bar.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:#b3261e;color:#fff;padding:10px 16px;border-radius:12px;font:14px/1.4 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:88%";
+        bar.textContent = "The app didn't finish loading (stale cached file). ";
+        var link = document.createElement("a");
+        link.href = "#";
+        link.textContent = "Tap to reload";
+        link.style.cssText = "color:#fff;text-decoration:underline;font-weight:600";
+        link.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          link.textContent = "Refreshing…";
+          repairAndReload();
+        });
+        bar.appendChild(link);
+        document.body.appendChild(bar);
+        // A slow connection may finish wiring after the banner appeared —
+        // withdraw it the moment the app actually comes up.
+        var t = setInterval(function () {
+          if (window.__appReady) { bar.remove(); clearInterval(t); }
+        }, 1000);
+      }
+
+      window.addEventListener("submit", function (e) {
+        if (window.__appReady) return;
+        e.preventDefault();
+        showBootGuard();
+      }, true);
+      window.addEventListener("load", function () {
+        setTimeout(showBootGuard, 4000);
+      });
+    })();
   </script>
   <script type="module" src="/js/app.js"></script>
 </body>
