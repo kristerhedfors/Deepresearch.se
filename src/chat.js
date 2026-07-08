@@ -362,6 +362,14 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     imageLocations: extras.imageLocations || [], // validated attached-photo GPS coords
 
     plan: planResearch(model, budgetS, jsonModel),
+    // Triage decomposition (pipeline.js runTriage): the classified question
+    // complexity (caps research depth for "simple" — budget.js
+    // applyComplexityToPlan), its sub-questions (the gap check audits
+    // coverage against each; synthesis must address each), and the source
+    // disagreements gap rounds reported (synthesis addresses them explicitly).
+    complexity: null,
+    subquestions: [],
+    conflicts: [],
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     iterations: 1, // search waves (initial + gap rounds that ran)

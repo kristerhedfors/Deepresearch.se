@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyComplexityToPlan,
   clampBudget,
   fitsDeadline,
   planResearch,
@@ -183,5 +184,48 @@ describe("fitsDeadline", () => {
     assert.equal(fitsDeadline(startedAt, budgetMs, 12_000), true);
     // 100s elapsed + 20s upcoming = 120s, over even the grace ceiling.
     assert.equal(fitsDeadline(startedAt, budgetMs, 20_000), false);
+  });
+});
+
+describe("applyComplexityToPlan — complexity-scaled effort", () => {
+  const MODEL = "test/no-history-model-complexity";
+
+  test("'simple' caps gap rounds at 1 and searches at one wave + one follow-up round", () => {
+    const plan = planResearch(MODEL, 300);
+    assert.ok(plan.gapIterations > 1, "premise: a 300s plan buys >1 gap rounds");
+    const out = applyComplexityToPlan(plan, "simple");
+    assert.equal(out, plan); // mutates and returns the same plan object
+    assert.equal(plan.gapIterations, 1);
+    assert.equal(plan.maxSearches, plan.queries + plan.followups);
+  });
+
+  test("only ever scales DOWN — a floor plan is not raised", () => {
+    const plan = planResearch(MODEL, 15);
+    const before = { ...plan };
+    applyComplexityToPlan(plan, "simple");
+    assert.ok(plan.gapIterations <= before.gapIterations);
+    assert.ok(plan.maxSearches <= before.maxSearches);
+  });
+
+  test("non-simple complexities leave the plan untouched (budget stays the ceiling)", () => {
+    for (const complexity of ["multihop", "comparison", "survey"]) {
+      const plan = planResearch(MODEL, 300);
+      const before = JSON.stringify(plan);
+      applyComplexityToPlan(plan, complexity);
+      assert.equal(JSON.stringify(plan), before, complexity);
+    }
+  });
+
+  test("absent/unknown complexity (schema miss, older model output) is a no-op", () => {
+    for (const complexity of [null, undefined, "extreme", 42]) {
+      const plan = planResearch(MODEL, 300);
+      const before = JSON.stringify(plan);
+      applyComplexityToPlan(plan, complexity);
+      assert.equal(JSON.stringify(plan), before, String(complexity));
+    }
+  });
+
+  test("a missing plan is tolerated", () => {
+    assert.equal(applyComplexityToPlan(null, "simple"), null);
   });
 });

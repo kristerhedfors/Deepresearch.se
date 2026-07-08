@@ -16,13 +16,18 @@ handler scaffold in `src/chat.js`) — no function calling; every phase is a
 direct call, so it is deterministic and works on any JSON-mode model:
 
 1. **Triage** (JSON mode): direct reply | one clarifying question | research
-   plan with 2–4 queries covering different angles.
+   plan with 2–4 queries covering different angles — plus the question's
+   `complexity` and, for non-simple questions, 2–5 `subquestions` (see
+   "Question decomposition" below).
 2. **Search wave**: planned queries via Exa, deduped, capped by the
    budget plan (`plan.maxSearches`).
-3. **Gap check** (JSON, rounds set by the plan): audit coverage, run
-   follow-up queries for missing angles.
+3. **Gap check** (JSON, rounds set by the plan): audit coverage (per
+   sub-question when decomposed), run follow-up queries for missing angles —
+   including dependent-hop queries written with bridging facts learned from
+   the collected sources — and optionally report source `conflicts`.
 4. **Synthesis** (streamed): answer built ONLY from the numbered source
-   registry, `[n]` citations + "Sources:" list.
+   registry, `[n]` citations + "Sources:" list; must address every
+   sub-question and every reported conflict explicitly.
 5. **Post-validation** (JSON): fact-check the draft against the sources; on
    "revise" the UI discards the draft (`discard_text`) and the corrected
    answer is emitted.
@@ -30,6 +35,58 @@ direct call, so it is deterministic and works on any JSON-mode model:
 Helper phases fail soft (degrade to fewer searches / accepted draft — never
 break the request). Search/round caps come from the time-budget planner
 (`src/budget.js`).
+
+## Question decomposition (2026-07)
+
+The scored benchmark's clearest signal (see `tests/EVAL-BENCH-FINDINGS.md`
+and the deep-tier disable commit): multi-hop questions were the weakest
+kind, and MORE source material (notes digest, full-page fetch) did not fix
+them — decomposition at planning time does (published ablations agree:
+removing decomposition drops multi-hop accuracy ~12 points in
+arXiv:2412.15101; decomposition beats paraphrase-style query expansion in
+arXiv:2507.00355). So triage classifies and decomposes; everything is
+optional-field / fail-soft, so a schema miss degrades byte-identically to
+the pre-decomposition flow:
+
+- **`complexity`** — `simple | multihop | comparison | survey`. `simple`
+  caps research depth BELOW the time budget (`budget.js
+  applyComplexityToPlan`: gap rounds ≤ 1, searches ≤ one wave + one
+  follow-up round) because over-researching a focused question measurably
+  diluted answers (the deep-tier net-negative finding, and Anthropic's
+  published effort-scaling rules). Non-simple values never scale UP — the
+  budget plan stays the ceiling.
+- **`subquestions`** (2–5, non-simple only) — threaded through the whole
+  pipeline: `state.subquestions` → gap check audits coverage against EACH
+  one (a covered first hop can't mask an untouched second), → synthesis
+  must address every one explicitly. For multihop, triage orders them by
+  dependency and targets initial queries at the FIRST hop; the gap round is
+  where hop-2 queries get written, because that's the first point where the
+  bridging fact (a name/date found only in sources) exists — the gap prompt
+  explicitly teaches "write the next query with the concrete fact, not the
+  original indirect phrasing".
+- **`conflicts`** — the gap check may report factual disagreements between
+  sources (`collectConflicts` accumulates them, deduped, capped 6);
+  synthesis receives them as an explicit "address each — cite both sides,
+  never silently pick one" block. Targets calibration (the FINDER failure
+  study: evidence integration, not comprehension, is where research agents
+  fail).
+- **Broad→narrow laddering** (prompt-only): initial queries short and
+  broad; the follow-up rounds narrow.
+
+Verification status: unit-tested (`prompts.test.js`, `pipeline.test.js`,
+`budget.test.js`); the live before/after A/B (rubric bench multi-hop kind +
+`tests/hf-bench.mjs` on `google/deepsearchqa`, fixed seed/judge/budget) is
+the merge-gate evidence — run it against the deployment once this change
+ships, and append the delta to the ledgers.
+
+Deliberately NOT added (evidence says skip, for this architecture):
+multi-agent parallel research with separate contexts (LangChain abandoned
+parallel section-writers for coherence; ~15× token cost per Anthropic),
+an extra outline-JSON phase (the sub-question skeleton is the cheap
+version; revisit only with benchmark evidence), RAG-fusion-style paraphrase
+query expansion (neutralized by dedup + fixed depth + domain caps, all
+already present), and re-growing the disabled deep-tier phases
+(notes/full-fetch/claim-validation stay off pending an intent-gated rework).
 
 **Split model routing — JSON phases run on a fixed reliable model.** The
 three JSON planning phases (triage, gap check, validation) always run on

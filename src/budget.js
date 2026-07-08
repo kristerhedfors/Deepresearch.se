@@ -149,6 +149,26 @@ export function planResearch(model, budgetS, jsonModel = model) {
   return plan;
 }
 
+// Complexity-scaled effort: after triage classifies the question (see
+// prompts.js's DECOMPOSITION_RULE), a "simple" question gets its research
+// depth capped BELOW what the time budget alone would buy. The project's own
+// de-noised benchmark found that extra research machinery at high budgets was
+// net-negative on focused questions — the failure mode is OVER-researching a
+// simple question because time happens to be available, diluting the answer
+// (the same lesson as Anthropic's published effort-scaling rules: simple
+// fact-finding warrants a handful of calls, not a survey's worth). Only ever
+// scales DOWN — the budget plan remains the ceiling for every complexity —
+// and an absent/unknown complexity (schema miss, older model output) leaves
+// the plan untouched, so the pre-decomposition behavior is the exact
+// fallback. Mutates and returns `plan` (it's the per-request state's plan).
+export function applyComplexityToPlan(plan, complexity) {
+  if (!plan || complexity !== "simple") return plan;
+  plan.gapIterations = Math.min(plan.gapIterations, 1);
+  // One initial wave plus at most one follow-up round's worth of searches.
+  plan.maxSearches = Math.min(plan.maxSearches, plan.queries + plan.followups);
+  return plan;
+}
+
 // A round 6 assessment found the time-budget slider scaled how MANY
 // searches ran, but never how deep any single one went: numResults was a
 // hardcoded 5 (Exa's own default is 10) and `type` was always "auto",
