@@ -74,6 +74,13 @@ const NOISE = new Set([
   // and returning name-matched junk; stripping it leaves the actual
   // subject ("whisper" → the canonical repos, sorted by downloads).
   "variant", "variants", "version", "versions", "fine-tunes", "finetunes",
+  // Survey/sub-question meta words (a production trace showed gap queries
+  // like "cybersecurity trends 2026" / "... discussions ..." all collapsing
+  // to the same single-term hub search because these carried no name-match
+  // value yet differentiated the dedup keys).
+  "trends", "trend", "discussions", "discussion", "debates", "debate",
+  "breakthroughs", "breakthrough", "innovations", "innovation",
+  "challenges", "challenge",
 ]);
 
 export function hfTerms(query) {
@@ -117,14 +124,44 @@ export function hfAttempts(terms) {
     if (v && !list.includes(v)) list.push(v);
   };
   if (terms.length > 1) push(terms.join(" "));
-  const ranked = [...terms].sort((a, b) => {
-    const ga = GENERIC.has(a) ? 1 : 0;
-    const gb = GENERIC.has(b) ? 1 : 0;
-    if (ga !== gb) return ga - gb;
-    return b.length - a.length;
-  });
+  const ranked = terms
+    // A bare year matches repo names indiscriminately — never let it be a
+    // single-term attempt (it stays fine inside multi-term joins).
+    .filter((t) => !/^(19|20)\d{2}$/.test(t))
+    .sort((a, b) => {
+      const ga = GENERIC.has(a) ? 1 : 0;
+      const gb = GENERIC.has(b) ? 1 : 0;
+      if (ga !== gb) return ga - gb;
+      return b.length - a.length;
+    });
   for (const t of ranked.slice(0, 2)) push(t);
   return list;
+}
+
+// Picks the wave's most SPECIFIC query for the hub search. A production
+// trace showed the orchestrator's old batch[0] choice always selecting the
+// generic angle ("latest cybersecurity discussions ...") while the wave also
+// carried entity-bearing queries ("Hugging Face response to CVE-2026-4372")
+// that the hub could actually answer — the web->hub insight flow. Score:
+// identifier-looking terms (digits/dots/hyphens/slashes, excluding bare
+// years) weigh 3, other non-generic content terms 1, generic terms 0;
+// earliest query wins ties.
+export function hfPickQuery(batch) {
+  let best = batch[0];
+  let bestScore = -1;
+  for (const q of batch) {
+    let score = 0;
+    for (const t of hfTerms(q)) {
+      if (/^(19|20)\d{2}$/.test(t)) continue;
+      if (/[\d./-]/.test(t)) score += 3;
+      else if (!GENERIC.has(t)) score += 1;
+    }
+    if (score > bestScore) {
+      best = q;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 // Stable key for one query's term set — the cross-wave dedup key (gap-round
@@ -235,42 +272,58 @@ async function hfGet(env, url) {
   return res.json();
 }
 
-// Runs the token-drop ladder against one name-substring endpoint; returns the
-// first attempt's hits (or []). Attempts are sequential by design — the whole
-// point is to only fall back when the previous attempt found nothing.
+// Runs the attempt ladder against one name-substring endpoint; returns the
+// first attempt's hits (or []) plus every attempt it consumed (`tried`) so
+// the caller can record them — a production trace showed three waves whose
+// ladders collapsed to the SAME winning term, re-fetching identical results;
+// recording consumed attempts lets the orchestrator skip them next wave.
+// Attempts are sequential by design — the whole point is to only fall back
+// when the previous attempt found nothing.
 async function ladderSearch(env, base, attempts, limit) {
+  const tried = [];
   for (const q of attempts) {
+    tried.push(q);
     const list = await hfGet(env, `${base}?search=${encodeURIComponent(q)}&limit=${limit}&sort=downloads`);
-    if (Array.isArray(list) && list.length) return list;
+    if (Array.isArray(list) && list.length) return { list, tried };
   }
-  return [];
+  return { list: [], tried };
 }
 
 // One HF Hub search for one planned query: models + datasets (term ladder)
 // and papers (raw query), all concurrent, each branch independently fail-soft
 // (a failed endpoint contributes zero items, never an error). Returns
 // { items, counts, durationMs }.
-export async function hfSearch(env, log, query) {
+// `skipKeys` (from the orchestrator's per-request state) removes ladder
+// attempts ALREADY consumed by earlier waves — the models/datasets ladders
+// then only run on genuinely new attempts (no more re-fetching the same
+// repos three times), while the verbose-friendly papers search still runs
+// for every distinct query (each wave's papers results kept contributing
+// new items in the trace that motivated this). Returns `usedKeys` — the
+// attempts consumed this call — for the orchestrator to record.
+export async function hfSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
   const terms = hfTerms(query);
-  const attempts = hfAttempts(terms);
-  const [models, datasets, papers] = await Promise.all([
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/models", attempts, MAX_MODELS).catch(() => []) : [],
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", attempts, MAX_DATASETS).catch(() => []) : [],
+  const attempts = hfAttempts(terms).filter((a) => !skipKeys?.has(a));
+  const empty = { list: [], tried: [] };
+  const [modelsR, datasetsR, papers] = await Promise.all([
+    attempts.length ? ladderSearch(env, "https://huggingface.co/api/models", attempts, MAX_MODELS).catch(() => empty) : empty,
+    attempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", attempts, MAX_DATASETS).catch(() => empty) : empty,
     hfGet(env, `https://huggingface.co/api/papers/search?q=${encodeURIComponent(String(query || "").slice(0, 200))}`).catch(() => []),
   ]);
   const items = [
-    ...models.slice(0, MAX_MODELS).map(toModelItem),
-    ...datasets.slice(0, MAX_DATASETS).map(toDatasetItem),
+    ...modelsR.list.slice(0, MAX_MODELS).map(toModelItem),
+    ...datasetsR.list.slice(0, MAX_DATASETS).map(toDatasetItem),
     ...(Array.isArray(papers) ? papers.slice(0, MAX_PAPERS).map(toPaperItem) : []),
   ].filter(Boolean);
+  const usedKeys = [...new Set([...modelsR.tried, ...datasetsR.tried])];
   const durationMs = Date.now() - startedAt;
   log?.info?.("hf.search", {
     query: String(query || "").slice(0, 120),
-    models: models.length,
-    datasets: datasets.length,
+    models: modelsR.list.length,
+    datasets: datasetsR.list.length,
     papers: Array.isArray(papers) ? papers.length : 0,
+    skipped_attempts: (skipKeys?.size || 0) > 0 ? hfAttempts(terms).length - attempts.length : 0,
     duration_ms: durationMs,
   });
-  return { items, durationMs };
+  return { items, durationMs, usedKeys };
 }

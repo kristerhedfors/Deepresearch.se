@@ -71,6 +71,9 @@ describe("triagePrompt", () => {
     assert.match(p, /order them by dependency/);
     assert.match(p, /target the FIRST hop/);
     assert.match(p, /Omit "subquestions" entirely for simple requests/);
+    // Production trace: triage wrote 4 sub-questions but only ONE query.
+    assert.match(p, /queries must still collectively COVER the sub-questions/);
+    assert.match(p, /never rely on the sub-questions alone/);
   });
 
   test("prompts broad-first query laddering", () => {
@@ -155,6 +158,16 @@ describe("synthPrompt", () => {
     const p = synthPrompt();
     assert.match(p, /\[1\], \[2\]/);
     assert.match(p, /Sources:/);
+  });
+
+  test("treats platform-hosted artifacts as first-class findings for platform-targeted questions", () => {
+    // Production trace: "Search hf for the latest ... on cybersecurity"
+    // produced an answer citing zero hub artifacts despite the registry
+    // holding relevant models/datasets/papers.
+    const p = synthPrompt();
+    assert.match(p, /targets a specific platform or registry/);
+    assert.match(p, /first-class findings, not background/);
+    assert.match(p, /inventorying the most relevant ones with citations/);
   });
 
   test("requires addressing every listed sub-question and every listed source conflict", () => {

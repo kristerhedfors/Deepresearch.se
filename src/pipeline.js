@@ -908,9 +908,17 @@ async function runAuxSearch(ctx, source, batch, round) {
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
   if (st.count >= (source.maxPerRequest ?? MAX_AUX_SEARCHES_DEFAULT)) return;
-  const query = batch[0];
+  // The wave's most on-topic query for THIS source (pickQuery — e.g. hf
+  // prefers the entity/identifier-bearing angle over the generic one, the
+  // web→hub insight flow); batch[0] when the source doesn't care.
+  const query = source.pickQuery ? source.pickQuery(batch) : batch[0];
   const key = source.dedupKey ? source.dedupKey(query) : query.toLowerCase().trim();
   if (st.ran.has(key)) return;
+  // Snapshot BEFORE adding this key: `skipKeys` tells the source which
+  // search attempts earlier waves already consumed (its ladder skips them —
+  // no re-fetching identical result sets), while the fresh key itself must
+  // stay searchable this call.
+  const skipKeys = new Set(st.ran);
   st.ran.add(key);
   st.count++;
 
@@ -922,9 +930,13 @@ async function runAuxSearch(ctx, source, batch, round) {
   let items = [];
   let durationMs = 0;
   try {
-    const r = await source.search(env, log, query);
+    const r = await source.search(env, log, query, { skipKeys });
     items = r.items;
     durationMs = r.durationMs;
+    // Attempts the source consumed (hit or miss) — recorded so later waves
+    // whose ladders would collapse to the same attempt skip it instead of
+    // re-fetching the same repos (the three-identical-hub-searches trace).
+    for (const k of r.usedKeys || []) st.ran.add(k);
   } catch (err) {
     log.warn(`${source.id}.search_failed`, { error: err?.message || String(err) });
   }

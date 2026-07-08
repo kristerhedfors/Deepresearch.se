@@ -22,9 +22,18 @@
 //                   whether this source fires at all. Must be cheap and
 //                   conservative; when false the source is fully invisible
 //                   (no step, no event, no fetch).
-//   search(env, log, query) — the timeout-bounded, fail-soft client call.
-//                   Returns { items: [{url, title, highlights}], durationMs };
-//                   items join the numbered source registry via addSources.
+//   search(env, log, query, {skipKeys}) — the timeout-bounded, fail-soft
+//                   client call. `skipKeys` is the set of attempt keys
+//                   earlier waves consumed (skip them — don't re-fetch the
+//                   same results). Returns { items: [{url, title,
+//                   highlights}], durationMs, usedKeys? } — usedKeys lists
+//                   the attempt keys this call consumed, recorded by the
+//                   orchestrator for the next wave's skipKeys.
+//   pickQuery(batch) — optional; picks which of the wave's planned queries
+//                   this source searches (default batch[0]). hf picks the
+//                   most entity/identifier-bearing one — the web→hub
+//                   insight flow (a gap query learned from web results,
+//                   like a CVE id, is exactly what the hub can answer).
 //   service       — human display name shown on the client's search cards
 //                   and carried on the search events as `service` (e.g.
 //                   "Hugging Face Hub" — the UI must always make clear
@@ -48,7 +57,7 @@
 // (wave timing, dedup, caps, SSE events, fail-soft) lives once in
 // pipeline.js's runAuxSearches and is identical for every source.
 
-import { hfDiversityKey, hfIntent, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
+import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
 
 export const SEARCH_SOURCES = [
   {
@@ -56,6 +65,7 @@ export const SEARCH_SOURCES = [
     intent: hfIntent,
     search: hfSearch,
     service: "Hugging Face Hub",
+    pickQuery: hfPickQuery,
     dedupKey: hfTermKey,
     maxPerRequest: 3,
     promptNote: hfPromptNote,

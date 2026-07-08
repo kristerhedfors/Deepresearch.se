@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   hfAttempts,
   hfIntent,
+  hfPickQuery,
   hfTermKey,
   hfTerms,
   toDatasetItem,
@@ -148,5 +149,44 @@ describe("item mappers — Hub API item -> source-registry item", () => {
     assert.equal(toModelItem({}), null);
     assert.equal(toDatasetItem({ downloads: 5 }), null);
     assert.equal(toPaperItem({ paper: { id: "x" } }), null);
+  });
+});
+
+describe("hfPickQuery — the wave's most specific query wins", () => {
+  test("an identifier-bearing gap query beats the generic angle", () => {
+    // The production trace: batch[0] was always the generic query, so the
+    // hub was never asked about the CVE the web results surfaced.
+    const batch = [
+      "latest cybersecurity discussions Hugging Face 2026",
+      "Hugging Face response to CVE-2026-4372",
+    ];
+    assert.equal(hfPickQuery(batch), "Hugging Face response to CVE-2026-4372");
+  });
+
+  test("bare years carry no specificity weight", () => {
+    assert.equal(
+      hfPickQuery(["cybersecurity 2026", "whisper swedish"]),
+      "whisper swedish",
+    );
+  });
+
+  test("ties go to the earliest query", () => {
+    assert.equal(hfPickQuery(["whisper", "kernels"]), "whisper");
+  });
+});
+
+describe("hfAttempts — year guard and meta-word stripping (dup-search fixes)", () => {
+  test("a bare year is never a single-term attempt", () => {
+    assert.deepEqual(hfAttempts(["cybersecurity", "2026"]), [
+      "cybersecurity 2026",
+      "cybersecurity",
+    ]);
+  });
+
+  test("survey meta words collapse gap follow-ups to the initial wave's terms", () => {
+    // The three-identical-hub-searches trace: these three queries must all
+    // reduce to the same term set so the winning-attempt dedup can bite.
+    assert.equal(hfTermKey("cybersecurity trends 2026"), hfTermKey("cybersecurity discussions 2026"));
+    assert.deepEqual(hfTerms("recent breakthroughs and innovations in cybersecurity"), ["cybersecurity"]);
   });
 });
