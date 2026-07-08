@@ -65,19 +65,53 @@ export function hfTerms(query) {
     .slice(0, 6);
 }
 
-// The token-drop ladder for the name-substring endpoints: all terms, then the
-// last two (trailing terms tend to carry the specific subject), then the
-// single longest term. Deduped, non-empty.
+// Hub-generic terms: real content words that are nonetheless so common in
+// repo names that a single-term search on them surfaces popular-but-
+// irrelevant repos (a live run A trace showed "speech recognition" returning
+// Russian emotion-recognition models and "recognition" alone returning
+// table-transformers, all high-download). Used to RANK single-term fallback
+// attempts (distinctive terms first), never to drop a term outright.
+const GENERIC = new Set([
+  "speech", "recognition", "text", "language", "image", "audio", "video",
+  "vision", "classification", "generation", "translation", "detection",
+  "segmentation", "question", "answering", "chat", "llm", "llms", "ai",
+  "benchmark", "benchmarks", "evaluation", "eval", "agent", "agents",
+  "data", "corpus", "embedding", "embeddings", "base", "large", "small",
+  "instruct", "pretrained", "finetuned", "research", "web",
+]);
+
+// Attempt ladder for the name-substring endpoints, redesigned after a live
+// run A trace: multi-word attempts almost never match (every word must
+// appear in the repo NAME), and naive term-dropping kept the generic words
+// while losing the distinctive one ("swedish speech recognition" degraded to
+// "speech recognition" → junk). Established empirically: the single most
+// DISTINCTIVE term + sort=downloads surfaces the canonical repos
+// ("swedish" → KBLab's 2.5M-download Swedish ASR model at rank 1). So: the
+// full join first (cheap, occasionally exact), then the top two single
+// terms ranked non-generic-first / longer-first. Deduped, ≤3 attempts.
 export function hfAttempts(terms) {
   const list = [];
   const push = (s) => {
     const v = s.trim();
     if (v && !list.includes(v)) list.push(v);
   };
-  if (terms.length) push(terms.join(" "));
-  if (terms.length > 2) push(terms.slice(-2).join(" "));
-  if (terms.length > 1) push([...terms].sort((a, b) => b.length - a.length)[0]);
+  if (terms.length > 1) push(terms.join(" "));
+  const ranked = [...terms].sort((a, b) => {
+    const ga = GENERIC.has(a) ? 1 : 0;
+    const gb = GENERIC.has(b) ? 1 : 0;
+    if (ga !== gb) return ga - gb;
+    return b.length - a.length;
+  });
+  for (const t of ranked.slice(0, 2)) push(t);
   return list;
+}
+
+// Stable key for one query's term set — the cross-wave dedup key (gap-round
+// follow-ups often reduce to the same terms after noise-stripping; a live
+// run A trace showed waves 2-3 re-running near-identical hub searches for
+// zero new sources).
+export function hfTermKey(query) {
+  return hfTerms(query).join(" ");
 }
 
 // ---- pure mappers: one Hub API item -> one source-registry item ------------

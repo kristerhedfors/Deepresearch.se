@@ -49,7 +49,7 @@ import {
 } from "./conversation.js";
 import { runGoogleMapsEnrichment, runShodanEnrichment } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
-import { hfIntent, hfSearch } from "./hf.js";
+import { hfIntent, hfSearch, hfTermKey } from "./hf.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
@@ -871,40 +871,60 @@ async function runSearches(ctx, queries, round) {
 // Hugging Face Hub search alongside a wave's Exa searches — only when the
 // question explicitly targets Hugging Face (hfIntent on the latest user
 // message, so an ordinary question costs nothing and shows no spurious
-// step), capped at 3 waves per request. Uses the wave's first planned query
-// (the most on-topic angle; every planned query is self-contained per the
-// triage rules). Runs AFTER the Exa batch is processed so source numbering
-// stays deterministic. Fully fail-soft: an HF API failure degrades to the
-// Exa-only registry. The results are ordinary registry sources — the
-// per-owner diversity keying in sources.js (diversityKeyOf) keeps the
-// domain cap meaningful for them. HF Hub search is free — nothing is
-// billed or counted against the Exa search quota.
+// activity), capped at 3 waves per request and deduped across waves by term
+// set (hfTermKey — gap-round follow-ups often reduce to the same terms; a
+// run A trace showed repeat hub searches returning zero new sources). Uses
+// the wave's first planned query (the most on-topic angle; every planned
+// query is self-contained per the triage rules). Runs AFTER the Exa batch
+// is processed so source numbering stays deterministic.
+//
+// Emits ordinary search_start/search_done events (query labeled
+// "Hugging Face Hub: …") rather than a generic step: search_done is the
+// event the client's source panel, buildResearchDebugJson, and the eval
+// harnesses reconstruct the source registry from — a run A trace showed
+// step-only hub results being invisible to all three (cited [n] in the
+// answer but absent from every reconstructed registry, including the one
+// the eval judge fact-checks against). Not counted into state.searchCount,
+// so Exa billing/quota are untouched (HF Hub search is free).
+//
+// Fully fail-soft: an HF API failure degrades to the Exa-only registry
+// (search_done with 0 results). The per-owner diversity keying in
+// sources.js (diversityKeyOf) keeps the domain cap meaningful for the
+// admitted sources.
 const MAX_HF_SEARCHES = 3;
 async function maybeHfSearch(ctx, batch, round) {
-  const { env, log, state } = ctx;
+  const { env, log, emit, state } = ctx;
   if (!batch.length || !hfIntent(ctx.lastUser)) return;
   if ((state.hfSearchCount || 0) >= MAX_HF_SEARCHES) return;
+  const query = batch[0];
+  const termKey = hfTermKey(query);
+  state.hfRanQueries ||= new Set();
+  if (state.hfRanQueries.has(termKey)) return;
+  state.hfRanQueries.add(termKey);
   state.hfSearchCount = (state.hfSearchCount || 0) + 1;
-  const stepId = `hf${round}`;
-  ctx.step(stepId, "Searching Hugging Face Hub…");
+
+  const label = `Hugging Face Hub: ${termKey || query}`;
+  emit({ status: { type: "search_start", round, query: label } });
+  let items = [];
+  let durationMs = 0;
   try {
-    const { items } = await hfSearch(env, log, batch[0]);
-    if (!items.length) {
-      ctx.stepDone(stepId, "Hugging Face Hub: no matching models, datasets, or papers");
-      return;
-    }
-    const before = state.sources.length;
-    addSources(state, items);
-    const added = state.sources.length - before;
-    ctx.stepDone(
-      stepId,
-      `Hugging Face Hub: ${items.length} result${items.length === 1 ? "" : "s"} (${added} new source${added === 1 ? "" : "s"})`,
-      items.map((i) => i.title),
-    );
+    const r = await hfSearch(env, log, query);
+    items = r.items;
+    durationMs = r.durationMs;
   } catch (err) {
     log.warn("hf.search_failed", { error: err?.message || String(err) });
-    ctx.stepDone(stepId, "Hugging Face Hub search unavailable — continuing with web results");
   }
+  emit({
+    status: {
+      type: "search_done",
+      round,
+      query: label,
+      results: items.length,
+      duration_ms: durationMs,
+      sources: items.map((i) => ({ title: i.title, url: i.url })),
+    },
+  });
+  addSources(state, items);
 }
 
 // Streams one chat completion to the client; returns the full text.

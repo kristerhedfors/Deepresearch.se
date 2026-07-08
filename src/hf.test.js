@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   hfAttempts,
   hfIntent,
+  hfTermKey,
   hfTerms,
   toDatasetItem,
   toModelItem,
@@ -46,19 +47,43 @@ describe("hfTerms — noise stripping for the name-substring endpoints", () => {
   });
 });
 
-describe("hfAttempts — the token-drop ladder", () => {
-  test("all terms, then last two, then single longest — deduped", () => {
+describe("hfAttempts — the distinctive-term ladder", () => {
+  test("full join first, then singles with the distinctive (non-generic) term ranked ahead", () => {
+    // The run A junk case: naive term-dropping degraded "swedish speech
+    // recognition" to "speech recognition" (irrelevant popular repos). The
+    // fallback singles must lead with "swedish", the only non-generic term.
     assert.deepEqual(hfAttempts(["swedish", "speech", "recognition"]), [
       "swedish speech recognition",
+      "swedish",
+      "recognition",
+    ]);
+  });
+
+  test("generic-only terms still rank by length", () => {
+    assert.deepEqual(hfAttempts(["speech", "recognition"]), [
       "speech recognition",
       "recognition",
+      "speech",
     ]);
   });
 
   test("short inputs don't produce redundant attempts", () => {
     assert.deepEqual(hfAttempts(["whisper"]), ["whisper"]);
-    assert.deepEqual(hfAttempts(["whisper", "swedish"]), ["whisper swedish", "whisper"]);
+    assert.deepEqual(hfAttempts(["whisper", "swedish"]), ["whisper swedish", "whisper", "swedish"]);
     assert.deepEqual(hfAttempts([]), []);
+  });
+});
+
+describe("hfTermKey — the cross-wave dedup key", () => {
+  test("same terms after noise-stripping give the same key", () => {
+    assert.equal(
+      hfTermKey("most downloaded Swedish speech recognition models on Hugging Face"),
+      hfTermKey("swedish speech recognition huggingface"),
+    );
+  });
+
+  test("noise-only queries key to the empty string", () => {
+    assert.equal(hfTermKey("most popular models on the hub"), "");
   });
 });
 
