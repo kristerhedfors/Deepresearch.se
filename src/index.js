@@ -32,6 +32,7 @@ import { handleAdminApi } from "./admin-api.js";
 import { handleAnswerAck, handleAnswerGet } from "./answers.js";
 import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
 import { handleChat } from "./chat.js";
+import { handleMcp } from "./mcp.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
@@ -201,6 +202,13 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/chat" && request.method === "POST") {
     return handleChat(request, env, log, identity, ctx, requestId);
+  }
+  // MCP server (Streamable HTTP, JSON-RPC 2.0): exposes the research pipeline
+  // as a `deep_research` tool for other agents. Placed after the identity gate
+  // so it inherits the same access control (break-glass Basic Auth header or a
+  // signed-in session).
+  if (url.pathname === "/mcp" && request.method === "POST") {
+    return handleMcp(request, env, log, identity, ctx, requestId);
   }
   // Answer recovery (src/answers.js): poll a dropped stream's finished
   // answer back, or ack an intact delivery so the cached copy is purged.
