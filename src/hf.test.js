@@ -264,6 +264,10 @@ describe("hfBuildAttempts — filtered browse first, name ladder as fallback", (
     const d = hfBuildAttempts(plan, "datasets");
     assert.match(m[0].filters[0], /^pipeline_tag=text-classification/);
     assert.match(d[0].filters[0], /^task_categories=text-classification/);
+    // Language filter is models-only (dataset language tags are unreliable —
+    // probe-established: ?language=sv returned github-code etc).
+    assert.ok(m[0].filters.some((f) => f === "language=sv"));
+    assert.ok(!d[0].filters.some((f) => f.startsWith("language=")));
   });
 
   test("no filters → pure name ladder with plain keys", () => {

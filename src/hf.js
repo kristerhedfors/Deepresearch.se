@@ -295,7 +295,12 @@ export function hfBuildAttempts(plan, kind) {
   if (plan.task && (kind === "models" || DATASET_TASKS.has(plan.task))) {
     filters.push(`${kind === "models" ? "pipeline_tag" : "task_categories"}=${plan.task}`);
   }
-  if (plan.lang) filters.push(`language=${plan.lang}`);
+  // Language filter: MODELS only. Established empirically (probe + live run,
+  // 2026-07-08): datasets?language=sv returns mislabeled/multilingual junk
+  // (github-code, fineweb-tokenized), while the models language tags are
+  // reliable. The remaining terms still carry the language word implicitly
+  // for datasets via the name ladder fallback.
+  if (plan.lang && kind === "models") filters.push(`language=${plan.lang}`);
   if (filters.length) {
     const q = plan.terms.join(" ");
     out.push({ q, filters, key: `${kind}:${filters.join("&")}|${q}` });
