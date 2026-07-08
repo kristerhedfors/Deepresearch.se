@@ -15,6 +15,7 @@ import {
   renderStreetViewFrames,
   resetStreetViewPov,
   sanitizeResearchEvent,
+  settlePendingSteps,
   startGenericStep,
   startSearchStep,
   updateGenericStep,
@@ -251,16 +252,16 @@ function ackAnswer(requestId) {
 // elapsed counter so a long research run reads as progress, not a frozen
 // app.
 //
-// `startLabel` null → SILENT recovery: poll WITHOUT adding any banner, so an
-// in-session drop keeps showing exactly the research banners already on
-// screen (plan ✓, search ✓, gap check spinning…) — the research genuinely
-// continued on the server, so "the same view as before" is the honest one,
-// no "connection lost" overlay. The turn's own typing icon already signals
-// in-progress. A banner is shown only for a boot RESUME, where the page
-// reloaded and there are NO existing banners to keep; there its counter is
-// driven by its own 1-second ticker, decoupled from the (slower,
-// latency-variable) network poll so it ticks evenly instead of lurching by
-// the poll interval.
+// `startLabel` null → SILENT recovery: poll WITHOUT adding any banner. This
+// was originally the DEFAULT for in-session drops ("keep the banners already
+// on screen — the honest view"), but that design failed in production
+// (2026-07-08, request a77001ac): the surviving banner was a single spinning
+// "Checking Google Maps…" step that never advances (step_done events aren't
+// replayed to a dead stream), so a 203s server run read as STUCK FOREVER.
+// In-session drops now settle the dead spinners and show this step's live
+// elapsed counter too — the counter is driven by its own 1-second ticker,
+// decoupled from the (slower, latency-variable) network poll so it ticks
+// evenly instead of lurching by the poll interval.
 async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = null) {
   if (!requestId) return { data: null, reason: "gone" };
   const showStep = !!startLabel;
@@ -780,8 +781,16 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
 
   // The server finishes the research even when our connection dies and
   // parks the answer in a short-lived recovery cache — poll it back
-  // before bothering the user.
-  const { data: recovered, reason } = await recoverAnswer(turn, requestId, opts.budgetS, gen);
+  // before bothering the user. Settle whatever spinner the dead stream left
+  // behind (it can never receive its step_done) and show a live ticking
+  // banner instead — a frozen "Checking Google Maps…" spinner reads as
+  // stuck forever (reported), while "Still researching… (Ns)" reads as the
+  // progress it actually is.
+  settlePendingSteps(turn);
+  const { data: recovered, reason } = await recoverAnswer(
+    turn, requestId, opts.budgetS, gen,
+    "Connection dropped — research continues on the server…",
+  );
   recordResearchEvent(turn, {
     event: "stream_dropped",
     error: String(e?.message || e),

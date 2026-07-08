@@ -327,7 +327,14 @@ async function describeStreetView(env, log, state, intro, images, question = "")
       });
       return "";
     }
-    const { text, usage } = await consumeChatStream(upstream.body, () => {});
+    // Bounded read: the describe runs BEFORE triage, so an accepted-but-
+    // stalled vision stream would otherwise hang the entire request on
+    // "Checking Google Maps…" with no way out. A tripped guard throws into
+    // the catch below — description degrades to "", the chat proceeds.
+    const { text, usage } = await consumeChatStream(upstream.body, () => {}, {
+      idleMs: 20_000,
+      maxMs: 45_000,
+    });
     addUsage(state.visionTotals, usage);
     return (text || "").trim();
   } catch (err) {

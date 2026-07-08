@@ -154,7 +154,8 @@ clone-not-share of nested fields), `alerts.js` (error classification),
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`
-(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`),
+(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`), `berget.js`
+(`consumeChatStream`: SSE parsing + the opt-in idle/total stream guards),
 `pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),

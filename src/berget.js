@@ -164,17 +164,58 @@ export function chatCompletion(env, messages, { model } = {}) {
 // Consumes one OpenAI-style SSE response body. Calls `onText` for each text
 // delta as it arrives, and accumulates usage stats and the finish reason.
 //
+// Optional guards — the connect timeout above deliberately stops covering a
+// stream once headers arrive, so a backend that ACCEPTS the request and then
+// stalls mid-generation hangs the read loop forever (the same silent-hang
+// family as the round-2 finding, one layer later). `idleMs` bounds the wait
+// for each next chunk; `maxMs` bounds the whole consumption. Either tripping
+// cancels the reader and THROWS a normal, catchable error. Both default OFF
+// so the answer-synthesis path (where a long silent think can be legitimate
+// on a reasoning model) is unchanged — helper calls that run BEFORE the
+// pipeline (the Street View vision-describe, which blocks everything
+// downstream) opt in.
+//
 // Returns { text, usage, finishReason }.
-export async function consumeChatStream(body, onText) {
+export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } = {}) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
   let usage = null;
   let finishReason = null;
+  const startedAt = Date.now();
+
+  const nextChunk = async () => {
+    if (!idleMs && !maxMs) return reader.read();
+    const budgets = [];
+    if (idleMs) budgets.push(idleMs);
+    if (maxMs) budgets.push(maxMs - (Date.now() - startedAt));
+    const waitMs = Math.min(...budgets);
+    if (waitMs <= 0) {
+      reader.cancel().catch(() => {});
+      throw new Error(`Berget stream exceeded its ${maxMs}ms total budget — treating as hung`);
+    }
+    let timer;
+    try {
+      return await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Berget stream produced nothing for ${waitMs}ms — treating as hung`)),
+            waitMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      reader.cancel().catch(() => {});
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   while (true) {
-    const { done, value } = await reader.read();
+    const { done, value } = await nextChunk();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");

@@ -381,7 +381,7 @@ export function renderStats(turn, s) {
 // Settle them neutrally: remove the spinner and add a muted mark, not the
 // green ✓ (we don't have the step's verified result, only that the run has
 // ended). Idempotent and safe to call on already-finished steps.
-function settlePendingSteps(turn) {
+export function settlePendingSteps(turn) {
   const settle = (step) => {
     if (!step || step.details.classList.contains("finished")) return;
     step.summary.querySelector(".spin")?.remove();

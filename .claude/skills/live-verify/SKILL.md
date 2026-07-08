@@ -64,16 +64,19 @@ description: >-
   client's `recoverAnswer` now returns `{data, reason}`
   (done/lost/gone/empty/timeout/aborted): on `lost` it stops within
   ~50-65s (not 12 min) with an honest "interrupted on the server — try
-  again, lower the budget if it recurs" message. `recoverAnswer` polls
-  SILENTLY by default (`startLabel` null): an in-session drop keeps showing
-  exactly the research banners already on screen (plan ✓, search ✓, gap
-  check spinning…) — the research genuinely continued server-side, so "the
-  same view as before" is the honest one, with no "connection lost" overlay;
-  the turn's own typing icon already signals in-progress. A banner (with a
-  live "Still researching… (Ns)" counter, driven by its own 1-second ticker
-  decoupled from the 4s poll so it ticks evenly) is shown ONLY for a boot
-  RESUME (`resumePendingAnswer`), where the page reloaded and there are no
-  existing banners to keep. (The SERVER-side D1 heartbeat stays at 15s — it
+  again, lower the budget if it recurs" message. `recoverAnswer` originally polled
+  SILENTLY for in-session drops (keep the banners already on screen — "the
+  honest view"), but that failed in production (2026-07-08, a77001ac): the
+  surviving banner was ONE spinning "Checking Google Maps…" step that can
+  never advance (step_done events aren't replayed to a dead stream), so a
+  203s server run — slow purely because an eval battery was hammering
+  Berget concurrently — read as STUCK FOREVER and was reported as such.
+  In-session drops now settle the dead spinners (`settlePendingSteps`) and
+  show the same ticking banner as a boot resume ("Connection dropped —
+  research continues on the server…", then a live "Still researching… (Ns)"
+  counter driven by its own 1-second ticker decoupled from the 4s poll so
+  it ticks evenly). The boot-RESUME path (`resumePendingAnswer`) is
+  unchanged. (The SERVER-side D1 heartbeat stays at 15s — it
   only needs to beat often enough for the 50s stale window; a per-second D1
   write would be wasteful.)
   It makes an interrupted run fail fast and truthfully instead of hanging

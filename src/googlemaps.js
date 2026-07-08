@@ -629,10 +629,12 @@ function staticMapUrl(env, location) {
 // gated follow-up — without a cache each one re-bills Places + five imagery
 // fetches at Google. Workers Cache API (caches.default): durable across
 // requests in a colo, no binding needed, fail-soft in every branch. Short TTL
-// only — enough to absorb a follow-up exchange, well inside Google's
+// only — enough to absorb a whole session of follow-ups about one address
+// (raised from 10 to 30 min after a user asking repeatedly about the same
+// address in one sitting), still comfortably inside Google's
 // performance-caching allowance (Street View imagery itself changes on a
 // timescale of years).
-const LOOKUP_CACHE_TTL_S = 600;
+const LOOKUP_CACHE_TTL_S = 1800;
 
 function lookupCacheKey(target, fetchImages) {
   const params = new URLSearchParams({
