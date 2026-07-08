@@ -285,8 +285,10 @@ export function referencesStreetView(text) {
 const SCENE_REFERENCE_RE = new RegExp(
   "(?<![\\p{L}\\p{M}])(?:" +
     // people & animals
-    "person|people|man|men|woman|women|child(?:ren)?|kids?|guys?|pedestrians?|someone|anyone|crowd|dogs?|cats?|" +
+    "person|people|man|men|woman|women|child(?:ren)?|kids?|guys?|dudes?|folks?|gentleman|lady|pedestrians?|someone|anyone|crowd|dogs?|cats?|" +
     "person(?:en|er|erna)?|människ(?:a|an|or|orna)|man(?:nen)?|män(?:nen)?|kvinn(?:a|an|or|orna)|barn(?:et|en)?|någon|folk|hund(?:en|ar)?|katt(?:en|er)?|" +
+    // person-deictic pronouns ("what is he wearing?", "vem är hon?")
+    "he|she|him|her|han|hon|honom|henne|" +
     // vehicles
     "vehicles?|vans?|trucks?|bus(?:es)?|bikes?|bicycles?|motorcycles?|scooters?|" +
     "fordon(?:et|en)?|bil(?:en|ar|arna)?|lastbil(?:en|ar)?|buss(?:en|ar|arna)?|cykel(?:n)?|cyklar(?:na)?|moped(?:en)?|" +
@@ -296,8 +298,9 @@ const SCENE_REFERENCE_RE = new RegExp(
     "skylt(?:en|ar|arna)?|affär(?:en|er|erna)?|butik(?:en|er|erna)?|restaurang(?:en|er|erna)?|" +
     "träd(?:et|en)?|staty(?:n|er)?|flagg(?:a|an|or)|bänk(?:en|ar)?|" +
     // bare deictic references — the user is pointing at the scene
-    "that|this|it|these|those|there|" +
-    "det|den|där|här|denna|detta|dessa|dom|" +
+    // ("The one in view" — reported verbatim — carries ONLY these signals)
+    "that|this|it|these|those|there|views?|(?:the|that|this) ones?|" +
+    "det|den|där|här|denna|detta|dessa|dom|vyn?|(?:den|det) här|" +
     // positional phrasing within the view
     "left|right|behind|ahead|front|corner|opposite|across|next to|" +
     "vänster|höger|bakom|framför|hörn(?:et)?|mittemot|bredvid|" +

@@ -273,6 +273,16 @@ describe("referencesStreetViewScene (the loose POV-path gate)", () => {
     assert.equal(referencesStreetViewScene("vad finns till vänster?"), true);
   });
 
+  test("matches the third reported round verbatim — 'Describe the dude' / 'The one in view'", () => {
+    // Screenshot 2026-07-08 15:23 (pre-deploy of the deictic round): both
+    // turns got "Need to narrow the scope first" clarifies while the person
+    // stood in the panorama.
+    assert.equal(referencesStreetViewScene("Describe the dude"), true);
+    assert.equal(referencesStreetViewScene("The one in view"), true);
+    assert.equal(referencesStreetViewScene("what is he wearing?"), true);
+    assert.equal(referencesStreetViewScene("vem är hon?"), true);
+  });
+
   test("still ignores follow-ups with no reference to the scene at all", () => {
     assert.equal(referencesStreetViewScene("summarize the sources"), false);
     assert.equal(referencesStreetViewScene("what does the company do?"), false);
