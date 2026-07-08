@@ -192,20 +192,34 @@ export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
 // long tiers (mirroring searchDepth's own 240s boundary). Under runtime
 // deadline pressure each phase additionally gates on fitsDeadline and is
 // dropped before synthesis/validation.
+//
+// DISABLED (2026-07): a de-noised benchmark (4 samples/cell, tests/
+// denoise-driver.mjs) found these three phases NET-NEGATIVE at the deep tier —
+// batch overall 2.65 (off) → 2.43 (on), with real regressions on focused
+// recency/contested questions (calibration bled as distilled notes + full-page
+// text diluted the answer) and NO real gain on multi-hop (1.67 → 1.89, inside
+// the noise). Multi-hop needs sub-question decomposition, not more source
+// material. So the activation is flipped off via this one flag while the code
+// is kept for a future INTENT-gated rework (run these only for genuinely broad/
+// multi-hop questions, decided by triage — not by budget alone), to be
+// re-enabled only once the benchmark shows a real gain. The schema hardening in
+// pipeline.js is unaffected (harmless — it only normalizes JSON behind the
+// existing fail-soft fallbacks). Re-enable by flipping this to true.
+const DEEP_TIER_FEATURES_ENABLED = false;
 
 // Per-wave notes digest: mid tier and up (never at the ≤60s default).
 export function wantsNotes(plan) {
-  return !!plan && plan.budgetS >= 120;
+  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 120;
 }
 
 // Full-content fetch of the top sources: only the long tiers (≥240s), where
 // there is budget to read whole pages, matching searchDepth's 240s boundary.
 export function wantsFullContent(plan) {
-  return !!plan && plan.budgetS >= 240;
+  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
 }
 
 // Claim-level (per-claim) validation instead of the single whole-draft pass:
 // long tiers only. A tight budget still runs the cheap single-pass validate.
 export function wantsClaimValidation(plan) {
-  return !!plan && plan.budgetS >= 240;
+  return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
 }

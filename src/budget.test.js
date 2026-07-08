@@ -139,18 +139,24 @@ describe("budget-tier gates for the deep-research phases", () => {
     }
   });
 
-  test("notes turn on at the mid tier (>=120s), still no full-content/claim yet", () => {
+  // DISABLED (2026-07): the deep-tier phases are gated off by the
+  // DEEP_TIER_FEATURES_ENABLED flag in budget.js after a de-noised benchmark
+  // found them net-negative (see the flag's comment). While off, every gate
+  // returns false at every tier — so the mid/long tiers behave like the
+  // default. The tier boundaries (120s / 240s) are preserved in the gate
+  // bodies for the future intent-gated re-enable.
+  test("deep-tier phases stay off even at the mid tier (>=120s) while disabled", () => {
     const p = plan(120);
-    assert.equal(wantsNotes(p), true);
+    assert.equal(wantsNotes(p), false);
     assert.equal(wantsFullContent(p), false);
     assert.equal(wantsClaimValidation(p), false);
   });
 
-  test("full-content and claim-level validation unlock at the long tier (>=240s)", () => {
+  test("deep-tier phases stay off even at the long tier (>=240s) while disabled", () => {
     const p = plan(300);
-    assert.equal(wantsNotes(p), true);
-    assert.equal(wantsFullContent(p), true);
-    assert.equal(wantsClaimValidation(p), true);
+    assert.equal(wantsNotes(p), false);
+    assert.equal(wantsFullContent(p), false);
+    assert.equal(wantsClaimValidation(p), false);
   });
 
   test("the gates tolerate a missing/garbage plan without throwing", () => {
