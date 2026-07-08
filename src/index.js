@@ -318,10 +318,70 @@ function htmlResponse(html, status) {
   });
 }
 
+// Content-Security-Policy for every response. The app renders untrusted LLM
+// output and third-party web-search content into the DOM, so this is the
+// second line of defense behind DOMPurify (markdown.js): even a sanitizer
+// bypass or a tampered vendored purify.min.js cannot execute injected script
+// under this policy.
+//
+// script-src is a strict allowlist — 'self' (the ES-module app + vendored
+// libs), the two Google Maps hosts (the Street View SDK, loaded on demand),
+// and the sha256 hashes of the ONLY two inline scripts in the whole surface:
+// index.html's non-module boot guard and story/index.html's inline module.
+// There is NO 'unsafe-inline' and NO 'unsafe-eval', so injected inline
+// <script> / on*= handlers do not run. If either inline script is edited,
+// recompute its hash (the boot guard only loses its safety net on a mismatch;
+// the core app is external modules and is unaffected):
+//   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
+// Maps pulls tiles/styles/XHR from *.googleapis.com / *.gstatic.com; if any
+// Maps subresource is ever blocked, renderStreetViewEmbed already fails soft
+// to the keyless google.com Embed iframe (frame-src), so Street View degrades
+// rather than breaking. img-src stays broad (data:/blob:/https:) for user
+// uploads, server data-URL frames, and Maps imagery.
+const BOOT_GUARD_HASH = "'sha256-w5cPLY1sDxZyXuQvRq2aJ4i2L1jyBf4ulNgTL0pzf10='";
+const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  `script-src 'self' https://maps.googleapis.com https://maps.gstatic.com ${BOOT_GUARD_HASH} ${STORY_INLINE_HASH}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "media-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self' blob:",
+  "connect-src 'self' https://*.googleapis.com https://*.gstatic.com",
+  "frame-src https://www.google.com",
+  "upgrade-insecure-requests",
+].join("; ");
+
+// Applied to every response (see below). frame-ancestors (CSP) plus
+// X-Frame-Options both block clickjacking of the authenticated app; nosniff
+// stops MIME confusion on served/stored content; HSTS pins HTTPS; the
+// Referrer-Policy / COOP / Permissions-Policy lines minimize leakage and
+// cross-window/API exposure. All are static and carry no breakage risk.
+const SECURITY_HEADERS = {
+  "content-security-policy": CSP,
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "cross-origin-opener-policy": "same-origin",
+  "permissions-policy": "geolocation=(), microphone=(), camera=(), payment=()",
+};
+
 // Every response carries x-request-id so a user report can be correlated
-// with the matching log entries. Clone first: asset responses are immutable.
+// with the matching log entries, plus the site-wide security headers. Clone
+// first: asset responses are immutable.
 function withRequestId(response, requestId) {
   const out = new Response(response.body, response);
   out.headers.set("x-request-id", requestId);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    // Don't clobber a header a handler set deliberately (none set these today).
+    if (!out.headers.has(name)) out.headers.set(name, value);
+  }
   return out;
 }

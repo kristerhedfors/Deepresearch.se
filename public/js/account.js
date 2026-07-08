@@ -457,6 +457,16 @@ function formatPersonalMessage(m) {
   return { icon: "ℹ", text: "Account update", when };
 }
 
+// "Seen 3× · first 08/07/2026, 21:40 · last 08/07/2026, 22:12" (or just the
+// timestamp for a single occurrence) — an alert's when-line for the message
+// center. Alerts dedupe into one row with a count (src/alerts.js), so the
+// first/last spread is the honest picture of a repeating problem.
+function alertTimestampLine(a) {
+  const last = new Date(a.last_seen_at).toLocaleString();
+  if (!a.count || a.count <= 1) return last;
+  return `Seen ${a.count}× · first ${new Date(a.first_seen_at).toLocaleString()} · last ${last}`;
+}
+
 function renderMessages(personal, admin) {
   const personalHtml = personal.length
     ? personal
@@ -482,6 +492,11 @@ function renderMessages(personal, admin) {
       </div>`,
       )
       .join("");
+    // Each alert row carries its timestamp (last occurrence, plus the count
+    // and first occurrence when it repeated) — reported 2026-07-08: an
+    // LLM-provider alert with no way to tell WHEN it happened, which is the
+    // first thing needed to correlate it with a stuck run. Same fields the
+    // /admin notification center already shows, compacted for this panel.
     const alertRows = (admin.alerts || [])
       .filter((a) => !a.acknowledged_at)
       .map(
@@ -489,7 +504,8 @@ function renderMessages(personal, admin) {
       <div class="msg-row">
         ${alertSeverityBadge(a)}
         <div><div>${escapeHtml(a.message)}</div>
-        <div class="muted msg-when">${escapeHtml(a.remediation || "")}</div></div>
+        ${a.remediation ? `<div class="muted msg-when">${escapeHtml(a.remediation)}</div>` : ""}
+        <div class="muted msg-when">${escapeHtml(alertTimestampLine(a))}</div></div>
         <button data-act="ack" data-id="${a.id}">Dismiss</button>
       </div>`,
       )

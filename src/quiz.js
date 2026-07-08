@@ -32,22 +32,41 @@ export const MAX_QUIZ_ALTERNATIVES = 6;
 // accidentally become a quiz, and phrased-as-a-request patterns are required:
 // bare mentions ("what is a pub quiz?") don't trigger. English + Swedish,
 // matching the user base of the rest of the intent gates.
+//
+// "[qw]uiz": the FIRST production quiz request (2026-07-08, ref 614e6f19)
+// arrived as "Bygg en wuiz på 10 varierade frågor…" — a q→w adjacent-key
+// typo that defeated the gate and dumped the questions as a plain research
+// answer. Tolerating the mistyped first letter is cheap and unambiguous
+// ("wuiz" means nothing else); triage also carries a fail-soft `quiz` flag
+// as the catch-all for paraphrases the regexes can't foresee
+// (prompts.js triagePrompt, pipeline.js runPipeline).
 const QUIZ_REQUEST_PATTERNS = [
-  /\b(?:quiz|quizza|förhör|grill|test|testa)\s+(?:me|mig|us|oss)\b/i, // "quiz me", "förhör mig", "testa mig"
-  /\b(?:make|create|generate|build|prepare|start|run|give\s+me|skapa|gör|bygg|ge\s+mig|kör|starta)\b[^.?!\n]{0,60}?\b(?:quiz|kunskapstest|förhör)\b/i,
+  /\b(?:[qw]uiz(?:za)?|förhör|grill|test|testa)\s+(?:me|mig|us|oss)\b/i, // "quiz me", "förhör mig", "testa mig"
+  /\b(?:make|create|generate|build|prepare|start|run|give\s+me|skapa|gör|bygg|ge\s+mig|kör|starta)\b[^.?!\n]{0,60}?\b(?:[qw]uiz|kunskapstest|förhör)\b/i,
   /\btest(?:a)?\s+(?:my|our|mina|min|våra)\s+(?:knowledge|kunskap(?:er)?)\b/i,
-  /^\s*quiz\b/i, // "quiz: chapter 3", "quiz om Frankrike"
+  /^\s*[qw]uiz\b/i, // "quiz: chapter 3", "quiz om Frankrike"
 ];
 
-// "with 8 questions" / "med 8 frågor" / "10 q" — the requested length.
-const QUESTION_COUNT_RE = /(\d{1,2})\s*(?:questions?|frågor|fråga|q\b)/i;
+// "with 8 questions" / "med 8 frågor" / "10 q" — the requested length. Up to
+// two words may sit between the number and the noun ("10 varierade frågor",
+// "5 hard questions" — the production request above carried exactly this
+// shape and the count was missed).
+const QUESTION_COUNT_RE = /(\d{1,2})\s*(?:[\p{L}-]+\s+){0,2}?(?:questions?|frågor|fråga|q\b)/iu;
+
+// The requested question count parsed on its own (null when the message
+// names none) — quizIntent uses it, and pipeline.js reuses it when the
+// triage `quiz` flag (not this module's regexes) detected the request.
+export function quizQuestionCount(text) {
+  const m = String(text || "").match(QUESTION_COUNT_RE);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n ? Math.min(MAX_QUIZ_QUESTIONS, Math.max(1, n)) : null;
+}
 
 export function quizIntent(text) {
   const s = String(text || "");
   if (!QUIZ_REQUEST_PATTERNS.some((re) => re.test(s))) return null;
-  const m = s.match(QUESTION_COUNT_RE);
-  const n = m ? Number(m[1]) : DEFAULT_QUIZ_QUESTIONS;
-  return { questions: Math.min(MAX_QUIZ_QUESTIONS, Math.max(1, n || DEFAULT_QUIZ_QUESTIONS)) };
+  return { questions: quizQuestionCount(s) || DEFAULT_QUIZ_QUESTIONS };
 }
 
 // ---- quiz JSON hardening -------------------------------------------------

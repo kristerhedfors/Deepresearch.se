@@ -6,6 +6,7 @@ import {
   normalizeGradeResults,
   normalizeQuiz,
   quizIntent,
+  quizQuestionCount,
   validateGradeItems,
 } from "./quiz.js";
 
@@ -56,6 +57,22 @@ describe("quizIntent", () => {
     assert.deepEqual(quizIntent("förhör mig med 3 frågor om kapitlet"), { questions: 3 });
     assert.deepEqual(quizIntent("quiz me with 1 question"), { questions: 1 });
     assert.deepEqual(quizIntent("quiz me with 99 questions"), { questions: MAX_QUIZ_QUESTIONS });
+  });
+
+  test("survives the first production request verbatim: q→w typo AND words between count and noun", () => {
+    // 2026-07-08, ref 614e6f19: this exact message fell through to a plain
+    // research answer — "wuiz" defeated the word patterns and "10 varierade
+    // frågor" defeated the count parse.
+    assert.deepEqual(quizIntent("Bygg en wuiz på 10 varierade frågor från segelflyghandboken"), { questions: 10 });
+    assert.deepEqual(quizIntent("wuiz me on chapter 3"), { questions: DEFAULT_QUIZ_QUESTIONS });
+  });
+
+  test("quizQuestionCount parses standalone counts with up to two intervening words, else null", () => {
+    assert.equal(quizQuestionCount("på 10 varierade frågor"), 10);
+    assert.equal(quizQuestionCount("give me 5 really hard questions"), 5);
+    assert.equal(quizQuestionCount("quiz me on chapter 12"), null); // a number with no question noun
+    assert.equal(quizQuestionCount("no numbers here"), null);
+    assert.equal(quizQuestionCount(""), null);
   });
 });
 

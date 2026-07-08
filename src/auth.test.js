@@ -20,10 +20,13 @@ test("SESSION_SECRET-signed admin cookie verifies", async () => {
   assert.equal(id?.role, "admin");
 });
 
-test("legacy admin-cred cookie still verifies after SESSION_SECRET added (no forced logout)", async () => {
+test("legacy admin-cred cookie is REJECTED once SESSION_SECRET is set (one-time re-login; closes the offline brute-force exposure)", async () => {
+  // Honoring the admin-derived key alongside a real SESSION_SECRET would keep
+  // every cookie offline-brute-forceable against ADMIN_PASS. The security
+  // property wins over the convenience of no forced logout: a pre-existing
+  // legacy cookie no longer verifies after SESSION_SECRET is introduced.
   const legacy = cookieOf(await createSessionCookie(admin, "admin"));
-  const id = await identify(reqWith(legacy), withSecret);
-  assert.equal(id?.role, "admin");
+  assert.equal(await identify(reqWith(legacy), withSecret), null);
 });
 
 test("SESSION_SECRET cookie is decoupled from the admin password (survives ADMIN_PASS rotation)", async () => {

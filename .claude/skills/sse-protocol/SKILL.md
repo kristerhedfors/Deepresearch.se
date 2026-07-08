@@ -70,8 +70,10 @@ unknown `status` types (forward compatibility).
   type that renders a persistent turn-body element must do the same (see
   the **add-research-source** skill, section 6).
 - `{"status":{"type":"quiz","quiz":{"title":"…","intro":"…","questions":[{"question":"…","alternatives":["…","…"],"correct":1,"explanation":"…"}]}}}`
-  — the inline-quiz capability (src/quiz.js's deterministic `quizIntent` gate
-  + src/pipeline.js's `runQuizGeneration`; /api/chat channel only, gated by
+  — the inline-quiz capability (src/quiz.js's deterministic `quizIntent`
+  gate, with a fail-soft triage `quiz:true` backup flag for typos/paraphrases
+  the regexes miss — the first production request arrived as "Bygg en wuiz…"
+  — + src/pipeline.js's `runQuizGeneration`; /api/chat channel only, gated by
   `state.quizzes` — the MCP channel keeps getting plain text). The quiz
   REPLACES synthesis as the answer: the `intro` streams first as ordinary
   deltas (that's the assistant message history/chatlog/answer-recovery hold),

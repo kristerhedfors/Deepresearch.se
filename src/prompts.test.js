@@ -65,6 +65,13 @@ describe("triagePrompt", () => {
     assert.match(p, /never "clarify" a quiz request that names its topic or material/);
   });
 
+  test("asks for the quiz backup flag on typos/paraphrases the deterministic gate misses", () => {
+    const p = triagePrompt(3);
+    assert.match(p, /"quiz":true/);
+    assert.match(p, /misspellings \("wuiz"\)/);
+    assert.match(p, /omit the field entirely/);
+  });
+
   test("asks for a complexity classification with all four kinds", () => {
     const p = triagePrompt(4);
     assert.match(p, /"complexity"/);

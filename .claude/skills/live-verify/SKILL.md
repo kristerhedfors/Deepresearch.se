@@ -81,6 +81,25 @@ description: >-
   write would be wasteful.)
   It makes an interrupted run fail fast and truthfully instead of hanging
   on an indefinite spinner.
+- **Recovery deadline extends while the heartbeat confirms life, and Stop
+  ends the wait (2026-07-08, ref 614e6f19)**: a 20s-budget quiz request
+  legitimately took 251s server-side (synthesis stalls/retries on a loaded
+  Mistral Medium), finished COMPLETE, and parked its answer — but the
+  client's fixed `budget+120s` poll deadline had already abandoned it at
+  140s, and pressing Stop during the wait did NOTHING (the original
+  request's AbortController was already aborted, so `stopGeneration()` had
+  no live target). Two fixes in `stream.js`'s `recoverAnswer`: (1) every
+  poll that confirms `running` extends the deadline by a rolling 90s
+  window, hard-capped at the server's 15-min answer TTL — the initial
+  budget-derived deadline now only bounds the wait for a FIRST sign of
+  life, and a dead run still exits fast via the `lost` heartbeat check
+  above; (2) both recovery paths (in-session `handleNetworkFailure` and
+  boot `resumePendingAnswer`) claim a FRESH AbortController into the
+  module's `controller` slot and pass its signal into the poll loop (the
+  4s poll sleep is abort-aware), so the composer's Stop button ends the
+  wait immediately — reason `"stopped"`, settled like a live-stream stop
+  (partial text kept as context, composer and conversation buttons back) —
+  while the server run finishes and parks its answer unobserved.
 - **Client stall watchdog (the "switched to another app" fix)**: server
   survival + the recovery poll only help if the client actually NOTICES
   its stream died. On iOS a backgrounded PWA is frozen and its socket
