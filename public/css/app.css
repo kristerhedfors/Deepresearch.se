@@ -90,8 +90,11 @@ header {
   overflow-y: auto;
   overflow-x: hidden;
   /* Top/bottom padding clears the fixed glass chrome (two header rows /
-     the composer) so first and last messages can scroll into the open. */
-  padding: 5.6rem 1.25rem 8rem;
+     the composer) so first and last messages can scroll into the open.
+     The composer's height varies (attachment cards, a grown textarea),
+     so the bottom clearance is measured live: app.js keeps --footer-h
+     equal to the footer's rendered height via a ResizeObserver. */
+  padding: 5.6rem 1.25rem calc(var(--footer-h, 8rem) + 1.25rem);
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -106,7 +109,7 @@ header {
 /* Jump-to-latest: appears when scrolled away from the bottom; clicking
    (or scrolling back down yourself) re-attaches auto-follow. */
 #jumpdown {
-  position: fixed; right: 1.1rem; bottom: 8.2rem; z-index: 6;
+  position: fixed; right: 1.1rem; bottom: calc(var(--footer-h, 8rem) + .5rem); z-index: 6;
   transition: bottom .2s ease;
   width: 42px; height: 42px; border-radius: 50%;
   background: var(--accent); color: #fff;
@@ -622,8 +625,8 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   padding: .5rem .7rem; font: inherit; font-size: .85rem; font-weight: 600;
   text-align: left;
 }
-/* New chat is the speech-bubble-with-a-plus icon (same glyph as the
-   header's New chat and the project panel's new-chat-in-project). */
+/* New chat is the pencil compose icon (same glyph as the header's
+   New chat button). */
 #historynewbtn { display: flex; align-items: center; justify-content: center; line-height: 0; }
 .history-list { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-height: 0; }
 .history-list .muted { color: var(--muted); font-size: .82rem; }

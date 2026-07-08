@@ -32,8 +32,11 @@ export function renderStreetViewEmbed(turn, s) {
   if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
   iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
   wrap.append(label, iframe);
-  // After the answer text, before the stats footer.
-  turn.el.insertBefore(wrap, turn.stats);
+  // ABOVE the answer text: the embed arrives while the answer is still
+  // streaming, and anything placed below the text gets pushed down with
+  // every token — an iframe that keeps moving can't be interacted with
+  // until generation stops. Anchored before the content it stays put.
+  turn.el.insertBefore(wrap, turn.content);
   turn._svEmbed = wrap;
 }
 

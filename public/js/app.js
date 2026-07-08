@@ -74,6 +74,17 @@ const scrollDown = (force = false) => {
   if (autoFollow) chat.scrollTop = chat.scrollHeight;
 };
 
+// The fixed footer's height varies (three composer rows, attachment
+// cards, a textarea grown to several lines), so #chat's bottom padding
+// can't be a constant — a too-small value leaves the end of an answer
+// stuck behind the glass with no way to scroll it clear. Keep --footer-h
+// equal to the footer's rendered height; the CSS adds breathing room.
+const footerEl = document.getElementById("footer");
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--footer-h", `${footerEl.offsetHeight}px`);
+  scrollDown(); // a growing composer must not swallow the pinned bottom
+}).observe(footerEl);
+
 // ---- Module wiring ---------------------------------------------------------
 
 initTurns(chat, scrollDown, { isBusy: isStreaming });
