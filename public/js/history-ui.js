@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h6 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
+    parts.push(`[h7 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -155,28 +155,40 @@ export function initHistorySidebar(opts = {}) {
       e.stopPropagation();
       removeConversation(id);
     });
-    item.appendChild(strip);
+    // BEFORE the open button: a transformed (sliding) card then paints
+    // above the strip, covering it at rest and revealing it as it moves.
+    item.insertBefore(strip, item.firstChild);
     return strip;
   }
 
+  // Slide the card back (if it's out) and restore the rest-state DOM
+  // once the settle animation has finished.
   function closeActions(item) {
-    item.classList.remove("swiped");
-    const strip = item.querySelector(".history-actions");
-    if (!strip) return;
-    // Let the fade-out finish, then restore the rest-state DOM.
+    const row = item.querySelector(".history-open");
+    if (item.classList.contains("swiped")) {
+      item.classList.add("swiping"); // keeps clip + transition during the slide-back
+      item.classList.remove("swiped");
+      row.style.transform = "";
+    }
     setTimeout(() => {
-      if (!item.classList.contains("swiped") && !item.matches(":hover")) strip.remove();
+      if (item.classList.contains("swiped")) return; // re-opened meanwhile
+      item.classList.remove("swiping");
+      const strip = item.querySelector(".history-actions");
+      if (strip && !item.matches(":hover")) strip.remove();
     }, 200);
   }
 
   // Touch swipe-to-reveal: dragging a row left slides it over by the
   // action strip's width, exposing rename + delete. Swiping back (or
   // tapping the row, or swiping any other row) closes it. Mouse users
-  // keep the hover reveal; this only drives touch/pen. The row itself
-  // never moves — the strip fades in over its right edge (moving the row
-  // needs overflow clipping + transforms, both on the iOS suspect list).
+  // keep the hover reveal; this only drives touch/pen. The card follows
+  // the finger (inline transform, transition suppressed), then settles
+  // parked at -REVEAL_PX (.swiped) or back at rest — where every
+  // interaction artifact (strip, clip, transform) is removed again, the
+  // iOS-safe rest state renderList's comment explains.
   const REVEAL_PX = 88; // matches .history-actions width in app.css
   function attachSwipe(item) {
+    const row = item.querySelector(".history-open");
     let startX = 0, startY = 0, axis = null, tracking = false;
 
     item.addEventListener("pointerdown", (e) => {
@@ -198,36 +210,36 @@ export function initHistorySidebar(opts = {}) {
           // Claim the gesture so a stray tap at the end doesn't open the chat.
           item.dataset.swipeLock = "1";
           mountActions(item);
-          // Close any other row that's sitting open.
+          item.classList.add("swiping");
+          // Close any other card that's sitting open.
           list.querySelectorAll(".history-item.swiped").forEach((other) => {
             if (other !== item) closeActions(other);
           });
         }
       }
       if (axis !== "x") return;
-      // Live feedback: the strip fades in with the drag distance.
-      const strip = item.querySelector(".history-actions");
-      if (strip) {
-        const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
-        const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
-        strip.style.transition = "none";
-        strip.style.opacity = String(Math.min(1, -offset / REVEAL_PX));
-      }
+      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
+      const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
+      row.style.transition = "none"; // follow the finger, no easing lag
+      row.style.transform = `translateX(${offset}px)`;
     });
 
     function settle(e) {
       if (!tracking) return;
       tracking = false;
       if (axis !== "x") return;
-      const strip = item.querySelector(".history-actions");
-      if (strip) {
-        strip.style.transition = "";
-        strip.style.opacity = "";
-      }
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = from + (e.clientX - startX);
-      if (offset < -REVEAL_PX / 2) item.classList.add("swiped");
-      else closeActions(item);
+      row.style.transition = ""; // hand easing back to the .swiping/.swiped rules
+      if (offset < -REVEAL_PX / 2) {
+        row.style.transform = ""; // .swiped's -88px takes over (animated)
+        item.classList.add("swiped");
+        setTimeout(() => { item.classList.remove("swiping"); }, 200);
+      } else {
+        item.classList.remove("swiped");
+        row.style.transform = "";
+        closeActions(item);
+      }
       // Let the click that follows this pointerup see the lock, then clear it.
       setTimeout(() => { delete item.dataset.swipeLock; }, 0);
     }
