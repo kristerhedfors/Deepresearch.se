@@ -382,6 +382,29 @@ form.addEventListener("submit", async (e) => {
 // Enter inserts a line break — nothing is sent until the arrow is tapped
 // (form submit). The input just grows via the autogrow handler above.
 
+// CSS<->JS freshness handshake (the counterpart of app.css's
+// --css-version): the boot guard walks and repairs the JS MODULE graph,
+// but a device that heuristically cached the STYLESHEET before the
+// no-cache asset policy keeps rendering with stale rules forever — on
+// 2026-07-08 that made history rows invisible on a real iPhone while
+// every module was current. If the marker doesn't match, fetch the
+// stylesheet with cache:"reload" (bypasses AND overwrites the cached
+// entry) and swap the link so the fresh rules apply without a reload.
+const CSS_VERSION = "h5";
+try {
+  const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
+  if (seen !== CSS_VERSION) {
+    fetch("/css/app.css", { cache: "reload" })
+      .then(() => {
+        const link = document.querySelector('link[rel="stylesheet"][href*="app.css"]');
+        if (link) link.href = "/css/app.css?v=" + CSS_VERSION;
+      })
+      .catch(() => {});
+  }
+} catch {
+  // never let the freshness probe break boot
+}
+
 // Boot completed: every module linked and every handler above is attached.
 // index.html's inline boot guard blocks native form submits until this flag
 // exists (see the guard's comment for the stale-module incident it covers).

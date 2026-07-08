@@ -224,6 +224,7 @@
           refresh("/js/app.js", 0),
           fetch("/vendor/marked.min.js", { cache: "reload" }).catch(function () {}),
           fetch("/vendor/purify.min.js", { cache: "reload" }).catch(function () {}),
+          fetch("/css/app.css", { cache: "reload" }).catch(function () {}),
           fetch("/", { cache: "reload" }).catch(function () {}),
         ]).then(function () { location.reload(); }, function () { location.reload(); });
       }

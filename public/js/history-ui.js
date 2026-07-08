@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h4 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
+    parts.push(`[h5 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -105,14 +105,14 @@ export function initHistorySidebar(opts = {}) {
       .map(
         (c) => `
       <div class="history-item${c.id === activeId ? " active" : ""}" data-id="${c.id}">
-        <div class="history-actions">
-          <button type="button" class="history-rename" data-id="${c.id}" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>
-          <button type="button" class="history-delete" data-id="${c.id}" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>
-        </div>
         <button type="button" class="history-open" data-id="${c.id}">
           <span class="history-title">${escapeHtml(c.title)}</span>
           <span class="history-when">${relativeTime(c.updatedAt)}</span>
         </button>
+        <div class="history-actions">
+          <button type="button" class="history-rename" data-id="${c.id}" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>
+          <button type="button" class="history-delete" data-id="${c.id}" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>
+        </div>
       </div>`,
       )
       .join("");
