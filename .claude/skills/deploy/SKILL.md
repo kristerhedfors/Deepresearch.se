@@ -42,6 +42,40 @@ Worker + static assets). Everything below was observed empirically
 Deploying the SAME commit via both paths is redundant but safe (the
 git-connected deploy just re-deploys identical code).
 
+## ⚠️ Branch pushes deploy to production too (2026-07-08 evening)
+
+Observed, not assumed: pushing a NON-main branch also ends in a
+production deploy. Evidence from 2026-07-08 ~19:30–20:00 UTC:
+
+- A feature branch (`claude/chat-history-pane-ui-*`) was pushed WITHOUT
+  touching `main`; its content was already serving on the live site
+  seconds after `main` was later pushed with the same commit — far too
+  fast for the main build, so the branch push must have deployed it.
+- Minutes later (19:55Z deploy), production flipped to the content of a
+  DIFFERENT unmerged branch (`claude/inline-quiz-alternatives-*`, the
+  quiz feature) while `main`'s tip was something else entirely —
+  reverting the just-verified main deploy.
+
+Consequences when several sessions work in parallel (this repo runs many
+concurrent Claude sessions, each on its own `claude/*` branch):
+
+- **Production ping-pongs between branches** — whichever session pushed
+  last owns prod, silently reverting everyone else's deploys. Users see
+  features appear and disappear, and returning devices can catch a
+  mid-flip mixed module graph (see the client-assets incident below).
+- A "verified live" probe can rot within minutes. Re-verify before
+  concluding anything from live behavior, and when live content doesn't
+  match `main`, suspect another session's branch push (check
+  `npx wrangler deployments list` timestamps and diff fetched assets
+  against `git show <ref>:public/...`).
+- To reclaim prod for `main`: push `main` (or re-push it with an empty
+  commit) or run `npx wrangler deploy` from a `main` checkout.
+
+Fix at the source (needs the dashboard — the env's API token can't edit
+build config): in the Cloudflare Workers Builds settings for this
+project, set the production branch to `main` and disable builds (or make
+them non-production previews) for other branches.
+
 ## Verify a deploy is actually live (don't trust the upload message)
 
 There is no version endpoint on the site. Verify behaviorally: probe

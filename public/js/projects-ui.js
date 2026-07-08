@@ -58,6 +58,9 @@ export function initProjectsUi(opts = {}) {
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closePanel();
   });
+  window.addEventListener("resize", () => {
+    if (!overlay.hidden) placeCloseBtn();
+  });
 
   const chip = document.getElementById("projectchip");
   chip.addEventListener("click", () => {
@@ -168,8 +171,22 @@ function closePanel() {
   openPanelId = null;
 }
 
+// Pin the panel's ✕ to the screen rect of the header's history button —
+// the same placement history-ui.js gives the history drawer's ✕, so the
+// close button doesn't jump when moving between the two panes.
+function placeCloseBtn() {
+  const r = document.getElementById("historybtn").getBoundingClientRect();
+  if (!r.width) return; // button hidden/unlaid-out: keep the CSS fallback
+  const closeBtn = document.getElementById("projectclose");
+  closeBtn.style.top = r.top + "px";
+  closeBtn.style.left = r.left + "px";
+  closeBtn.style.width = r.width + "px";
+  closeBtn.style.height = r.height + "px";
+}
+
 export async function openProjectPanel(id) {
   openPanelId = id;
+  placeCloseBtn();
   document.getElementById("projectpanel").hidden = false;
   document.getElementById("historysidebar").hidden = true;
   await renderPanel();

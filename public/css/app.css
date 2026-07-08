@@ -647,8 +647,11 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* The history drawer's ✕ floats at the exact screen position of the
    header's history button (measured by history-ui.js when the drawer
    opens), so on a phone the same tap spot opens AND closes the drawer.
-   Styled like the header glass buttons it stands in for. */
-#historyclose {
+   Styled like the header glass buttons it stands in for. The project
+   panel's ✕ (#projectclose, placed by projects-ui.js) matches it — the
+   panel opens from the history drawer, so the close button stays in the
+   same spot throughout. */
+#historyclose, #projectclose {
   position: fixed; z-index: 11;
   top: 1.8rem; left: 1rem; /* fallback; JS sets the measured position */
   background: rgba(255, 255, 255, .3);
@@ -663,7 +666,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 /* Head content starts below the floating ✕ (which sits over the panel's
    top-left corner at the header-row height). */
-#historysidebar .history-head { margin-top: 3rem; }
+#historysidebar .history-head, #projectpanel .history-head { margin-top: 3rem; }
+/* Above #projectpanel's own z-index (11). */
+#projectclose { z-index: 12; }
 .history-new {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
