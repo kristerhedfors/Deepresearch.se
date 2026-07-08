@@ -90,6 +90,25 @@ export const gapPrompt = (pastQueries, maxFollowups, { reinforceJsonOnly = false
   `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}` +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
+// Phase 2.5 — notes digest (budget-gated, mid/high tiers). Compresses a NEW
+// search wave's numbered sources into structured, source-tied research notes
+// so gap-check and synthesis reason over claims, not raw highlights. Runs on
+// the cheap JSON model, same as the other planning phases. `priorEntities`
+// seeds the model with entity names already noted so naming stays consistent
+// across waves. Shape parsed by src/notes.js's extractNotes.
+export const notesPrompt = (priorEntities = [], { reinforceJsonOnly = false } = {}) =>
+  `You distil research notes for Deepresearch.se. Today's date: ${today()}.\n` +
+  "You are given NEW numbered web sources. Extract the concrete, checkable factual claims they support and respond ONLY with JSON:\n" +
+  '{"notes":[{"claim":"...","source_ids":[1,2],"entities":["..."],"contradicts":["..."]}]}\n' +
+  "- Each claim is ONE self-contained fact stated plainly, taken only from the sources — do not editorialize or add anything not present.\n" +
+  "- source_ids are the bracketed [n] numbers of the sources supporting the claim (numbers only).\n" +
+  "- entities names the specific people, organizations, products, places, or figures the claim concerns.\n" +
+  "- contradicts (optional) names any earlier claim or source this one conflicts with; omit it when there is no conflict.\n" +
+  "- Prefer a small set of high-value, non-overlapping claims over many trivial ones; skip navigation text, ads, and boilerplate.\n" +
+  (priorEntities.length ? `Entities already noted (keep naming consistent): ${priorEntities.join(", ")}.\n` : "") +
+  ANTI_INJECTION_NOTE +
+  (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
+
 // Phase 4 — synthesis from the numbered source registry (Markdown output).
 export const synthPrompt = () =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
@@ -108,6 +127,36 @@ export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
   "Respond ONLY with JSON:\n" +
   '- {"verdict":"pass"} if the draft is faithful to the sources.\n' +
   '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed to fix the issues.' +
+  (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
+
+// Phase 5 (claim-level, budget-gated) — extract the check-worthy claims from
+// the draft so each can be verified against its own cited sources in parallel,
+// instead of one whole-draft pass. Shape: {"claims":[{claim, source_ids}]}.
+export const claimExtractionPrompt = ({ reinforceJsonOnly = false } = {}) =>
+  "You prepare a research draft for fact-checking at Deepresearch.se.\n" +
+  "From the draft answer, extract the specific, checkable factual claims — statistics, dates, named facts, attributions — each with the [n] source numbers the draft cites for it. Skip hedged opinions and the conclusion's framing. Respond ONLY with JSON:\n" +
+  '{"claims":[{"claim":"...","source_ids":[1]}]}\n' +
+  "List at most 12 of the most load-bearing claims; if the draft makes no checkable factual claims, return an empty list." +
+  ANTI_INJECTION_NOTE +
+  (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
+
+// Phase 5 (claim-level) — verify ONE claim against only the sources it cites.
+export const claimVerifyPrompt = ({ reinforceJsonOnly = false } = {}) =>
+  "You are a strict fact-checker for Deepresearch.se. You receive ONE claim and the numbered sources it cites.\n" +
+  "Decide whether those cited sources actually support the claim. Respond ONLY with JSON:\n" +
+  '- {"verdict":"supported"} when a cited source clearly supports the claim.\n' +
+  '- {"verdict":"unsupported","issue":"..."} when no cited source supports it, the citation points to the wrong source, or a number/quote/date appears invented. issue is a one-sentence description of the problem.' +
+  ANTI_INJECTION_NOTE +
+  (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
+
+// Phase 5 (claim-level) — rewrite the draft to fix ONLY the flagged issues,
+// once claim verification has found unsupported claims. Shape:
+// {"revised_answer":"..."}.
+export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
+  "You are the research assistant for Deepresearch.se. You receive a research question, the numbered sources, a draft answer, and a list of fact-check issues found in that draft.\n" +
+  "Rewrite the draft to fix ONLY those issues — remove or correct each unsupported claim, fix wrong citations, restore any dropped caveat — while keeping everything else and the same Markdown format ending with a \"Sources:\" list. Respond ONLY with JSON:\n" +
+  '{"revised_answer":"..."}' +
+  ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Grounded, authoritative description of what this site can ACTUALLY do,

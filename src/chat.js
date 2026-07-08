@@ -8,7 +8,7 @@ import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./berget.js";
-import { clampBudget, planResearch } from "./budget.js";
+import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
@@ -265,7 +265,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         // recorded cost scaled by that tier's real price ratio, so a long
         // budget's genuinely higher Exa spend doesn't go under-counted
         // against the user's opaque budget bar or the admin's cost totals.
-        exa_cost: billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1),
+        // Live searches at their depth-tier price, PLUS the budget-gated
+        // full-content fetch (Exa /contents) priced per URL at the cheaper
+        // contents rate — so the top-tier full-read spend is counted too.
+        exa_cost:
+          billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
+          (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER,
         duration_ms,
       });
       const stats = {
@@ -351,6 +356,13 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     ranQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
+    // Budget-gated notes digest (src/pipeline.js maybeDigest, mid/high tiers):
+    // structured research notes distilled from each search wave, plus a cursor
+    // marking how far into the source registry has been digested. Empty at the
+    // default budget (the digest phase never runs there).
+    notes: [],
+    notesCursor: 0,
+    fetchedUrls: new Set(), // top-source URLs already full-content fetched (>=240s tier)
     // Synthesis/direct token usage (the user's model) and JSON-phase token
     // usage (jsonModel) are tracked separately so each is billed at its own
     // model's price — the JSON phases on cheap Mistral shouldn't be charged at

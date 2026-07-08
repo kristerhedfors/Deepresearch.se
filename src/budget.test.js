@@ -1,6 +1,17 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { clampBudget, fitsDeadline, planResearch, recordPhase, MIN_BUDGET_S, MAX_BUDGET_S, DEFAULT_BUDGET_S } from "./budget.js";
+import {
+  clampBudget,
+  fitsDeadline,
+  planResearch,
+  recordPhase,
+  wantsNotes,
+  wantsFullContent,
+  wantsClaimValidation,
+  MIN_BUDGET_S,
+  MAX_BUDGET_S,
+  DEFAULT_BUDGET_S,
+} from "./budget.js";
 
 describe("clampBudget", () => {
   test("clamps below the floor", () => {
@@ -96,6 +107,56 @@ describe("planResearch — depth scales with budget tier", () => {
   test("validation is reserved unless the budget can't afford it plus a minimal plan", () => {
     const plan = planResearch(MODEL, 60);
     assert.equal(plan.validate, true);
+  });
+});
+
+describe("planResearch — estimates carry the budget-gated phases", () => {
+  const MODEL = "test/estimates-model-" + Math.random();
+  test("every plan's estimates include digest/fetch/claim so the deadline checks can budget them", () => {
+    const plan = planResearch(MODEL, 300);
+    for (const k of ["triage", "gap", "validate", "synth", "search", "digest", "fetch", "claim"]) {
+      assert.equal(typeof plan.estimates[k], "number", `estimate ${k} present`);
+    }
+  });
+  test("adding the new phases does not change the planned search/gap allocation", () => {
+    // Regression guard: the digest/fetch/claim estimates must NOT be subtracted
+    // from avail, so queries/gapIterations/maxSearches stay what they were.
+    const plan = planResearch(MODEL, 300);
+    assert.ok(plan.queries >= 1 && plan.maxSearches >= plan.queries);
+    // A default-budget plan still validates and is unaffected.
+    assert.equal(planResearch(MODEL, 60).validate, true);
+  });
+});
+
+describe("budget-tier gates for the deep-research phases", () => {
+  const plan = (s) => planResearch("test/gate-model-" + Math.random(), s);
+
+  test("notes/full-content/claim-validation are ALL off at the 15-60s default tier", () => {
+    for (const s of [15, 30, 60]) {
+      assert.equal(wantsNotes(plan(s)), false, `notes off at ${s}s`);
+      assert.equal(wantsFullContent(plan(s)), false, `full-content off at ${s}s`);
+      assert.equal(wantsClaimValidation(plan(s)), false, `claim-validation off at ${s}s`);
+    }
+  });
+
+  test("notes turn on at the mid tier (>=120s), still no full-content/claim yet", () => {
+    const p = plan(120);
+    assert.equal(wantsNotes(p), true);
+    assert.equal(wantsFullContent(p), false);
+    assert.equal(wantsClaimValidation(p), false);
+  });
+
+  test("full-content and claim-level validation unlock at the long tier (>=240s)", () => {
+    const p = plan(300);
+    assert.equal(wantsNotes(p), true);
+    assert.equal(wantsFullContent(p), true);
+    assert.equal(wantsClaimValidation(p), true);
+  });
+
+  test("the gates tolerate a missing/garbage plan without throwing", () => {
+    assert.equal(wantsNotes(null), false);
+    assert.equal(wantsFullContent(undefined), false);
+    assert.equal(wantsClaimValidation({}), false);
   });
 });
 

@@ -5,6 +5,14 @@
 // rules and the canonical reference URL.
 
 const EXA_URL = "https://api.exa.ai/search";
+const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
+// Bounds the /contents fetch the same way the two Berget calls are bounded —
+// an unbounded fetch has bitten this project before. Full-content fetch is
+// budget-gated top-tier work, so a hung backend must degrade, never hang.
+const CONTENTS_TIMEOUT_MS = 20_000;
+// Cap the extracted text per source so a handful of long pages can't blow the
+// synthesis digest / Worker memory. Generous enough to carry a real article.
+const CONTENTS_MAX_CHARS = 6000;
 
 // Cross-request search cache. A follow-up turn is a SEPARATE /api/chat
 // request, so the in-request dedup (pipeline.js's state.ranQueries) can't
@@ -177,5 +185,90 @@ export async function webSearch(env, log, query, depth = {}) {
     }
   }
 
+  return { ...result, durationMs, cached: false };
+}
+
+// Stable cache key for a full-content fetch: the sorted, normalized URL set.
+export function contentsCacheKey(urls) {
+  const norm = [...new Set((urls || []).map((u) => String(u || "").trim()).filter(Boolean))].sort();
+  const params = new URLSearchParams({ u: norm.join("|") });
+  return `https://exa-contents-cache.internal/contents?${params.toString()}`;
+}
+
+// Fetches the full page text for a small set of top sources via Exa's
+// /contents endpoint (same x-api-key auth as webSearch). Budget-gated top-tier
+// enrichment: bounded, cache-friendly, and fully fail-soft — a missing key, a
+// timeout, an error, or a bad response all degrade to an empty result rather
+// than throwing, so the pipeline proceeds on the highlights it already has.
+//
+// Returns { results: [{ url, title, text }], durationMs, cached }.
+export async function fetchContents(env, urls, log) {
+  const startedAt = Date.now();
+  const empty = (cached = false) => ({ results: [], durationMs: Date.now() - startedAt, cached });
+  const list = [...new Set((urls || []).map((u) => String(u || "").trim()).filter(Boolean))];
+  if (!list.length) return empty();
+  if (!env.EXA_API_KEY) {
+    log.error("exa.contents_misconfigured", { missing: "EXA_API_KEY" });
+    return empty();
+  }
+
+  const cache = globalThis.caches?.default;
+  const cacheKey = contentsCacheKey(list);
+  if (cache) {
+    try {
+      const hit = await cache.match(new Request(cacheKey));
+      if (hit) {
+        const payload = await hit.json();
+        log.info("exa.contents_cache_hit", { duration_ms: Date.now() - startedAt, results: payload.results?.length || 0 });
+        return { ...payload, durationMs: Date.now() - startedAt, cached: true };
+      }
+    } catch (err) {
+      log.warn("exa.contents_cache_read_failed", { error: err?.message || String(err) });
+    }
+  }
+
+  let resp;
+  try {
+    resp = await fetch(EXA_CONTENTS_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": env.EXA_API_KEY },
+      body: JSON.stringify({ urls: list, text: { maxCharacters: CONTENTS_MAX_CHARS } }),
+      signal: AbortSignal.timeout(CONTENTS_TIMEOUT_MS),
+    });
+  } catch (err) {
+    log.warn("exa.contents_request_failed", { error: err?.message || String(err), duration_ms: Date.now() - startedAt });
+    return empty();
+  }
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    log.warn("exa.contents_error", { status: resp.status, detail: detail.slice(0, 200), duration_ms: Date.now() - startedAt });
+    return empty();
+  }
+
+  const data = await resp.json().catch(() => ({}));
+  const rows = Array.isArray(data.results) ? data.results : [];
+  const results = rows
+    .map((r) => ({
+      url: r.url || "",
+      title: r.title || r.url || "",
+      text: typeof r.text === "string" ? r.text.slice(0, CONTENTS_MAX_CHARS) : "",
+    }))
+    .filter((r) => r.url && r.text);
+  const durationMs = Date.now() - startedAt;
+  log.info("exa.contents", { duration_ms: durationMs, requested: list.length, results: results.length });
+
+  const result = { results };
+  if (cache && results.length) {
+    try {
+      await cache.put(
+        new Request(cacheKey),
+        new Response(JSON.stringify(result), {
+          headers: { "content-type": "application/json", "cache-control": `max-age=${CACHE_TTL_S}` },
+        }),
+      );
+    } catch (err) {
+      log.warn("exa.contents_cache_write_failed", { error: err?.message || String(err) });
+    }
+  }
   return { ...result, durationMs, cached: false };
 }

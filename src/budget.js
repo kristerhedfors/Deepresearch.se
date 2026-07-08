@@ -35,6 +35,14 @@ const PRIORS_MS = {
   gap: 4500,
   synth: 16000,
   validate: 13000,
+  // Budget-gated deep-research phases (only ever run at mid/high tiers — see
+  // wantsNotes / wantsFullContent / wantsClaimValidation): the per-wave notes
+  // digest, the top-source full-content fetch, and one claim-verification
+  // call. Seeded as priors so a cold isolate can budget them before their EWMA
+  // warms up; each is dropped first under deadline pressure (fitsDeadline).
+  digest: 4000,
+  fetch: 2500,
+  claim: 3500,
 };
 const ALPHA = 0.3;
 export const MIN_BUDGET_S = 15;
@@ -77,7 +85,22 @@ export function planResearch(model, budgetS, jsonModel = model) {
   // triage that a fast Mistral now handles.
   const u = phaseEstimates(model);
   const j = jsonModel === model ? u : phaseEstimates(jsonModel);
-  const t = { triage: j.triage, gap: j.gap, validate: j.validate, synth: u.synth, search: u.search };
+  // The digest and claim phases are JSON-mode calls on jsonModel; the
+  // full-content fetch is an Exa call (model-independent, estimated off the
+  // user model's history like search). These estimates only inform the
+  // runtime deadline checks for the budget-gated phases — they do NOT reduce
+  // the search/gap allocation below, so planned depth (and hence default
+  // behavior) is unchanged at every tier.
+  const t = {
+    triage: j.triage,
+    gap: j.gap,
+    validate: j.validate,
+    synth: u.synth,
+    search: u.search,
+    digest: j.digest,
+    fetch: u.fetch,
+    claim: j.claim,
+  };
   const budgetMs = budgetS * 1000;
   const plan = {
     budgetMs,
@@ -148,7 +171,41 @@ function searchDepthFor(budgetS) {
   return { numResults: 5, type: "auto", costMultiplier: 1 };
 }
 
+// Exa's /contents endpoint (the budget-gated full-content fetch) is billed
+// well below a standard search (~$1/1k vs $7/1k as of 2026). The admin's
+// per-search price is scaled by this ratio per URL fetched, so the top-tier
+// full-content spend is counted rather than silently ignored — the same
+// approach searchDepth.costMultiplier takes for deeper search tiers.
+export const CONTENTS_COST_MULTIPLIER = 1 / 7;
+
 // True if `upcomingMs` more work still fits within budget (+15% grace).
 export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
   return Date.now() - startedAt + upcomingMs <= budgetMs * 1.15;
+}
+
+// ---- budget-tier gates for the deep-research phases ------------------------
+//
+// These decide whether the NEW, optional pipeline phases run at all. They are
+// deliberately tiered ABOVE the default budget so a 15-60s request runs
+// byte-identically to before these phases existed — wantsNotes is off at the
+// 60s default, and full-content / claim-level validation only unlock at the
+// long tiers (mirroring searchDepth's own 240s boundary). Under runtime
+// deadline pressure each phase additionally gates on fitsDeadline and is
+// dropped before synthesis/validation.
+
+// Per-wave notes digest: mid tier and up (never at the ≤60s default).
+export function wantsNotes(plan) {
+  return !!plan && plan.budgetS >= 120;
+}
+
+// Full-content fetch of the top sources: only the long tiers (≥240s), where
+// there is budget to read whole pages, matching searchDepth's 240s boundary.
+export function wantsFullContent(plan) {
+  return !!plan && plan.budgetS >= 240;
+}
+
+// Claim-level (per-claim) validation instead of the single whole-draft pass:
+// long tiers only. A tight budget still runs the cheap single-pass validate.
+export function wantsClaimValidation(plan) {
+  return !!plan && plan.budgetS >= 240;
 }
