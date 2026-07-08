@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h10 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h11 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -298,27 +298,63 @@ export function initHistorySidebar(opts = {}) {
     }
 
     if ("ontouchstart" in window) {
+      // iOS choreography (real-device iteration 6): ALL DOM/style
+      // mutations happen at TOUCHSTART — mounting the strip or toggling
+      // overflow once the finger is moving makes iOS CANCEL the active
+      // touch (h7–h10: strip flashed, card snapped back, list nudged).
+      // The axis is decided at ~4px of movement — before iOS's own
+      // ~10px scroll slop commits — and the first claimed move calls
+      // preventDefault() so the panel never starts scrolling. A
+      // touchcancel after the claim honors the drag done so far
+      // instead of snapping back.
+      let lastDx = 0;
+      // Undo the touchstart pre-mutations for a gesture that turned out
+      // to be a tap or a vertical scroll — nothing visible ever changed.
+      function releaseRest() {
+        if (item.classList.contains("swiped") || item.classList.contains("swiping")) return;
+        item.style.overflow = "";
+        const strip = item.querySelector(".history-actions");
+        if (strip && !item.matches(":hover")) strip.remove();
+      }
       item.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         tracking = true;
         axis = null;
+        lastDx = 0;
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        mountActions(item);
+        item.style.overflow = "hidden";
       }, { passive: true });
       // passive: false — preventDefault() must actually work here.
       item.addEventListener("touchmove", (e) => {
         if (!tracking || e.touches.length !== 1) return;
         const t = e.touches[0];
-        moveLogic(t.clientX - startX, t.clientY - startY, () => {
-          if (e.cancelable) e.preventDefault();
-        });
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (!axis) {
+          if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+          axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+          if (axis === "x") {
+            item.dataset.swipeLock = "1";
+            item.classList.add("swiping");
+            list.querySelectorAll(".history-item.swiped").forEach((other) => {
+              if (other !== item) closeActions(other);
+            });
+          } else {
+            releaseRest(); // vertical: hand the gesture back to the scroller
+          }
+        }
+        if (axis !== "x") return;
+        if (e.cancelable) e.preventDefault();
+        lastDx = dx;
+        drag(dx);
       }, { passive: false });
-      const end = (e) => {
+      const end = () => {
         if (!tracking) return;
         tracking = false;
-        if (axis !== "x") return;
-        const t = e.changedTouches && e.changedTouches[0];
-        finish(t ? t.clientX - startX : 0, e.type === "touchcancel" || !t);
+        if (axis === "x") finish(lastDx, false);
+        else releaseRest();
       };
       item.addEventListener("touchend", end);
       item.addEventListener("touchcancel", end);
