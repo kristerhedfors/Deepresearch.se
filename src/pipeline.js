@@ -30,6 +30,7 @@
 // digest) in sources.js, and the opt-in pre-pipeline context enrichments
 // (Shodan, Google Maps) in enrichment.js.
 
+import { classifyChatError, raiseAlert } from "./alerts.js";
 import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
 import {
   applyComplexityToPlan,
@@ -953,9 +954,58 @@ export function isTransientConnectStatus(status) {
   return status >= 500 || status === 429 || status === 408;
 }
 
+// Tags an error as eligible for the model failover in streamCompletion():
+// set only where the failing model never delivered a byte the user still
+// has on screen, so a different model's answer can't visibly diverge.
+function failoverError(message) {
+  const e = new Error(message);
+  e.failover = true;
+  return e;
+}
+
 // Streams one chat completion to the client; returns the full text.
+//
+// The user's chosen model gets its full retry budget first (streamOnModel).
+// If it never delivered a visible byte — connect-phase exhaustion, an early
+// stall whose fragment was discarded, clean-but-empty completions — the
+// answer is retried ONCE on the pipeline's fixed reliable JSON model
+// instead of erroring the chat. Observed live (2026-07-08, refs 6b753392 /
+// 953b74e3): Berget's Mistral Medium refused to open a synthesis stream for
+// 20+ minutes straight while Mistral Small answered the SAME requests'
+// triage/gap calls in ~1-2s — retrying the dead model alone can't save
+// that, but the reliable default was provably up the whole time. The
+// failover is announced as a step so the user knows which model answered,
+// its usage is billed to the jsonTotals bucket (that's the model that ran),
+// and the provider issue still raises the admin alert an unrecovered
+// failure would have — users stop hurting, admins keep seeing it.
 async function streamCompletion(ctx, messages) {
-  const maxAttempts = ctx.profile.maxCompletionAttempts;
+  try {
+    return await streamOnModel(ctx, messages, ctx.model, ctx.profile, ctx.state.totals);
+  } catch (err) {
+    const fallback = ctx.jsonModel;
+    if (!err?.failover || !fallback || fallback === ctx.model) throw err;
+    ctx.log.warn("chat.model_failover", { from: ctx.model, to: fallback, error: err?.message || String(err) });
+    const alert = classifyChatError(err?.message);
+    await raiseAlert(ctx.env, alert.type, alert.severity, alert.message,
+      `model: ${ctx.model} — failed over to ${fallback} — ${err?.message}`);
+    const name = (id) => String(id).split("/").pop();
+    ctx.step("failover", `${name(ctx.model)} isn't responding — switching to ${name(fallback)}…`);
+    try {
+      const text = await streamOnModel(ctx, messages, fallback, ctx.jsonProfile, ctx.state.jsonTotals);
+      ctx.state.failoverModel = fallback;
+      ctx.stepDone("failover", `Answered by ${name(fallback)} — ${name(ctx.model)} was unavailable`);
+      return text;
+    } catch (err2) {
+      ctx.stepDone("failover", `${name(fallback)} couldn't answer either`);
+      throw err2;
+    }
+  }
+}
+
+// One model's full attempt loop; usage lands in the caller's totals bucket
+// (split billing — each bucket priced at its own model's catalog rate).
+async function streamOnModel(ctx, messages, model, profile, totals) {
+  const maxAttempts = profile.maxCompletionAttempts;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // Connect-phase failures get the same retry budget as the stall/empty
     // cases below — they're the CHEAPEST kind to retry (nothing has streamed
@@ -967,20 +1017,23 @@ async function streamCompletion(ctx, messages) {
     // paid for with a dead research run, all searches already done.
     let upstream;
     try {
-      upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
+      upstream = await chatCompletion(ctx.env, messages, { model });
     } catch (err) {
       // fetch() itself rejected: the connect-timeout abort or a network
       // reset. Always transient by nature.
-      ctx.log.warn("chat.connect_failed", { model: ctx.model, attempt, error: err?.message || String(err) });
+      ctx.log.warn("chat.connect_failed", { model, attempt, error: err?.message || String(err) });
       if (attempt < maxAttempts) continue;
-      throw err;
+      throw failoverError(err?.message || String(err));
     }
     if (!upstream.ok || !upstream.body) {
       const detail = (await upstream.text().catch(() => "")).slice(0, 300);
       const transient = !upstream.body || isTransientConnectStatus(upstream.status);
-      ctx.log.warn("chat.connect_failed", { model: ctx.model, attempt, status: upstream.status, error: detail });
+      ctx.log.warn("chat.connect_failed", { model, attempt, status: upstream.status, error: detail });
       if (transient && attempt < maxAttempts) continue;
-      throw new Error(`Berget API error (${upstream.status}): ${detail}`);
+      const message = `Berget API error (${upstream.status}): ${detail}`;
+      // A deterministic 4xx is OUR request's fault — the fallback model
+      // would just fail the same way, so it isn't failover-eligible.
+      throw transient ? failoverError(message) : new Error(message);
     }
     let streamed;
     let received = 0;
@@ -1004,15 +1057,18 @@ async function streamCompletion(ctx, messages) {
       // client is told to discard the few rendered tokens (discard_text —
       // the same event the validation revise path uses) so the retried
       // answer doesn't append after them.
-      ctx.log.warn("chat.stream_stalled", { model: ctx.model, attempt, received, error: err?.message || String(err) });
-      if (attempt < maxAttempts && received < 400) {
+      ctx.log.warn("chat.stream_stalled", { model, attempt, received, error: err?.message || String(err) });
+      if (received < 400) {
         if (received) ctx.emit({ status: { type: "discard_text" } });
-        continue;
+        if (attempt < maxAttempts) continue;
+        // Early stall, fragment already discarded — safe to hand to the
+        // failover model, nothing of this model's answer remains on screen.
+        throw failoverError(err?.message || String(err));
       }
       throw err;
     }
     const { text, usage, finishReason } = streamed;
-    addUsage(ctx.state.totals, usage);
+    addUsage(totals, usage);
     if (!finishReason) {
       // A round 3 model-eval battery found Berget's connection can drop
       // mid-stream for some models with no error frame at all — the reader
@@ -1036,9 +1092,11 @@ async function streamCompletion(ctx, messages) {
     // (the same query succeeds cleanly on some runs); only after
     // exhausting maxCompletionAttempts (model-profiles.js — 2 by default,
     // higher for models evidenced to need it) do we give up and surface it.
-    ctx.log.warn("chat.empty_completion", { model: ctx.model, attempt, maxAttempts });
+    ctx.log.warn("chat.empty_completion", { model, attempt, maxAttempts });
     if (attempt === maxAttempts) {
-      throw new Error(`Berget returned an empty response ${maxAttempts} times in a row for this model`);
+      // Nothing was ever shown (the completions were empty) — eligible for
+      // the failover model rather than surfacing an error.
+      throw failoverError(`Berget returned an empty response ${maxAttempts} times in a row for this model`);
     }
   }
 }

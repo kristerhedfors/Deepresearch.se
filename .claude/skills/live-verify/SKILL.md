@@ -173,6 +173,20 @@ description: >-
   deterministic 400/413 still fails immediately). Log event:
   `chat.connect_failed` (model/attempt/error, plus status on the HTTP
   branch).
+- **Model failover (same day, part 2 — ref `953b74e3`)**: the connect
+  retry alone wasn't enough — Mistral Medium refused to open a stream for
+  20+ minutes straight (attempt 1 AND its retry both hit the full 30s
+  timeout, a 66.8s dead run), while Mistral Small answered the same
+  request's triage/gap calls in ~1-2s. When the chosen model never
+  delivers a visible byte (connect exhaustion, early stall with the
+  fragment discarded, or clean-but-empty completions), `streamCompletion`
+  now retries the answer once on the reliable JSON model (`ctx.jsonModel`)
+  instead of erroring: announced in the UI as a `failover` step ("Answered
+  by X — Y was unavailable"), billed to the `jsonTotals` bucket, recorded
+  in the chatlog meta as `failover_model`, and the admin alert still
+  raises (users stop hurting; admins keep seeing the provider issue). A
+  deterministic 4xx does NOT fail over (the fallback would fail
+  identically). Log event: `chat.model_failover` (from/to/error).
 - Stream errors shown in the UI carry a short `(ref xxxxxxxx)` — the
   first 8 chars of the request id, quotable straight into a log search.
 - `BERGET_URL` env override exists solely so local tests can point the

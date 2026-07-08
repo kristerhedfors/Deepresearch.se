@@ -322,6 +322,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             shodan_hosts: state.shodanCount,
             google_maps: state.mapsCount,
             cached_searches: state.cachedSearchCount || 0,
+            // Present only when the chosen model was unavailable and the
+            // answer was written by the reliable fallback (pipeline.js's
+            // streamCompletion failover) — JSON.stringify drops undefined.
+            failover_model: state.failoverModel,
             berget_cost,
             exa_cost,
           },
