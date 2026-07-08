@@ -482,6 +482,20 @@ the search phase.
 - **Auth:** `HUGGINGFACE_API_TOKEN` (Worker secret, confirmed present) rides
   as a Bearer header when set — OPTIONAL by design (public search works
   without it; the token buys rate-limit headroom and gated-repo visibility).
+- **Query plan — phrasing drives the API's full capabilities**
+  (`hfQueryPlan`/`hfBuildAttempts`, all curated + deterministic): task
+  phrases → `pipeline_tag` (models) / `task_categories` (datasets, only
+  where valid); language words (EN + SV forms) → `?language=<iso>` —
+  MODELS ONLY (dataset language tags empirically unreliable:
+  `?language=sv` returned github-code); sort intent (trending →
+  `trendingScore`, most liked → `likes`, default `downloads`); recency
+  phrasing ("latest/newest") makes the fresh slice lead. Every attempt
+  fetches TWO slices (sort=downloads + sort=lastModified with a
+  ≥20-download junk floor), merged via `mergeSlices`; `expand[]` params
+  surface downloads/likes/lastModified on any sort (the plain list omits
+  lastModified except when sorting by it). A fully-consumed query becomes
+  a pure filtered browse — the strongest case (canonical multi-million-
+  download repos instead of name-matched hobby repos).
 - **Endpoint behavior (established empirically 2026-07-08 — re-verify if
   results look off):**
   - `GET /api/models?search=` and `/api/datasets?search=` are NAME-substring

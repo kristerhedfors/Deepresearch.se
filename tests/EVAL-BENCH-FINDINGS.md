@@ -187,3 +187,26 @@ observations; watch, don't tune yet.
 **Carried forward:** consider `sort=trendingScore` (or lastModified) for
 "latest/greatest" hub intents — sort=downloads surfaces popular-but-stale
 repos; needs an empirical probe of the API's supported sort values first.
+
+### Round C addendum — staleness blend + phrasing-driven API plan (probe-verified)
+
+Two follow-on user asks, verified by live probes rather than a full
+battery (retrieval-plumbing changes; the next scheduled battery covers
+them):
+1. **"No stale stuff unless really relevant"**: every ladder attempt now
+   fetches a popular slice (sort=downloads — the canonical exception) AND
+   a fresh slice (sort=lastModified, ≥20-download junk floor), merged and
+   deduped (`mergeSlices`); recency phrasing ("latest/newest") makes the
+   fresh slice LEAD. `expand[]` params surface updated-dates on every
+   item's citation highlight.
+2. **"Leverage the full API from search phrasing"** (`hfQueryPlan`):
+   curated phrase→pipeline_tag/task_categories maps, English+Swedish
+   language-word→ISO maps, and sort intent (trending→trendingScore, most
+   liked→likes). Consumed words leave the term list, so "latest Swedish
+   speech recognition models" becomes a PURE filtered browse — live probe:
+   the hub now returns pyannote/whisperkit/whisper-large-v3-turbo (the
+   real 7-8M-download sv-ASR ecosystem) where name-matching returned
+   12-download hobby repos; papers found the National Library's Swedish
+   speech-corpus paper. Filtered attempts carry kind-scoped dedup keys.
+   Dataset language tags proved UNRELIABLE (?language=sv → github-code) —
+   language filter is models-only, evidence noted in code.
