@@ -175,6 +175,33 @@
 
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
+  <script>
+    // NON-module boot guard — must stay inline and classic. If the ES-module
+    // graph fails to link (a 2026-07-08 production incident: a stale cached
+    // module after a deploy meant app.js never ran), no submit handler is
+    // attached and tapping Send falls through to the browser's NATIVE form
+    // submit: a full page reload that looks like the chat silently resetting
+    // to a blank new conversation. app.js sets window.__appReady when it has
+    // finished wiring; until then, block native submits and offer a reload
+    // (which, with the no-cache asset policy in src/index.js, fetches a
+    // consistent fresh module graph).
+    window.addEventListener("submit", function (e) {
+      if (window.__appReady) return;
+      e.preventDefault();
+      if (document.getElementById("boot-guard")) return;
+      var bar = document.createElement("div");
+      bar.id = "boot-guard";
+      bar.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:#b3261e;color:#fff;padding:10px 16px;border-radius:12px;font:14px/1.4 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:88%";
+      bar.textContent = "The app didn't finish loading (stale cached file). ";
+      var link = document.createElement("a");
+      link.href = "#";
+      link.textContent = "Tap to reload";
+      link.style.cssText = "color:#fff;text-decoration:underline;font-weight:600";
+      link.addEventListener("click", function (ev) { ev.preventDefault(); location.reload(); });
+      bar.appendChild(link);
+      document.body.appendChild(bar);
+    }, true);
+  </script>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

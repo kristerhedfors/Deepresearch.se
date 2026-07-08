@@ -117,11 +117,39 @@ function isPublicAsset(url, method) {
   );
 }
 
+// Serves a static asset with an EXPLICIT browser-caching policy. Without
+// one (the state until 2026-07-08), browsers applied HEURISTIC caching to
+// the app's ~20 unversioned ES modules — and a day with several deploys
+// that changed cross-module exports left real devices with a MIXED module
+// graph (a fresh stream.js importing a stale-cached activity.js). The
+// import linker then fails, app.js never runs, no submit handler attaches,
+// and pressing Send falls through to the browser's NATIVE form submit — a
+// full page reload that looks like the chat silently resetting to a blank
+// new conversation ("no queries work"). `no-cache` (= store but REVALIDATE
+// every use) fixes the class: the strong etags Workers assets already emit
+// make revalidation a cheap 304, and every page load links a consistent,
+// current module graph. Icons/media (not part of the module graph, rarely
+// changed) keep a short real TTL. The Cloudflare EDGE cache is unaffected
+// and safe — it is content-addressed per deploy.
+const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
+async function serveAsset(request, env, overrideUrl = null) {
+  const res = await env.ASSETS.fetch(overrideUrl ? new Request(overrideUrl, request) : request);
+  const pathname = new URL(overrideUrl || request.url).pathname;
+  const headers = new Headers(res.headers);
+  // Extensionless paths are HTML routes (/, /welcome/, /admin) — revalidate.
+  if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
+    headers.set("cache-control", "no-cache");
+  } else {
+    headers.set("cache-control", "public, max-age=3600");
+  }
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 // Returns {response, identity} — identity only when resolved, so the
 // caller can slide the session cookie.
 async function route(request, env, url, log, ctx, requestId) {
   if (isPublicAsset(url, request.method)) {
-    return { response: await env.ASSETS.fetch(request) };
+    return { response: await serveAsset(request, env) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
@@ -142,7 +170,7 @@ async function route(request, env, url, log, ctx, requestId) {
     // docs, build story, sign-in) rather than a bare login form.
     if (url.pathname === "/" && request.method === "GET") {
       return {
-        response: await env.ASSETS.fetch(new Request(url.origin + "/welcome/", request)),
+        response: await serveAsset(request, env, url.origin + "/welcome/"),
       };
     }
     log.warn("auth.denied", { reason: "unauthenticated" });
@@ -186,7 +214,7 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     const isStaticAsset = request.method === "GET" && /\.[a-z0-9]+$/i.test(url.pathname);
     const isAllowedPage = request.method === "GET" && /^\/(build|story)(\/|$)/.test(url.pathname);
     if (isStaticAsset || isAllowedPage) {
-      return env.ASSETS.fetch(request);
+      return serveAsset(request, env);
     }
     return htmlResponse(termsPage(identity), 200);
   }
@@ -270,10 +298,10 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     if (identity.role !== "admin") {
       return new Response(null, { status: 302, headers: { Location: "/" } });
     }
-    return env.ASSETS.fetch(request);
+    return serveAsset(request, env);
   }
 
-  return env.ASSETS.fetch(request);
+  return serveAsset(request, env);
 }
 
 function htmlResponse(html, status) {

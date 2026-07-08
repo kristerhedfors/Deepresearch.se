@@ -327,3 +327,8 @@ form.addEventListener("submit", async (e) => {
 
 // Enter inserts a line break — nothing is sent until the arrow is tapped
 // (form submit). The input just grows via the autogrow handler above.
+
+// Boot completed: every module linked and every handler above is attached.
+// index.html's inline boot guard blocks native form submits until this flag
+// exists (see the guard's comment for the stale-module incident it covers).
+window.__appReady = true;
