@@ -8,7 +8,8 @@
     "test": "playwright test",
     "test:live": "playwright test --grep @live",
     "test:mocked": "playwright test --grep-invert @live",
-    "eval:models": "node model-eval.mjs"
+    "eval:models": "node model-eval.mjs",
+    "eval:bench": "node eval-bench.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
