@@ -315,6 +315,17 @@ test("embedRef formats each embed kind with its id number", () => {
   assert.equal(embedRef({ id: 3, kind: "streetview_frames" }), "[Embedded element #3: Street View frames]");
   // An unknown kind (a future source's embed) never silently vanishes.
   assert.equal(embedRef({ id: 4, kind: "sonar_sweep" }), "[Embedded element #4: sonar_sweep]");
+  // The inline quiz: title + question count, completion marker when done
+  // (the score itself lives in the summary appended to the turn text).
+  assert.equal(
+    embedRef({ id: 5, kind: "quiz", quiz: { title: "Nordic capitals", questions: [{}, {}, {}] } }),
+    '[Embedded element #5: interactive quiz "Nordic capitals" — 3 questions]',
+  );
+  assert.equal(
+    embedRef({ id: 6, kind: "quiz", completed: true, quiz: { title: "Q", questions: [{}] } }),
+    '[Embedded element #6: interactive quiz "Q" — 1 question, completed]',
+  );
+  assert.equal(embedRef({ id: 7, kind: "quiz" }), "[Embedded element #7: interactive quiz]");
 });
 
 test("conversationCopyText appends embed references under their assistant turn", () => {

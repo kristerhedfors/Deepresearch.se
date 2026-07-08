@@ -232,12 +232,23 @@ export function renderStreetViewFrames(turn, s) {
 // Compacts a status event before it enters the per-turn research log (the
 // "Copy research JSON" source): `streetview_frames` carries whole JPEG data
 // URLs — hundreds of KB that would bloat the export — so only the frame count
-// and directions are recorded. Everything else passes through unchanged.
-// Pure — unit-tested in activity.test.js.
+// and directions are recorded, and `quiz` carries the full question set —
+// several KB already persisted in the conversation's embeds registry — so
+// only its title and question count are. Everything else passes through
+// unchanged. Pure — unit-tested in activity.test.js.
 export function sanitizeResearchEvent(s) {
-  if (s?.type !== "streetview_frames") return s;
-  const frames = Array.isArray(s.frames) ? s.frames : [];
-  return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || f?.label || "") };
+  if (s?.type === "streetview_frames") {
+    const frames = Array.isArray(s.frames) ? s.frames : [];
+    return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || f?.label || "") };
+  }
+  if (s?.type === "quiz") {
+    return {
+      type: s.type,
+      title: s.quiz?.title || "",
+      questions: Array.isArray(s.quiz?.questions) ? s.quiz.questions.length : 0,
+    };
+  }
+  return s;
 }
 
 // Generic pipeline steps (plan / gap check / synthesis / validation).

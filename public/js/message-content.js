@@ -135,6 +135,19 @@ export function embedRef(e) {
       "]"
     );
   }
+  if (e?.kind === "quiz") {
+    const n = Array.isArray(e.quiz?.questions) ? e.quiz.questions.length : 0;
+    // The score itself isn't repeated here: on completion the result summary
+    // is appended to the quiz's assistant message (stream.js quizHooks), so
+    // the export already carries it in the turn text.
+    return (
+      `[Embedded element #${e.id}: interactive quiz` +
+      (e.quiz?.title ? ` "${e.quiz.title}"` : "") +
+      (n ? ` — ${n} question${n === 1 ? "" : "s"}` : "") +
+      (e.completed ? ", completed" : "") +
+      "]"
+    );
+  }
   return `[Embedded element #${e?.id}: ${e?.kind || "element"}]`;
 }
 

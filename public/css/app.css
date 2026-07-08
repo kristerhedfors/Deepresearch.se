@@ -325,6 +325,99 @@ header {
   margin-top: .15rem;
 }
 
+/* Inline quiz card (quiz status event → public/js/quiz.js): one question at
+   a time — alternatives as buttons plus a free-text field — then the score
+   verdict with a per-question recap. Persists beside the answer like the
+   Street View elements. */
+.quiz-card {
+  margin: .6rem 0 .2rem;
+  padding: .8rem .9rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.quiz-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+  margin-bottom: .5rem;
+}
+.quiz-title { font-weight: 700; font-size: .9rem; }
+.quiz-progress { font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.quiz-question { font-weight: 600; margin-bottom: .6rem; }
+.quiz-alts { display: flex; flex-direction: column; gap: .4rem; }
+.quiz-alt {
+  display: flex;
+  align-items: baseline;
+  gap: .55rem;
+  width: 100%;
+  text-align: left;
+  padding: .5rem .65rem;
+  font: inherit;
+  font-size: .9rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.quiz-alt:hover:not(:disabled) { border-color: var(--accent); }
+.quiz-alt:disabled { cursor: default; opacity: .85; }
+.quiz-alt-letter { font-weight: 700; font-size: .75rem; color: var(--muted); flex: none; }
+.quiz-alt.correct { border-color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); opacity: 1; }
+.quiz-alt.correct .quiz-alt-letter { color: var(--ok); }
+.quiz-alt.incorrect { border-color: #a33; box-shadow: inset 0 0 0 1px #a33; opacity: 1; }
+.quiz-free { margin-top: .6rem; }
+.quiz-free-label { font-size: .75rem; color: var(--muted); margin-bottom: .3rem; }
+.quiz-free-input {
+  width: 100%;
+  font: inherit;
+  font-size: .9rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .45rem .6rem;
+  resize: vertical;
+}
+.quiz-free-submit, .quiz-next {
+  margin-top: .4rem;
+  padding: .4rem .8rem;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.quiz-free-submit:disabled { opacity: .6; cursor: default; }
+.quiz-feedback {
+  margin-top: .6rem;
+  padding: .55rem .65rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: .9rem;
+}
+.quiz-verdict-line { font-weight: 700; }
+.quiz-feedback.good .quiz-verdict-line { color: var(--ok); }
+.quiz-feedback.bad .quiz-verdict-line { color: #a33; }
+.quiz-feedback.ungraded .quiz-verdict-line { color: var(--muted); }
+.quiz-reference { margin-top: .3rem; }
+.quiz-explain { margin-top: .3rem; color: var(--muted); }
+.quiz-score { font-size: 1.15rem; font-weight: 700; margin: .2rem 0 .4rem; }
+.quiz-ungraded-note { font-size: .8rem; color: var(--muted); margin-bottom: .4rem; }
+.quiz-recap { margin: .3rem 0 0; padding-left: 1.3rem; font-size: .88rem; }
+.quiz-recap li { margin-bottom: .3rem; }
+.quiz-recap-mark { font-weight: 700; margin-right: .35rem; }
+.quiz-recap li.good .quiz-recap-mark { color: var(--ok); }
+.quiz-recap li.bad .quiz-recap-mark { color: #a33; }
+.quiz-recap li.ungraded .quiz-recap-mark { color: var(--muted); }
+.quiz-recap-fix { font-size: .8rem; color: var(--muted); margin-left: 1.1rem; }
+
 /* Composer: ONE glass pane — single-line input on top, controls beneath
    (attach · camera · model selector · send arrow), then the search row
    (spiderweb web-search knob · time slider+value) on its own line. */

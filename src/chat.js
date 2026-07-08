@@ -326,6 +326,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // answer was written by the reliable fallback (pipeline.js's
             // streamCompletion failover) — JSON.stringify drops undefined.
             failover_model: state.failoverModel,
+            // The full delivered quiz (pipeline.js runQuizGeneration), when
+            // this request became one — the streamed `answer` above is only
+            // its intro, so the log would otherwise hide what was asked.
+            quiz: state.quiz || undefined,
             berget_cost,
             exa_cost,
           },
@@ -436,6 +440,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // The user's current panorama view (validated), for the follow-up
     // capture-what-they-see Street View path (src/enrichment.js).
     streetViewPov: extras.streetViewPov || null,
+    // This channel renders the interactive inline-quiz event (src/quiz.js;
+    // pipeline.js runQuizGeneration). The MCP channel builds its own state
+    // without this flag, so MCP callers keep getting plain text answers.
+    quizzes: true,
+    quiz: null, // the delivered quiz (normalized), when this request became one
 
     plan: planResearch(model, budgetS, jsonModel),
     // Triage decomposition (pipeline.js runTriage): the classified question
