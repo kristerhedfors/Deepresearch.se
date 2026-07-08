@@ -219,3 +219,26 @@ description: >-
   instead of a bare login form; `/login` remains the explicit sign-in
   page and the target for auth bounces on other paths. Signed-in users
   at `/` get the app, as always.
+- **History pane rows & the iOS paint constraint (2026-07-08):** each
+  chat row is a swipe-to-reveal card (`history-ui.js`): swiping left
+  slides the WHOLE card (inline transform while dragging, `.swiped`
+  parks it at −88px) uncovering a lazily-mounted rename/🗑-delete strip;
+  mouse devices get a hover fade-in overlay instead. HARD-WON RULE
+  (three failed fixes on a real iPhone): a row AT REST must be
+  structurally identical to a project row — just the open button. A row
+  that PERMANENTLY carries an absolutely-positioned (even `opacity: 0`)
+  strip inside the backdrop-filtered `.history-panel` renders INVISIBLE
+  on real iOS Safari (present in DOM, selectable, unpainted); Linux
+  WebKit does NOT reproduce it, so desktop/Playwright green means
+  nothing here — verify on a real device. All interaction artifacts
+  (strip, `overflow: hidden`, transform, transition) are mounted at
+  gesture-claim and removed on close. The pane also self-diagnoses: a
+  bracketed status stamp (`[h7 · N here + M in projects · cloud: …]`)
+  always renders at the pane bottom (build marker + local/undecryptable
+  counts + the `pullNewer` checked/restored/failed summary), and every
+  empty-list cause gets an explicit note (undecryptable records,
+  settings not loaded, knob off, restore failures). Bump the stamp AND
+  the `--css-version`/`CSS_VERSION` handshake pair (app.css ↔ app.js —
+  it force-reloads a stale cached stylesheet, which the boot guard's
+  module-graph repair does not cover) whenever CSS and JS must move
+  together.
