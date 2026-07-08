@@ -80,7 +80,7 @@ const NOISE = new Set([
   // value yet differentiated the dedup keys).
   "trends", "trend", "discussions", "discussion", "debates", "debate",
   "breakthroughs", "breakthrough", "innovations", "innovation",
-  "challenges", "challenge",
+  "challenges", "challenge", "developments", "development",
 ]);
 
 export function hfTerms(query) {

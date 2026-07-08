@@ -952,6 +952,18 @@ async function runAuxSearch(ctx, source, batch, round) {
       sources: items.map((i) => ({ title: i.title, url: i.url })),
     },
   });
+  // Registry-capacity reserve (once per source): aux sources run AFTER the
+  // wave's Exa batch, so at generous budgets the wave's web results can fill
+  // plan.maxSources BEFORE the hub items arrive — a probe showed hub
+  // artifacts landing in overflow and never reaching the digest, so the
+  // synthesis could not cite them at all for a question that explicitly
+  // asked about the platform. The first time a source actually contributes
+  // items, widen the registry by up to one search's worth so its results
+  // compete for real slots instead of leftovers.
+  if (items.length && !st.reserved) {
+    st.reserved = true;
+    state.plan.maxSources += Math.min(items.length, 8);
+  }
   addSources(state, items);
 }
 
