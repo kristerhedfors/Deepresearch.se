@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   buildMapsBlock,
+  buildPovBlock,
+  compassDir,
   extractPlace,
   googleMapsAvailable,
   googleMapsEmbedKey,
@@ -200,6 +202,15 @@ describe("referencesStreetView", () => {
     assert.equal(referencesStreetView("finns det ett staket runt trädgården?"), true);
   });
 
+  test("matches panorama-referring phrases (after the user pans the live view)", () => {
+    assert.equal(referencesStreetView("what am I looking at?"), true);
+    assert.equal(referencesStreetView("what is in front of me here?"), true);
+    assert.equal(referencesStreetView("describe this view"), true);
+    assert.equal(referencesStreetView("vad tittar jag på?"), true);
+    assert.equal(referencesStreetView("vad ser jag framför mig?"), true);
+    assert.equal(referencesStreetView("beskriv vyn"), true);
+  });
+
   test("does NOT match ordinary research follow-ups", () => {
     assert.equal(referencesStreetView("summarize the sources"), false);
     assert.equal(referencesStreetView("tell me more about the company"), false);
@@ -207,6 +218,18 @@ describe("referencesStreetView", () => {
     assert.equal(referencesStreetView("vad kostar det?"), false);
     assert.equal(referencesStreetView(""), false);
     assert.equal(referencesStreetView(null), false);
+  });
+});
+
+describe("compassDir", () => {
+  test("maps headings to compass points, wrapping negatives and >360", () => {
+    assert.equal(compassDir(0), "north");
+    assert.equal(compassDir(90), "east");
+    assert.equal(compassDir(143), "southeast");
+    assert.equal(compassDir(270), "west");
+    assert.equal(compassDir(359), "north");
+    assert.equal(compassDir(-90), "west");
+    assert.equal(compassDir(450), "east");
   });
 });
 
@@ -270,5 +293,64 @@ describe("pickLookup", () => {
       { role: "user", content: "and what does the building at Main Street 5 look like?" },
     ];
     assert.deepEqual(pickLookup(convo, []), { coords: "", address: "Main Street 5" });
+  });
+
+  test("the user's current panorama view beats the walk-back on an imagery follow-up", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const convo = [
+      { role: "user", content: "street view of Maskinistvägen 11" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "what am I looking at now?" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], pov), { coords: "", address: "", pov, followUp: true });
+  });
+
+  test("a POV rides only on imagery follow-ups — an ordinary question ignores it", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const convo = [
+      { role: "user", content: "street view of Maskinistvägen 11" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "who owns the property according to public records?" },
+    ];
+    assert.equal(pickLookup(convo, [], pov), null);
+  });
+
+  test("a NEW address in the latest message wins over the panorama POV", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const convo = [
+      { role: "user", content: "street view of Storgatan 4" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "what does the building at Main Street 5 look like?" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], pov), { coords: "", address: "Main Street 5" });
+  });
+});
+
+describe("buildPovBlock", () => {
+  const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+
+  test("describes the captured current view with position, heading and links", () => {
+    const block = buildPovBlock(pov, {
+      date: "2023-05",
+      description: "A red-brick three-storey building with a bakery at street level.",
+      framesShown: 1,
+    });
+    assert.match(block, /--- Google Maps ---/);
+    assert.match(block, /CURRENTLY VISIBLE view was captured/);
+    assert.match(block, /59\.41, 17\.91, facing 143° \(southeast\), pitch -5°/);
+    assert.match(block, /imagery captured: 2023-05/);
+    assert.match(block, /Map link: /);
+    assert.match(block, /Street View link: /);
+    assert.match(block, /displayed to the user directly beside this reply/);
+    assert.match(block, /Visual description of the user's current view \(auto-generated\): A red-brick/);
+    assert.match(block, /already enabled — do NOT suggest the user enable it/);
+    assert.ok(!block.includes("key="), "the block must never leak an API key");
+  });
+
+  test("says plainly when the frame couldn't be examined (no vision model)", () => {
+    const block = buildPovBlock(pov, { date: "", description: "", framesShown: 1 });
+    assert.match(block, /could not be examined by a vision model/);
+    assert.ok(!/Visual description/.test(block));
+    assert.ok(!/imagery captured/.test(block));
   });
 });

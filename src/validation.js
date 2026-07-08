@@ -105,6 +105,37 @@ export function validateImageLocations(raw) {
   return out;
 }
 
+// Sanitizes the client-reported Street View point-of-view (from the inline
+// StreetViewPanorama the user can pan/move — public/js/activity.js, forwarded
+// as body.street_view_pov) before the server captures that exact frame.
+// Untrusted input, arbitrary shape: anything unusable returns null (the
+// enrichment then falls back to the address walk-back), never a blocked chat.
+// Heading wraps into [0,360), pitch clamps to [-90,90], fov to Street View
+// Static's [10,120]; the pano id is kept only when it looks like one.
+/**
+ * @param {any} raw untrusted client-reported Street View POV
+ * @returns {import('./types.js').StreetViewPov | null}
+ */
+export function validateStreetViewPov(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat);
+  const lng = Number(raw.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  const heading = Number(raw.heading);
+  const pitch = Number(raw.pitch);
+  const fov = Number(raw.fov);
+  const panoId = typeof raw.panoId === "string" && /^[\w-]{1,64}$/.test(raw.panoId) ? raw.panoId : "";
+  return {
+    panoId,
+    lat,
+    lng,
+    heading: Number.isFinite(heading) ? ((Math.round(heading) % 360) + 360) % 360 : 0,
+    pitch: Number.isFinite(pitch) ? Math.max(-90, Math.min(90, Math.round(pitch))) : 0,
+    fov: Number.isFinite(fov) ? Math.max(10, Math.min(120, Math.round(fov))) : 90,
+  };
+}
+
 // Resolves the model for a request against the (possibly null) catalog:
 // validates the override, checks availability, and enforces vision when the
 // conversation carries images. Returns { model } on success or

@@ -316,14 +316,21 @@ wires it (before any model call, alongside the Shodan enrichment).
   (`static-maps-backend.googleapis.com`) and **Street View Static API**
   (`street-view-image-backend.googleapis.com`).
 - **`GOOGLE_MAPS_EMBED_KEY`** is an OPTIONAL dashboard secret for the inline
-  interactive Street View iframe. It is intentionally exposed to the browser
+  interactive Street View. It is intentionally exposed to the browser
   (via `/api/settings`), so it MUST be HTTP-referrer-restricted to the site.
   **It defaults to `GOOGLE_MAPS_API_KEY` when unset** (`googleMapsEmbedKey`) —
   fine as long as that key is itself referrer-locked to `*.deepresearch.se/*`
-  (it is), which is the mitigation for browser exposure. Set a dedicated
-  Embed-API-only key only if you want to narrow the browser-exposed key's
-  scope. Either way the inline navigable embed then works; with neither key
-  (no Maps configured at all) only the keyless link shows.
+  (it is), which is the mitigation for browser exposure. With neither key
+  (no Maps configured at all) only the keyless link shows. **The browser key
+  should additionally have the Maps JavaScript API enabled**
+  (`maps-backend.googleapis.com` in the Cloud console): the inline view is a
+  real `StreetViewPanorama` from the Maps JS SDK (needed to read where the
+  user pans — see the POV capture below), billed as a Dynamic Street View
+  load (~$14/1k vs the Embed iframe's free). If the key can't load the SDK
+  (e.g. a dedicated key restricted to the Embed API only), the client falls
+  back to the old Embed iframe automatically — still navigable, but the
+  current-view capture is unavailable and follow-ups use the cardinal-frames
+  walk-back instead.
 - **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
   pure + unit-tested): parses a single geocodable street-address candidate out
   of the latest message (a "<words> <number>" span whose word before the number
@@ -345,6 +352,23 @@ wires it (before any model call, alongside the Shodan enrichment).
   the block says the CURRENT imagery was re-fetched and re-examined for this
   question). The gate keeps ordinary follow-ups ("summarize the sources")
   from re-billing Google; a false negative degrades to the old behavior.
+- **The user's CURRENT panorama view is captured on follow-ups** (the POV
+  path). The inline panorama is the Maps JS SDK's `StreetViewPanorama`, and
+  the client tracks every pan/move/pano-jump (`activity.js`: pano id,
+  lat/lng, heading, pitch, zoom→fov) and sends the latest view as
+  `body.street_view_pov` with every following query (`stream.js`; reset on
+  new chat / conversation switch). Server-side it's sanitized by
+  `validateStreetViewPov` (heading wrapped, pitch/fov clamped, pano id
+  pattern-checked) and, when a follow-up passes the same
+  `referencesStreetView` gate, `pickLookup` prefers the POV over the
+  address walk-back: `runStreetViewPovCapture` fetches ONE Street View
+  Static frame at exactly that pano/heading/pitch/fov (metadata check for
+  the capture date is free; the frame is cached like the address lookup),
+  the vision helper answers the question about THAT frame, the frame is
+  emitted to the client (`streetview_frames` with a "your current view"
+  label), and `buildPovBlock` tells the model it is the user's currently
+  visible view. A NEW address in the message still beats the POV (it's a
+  new location); no POV (iframe fallback) degrades to the walk-back.
 - **The vision helper answers the user's question**, not just a generic
   describe: `describeStreetView` gets the latest question (bounded, appended
   client blocks stripped) and is instructed to answer it strictly from what

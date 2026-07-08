@@ -11,7 +11,15 @@
 
 import { chatCompletion, consumeChatStream } from "./berget.js";
 import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conversation.js";
-import { buildMapsBlock, googleMapsEmbedKey, pickLookup, runGoogleMapsLookup } from "./googlemaps.js";
+import {
+  buildMapsBlock,
+  buildPovBlock,
+  compassDir,
+  googleMapsEmbedKey,
+  pickLookup,
+  runGoogleMapsLookup,
+  runStreetViewPovCapture,
+} from "./googlemaps.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 
@@ -59,13 +67,19 @@ const MAX_MAPS_IMAGES = 4;
 // message names no address and carries no photo location; beyond one free
 // Street View metadata check an ordinary question costs nothing.
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
-  const target = pickLookup(conversation, state.imageLocations);
+  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov);
   if (!target) return conversation;
   // The user's actual question, for the vision helper to ANSWER about the
   // imagery (not just generically describe it). The client appends labeled
   // document/metadata blocks after the typed text, so keep only what precedes
   // the first block, bounded.
   const question = textOf(lastUserMessage(conversation)?.content).split("\n\n---")[0].trim().slice(0, 400);
+
+  // The user panned/moved the inline panorama and asked about it: capture
+  // exactly the frame on their screen (its own path — no Places lookup, one
+  // Static fetch at their heading/pitch/fov) instead of the four generic
+  // cardinal frames of a place lookup.
+  if (target.pov) return runPovEnrichment(env, log, emit, step, stepDone, conversation, state, target.pov, question);
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
   // isn't already carrying user images). We deliberately do NOT attach the
@@ -119,7 +133,14 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // keyless link.
   let description = "";
   if (images.length) {
-    description = await describeStreetView(env, log, state, result.displayQuery, images, question);
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `These are Google Street View photos (looking in different directions) and a road map of ${result.displayQuery}.`,
+      images,
+      question,
+    );
   }
 
   // Snap the frames into the reply: the client renders the very images the
@@ -159,16 +180,76 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   return withAppendedText(conversation, block);
 }
 
-// Runs the Street View / map images through a vision-capable helper model to
+// The current-view path: the user panned/moved the live panorama, so capture
+// the exact frame they see (one Static fetch at their heading/pitch/fov),
+// show it in the reply, and have the vision helper answer their question
+// about THAT frame. No Places call, no new embed event (the panorama is
+// already on their screen). Fail-soft like every branch: a failed capture
+// degrades to an honest note, never a blocked chat.
+async function runPovEnrichment(env, log, emit, step, stepDone, conversation, state, pov, question) {
+  step("maps", "Capturing your current Street View view…");
+  let capture = null;
+  try {
+    capture = await runStreetViewPovCapture(env, log, pov);
+  } catch (err) {
+    log.warn("googlemaps.pov_failed", { error: err?.message || String(err) });
+  }
+  const where = `${pov.lat}, ${pov.lng}, facing ${pov.heading}° (${compassDir(pov.heading)})`;
+  if (!capture) {
+    stepDone("maps", "Couldn't capture the current Street View view");
+    return withAppendedText(
+      conversation,
+      "\n\n--- Google Maps ---\n" +
+        `Google Maps & Street View is ENABLED and a capture of the user's current panorama view (at ${where}) was attempted, but no image could be fetched. ` +
+        "Answer from the conversation so far and say plainly that the current view couldn't be captured this time. " +
+        "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
+        "--- End of Google Maps ---",
+    );
+  }
+
+  state.mapsCount = 1;
+  let description = "";
+  if (state.visionModel) {
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `This is the exact Google Street View frame the user is currently looking at in an interactive panorama (at ${where}, pitch ${pov.pitch}°).`,
+      [capture.image],
+      question,
+    );
+  }
+
+  // Show the very frame that was reasoned about beside the answer.
+  emit({
+    status: {
+      type: "streetview_frames",
+      query: `your current view (${compassDir(pov.heading)})`,
+      frames: [{ dir: "", label: "your current view", url: capture.image }],
+    },
+  });
+
+  stepDone(
+    "maps",
+    description ? "Current Street View view captured + described" : "Current Street View view captured",
+    [`${where}${capture.date ? ` — imagery ${capture.date}` : ""}`],
+  );
+
+  return withAppendedText(conversation, buildPovBlock(pov, { date: capture.date, description, framesShown: 1 }));
+}
+
+// Runs Street View / map images through a vision-capable helper model to
 // produce a short factual description, so a NON-vision answer model (e.g. the
 // default Mistral Small) can still tell the user what the location looks like.
-// When the user's question is passed, the helper answers IT from the imagery
-// first — that's what lets a follow-up reason about the particular image
-// instead of replaying a generic description. Its tokens go to
+// `intro` is the caller's first sentence saying what the imagery IS (the
+// four-cardinal-frames look-around vs the user's exact current panorama
+// view). When the user's question is passed, the helper answers IT from the
+// imagery first — that's what lets a follow-up reason about the particular
+// image instead of replaying a generic description. Its tokens go to
 // state.visionTotals so chat.js bills them at that model's rate. Fully
 // fail-soft: any error yields "" and the block falls back to the keyless
 // Street View link.
-async function describeStreetView(env, log, state, label, images, question = "") {
+async function describeStreetView(env, log, state, intro, images, question = "") {
   try {
     const ask = question
       ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in these photos — if the photos cannot answer it, say so plainly. Then briefly describe`
@@ -177,7 +258,7 @@ async function describeStreetView(env, log, state, label, images, question = "")
       {
         type: "text",
         text:
-          `These are Google Street View photos (looking in different directions) and a road map of ${label}. ` +
+          `${intro} ` +
           `${ask} the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, ` +
           "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
           "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",

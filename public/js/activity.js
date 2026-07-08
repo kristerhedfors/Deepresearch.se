@@ -5,13 +5,77 @@
 
 import { mapsEmbedKey } from "./settings.js";
 
-// Interactive Street View embed, from a `streetview_embed` status event. Unlike
-// the activity steps (which collapse when the run finishes), this is inserted
-// into the turn body so it PERSISTS beside the answer. Uses the browser embed
-// key from /api/settings (referrer-locked, Embed-API-only) — no key means no
-// inline embed, just the keyless Street View link the answer already carries.
-// Live-session only: a reloaded conversation shows the answer + link, not the
-// iframe (same as the step traces).
+// ---- Street View SDK panorama + current-view (POV) capture ------------------
+//
+// The inline Street View is a real Maps JavaScript API StreetViewPanorama
+// (the Street View SDK) rather than a Maps Embed iframe, because ONLY the SDK
+// exposes where the user has panned/moved (pano id, position, heading, pitch,
+// zoom) — an Embed iframe is cross-origin and reports nothing. The current
+// POV is tracked here and stream.js sends it as `street_view_pov` with every
+// following /api/chat query, so the server can capture and reason about the
+// exact frame on the user's screen. If the SDK can't load (e.g. the browser
+// key isn't enabled for the Maps JavaScript API), the old iframe renders as a
+// fallback — navigable, just without POV capture.
+
+let currentPov = null; // the view the user last panned/moved to (this session)
+let mapsApiPromise = null; // lazy one-time SDK load
+
+// What stream.js attaches to the next /api/chat body, or null when no live
+// panorama exists (fresh session, iframe fallback, reloaded conversation).
+export function getStreetViewPov() {
+  return currentPov;
+}
+
+// New chat / switching conversations: the panorama on screen no longer
+// belongs to the conversation being sent, so its POV must not ride along.
+export function resetStreetViewPov() {
+  currentPov = null;
+}
+
+// Loads the Maps JS SDK once, on demand (only when a streetview_embed event
+// actually arrives). Uses the documented async bootstrap (loading=async +
+// callback). A failed load clears the promise so a later turn can retry.
+function loadMapsApi(key) {
+  if (globalThis.google?.maps?.StreetViewPanorama) return Promise.resolve(globalThis.google.maps);
+  if (!mapsApiPromise) {
+    mapsApiPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("maps js sdk timeout")), 10_000);
+      globalThis.__drMapsReady = () => {
+        clearTimeout(timer);
+        resolve(globalThis.google?.maps || null);
+      };
+      const s = document.createElement("script");
+      const params = new URLSearchParams({ key, v: "weekly", loading: "async", callback: "__drMapsReady" });
+      s.src = `https://maps.googleapis.com/maps/api/js?${params}`;
+      s.async = true;
+      s.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error("maps js sdk failed to load"));
+      };
+      document.head.appendChild(s);
+    }).catch((err) => {
+      mapsApiPromise = null; // allow a retry on a later turn
+      throw err;
+    });
+  }
+  return mapsApiPromise;
+}
+
+// Convert the SDK's zoom to the Street View Static API's fov so the captured
+// frame matches what's on screen (zoom 0 ≈ 180° wide, zoom 1 ≈ 90°, each
+// level halves it; Static accepts 10-120).
+function zoomToFov(zoom) {
+  const z = Number.isFinite(Number(zoom)) ? Number(zoom) : 1;
+  return Math.round(Math.min(120, Math.max(10, 180 / Math.pow(2, z))));
+}
+
+// Interactive Street View, from a `streetview_embed` status event. Unlike the
+// activity steps (which collapse when the run finishes), this is inserted
+// into the turn body so it PERSISTS beside the answer. Uses the browser key
+// from /api/settings (referrer-locked) — no key means no inline panorama,
+// just the keyless Street View link the answer already carries. Live-session
+// only: a reloaded conversation shows the answer + link, not the panorama
+// (same as the step traces).
 export function renderStreetViewEmbed(turn, s) {
   const key = mapsEmbedKey();
   if (!key || !turn?.el || turn._svEmbed) return;
@@ -24,17 +88,59 @@ export function renderStreetViewEmbed(turn, s) {
   const label = document.createElement("div");
   label.className = "streetview-embed-label";
   label.textContent = "Street View — drag to look around";
-  const iframe = document.createElement("iframe");
-  iframe.loading = "lazy";
-  iframe.allow = "fullscreen";
-  iframe.title = "Google Street View";
-  const params = new URLSearchParams({ key, location: `${lat},${lng}` });
-  if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
-  iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
-  wrap.append(label, iframe);
-  // After the answer text, before the stats footer.
+  const box = document.createElement("div");
+  box.className = "streetview-pano";
+  wrap.append(label, box);
   turn.el.insertBefore(wrap, turn.stats);
   turn._svEmbed = wrap;
+
+  loadMapsApi(key)
+    .then((maps) => {
+      if (!maps?.StreetViewPanorama) throw new Error("StreetViewPanorama unavailable");
+      const pano = new maps.StreetViewPanorama(box, {
+        position: { lat, lng },
+        pov: { heading: Number.isFinite(Number(s.heading)) ? Number(s.heading) : 0, pitch: 0 },
+        zoom: 1,
+        addressControl: false,
+        fullscreenControl: true,
+      });
+      // Track the CURRENT view — a new panorama (a later lookup) simply takes
+      // over the shared slot, matching "the street view on screen".
+      const record = () => {
+        try {
+          const pos = pano.getPosition();
+          const pov = pano.getPov();
+          if (!pos || !pov) return;
+          currentPov = {
+            panoId: typeof pano.getPano() === "string" ? pano.getPano() : "",
+            lat: pos.lat(),
+            lng: pos.lng(),
+            heading: Math.round(((Number(pov.heading) % 360) + 360) % 360) || 0,
+            pitch: Math.round(Number(pov.pitch) || 0),
+            fov: zoomToFov(pano.getZoom()),
+          };
+        } catch {
+          // POV capture is best-effort — the panorama itself keeps working.
+        }
+      };
+      pano.addListener("pov_changed", record);
+      pano.addListener("position_changed", record);
+      pano.addListener("pano_changed", record);
+      record();
+      label.textContent = "Street View — drag to look around; follow-up questions see your current view";
+    })
+    .catch(() => {
+      // SDK unavailable (key not enabled for the Maps JavaScript API, network,
+      // CSP…): fall back to the Embed iframe — still navigable, no POV capture.
+      const iframe = document.createElement("iframe");
+      iframe.loading = "lazy";
+      iframe.allow = "fullscreen";
+      iframe.title = "Google Street View";
+      const params = new URLSearchParams({ key, location: `${lat},${lng}` });
+      if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
+      iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
+      box.replaceChildren(iframe);
+    });
 }
 
 // The snapped Street View frames the server's vision helper reasoned about,
@@ -62,11 +168,14 @@ export function renderStreetViewFrames(turn, s) {
     const img = document.createElement("img");
     img.src = f.url;
     img.loading = "lazy";
-    img.alt = f.dir ? `Street View looking ${f.dir}` : "Street View";
+    // A frame carries either a cardinal direction ("north") or a free-form
+    // label ("your current view" — the POV capture path).
+    const caption = f.label || (f.dir ? `looking ${f.dir}` : "");
+    img.alt = caption ? `Street View — ${caption}` : "Street View";
     fig.appendChild(img);
-    if (f.dir) {
+    if (caption) {
       const cap = document.createElement("figcaption");
-      cap.textContent = `looking ${f.dir}`;
+      cap.textContent = caption;
       fig.appendChild(cap);
     }
     strip.appendChild(fig);
@@ -85,7 +194,7 @@ export function renderStreetViewFrames(turn, s) {
 export function sanitizeResearchEvent(s) {
   if (s?.type !== "streetview_frames") return s;
   const frames = Array.isArray(s.frames) ? s.frames : [];
-  return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || "") };
+  return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || f?.label || "") };
 }
 
 // Generic pipeline steps (plan / gap check / synthesis / validation).

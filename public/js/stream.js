@@ -9,9 +9,11 @@ import {
   collapseActivity,
   finishGenericStep,
   finishSearchStep,
+  getStreetViewPov,
   renderStats,
   renderStreetViewEmbed,
   renderStreetViewFrames,
+  resetStreetViewPov,
   sanitizeResearchEvent,
   startGenericStep,
   startSearchStep,
@@ -130,6 +132,7 @@ export function applyLoadedConversation(record) {
   convCreatedAt = record.createdAt;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   convIncognito = false; // a saved conversation is by definition not incognito
+  resetStreetViewPov(); // any on-screen panorama belongs to the conversation being left
   clearPending(); // opening another conversation cancels any pending-answer resume
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
@@ -209,6 +212,7 @@ export function clearHistory() {
   convRagDocs = [];
   convProjectId = null; // the next send re-adopts whatever project is active
   convIncognito = false; // incognito is chosen per conversation, never inherited
+  resetStreetViewPov(); // a fresh chat must not inherit the old panorama's view
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -643,6 +647,12 @@ export async function sendMessage(text, opts) {
       .filter((a) => a.gps)
       .map((a) => ({ name: a.name, lat: a.gps.lat, lon: a.gps.lon }));
     if (imageLocations.length) payload.imageLocations = imageLocations;
+    // The user's CURRENT view in the inline Street View panorama (they may
+    // have panned/moved it) — the server captures exactly that frame when a
+    // follow-up refers back to the imagery (src/enrichment.js). Null when no
+    // live panorama exists this session.
+    const streetViewPov = getStreetViewPov();
+    if (streetViewPov) payload.street_view_pov = streetViewPov;
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

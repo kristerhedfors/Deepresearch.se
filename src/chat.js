@@ -20,7 +20,7 @@ import {
   quotaExceeded,
   recordUsage,
 } from "./quota.js";
-import { resolveModel, validateImageLocations, validateMessages } from "./validation.js";
+import { resolveModel, validateImageLocations, validateMessages, validateStreetViewPov } from "./validation.js";
 import { shodanEnabled, googleMapsEnabled } from "./settings.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
@@ -115,6 +115,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // This is why "describe this street view" works regardless of model choice.
   const visionModel = modelIsVision ? model : catalog?.find((m) => m.vision && m.up)?.id || null;
   const imageLocations = validateImageLocations(body.imageLocations);
+  // The user's CURRENT view in the inline Street View panorama (they may have
+  // panned/moved it) — lets a follow-up capture exactly what's on their
+  // screen instead of the four generic cardinal frames.
+  const streetViewPov = googleMapsOn ? validateStreetViewPov(body.street_view_pov) : null;
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -155,6 +159,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       vision: modelIsVision,
       visionModel,
       imageLocations,
+      streetViewPov,
     });
     disconnect.state = state;
 
@@ -360,6 +365,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // billed at its own catalog rate (like jsonTotals), summed for the counters.
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: extras.imageLocations || [], // validated attached-photo GPS coords
+    // The user's current panorama view (validated), for the follow-up
+    // capture-what-they-see Street View path (src/enrichment.js).
+    streetViewPov: extras.streetViewPov || null,
 
     plan: planResearch(model, budgetS, jsonModel),
     // Triage decomposition (pipeline.js runTriage): the classified question

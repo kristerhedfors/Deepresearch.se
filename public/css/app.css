@@ -289,6 +289,16 @@ header {
   display: block;
   background: rgba(0, 0, 0, .04);
 }
+/* The Maps JS SDK StreetViewPanorama container (the SDK fills it); when the
+   SDK can't load, the fallback Embed iframe above renders inside it instead. */
+.streetview-pano {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 420px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .04);
+}
 
 /* The snapped Street View frames (streetview_frames event) — the exact images
    the vision helper reasoned about, captioned by looking direction. */

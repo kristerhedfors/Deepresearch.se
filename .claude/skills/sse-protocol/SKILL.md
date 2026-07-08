@@ -30,19 +30,25 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
 - `{"status":{"type":"streetview_embed","lat":59.4,"lng":17.9}}` — the Google
   Maps enrichment resolved a location with Street View coverage; the client
-  renders an inline, navigable Maps Embed iframe beside the answer (using the
-  browser embed key it holds from `/api/settings` — the key is deliberately
-  NOT in this event, so it never enters the "Copy research JSON" export). No
-  embed key configured → the client ignores it and the keyless link stands.
+  renders an inline, navigable Maps JS SDK `StreetViewPanorama` beside the
+  answer (using the browser key it holds from `/api/settings` — the key is
+  deliberately NOT in this event, so it never enters the "Copy research JSON"
+  export) and tracks the user's pans as the POV sent back with follow-up
+  queries (`street_view_pov`). SDK load failure → Embed iframe fallback (no
+  POV capture). No browser key configured → the client ignores the event and
+  the keyless link stands.
 - `{"status":{"type":"streetview_frames","query":"Maskinistvägen 11","frames":[{"dir":"north","url":"data:image/jpeg;base64,…"}]}}`
   — the actual snapped Street View frames the vision-describe helper reasoned
-  about (up to 4, direction-labeled JPEG data URLs); the client renders them
-  as a captioned thumbnail strip beside the answer so the user sees the SAME
-  imagery the model saw. Deliberately bulky — the ONE event whose payload is
-  compacted before entering the per-turn research log (`activity.js`'s
-  `sanitizeResearchEvent`: frame count + directions only), so the "Copy
-  research JSON" export stays small. Like the embed, it's live-session only
-  (a reloaded conversation keeps the answer + link, not the images).
+  about (up to 4, JPEG data URLs); the client renders them as a captioned
+  thumbnail strip beside the answer so the user sees the SAME imagery the
+  model saw. Each frame carries a cardinal `dir` ("north") OR a free-form
+  `label` ("your current view" — the POV capture path, where the server
+  fetched exactly the frame the user panned the live panorama to).
+  Deliberately bulky — the ONE event whose payload is compacted before
+  entering the per-turn research log (`activity.js`'s
+  `sanitizeResearchEvent`: frame count + directions/labels only), so the
+  "Copy research JSON" export stays small. Like the embed, it's live-session
+  only (a reloaded conversation keeps the answer + link, not the images).
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

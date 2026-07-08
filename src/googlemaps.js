@@ -232,8 +232,10 @@ function firstMatch(raw, re) {
 // follow-ups); "look like" is specific enough to keep. A false positive only
 // costs one cached-able Maps lookup and a harmless context block; a false
 // negative degrades to today's behavior — both fail-soft.
+// NOTE: \b is ASCII-only in JS — it never fires next to å/ä/ö/é ("på?" has no
+// \b after "å") — so the word boundaries are Unicode-aware lookarounds.
 const FOLLOWUP_REFERENCE_RE = new RegExp(
-  "\\b(?:" +
+  "(?<![\\p{L}\\p{M}])(?:" +
     // imagery / the view itself
     "street ?view|gatuvy|imager?y|images?|pictures?|photos?|panoramas?|" +
     "bild(?:en|er|erna)?|foto(?:t|n|na)?|" +
@@ -245,10 +247,13 @@ const FOLLOWUP_REFERENCE_RE = new RegExp(
     "staket(?:et|en)?|balkong(?:en|er|erna)?|entré(?:n|er|erna)?|våning(?:en|ar|arna)?|skorsten(?:en|ar)?|" +
     // visual attributes / surroundings
     "colou?rs?|visible|surroundings?|neighbou?rhoods?|parked|" +
-    "look(?:s|ed|ing)? like|across the street|opposite|" +
+    "look(?:s|ed|ing)? (?:like|at)|across the street|opposite|" +
     "färg(?:en|er|erna)?|syns|omgivning(?:en|ar|arna)?|grann(?:e|en|ar|arna)|parkerad(?:e|a)?|" +
-    "ser (?:det|den|huset|byggnaden|platsen) ut|mittemot|tvärs över gatan" +
-    ")\\b",
+    "ser (?:det|den|huset|byggnaden|platsen) ut|mittemot|tvärs över gatan|" +
+    // panorama-referring phrases ("what am I looking at?", after panning)
+    "am i (?:seeing|looking)|in front of|this view|the view|" +
+    "vy(?:n|er|erna)?|tittar (?:jag|vi|man) på|ser jag|framför (?:mig|oss)" +
+    ")(?![\\p{L}\\p{M}])",
   "iu",
 );
 
@@ -268,6 +273,38 @@ export function panoLink(lat, lng) {
 // Keyless Google Maps link that drops a pin at the coordinates.
 export function mapLink(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+// A heading in degrees as a compass point ("143°" → "southeast"), so the
+// context block reads naturally for the model and the user.
+const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+export function compassDir(heading) {
+  const h = ((Number(heading) % 360) + 360) % 360;
+  return COMPASS[Math.round(h / 45) % 8];
+}
+
+// The labeled context block for a captured CURRENT-view frame (the POV path):
+// the user panned/moved the inline panorama and asked a follow-up, and the
+// exact frame on their screen was captured and (when possible) described.
+// Same plain-text convention as buildMapsBlock. Pure — exported for tests.
+export function buildPovBlock(pov, parts) {
+  const lines = [
+    "The user is viewing an interactive Street View panorama beside this chat and may have panned or moved it.",
+    `Their CURRENTLY VISIBLE view was captured for this question: at coordinates ${pov.lat}, ${pov.lng}, facing ${pov.heading}° (${compassDir(pov.heading)}), pitch ${pov.pitch}°.`,
+  ];
+  if (parts.date) lines.push(`Street View imagery captured: ${parts.date}`);
+  lines.push(`Map link: ${mapLink(pov.lat, pov.lng)}`);
+  lines.push(`Street View link: ${panoLink(pov.lat, pov.lng)}`);
+  if (parts.framesShown) {
+    lines.push("The captured frame is displayed to the user directly beside this reply, so you can refer to it as shared context.");
+  }
+  if (parts.description) {
+    lines.push(`Visual description of the user's current view (auto-generated): ${parts.description}`);
+  } else {
+    lines.push("The frame could not be examined by a vision model this time — answer from the location data above and say plainly that the view itself couldn't be inspected.");
+  }
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
 // The labeled context block appended to the conversation, same plain-text
@@ -412,11 +449,14 @@ export async function placesTextSearch(env, log, query) {
 
 // Street View metadata is FREE (Google does not bill metadata requests) and
 // tells us whether a panorama exists at `location` before we spend on an
-// image. Returns the parsed metadata (status "OK" means imagery exists) or
-// null.
-export async function streetViewMetadata(env, log, location) {
+// image. A pano id (from the client's live panorama) takes precedence over
+// the location string when given. Returns the parsed metadata (status "OK"
+// means imagery exists) or null.
+export async function streetViewMetadata(env, log, location, pano = "") {
   try {
-    const qs = new URLSearchParams({ location, key: env.GOOGLE_MAPS_API_KEY });
+    const qs = new URLSearchParams({ key: env.GOOGLE_MAPS_API_KEY });
+    if (pano) qs.set("pano", pano);
+    else qs.set("location", location);
     const resp = await fetch(`${STREETVIEW_META_URL}?${qs}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!resp.ok) {
       log.warn("googlemaps.streetview_meta_error", { status: resp.status });
@@ -441,6 +481,81 @@ function streetViewImageUrl(env, location, heading) {
     return_error_code: "true",
   });
   return `${STREETVIEW_IMAGE_URL}?${qs}`;
+}
+
+// The Street View Static URL for an exact point of view — the pano id (when
+// the client's live panorama reported one) pins the very panorama the user is
+// standing in, and heading/pitch/fov reproduce where they panned to.
+function streetViewPovImageUrl(env, pov) {
+  const qs = new URLSearchParams({
+    size: STREETVIEW_SIZE,
+    heading: String(pov.heading),
+    pitch: String(pov.pitch),
+    fov: String(pov.fov),
+    key: env.GOOGLE_MAPS_API_KEY,
+    return_error_code: "true",
+  });
+  if (pov.panoId) qs.set("pano", pov.panoId);
+  else qs.set("location", `${pov.lat},${pov.lng}`);
+  return `${STREETVIEW_IMAGE_URL}?${qs}`;
+}
+
+// Captures the exact frame the user currently sees in the inline panorama
+// (validated POV from body.street_view_pov): one billed Street View Static
+// fetch at their heading/pitch/fov, plus the free metadata check for the
+// capture date. Cached like the address lookup (the POV is integer-rounded
+// client-side, so re-asking about the same view is a free hit). Returns
+// { image, date } or null on any failure — fail-soft, the caller degrades.
+export async function runStreetViewPovCapture(env, log, pov) {
+  if (!googleMapsAvailable(env)) return null;
+
+  const cache = globalThis.caches?.default;
+  const params = new URLSearchParams({
+    p: pov.panoId || "",
+    ll: `${pov.lat},${pov.lng}`,
+    h: String(pov.heading),
+    pt: String(pov.pitch),
+    f: String(pov.fov),
+  });
+  const cacheKey = `https://googlemaps-pov-cache.internal/frame?${params.toString()}`;
+  if (cache) {
+    try {
+      const hit = await cache.match(new Request(cacheKey));
+      if (hit) {
+        const payload = await hit.json();
+        if (payload && typeof payload === "object" && payload.image) {
+          log.info("googlemaps.pov_cache_hit", {});
+          return payload;
+        }
+      }
+    } catch (err) {
+      log.warn("googlemaps.cache_read_failed", { error: err?.message || String(err) });
+    }
+  }
+
+  const [meta, image] = await Promise.all([
+    streetViewMetadata(env, log, `${pov.lat},${pov.lng}`, pov.panoId),
+    fetchImageDataUrl(env, log, streetViewPovImageUrl(env, pov), "googlemaps.streetview_pov_error"),
+  ]);
+  if (!image) return null;
+
+  const result = { image, date: meta?.status === "OK" ? meta.date || "" : "" };
+  if (cache) {
+    try {
+      await cache.put(
+        new Request(cacheKey),
+        new Response(JSON.stringify(result), {
+          headers: {
+            "content-type": "application/json",
+            "cache-control": `max-age=${LOOKUP_CACHE_TTL_S}`,
+          },
+        }),
+      );
+    } catch (err) {
+      log.warn("googlemaps.cache_write_failed", { error: err?.message || String(err) });
+    }
+  }
+  return result;
 }
 
 function staticMapUrl(env, location) {
@@ -619,19 +734,24 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
 }
 
 // Convenience used by the pipeline: derive the lookup inputs from a
-// conversation + any attached-photo coordinates. Prefers a precise photo
-// coordinate over an address parsed from the latest message. When the latest
-// message names NOTHING but clearly refers back to the imagery/place
-// (referencesStreetView above), the walk-back finds the most recent address an
-// EARLIER user turn named — that's what lets a follow-up ("what color is the
-// roof?") re-snap the current Street View imagery instead of the model
-// claiming it has no knowledge of any image. The server is stateless and the
-// prior turn's Maps block was appended server-side only, so the conversation
-// text the client resends is the ONLY durable record — and the address in it
-// is exactly that. Returns null when nothing names (or refers back to) a
-// location; `followUp: true` marks a walked-back hit so the enrichment can
-// label the block accordingly.
-export function pickLookup(conversation, imageLocations) {
+// conversation + any attached-photo coordinates + the client's live panorama
+// POV. Precedence, most specific first:
+//   1. an attached photo's GPS coordinates,
+//   2. an address the LATEST message names (a new location — the client's
+//      panorama, if any, still shows the old one),
+//   3. the user's CURRENT panorama view (body.street_view_pov) when the
+//      message refers back to the imagery/place — capture exactly what they
+//      panned/moved to,
+//   4. the walk-back: the most recent address an EARLIER user turn named
+//      (the panorama-less fallback — embed key missing or the Maps JS SDK
+//      failed to load, where only the iframe rendered and no POV exists).
+// 3 and 4 share the referencesStreetView gate: without a back-reference in
+// the message, an ordinary follow-up must not re-bill Google. The server is
+// stateless and the prior turn's Maps block was appended server-side only, so
+// the resent conversation text (and the client-held POV) are the only durable
+// records. Returns null when nothing names (or refers back to) a location;
+// `followUp: true` / `pov` mark the shape so the enrichment labels the block.
+export function pickLookup(conversation, imageLocations, pov = null) {
   const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
     return { coords: `${c.lat},${c.lon}`, address: "" };
@@ -641,6 +761,7 @@ export function pickLookup(conversation, imageLocations) {
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
   if (!referencesStreetView(latest)) return null;
+  if (pov) return { coords: "", address: "", pov, followUp: true };
   for (let i = users.length - 2; i >= 0; i--) {
     const prior = extractPlace(textOf(users[i]?.content));
     if (prior) return { coords: "", address: prior, followUp: true };

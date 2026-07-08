@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { validateMessages, resolveModel, validateImageLocations } from "./validation.js";
+import { validateMessages, resolveModel, validateImageLocations, validateStreetViewPov } from "./validation.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 const noopLog = { warn: () => {} };
@@ -214,5 +214,35 @@ describe("validateImageLocations", () => {
   test("coerces numeric strings but rejects non-numeric ones", () => {
     const out = validateImageLocations([{ name: "a", lat: "12.5", lon: "-45.5" }]);
     assert.deepEqual(out, [{ name: "a", lat: 12.5, lon: -45.5 }]);
+  });
+});
+
+describe("validateStreetViewPov", () => {
+  test("returns null for junk shapes and out-of-range coordinates", () => {
+    assert.equal(validateStreetViewPov(undefined), null);
+    assert.equal(validateStreetViewPov(null), null);
+    assert.equal(validateStreetViewPov("x"), null);
+    assert.equal(validateStreetViewPov({}), null);
+    assert.equal(validateStreetViewPov({ lat: 91, lng: 0 }), null);
+    assert.equal(validateStreetViewPov({ lat: 0, lng: 181 }), null);
+    assert.equal(validateStreetViewPov({ lat: "no", lng: 10 }), null);
+  });
+
+  test("keeps a well-formed POV, rounding the view angles", () => {
+    const out = validateStreetViewPov({ panoId: "abc-DEF_123", lat: 59.4, lng: 17.9, heading: 143.6, pitch: -5.4, fov: 90 });
+    assert.deepEqual(out, { panoId: "abc-DEF_123", lat: 59.4, lng: 17.9, heading: 144, pitch: -5, fov: 90 });
+  });
+
+  test("wraps heading into [0,360) and clamps pitch/fov", () => {
+    const out = validateStreetViewPov({ lat: 1, lng: 2, heading: -90, pitch: 400, fov: 5 });
+    assert.deepEqual(out, { panoId: "", lat: 1, lng: 2, heading: 270, pitch: 90, fov: 10 });
+    const out2 = validateStreetViewPov({ lat: 1, lng: 2, heading: 725, pitch: -400, fov: 500 });
+    assert.deepEqual(out2, { panoId: "", lat: 1, lng: 2, heading: 5, pitch: -90, fov: 120 });
+  });
+
+  test("drops a pano id that doesn't look like one; defaults missing angles", () => {
+    const out = validateStreetViewPov({ panoId: "<script>", lat: 1, lng: 2 });
+    assert.deepEqual(out, { panoId: "", lat: 1, lng: 2, heading: 0, pitch: 0, fov: 90 });
+    assert.equal(validateStreetViewPov({ panoId: "x".repeat(65), lat: 1, lng: 2 }).panoId, "");
   });
 });

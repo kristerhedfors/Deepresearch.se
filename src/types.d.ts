@@ -193,6 +193,23 @@ export interface ImageLocation {
   lon: number;
 }
 /**
+ * A validated Street View point-of-view (src/validation.js) — where the user
+ * has panned/moved the inline panorama to (body.street_view_pov), so a
+ * follow-up can capture exactly the frame on their screen.
+ */
+export interface StreetViewPov {
+  /** The panorama the user is standing in ("" when unknown). */
+  panoId: string;
+  lat: number;
+  lng: number;
+  /** Degrees clockwise from north, wrapped into [0, 360). */
+  heading: number;
+  /** Degrees up/down, clamped to [-90, 90]. */
+  pitch: number;
+  /** Field of view in degrees, clamped to Street View Static's [10, 120]. */
+  fov: number;
+}
+/**
  * The mutable per-request object threaded through chat.js and pipeline.js.
  * Token usage is split three ways — `totals` (user's answer model),
  * `jsonTotals` (the fixed JSON model), `visionTotals` (the Street View
@@ -216,6 +233,8 @@ export interface RequestState {
   visionModel: string | null;
   visionTotals: TokenTotals;
   imageLocations: ImageLocation[];
+  /** The user's current panorama view, for the capture-what-they-see path. */
+  streetViewPov: StreetViewPov | null;
   plan: BudgetPlan;
   searchCount: number;
   /** Searches served from the Exa result cache (not billed). */
@@ -324,7 +343,9 @@ export interface StatusStreetViewEmbed {
 export interface StatusStreetViewFrames {
   type: "streetview_frames";
   query: string;
-  frames: Array<{ dir: string; url: string }>;
+  /** Each frame carries a cardinal `dir` ("north") OR a free-form `label`
+   * ("your current view" — the POV capture path). */
+  frames: Array<{ dir: string; label?: string; url: string }>;
 }
 /** Post-validation rejected the draft: clear streamed text and keep waiting. */
 export interface StatusDiscardText {
