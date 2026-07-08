@@ -171,6 +171,141 @@ export function hfPickQuery(batch) {
   return best;
 }
 
+// ---- query plan: map the query's PHRASING onto the API's real params -------
+//
+// "Leverage the full capabilities of the API from search phrasing"
+// (2026-07-08 user ask): the Hub API supports task filters (pipeline_tag on
+// models, task_categories on datasets), language filters (?language=sv), and
+// several sorts — and a FILTERED browse beats name-substring matching
+// wherever it applies. Established empirically: pipeline_tag=automatic-
+// speech-recognition&language=sv returns the actual canonical Swedish-ASR
+// ecosystem (whisper-large-v3-turbo, whisperkit, 7-8M downloads) where
+// search="swedish" returned 12-download hobby repos. All maps below are
+// deterministic and curated — no model call decides an API parameter.
+
+// Task phrases → pipeline_tag (models). Longest phrase first so "text to
+// speech" wins over any single-word overlap. Curated; extend on evidence.
+const TASK_MAP = [
+  ["automatic speech recognition", "automatic-speech-recognition"],
+  ["speech recognition", "automatic-speech-recognition"],
+  ["speech-to-text", "automatic-speech-recognition"],
+  ["transcription", "automatic-speech-recognition"],
+  ["asr", "automatic-speech-recognition"],
+  ["text to speech", "text-to-speech"],
+  ["text-to-speech", "text-to-speech"],
+  ["tts", "text-to-speech"],
+  ["text generation", "text-generation"],
+  ["language model", "text-generation"],
+  ["chat model", "text-generation"],
+  ["llm", "text-generation"],
+  ["translation", "translation"],
+  ["summarization", "summarization"],
+  ["image classification", "image-classification"],
+  ["object detection", "object-detection"],
+  ["text to image", "text-to-image"],
+  ["image generation", "text-to-image"],
+  ["image to text", "image-to-text"],
+  ["ocr", "image-to-text"],
+  ["sentence similarity", "sentence-similarity"],
+  ["embedding", "sentence-similarity"],
+  ["embeddings", "sentence-similarity"],
+  ["question answering", "question-answering"],
+  ["text classification", "text-classification"],
+  ["sentiment analysis", "text-classification"],
+];
+
+// pipeline_tags that are also valid dataset task_categories (the two
+// vocabularies overlap but aren't identical — only apply the filter to
+// datasets when the tag is known-valid there).
+const DATASET_TASKS = new Set([
+  "automatic-speech-recognition", "text-to-speech", "text-generation",
+  "translation", "summarization", "image-classification", "object-detection",
+  "text-to-image", "image-to-text", "sentence-similarity",
+  "question-answering", "text-classification",
+]);
+
+// Language words → ISO codes (English + Swedish word forms — triage writes
+// queries in the conversation's language). Curated; extend on evidence.
+const LANG_MAP = {
+  swedish: "sv", svensk: "sv", svenska: "sv",
+  english: "en", engelsk: "en", engelska: "en",
+  german: "de", tysk: "de", tyska: "de",
+  french: "fr", fransk: "fr", franska: "fr",
+  spanish: "es", spansk: "es", spanska: "es",
+  italian: "it", italiensk: "it", italienska: "it",
+  dutch: "nl",
+  portuguese: "pt",
+  chinese: "zh", kinesisk: "zh", kinesiska: "zh",
+  japanese: "ja", japansk: "ja", japanska: "ja",
+  korean: "ko",
+  russian: "ru", rysk: "ru", ryska: "ru",
+  arabic: "ar", arabisk: "ar", arabiska: "ar",
+  hindi: "hi",
+  finnish: "fi", finsk: "fi", finska: "fi",
+  norwegian: "no", norsk: "no", norska: "no",
+  danish: "da", dansk: "da", danska: "da",
+  polish: "pl",
+  turkish: "tr",
+  ukrainian: "uk",
+};
+
+// The full deterministic plan for one query: filters consumed OUT of the
+// term list (a fully-consumed query becomes a pure filtered browse — the
+// strongest case), sort intent read from the RAW phrasing (hfTerms strips
+// "latest"/"trending"/... as noise before terms exist). Pure, unit-tested.
+export function hfQueryPlan(query) {
+  const raw = String(query || "").toLowerCase();
+  let sort = "downloads";
+  if (/\btrending\b|\bhot right now\b/.test(raw)) sort = "trendingScore";
+  else if (/most liked|most loved/.test(raw)) sort = "likes";
+  // Recency intent: the fresh (lastModified) slice LEADS the merge instead
+  // of trailing it — "no stale stuff unless really relevant", with the
+  // popular slice still appended as the canonical anchor.
+  const freshFirst = /\blatest\b|\bnewest\b|most recent|\brecent\b|recently (updated|released|published)|\bnew\b/.test(raw);
+
+  let terms = hfTerms(query);
+  let task = null;
+  for (const [phrase, tag] of TASK_MAP) {
+    if (raw.includes(phrase)) {
+      task = tag;
+      const words = new Set(phrase.split(/[\s-]+/));
+      terms = terms.filter((t) => !words.has(t));
+      break;
+    }
+  }
+  let lang = null;
+  for (const t of terms) {
+    if (LANG_MAP[t]) {
+      lang = LANG_MAP[t];
+      terms = terms.filter((x) => x !== t);
+      break;
+    }
+  }
+  return { terms, task, lang, sort, freshFirst };
+}
+
+// Attempt descriptors for one endpoint kind ("models" | "datasets"): the
+// FILTERED browse first (when the plan extracted a task/language — with the
+// remaining terms as the search string, possibly none at all), then the
+// name-substring ladder as fallback. Each carries a stable `key` for the
+// cross-wave dedup. Pure, unit-tested.
+export function hfBuildAttempts(plan, kind) {
+  const out = [];
+  const filters = [];
+  if (plan.task && (kind === "models" || DATASET_TASKS.has(plan.task))) {
+    filters.push(`${kind === "models" ? "pipeline_tag" : "task_categories"}=${plan.task}`);
+  }
+  if (plan.lang) filters.push(`language=${plan.lang}`);
+  if (filters.length) {
+    const q = plan.terms.join(" ");
+    out.push({ q, filters, key: `${kind}:${filters.join("&")}|${q}` });
+  }
+  for (const a of hfAttempts(plan.terms)) {
+    out.push({ q: a, filters: [], key: a });
+  }
+  return out;
+}
+
 // Stable key for one query's term set — the cross-wave dedup key (gap-round
 // follow-ups often reduce to the same terms after noise-stripping; a live
 // run A trace showed waves 2-3 re-running near-identical hub searches for
@@ -310,21 +445,26 @@ export function mergeSlices(popular, fresh, cap = MAX_PER_ENDPOINT, minFreshDown
 // recording consumed attempts lets the orchestrator skip them next wave.
 // Attempts are sequential by design — the whole point is to only fall back
 // when the previous attempt found nothing.
-async function ladderSearch(env, base, attempts, expandFields) {
+async function ladderSearch(env, base, attempts, expandFields, plan) {
   const expand = expandFields.map((f) => `expand%5B%5D=${f}`).join("&");
   const tried = [];
-  for (const q of attempts) {
-    tried.push(q);
-    const url = (sort) =>
-      `${base}?search=${encodeURIComponent(q)}&limit=${SLICE}&sort=${sort}&${expand}`;
+  for (const a of attempts) {
+    tried.push(a.key);
+    const parts = [...a.filters];
+    if (a.q) parts.push(`search=${encodeURIComponent(a.q)}`);
+    const url = (sort) => `${base}?${parts.join("&")}&limit=${SLICE}&sort=${sort}&${expand}`;
     const [popular, fresh] = await Promise.all([
-      hfGet(env, url("downloads")).catch(() => []),
+      hfGet(env, url(plan.sort)).catch(() => []),
       hfGet(env, url("lastModified")).catch(() => []),
     ]);
-    const list = mergeSlices(
-      Array.isArray(popular) ? popular : [],
-      Array.isArray(fresh) ? fresh : [],
-    );
+    // Recency intent leads with the fresh slice ("latest X" — still
+    // junk-guarded); otherwise the canonical slice leads. mergeSlices
+    // dedups either way, so the same item never appears twice.
+    const p = Array.isArray(popular) ? popular : [];
+    const f = Array.isArray(fresh) ? fresh : [];
+    const list = plan.freshFirst
+      ? mergeSlices(f.filter((x) => (x?.downloads || 0) >= MIN_FRESH_DOWNLOADS), p, MAX_PER_ENDPOINT, 0)
+      : mergeSlices(p, f);
     if (list.length) return { list, tried };
   }
   return { list: [], tried };
@@ -343,12 +483,13 @@ async function ladderSearch(env, base, attempts, expandFields) {
 // attempts consumed this call — for the orchestrator to record.
 export async function hfSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
-  const terms = hfTerms(query);
-  const attempts = hfAttempts(terms).filter((a) => !skipKeys?.has(a));
+  const plan = hfQueryPlan(query);
+  const modelAttempts = hfBuildAttempts(plan, "models").filter((a) => !skipKeys?.has(a.key));
+  const datasetAttempts = hfBuildAttempts(plan, "datasets").filter((a) => !skipKeys?.has(a.key));
   const empty = { list: [], tried: [] };
   const [modelsR, datasetsR, papers] = await Promise.all([
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/models", attempts, ["downloads", "likes", "lastModified", "pipeline_tag", "gated"]).catch(() => empty) : empty,
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", attempts, ["downloads", "likes", "lastModified", "gated"]).catch(() => empty) : empty,
+    modelAttempts.length ? ladderSearch(env, "https://huggingface.co/api/models", modelAttempts, ["downloads", "likes", "lastModified", "pipeline_tag", "gated"], plan).catch(() => empty) : empty,
+    datasetAttempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", datasetAttempts, ["downloads", "likes", "lastModified", "gated"], plan).catch(() => empty) : empty,
     hfGet(env, `https://huggingface.co/api/papers/search?q=${encodeURIComponent(String(query || "").slice(0, 200))}`).catch(() => []),
   ]);
   const items = [
@@ -360,10 +501,13 @@ export async function hfSearch(env, log, query, { skipKeys } = {}) {
   const durationMs = Date.now() - startedAt;
   log?.info?.("hf.search", {
     query: String(query || "").slice(0, 120),
+    task: plan.task,
+    lang: plan.lang,
+    sort: plan.sort,
+    fresh_first: plan.freshFirst,
     models: modelsR.list.length,
     datasets: datasetsR.list.length,
     papers: Array.isArray(papers) ? papers.length : 0,
-    skipped_attempts: (skipKeys?.size || 0) > 0 ? hfAttempts(terms).length - attempts.length : 0,
     duration_ms: durationMs,
   });
   return { items, durationMs, usedKeys };

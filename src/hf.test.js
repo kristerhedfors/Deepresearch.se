@@ -2,6 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   hfAttempts,
+  hfQueryPlan,
+  hfBuildAttempts,
   mergeSlices,
   hfIntent,
   hfPickQuery,
@@ -211,5 +213,63 @@ describe("mergeSlices — popular + fresh, no stale flood, no new-junk flood", (
     const many = Array.from({ length: 9 }, (_, i) => ({ id: `p/${i}`, downloads: 100 }));
     assert.equal(mergeSlices(many, [], 5).length, 5);
     assert.deepEqual(mergeSlices(null, [{ id: null }, null, { id: "x/y", downloads: 100 }]).map((x) => x.id), ["x/y"]);
+  });
+});
+
+describe("hfQueryPlan — API capabilities driven by phrasing", () => {
+  test("task + language phrases become filters and are consumed from the terms", () => {
+    const plan = hfQueryPlan("latest Swedish speech recognition models on Hugging Face");
+    assert.equal(plan.task, "automatic-speech-recognition");
+    assert.equal(plan.lang, "sv");
+    assert.equal(plan.freshFirst, true);
+    assert.deepEqual(plan.terms, []); // fully consumed → pure filtered browse
+  });
+
+  test("Swedish word forms map languages too", () => {
+    const plan = hfQueryPlan("svenska text to speech modeller");
+    assert.equal(plan.task, "text-to-speech");
+    assert.equal(plan.lang, "sv");
+  });
+
+  test("sort intent: trending and most-liked phrasings", () => {
+    assert.equal(hfQueryPlan("trending cybersecurity models on hf").sort, "trendingScore");
+    assert.equal(hfQueryPlan("most liked whisper models on hf").sort, "likes");
+    assert.equal(hfQueryPlan("whisper models on hf").sort, "downloads");
+  });
+
+  test("no task/language phrasing → plain plan, no filters, downloads sort", () => {
+    const plan = hfQueryPlan("cybersecurity on hugging face");
+    assert.equal(plan.task, null);
+    assert.equal(plan.lang, null);
+    assert.equal(plan.sort, "downloads");
+    assert.equal(plan.freshFirst, false);
+    assert.deepEqual(plan.terms, ["cybersecurity"]);
+  });
+});
+
+describe("hfBuildAttempts — filtered browse first, name ladder as fallback", () => {
+  test("filtered attempt leads and carries a stable kind-scoped key", () => {
+    const plan = hfQueryPlan("latest swedish speech recognition kb-whisper on hugging face");
+    const attempts = hfBuildAttempts(plan, "models");
+    assert.equal(attempts[0].filters.join("&"), "pipeline_tag=automatic-speech-recognition&language=sv");
+    assert.equal(attempts[0].q, "kb-whisper");
+    assert.match(attempts[0].key, /^models:pipeline_tag=/);
+    // the name ladder follows as fallback
+    assert.ok(attempts.slice(1).every((a) => a.filters.length === 0));
+  });
+
+  test("dataset attempts only apply task filters valid as task_categories", () => {
+    const plan = hfQueryPlan("swedish sentiment analysis datasets on hf");
+    const m = hfBuildAttempts(plan, "models");
+    const d = hfBuildAttempts(plan, "datasets");
+    assert.match(m[0].filters[0], /^pipeline_tag=text-classification/);
+    assert.match(d[0].filters[0], /^task_categories=text-classification/);
+  });
+
+  test("no filters → pure name ladder with plain keys", () => {
+    const plan = hfQueryPlan("cybersecurity on hf");
+    const attempts = hfBuildAttempts(plan, "models");
+    assert.ok(attempts.every((a) => a.filters.length === 0));
+    assert.equal(attempts[0].key, "cybersecurity");
   });
 });
