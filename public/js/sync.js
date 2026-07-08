@@ -408,19 +408,38 @@ export async function drainProjectScope(projectId, onProgress = () => {}) {
 // device (or a recovered session) wrote — project records included. This
 // is what makes cloud history sync across devices without a heavyweight
 // sync loop.
+// Returns {ran, checked, pulled, failed} — `checked` counts the cloud's
+// conversation records, `pulled` those actually brought down (projects
+// included), `failed` conversations that SHOULD have come down but didn't
+// (fetch error, import error). The result stays truthy-compatible with the
+// old count-only return via `pulled`. Callers that only care whether
+// anything changed keep reading `.pulled`; the history sidebar reads the
+// rest to explain an empty pane instead of leaving it silent.
 export async function pullNewer() {
-  if (!serverHistoryOn()) return 0;
+  if (!serverHistoryOn()) return { ran: false, checked: 0, pulled: 0, failed: 0 };
   let pulled = 0;
+  let checked = 0;
+  let failed = 0;
   try {
     const remote = (await jsonOrNull(await fetch("/api/convos")))?.conversations || [];
+    checked = remote.length;
     const localAt = new Map((await exportEncryptedRecords()).map((r) => [r.id, r.updatedAt]));
     for (const item of remote) {
       if ((localAt.get(item.id) || 0) >= item.updatedAt) continue;
-      const record = await jsonOrNull(await fetch("/api/convos/" + encodeURIComponent(item.id)));
-      if (record && (await importEncryptedRecord(item.id, record))) pulled++;
+      // Per-record fail-soft: one bad record must not silently abort the
+      // rest of the restore (it used to — the whole loop died on the first
+      // import that threw, leaving the device missing everything after it).
+      try {
+        const record = await jsonOrNull(await fetch("/api/convos/" + encodeURIComponent(item.id)));
+        if (record && (await importEncryptedRecord(item.id, record))) pulled++;
+        else failed++;
+      } catch {
+        failed++;
+      }
     }
   } catch {
     // offline or misconfigured — the local list is still authoritative enough
+    failed++;
   }
   try {
     const remote = (await jsonOrNull(await fetch("/api/projects")))?.projects || [];
@@ -438,5 +457,5 @@ export async function pullNewer() {
   } catch {
     // same fail-soft rule
   }
-  return pulled;
+  return { ran: true, checked, pulled, failed };
 }

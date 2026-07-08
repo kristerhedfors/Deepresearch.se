@@ -37,6 +37,13 @@ export function serverHistoryOn() {
   return settings?.server_history === true;
 }
 
+// Whether /api/settings has actually answered this page load. Lets UI
+// distinguish "the knob is off" from "we never learned the knob's state"
+// (auth or network failure) — the two need opposite user guidance.
+export function settingsLoaded() {
+  return settings !== null;
+}
+
 export function storageAvailable() {
   return settings?.available?.storage === true;
 }

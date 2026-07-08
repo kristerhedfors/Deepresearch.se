@@ -15,7 +15,7 @@ import {
   undecryptableConversations,
 } from "./history-store.js";
 import { renderProjectsList } from "./projects-ui.js";
-import { serverHistoryOn } from "./settings.js";
+import { loadSettings, serverHistoryOn, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
 
@@ -42,6 +42,7 @@ export function initHistorySidebar(opts = {}) {
   list.after(note);
   let baseNote = "";
   let pulling = false;
+  let lastPull = null; // result of this pane-open's pullNewer, once it lands
   function updateNote() {
     const text = pulling ? "Checking the cloud for conversations…" : baseNote;
     note.textContent = text;
@@ -54,11 +55,29 @@ export function initHistorySidebar(opts = {}) {
     const items = await listConversations();
     // Project conversations live inside their project's panel — the main
     // list shows plain chats only, so nothing appears twice.
-    renderList(items.filter((c) => !c.projectId));
+    const plain = items.filter((c) => !c.projectId);
+    renderList(plain);
+
+    // An empty (or thinned) pane must explain itself — every silent branch
+    // here has been mistaken for data loss at least once (2026-07-08).
+    const parts = [];
     const skipped = undecryptableConversations();
-    baseNote = skipped
-      ? `${skipped} saved conversation${skipped === 1 ? "" : "s"} can't be decrypted on this device right now — not deleted, just unreadable with the current key. Reload the page (signed in) and reopen this panel to retry.`
-      : "";
+    if (skipped) {
+      parts.push(`${skipped} saved conversation${skipped === 1 ? "" : "s"} can't be decrypted on this device right now — not deleted, just unreadable with the current key. Reload the page (signed in) and reopen this panel to retry.`);
+    }
+    if (!plain.length) {
+      const projectChats = items.length - plain.length;
+      if (projectChats) parts.push(`${projectChats} conversation${projectChats === 1 ? " lives" : "s live"} inside projects — open the project to see them.`);
+      if (!settingsLoaded()) parts.push("Account settings couldn't be loaded, so cloud copies weren't checked — reload the page to retry.");
+      else if (!storageAvailable()) parts.push("Cloud storage isn't available for this account, so only this device's copies can be shown.");
+      else if (!serverHistoryOn()) parts.push("Cloud backup is switched off in Settings, so only this device's copies can be shown.");
+      else if (lastPull) {
+        if (lastPull.failed) parts.push(`Cloud restore incomplete: ${lastPull.pulled} restored, ${lastPull.failed} failed — reopen this panel to retry.`);
+        else if (lastPull.checked && lastPull.pulled) parts.push(`${lastPull.pulled} conversation${lastPull.pulled === 1 ? " was" : "s were"} restored from the cloud but this device's storage didn't keep them — fully close and reopen the app, then reopen this panel.`);
+        else if (lastPull.checked) parts.push(`The cloud holds ${lastPull.checked} conversation${lastPull.checked === 1 ? "" : "s"} but none could be restored here — fully close and reopen the app, then reopen this panel.`);
+      }
+    }
+    baseNote = parts.join(" ");
     updateNote();
   }
 
@@ -229,13 +248,27 @@ export function initHistorySidebar(opts = {}) {
     // brought something down. Visible while it runs — a device restoring
     // its whole history pulls for several seconds and must not read as
     // "no saved conversations" meanwhile.
+    lastPull = null;
     if (serverHistoryOn()) {
       pulling = true;
       updateNote();
       pullNewer()
-        .then((n) => { if (n && !overlay.hidden) refresh(); })
-        .catch(() => {})
-        .finally(() => { pulling = false; updateNote(); });
+        .then((res) => { lastPull = res; })
+        .catch(() => { lastPull = { ran: true, checked: 0, pulled: 0, failed: 1 }; })
+        .finally(() => {
+          pulling = false;
+          // Re-render regardless of the count: the note must reflect the
+          // pull's outcome (including "nothing came down"), not just its
+          // successes.
+          if (!overlay.hidden) refresh();
+          else updateNote();
+        });
+    } else if (settingsLoaded() === false) {
+      // Settings never loaded (likely an auth/network failure at boot) —
+      // retry now so a recovered session heals without a full reload.
+      loadSettings(true)
+        .then(() => { if (!overlay.hidden) open(); })
+        .catch(() => { if (!overlay.hidden) refresh(); });
     }
   }
   function close() {
