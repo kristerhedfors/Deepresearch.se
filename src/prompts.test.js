@@ -78,6 +78,16 @@ describe("triagePrompt", () => {
     assert.match(p, /SHORT and broad/);
     assert.match(p, /follow-up rounds are where the search narrows/);
   });
+
+  test("teaches that 'hf' means Hugging Face — never a clarify target", () => {
+    // Production screenshot: "Latest on cybersecurity on hf" triaged to
+    // clarify("what does 'hf' refer to?"), killing the request before the
+    // pipeline's own HF Hub search could run.
+    const p = triagePrompt(4);
+    assert.match(p, /"HF"\/"hf" in a user message means Hugging Face/);
+    assert.match(p, /never ask to clarify what "hf" means/);
+    assert.match(p, /spell it out as "Hugging Face" in any queries/);
+  });
 });
 
 describe("gapPrompt", () => {
@@ -133,6 +143,10 @@ describe("gapPrompt", () => {
     const p = gapPrompt([], 2);
     assert.match(p, /"conflicts"/);
     assert.match(p, /materially DISAGREE/);
+  });
+
+  test("carries the hf-means-Hugging-Face note for follow-up queries too", () => {
+    assert.match(gapPrompt([], 2), /"HF"\/"hf" in a user message means Hugging Face/);
   });
 });
 
