@@ -61,6 +61,11 @@ const MAX_MAPS_IMAGES = 4;
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations);
   if (!target) return conversation;
+  // The user's actual question, for the vision helper to ANSWER about the
+  // imagery (not just generically describe it). The client appends labeled
+  // document/metadata blocks after the typed text, so keep only what precedes
+  // the first block, bounded.
+  const question = textOf(lastUserMessage(conversation)?.content).split("\n\n---")[0].trim().slice(0, 400);
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
   // isn't already carrying user images). We deliberately do NOT attach the
@@ -102,15 +107,26 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // Cap the images handed to the vision helper to what a single vision request
   // reliably accepts (the client's own per-message cap is 4). Street View
   // frames first, road map last.
-  const images = [...result.streetViewImages, result.staticMapImage].filter(Boolean).slice(0, MAX_MAPS_IMAGES);
+  const frames = Array.isArray(result.streetViewFrames) ? result.streetViewFrames : [];
+  const images = [...frames.map((f) => f.url), result.staticMapImage].filter(Boolean).slice(0, MAX_MAPS_IMAGES);
 
   // Describe the imagery with the vision helper so the answer model (vision or
   // not) gets a factual look-around as TEXT — this is what makes "describe this
   // street view" work, and keeps the answer call free of the images that broke
-  // it. Fail-soft: no description → the block points at the keyless link.
+  // it. The helper also gets the user's question so a follow-up ("what color
+  // is the roof?") is answered from the CURRENT frames, not from memory of a
+  // prior description. Fail-soft: no description → the block points at the
+  // keyless link.
   let description = "";
   if (images.length) {
-    description = await describeStreetView(env, log, state, result.displayQuery, images);
+    description = await describeStreetView(env, log, state, result.displayQuery, images, question);
+  }
+
+  // Snap the frames into the reply: the client renders the very images the
+  // vision helper reasoned about beside the answer, so the user sees the same
+  // context the model saw (data URLs are already fetched — no extra billing).
+  if (frames.length) {
+    emit({ status: { type: "streetview_frames", query: result.displayQuery, frames } });
   }
 
   const block = buildMapsBlock(result.displayQuery, {
@@ -121,6 +137,8 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     streetViewCount: 0,
     hasMap: false,
     description,
+    followUp: !!target.followUp,
+    framesShown: frames.length,
   });
 
   stepDone(
@@ -144,17 +162,23 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
 // Runs the Street View / map images through a vision-capable helper model to
 // produce a short factual description, so a NON-vision answer model (e.g. the
 // default Mistral Small) can still tell the user what the location looks like.
-// Its tokens go to state.visionTotals so chat.js bills them at that model's
-// rate. Fully fail-soft: any error yields "" and the block falls back to the
-// keyless Street View link.
-async function describeStreetView(env, log, state, label, images) {
+// When the user's question is passed, the helper answers IT from the imagery
+// first — that's what lets a follow-up reason about the particular image
+// instead of replaying a generic description. Its tokens go to
+// state.visionTotals so chat.js bills them at that model's rate. Fully
+// fail-soft: any error yields "" and the block falls back to the keyless
+// Street View link.
+async function describeStreetView(env, log, state, label, images, question = "") {
   try {
+    const ask = question
+      ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in these photos — if the photos cannot answer it, say so plainly. Then briefly describe`
+      : "Describe";
     const content = [
       {
         type: "text",
         text:
           `These are Google Street View photos (looking in different directions) and a road map of ${label}. ` +
-          "Describe the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, " +
+          `${ask} the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, ` +
           "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
           "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",
       },

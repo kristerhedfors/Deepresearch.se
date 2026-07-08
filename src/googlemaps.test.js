@@ -9,6 +9,7 @@ import {
   mapLink,
   panoLink,
   pickLookup,
+  referencesStreetView,
 } from "./googlemaps.js";
 
 test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
@@ -144,6 +145,29 @@ describe("buildMapsBlock", () => {
     assert.ok(!/open the Street View link/.test(block));
   });
 
+  test("marks a follow-up block and the frames shown beside the reply", () => {
+    const block = buildMapsBlock("Maskinistvägen 11", {
+      place: null,
+      lat: 59.4,
+      lng: 17.9,
+      streetView: { date: "2022-06" },
+      streetViewCount: 0,
+      hasMap: false,
+      description: "The roof is dark grey concrete tile.",
+      followUp: true,
+      framesShown: 4,
+    });
+    assert.match(block, /follow-up question about the location already being discussed/);
+    assert.match(block, /re-fetched and re-examined for this question/);
+    assert.match(block, /4 Street View photo\(s\) of this location are displayed to the user/);
+  });
+
+  test("a first-turn block carries neither follow-up nor frames-shown lines", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 1, lng: 2, streetView: null, streetViewCount: 0, hasMap: false });
+    assert.ok(!/follow-up question/.test(block));
+    assert.ok(!/displayed to the user/.test(block));
+  });
+
   test("notes when Street View exists but nothing could be shown (no vision at all)", () => {
     const block = buildMapsBlock("59.4,17.9", {
       place: null,
@@ -155,6 +179,34 @@ describe("buildMapsBlock", () => {
     });
     assert.match(block, /open the Street View link/);
     assert.ok(!block.includes("Attached to this message"));
+  });
+});
+
+describe("referencesStreetView", () => {
+  test("matches follow-up questions about the imagery / building (English)", () => {
+    assert.equal(referencesStreetView("what color is the roof?"), true);
+    assert.equal(referencesStreetView("how many floors does the building have?"), true);
+    assert.equal(referencesStreetView("is there a garage visible?"), true);
+    assert.equal(referencesStreetView("what does it look like across the street?"), true);
+    assert.equal(referencesStreetView("describe the picture again"), true);
+    assert.equal(referencesStreetView("any cars parked outside?"), true);
+  });
+
+  test("matches follow-up questions about the imagery / building (Swedish)", () => {
+    assert.equal(referencesStreetView("vad är det för färg på taket?"), true);
+    assert.equal(referencesStreetView("hur många våningar har huset?"), true);
+    assert.equal(referencesStreetView("vad syns på bilden?"), true);
+    assert.equal(referencesStreetView("hur ser det ut mittemot?"), true);
+    assert.equal(referencesStreetView("finns det ett staket runt trädgården?"), true);
+  });
+
+  test("does NOT match ordinary research follow-ups", () => {
+    assert.equal(referencesStreetView("summarize the sources"), false);
+    assert.equal(referencesStreetView("tell me more about the company"), false);
+    assert.equal(referencesStreetView("who owns it?"), false);
+    assert.equal(referencesStreetView("vad kostar det?"), false);
+    assert.equal(referencesStreetView(""), false);
+    assert.equal(referencesStreetView(null), false);
   });
 });
 
@@ -174,5 +226,49 @@ describe("pickLookup", () => {
     const convo = [{ role: "user", content: "a plain research question" }];
     assert.equal(pickLookup(convo, []), null);
     assert.equal(pickLookup(convo, undefined), null);
+  });
+
+  test("a follow-up about the imagery walks back to the address an earlier turn named", () => {
+    // The reported bug: the follow-up carries no address, so no enrichment ran
+    // and the model claimed it had no knowledge of the Street View image.
+    const convo = [
+      { role: "user", content: "show street view of Maskinistvägen 11 in Kallhäll" },
+      { role: "assistant", content: "Here is the location…" },
+      { role: "user", content: "what color is the roof?" },
+    ];
+    assert.deepEqual(pickLookup(convo, []), {
+      coords: "",
+      address: "Maskinistvägen 11, Kallhäll",
+      followUp: true,
+    });
+  });
+
+  test("walk-back picks the MOST RECENT earlier address, not the first", () => {
+    const convo = [
+      { role: "user", content: "street view of Storgatan 4" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "now show Abbey Road in London" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "how many floors does the building have?" },
+    ];
+    assert.deepEqual(pickLookup(convo, []), { coords: "", address: "Abbey Road, London", followUp: true });
+  });
+
+  test("a follow-up that does NOT reference the imagery stays null (no re-billed lookup)", () => {
+    const convo = [
+      { role: "user", content: "show street view of Maskinistvägen 11" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "who owns the property according to public records?" },
+    ];
+    assert.equal(pickLookup(convo, []), null);
+  });
+
+  test("an address in the LATEST message wins over history and carries no followUp flag", () => {
+    const convo = [
+      { role: "user", content: "street view of Storgatan 4" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "and what does the building at Main Street 5 look like?" },
+    ];
+    assert.deepEqual(pickLookup(convo, []), { coords: "", address: "Main Street 5" });
   });
 });

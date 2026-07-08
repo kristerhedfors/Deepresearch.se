@@ -298,7 +298,7 @@ no-function-calling way as the reverse-geocoder and Shodan: the location is
 extracted deterministically, three Maps Platform APIs (sharing the one key)
 are called server-side, and the result is folded into the conversation as one
 labeled `--- Google Maps ---` block every phase can reason and search with.
-`src/googlemaps.js` is the client; `src/pipeline.js`'s `runGoogleMapsEnrichment`
+`src/googlemaps.js` is the client; `src/enrichment.js`'s `runGoogleMapsEnrichment`
 wires it (before any model call, alongside the Shodan enrichment).
 
 - **The knob** (`src/settings.js`): a third key alongside `server_history`
@@ -332,6 +332,31 @@ wires it (before any model call, alongside the Shodan enrichment).
   locality words, so "what's at Maskinistvägen 11" → "Maskinistvägen 11". A
   photo's validated GPS coordinates (`body.imageLocations`) take precedence over
   a parsed address (`pickLookup`).
+- **Follow-up questions re-snap the current imagery** (`pickLookup`'s
+  walk-back + `referencesStreetView`, both pure + unit-tested). The server is
+  stateless and the Maps block is appended per-request only, so a follow-up
+  turn ("what color is the roof?") used to carry no address → no enrichment →
+  the model truthfully claimed it had no knowledge of any image (reported
+  bug). Now, when the latest message names nothing but *references the
+  imagery/place* (a deterministic EN+SV vocabulary gate: image/photo/roof/
+  façade/color/floors/bilden/huset/taket/färg/våningar/"ser det ut"…),
+  `pickLookup` walks back through earlier user turns for the most recent
+  address and re-runs the full lookup on it (`followUp: true` rides along so
+  the block says the CURRENT imagery was re-fetched and re-examined for this
+  question). The gate keeps ordinary follow-ups ("summarize the sources")
+  from re-billing Google; a false negative degrades to the old behavior.
+- **The vision helper answers the user's question**, not just a generic
+  describe: `describeStreetView` gets the latest question (bounded, appended
+  client blocks stripped) and is instructed to answer it strictly from what
+  is visible in the frames first, then describe — so a follow-up reasons
+  about that particular image instead of replaying a canned description.
+- **Cross-request lookup cache** (`runGoogleMapsLookup`, same pattern as
+  `src/exa.js`'s search cache): successful lookups — imagery data URLs
+  included — are cached in `caches.default` for 10 min, keyed by the
+  normalized target + whether imagery was fetched, so a follow-up exchange
+  about the same place re-bills Google nothing. Fail-soft in every branch;
+  null results stay uncached so a retry can still find something. Verify live
+  via `googlemaps.cache_hit` / `cache_write_failed` log events.
 - **Lookup** (`runGoogleMapsLookup`): Places Text Search canonicalises the
   address (display name, formatted address, primary type, rating, business
   status, precise coordinates); the coordinates then key the FREE Street View
@@ -342,7 +367,7 @@ wires it (before any model call, alongside the Shodan enrichment).
   returns the raw resolved data; the pipeline builds the block. The block
   carries keyless Google Maps / Street View links the user can open.
   `state.mapsCount` rides into the `chat.complete` log.
-- **Vision-describe, never attach** (`pipeline.js`'s `describeStreetView`): the
+- **Vision-describe, never attach** (`enrichment.js`'s `describeStreetView`): the
   frames are NOT attached to the answer model — a report showed several frames
   on one message making the answer call fail with a Berget 400. Instead the
   frames (capped at `MAX_MAPS_IMAGES` = 4, the client's own per-message cap) are
@@ -372,6 +397,14 @@ wires it (before any model call, alongside the Shodan enrichment).
   the browser. Unset → no inline embed, just the keyless link. The embed is
   live-session only (a reloaded conversation keeps the answer + link, not the
   iframe — same as the step traces).
+- **The snapped frames are shown in the reply** (the `streetview_frames` SSE
+  event): the direction-labeled frames the vision helper reasoned about are
+  emitted to the client and rendered as a captioned thumbnail strip beside
+  the answer (`activity.js`'s `renderStreetViewFrames`), so the user sees the
+  SAME imagery the model saw — and the block tells the answer model the
+  photos are displayed to the user, so it can refer to them directly. The
+  client compacts this event before it enters the "Copy research JSON" log
+  (`sanitizeResearchEvent` — count + directions, never the data URLs).
 - **Runs independent of the web-search toggle** — like the geocoder and Shodan,
   it resolves a location the message *names*, not a topic to research.
 - **Fails soft in every branch**: no key, no address/photo, a Places miss with

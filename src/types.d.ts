@@ -316,6 +316,16 @@ export interface StatusStreetViewEmbed {
   lat: number;
   lng: number;
 }
+/**
+ * The snapped Street View frames the vision helper reasoned about, for the
+ * client to render beside the answer (direction-labeled JPEG data URLs).
+ * Bulky by design — the client strips the data URLs out of its research log.
+ */
+export interface StatusStreetViewFrames {
+  type: "streetview_frames";
+  query: string;
+  frames: Array<{ dir: string; url: string }>;
+}
 /** Post-validation rejected the draft: clear streamed text and keep waiting. */
 export interface StatusDiscardText {
   type: "discard_text";
@@ -339,6 +349,7 @@ export type SseStatus =
   | StatusSearchStart
   | StatusSearchDone
   | StatusStreetViewEmbed
+  | StatusStreetViewFrames
   | StatusDiscardText
   | StatusDone;
 

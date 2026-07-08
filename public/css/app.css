@@ -290,6 +290,30 @@ header {
   background: rgba(0, 0, 0, .04);
 }
 
+/* The snapped Street View frames (streetview_frames event) — the exact images
+   the vision helper reasoned about, captioned by looking direction. */
+.streetview-frames { margin: .6rem 0 .2rem; }
+.streetview-frames-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: .5rem;
+}
+.streetview-frames-strip figure { margin: 0; }
+.streetview-frames-strip img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+  background: rgba(0, 0, 0, .04);
+}
+.streetview-frames-strip figcaption {
+  font-size: .7rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: .15rem;
+}
+
 /* Composer: ONE glass pane — single-line input on top, controls beneath
    (attach · camera · model selector · send arrow), then the search row
    (spiderweb web-search knob · time slider+value) on its own line. */

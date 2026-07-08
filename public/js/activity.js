@@ -37,6 +37,57 @@ export function renderStreetViewEmbed(turn, s) {
   turn._svEmbed = wrap;
 }
 
+// The snapped Street View frames the server's vision helper reasoned about,
+// from a `streetview_frames` status event — rendered as a captioned thumbnail
+// strip in the turn body so the user sees the SAME imagery the model saw.
+// Persists beside the answer like the embed (and like it, is live-session
+// only: a reloaded conversation keeps the answer + link, not the images).
+export function renderStreetViewFrames(turn, s) {
+  if (!turn?.el) return;
+  const frames = (Array.isArray(s.frames) ? s.frames : []).filter(
+    (f) => typeof f?.url === "string" && f.url.startsWith("data:image/"),
+  );
+  if (!frames.length) return;
+  if (turn._svFrames) turn._svFrames.remove(); // one strip per turn — last event wins
+
+  const wrap = document.createElement("div");
+  wrap.className = "streetview-frames";
+  const label = document.createElement("div");
+  label.className = "streetview-embed-label";
+  label.textContent = `Street View — ${s.query || "resolved location"}`;
+  const strip = document.createElement("div");
+  strip.className = "streetview-frames-strip";
+  for (const f of frames) {
+    const fig = document.createElement("figure");
+    const img = document.createElement("img");
+    img.src = f.url;
+    img.loading = "lazy";
+    img.alt = f.dir ? `Street View looking ${f.dir}` : "Street View";
+    fig.appendChild(img);
+    if (f.dir) {
+      const cap = document.createElement("figcaption");
+      cap.textContent = `looking ${f.dir}`;
+      fig.appendChild(cap);
+    }
+    strip.appendChild(fig);
+  }
+  wrap.append(label, strip);
+  // Before the embed if one is already rendered, else before the stats footer.
+  turn.el.insertBefore(wrap, turn._svEmbed || turn.stats);
+  turn._svFrames = wrap;
+}
+
+// Compacts a status event before it enters the per-turn research log (the
+// "Copy research JSON" source): `streetview_frames` carries whole JPEG data
+// URLs — hundreds of KB that would bloat the export — so only the frame count
+// and directions are recorded. Everything else passes through unchanged.
+// Pure — unit-tested in activity.test.js.
+export function sanitizeResearchEvent(s) {
+  if (s?.type !== "streetview_frames") return s;
+  const frames = Array.isArray(s.frames) ? s.frames : [];
+  return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || "") };
+}
+
 // Generic pipeline steps (plan / gap check / synthesis / validation).
 export function startGenericStep(turn, id, label) {
   const details = document.createElement("details");

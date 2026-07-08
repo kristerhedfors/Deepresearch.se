@@ -34,6 +34,15 @@ unknown `status` types (forward compatibility).
   browser embed key it holds from `/api/settings` — the key is deliberately
   NOT in this event, so it never enters the "Copy research JSON" export). No
   embed key configured → the client ignores it and the keyless link stands.
+- `{"status":{"type":"streetview_frames","query":"Maskinistvägen 11","frames":[{"dir":"north","url":"data:image/jpeg;base64,…"}]}}`
+  — the actual snapped Street View frames the vision-describe helper reasoned
+  about (up to 4, direction-labeled JPEG data URLs); the client renders them
+  as a captioned thumbnail strip beside the answer so the user sees the SAME
+  imagery the model saw. Deliberately bulky — the ONE event whose payload is
+  compacted before entering the per-turn research log (`activity.js`'s
+  `sanitizeResearchEvent`: frame count + directions only), so the "Copy
+  research JSON" export stays small. Like the embed, it's live-session only
+  (a reloaded conversation keeps the answer + link, not the images).
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

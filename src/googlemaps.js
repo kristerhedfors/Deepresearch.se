@@ -32,7 +32,7 @@
 // timeout or an API error all degrade to the conversation unchanged — Maps
 // enrichment is never a hard requirement for the chat to work.
 
-import { textOf, lastUserMessage } from "./conversation.js";
+import { textOf } from "./conversation.js";
 
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
@@ -219,6 +219,43 @@ function firstMatch(raw, re) {
   return re.exec(raw);
 }
 
+// ---- follow-up reference gate (pure — exported for unit tests) --------------
+
+// Does a message that names NO address refer back to previously discussed
+// Street View imagery / the place being looked at? This is the deterministic
+// gate for follow-up turns ("what color is the roof?", "vad är det för färg på
+// taket?") — without it, a follow-up carries no address, no enrichment runs,
+// and the model truthfully claims it has no knowledge of the image (the
+// reported bug). Vocabulary: imagery words, building parts, and visual
+// attributes in English and Swedish. Deliberately excludes generics like
+// "see"/"there"/"look" alone (they'd re-trigger a billed lookup on ordinary
+// follow-ups); "look like" is specific enough to keep. A false positive only
+// costs one cached-able Maps lookup and a harmless context block; a false
+// negative degrades to today's behavior — both fail-soft.
+const FOLLOWUP_REFERENCE_RE = new RegExp(
+  "\\b(?:" +
+    // imagery / the view itself
+    "street ?view|gatuvy|imager?y|images?|pictures?|photos?|panoramas?|" +
+    "bild(?:en|er|erna)?|foto(?:t|n|na)?|" +
+    // the building and its parts
+    "buildings?|house[s]?|roof(?:s|top)?|fa[cç]ades?|windows?|doors?|garages?|" +
+    "gardens?|yards?|fences?|balcon(?:y|ies)|entrances?|floors?|stor(?:ey|ies|eys)|chimneys?|" +
+    "hus(?:et|en)?|byggnad(?:en|er|erna)?|tak(?:et|en)?|fasad(?:en|er|erna)?|" +
+    "fönst(?:er|ret|ren|erna)|dörr(?:en|ar|arna)?|trädgård(?:en|ar|arna)?|" +
+    "staket(?:et|en)?|balkong(?:en|er|erna)?|entré(?:n|er|erna)?|våning(?:en|ar|arna)?|skorsten(?:en|ar)?|" +
+    // visual attributes / surroundings
+    "colou?rs?|visible|surroundings?|neighbou?rhoods?|parked|" +
+    "look(?:s|ed|ing)? like|across the street|opposite|" +
+    "färg(?:en|er|erna)?|syns|omgivning(?:en|ar|arna)?|grann(?:e|en|ar|arna)|parkerad(?:e|a)?|" +
+    "ser (?:det|den|huset|byggnaden|platsen) ut|mittemot|tvärs över gatan" +
+    ")\\b",
+  "iu",
+);
+
+export function referencesStreetView(text) {
+  return FOLLOWUP_REFERENCE_RE.test(typeof text === "string" ? text : "");
+}
+
 // ---- pure link/block builders (exported for unit tests) --------------------
 
 // Keyless Google Maps Street View link (built from the pano's own
@@ -259,6 +296,19 @@ export function buildMapsBlock(query, parts) {
     if (parts.streetView.date) lines.push(`Street View imagery captured: ${parts.streetView.date}`);
   }
   const svCount = parts.streetViewCount || 0;
+  if (parts.followUp) {
+    // pickLookup walked back to an address an EARLIER turn named: tell the
+    // model this is fresh imagery of the location already under discussion,
+    // so it reasons about THE image instead of denying knowledge of it.
+    lines.push(
+      "This is a follow-up question about the location already being discussed — the CURRENT Street View imagery of it was re-fetched and re-examined for this question.",
+    );
+  }
+  if (parts.framesShown) {
+    lines.push(
+      `${parts.framesShown} Street View photo(s) of this location are displayed to the user directly beside this reply, so you can refer to them ("in the photos", "the north-facing frame") as shared context.`,
+    );
+  }
   if (parts.description) {
     // A vision model already looked at the imagery for a non-vision answer
     // model — hand over its description so the answer can relay it.
@@ -407,16 +457,55 @@ function staticMapUrl(env, location) {
   return `${STATICMAP_URL}?${qs}`;
 }
 
+// Cross-request lookup cache, the exact pattern src/exa.js uses for searches:
+// a follow-up turn is a SEPARATE /api/chat request, and the follow-up flow
+// above (pickLookup's walk-back) re-looks-up the SAME location on every
+// gated follow-up — without a cache each one re-bills Places + five imagery
+// fetches at Google. Workers Cache API (caches.default): durable across
+// requests in a colo, no binding needed, fail-soft in every branch. Short TTL
+// only — enough to absorb a follow-up exchange, well inside Google's
+// performance-caching allowance (Street View imagery itself changes on a
+// timescale of years).
+const LOOKUP_CACHE_TTL_S = 600;
+
+function lookupCacheKey(target, fetchImages) {
+  const params = new URLSearchParams({
+    t: (target || "").trim().toLowerCase().replace(/\s+/g, " "),
+    img: fetchImages ? "1" : "0", // an imageless hit must not starve an imagery request
+  });
+  return `https://googlemaps-lookup-cache.internal/lookup?${params.toString()}`;
+}
+
 // Orchestrates one Maps lookup. Exactly one of `coords` ("lat,lng" of an
 // attached photo) or `address` (a parsed street address) drives it; `coords`
 // wins when both are present. `fetchImages` gates the (billed) imagery fetches
 // — set when the caller will either attach them to a vision answer model or
 // run them through the vision-describe helper. Returns the resolved data
-// ({ displayQuery, place, lat, lng, streetView, streetViewImages,
+// ({ displayQuery, place, lat, lng, streetView, streetViewFrames,
 // staticMapImage, embed, details, count }) or null when nothing resolved (or
 // any failure) — the caller stays silent / builds the block itself.
 export async function runGoogleMapsLookup(env, log, { coords, address, fetchImages }) {
   if (!googleMapsAvailable(env)) return null;
+
+  // Serve an identical earlier lookup (typically: a follow-up about the same
+  // place) from the edge cache. Fail-soft: any miss/error falls through to
+  // live API calls.
+  const cache = globalThis.caches?.default;
+  const cacheKey = lookupCacheKey(coords || address, !!fetchImages);
+  if (cache) {
+    try {
+      const hit = await cache.match(new Request(cacheKey));
+      if (hit) {
+        const payload = await hit.json();
+        if (payload && typeof payload === "object") {
+          log.info("googlemaps.cache_hit", { frames: payload.streetViewFrames?.length || 0 });
+          return payload;
+        }
+      }
+    } catch (err) {
+      log.warn("googlemaps.cache_read_failed", { error: err?.message || String(err) });
+    }
+  }
 
   // Resolve a place + coordinates. A photo's coords are used directly; an
   // address is first sent to Places to canonicalise it and get precise coords
@@ -458,10 +547,12 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
 
   // Capture imagery when asked: one Street View frame per cardinal heading (a
   // full look around the spot) plus a road map. Fetched concurrently; each is
-  // independently fail-soft (a missing frame just drops). The CALLER decides
-  // whether to attach these to a vision answer model or run them through the
-  // vision-describe helper — this just fetches them.
-  let streetViewImages = [];
+  // independently fail-soft (a missing frame just drops). Frames keep their
+  // heading label so the client can caption them and the vision prompt can
+  // name directions. The CALLER decides whether to attach these to a vision
+  // answer model or run them through the vision-describe helper — this just
+  // fetches them.
+  let streetViewFrames = [];
   let staticMapImage = null;
   if (fetchImages) {
     const svJobs = svOk
@@ -473,7 +564,9 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
       Promise.all(svJobs),
       fetchImageDataUrl(env, log, staticMapUrl(env, imageryLocation), "googlemaps.staticmap_error"),
     ]);
-    streetViewImages = svResults.filter(Boolean);
+    streetViewFrames = svResults
+      .map((url, i) => ({ dir: STREETVIEW_HEADINGS[i].dir, url }))
+      .filter((f) => f.url);
     staticMapImage = mapResult;
   }
 
@@ -490,29 +583,67 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   bits.push("road map");
   const details = [`${displayQuery} → ${bits.join(", ")}`];
 
-  return {
+  const result = {
     displayQuery,
     place,
     lat,
     lng,
     streetView: svOk ? { date: svMeta.date || "" } : null,
-    streetViewImages,
+    streetViewFrames,
     staticMapImage,
     embed,
     details,
     count: 1,
   };
+
+  // Cache only successful lookups (the null early-returns above stay uncached
+  // so a retry can still find something). A write failure never affects the
+  // response.
+  if (cache) {
+    try {
+      await cache.put(
+        new Request(cacheKey),
+        new Response(JSON.stringify(result), {
+          headers: {
+            "content-type": "application/json",
+            "cache-control": `max-age=${LOOKUP_CACHE_TTL_S}`,
+          },
+        }),
+      );
+    } catch (err) {
+      log.warn("googlemaps.cache_write_failed", { error: err?.message || String(err) });
+    }
+  }
+
+  return result;
 }
 
 // Convenience used by the pipeline: derive the lookup inputs from a
 // conversation + any attached-photo coordinates. Prefers a precise photo
-// coordinate over a parsed address; returns null when the message names no
-// address and there is no photo location.
+// coordinate over an address parsed from the latest message. When the latest
+// message names NOTHING but clearly refers back to the imagery/place
+// (referencesStreetView above), the walk-back finds the most recent address an
+// EARLIER user turn named — that's what lets a follow-up ("what color is the
+// roof?") re-snap the current Street View imagery instead of the model
+// claiming it has no knowledge of any image. The server is stateless and the
+// prior turn's Maps block was appended server-side only, so the conversation
+// text the client resends is the ONLY durable record — and the address in it
+// is exactly that. Returns null when nothing names (or refers back to) a
+// location; `followUp: true` marks a walked-back hit so the enrichment can
+// label the block accordingly.
 export function pickLookup(conversation, imageLocations) {
   const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
     return { coords: `${c.lat},${c.lon}`, address: "" };
   }
-  const address = extractPlace(textOf(lastUserMessage(conversation)?.content));
-  return address ? { coords: "", address } : null;
+  const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
+  const latest = textOf(users[users.length - 1]?.content);
+  const address = extractPlace(latest);
+  if (address) return { coords: "", address };
+  if (!referencesStreetView(latest)) return null;
+  for (let i = users.length - 2; i >= 0; i--) {
+    const prior = extractPlace(textOf(users[i]?.content));
+    if (prior) return { coords: "", address: prior, followUp: true };
+  }
+  return null;
 }

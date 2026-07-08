@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildResearchDebugJson } from "./activity.js";
+import { buildResearchDebugJson, sanitizeResearchEvent } from "./activity.js";
 
 // A turn whose researchLog mirrors what stream.js's recordResearchEvent
 // accumulates from the SSE status events, including the geocode and Shodan
@@ -141,4 +141,27 @@ test("buildResearchDebugJson is safe on an empty turn", () => {
   });
   // JSON-serializable (the whole point — it gets copied to the clipboard).
   assert.doesNotThrow(() => JSON.stringify(out));
+});
+
+// ---- sanitizeResearchEvent --------------------------------------------------
+
+test("sanitizeResearchEvent compacts streetview_frames (drops the data URLs, keeps count + directions)", () => {
+  const out = sanitizeResearchEvent({
+    type: "streetview_frames",
+    query: "Maskinistvägen 11",
+    frames: [
+      { dir: "north", url: "data:image/jpeg;base64," + "A".repeat(100_000) },
+      { dir: "east", url: "data:image/jpeg;base64," + "B".repeat(100_000) },
+    ],
+  });
+  assert.deepEqual(out, { type: "streetview_frames", query: "Maskinistvägen 11", frames: 2, directions: ["north", "east"] });
+  // The whole point: the compacted record must be tiny.
+  assert.ok(JSON.stringify(out).length < 200);
+});
+
+test("sanitizeResearchEvent passes every other event through unchanged", () => {
+  const done = { type: "search_done", round: 1, query: "q", results: 2, duration_ms: 5, sources: [] };
+  assert.equal(sanitizeResearchEvent(done), done); // same reference — untouched
+  const embed = { type: "streetview_embed", lat: 59.4, lng: 17.9 };
+  assert.equal(sanitizeResearchEvent(embed), embed);
 });

@@ -11,6 +11,8 @@ import {
   finishSearchStep,
   renderStats,
   renderStreetViewEmbed,
+  renderStreetViewFrames,
+  sanitizeResearchEvent,
   startGenericStep,
   startSearchStep,
   updateGenericStep,
@@ -459,6 +461,7 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
     else if (s.type === "streetview_embed") renderStreetViewEmbed(turn, s);
+    else if (s.type === "streetview_frames") renderStreetViewFrames(turn, s);
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export
@@ -484,10 +487,11 @@ function handleEvent(turn, evt, acc) {
 // relative timestamp (ms since the turn started). Text deltas are NOT
 // recorded — this log is the research PROCESS (which services were queried,
 // with what, in what order, how long each took), the source for the
-// "Copy research JSON" debug button (activity.js).
+// "Copy research JSON" debug button (activity.js). Bulky payloads (Street
+// View frame data URLs) are compacted first (sanitizeResearchEvent).
 function recordResearchEvent(turn, entry) {
   if (!turn.researchLog) return;
-  turn.researchLog.push({ t: Date.now() - (turn.startedAt || Date.now()), ...entry });
+  turn.researchLog.push({ t: Date.now() - (turn.startedAt || Date.now()), ...sanitizeResearchEvent(entry) });
 }
 
 // Builds the labeled excerpt blocks for every RAG-indexed document in this
