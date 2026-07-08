@@ -98,6 +98,14 @@ Standing fixes (keep them intact):
   blocked and a "tap to reload" banner shows. Any future graph failure is
   LOUD instead of eating queries.
 
+Cloudflare "Development Mode" is NOT part of this fix and doesn't cover
+this class: it bypasses the zone EDGE cache (which was never the problem —
+Workers static assets are content-addressed per deploy, and observed
+2026-07-08: asset responses still showed cf-cache-status: HIT with dev
+mode on), while the bug lived in BROWSER caches, which only the explicit
+`no-cache` response headers control. Dev mode also auto-expires after 3h —
+never rely on it being on.
+
 Rules that follow: keep the guard inline and classic (never a module);
 when renaming/adding cross-module exports remember old clients may hold
 half-old graphs until their next revalidation — the guard is the net;
