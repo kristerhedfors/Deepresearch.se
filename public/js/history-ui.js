@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h5 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
+    parts.push(`[h6 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -101,6 +101,13 @@ export function initHistorySidebar(opts = {}) {
       return;
     }
     const activeId = currentConversationId();
+    // At REST a chat row contains ONLY the open button — the exact
+    // structure of a project row. That's load-bearing on iOS: rows that
+    // permanently carry an absolutely-positioned (even invisible) action
+    // strip inside the backdrop-filtered panel render INVISIBLE on real
+    // iOS Safari (2026-07-08 device incident; Linux WebKit can't
+    // reproduce it). The strip is mounted lazily by attachSwipe when a
+    // swipe or hover actually happens, and removed again on close.
     list.innerHTML = items
       .map(
         (c) => `
@@ -109,10 +116,6 @@ export function initHistorySidebar(opts = {}) {
           <span class="history-title">${escapeHtml(c.title)}</span>
           <span class="history-when">${relativeTime(c.updatedAt)}</span>
         </button>
-        <div class="history-actions">
-          <button type="button" class="history-rename" data-id="${c.id}" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>
-          <button type="button" class="history-delete" data-id="${c.id}" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>
-        </div>
       </div>`,
       )
       .join("");
@@ -125,33 +128,55 @@ export function initHistorySidebar(opts = {}) {
         const item = el.closest(".history-item");
         if (item.dataset.swipeLock === "1" || item.classList.contains("swiped")) {
           delete item.dataset.swipeLock;
-          item.classList.remove("swiped");
+          closeActions(item);
           return;
         }
         openConversation(el.dataset.id);
       });
     });
-    list.querySelectorAll(".history-rename").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        renameConversation(el.dataset.id);
-      });
+  }
+
+  // Mount the rename/delete strip into a row on demand (see renderList's
+  // comment for why it can't live in the markup permanently).
+  function mountActions(item) {
+    let strip = item.querySelector(".history-actions");
+    if (strip) return strip;
+    strip = document.createElement("div");
+    strip.className = "history-actions";
+    strip.innerHTML =
+      `<button type="button" class="history-rename" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>` +
+      `<button type="button" class="history-delete" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>`;
+    const id = item.dataset.id;
+    strip.querySelector(".history-rename").addEventListener("click", (e) => {
+      e.stopPropagation();
+      renameConversation(id);
     });
-    list.querySelectorAll(".history-delete").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        removeConversation(el.dataset.id);
-      });
+    strip.querySelector(".history-delete").addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeConversation(id);
     });
+    item.appendChild(strip);
+    return strip;
+  }
+
+  function closeActions(item) {
+    item.classList.remove("swiped");
+    const strip = item.querySelector(".history-actions");
+    if (!strip) return;
+    // Let the fade-out finish, then restore the rest-state DOM.
+    setTimeout(() => {
+      if (!item.classList.contains("swiped") && !item.matches(":hover")) strip.remove();
+    }, 200);
   }
 
   // Touch swipe-to-reveal: dragging a row left slides it over by the
   // action strip's width, exposing rename + delete. Swiping back (or
   // tapping the row, or swiping any other row) closes it. Mouse users
-  // keep the hover reveal (app.css); this only drives touch/pen.
+  // keep the hover reveal; this only drives touch/pen. The row itself
+  // never moves — the strip fades in over its right edge (moving the row
+  // needs overflow clipping + transforms, both on the iOS suspect list).
   const REVEAL_PX = 88; // matches .history-actions width in app.css
   function attachSwipe(item) {
-    const row = item.querySelector(".history-open");
     let startX = 0, startY = 0, axis = null, tracking = false;
 
     item.addEventListener("pointerdown", (e) => {
@@ -172,34 +197,49 @@ export function initHistorySidebar(opts = {}) {
         if (axis === "x") {
           // Claim the gesture so a stray tap at the end doesn't open the chat.
           item.dataset.swipeLock = "1";
+          mountActions(item);
           // Close any other row that's sitting open.
           list.querySelectorAll(".history-item.swiped").forEach((other) => {
-            if (other !== item) other.classList.remove("swiped");
+            if (other !== item) closeActions(other);
           });
         }
       }
       if (axis !== "x") return;
-      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
-      const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
-      row.style.transition = "none";
-      row.style.transform = `translateX(${offset}px)`;
+      // Live feedback: the strip fades in with the drag distance.
+      const strip = item.querySelector(".history-actions");
+      if (strip) {
+        const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
+        const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
+        strip.style.transition = "none";
+        strip.style.opacity = String(Math.min(1, -offset / REVEAL_PX));
+      }
     });
 
     function settle(e) {
       if (!tracking) return;
       tracking = false;
       if (axis !== "x") return;
+      const strip = item.querySelector(".history-actions");
+      if (strip) {
+        strip.style.transition = "";
+        strip.style.opacity = "";
+      }
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = from + (e.clientX - startX);
-      // Hand the final position back to the CSS class + its transition.
-      row.style.transition = "";
-      row.style.transform = "";
-      item.classList.toggle("swiped", offset < -REVEAL_PX / 2);
+      if (offset < -REVEAL_PX / 2) item.classList.add("swiped");
+      else closeActions(item);
       // Let the click that follows this pointerup see the lock, then clear it.
       setTimeout(() => { delete item.dataset.swipeLock; }, 0);
     }
     item.addEventListener("pointerup", settle);
     item.addEventListener("pointercancel", settle);
+
+    // Mouse hover mounts the strip so the CSS :hover reveal has something
+    // to reveal; leaving unmounts it again (unless swiped open).
+    item.addEventListener("mouseenter", () => mountActions(item));
+    item.addEventListener("mouseleave", () => {
+      if (!item.classList.contains("swiped")) closeActions(item);
+    });
   }
 
   async function openConversation(id) {
