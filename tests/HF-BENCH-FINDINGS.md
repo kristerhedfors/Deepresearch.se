@@ -134,3 +134,43 @@ here. Expectation to test: multi-hop chains (DeepSearchQA) improve via
 sub-question coverage audit + dependent-hop queries; SealQA calibration
 improves via conflict surfacing; `simple`-complexity capping should not
 affect these sets (few of their questions triage as simple).
+
+## Round 1 — 2026-07-08 (A/B: triage decomposition deployed)
+
+**Run config:** identical to round 0 (`HF_SAMPLE=25 HF_SEED=1
+EVAL_BUDGET_S=120 EVAL_CONCURRENCY=2`, Mistral Small 3.2 answer+judge),
+against `main@07651a0` — the triage-decomposition merge (complexity
+classification, sub-questions, dependent-hop gap rule, conflict
+surfacing, simple-complexity depth capping). Deploy verified live before
+the battery via a plan-step probe (`· multihop` tag + `Sub-question:`
+details present).
+
+**Results (baseline → after):**
+
+| dataset | strict accuracy | partial-mean | failed | leak-tainted |
+|---|---|---|---|---|
+| `google/deepsearchqa` | 8.0% → **12.0%** (2/25 → 3/25) | 16.0% → **22.7%** | 0 → 0 | 2 → 3 |
+| `vtllms/sealqa` seal_hard | 16.0% → **20.0%** (4/25 → 5/25) | 16.0% → **20.0%** | 0 → 0 | 3 → 3 |
+
+**Reading:** directionally positive on both sets and both metrics, and
+stability held (0/50 failed runs both rounds). Honest sizing: at n=25 a
++4-point strict delta is ONE extra correct question — inside
+single-sample noise on its own. The more trustworthy signal is
+DeepSearchQA's partial-mean +6.7 points, which aggregates continuous
+set-element credit across all 25 questions and matches the change's
+mechanism (sub-question coverage audit + dependent-hop queries should
+recover MORE elements of multi-hop set answers, exactly what partial
+credit measures). Consistent with round 0's prediction that partials
+would move more than strict accuracy (the strict misses remain dominated
+by exhaustive-enumeration questions whose data lives in tables Exa
+highlights don't carry).
+
+**Decision:** the change stays merged — a consistent, mechanism-matching
+improvement with no regression anywhere (and no stability cost). Not yet
+"proven large": a de-noising pass (2-3 more seeds, or the denoise-driver
+pattern applied here) would be the next evidence step if a stronger claim
+is ever needed. Carried forward: (1) enumeration-from-tables misses are a
+retrieval-modality gap — Exa highlights vs data tables — worth its own
+investigation (e.g. targeted /contents fetch ONLY for enumeration-type
+questions, intent-gated, cheap); (2) leak-tainted runs sit stable at
+2-3/25 — acceptable, keep watching.
