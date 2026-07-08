@@ -43,11 +43,31 @@ export function initHistorySidebar(opts = {}) {
   let baseNote = "";
   let pulling = false;
   let lastPull = null; // result of this pane-open's pullNewer, once it lands
+  let showTrace = false;
   function updateNote() {
-    const text = pulling ? "Checking the cloud for conversations…" : baseNote;
+    const text = showTrace
+      ? "TRACE: " + (TRACE.length ? TRACE.join(" | ") : "(no gesture recorded yet)")
+      : pulling ? "Checking the cloud for conversations…" : baseNote;
     note.textContent = text;
     note.hidden = !text;
   }
+
+  // On-device gesture trace (temporary diagnostics, 2026-07-08): records
+  // exactly which touch/pointer events the device delivers and everything
+  // that touches the card afterwards. Tap the bracketed stamp line to
+  // toggle the dump; it's plain selectable text, so it can be copied
+  // straight into a bug report. Remove once the iOS swipe is confirmed.
+  const TRACE = [];
+  const t0 = Date.now();
+  function trace(s) {
+    TRACE.push(`${Date.now() - t0}:${s}`);
+    if (TRACE.length > 60) TRACE.splice(0, TRACE.length - 60);
+    if (showTrace) updateNote();
+  }
+  note.addEventListener("click", () => {
+    showTrace = !showTrace;
+    updateNote();
+  });
 
   async function refresh() {
     list.innerHTML = '<p class="muted">Loading…</p>';
@@ -85,7 +105,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h11 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h12 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line for the gesture trace]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -134,6 +154,7 @@ export function initHistorySidebar(opts = {}) {
     // iOS Safari (2026-07-08 device incident; Linux WebKit can't
     // reproduce it). The strip is mounted lazily by attachSwipe when a
     // swipe or hover actually happens, and removed again on close.
+    trace(`render n=${items.length}`);
     list.innerHTML = items
       .map(
         (c) => `
@@ -152,6 +173,7 @@ export function initHistorySidebar(opts = {}) {
         // A tap on a swiped-open row (or right after a swipe gesture)
         // just closes the actions — it shouldn't also open the chat.
         const item = el.closest(".history-item");
+        trace(`click lock=${item.dataset.swipeLock || 0} sw=${item.classList.contains("swiped") ? 1 : 0}`);
         if (item.dataset.swipeLock === "1" || item.classList.contains("swiped")) {
           delete item.dataset.swipeLock;
           closeActions(item);
@@ -208,6 +230,7 @@ export function initHistorySidebar(opts = {}) {
   // once the settle animation has finished. All inline styles — see
   // mountActions for why nothing here may depend on the stylesheet.
   function closeActions(item) {
+    trace("closeA");
     const row = item.querySelector(".history-open");
     showStrip(item.querySelector(".history-actions"), false);
     if (item.classList.contains("swiped")) {
@@ -274,16 +297,26 @@ export function initHistorySidebar(opts = {}) {
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = aborted ? 0 : from + dx;
       if (offset < -REVEAL_PX / 2) {
+        trace(`park dx=${Math.round(dx)}`);
         row.style.transition = "margin-left .18s ease";
         row.style.marginLeft = -REVEAL_PX + "px";
         item.classList.add("swiped");
         showStrip(item.querySelector(".history-actions"), true);
         setTimeout(() => { item.classList.remove("swiping"); }, 200);
       } else {
+        trace(`close dx=${Math.round(dx)}`);
         closeActions(item);
       }
       // Let the click that follows the gesture see the lock, then clear it.
       setTimeout(() => { delete item.dataset.swipeLock; }, 0);
+      // What does the card ACTUALLY look like shortly after? If something
+      // reset it, this line is the smoking gun in the trace.
+      setTimeout(() => {
+        const r2 = item.isConnected ? item.querySelector(".history-open") : null;
+        trace(r2
+          ? `post ml=${getComputedStyle(r2).marginLeft} swiped=${item.classList.contains("swiped")} strip=${!!item.querySelector(".history-actions")}`
+          : "post item-REPLACED");
+      }, 320);
     }
 
     function moveLogic(dx, dy, preventDefaultFn) {
@@ -316,13 +349,16 @@ export function initHistorySidebar(opts = {}) {
         const strip = item.querySelector(".history-actions");
         if (strip && !item.matches(":hover")) strip.remove();
       }
+      let moveCount = 0;
       item.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         tracking = true;
         axis = null;
         lastDx = 0;
+        moveCount = 0;
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        trace("ts");
         mountActions(item);
         item.style.overflow = "hidden";
       }, { passive: true });
@@ -335,6 +371,7 @@ export function initHistorySidebar(opts = {}) {
         if (!axis) {
           if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
           axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+          trace(`ax=${axis} ${Math.round(dx)},${Math.round(dy)}`);
           if (axis === "x") {
             item.dataset.swipeLock = "1";
             item.classList.add("swiping");
@@ -347,12 +384,17 @@ export function initHistorySidebar(opts = {}) {
         }
         if (axis !== "x") return;
         if (e.cancelable) e.preventDefault();
+        moveCount++;
+        if (moveCount <= 4 || moveCount % 8 === 0) {
+          trace(`m${moveCount} ${Math.round(dx)} c=${e.cancelable ? 1 : 0}p=${e.defaultPrevented ? 1 : 0}`);
+        }
         lastDx = dx;
         drag(dx);
       }, { passive: false });
-      const end = () => {
+      const end = (e) => {
         if (!tracking) return;
         tracking = false;
+        trace(`${e.type === "touchcancel" ? "CANCEL" : "end"} n=${moveCount} dx=${Math.round(lastDx)}`);
         if (axis === "x") finish(lastDx, false);
         else releaseRest();
       };
@@ -385,9 +427,11 @@ export function initHistorySidebar(opts = {}) {
     // removes it again (unless swiped open).
     item.addEventListener("mouseenter", (e) => {
       if (e.pointerType && e.pointerType !== "mouse") return;
+      trace("menter");
       showStrip(mountActions(item), true);
     });
     item.addEventListener("mouseleave", () => {
+      trace("mleave");
       if (!item.classList.contains("swiped")) closeActions(item);
     });
   }
