@@ -234,16 +234,18 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
 
   const [
     { resolveModel, validateMessages },
-    { clampBudget, planResearch },
+    { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER },
     { adminDefaultModelValid, listModels, DEFAULT_MODEL },
     { runPipeline },
     { getConfig },
+    { getUsage, quotaExceeded, effectiveQuota, recordUsage, bergetCost },
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
     import("./berget.js"),
     import("./pipeline.js"),
     import("./config.js"),
+    import("./quota.js"),
   ]);
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
@@ -275,6 +277,26 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearch = args.web_search !== false; // default on
 
+  // Research quota — the SAME gate /api/chat enforces (src/chat.js). Admins
+  // are never blocked; every regular user is checked against their four-window
+  // budget BEFORE any spend. Without this, /mcp would be an unmetered bypass of
+  // the quota /api/chat applies (each call runs the full pipeline for real
+  // Berget + Exa money), and the spend would also be invisible to the usage
+  // bars and admin cost totals — see the recordUsage below.
+  const quota =
+    identity?.isSecretAdmin || identity?.role === "admin"
+      ? null
+      : effectiveQuota(config, identity?.user);
+  if (quota) {
+    const usage = await getUsage(env, identity.id);
+    const blocked = quotaExceeded(usage, quota);
+    if (blocked) {
+      log.info("mcp.quota_blocked", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });
+      const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+      throw new Error(`Research quota exceeded (${blocked.period}). It resets at ${when}.`);
+    }
+  }
+
   const state = newRequestState(model, jsonModel, webSearch, budgetS, planResearch(model, budgetS, jsonModel));
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
@@ -289,7 +311,45 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     // status step/search events are ignored — a v1 non-streaming result.
   };
 
-  await runPipeline(env, log, emit, conversation, model, state);
+  try {
+    await runPipeline(env, log, emit, conversation, model, state);
+  } finally {
+    // Usage accounting for quotas — recorded even on a partial/failed run,
+    // mirroring /api/chat (src/chat.js). Same split-billing math: each model
+    // bucket (answer / JSON planning / vision) priced at its own catalog rate,
+    // plus live searches at their depth-tier price and the /contents fetch
+    // surcharge. Fails soft: a recording error never breaks the tool result.
+    try {
+      let prompt_tokens = 0;
+      let completion_tokens = 0;
+      let berget_cost = 0;
+      for (const [modelId, totals] of [
+        [state.model, state.totals],
+        [state.jsonModel, state.jsonTotals],
+        [state.visionModel, state.visionTotals],
+      ]) {
+        prompt_tokens += totals.prompt_tokens;
+        completion_tokens += totals.completion_tokens;
+        berget_cost += bergetCost(catalog?.find((m) => m.id === modelId), totals.prompt_tokens, totals.completion_tokens);
+      }
+      const billedSearches = Math.max(0, state.searchCount - (state.cachedSearchCount || 0));
+      const exa_cost =
+        billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
+        (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER;
+      await recordUsage(env, log, {
+        user_id: identity?.id,
+        model,
+        prompt_tokens,
+        completion_tokens,
+        searches: billedSearches,
+        berget_cost,
+        exa_cost,
+        duration_ms: Date.now() - state.startedAt,
+      });
+    } catch (err) {
+      log.warn("mcp.usage_record_failed", { error: err?.message || String(err) });
+    }
+  }
 
   log.info("mcp.complete", {
     user_id: identity?.id,

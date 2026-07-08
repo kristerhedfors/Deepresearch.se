@@ -10,7 +10,10 @@ XSS/DOM; and HTTP headers/quota/config/secrets). Highest-impact findings were
 re-verified directly against source. Findings are labelled **Confirmed**
 (traced to exact code) or **Suspected** (latent / depends on a precondition).
 
-This is an assessment document only — **no application code was changed.**
+> **Update (2026-07-08): the three HIGH-severity findings (H-1, H-2, H-3) have
+> been remediated** in the same commit that lands this document. Each is marked
+> **✅ Fixed** below with the change made. The Medium/Low findings remain open and
+> are tracked in the action plan (§4). All 595 unit tests pass after the fixes.
 
 ---
 
@@ -63,9 +66,17 @@ bypass into a full account-context XSS.
 
 ---
 
-#### H-1 · `/mcp` deep-research bypasses quota enforcement and usage accounting — Confirmed
+#### H-1 · `/mcp` deep-research bypasses quota enforcement and usage accounting — Confirmed · ✅ Fixed
 **Location:** `src/mcp.js` — `runDeepResearch` (lines 230–344); routed at
 `src/index.js:240-242`.
+
+**✅ Fix applied:** `runDeepResearch` now applies the same quota gate as
+`/api/chat` (`effectiveQuota`/`getUsage`/`quotaExceeded`, admins exempt) *before*
+running the pipeline — a blocked user gets a clear tool error naming the reset
+time — and records spend afterward via `recordUsage` in a `finally` (the same
+split-billing math: per-model buckets priced at catalog rates + Exa searches at
+their depth-tier price + the `/contents` surcharge). Spend is now visible in the
+usage bars and admin cost totals, and volume is capped by the quota.
 
 `/mcp`'s `deep_research` tool runs the full research pipeline but contains **no
 quota gate and no usage recording**. `runDeepResearch` records to the `chat_logs`
@@ -92,7 +103,7 @@ All the needed helpers are already imported elsewhere.
 
 ---
 
-#### H-2 · No HTTP security headers (CSP, nosniff, frame-ancestors, HSTS, Referrer-Policy) — Confirmed
+#### H-2 · No HTTP security headers (CSP, nosniff, frame-ancestors, HSTS, Referrer-Policy) — Confirmed · ✅ Fixed
 **Location:** every response path — `src/http.js` `jsonResponse` (11–19) /
 `sseResponse` (26–33); `src/index.js` `htmlResponse` (314–319) and `serveAsset`
 (137–148). A repo-wide grep for the standard header names returns **zero
@@ -114,8 +125,25 @@ and renders it into the DOM, yet ships no `Content-Security-Policy`, no
   app.
 - **No `nosniff`** ⇒ MIME-sniffing of served/stored content.
 
-**Remediation:** add a shared header wrapper (`withRequestId` in `index.js`
-already post-processes every response) setting `Content-Security-Policy`,
+**✅ Fix applied:** `withRequestId` in `src/index.js` (which already
+post-processes every response) now sets a full header set on every response:
+an **enforcing** `Content-Security-Policy`, `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`Strict-Transport-Security: max-age=63072000; includeSubDomains`,
+`Cross-Origin-Opener-Policy: same-origin`, and a locked-down `Permissions-Policy`.
+The CSP `script-src` is a strict allowlist — `'self'`, the two Google Maps hosts,
+and the **SHA-256 hashes of the only two inline scripts** (index.html's boot
+guard and story's inline module); **no `'unsafe-inline'`, no `'unsafe-eval'`**, so
+injected inline `<script>`/`on*=` handlers cannot run. `object-src 'none'` and
+`base-uri 'self'` close the plugin/base-tag vectors. Maps subresources are
+allowed via `*.googleapis.com`/`*.gstatic.com`; if any are ever missed,
+`renderStreetViewEmbed` already fails soft to the keyless google.com Embed
+iframe (`frame-src`), so Street View degrades rather than breaks. `img-src`
+stays broad (`data: blob: https:`) for user uploads and server data-URL frames.
+
+**Original remediation (for reference):** add a shared header wrapper
+(`withRequestId` in `index.js` already post-processes every response) setting
+`Content-Security-Policy`,
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
 `frame-ancestors 'none'` (or `X-Frame-Options: DENY`), and
 `Strict-Transport-Security: max-age=63072000; includeSubDomains`. Two constraints
@@ -131,8 +159,18 @@ require care when authoring the CSP (do not just set `script-src 'self'`):
 
 ---
 
-#### H-3 · Session integrity permanently reducible to the admin password's entropy — Confirmed
+#### H-3 · Session integrity permanently reducible to the admin password's entropy — Confirmed · ✅ Fixed
 **Location:** `src/auth.js:166-177` (key list), `:190-196` (verify loop).
+
+**✅ Fix applied:** `sessionHmacKeys()` now returns **only** the `SESSION_SECRET`
+key when it is configured; the admin-credential-derived key is used *solely* as
+a fallback when `SESSION_SECRET` is absent. With a `SESSION_SECRET` set, session
+cookies are no longer forgeable/brute-forceable from the admin password. The
+one-time cost — cookies minted under the old admin-derived key stop verifying
+once `SESSION_SECRET` is introduced (a single re-login) — is documented in the
+module header, and the unit test was updated to assert the new secure behavior.
+Recommendation still stands to set a high-entropy `SESSION_SECRET` in production
+so the fallback path is never exercised.
 
 `sessionHmacKeys()` **always** appends a fallback HMAC key derived from the admin
 credentials — `` `${creds.user} ${creds.pass}` `` — and `verifyHmac()` accepts a
@@ -358,20 +396,22 @@ contain our tokens, which ride only in headers).
 
 ## 4. Prioritised action plan
 
-### Phase 1 — this week (exploitable / highest leverage)
+### Phase 1 — ✅ DONE (exploitable / highest leverage)
 
-1. **H-1 · Gate `/mcp` on quota + record usage.** Copy the `chat.js` gate/record
-   into `runDeepResearch`. Closes the one confirmed unmetered-spend hole; small,
-   self-contained change. *(also removes the M-1 blast-radius multiplier on the
-   worst endpoint.)*
-2. **H-2 · Add security headers.** Ship `CSP`, `nosniff`, `frame-ancestors`,
-   `Referrer-Policy`, HSTS via the existing `withRequestId` post-processor. Start
-   CSP in `Content-Security-Policy-Report-Only` to shake out the inline-script /
-   Maps-origin allowances, then enforce. Converts every latent DOM sink (L-1,
-   L-10, future DOMPurify bypass) from potential-XSS to contained.
-3. **H-3 · Fix the session-HMAC fallback.** Only derive the admin-credential key
-   when `SESSION_SECRET` is absent; require and verify against `SESSION_SECRET` in
-   production; confirm both `ADMIN_PASS` and `SESSION_SECRET` are high-entropy.
+1. **H-1 · Gate `/mcp` on quota + record usage.** ✅ Done — `runDeepResearch`
+   now mirrors the `chat.js` gate/record. Closes the confirmed unmetered-spend
+   hole and removes the M-1 blast-radius multiplier on that endpoint.
+2. **H-2 · Add security headers.** ✅ Done — enforcing CSP (strict `script-src`
+   with hashed inline scripts, no `'unsafe-inline'`/`'unsafe-eval'`), `nosniff`,
+   `X-Frame-Options`/`frame-ancestors`, `Referrer-Policy`, HSTS, COOP, and
+   `Permissions-Policy` via `withRequestId`. Converts every latent DOM sink
+   (L-1, L-10, future DOMPurify bypass) from potential-XSS to contained.
+   *Post-deploy: confirm the app + Street View render clean with no CSP console
+   violations (see §Verification note).*
+3. **H-3 · Fix the session-HMAC fallback.** ✅ Done — the admin-credential key is
+   used only when `SESSION_SECRET` is absent. **Operational follow-up:** ensure a
+   high-entropy `SESSION_SECRET` (and `ADMIN_PASS`) is set in the Worker secrets
+   so the fallback path is never used.
 
 ### Phase 2 — this sprint (cost/abuse + privacy correctness)
 
