@@ -55,6 +55,29 @@ describe("triagePrompt", () => {
     assert.match(withReinforce, /Output ONLY the JSON object/);
     assert.doesNotMatch(without, /Output ONLY the JSON object/);
   });
+
+  test("asks for a complexity classification with all four kinds", () => {
+    const p = triagePrompt(4);
+    assert.match(p, /"complexity"/);
+    for (const kind of ["simple", "multihop", "comparison", "survey"]) {
+      assert.match(p, new RegExp(`"${kind}"`), `missing kind ${kind}`);
+    }
+  });
+
+  test("asks for sub-questions on non-simple requests and orders multihop by dependency", () => {
+    const p = triagePrompt(4);
+    assert.match(p, /"subquestions"/);
+    assert.match(p, /2-5 concrete sub-questions/);
+    assert.match(p, /order them by dependency/);
+    assert.match(p, /target the FIRST hop/);
+    assert.match(p, /Omit "subquestions" entirely for simple requests/);
+  });
+
+  test("prompts broad-first query laddering", () => {
+    const p = triagePrompt(4);
+    assert.match(p, /SHORT and broad/);
+    assert.match(p, /follow-up rounds are where the search narrows/);
+  });
 });
 
 describe("gapPrompt", () => {
@@ -87,6 +110,30 @@ describe("gapPrompt", () => {
     assert.match(withReinforce, /Output ONLY the JSON object/);
     assert.doesNotMatch(without, /Output ONLY the JSON object/);
   });
+
+  test("lists each sub-question for a per-sub-question coverage audit when decomposed", () => {
+    const p = gapPrompt([], 2, { subquestions: ["Who owns X?", "What did the owner announce?"] });
+    assert.match(p, /Audit coverage against EACH one/);
+    assert.match(p, /1\. Who owns X\?/);
+    assert.match(p, /2\. What did the owner announce\?/);
+  });
+
+  test("omits the sub-question block entirely when the question was not decomposed", () => {
+    const p = gapPrompt([], 2);
+    assert.doesNotMatch(p, /decomposed into sub-questions/);
+  });
+
+  test("teaches dependent-hop resolution: write the next query with the bridging fact from sources", () => {
+    const p = gapPrompt([], 2);
+    assert.match(p, /only became known from the collected sources/);
+    assert.match(p, /using that concrete fact directly/);
+  });
+
+  test("asks for a conflicts field naming factual disagreements between sources", () => {
+    const p = gapPrompt([], 2);
+    assert.match(p, /"conflicts"/);
+    assert.match(p, /materially DISAGREE/);
+  });
 });
 
 describe("synthPrompt", () => {
@@ -94,6 +141,12 @@ describe("synthPrompt", () => {
     const p = synthPrompt();
     assert.match(p, /\[1\], \[2\]/);
     assert.match(p, /Sources:/);
+  });
+
+  test("requires addressing every listed sub-question and every listed source conflict", () => {
+    const p = synthPrompt();
+    assert.match(p, /must address EVERY one of them/);
+    assert.match(p, /never silently pick one side/);
   });
 
   test("requires flagging single-origin/company-dominated sources explicitly", () => {

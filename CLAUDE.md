@@ -244,6 +244,19 @@ separate data-collection tool — see the **model-eval** skill for its
 methodology, the `QUERY_SETS` discipline, the `tests/MODEL-EVAL-FINDINGS.md`
 ledger, and the "don't commit mid-battery" rule.
 
+Two scored benchmarks complete the eval stool: the **rubric bench**
+(`tests/eval-bench.mjs`, `npm run eval:bench`, ledger
+`tests/EVAL-BENCH-FINDINGS.md`) — LLM-judged scores on ~27 fixed synthetic
+questions — and the **HF bench** (`tests/hf-bench.mjs`, `npm run eval:hf`,
+ledger `tests/HF-BENCH-FINDINGS.md`) — answer accuracy against external
+Hugging Face question sets with gold answers, selected for low training-data
+contamination vs the catalog models' cutoffs (`vtllms/sealqa`,
+`google/deepsearchqa`; rows fetched from the datasets-server at run time,
+never committed). Its pure helpers are unit-tested in
+`tests/hf-bench-lib.test.js` (`node --test`). Same disciplines as the other
+ledgers: fixed seed/judge/budget across a before/after comparison, don't
+deploy mid-battery, append-only ledgers.
+
 ## Skills
 
 Detailed guidance is split into on-demand skills under `.claude/skills/` — load

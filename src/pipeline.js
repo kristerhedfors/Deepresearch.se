@@ -32,6 +32,7 @@
 
 import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
 import {
+  applyComplexityToPlan,
   fitsDeadline,
   recordPhase,
   wantsClaimValidation,
@@ -76,13 +77,28 @@ const TRIAGE_SCHEMA = oneOf([
   object({ action: stringEnum(["direct"]) }),
   object({ action: stringEnum(["clarify"]), question: string({ allowEmpty: false }) }),
   object(
-    { action: stringEnum(["research"]), queries: arrayOf(string({ allowEmpty: false })) },
-    { optional: ["queries"] },
+    {
+      action: stringEnum(["research"]),
+      queries: arrayOf(string({ allowEmpty: false })),
+      // Decomposition fields (prompts.js DECOMPOSITION_RULE) — both optional:
+      // a model that omits them (or an unknown complexity value falling
+      // through normalizeTriage's lenient extraction) degrades exactly to the
+      // pre-decomposition flow.
+      complexity: stringEnum(["simple", "multihop", "comparison", "survey"]),
+      subquestions: arrayOf(string({ allowEmpty: false })),
+    },
+    { optional: ["queries", "complexity", "subquestions"] },
   ),
 ]);
 const GAP_SCHEMA = object(
-  { complete: boolean(), queries: arrayOf(string({ allowEmpty: false })) },
-  { optional: ["complete", "queries"] },
+  {
+    complete: boolean(),
+    queries: arrayOf(string({ allowEmpty: false })),
+    // Source disagreements the audit noticed (display + synthesis hint) —
+    // optional, and independent of `complete`.
+    conflicts: arrayOf(string({ coerce: true })),
+  },
+  { optional: ["complete", "queries", "conflicts"] },
 );
 const VALIDATE_SCHEMA = object(
   {
@@ -209,10 +225,19 @@ async function runTriage(ctx) {
     return decision;
   }
   const queries = decision.queries.slice(0, state.plan.queries);
+  // Thread the triage decomposition into the request state: the gap check
+  // audits coverage against each sub-question and synthesis must address
+  // them (see gapPrompt/synthPrompt); complexity caps research depth below
+  // the time budget for simple questions (budget.js applyComplexityToPlan).
+  state.complexity = decision.complexity || null;
+  state.subquestions = decision.subquestions || [];
+  applyComplexityToPlan(state.plan, state.complexity);
+  const kindTag =
+    state.complexity && state.complexity !== "simple" ? ` · ${state.complexity}` : "";
   stepDone(
     "plan",
-    `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"} · target ${state.plan.budgetS}s`,
-    queries,
+    `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"}${kindTag} · target ${state.plan.budgetS}s`,
+    [...queries, ...state.subquestions.map((s) => `Sub-question: ${s}`)],
   );
   return { ...decision, queries };
 }
@@ -254,7 +279,7 @@ async function runGapChecks(ctx) {
         `gap_check_${it}`,
         "gap",
         [
-          { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { reinforceJsonOnly }) },
+          { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly }) },
           {
             role: "user",
             // convText rides along so a bare follow-up ("what's the latest")
@@ -274,6 +299,7 @@ async function runGapChecks(ctx) {
       "gap",
     );
     const gap = hardenJson(GAP_SCHEMA, gapRaw);
+    collectConflicts(state, gap);
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
       ? []
@@ -300,6 +326,39 @@ async function runGapChecks(ctx) {
 function notesSection(notes) {
   const block = notesDigest(notes, 6000);
   return block ? `Distilled research notes so far:\n${block}\n\n` : "";
+}
+
+// Accumulates the gap check's reported source disagreements onto the request
+// state (deduped, capped) so synthesis can be told to address them explicitly
+// instead of silently picking a side. Pure state bookkeeping — exported for
+// unit tests. Lenient by design: a missing/malformed conflicts field is
+// simply no conflicts.
+export function collectConflicts(state, gap) {
+  const list = Array.isArray(gap?.conflicts) ? gap.conflicts : [];
+  state.conflicts ||= [];
+  for (const raw of list) {
+    const c = typeof raw === "string" ? raw.trim() : "";
+    if (!c || state.conflicts.includes(c)) continue;
+    state.conflicts.push(c);
+    if (state.conflicts.length >= 6) break;
+  }
+  return state.conflicts;
+}
+
+// The sub-question and source-conflict preambles for the synthesis input —
+// both empty (and thus absent, keeping the input byte-identical to the
+// pre-decomposition pipeline) unless triage decomposed the question or a gap
+// round reported disagreeing sources.
+function subquestionsSection(subquestions) {
+  const list = Array.isArray(subquestions) ? subquestions.filter(Boolean) : [];
+  if (!list.length) return "";
+  return `Sub-questions the answer must address:\n${list.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n`;
+}
+
+function conflictsSection(conflicts) {
+  const list = Array.isArray(conflicts) ? conflicts.filter(Boolean) : [];
+  if (!list.length) return "";
+  return `Source conflicts detected during research (address each explicitly — cite both sides, never silently pick one):\n${list.map((c) => `- ${c}`).join("\n")}\n\n`;
 }
 
 // Phase 2.5 — notes digest. After a search wave, compress the NEW sources
@@ -436,6 +495,11 @@ async function runSynthesis(ctx) {
   const digest = sourceDigest(state.sources, plan.digestCap);
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
+    // Decomposition skeleton + reported source conflicts (both empty — and
+    // absent — unless triage decomposed the question / a gap round flagged
+    // disagreeing sources; see subquestionsSection/conflictsSection).
+    subquestionsSection(state.subquestions) +
+    conflictsSection(state.conflicts) +
     // Notes preamble is present only when the digest phase ran (mid/high
     // tiers); byte-identical to before at the default budget.
     notesSection(state.notes) +
@@ -708,7 +772,22 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
   if (triage?.action === "research") {
     const queries = (Array.isArray(triage.queries) ? triage.queries : [])
       .filter((q) => typeof q === "string" && q.trim());
-    if (queries.length > 0) return { action: "research", queries };
+    if (queries.length > 0) {
+      const out = { action: "research", queries };
+      // Optional decomposition fields (prompts.js DECOMPOSITION_RULE) —
+      // lenient extraction so they survive the raw (schema-miss) path too.
+      // Only attached when usable: their absence is the pre-decomposition
+      // behavior everywhere downstream.
+      if (["simple", "multihop", "comparison", "survey"].includes(triage.complexity)) {
+        out.complexity = triage.complexity;
+      }
+      const subs = (Array.isArray(triage.subquestions) ? triage.subquestions : [])
+        .filter((s) => typeof s === "string" && s.trim())
+        .map((s) => s.trim())
+        .slice(0, 5);
+      if (subs.length) out.subquestions = subs;
+      return out;
+    }
   }
   if (triage?.action === "direct") return { action: "direct" };
 
