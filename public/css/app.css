@@ -104,9 +104,10 @@ header {
 .msg, .step { overflow-wrap: anywhere; min-width: 0; }
 
 /* Jump-to-latest: appears when scrolled away from the bottom; clicking
-   (or scrolling back down yourself) re-attaches auto-follow. */
+   (or scrolling back down yourself) re-attaches auto-follow. Centered
+   horizontally, riding the composer pane's top edge. */
 #jumpdown {
-  position: fixed; right: 1.1rem; bottom: 8.2rem; z-index: 6;
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 8.2rem; z-index: 6;
   transition: bottom .2s ease;
   width: 42px; height: 42px; border-radius: 50%;
   background: var(--accent); color: #fff;
