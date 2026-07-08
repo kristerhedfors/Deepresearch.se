@@ -28,6 +28,20 @@ describe("normalizeTriage", () => {
     assert.deepEqual(normalizeTriage({ action: "direct" }, "hi"), { action: "direct" });
   });
 
+  test("the optional quiz flag rides along on direct and research, strict-boolean only", () => {
+    assert.deepEqual(normalizeTriage({ action: "direct", quiz: true }, "wuiz me"), { action: "direct", quiz: true });
+    const research = normalizeTriage({ action: "research", queries: ["glider handbook"], quiz: true }, "x");
+    assert.equal(research.quiz, true);
+    // Anything but literal true is dropped — never a truthy-string surprise.
+    assert.deepEqual(normalizeTriage({ action: "direct", quiz: "yes" }, "hi"), { action: "direct" });
+    assert.equal(normalizeTriage({ action: "research", queries: ["q"], quiz: 1 }, "x").quiz, undefined);
+    // And clarify never carries it.
+    assert.deepEqual(
+      normalizeTriage({ action: "clarify", question: "which?", quiz: true }, "x"),
+      { action: "clarify", question: "which?" },
+    );
+  });
+
   test("unparseable triage falls back to research when the user message is long enough (>=12 chars)", () => {
     const result = normalizeTriage(null, "this is a decently long question");
     assert.equal(result.action, "research");

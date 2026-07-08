@@ -69,7 +69,7 @@ import {
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
-import { normalizeQuiz, quizIntent } from "./quiz.js";
+import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 
 // Declared shapes for the three JSON planning phases — a hardening layer over
 // the raw model JSON (src/schema.js), applied BEHIND the existing fail-soft
@@ -78,7 +78,15 @@ import { normalizeQuiz, quizIntent } from "./quiz.js";
 // value untouched, so a malformed shape degrades exactly as it did before the
 // schema existed (single search / accept draft) and never throws.
 const TRIAGE_SCHEMA = oneOf([
-  object({ action: stringEnum(["direct"]) }),
+  // `quiz` (optional on direct AND research): triage's fail-soft backup for
+  // the deterministic quizIntent gate — the first production quiz request
+  // arrived with a typo ("wuiz") the regexes missed; a model reads through
+  // typos and paraphrases that no pattern list can enumerate. Never the
+  // primary gate: quizIntent still decides when it matches, and a stray
+  // false `quiz:true` on a non-request costs one fail-soft generation
+  // attempt at worst (schema.js's object() strips unknown fields, so the
+  // flag must be declared here to survive hardening).
+  object({ action: stringEnum(["direct"]), quiz: boolean() }, { optional: ["quiz"] }),
   object({ action: stringEnum(["clarify"]), question: string({ allowEmpty: false }) }),
   object(
     {
@@ -90,8 +98,9 @@ const TRIAGE_SCHEMA = oneOf([
       // pre-decomposition flow.
       complexity: stringEnum(["simple", "multihop", "comparison", "survey"]),
       subquestions: arrayOf(string({ allowEmpty: false })),
+      quiz: boolean(),
     },
-    { optional: ["queries", "complexity", "subquestions"] },
+    { optional: ["queries", "complexity", "subquestions", "quiz"] },
   ),
 ]);
 const GAP_SCHEMA = object(
@@ -173,7 +182,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // (attachments/project blocks ride inside it) plus, when triage chose
   // research, the search wave's source registry. Fully fail-soft: an
   // unusable quiz JSON falls through to the normal answer path below.
-  const quizReq = state.quizzes ? quizIntent(ctx.lastUser) : null;
+  let quizReq = state.quizzes ? quizIntent(ctx.lastUser) : null;
 
   // Web search off: answer purely from Berget — no triage, no Exa.
   if (!state.webSearch) {
@@ -182,6 +191,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   }
 
   const decision = await runTriage(ctx);
+  // Triage's fail-soft quiz backup: the deterministic gate missed (typo /
+  // paraphrase — the first production request arrived as "Bygg en wuiz…")
+  // but the triage model recognized a quiz request. The message still
+  // decides the question count.
+  if (state.quizzes && !quizReq && decision.quiz === true) {
+    quizReq = { questions: quizQuestionCount(ctx.lastUser) || DEFAULT_QUIZ_QUESTIONS };
+  }
   if (decision.action === "direct") {
     // Quiz from the material already in front of us (conversation, attached
     // documents, project materials) — triage decided no web sources needed.
@@ -804,6 +820,10 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
 }
 
 export function normalizeTriage(triage, lastUser, priorUser = "") {
+  // The optional quiz flag (triage's fail-soft backup for quizIntent —
+  // see TRIAGE_SCHEMA) rides along on direct/research decisions; lenient
+  // strict-boolean extraction so it survives the raw (schema-miss) path.
+  const quiz = triage?.quiz === true ? { quiz: true } : {};
   if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
     return { action: "clarify", question: triage.question.trim() };
   }
@@ -811,7 +831,7 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
     const queries = (Array.isArray(triage.queries) ? triage.queries : [])
       .filter((q) => typeof q === "string" && q.trim());
     if (queries.length > 0) {
-      const out = { action: "research", queries };
+      const out = { action: "research", queries, ...quiz };
       // Optional decomposition fields (prompts.js DECOMPOSITION_RULE) —
       // lenient extraction so they survive the raw (schema-miss) path too.
       // Only attached when usable: their absence is the pre-decomposition
@@ -827,7 +847,7 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
       return out;
     }
   }
-  if (triage?.action === "direct") return { action: "direct" };
+  if (triage?.action === "direct") return { action: "direct", ...quiz };
 
   // Triage failed to produce usable JSON — decide a fallback WITHOUT a model.
   // A SHORT latest message in an ongoing conversation is almost always a
