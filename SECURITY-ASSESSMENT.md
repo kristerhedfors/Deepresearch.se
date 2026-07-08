@@ -125,21 +125,27 @@ and renders it into the DOM, yet ships no `Content-Security-Policy`, no
   app.
 - **No `nosniff`** ⇒ MIME-sniffing of served/stored content.
 
-**✅ Fix applied:** `withRequestId` in `src/index.js` (which already
-post-processes every response) now sets a full header set on every response:
-an **enforcing** `Content-Security-Policy`, `X-Content-Type-Options: nosniff`,
+**✅ Fix applied (headers enforced; CSP built but toggled off for now):**
+`withRequestId` in `src/index.js` (which already post-processes every response)
+now sets, **enforced on every response**, `X-Content-Type-Options: nosniff`,
 `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
 `Strict-Transport-Security: max-age=63072000; includeSubDomains`,
-`Cross-Origin-Opener-Policy: same-origin`, and a locked-down `Permissions-Policy`.
-The CSP `script-src` is a strict allowlist — `'self'`, the two Google Maps hosts,
+`Cross-Origin-Opener-Policy: same-origin`, and a locked-down `Permissions-Policy`
+— these carry no breakage risk, so clickjacking and MIME-sniffing are closed now.
+
+The `Content-Security-Policy` itself is fully implemented behind a code flag
+(`CSP_ENABLED` in `src/index.js`) but is **currently switched OFF** by product
+decision: CSP is the most brittle header while the Maps/Street View and other
+integrations are still evolving (a single missed subresource host silently
+breaks a feature), so it is held until that surface stabilizes. When enabled,
+the CSP `script-src` is a strict allowlist — `'self'`, the two Google Maps hosts,
 and the **SHA-256 hashes of the only two inline scripts** (index.html's boot
-guard and story's inline module); **no `'unsafe-inline'`, no `'unsafe-eval'`**, so
-injected inline `<script>`/`on*=` handlers cannot run. `object-src 'none'` and
-`base-uri 'self'` close the plugin/base-tag vectors. Maps subresources are
-allowed via `*.googleapis.com`/`*.gstatic.com`; if any are ever missed,
-`renderStreetViewEmbed` already fails soft to the keyless google.com Embed
-iframe (`frame-src`), so Street View degrades rather than breaks. `img-src`
-stays broad (`data: blob: https:`) for user uploads and server data-URL frames.
+guard and story's inline module); **no `'unsafe-inline'`, no `'unsafe-eval'`** —
+with `object-src 'none'` + `base-uri 'self'`, `img-src 'self' data: blob: https:`,
+and Maps subresources via `*.googleapis.com`/`*.gstatic.com` (Street View fails
+soft to the keyless google.com Embed iframe if any is missed). **To turn it on:**
+flip `CSP_ENABLED = true`, re-verify the two inline-script hashes, and watch a
+live page's console for CSP violations across the app + a Street View lookup.
 
 **Original remediation (for reference):** add a shared header wrapper
 (`withRequestId` in `index.js` already post-processes every response) setting
@@ -162,15 +168,19 @@ require care when authoring the CSP (do not just set `script-src 'self'`):
 #### H-3 · Session integrity permanently reducible to the admin password's entropy — Confirmed · ✅ Fixed
 **Location:** `src/auth.js:166-177` (key list), `:190-196` (verify loop).
 
-**✅ Fix applied:** `sessionHmacKeys()` now returns **only** the `SESSION_SECRET`
-key when it is configured; the admin-credential-derived key is used *solely* as
-a fallback when `SESSION_SECRET` is absent. With a `SESSION_SECRET` set, session
-cookies are no longer forgeable/brute-forceable from the admin password. The
-one-time cost — cookies minted under the old admin-derived key stop verifying
-once `SESSION_SECRET` is introduced (a single re-login) — is documented in the
-module header, and the unit test was updated to assert the new secure behavior.
-Recommendation still stands to set a high-entropy `SESSION_SECRET` in production
-so the fallback path is never exercised.
+**✅ Fix applied (fallback removed; secret now required):** the
+admin-credential-derived key is **gone entirely** — `sessionHmacKeys()` returns
+*only* the `SESSION_SECRET` key, or `[]` when the secret is unset. `SESSION_SECRET`
+is now a hard requirement: the entrypoint (`src/route()` in `src/index.js`)
+detects a missing secret up front and serves a **configuration-error page**
+(`configErrorPage()` in `src/login.js`, HTTP 503; JSON 503 for `/api/*`) across
+the whole site instead of signing cookies with a weaker key. Session cookies are
+therefore bounded solely by `SESSION_SECRET`'s entropy — never
+forgeable/brute-forceable from the admin password. The auth unit tests were
+rewritten to assert the no-fallback model (no verification without the secret;
+rotation invalidates all cookies). **Operational requirement:** a high-entropy
+`SESSION_SECRET` must be set in the Worker secrets or the site shows the
+misconfiguration page. (Admin break-glass Basic Auth is independent of this key.)
 
 `sessionHmacKeys()` **always** appends a fallback HMAC key derived from the admin
 credentials — `` `${creds.user} ${creds.pass}` `` — and `verifyHmac()` accepts a
@@ -401,17 +411,17 @@ contain our tokens, which ride only in headers).
 1. **H-1 · Gate `/mcp` on quota + record usage.** ✅ Done — `runDeepResearch`
    now mirrors the `chat.js` gate/record. Closes the confirmed unmetered-spend
    hole and removes the M-1 blast-radius multiplier on that endpoint.
-2. **H-2 · Add security headers.** ✅ Done — enforcing CSP (strict `script-src`
-   with hashed inline scripts, no `'unsafe-inline'`/`'unsafe-eval'`), `nosniff`,
-   `X-Frame-Options`/`frame-ancestors`, `Referrer-Policy`, HSTS, COOP, and
-   `Permissions-Policy` via `withRequestId`. Converts every latent DOM sink
-   (L-1, L-10, future DOMPurify bypass) from potential-XSS to contained.
-   *Post-deploy: confirm the app + Street View render clean with no CSP console
-   violations (see §Verification note).*
-3. **H-3 · Fix the session-HMAC fallback.** ✅ Done — the admin-credential key is
-   used only when `SESSION_SECRET` is absent. **Operational follow-up:** ensure a
-   high-entropy `SESSION_SECRET` (and `ADMIN_PASS`) is set in the Worker secrets
-   so the fallback path is never used.
+2. **H-2 · Add security headers.** ✅ Done (partial by design) — `nosniff`,
+   `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS, COOP, and `Permissions-Policy`
+   are enforced now via `withRequestId`. The CSP is implemented behind the
+   `CSP_ENABLED` flag but **held OFF** while integrations stabilize.
+   **Follow-up:** flip `CSP_ENABLED` on (re-verify inline-script hashes + Maps
+   origins on a live page) once the integration surface settles — this is what
+   contains L-1/L-10 and any future DOMPurify bypass.
+3. **H-3 · Remove the session-HMAC fallback.** ✅ Done — fallback deleted;
+   `SESSION_SECRET` is required and the site serves a config-error page when it
+   is missing. **Operational requirement:** set a high-entropy `SESSION_SECRET`
+   in the Worker secrets.
 
 ### Phase 2 — this sprint (cost/abuse + privacy correctness)
 

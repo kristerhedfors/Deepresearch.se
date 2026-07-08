@@ -38,7 +38,7 @@ import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { acceptTerms } from "./accounts.js";
-import { loginPage, pendingPage, termsPage } from "./login.js";
+import { configErrorPage, loginPage, pendingPage, termsPage } from "./login.js";
 import {
   handleClientError,
   handleHistoryKey,
@@ -150,6 +150,22 @@ async function serveAsset(request, env, overrideUrl = null) {
 // Returns {response, identity} — identity only when resolved, so the
 // caller can slide the session cookie.
 async function route(request, env, url, log, ctx, requestId) {
+  // Hard configuration requirement: SESSION_SECRET must be set. It is the sole
+  // key that signs/verifies session and OAuth-state cookies — the legacy
+  // admin-credential-derived fallback was removed (it re-exposed the admin
+  // password to offline brute force from any captured cookie; see src/auth.js).
+  // Without the secret there is no safe way to run sessions, so instead of
+  // degrading, present a clear misconfiguration message across the whole site.
+  if (!env.SESSION_SECRET) {
+    log.error("config.missing_session_secret", {});
+    if (url.pathname.startsWith("/api/")) {
+      return {
+        response: jsonResponse({ error: "Server not configured: SESSION_SECRET is missing." }, 503),
+      };
+    }
+    return { response: htmlResponse(configErrorPage(), 503) };
+  }
+
   if (isPublicAsset(url, request.method)) {
     return { response: await serveAsset(request, env) };
   }
@@ -318,11 +334,21 @@ function htmlResponse(html, status) {
   });
 }
 
+// Master switch for the Content-Security-Policy header (below). CSP is the
+// strongest defense here but the most brittle while the integrations are still
+// in flux — a single missed subresource host silently breaks a feature (e.g.
+// Maps/Street View), so it stays OFF until that surface stabilizes. Flip to
+// `true` to enforce; when doing so, re-verify the script-src hashes and the
+// Maps/*.googleapis/*.gstatic origins against a live page (watch the browser
+// console for CSP violations). Every OTHER security header below is safe and
+// stays on unconditionally regardless of this flag.
+const CSP_ENABLED = false;
+
 // Content-Security-Policy for every response. The app renders untrusted LLM
 // output and third-party web-search content into the DOM, so this is the
 // second line of defense behind DOMPurify (markdown.js): even a sanitizer
 // bypass or a tampered vendored purify.min.js cannot execute injected script
-// under this policy.
+// under this policy. Currently gated OFF by CSP_ENABLED above.
 //
 // script-src is a strict allowlist — 'self' (the ES-module app + vendored
 // libs), the two Google Maps hosts (the Street View SDK, loaded on demand),
@@ -364,7 +390,6 @@ const CSP = [
 // Referrer-Policy / COOP / Permissions-Policy lines minimize leakage and
 // cross-window/API exposure. All are static and carry no breakage risk.
 const SECURITY_HEADERS = {
-  "content-security-policy": CSP,
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "strict-origin-when-cross-origin",
@@ -382,6 +407,10 @@ function withRequestId(response, requestId) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     // Don't clobber a header a handler set deliberately (none set these today).
     if (!out.headers.has(name)) out.headers.set(name, value);
+  }
+  // CSP is opt-in (see CSP_ENABLED) — off while integrations are in flux.
+  if (CSP_ENABLED && !out.headers.has("content-security-policy")) {
+    out.headers.set("content-security-policy", CSP);
   }
   return out;
 }

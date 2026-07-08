@@ -20,15 +20,13 @@
 // Safari/ITP's 7-day cap on script-writable storage.
 //
 // Cookie/state HMAC key: the dedicated `SESSION_SECRET` secret (a random,
-// high-entropy value — deliberately not the admin password, which the
-// cookie would otherwise expose to offline brute force). When SESSION_SECRET
-// is set it is the SOLE signing AND verification key. Only when SESSION_SECRET
-// is unset does signing/verification fall back to a key derived from the admin
-// credentials. The admin-derived key is NOT honored alongside a configured
-// SESSION_SECRET (that would re-expose the admin password to offline brute
-// force from any captured cookie); introducing SESSION_SECRET therefore forces
-// a single re-login for pre-existing cookies. Rotating SESSION_SECRET
-// invalidates all sessions. Everything fails closed when both are unset.
+// high-entropy value — deliberately not the admin password, which the cookie
+// would otherwise expose to offline brute force). It is REQUIRED and is the
+// sole signing AND verification key; there is no admin-credential fallback.
+// When SESSION_SECRET is unset the site cannot run sessions — the entrypoint
+// (src/index.js) serves a configuration-error page instead of signing cookies
+// with a weaker key. Rotating SESSION_SECRET invalidates all sessions. The
+// admin break-glass Basic Auth (below) is independent of this key.
 
 import { getUserById } from "./accounts.js";
 
@@ -162,29 +160,21 @@ function importHmacKey(rawBytes) {
 
 // The HMAC key for signing/verifying session (and OAuth-state) cookies.
 //
-// When SESSION_SECRET is configured it is the ONLY key: cookie integrity is
-// then bounded by that dedicated high-entropy secret, NOT by the admin
-// password. The legacy admin-credential-derived key is used ONLY as a
-// fallback when no SESSION_SECRET exists. Honoring the admin-derived key
-// ALONGSIDE a real SESSION_SECRET (the prior behavior) kept every session
+// SESSION_SECRET is the SOLE key — there is NO fallback. An earlier design
+// derived a key from the admin credentials when SESSION_SECRET was unset (and,
+// worse, honored it alongside a configured secret), which kept every session
 // cookie offline-brute-forceable against ADMIN_PASS — the cookie message
 // `<uid>.<exp>` is known to its holder — and forgeable to any uid / to admin
-// once ADMIN_PASS was recovered, defeating the very reason SESSION_SECRET
-// exists (see the module header). The cost of dropping the fallback: a
-// deployment that sets SESSION_SECRET for the first time forces a single
-// re-login for cookies minted under the old key — an acceptable one-time
-// event for closing that exposure. Rotating SESSION_SECRET likewise
-// invalidates all sessions. Everything fails closed when both are unset.
+// once ADMIN_PASS was recovered. That fallback is gone: cookie integrity is
+// bounded only by SESSION_SECRET's entropy. When SESSION_SECRET is unset there
+// is no signing key at all (returns []); the entrypoint (src/index.js) detects
+// the missing secret up front and serves a configuration-error page rather than
+// letting any auth flow run keyless. Rotating SESSION_SECRET invalidates all
+// sessions.
 async function sessionHmacKeys(env) {
+  if (!env.SESSION_SECRET) return [];
   const enc = new TextEncoder();
-  if (env.SESSION_SECRET) {
-    return [await importHmacKey(enc.encode(env.SESSION_SECRET))];
-  }
-  const creds = adminCreds(env);
-  if (creds) {
-    return [await importHmacKey(enc.encode(`${creds.user} ${creds.pass}`))];
-  }
-  return [];
+  return [await importHmacKey(enc.encode(env.SESSION_SECRET))];
 }
 
 function toHex(buf) {

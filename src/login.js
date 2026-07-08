@@ -210,3 +210,32 @@ export function loginPage(flash) {
 </body>
 </html>`;
 }
+
+// Shown site-wide when a REQUIRED server secret is missing (currently
+// SESSION_SECRET — the sole session/OAuth-state signing key, with no fallback).
+// Rather than run in a broken or insecure state, the site presents this
+// misconfiguration message so the operator knows exactly what to set. No user
+// input is reflected; the copy is static.
+export function configErrorPage() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deepresearch.se — not configured</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <style>${PAGE_CSS}</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Deepresearch.se</h1>
+    <p class="err">This site is not fully configured yet.</p>
+    <p class="muted">The <code>SESSION_SECRET</code> server secret is not set,
+    so sign-in is unavailable. The site owner needs to configure it (a random,
+    high-entropy value) before anyone can sign in. Sign-in stays disabled until
+    then rather than falling back to a weaker key.</p>
+  </div>
+</body>
+</html>`;
+}

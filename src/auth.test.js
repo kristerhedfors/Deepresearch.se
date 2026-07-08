@@ -1,13 +1,18 @@
-// Session-cookie HMAC: keyed by SESSION_SECRET, not the admin password.
-// These exercise only the admin/HMAC path (no D1) — the security property
-// is that a cookie's validity no longer depends on ADMIN_USER/ADMIN_PASS
-// once SESSION_SECRET is set, so cracking a cookie can't recover the
-// break-glass credentials and rotating the password can't forge sessions.
+// Session-cookie HMAC: keyed ONLY by SESSION_SECRET — there is no
+// admin-credential fallback. The security properties exercised here:
+//   - a cookie's validity depends solely on SESSION_SECRET, never on
+//     ADMIN_USER/ADMIN_PASS (so a captured cookie can't be brute-forced back
+//     to the break-glass password, and rotating that password can't forge one);
+//   - with no SESSION_SECRET there is no signing key at all, so nothing
+//     verifies (the entrypoint serves a config-error page in that state);
+//   - rotating SESSION_SECRET invalidates every existing cookie.
+// These touch only the admin/HMAC path (no D1).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSessionCookie, identify } from "./auth.js";
 
 const SECRET = "d0a2d4e838e1c1c7c65fef7b784c9623ee113f8aab5da9aab9d62f8a311109de";
+const OTHER_SECRET = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 const admin = { ADMIN_USER: "root", ADMIN_PASS: "weakpass" };
 const withSecret = { ...admin, SESSION_SECRET: SECRET };
 
@@ -20,26 +25,26 @@ test("SESSION_SECRET-signed admin cookie verifies", async () => {
   assert.equal(id?.role, "admin");
 });
 
-test("legacy admin-cred cookie is REJECTED once SESSION_SECRET is set (one-time re-login; closes the offline brute-force exposure)", async () => {
-  // Honoring the admin-derived key alongside a real SESSION_SECRET would keep
-  // every cookie offline-brute-forceable against ADMIN_PASS. The security
-  // property wins over the convenience of no forced logout: a pre-existing
-  // legacy cookie no longer verifies after SESSION_SECRET is introduced.
-  const legacy = cookieOf(await createSessionCookie(admin, "admin"));
-  assert.equal(await identify(reqWith(legacy), withSecret), null);
-});
-
-test("SESSION_SECRET cookie is decoupled from the admin password (survives ADMIN_PASS rotation)", async () => {
+test("cookie validity is decoupled from the admin password (survives ADMIN_PASS rotation)", async () => {
   const cookie = cookieOf(await createSessionCookie(withSecret, "admin"));
   const rotated = { ...withSecret, ADMIN_PASS: "a-completely-different-password" };
   const id = await identify(reqWith(cookie), rotated);
   assert.equal(id?.role, "admin");
 });
 
-test("legacy cookie (no SESSION_SECRET) is still tied to ADMIN_PASS — rotation invalidates it", async () => {
-  const legacy = cookieOf(await createSessionCookie(admin, "admin"));
-  const rotated = { ...admin, ADMIN_PASS: "a-completely-different-password" };
-  assert.equal(await identify(reqWith(legacy), rotated), null);
+test("no admin-credential fallback: a cookie does NOT verify when SESSION_SECRET is unset", async () => {
+  // Minted under SESSION_SECRET, then presented to a deployment that has the
+  // admin creds but no SESSION_SECRET. With the fallback removed there is no
+  // key to verify under, so it is rejected (rather than validating against an
+  // admin-password-derived key, the old offline-brute-force exposure).
+  const cookie = cookieOf(await createSessionCookie(withSecret, "admin"));
+  assert.equal(await identify(reqWith(cookie), admin), null);
+});
+
+test("rotating SESSION_SECRET invalidates existing cookies", async () => {
+  const cookie = cookieOf(await createSessionCookie(withSecret, "admin"));
+  const rotated = { ...admin, SESSION_SECRET: OTHER_SECRET };
+  assert.equal(await identify(reqWith(cookie), rotated), null);
 });
 
 test("tampered signature is rejected", async () => {
@@ -48,7 +53,7 @@ test("tampered signature is rejected", async () => {
   assert.equal(await identify(reqWith(tampered), withSecret), null);
 });
 
-test("fails closed when admin secrets are unset, even with SESSION_SECRET", async () => {
+test("fails closed for the admin uid when the admin secrets are unset, even with SESSION_SECRET", async () => {
   const cookie = cookieOf(await createSessionCookie(withSecret, "admin"));
   assert.equal(await identify(reqWith(cookie), { SESSION_SECRET: SECRET }), null);
 });
