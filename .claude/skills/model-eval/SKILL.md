@@ -74,3 +74,22 @@ streamed requests the battery is relying on — this produced a batch of
 confusing zero-answer results during the round 2 battery (traced to a
 mid-run `git push`, not a real bug) before being caught and re-run clean.
 Let a battery finish before pushing anything.
+
+## The sibling scored benchmarks
+
+`model-eval.mjs` collects raw traces read by hand; it cannot say whether a
+change made answers BETTER. Two scored harnesses do (each with its own
+append-only ledger and the same don't-deploy-mid-battery rule):
+
+- **Rubric bench** — `tests/eval-bench.mjs` (`npm run eval:bench`), ~27
+  fixed synthetic questions judged on citation/coverage/calibration;
+  ledger `tests/EVAL-BENCH-FINDINGS.md`; de-noise via
+  `tests/denoise-driver.mjs` (multi-sample mean ± SD — single-sample judge
+  variance is ±2+ per cell, never trust one sample).
+- **HF bench** — `tests/hf-bench.mjs` (`npm run eval:hf`), answer accuracy
+  against external Hugging Face gold-answer sets picked for low
+  training-data contamination (`vtllms/sealqa`, `google/deepsearchqa` —
+  vetting table and dataset rationale in `tests/HF-BENCH-FINDINGS.md`).
+  Rows are fetched at run time; keep `HF_SEED`/budget/judge fixed across a
+  before/after; watch the `leaked_runs` counter (pipeline citing the
+  benchmark itself).

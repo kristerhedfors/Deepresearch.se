@@ -228,3 +228,5 @@ tests/fixtures/
 tests/test-results/
 tests/playwright-report/
 tests/model-eval-results/
+tests/eval-bench-results/
+tests/hf-bench-results/
