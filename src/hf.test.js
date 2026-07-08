@@ -85,6 +85,17 @@ describe("hfTermKey — the cross-wave dedup key", () => {
   test("noise-only queries key to the empty string", () => {
     assert.equal(hfTermKey("most popular models on the hub"), "");
   });
+
+  test("search-intent qualifiers are stripped, so a gap follow-up dedups against the initial wave", () => {
+    // The live probe's round-2 junk case: "independent reviews" must not
+    // survive as distinctive terms — the follow-up reduces to the same key
+    // as the initial query and the repeat hub search is skipped.
+    assert.equal(
+      hfTermKey("swedish speech recognition independent reviews"),
+      hfTermKey("swedish speech recognition"),
+    );
+    assert.deepEqual(hfTerms("independent expert analysis vs official announcements"), []);
+  });
 });
 
 describe("item mappers — Hub API item -> source-registry item", () => {

@@ -53,6 +53,17 @@ const NOISE = new Set([
   "were", "be", "been", "what", "which", "who", "how", "most", "best", "top",
   "latest", "new", "newest", "recent", "popular", "downloaded", "available",
   "there", "that", "this", "these", "those", "list", "find", "search",
+  // Search-INTENT qualifiers that triage/gap queries carry for Exa's benefit
+  // (the independent-source and coverage rules) but that only sabotage a
+  // name-substring match: a live probe showed the gap round's "swedish
+  // speech recognition independent reviews" ranking "independent" as the
+  // distinctive term and returning unrelated repos. Stripping them also
+  // collapses such follow-ups to the same hfTermKey as the initial wave,
+  // so the cross-wave dedup correctly skips the repeat hub search.
+  "independent", "review", "reviews", "criticism", "critique", "comparison",
+  "compare", "compared", "alternative", "alternatives", "versus", "vs",
+  "analysis", "expert", "experts", "opinion", "opinions", "coverage",
+  "news", "official", "announcement", "announcements", "third-party",
 ]);
 
 export function hfTerms(query) {
