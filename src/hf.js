@@ -135,6 +135,42 @@ export function hfTermKey(query) {
   return hfTerms(query).join(" ");
 }
 
+// Planner vocabulary (spliced into the triage/gap prompts via the
+// search-source registry, src/search-sources.js). A production screenshot
+// (2026-07-08) showed "Latest on cybersecurity on hf" triaging to CLARIFY
+// ("Could you clarify what 'hf' refers to…") — the planning model doesn't
+// know this site's users mean Hugging Face by "hf", so the request died one
+// step before this module's own intent detection (which does accept a bare
+// "hf") could ever run. Spelling the referent out in queries also helps Exa
+// ("hugging face cybersecurity" finds what "hf cybersecurity" doesn't).
+export const hfPromptNote =
+  ' On this site, "HF"/"hf" in a user message means Hugging Face (huggingface.co, the AI model/dataset hub) unless the context clearly says otherwise (e.g. HF radio propagation): treat it as a clear referent — never ask to clarify what "hf" means — and spell it out as "Hugging Face" in any queries.';
+
+// The registry diversity-cap key for hf.co URLs (consulted via the
+// search-source registry by src/sources.js). huggingface.co is a PLATFORM
+// hosting millions of independently-authored repos: keying the whole hub as
+// one origin would cap an HF-focused question at 3 hub sources TOTAL,
+// starving exactly the registry that question needs. Key by owner namespace
+// (`huggingface.co/<owner>`) so the cap still does its real job — no single
+// AUTHOR dominating (3 models from one org still cap) — while different
+// owners count as the different origins they are. Papers share one
+// `huggingface.co/papers` bucket (editorially independent arXiv mirrors,
+// but capping the paper firehose at 3 is the conservative choice).
+export function hfDiversityKey(url) {
+  const host = "huggingface.co";
+  try {
+    const segs = new URL(url).pathname.split("/").filter(Boolean);
+    if (!segs.length) return host;
+    if (segs[0] === "papers") return `${host}/papers`;
+    if (segs[0] === "datasets" || segs[0] === "spaces") {
+      return segs[1] ? `${host}/${segs[1]}` : host;
+    }
+    return `${host}/${segs[0]}`;
+  } catch {
+    return host;
+  }
+}
+
 // ---- pure mappers: one Hub API item -> one source-registry item ------------
 
 const fmtCount = (n) => (typeof n === "number" ? n.toLocaleString("en-US") : null);

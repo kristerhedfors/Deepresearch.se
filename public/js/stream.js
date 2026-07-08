@@ -460,7 +460,7 @@ function handleEvent(turn, evt, acc) {
   if (evt.status) {
     const s = evt.status;
     recordResearchEvent(turn, s);
-    if (s.type === "search_start") startSearchStep(turn, s.query || "");
+    if (s.type === "search_start") startSearchStep(turn, s);
     else if (s.type === "search_done") finishSearchStep(turn, s);
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);

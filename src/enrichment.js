@@ -23,6 +23,48 @@ import {
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 
+// The enrichment registry — the pre-pipeline counterpart of the
+// search-source registry (src/search-sources.js), and for the same
+// parallel-work reason: a new enrichment is ONE runner in this file plus
+// ONE entry here; pipeline.js calls runEnrichments() once and never names
+// an individual enrichment. Entry contract: `id` (log/step slug),
+// `enabled(state)` (the per-user knob gate resolved in chat.js), and
+// `run(ctx)` receiving {env, log, emit, step, stepDone, conversation,
+// state} and returning the (possibly augmented) conversation. Order
+// matters and is deliberate: each runner sees the conversation as left by
+// the previous one. Every runner must keep the standing contract: silent
+// when the message names nothing to look up, a visible step naming the
+// external service when it does, fail-soft in every branch.
+const ENRICHMENTS = [
+  {
+    id: "shodan",
+    enabled: (state) => !!state.shodan,
+    run: (c) => runShodanEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
+  },
+  {
+    id: "maps",
+    enabled: (state) => !!state.googleMaps,
+    run: (c) => runGoogleMapsEnrichment(c.env, c.log, c.emit, c.step, c.stepDone, c.conversation, c.state),
+  },
+];
+
+// Runs every knob-enabled enrichment in registry order. A throwing runner
+// is contained here (the conversation passes through unchanged) so a buggy
+// enrichment can never take down the chat — same fail-soft rule its
+// internals already follow.
+export async function runEnrichments(env, log, emit, step, stepDone, conversation, state) {
+  let convo = conversation;
+  for (const e of ENRICHMENTS) {
+    if (!e.enabled(state)) continue;
+    try {
+      convo = await e.run({ env, log, emit, step, stepDone, conversation: convo, state });
+    } catch (err) {
+      log.warn(`${e.id}.enrichment_failed`, { error: err?.message || String(err) });
+    }
+  }
+  return convo;
+}
+
 // Shodan enrichment: resolve any host/IP the latest message names into
 // live infrastructure data and append it as a labeled context block —
 // an ordinary question with the knob left on costs nothing and shows no

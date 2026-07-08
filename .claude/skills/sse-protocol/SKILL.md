@@ -26,8 +26,17 @@ unknown `status` types (forward compatibility).
     structured log for the "Copy research JSON" debug button
     (`public/js/activity.js`'s `buildResearchDebugJson`), so the export is
     the COMPLETE response, not just its live activity.
-- `{"status":{"type":"search_start","round":1,"query":"…"}}` — spinner on
-- `{"status":{"type":"search_done","round":1,"query":"…","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
+- `{"status":{"type":"search_start","round":1,"query":"…","source":"web","service":"Web search"}}` — spinner on
+- `{"status":{"type":"search_done","round":1,"query":"…","source":"web","service":"Web search","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
+  - `source`/`service` (added 2026-07-08) name the PROVIDER that ran the
+    search: `"web"`/`"Web search"` for Exa, or a search-source registry
+    entry's id/display name (e.g. `"hf"`/`"Hugging Face Hub"` —
+    `src/search-sources.js`). The client renders the service name on every
+    card (a user report showed hub and web searches indistinguishable
+    before this) and MUST fall back to the web wording when the fields are
+    absent — older stored turns predate them. Search-step tracking is keyed
+    by `source + "|" + query` (the same query text may run on two
+    providers in one round).
 - `{"status":{"type":"streetview_embed","lat":59.4,"lng":17.9}}` — the Google
   Maps enrichment resolved a location with Street View coverage; the client
   renders an inline, navigable Maps JS SDK `StreetViewPanorama` beside the

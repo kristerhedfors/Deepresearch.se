@@ -478,14 +478,18 @@ the search phase.
     publishedAt}}`.
   - `/api/quicksearch` exists but is also name-matching AND shallow
     (id + trendingWeight only) — rejected.
-- **Pipeline wiring:** runs AFTER a wave's Exa batch is processed (source
-  numbering stays deterministic), uses the wave's FIRST planned query,
-  capped at 3 waves/request (`MAX_HF_SEARCHES`), caps 4 models + 4 datasets
-  + 3 papers per search. Emits a step naming the service ("Searching
-  Hugging Face Hub…", details = hit titles); NO step when intent is absent.
+- **Pipeline wiring:** via the search-source REGISTRY
+  (`src/search-sources.js` — see the **add-research-source** skill): one
+  entry declaring intent/search/service/dedupKey/promptNote/diversity;
+  the generic orchestrator (`pipeline.js` `runAuxSearches`) runs it AFTER
+  each wave's Exa batch (source numbering stays deterministic) on the
+  wave's first planned query, capped at 3 waves/request, deduped across
+  waves by term key, emitting `search_start`/`search_done` with
+  `source:"hf"` / `service:"Hugging Face Hub"` so the client card names
+  the provider. Caps 4 models + 4 datasets + 3 papers per search.
   Fail-soft in every branch (a failed endpoint contributes zero items;
-  failure degrades to the Exa-only registry). HF searches are free — never
-  billed or counted against Exa search quota.
+  failure degrades to the Exa-only registry). HF searches are free —
+  never billed or counted against Exa search quota.
 - **Diversity cap interaction** (`src/sources.js` `diversityKeyOf`): hf.co
   URLs are capped per OWNER namespace (`huggingface.co/<owner>`; papers
   share one `huggingface.co/papers` bucket), not per hostname — otherwise

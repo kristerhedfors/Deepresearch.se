@@ -36,6 +36,19 @@ Helper phases fail soft (degrade to fewer searches / accepted draft — never
 break the request). Search/round caps come from the time-budget planner
 (`src/budget.js`).
 
+**Sources plug in via registries, never via pipeline edits** (2026-07
+refactor for parallel-session safety): auxiliary search sources (HF Hub,
+future ones) are entries in `src/search-sources.js` iterated by the
+generic `runAuxSearches` (per-request caps, cross-wave dedup,
+provider-named `search_start`/`search_done` events, `state.aux[<id>]`
+buckets); pre-pipeline enrichments (Shodan, Maps) are entries in
+`src/enrichment.js`'s `ENRICHMENTS` run once via `runEnrichments`. The
+planner-vocabulary notes and platform diversity keys also come from the
+search-source registry (`sourcePromptNotes`, `platformDiversityKey`).
+pipeline.js/prompts.js/sources.js never name an individual source — see
+the **add-research-source** skill for the entry contract and the
+parallel-work rules.
+
 ## Question decomposition (2026-07)
 
 The scored benchmark's clearest signal (see `tests/EVAL-BENCH-FINDINGS.md`

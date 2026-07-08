@@ -5,6 +5,8 @@
 // from pipeline.js so the registry rules are readable and testable on their
 // own (sources.test.js).
 
+import { platformDiversityKey } from "./search-sources.js";
+
 // A round 7 assessment found that MORE and DEEPER searches don't
 // automatically buy more independent verification — a genuinely
 // well-researched, 19-search "deep" run on a company's own product still
@@ -29,31 +31,16 @@ export function hostnameOf(url) {
   }
 }
 
-// The diversity-cap key for a URL. Normally the hostname — but huggingface.co
-// is a PLATFORM hosting millions of independently-authored repos (the same
-// way subdomains separate independent blogs): keying the whole hub as one
-// origin would cap an HF-focused research question (the HF Hub search in
-// src/hf.js feeds sources here) at 3 hub sources TOTAL, starving exactly the
-// registry that question needs. Key hf.co URLs by owner namespace instead
-// (`huggingface.co/<owner>`), so the cap still does its real job — no single
-// AUTHOR dominating (3 models from one org still cap) — while different
-// owners count as the different origins they are. Papers share one
-// `huggingface.co/papers` bucket (they're editorially independent arXiv
-// mirrors, but capping the paper firehose at 3 is the conservative choice).
+// The diversity-cap key for a URL. Normally the hostname — but a
+// search-source integration can declare a PLATFORM host whose URLs are
+// keyed per owner namespace instead (src/search-sources.js's
+// platformDiversityKey; huggingface.co is the canonical case — see
+// src/hf.js hfDiversityKey for the full rationale): a hub hosting millions
+// of independently-authored repos must not be capped as one origin, while
+// the cap's real job (no single AUTHOR dominating) still holds.
 export function diversityKeyOf(url) {
   const host = hostnameOf(url);
-  if (host !== "huggingface.co") return host;
-  try {
-    const segs = new URL(url).pathname.split("/").filter(Boolean);
-    if (!segs.length) return host;
-    if (segs[0] === "papers") return `${host}/papers`;
-    if (segs[0] === "datasets" || segs[0] === "spaces") {
-      return segs[1] ? `${host}/${segs[1]}` : host;
-    }
-    return `${host}/${segs[0]}`;
-  } catch {
-    return host;
-  }
+  return platformDiversityKey(host, url) || host;
 }
 
 // Adds search-result items to the registry. Sources beyond DOMAIN_CAP for

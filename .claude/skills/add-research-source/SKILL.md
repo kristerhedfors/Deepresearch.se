@@ -116,44 +116,91 @@ product name, an entity class), teach the PROMPTS too
   duration_ms) — the live-verify convention; Workers Logs is how you
   confirm behavior in production.
 
-## 5. Pipeline wiring (`src/pipeline.js`)
+## 5. Registry wiring — the parallel-work seam (`src/search-sources.js`)
 
-- Hook into `runSearches` AFTER the Exa batch is processed (a
-  `maybe<Source>Search(ctx, batch, round)` function) so source numbering
-  stays deterministic. Use the wave's first planned query — the most
-  on-topic angle; every planned query is self-contained per the triage
-  rules.
-- **Cap per request** (HF: 3 waves) and **dedup across waves** by a
-  normalized key (`hfTermKey`) — gap-round follow-ups often reduce to the
-  same terms; the probe showed repeat searches returning zero new sources.
-- Feed hits through `addSources(state, items)` — never push into
-  `state.sources` directly (dedup + diversity cap live there).
-- **Diversity keying**: if the source is a PLATFORM hosting many
-  independent authors (hf.co), extend `diversityKeyOf` in `src/sources.js`
-  to key by owner namespace — otherwise the 3-per-domain cap throttles the
-  whole platform to 3 sources while the cap's real job (no single AUTHOR
-  dominating) still holds. Unit-test the keying.
-- Do NOT touch `state.searchCount` unless the call is billed like an Exa
-  search — that counter drives quota/billing.
+A source plugs into the pipeline as ONE entry in `SEARCH_SOURCES`
+(`src/search-sources.js`) — the file's header documents the full entry
+contract (`id`, `intent`, `search`, `service`, `dedupKey`,
+`maxPerRequest`, `promptNote`, `diversityHost`/`diversityKeyOf`). The
+generic orchestration lives ONCE in `pipeline.js`'s `runAuxSearches`
+(wave timing after the Exa batch, per-request caps, cross-wave dedup,
+`search_start`/`search_done` emission with the source's `service` name,
+fail-soft, `addSources`) and is identical for every source. Consequences:
 
-## 6. SSE visibility — sources must flow through `search_done`
+- Do NOT add source-specific code to `pipeline.js`, `prompts.js`,
+  `sources.js`, or `chat.js` — they iterate the registry and must never
+  name an individual source. If the contract can't express what the
+  source needs, extend the CONTRACT (a new optional entry field handled
+  generically) rather than special-casing one source in shared code.
+- Planner vocabulary goes in the entry's `promptNote` (exported from the
+  source's module); the triage AND gap prompts compose every source's
+  note via `sourcePromptNotes()`.
+- Platform diversity keying goes in the entry's
+  `diversityHost`/`diversityKeyOf` pair; `sources.js` consults
+  `platformDiversityKey()` generically.
+- Per-request state lives under `state.aux[<id>]` (created by the
+  orchestrator) — never new top-level `state` fields.
+- Pre-pipeline ENRICHMENTS (Shodan/Maps shape) have the same seam in
+  `src/enrichment.js`'s `ENRICHMENTS` registry: one runner + one entry
+  there; `pipeline.js` calls `runEnrichments()` once.
+- `src/search-sources.test.js` pins the entry contract — a mis-shaped
+  entry fails CI instead of silently never firing in production.
 
-**The bug that proves the step:** the first HF build emitted a generic
+## 6. SSE visibility — sources must flow through `search_done`, named
+
+**The bugs that prove the step:** (a) the first HF build emitted a generic
 step (`step_start`/`step_done`) and its sources, though cited `[n]` in
-answers, were INVISIBLE to (a) the client's source panel, (b)
-`buildResearchDebugJson`, and (c) both eval harnesses — all three
-reconstruct the registry from `search_done` events, and the eval judge
-fact-checked against a registry missing them.
+answers, were INVISIBLE to the client's source panel,
+`buildResearchDebugJson`, and both eval harnesses — all three reconstruct
+the registry from `search_done` events, and the eval judge fact-checked
+against a registry missing them. (b) once emitted as search events, a
+user report showed hub and web cards rendering identically ("Searched …")
+— provider identity was only a query-text prefix.
 
-Emit ordinary `search_start`/`search_done` events with a labeled query
-(`"Hugging Face Hub: <terms>"`) and `sources: [{title, url}]`. On failure,
-`search_done` with `results: 0`. Clients ignore unknown fields
-(**sse-protocol** skill) but reuse of the existing search vocabulary is
-what makes the sources propagate everywhere for free. Enrichments (shape
-2) keep using steps + labeled context blocks instead — they add context,
-not citable sources.
+The registry orchestrator therefore emits ordinary
+`search_start`/`search_done` events carrying `source` (the entry's id
+slug) and `service` (its display name); the client renders the service
+name on every card ("Web search …" / "Hugging Face Hub …") and falls back
+to the web wording when the fields are absent (older stored events —
+forward-compatibility per the **sse-protocol** skill). A new source gets
+all of this for free from its `service` field. Enrichments (shape 2) keep
+using steps + labeled context blocks instead — they add context, not
+citable sources.
 
-## 7. Validation — the testing logic, in order
+## 7. Parallel work — how several sessions work on different sources
+
+Multiple sessions push to `main` continuously (observed: an HF session
+and a Street View session pushing within minutes of each other, twice
+forcing mid-work rebases). The registry design plus these rules is what
+keeps that safe:
+
+- **Ownership boundary**: a source = its own `src/<source>.js` + its own
+  `src/<source>.test.js` + ONE registry entry (+ append-only eval
+  questions and ledger sections). Two sessions on two sources then only
+  ever touch the same file at the registry list — a one-line,
+  trivially-rebased conflict — instead of interleaving edits inside
+  pipeline.js/prompts.js.
+- **Pull --rebase before EVERY push**, and expect rejects — re-run the
+  unit suite after each rebase (a parallel commit may have changed shared
+  behavior; the suite is fast). Never merge-commit another session's
+  in-flight work.
+- **Deploys are shared state**: every push to `main` deploys for
+  EVERYONE. Don't push while any battery may be running (yours or a
+  sibling's — the ledgers' don't-deploy-mid-battery rule), and remember
+  cross-module export changes interact with client caching (the deploy
+  skill's stale-module incident — the asset no-cache policy and boot
+  guard are the standing mitigations, keep them intact).
+- **Eval assets are append-only by design**: `bench-questions.mjs` (new
+  ids, new `kind` per source), the findings ledgers (new dated sections),
+  `QUERY_SETS` — parallel sessions appending never conflict semantically;
+  git auto-merges disjoint appends.
+- **Shared-behavior changes are not source work**: if you need to change
+  the orchestrator, a prompt rule, the budget planner, or the SSE
+  vocabulary, that's a cross-cutting change — coordinate it (do it alone,
+  small, with the suite green) rather than bundling it into a source
+  integration.
+
+## 8. Validation — the testing logic, in order
 
 1. **Unit tests** for every pure part: intent predicate (both directions,
    incl. the documented false-positive tradeoffs), term
@@ -193,7 +240,7 @@ not citable sources.
    the CLAUDE.md code-layout table, and this skill if the procedure
    itself grew a step.
 
-## 8. Post-integration watch list
+## 9. Post-integration watch list
 
 - Expect upstream drift: name-matching semantics, response shapes, and
   rate limits are all empirical findings with a date on them — re-probe

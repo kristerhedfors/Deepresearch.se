@@ -96,6 +96,10 @@ test("buildResearchDebugJson lists searches with queries, timings and results", 
   assert.deepEqual(out.searches[0], {
     round: 1,
     query: "who owns example.com",
+    // Provider identity (2026-07-08): events without source/service (older
+    // stored turns) project as plain web searches.
+    source: "web",
+    service: "Web search",
     results: 2,
     duration_ms: 800,
     sources: [

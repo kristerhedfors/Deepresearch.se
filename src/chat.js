@@ -378,6 +378,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     complexity: null,
     subquestions: [],
     conflicts: [],
+    // Per-source auxiliary search state (pipeline.js runAuxSearches over
+    // src/search-sources.js): state.aux[<source id>] = {count, ran:Set} —
+    // sources never add top-level fields here.
+    aux: {},
     searchCount: 0,
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     iterations: 1, // search waves (initial + gap rounds that ran)

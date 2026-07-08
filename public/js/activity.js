@@ -304,14 +304,24 @@ export function finishGenericStep(turn, s) {
 // by query text (pipeline.js already dedupes queries within a round, so
 // this is always a unique key) rather than assuming strict start/done
 // pairing.
-export function startSearchStep(turn, query) {
+// Which provider ran a search must always be visible on the card (a user
+// report showed Hugging Face Hub and web searches rendering identically as
+// "Searched ..."): the events carry `source` (slug) + `service` (display
+// name) since 2026-07-08; absent fields (older stored events) fall back to
+// the web wording. Pure helper, exported for tests.
+export function searchServiceName(info) {
+  return (info && info.service) || "Web search";
+}
+
+export function startSearchStep(turn, info) {
+  const query = info.query || "";
   const details = document.createElement("details");
   details.className = "step";
   const summary = document.createElement("summary");
   const spin = document.createElement("span");
   spin.className = "spin";
   const label = document.createElement("span");
-  label.textContent = "Searching the web: “" + query + "”";
+  label.textContent = searchServiceName(info) + ": “" + query + "”";
   summary.append(spin, label);
   details.appendChild(summary);
   // Block toggling while running (no sources to show yet).
@@ -319,19 +329,21 @@ export function startSearchStep(turn, query) {
     if (!details.classList.contains("finished")) e.preventDefault();
   });
   turn.activity.appendChild(details);
-  (turn.pendingSearchSteps ||= new Map()).set(query, { details, summary, label });
+  // Keyed by provider + query: the same query text may legitimately run on
+  // both the web and an auxiliary source in one round.
+  (turn.pendingSearchSteps ||= new Map()).set((info.source || "web") + "|" + query, { details, summary, label });
 }
 
 // Resolve the step: checkmark, counts, timing, expandable source list.
 export function finishSearchStep(turn, info) {
-  const step = turn.pendingSearchSteps?.get(info.query);
+  const step = turn.pendingSearchSteps?.get((info.source || "web") + "|" + info.query);
   if (!step) return;
-  turn.pendingSearchSteps.delete(info.query);
+  turn.pendingSearchSteps.delete((info.source || "web") + "|" + info.query);
   markFinished(step);
   step.details.classList.add("expandable");
   const n = info.results ?? 0;
   step.label.textContent =
-    "Searched “" + info.query + "” · " +
+    searchServiceName(info) + " “" + info.query + "” · " +
     n + (n === 1 ? " result" : " results") + " · " +
     Math.round(info.duration_ms ?? 0) + " ms";
   const ul = document.createElement("ul");
@@ -422,6 +434,8 @@ export function buildResearchDebugJson(turn) {
     .map((e) => ({
       round: e.round,
       query: e.query,
+      source: e.source || "web",
+      service: e.service || "Web search",
       results: e.results,
       duration_ms: e.duration_ms,
       sources: (e.sources || []).map((s) => ({ title: s.title, url: s.url })),
