@@ -293,8 +293,15 @@ what docs claim); and update the skill list below plus the skill's
   encryption-asymmetry rule (`storage.js`, `settings.js`, `rag.js`,
   `history-store.js`, `sync.js`, `projects.js`).
 - **integrations** — external providers and the enrichment pattern: Berget,
-  Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps / Street View
-  (`berget.js`, `exa.js`, `geocode.js`, `shodan.js`, `googlemaps.js`).
+  Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps / Street View,
+  Hugging Face Hub search (`berget.js`, `exa.js`, `geocode.js`, `shodan.js`,
+  `googlemaps.js`, `hf.js`).
+- **add-research-source** — the end-to-end playbook for integrating a NEW
+  deep-research source (like the HF Hub was): choosing the shape
+  (search-phase source vs enrichment), intent routing, the triage-prompt
+  layer, API client design with empirical probing, registry/diversity
+  wiring, SSE visibility via `search_done`, and the validation protocol
+  (unit tests → live probes → bench A/B → ledger).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
 - **live-verify** — logging & observability, Workers Logs / `wrangler tail`,
