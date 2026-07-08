@@ -343,6 +343,12 @@ wires it (before any model call, alongside the Shodan enrichment).
   is a known Swedish street morpheme — …vägen/…gatan — or an exact English
   street word — Street/Road/Avenue). Leading filler is trimmed to Capitalized
   locality words, so "what's at Maskinistvägen 11" → "Maskinistvägen 11". A
+  trailing locality is kept in ALL its shapes — connector ("in järfälla"),
+  Capitalized bare, and bare LOWERCASE ("streetview lidbecksgatan 10
+  hallstahammar", reported 2026-07-08: dropping it resolved the wrong city's
+  Lidbecksgatan and the model asked which city the user meant — one they had
+  explicitly named). `displayQuery` prefers the FORMATTED address (with city)
+  so a wrong-city hit is visible in the frames title and block. A
   photo's validated GPS coordinates (`body.imageLocations`) take precedence over
   a parsed address (`pickLookup`).
 - **Follow-up questions re-snap the current imagery** (`pickLookup`'s
@@ -375,6 +381,15 @@ wires it (before any model call, alongside the Shodan enrichment).
   label), and `buildPovBlock` tells the model it is the user's currently
   visible view. A NEW address in the message still beats the POV (it's a
   new location); no POV (iframe fallback) degrades to the walk-back.
+  The POV path uses a LOOSE gate (`referencesStreetViewScene`): scene
+  contents — people, vehicles, signs, shops, "who is that", EN+SV — on top
+  of the strict imagery/building vocabulary, because a user pointing at a
+  live panorama asks about anything visible in it (reported 2026-07-08:
+  "Describe the person" missed the strict gate and the model asked "what
+  person?" beside a panorama with the person in frame). The walk-back
+  keeps the strict gate — it re-runs a full billed lookup. Both blocks also
+  instruct the model to NEVER ask the user to disambiguate the resolved
+  location or clarify who/what they mean in the current view.
 - **The vision helper answers the user's question**, not just a generic
   describe: `describeStreetView` gets the latest question (bounded, appended
   client blocks stripped) and is instructed to answer it strictly from what

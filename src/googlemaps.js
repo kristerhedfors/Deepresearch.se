@@ -122,32 +122,40 @@ const STOPWORDS = new Set([
   "an", "at", "on", "for", "me", "my", "please", "pls", "can", "could", "would", "you", "we", "i",
   "what", "whats", "where", "which", "is", "are", "was", "were", "do", "does", "get", "give", "see",
   "look", "looks", "around", "find", "near", "in", "to", "from", "with", "and", "this", "that",
-  "here", "there", "no", "not", "yes",
+  "here", "there", "no", "not", "yes", "now", "today", "tomorrow", "thanks",
   // Swedish intent/filler
   "visa", "mig", "se", "titta", "vad", "finns", "det", "den", "här", "där", "ligger", "är", "och",
   "på", "pa", "vid", "gatuvy", "kan", "du", "jag", "vi", "var", "hur", "nej", "ja", "en", "ett",
+  "nu", "idag", "imorgon", "tack",
 ]);
 
 const normWord = (w) => (w || "").toLowerCase().replace(/[^\p{L}]/gu, "");
 
 // A trailing locality after the street span. Case-INSENSITIVE (users type
 // "in järfälla", "i kallhäll" lowercase): a connector (comma / in / i / på /
-// vid / near) followed by up to two place words, OR a bare Capitalized proper
-// noun ("… Kallhäll"). A trailing stopword the capture grabbed ("Alnö is") is
-// trimmed off.
+// vid / near) followed by up to two place words, OR a bare word pair with NO
+// connector at all ("Streetview lidbecksgatan 10 hallstahammar" — the
+// reported wrong-city bug: only a CAPITALIZED bare locality used to count, so
+// a lowercase one was dropped, the bare street went to Google, and it
+// resolved the wrong city while the user had named the right one explicitly).
+// Bare words are kept only up to the first intent/filler stopword, so "look
+// like", "ligger i centrum" etc. never read as localities.
 const CONNECTOR_LOCALITY_RE =
   /^\s*(?:,|\b(?:in|i|på|pa|vid|near|kommun)\b)\s*([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
-const BARE_CAP_LOCALITY_RE =
-  /^\s+(\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*)?)/u;
+const BARE_LOCALITY_RE =
+  /^\s+([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/u;
 
 // Given a matched street span and the text right after it, append a trailing
 // locality when one is present, so "Maskinistvägen 11 in järfälla" resolves as
 // "Maskinistvägen 11, järfälla" rather than a bare, ambiguous street name.
 function withTrailingLocality(street, rest) {
-  const m = rest.match(CONNECTOR_LOCALITY_RE) || rest.match(BARE_CAP_LOCALITY_RE);
+  const m = rest.match(CONNECTOR_LOCALITY_RE) || rest.match(BARE_LOCALITY_RE);
   if (!m || !m[1]) return street;
-  const words = m[1].trim().split(/\s+/).filter(Boolean);
-  while (words.length && STOPWORDS.has(normWord(words[words.length - 1]))) words.pop();
+  const words = [];
+  for (const w of m[1].trim().split(/\s+/)) {
+    if (!w || STOPWORDS.has(normWord(w))) break;
+    words.push(w);
+  }
   const locality = words.join(" ");
   if (!locality || street.toLowerCase().includes(locality.toLowerCase())) return street;
   return `${street}, ${locality}`;
@@ -261,6 +269,40 @@ export function referencesStreetView(text) {
   return FOLLOWUP_REFERENCE_RE.test(typeof text === "string" ? text : "");
 }
 
+// The LOOSE gate for the live-panorama (POV) path: things a user pointing at
+// a street scene asks about — people, vehicles, signage, shops, greenery —
+// none of which the strict building-vocabulary gate above can cover
+// (reported: "Describe the person" → the gate missed it → no capture → the
+// model asked "what person?", while the person stood in the panorama on
+// screen). Kept SEPARATE from the strict gate on purpose: a POV capture is
+// one cheap, cached Static frame and the user demonstrably has the panorama
+// open, so false positives cost little — the walk-back path (no POV) keeps
+// the strict gate because it re-runs a full billed lookup.
+const SCENE_REFERENCE_RE = new RegExp(
+  "(?<![\\p{L}\\p{M}])(?:" +
+    // people & animals
+    "person|people|man|men|woman|women|child(?:ren)?|kids?|guys?|pedestrians?|someone|anyone|crowd|dogs?|cats?|" +
+    "person(?:en|er|erna)?|människ(?:a|an|or|orna)|man(?:nen)?|män(?:nen)?|kvinn(?:a|an|or|orna)|barn(?:et|en)?|någon|folk|hund(?:en|ar)?|katt(?:en|er)?|" +
+    // vehicles
+    "vehicles?|vans?|trucks?|bus(?:es)?|bikes?|bicycles?|motorcycles?|scooters?|" +
+    "fordon(?:et|en)?|bil(?:en|ar|arna)?|lastbil(?:en|ar)?|buss(?:en|ar|arna)?|cykel(?:n)?|cyklar(?:na)?|moped(?:en)?|" +
+    // signage, businesses, street furniture, greenery
+    "signs?|signage|shops?|stores?|storefronts?|business(?:es)?|restaurants?|caf[ée]s?|" +
+    "trees?|statues?|graffiti|posters?|flags?|logos?|bench(?:es)?|" +
+    "skylt(?:en|ar|arna)?|affär(?:en|er|erna)?|butik(?:en|er|erna)?|restaurang(?:en|er|erna)?|" +
+    "träd(?:et|en)?|staty(?:n|er)?|flagg(?:a|an|or)|bänk(?:en|ar)?|" +
+    // deictic questions about the scene
+    "who is (?:that|this|he|she|there)|who's (?:that|this)|what does (?:it|the sign|that) say|" +
+    "vem är (?:det|den|han|hon|där)|vad står det" +
+    ")(?![\\p{L}\\p{M}])",
+  "iu",
+);
+
+export function referencesStreetViewScene(text) {
+  const t = typeof text === "string" ? text : "";
+  return referencesStreetView(t) || SCENE_REFERENCE_RE.test(t);
+}
+
 // ---- pure link/block builders (exported for unit tests) --------------------
 
 // Keyless Google Maps Street View link (built from the pano's own
@@ -303,6 +345,9 @@ export function buildPovBlock(pov, parts) {
   } else {
     lines.push("The frame could not be examined by a vision model this time — answer from the location data above and say plainly that the view itself couldn't be inspected.");
   }
+  lines.push(
+    "The user's question refers to what is visible in their current view — answer it directly from the visual description above; do NOT ask them to clarify who or what they mean (e.g. never ask which person/car/building — it is the one in their view).",
+  );
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
@@ -366,6 +411,12 @@ export function buildMapsBlock(query, parts) {
       lines.push("Street View imagery exists here; to see it the user can open the Street View link above (the answering model can't view images).");
     }
   }
+  // A resolved location must never be re-asked (reported: the user wrote
+  // "lidbecksgatan 10 hallstahammar" and still got "did you mean Lidköping
+  // or Hallstahammar?" — a wasted turn beside already-fetched imagery).
+  lines.push(
+    "The location was already resolved as shown above — do NOT ask the user to confirm or disambiguate the location or city. Answer about the resolved location directly; if the user's message names a locality that differs from the resolved address, say so plainly instead of asking.",
+  );
   // The knob is on (this block only exists when it is). Stop the model from
   // wrongly telling the user to enable an already-enabled feature.
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
@@ -638,7 +689,10 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   } else if (address) {
     place = await placesTextSearch(env, log, address);
     if (place) {
-      displayQuery = place.name || place.address || address;
+      // Prefer the formatted address — it carries the CITY, so the frames
+      // title and the context block make a wrong-city resolution visible
+      // (a bare place name like "Lidbecksgatan 10" hides which one).
+      displayQuery = place.address || place.name || address;
       if (Number.isFinite(place.lat) && Number.isFinite(place.lng)) {
         lat = place.lat;
         lng = place.lng;
@@ -760,8 +814,11 @@ export function pickLookup(conversation, imageLocations, pov = null) {
   const latest = textOf(users[users.length - 1]?.content);
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
+  // The POV path uses the LOOSE gate (people/vehicles/signs — anything one
+  // asks pointing at a live street scene); the walk-back keeps the strict
+  // imagery/building gate since it re-runs a full billed lookup.
+  if (pov && referencesStreetViewScene(latest)) return { coords: "", address: "", pov, followUp: true };
   if (!referencesStreetView(latest)) return null;
-  if (pov) return { coords: "", address: "", pov, followUp: true };
   for (let i = users.length - 2; i >= 0; i--) {
     const prior = extractPlace(textOf(users[i]?.content));
     if (prior) return { coords: "", address: prior, followUp: true };

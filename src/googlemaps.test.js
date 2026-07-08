@@ -12,6 +12,7 @@ import {
   panoLink,
   pickLookup,
   referencesStreetView,
+  referencesStreetViewScene,
 } from "./googlemaps.js";
 
 test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
@@ -47,6 +48,18 @@ describe("extractPlace", () => {
     assert.equal(extractPlace("Show street view of kallhäll maskinistvägen 11"), "kallhäll maskinistvägen 11");
     assert.equal(extractPlace("No maskinistvägen 11 in järfälla"), "maskinistvägen 11, järfälla");
     assert.equal(extractPlace("maskinistvägen 11 i kallhäll"), "maskinistvägen 11, kallhäll");
+  });
+
+  test("keeps a BARE lowercase trailing locality (no connector) — the wrong-city clarify bug", () => {
+    // Reported 2026-07-08 verbatim: the lowercase "hallstahammar" was dropped
+    // (only Capitalized bare localities counted), Google resolved the OTHER
+    // Lidbecksgatan 10, and the model asked which city the user meant —
+    // one they had explicitly named.
+    assert.equal(extractPlace("Streetview lidbecksgatan 10 hallstahammar"), "lidbecksgatan 10, hallstahammar");
+    assert.equal(extractPlace("gatuvy storgatan 4 katrineholm"), "storgatan 4, katrineholm");
+    // Trailing filler still never reads as a locality.
+    assert.equal(extractPlace("Storgatan 4B ligger i centrum"), "Storgatan 4B");
+    assert.equal(extractPlace("what does the building at Main Street 5 look like"), "Main Street 5");
   });
 
   test("pulls a STANDALONE Swedish street name (no house number)", () => {
@@ -119,6 +132,11 @@ describe("buildMapsBlock", () => {
     assert.match(block, /4 Street View photos looking north, east, south, west/);
     assert.match(block, /a road map/);
     assert.match(block, /--- End of Google Maps ---/);
+  });
+
+  test("every block forbids re-asking the already-resolved location", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 1, lng: 2, streetView: null, streetViewCount: 0, hasMap: false });
+    assert.match(block, /do NOT ask the user to confirm or disambiguate/);
   });
 
   test("every block tells the model Maps is already enabled", () => {
@@ -221,6 +239,33 @@ describe("referencesStreetView", () => {
   });
 });
 
+describe("referencesStreetViewScene (the loose POV-path gate)", () => {
+  test("matches scene contents the strict gate can't enumerate", () => {
+    // Reported 2026-07-08 verbatim: "Describe the person" missed the strict
+    // gate, no capture fired, and the model asked "what person?" while the
+    // person stood in the on-screen panorama.
+    assert.equal(referencesStreetViewScene("Describe the person"), true);
+    assert.equal(referencesStreetViewScene("who is that?"), true);
+    assert.equal(referencesStreetViewScene("what does the sign say?"), true);
+    assert.equal(referencesStreetViewScene("is that a restaurant?"), true);
+    assert.equal(referencesStreetViewScene("vem är det där?"), true);
+    assert.equal(referencesStreetViewScene("vad står det på skylten?"), true);
+    assert.equal(referencesStreetViewScene("beskriv människorna"), true);
+  });
+
+  test("includes everything the strict gate matches", () => {
+    assert.equal(referencesStreetViewScene("what color is the roof?"), true);
+    assert.equal(referencesStreetViewScene("what am I looking at?"), true);
+  });
+
+  test("still ignores ordinary research follow-ups", () => {
+    assert.equal(referencesStreetViewScene("summarize the sources"), false);
+    assert.equal(referencesStreetViewScene("what does the company do?"), false);
+    assert.equal(referencesStreetViewScene("vad kostar det?"), false);
+    assert.equal(referencesStreetViewScene(null), false);
+  });
+});
+
 describe("compassDir", () => {
   test("maps headings to compass points, wrapping negatives and >360", () => {
     assert.equal(compassDir(0), "north");
@@ -305,6 +350,19 @@ describe("pickLookup", () => {
     assert.deepEqual(pickLookup(convo, [], pov), { coords: "", address: "", pov, followUp: true });
   });
 
+  test("a scene question ('Describe the person') fires the POV path — but NOT the billed walk-back", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const convo = [
+      { role: "user", content: "street view of Maskinistvägen 11" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "Describe the person" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], pov), { coords: "", address: "", pov, followUp: true });
+    // Without a live panorama the loose vocabulary must NOT trigger the
+    // full billed address re-lookup.
+    assert.equal(pickLookup(convo, []), null);
+  });
+
   test("a POV rides only on imagery follow-ups — an ordinary question ignores it", () => {
     const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
     const convo = [
@@ -345,6 +403,11 @@ describe("buildPovBlock", () => {
     assert.match(block, /Visual description of the user's current view \(auto-generated\): A red-brick/);
     assert.match(block, /already enabled — do NOT suggest the user enable it/);
     assert.ok(!block.includes("key="), "the block must never leak an API key");
+  });
+
+  test("tells the model the question refers to what is visible — never ask which person/car", () => {
+    const block = buildPovBlock(pov, { date: "", description: "A man in a black jacket crosses the street.", framesShown: 1 });
+    assert.match(block, /do NOT ask them to clarify who or what they mean/);
   });
 
   test("says plainly when the frame couldn't be examined (no vision model)", () => {
