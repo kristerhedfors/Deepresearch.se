@@ -46,3 +46,11 @@ describe("getModelProfile", () => {
     assert.equal(profile.maxTokensOverride, null);
   });
 });
+
+test("Mistral Medium carries the probed 2-image-per-request cap; others have no limit", () => {
+  // 2026-07-08 live probe: 1 ✓, 2 ✓, 3 ✗, 4 ✗ (count, not size — 4 tiny
+  // images 400ed identically); Kimi and gemma accepted 4 images fine.
+  assert.equal(getModelProfile("mistralai/Mistral-Medium-3.5-128B").maxImages, 2);
+  assert.equal(getModelProfile("moonshotai/Kimi-K2.6").maxImages, null);
+  assert.equal(getModelProfile("unknown/model").maxImages, null);
+});

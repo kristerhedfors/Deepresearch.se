@@ -100,7 +100,20 @@ description: >-
   `ctx.waitUntil()` — without it the runtime kills the invocation the
   moment the client vanishes, silently dropping the `chat.complete` log
   AND the `usage_events` accounting row (observed in production: a trace
-  that just stops mid-pipeline). With it, the finally block always runs.
+  that just stops mid-pipeline). With it, the finally block always runs —
+  **but the post-cancel grace is bounded** (2026-07-08, request
+  `95c93882`: a backgrounded iOS client dropped mid-research with outcome
+  "canceled"; the run logged its last event at 10:37:52 — search wave 2 —
+  and then died silently, no synth, no `chat.complete`, while a sibling
+  canceled run whose remaining work was ~28s completed fine). So a
+  disconnect survives only if the REMAINING pipeline work fits the
+  runtime's canceled-invocation grace (~30s-scale); a long synthesis
+  after an early disconnect will not be parked in the recovery cache, and
+  the client's heartbeat-staleness path reports it as "interrupted on the
+  server" — the honest outcome, not a bug. Note: an iOS socket teardown
+  from app-backgrounding may surface as outcome "canceled" WITHOUT
+  `chat.client_disconnected` ever logging (the runtime never calls the
+  stream's cancel() hook in that path).
 - **Resume across a full app relaunch (`public/js/pending-answer.js`)**:
   the stall watchdog above only helps while the tab is still ALIVE. iOS
   can DISCARD a backgrounded PWA outright — a cold relaunch loses all

@@ -35,6 +35,13 @@ const DEFAULT = {
   // content) — see round 4/5's model-eval findings for the failure mode
   // this guards against. 2 = today's universal one-retry behavior.
   maxCompletionAttempts: 2,
+  // The most images this model accepts on one request at Berget, when a
+  // reproduced limit exists. null = no known limit (bounded only by the
+  // global validation caps). Consulted by validation.js (reject an
+  // over-limit attach with a clear message instead of an opaque Berget 400)
+  // and enrichment.js (cap the Street View frames handed to the
+  // vision-describe helper).
+  maxImages: null,
 };
 
 /** @type {Record<string, Partial<import('./types.js').ModelProfile>>} */
@@ -101,6 +108,18 @@ const OVERRIDES = {
   "openai/gpt-oss-120b": {
     jsonReinforcement: true,
     skipValidation: true,
+  },
+
+  // 2026-07-08 live probe (production /api/chat, web search off, break-glass):
+  // this model 400s ("invalid_request", opaque) on any request carrying MORE
+  // THAN 2 images — 1 ✓, 2 ✓, 3 ✗, 4 ✗ — and it is COUNT, not size: four
+  // 64×64 JPEGs totalling ~4 KB were rejected identically to four 120 KB
+  // frames. Kimi-K2.6 and gemma-4-31B-it accepted the same 4-image request,
+  // so it's model-specific, not a Berget gateway limit. Found via the Street
+  // View vision-describe helper (4 cardinal frames → googlemaps.describe_failed
+  // status 400 on every lookup with this model selected).
+  "mistralai/Mistral-Medium-3.5-128B": {
+    maxImages: 2,
   },
 };
 

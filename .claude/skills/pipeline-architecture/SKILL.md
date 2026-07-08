@@ -166,7 +166,12 @@ path already gives, without the wasted latency/tokens), and
 model returns a clean-but-empty completion — finish_reason set, zero
 content — before giving up; 2 by default, matching the universal
 single-retry behavior, raised to 3 for a model evidenced to exhaust that
-retry at a high rate). **Keep this evidence-driven**: every entry should
+retry at a high rate), and `maxImages` (the most images the model accepts
+on ONE request at Berget when a reproduced limit exists, null otherwise —
+2026-07-08 probe: Mistral-Medium-3.5-128B 400s on any request with >2
+images, count not size; consulted by validation.js to reject an over-limit
+attach with a clear message, and by enrichment.js to cap the Street View
+frames handed to the vision-describe helper). **Keep this evidence-driven**: every entry should
 trace back to a reproduced finding,
 not a guess. `tests/model-eval.mjs` is the tool for finding them — it
 runs a fixed research-query battery against every model in the live

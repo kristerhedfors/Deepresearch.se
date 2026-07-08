@@ -138,6 +138,8 @@ export interface ModelProfile {
   skipValidation: boolean;
   /** Total attempts on a clean-but-empty completion (2 = one retry). */
   maxCompletionAttempts: number;
+  /** Most images the model accepts per request at Berget, or null (no known limit). */
+  maxImages: number | null;
 }
 
 // ---- Time-budget plan (src/budget.js) --------------------------------------

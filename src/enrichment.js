@@ -11,6 +11,7 @@
 
 import { chatCompletion, consumeChatStream } from "./berget.js";
 import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conversation.js";
+import { getModelProfile } from "./model-profiles.js";
 import {
   buildMapsBlock,
   buildPovBlock,
@@ -160,11 +161,15 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   }
 
   state.mapsCount = result.count;
-  // Cap the images handed to the vision helper to what a single vision request
-  // reliably accepts (the client's own per-message cap is 4). Street View
-  // frames first, road map last.
+  // Cap the images handed to the vision helper to what THIS vision model's
+  // one request reliably accepts: the client's own per-message cap (4) as
+  // the ceiling, tightened by the model's reproduced per-request image
+  // limit when one is profiled (model-profiles.js — e.g. Mistral Medium
+  // 400s on >2 images; that 400 blinded every describe until probed).
+  // Street View frames first, road map last.
   const frames = Array.isArray(result.streetViewFrames) ? result.streetViewFrames : [];
-  const images = [...frames.map((f) => f.url), result.staticMapImage].filter(Boolean).slice(0, MAX_MAPS_IMAGES);
+  const imageCap = Math.min(MAX_MAPS_IMAGES, getModelProfile(state.visionModel).maxImages || MAX_MAPS_IMAGES);
+  const images = [...frames.map((f) => f.url), result.staticMapImage].filter(Boolean).slice(0, imageCap);
 
   // Describe the imagery with the vision helper so the answer model (vision or
   // not) gets a factual look-around as TEXT — this is what makes "describe this
@@ -175,11 +180,12 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // keyless link.
   let description = "";
   if (images.length) {
+    const hasMap = !!result.staticMapImage && images.includes(result.staticMapImage);
     description = await describeStreetView(
       env,
       log,
       state,
-      `These are Google Street View photos (looking in different directions) and a road map of ${result.displayQuery}.`,
+      `These are Google Street View photos (looking in different directions)${hasMap ? " and a road map" : ""} of ${result.displayQuery}.`,
       images,
       question,
     );
@@ -309,7 +315,16 @@ async function describeStreetView(env, log, state, intro, images, question = "")
     ];
     const upstream = await chatCompletion(env, [{ role: "user", content }], { model: state.visionModel });
     if (!upstream.ok || !upstream.body) {
-      log.warn("googlemaps.describe_failed", { status: upstream.status });
+      // Capture Berget's error body: the bare status was not enough to
+      // diagnose the Mistral-Medium image-count 400 (the detail had to be
+      // re-derived with live probes — see model-profiles.js).
+      const detail = await upstream.text().catch(() => "");
+      log.warn("googlemaps.describe_failed", {
+        status: upstream.status,
+        model: state.visionModel,
+        images: images.length,
+        detail: detail.slice(0, 200),
+      });
       return "";
     }
     const { text, usage } = await consumeChatStream(upstream.body, () => {});

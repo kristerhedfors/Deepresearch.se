@@ -3,7 +3,8 @@
 // and model resolution (catalog membership, availability, vision).
 
 import { defaultModel } from "./berget.js";
-import { countImages } from "./conversation.js";
+import { countImages, imagePartsOf, lastUserMessage } from "./conversation.js";
+import { getModelProfile } from "./model-profiles.js";
 
 const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
@@ -181,6 +182,23 @@ export function resolveModel(body, catalog, env, log) {
         error:
           `${entry.name} does not support image input.` +
           (alternatives ? ` Vision-capable models: ${alternatives}.` : ""),
+        status: 400,
+      };
+    }
+    // Some vision models cap how many images one request may carry (a
+    // reproduced per-model Berget limit — model-profiles.js). Only the
+    // LATEST user message's images are forwarded to the answer call
+    // (conversation.js/pipeline.js), so that's the count that matters.
+    // Reject with a clear message instead of letting the answer call die
+    // on Berget's opaque 400 ("invalid_request").
+    const maxImages = getModelProfile(activeModel).maxImages;
+    const latestImages = imagePartsOf(lastUserMessage(body.messages)).length;
+    if (maxImages && latestImages > maxImages) {
+      log.warn("chat.model_image_cap", { model: activeModel.slice(0, 120), images: latestImages, max: maxImages });
+      return {
+        error:
+          `${entry?.name || activeModel} accepts at most ${maxImages} image${maxImages === 1 ? "" : "s"} per message. ` +
+          `Remove ${latestImages - maxImages} image${latestImages - maxImages === 1 ? "" : "s"} or pick another vision-capable model.`,
         status: 400,
       };
     }

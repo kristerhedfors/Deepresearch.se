@@ -400,7 +400,11 @@ wires it (before any model call, alongside the Shodan enrichment).
 - **Vision-describe, never attach** (`enrichment.js`'s `describeStreetView`): the
   frames are NOT attached to the answer model — a report showed several frames
   on one message making the answer call fail with a Berget 400. Instead the
-  frames (capped at `MAX_MAPS_IMAGES` = 4, the client's own per-message cap) are
+  frames (capped at `MAX_MAPS_IMAGES` = 4, the client's own per-message cap,
+  tightened further to the helper model's profiled per-request image limit —
+  `model-profiles.js` `maxImages`; 2026-07-08 probe: Mistral Medium accepts at
+  most 2 images per request, so its describe gets 2 cardinal frames instead of
+  400ing blind on 4) are
   run through a vision *helper* model (`state.visionModel` — the user's model if
   it's vision, else the first `vision && up` catalog model; resolved in
   `chat.js`) which returns a short factual description injected into the block as

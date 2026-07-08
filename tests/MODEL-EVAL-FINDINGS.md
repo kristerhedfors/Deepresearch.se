@@ -671,3 +671,58 @@ domain cap or prompt rules failing to engage.
 mammoth_project_status run — watch for recurrence; if it becomes a
 pattern, worth checking whether long, detailed answers are exhausting
 `max_tokens` before completing the Sources list.
+
+## Round 9 — 2026-07-08 (targeted probe: Mistral Medium image-count 400)
+
+**Not a battery** — a targeted live-probe round triggered by a production
+incident, recorded here because it produced a `model-profiles.js` entry.
+
+**Incident:** every Street View vision-describe call with
+`mistralai/Mistral-Medium-3.5-128B` selected failed with
+`googlemaps.describe_failed status 400` (Workers Logs, two user requests
+2026-07-08 ~10:37Z), so answers about Street View imagery were generated
+blind — the model then truthfully denied having seen any image. The log
+carried only the status; Berget's error body wasn't captured (now fixed —
+`describe_failed` logs model, image count, and a body snippet).
+
+**Probe method:** break-glass `POST /api/chat` against production,
+`web_search: false`, synthetic 512×512 JPEG "photo-like" frames
+(~120 KB each) plus 64×64 tiny frames (~1 KB each), attached as
+`image_url` data URLs on the latest message — the same shape the
+describe helper and a real user attach use. The synthesis path surfaces
+Berget's raw error body in the SSE error event, which is what made the
+bisect readable.
+
+**Findings (all reproduced live, single run each):**
+
+| model | 1 img | 2 imgs | 3 imgs | 4 imgs | 4 tiny (~4 KB total) |
+|---|---|---|---|---|---|
+| mistralai/Mistral-Medium-3.5-128B | ok | ok | 400 | 400 | 400 |
+| moonshotai/Kimi-K2.6 | — | — | — | ok | ok |
+| google/gemma-4-31B-it | — | — | — | ok | ok |
+
+The 400 is Berget's opaque `{"error":{"code":"invalid_request",
+"message":"Invalid request"}}`. Count, not size: four ~1 KB images are
+rejected identically to four ~120 KB ones, while two ~120 KB images pass.
+Model-specific, not a gateway limit: the other two vision models accept
+the same 4-image request.
+
+**Decisions:**
+- `model-profiles.js`: `maxImages: 2` for Mistral-Medium-3.5-128B.
+- `enrichment.js` caps the frames handed to the vision-describe helper at
+  the helper model's `maxImages` (so Mistral Medium describes 2 cardinal
+  frames instead of 400ing on 4 — degraded look-around beats a blind
+  answer).
+- `validation.js` `resolveModel` rejects a latest-message attach exceeding
+  the model's `maxImages` with a clear 400 naming the limit, instead of
+  letting the answer call die on the opaque Berget 400 mid-stream.
+
+**Carried forward:** the same incident's second finding — request
+`95c93882` (canceled by a backgrounded client mid-research) logged its
+last event at 10:37:52 and then died silently (no synth phase, no
+`chat.complete`) despite `ctx.waitUntil`, while a sibling canceled run
+completed 28s after its cancel. Consistent with a bounded post-cancel
+grace for canceled invocations: a disconnect mid-research survives only
+if the remaining work fits the grace window. The heartbeat/`lost`
+recovery path already reports this honestly to the client; noted in the
+live-verify skill.

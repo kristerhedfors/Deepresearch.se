@@ -154,6 +154,36 @@ describe("resolveModel", () => {
     assert.equal(result.model, "vision-model");
   });
 
+  test("a model with a profiled per-request image cap rejects an over-limit latest message clearly", () => {
+    // 2026-07-08 live probe: Mistral Medium 400s ("invalid_request", opaque)
+    // on >2 images — model-profiles.js carries maxImages: 2. Without this
+    // check the answer call dies on that opaque Berget 400 mid-stream.
+    const capped = [...catalog, { id: "mistralai/Mistral-Medium-3.5-128B", name: "Mistral Medium", up: true, vision: true }];
+    const img = { type: "image_url", image_url: { url: "x" } };
+    const over = [{ role: "user", content: [{ type: "text", text: "q" }, img, img, img] }];
+    const result = resolveModel({ model: "mistralai/Mistral-Medium-3.5-128B", messages: over }, capped, {}, noopLog);
+    assert.equal(result.status, 400);
+    assert.match(result.error, /at most 2 images per message/);
+    assert.match(result.error, /Remove 1 image /);
+
+    // At the cap: accepted.
+    const atCap = [{ role: "user", content: [{ type: "text", text: "q" }, img, img] }];
+    const ok = resolveModel({ model: "mistralai/Mistral-Medium-3.5-128B", messages: atCap }, capped, {}, noopLog);
+    assert.equal(ok.model, "mistralai/Mistral-Medium-3.5-128B");
+  });
+
+  test("the image cap counts only the LATEST user message (history images are stripped for the answer call)", () => {
+    const capped = [...catalog, { id: "mistralai/Mistral-Medium-3.5-128B", name: "Mistral Medium", up: true, vision: true }];
+    const img = { type: "image_url", image_url: { url: "x" } };
+    const messages = [
+      { role: "user", content: [{ type: "text", text: "a" }, img, img] },
+      { role: "assistant", content: "…" },
+      { role: "user", content: [{ type: "text", text: "b" }, img, img] },
+    ];
+    const ok = resolveModel({ model: "mistralai/Mistral-Medium-3.5-128B", messages }, capped, {}, noopLog);
+    assert.equal(ok.model, "mistralai/Mistral-Medium-3.5-128B");
+  });
+
   test("images present but the resolved model isn't found in the catalog: not rejected on vision grounds", () => {
     const messages = [{ role: "user", content: [{ type: "image_url", image_url: { url: "x" } }] }];
     const result = resolveModel({ messages }, catalog, {}, noopLog);
