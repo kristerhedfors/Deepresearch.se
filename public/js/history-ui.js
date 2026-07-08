@@ -77,6 +77,15 @@ export function initHistorySidebar(opts = {}) {
         else if (lastPull.checked) parts.push(`The cloud holds ${lastPull.checked} conversation${lastPull.checked === 1 ? "" : "s"} but none could be restored here — fully close and reopen the app, then reopen this panel.`);
       }
     }
+    // Always-on one-line status: which build this is and what this device
+    // actually holds — the ground truth that a screenshot of the pane can
+    // carry to a debugging session (a stale cached client, the leading
+    // suspect for "works in tests, empty on the phone", outs itself by
+    // showing no stamp at all).
+    const pullBit = lastPull
+      ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
+      : pulling ? " · cloud: checking…" : "";
+    parts.push(`[h4 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
