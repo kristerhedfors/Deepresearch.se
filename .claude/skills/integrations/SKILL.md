@@ -351,6 +351,18 @@ wires it (before any model call, alongside the Shodan enrichment).
   so a wrong-city hit is visible in the frames title and block. A
   photo's validated GPS coordinates (`body.imageLocations`) take precedence over
   a parsed address (`pickLookup`).
+- **Named-place street-view asks resolve via Places free-text search**
+  (`extractPlaceQuery` + `streetViewIntent`, pure + unit-tested). Reported
+  verbatim 2026-07-08: "Street view of LEGO offices in Copenhagen" fired
+  nothing (no street address to parse) and the model invented "enable
+  Google Maps in Settings" instructions at a knob-ON user. An EXPLICIT
+  street-view ask ("street view"/"gatuvy") with no parseable address now
+  sends the remainder (leading filler trimmed, trailing lowercase clause
+  cut) to Places as a free-text query — "LEGO offices in Copenhagen",
+  "Turning Torso i Malmö" — outranking corrections/POV/walk-back like a
+  new address does. An explicit ask that resolves to NOTHING appends
+  `unresolvedMapsBlock()` (feature is ON, ask which place, never give
+  enable instructions) so a silent miss can't produce bogus setup steps.
 - **Locality corrections re-run the lookup in the corrected city**
   (`extractLocalityFix` + `withLocalityFix`, pure + unit-tested). Reported
   verbatim 2026-07-08: "Street view lidbecksgatan 10" resolved the wrong

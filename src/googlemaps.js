@@ -228,6 +228,61 @@ function firstMatch(raw, re) {
   return re.exec(raw);
 }
 
+// ---- named-place street-view requests (pure — exported for unit tests) ------
+
+// An EXPLICIT street-view ask, the precondition for the free-text place
+// query below and for the honest unresolved note.
+const STREETVIEW_INTENT_RE = /\b(?:street\s?view|gatuvy)\b/iu;
+export function streetViewIntent(text) {
+  return STREETVIEW_INTENT_RE.test(typeof text === "string" ? text : "");
+}
+
+// A named-place street-view request ("Street view of LEGO offices in
+// Copenhagen", "gatuvy Turning Torso i Malmö") carries no street address for
+// extractPlace — but Places Text Search resolves free-text place names fine
+// (reported verbatim 2026-07-08: the LEGO ask fired nothing, and the model
+// invented "enable Google Maps in Settings" instructions at a user whose
+// knob was ON). When the message EXPLICITLY asks for street view, everything
+// after the intent/filler words becomes the Places query. Returns "" when
+// there's no explicit ask, an actual address is present (extractPlace owns
+// it), or nothing usable remains — a bare "street view" follow-up must keep
+// walking back instead.
+export function extractPlaceQuery(text) {
+  const raw = typeof text === "string" ? text : "";
+  if (!streetViewIntent(raw) || extractPlace(raw)) return "";
+  const words = raw
+    .replace(/\b(?:street\s?view|streetview|gatuvy)\b/giu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  // Trim LEADING intent/filler only — interior connectors ("in Copenhagen")
+  // belong to the place.
+  let start = 0;
+  while (start < words.length && STOPWORDS.has(normWord(words[start]))) start++;
+  let q = words.slice(start).join(" ").replace(/[?!.]+$/u, "").trim();
+  // Cut a trailing lowercase clause ("…Copenhagen, including a description
+  // of the building") while keeping comma-joined proper localities
+  // ("…1, København").
+  q = q.replace(/,\s+\p{Ll}[\s\S]*$/u, "").trim();
+  if (!q) return "";
+  // Don't query bare filler ("street view of the area"): a single word must
+  // at least look like a proper name.
+  if (q.split(/\s+/).length < 2 && !/\p{Lu}/u.test(q)) return "";
+  return q.slice(0, MAX_LOCATION_CHARS);
+}
+
+// The honest note for an explicit street-view ask that resolved to NOTHING:
+// the knob is on (this code only runs then), so the model must ask which
+// place is meant — never hand out "enable it in Settings" steps.
+export function unresolvedMapsBlock() {
+  return (
+    "\n\n--- Google Maps ---\n" +
+    "The user asked for Street View, and Google Maps & Street View is ENABLED, but no address or place name could be identified in the message. " +
+    "Ask the user which address or place they mean (one short question). " +
+    "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
+    "--- End of Google Maps ---"
+  );
+}
+
 // ---- locality-correction extraction (pure — exported for unit tests) --------
 
 // A correction turn names a CITY but no street ("I meant in hallstahammar!",
@@ -886,6 +941,12 @@ export function pickLookup(conversation, imageLocations, pov = null) {
   const latest = textOf(users[users.length - 1]?.content);
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
+  // An explicit street-view ask naming a PLACE rather than an address
+  // ("Street view of LEGO offices in Copenhagen") — Places resolves the
+  // free-text name. A new named place outranks corrections/POV/walk-back,
+  // exactly like a new address does.
+  const placeQuery = extractPlaceQuery(latest);
+  if (placeQuery) return { coords: "", address: placeQuery };
   // A locality CORRECTION in the latest message ("I meant in hallstahammar!")
   // re-runs the walked-back street in the corrected city — and outranks the
   // POV, whose on-screen panorama is by definition showing the WRONG place.

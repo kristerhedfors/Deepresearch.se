@@ -20,6 +20,8 @@ import {
   pickLookup,
   runGoogleMapsLookup,
   runStreetViewPovCapture,
+  streetViewIntent,
+  unresolvedMapsBlock,
 } from "./googlemaps.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
@@ -111,7 +113,16 @@ const MAX_MAPS_IMAGES = 4;
 // Street View metadata check an ordinary question costs nothing.
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations, state.streetViewPov);
-  if (!target) return conversation;
+  if (!target) {
+    // An EXPLICIT street-view ask that resolved to nothing still needs an
+    // honest note: with no block at all the model invents "enable Google
+    // Maps in Settings" steps at a user whose knob is ON (reported verbatim:
+    // "Street view of LEGO offices in Copenhagen", pre-named-place support).
+    if (streetViewIntent(textOf(lastUserMessage(conversation)?.content))) {
+      return withAppendedText(conversation, unresolvedMapsBlock());
+    }
+    return conversation;
+  }
   // The user's actual question, for the vision helper to ANSWER about the
   // imagery (not just generically describe it). The client appends labeled
   // document/metadata blocks after the typed text, so keep only what precedes

@@ -12,7 +12,10 @@ import {
   panoLink,
   pickLookup,
   extractLocalityFix,
+  extractPlaceQuery,
   referencesStreetView,
+  streetViewIntent,
+  unresolvedMapsBlock,
   referencesStreetViewScene,
 } from "./googlemaps.js";
 
@@ -97,6 +100,46 @@ describe("extractPlace", () => {
     assert.equal(extractPlace(undefined), "");
     assert.equal(extractPlace(42), "");
     assert.equal(extractPlace("just a normal question with no address"), "");
+  });
+});
+
+describe("extractPlaceQuery / streetViewIntent / unresolvedMapsBlock", () => {
+  test("an explicit street-view ask naming a PLACE becomes a Places query — the verbatim LEGO report", () => {
+    // Reported 2026-07-08: this fired nothing (no street address to parse)
+    // and the model told a knob-ON user to enable Google Maps in Settings.
+    assert.equal(extractPlaceQuery("Street view of LEGO offices in Copenhagen"), "LEGO offices in Copenhagen");
+    assert.equal(extractPlaceQuery("gatuvy Turning Torso i Malmö"), "Turning Torso i Malmö");
+    assert.equal(extractPlaceQuery("show me the street view of the Eiffel Tower"), "Eiffel Tower");
+    assert.equal(extractPlaceQuery("Street view Copenhagen"), "Copenhagen");
+  });
+
+  test("cuts a trailing lowercase clause but keeps comma-joined localities", () => {
+    assert.equal(
+      extractPlaceQuery("Street View of the LEGO Group offices in Copenhagen, including a description of the building"),
+      "LEGO Group offices in Copenhagen",
+    );
+    assert.equal(extractPlaceQuery("street view of Rådhuspladsen, København"), "Rådhuspladsen, København");
+  });
+
+  test("yields nothing without explicit street-view intent, for bare filler, or when an address exists", () => {
+    assert.equal(extractPlaceQuery("LEGO offices in Copenhagen"), ""); // no explicit ask — ordinary research question
+    assert.equal(extractPlaceQuery("street view"), ""); // bare follow-up — must walk back instead
+    assert.equal(extractPlaceQuery("show street view of the area"), ""); // filler only
+    assert.equal(extractPlaceQuery("street view of Maskinistvägen 11"), ""); // extractPlace owns real addresses
+    assert.equal(extractPlaceQuery(null), "");
+  });
+
+  test("streetViewIntent detects the explicit ask in both languages", () => {
+    assert.equal(streetViewIntent("Street view of LEGO offices"), true);
+    assert.equal(streetViewIntent("gatuvy tack"), true);
+    assert.equal(streetViewIntent("what does the building look like?"), false);
+  });
+
+  test("unresolvedMapsBlock says the feature is ON and asks for the place — never enable instructions", () => {
+    const block = unresolvedMapsBlock();
+    assert.match(block, /ENABLED/);
+    assert.match(block, /Ask the user which address or place/);
+    assert.match(block, /Do NOT instruct the user to enable/);
   });
 });
 
@@ -397,6 +440,12 @@ describe("pickLookup", () => {
       { role: "user", content: "who owns the property according to public records?" },
     ];
     assert.equal(pickLookup(convo, [], pov), null);
+  });
+
+  test("a named-place street-view ask fires a lookup and outranks the POV", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const convo = [{ role: "user", content: "Street view of LEGO offices in Copenhagen" }];
+    assert.deepEqual(pickLookup(convo, [], pov), { coords: "", address: "LEGO offices in Copenhagen" });
   });
 
   test("a locality CORRECTION merges with the walked-back street — the verbatim wrong-city conversation", () => {
