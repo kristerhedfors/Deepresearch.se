@@ -123,10 +123,11 @@ const STOPWORDS = new Set([
   "what", "whats", "where", "which", "is", "are", "was", "were", "do", "does", "get", "give", "see",
   "look", "looks", "around", "find", "near", "in", "to", "from", "with", "and", "this", "that",
   "here", "there", "no", "not", "yes", "now", "today", "tomorrow", "thanks",
+  "mean", "meant", "instead", "rather",
   // Swedish intent/filler
   "visa", "mig", "se", "titta", "vad", "finns", "det", "den", "här", "där", "ligger", "är", "och",
   "på", "pa", "vid", "gatuvy", "kan", "du", "jag", "vi", "var", "hur", "nej", "ja", "en", "ett",
-  "nu", "idag", "imorgon", "tack",
+  "nu", "idag", "imorgon", "tack", "menade", "menar", "istället", "snarare",
 ]);
 
 const normWord = (w) => (w || "").toLowerCase().replace(/[^\p{L}]/gu, "");
@@ -225,6 +226,56 @@ export function extractPlace(text) {
 function firstMatch(raw, re) {
   re.lastIndex = 0;
   return re.exec(raw);
+}
+
+// ---- locality-correction extraction (pure — exported for unit tests) --------
+
+// A correction turn names a CITY but no street ("I meant in hallstahammar!",
+// "jag menade i hallstahammar", or just "i hallstahammar") — reported
+// verbatim 2026-07-08: "lidbecksgatan 10" resolved to the wrong city, the
+// user corrected with a city-only message, and every later lookup STILL
+// walked back to the bare street and picked the wrong city again, because
+// no single message carried street + corrected city together. pickLookup
+// merges this fix onto the walked-back street. Cues are the STRONG
+// correction words only (meant/instead/rather + Swedish) — weak cues like
+// "not"/"actually" appear in ordinary questions and would turn arbitrary
+// words into "localities".
+const FIX_CUE_RE = /\b(?:meant|instead|rather|menade|menar|istället|snarare)\b/iu;
+const FIX_AFTER_CUE_RE =
+  /\b(?:meant|instead|rather|menade|menar|istället|snarare)\b[,!.]?\s*(?:\b(?:in|i|på|pa)\s+)?([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
+const FIX_AFTER_CONNECTOR_RE =
+  /\b(?:in|i|på|pa)\s+([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
+// The WHOLE message is "in X" / "i X" (a bare one-line correction).
+const FIX_BARE_MESSAGE_RE =
+  /^\s*(?:in|i|på|pa)\s+([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)[\s!.?]*$/iu;
+
+export function extractLocalityFix(text) {
+  const raw = typeof text === "string" ? text : "";
+  // A message that names a full address needs no fix-merging — extractPlace
+  // handles it outright.
+  if (!raw || extractPlace(raw)) return "";
+  let m = null;
+  if (FIX_CUE_RE.test(raw)) {
+    m = raw.match(FIX_AFTER_CUE_RE) || raw.match(FIX_AFTER_CONNECTOR_RE);
+  } else {
+    m = raw.match(FIX_BARE_MESSAGE_RE);
+  }
+  if (!m || !m[1]) return "";
+  const words = [];
+  for (const w of m[1].trim().split(/\s+/)) {
+    if (!w || STOPWORDS.has(normWord(w))) break;
+    words.push(w);
+  }
+  return words.join(" ");
+}
+
+// Merges a locality correction onto a walked-back street: the fix REPLACES
+// any comma-appended locality the address already carried (it's a
+// correction), and is a no-op when the address already names it.
+function withLocalityFix(address, fix) {
+  if (!fix) return address;
+  if (address.toLowerCase().includes(fix.toLowerCase())) return address;
+  return `${address.split(",")[0].trim()}, ${fix}`;
 }
 
 // ---- follow-up reference gate (pure — exported for unit tests) --------------
@@ -835,14 +886,25 @@ export function pickLookup(conversation, imageLocations, pov = null) {
   const latest = textOf(users[users.length - 1]?.content);
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
+  // A locality CORRECTION in the latest message ("I meant in hallstahammar!")
+  // re-runs the walked-back street in the corrected city — and outranks the
+  // POV, whose on-screen panorama is by definition showing the WRONG place.
+  const latestFix = extractLocalityFix(latest);
   // The POV path uses the LOOSE gate (people/vehicles/signs — anything one
   // asks pointing at a live street scene); the walk-back keeps the strict
   // imagery/building gate since it re-runs a full billed lookup.
-  if (pov && referencesStreetViewScene(latest)) return { coords: "", address: "", pov, followUp: true };
-  if (!referencesStreetView(latest)) return null;
+  if (pov && !latestFix && referencesStreetViewScene(latest)) return { coords: "", address: "", pov, followUp: true };
+  if (!latestFix && !referencesStreetView(latest)) return null;
+  // Walk back for the most recent address; corrections encountered on the
+  // way (messages NEWER than the address) ride along, so a later "street
+  // view" follow-up still lands in the corrected city even though street
+  // and city never appeared in one message together.
+  let fix = latestFix;
   for (let i = users.length - 2; i >= 0; i--) {
-    const prior = extractPlace(textOf(users[i]?.content));
-    if (prior) return { coords: "", address: prior, followUp: true };
+    const t = textOf(users[i]?.content);
+    const prior = extractPlace(t);
+    if (prior) return { coords: "", address: withLocalityFix(prior, fix), followUp: true };
+    if (!fix) fix = extractLocalityFix(t);
   }
   return null;
 }

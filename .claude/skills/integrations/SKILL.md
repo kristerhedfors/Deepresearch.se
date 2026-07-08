@@ -351,6 +351,17 @@ wires it (before any model call, alongside the Shodan enrichment).
   so a wrong-city hit is visible in the frames title and block. A
   photo's validated GPS coordinates (`body.imageLocations`) take precedence over
   a parsed address (`pickLookup`).
+- **Locality corrections re-run the lookup in the corrected city**
+  (`extractLocalityFix` + `withLocalityFix`, pure + unit-tested). Reported
+  verbatim 2026-07-08: "Street view lidbecksgatan 10" resolved the wrong
+  city; "I meant in hallstahammar!" got only a clarify; a later "street
+  view" walked back to the bare street and showed the wrong city AGAIN —
+  no single message carried street + corrected city together. A strong
+  correction cue (meant/instead/rather, menade/istället/snarare) or a bare
+  "in X"/"i X" message extracts a locality fix; the fix outranks the POV
+  (the on-screen panorama shows the wrong place by definition), merges
+  onto the walked-back street (replacing any earlier comma-locality), and
+  rides along later walk-backs so follow-ups stay in the corrected city.
 - **Follow-up questions re-snap the current imagery** (`pickLookup`'s
   walk-back + `referencesStreetView`, both pure + unit-tested). The server is
   stateless and the Maps block is appended per-request only, so a follow-up

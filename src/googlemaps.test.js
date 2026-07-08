@@ -11,6 +11,7 @@ import {
   mapLink,
   panoLink,
   pickLookup,
+  extractLocalityFix,
   referencesStreetView,
   referencesStreetViewScene,
 } from "./googlemaps.js";
@@ -396,6 +397,50 @@ describe("pickLookup", () => {
       { role: "user", content: "who owns the property according to public records?" },
     ];
     assert.equal(pickLookup(convo, [], pov), null);
+  });
+
+  test("a locality CORRECTION merges with the walked-back street — the verbatim wrong-city conversation", () => {
+    // Reported 2026-07-08 verbatim: "Street view lidbecksgatan 10" resolved
+    // Lidköping; "I meant in hallstahammar!" only got a clarify; a later
+    // "Street view" walked back to the bare street and showed Lidköping
+    // AGAIN. No single message carries street + corrected city.
+    const t1 = { role: "user", content: "Street view lidbecksgatan 10" };
+    const a = { role: "assistant", content: "…" };
+    const t2 = { role: "user", content: "I meant in hallstahammar!" };
+
+    // The correction turn itself re-runs the lookup in the corrected city.
+    assert.deepEqual(pickLookup([t1, a, t2], []), {
+      coords: "", address: "lidbecksgatan 10, hallstahammar", followUp: true,
+    });
+
+    // …and outranks a live POV — the on-screen panorama shows the WRONG city.
+    const pov = { panoId: "abc", lat: 58.5, lng: 13.16, heading: 0, pitch: 0, fov: 90 };
+    assert.deepEqual(pickLookup([t1, a, t2], [], pov), {
+      coords: "", address: "lidbecksgatan 10, hallstahammar", followUp: true,
+    });
+
+    // A later "Street view" follow-up (no POV) still lands in the corrected
+    // city: the fix from turn 2 rides along the walk-back past it.
+    const t3 = { role: "user", content: "Street view" };
+    assert.deepEqual(pickLookup([t1, a, t2, a, t3], []), {
+      coords: "", address: "lidbecksgatan 10, hallstahammar", followUp: true,
+    });
+  });
+
+  test("extractLocalityFix finds strong corrections and bare 'in X' messages, nothing else", () => {
+    assert.equal(extractLocalityFix("I meant in hallstahammar!"), "hallstahammar");
+    assert.equal(extractLocalityFix("jag menade i hallstahammar"), "hallstahammar");
+    assert.equal(extractLocalityFix("in hallstahammar"), "hallstahammar");
+    assert.equal(extractLocalityFix("i västerås"), "västerås");
+    assert.equal(extractLocalityFix("hallstahammar instead"), ""); // cue with nothing after — connectorless bare word before a cue is too ambiguous
+    // Weak/no cues never invent a locality.
+    assert.equal(extractLocalityFix("why is it not open?"), "");
+    assert.equal(extractLocalityFix("is it actually a shop?"), "");
+    assert.equal(extractLocalityFix("The one in view"), "");
+    assert.equal(extractLocalityFix("summarize the sources"), "");
+    // A full address supersedes fix-extraction (extractPlace owns it).
+    assert.equal(extractLocalityFix("I meant Storgatan 4 in Katrineholm"), "");
+    assert.equal(extractLocalityFix(null), "");
   });
 
   test("a NEW address in the latest message wins over the panorama POV", () => {
