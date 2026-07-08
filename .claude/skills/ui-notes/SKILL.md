@@ -231,9 +231,18 @@ description: >-
   on real iOS Safari (present in DOM, selectable, unpainted). (2) The
   slide must be pure LAYOUT (`margin-left`) — a `transform` on the
   card, even transient during the drag, breaks painting the same way
-  (h7: card flickered, never moved). Linux WebKit does NOT reproduce
-  either, so desktop/Playwright green means nothing here — verify on a
-  real device. All interaction artifacts
+  (h7: card flickered, never moved). (3) The drag must be driven by
+  TOUCH events with `preventDefault()` once claimed horizontal
+  (`touchmove` registered `passive: false`) — pointer events +
+  `touch-action: pan-y` are NOT honored for horizontal drags inside
+  this vertically-scrollable panel on real iOS: Safari starts a native
+  scroll, fires `pointercancel`, and stops delivering moves (h8/h9:
+  list nudged down a few px, card never slid). (4) Every style the
+  interaction needs is INLINE (mountActions) so a device wedged on a
+  stale stylesheet still gets working mechanics. Linux WebKit
+  reproduces NONE of these, and synthetic-event tests bypass native
+  gesture arbitration — desktop/Playwright green means nothing here;
+  verify on a real device. All interaction artifacts
   (strip, `overflow: hidden`, transform, transition) are mounted at
   gesture-claim and removed on close. The pane also self-diagnoses: a
   bracketed status stamp (`[h7 · N here + M in projects · cloud: …]`)
