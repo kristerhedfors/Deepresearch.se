@@ -36,8 +36,9 @@ locations, because they are RAG-indexed for cross-chat retrieval (see
 rests readable — the index already holds the text in the clear, so
 encrypting the record would protect nothing the index doesn't expose
 (the same exception RAG-indexed documents have always had; disclosed in
-the sidebar footnote, `/help/`, the privacy notice, and the cloud-knob
-popover). Unlike
+`/help/`, the privacy notice, and the cloud-knob popover — the history
+sidebar's own footnote was removed 2026-07-08 to declutter the pane).
+Unlike
 the original ephemeral-only design (history erased by "New chat" or a
 reload), every conversation **persists across reloads inside the
 browser itself**, listed in a left-side history panel (`history-ui.js`)

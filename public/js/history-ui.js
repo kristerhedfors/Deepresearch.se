@@ -39,6 +39,11 @@ export function initHistorySidebar(opts = {}) {
     renderList(items.filter((c) => !c.projectId));
   }
 
+  const PENCIL_SVG =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+  const TRASH_SVG =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
   function renderList(items) {
     if (!items.length) {
       list.innerHTML = '<p class="muted">No saved conversations yet.</p>';
@@ -48,19 +53,32 @@ export function initHistorySidebar(opts = {}) {
     list.innerHTML = items
       .map(
         (c) => `
-      <div class="history-item${c.id === activeId ? " active" : ""}">
+      <div class="history-item${c.id === activeId ? " active" : ""}" data-id="${c.id}">
+        <div class="history-actions">
+          <button type="button" class="history-rename" data-id="${c.id}" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>
+          <button type="button" class="history-delete" data-id="${c.id}" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>
+        </div>
         <button type="button" class="history-open" data-id="${c.id}">
           <span class="history-title">${escapeHtml(c.title)}</span>
           <span class="history-when">${relativeTime(c.updatedAt)}</span>
         </button>
-        <button type="button" class="history-rename" data-id="${c.id}" title="Rename" aria-label="Rename conversation">✎</button>
-        <button type="button" class="history-delete" data-id="${c.id}" title="Delete" aria-label="Delete conversation">🗑</button>
       </div>`,
       )
       .join("");
 
+    list.querySelectorAll(".history-item").forEach(attachSwipe);
     list.querySelectorAll(".history-open").forEach((el) => {
-      el.addEventListener("click", () => openConversation(el.dataset.id));
+      el.addEventListener("click", () => {
+        // A tap on a swiped-open row (or right after a swipe gesture)
+        // just closes the actions — it shouldn't also open the chat.
+        const item = el.closest(".history-item");
+        if (item.dataset.swipeLock === "1" || item.classList.contains("swiped")) {
+          delete item.dataset.swipeLock;
+          item.classList.remove("swiped");
+          return;
+        }
+        openConversation(el.dataset.id);
+      });
     });
     list.querySelectorAll(".history-rename").forEach((el) => {
       el.addEventListener("click", (e) => {
@@ -74,6 +92,63 @@ export function initHistorySidebar(opts = {}) {
         removeConversation(el.dataset.id);
       });
     });
+  }
+
+  // Touch swipe-to-reveal: dragging a row left slides it over by the
+  // action strip's width, exposing rename + delete. Swiping back (or
+  // tapping the row, or swiping any other row) closes it. Mouse users
+  // keep the hover reveal (app.css); this only drives touch/pen.
+  const REVEAL_PX = 88; // matches .history-actions width in app.css
+  function attachSwipe(item) {
+    const row = item.querySelector(".history-open");
+    let startX = 0, startY = 0, axis = null, tracking = false;
+
+    item.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      tracking = true;
+      axis = null;
+      startX = e.clientX;
+      startY = e.clientY;
+    });
+
+    item.addEventListener("pointermove", (e) => {
+      if (!tracking) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!axis) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (axis === "x") {
+          // Claim the gesture so a stray tap at the end doesn't open the chat.
+          item.dataset.swipeLock = "1";
+          // Close any other row that's sitting open.
+          list.querySelectorAll(".history-item.swiped").forEach((other) => {
+            if (other !== item) other.classList.remove("swiped");
+          });
+        }
+      }
+      if (axis !== "x") return;
+      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
+      const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
+      row.style.transition = "none";
+      row.style.transform = `translateX(${offset}px)`;
+    });
+
+    function settle(e) {
+      if (!tracking) return;
+      tracking = false;
+      if (axis !== "x") return;
+      const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
+      const offset = from + (e.clientX - startX);
+      // Hand the final position back to the CSS class + its transition.
+      row.style.transition = "";
+      row.style.transform = "";
+      item.classList.toggle("swiped", offset < -REVEAL_PX / 2);
+      // Let the click that follows this pointerup see the lock, then clear it.
+      setTimeout(() => { delete item.dataset.swipeLock; }, 0);
+    }
+    item.addEventListener("pointerup", settle);
+    item.addEventListener("pointercancel", settle);
   }
 
   async function openConversation(id) {
