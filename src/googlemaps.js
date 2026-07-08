@@ -269,15 +269,19 @@ export function referencesStreetView(text) {
   return FOLLOWUP_REFERENCE_RE.test(typeof text === "string" ? text : "");
 }
 
-// The LOOSE gate for the live-panorama (POV) path: things a user pointing at
-// a street scene asks about — people, vehicles, signage, shops, greenery —
-// none of which the strict building-vocabulary gate above can cover
-// (reported: "Describe the person" → the gate missed it → no capture → the
-// model asked "what person?", while the person stood in the panorama on
-// screen). Kept SEPARATE from the strict gate on purpose: a POV capture is
-// one cheap, cached Static frame and the user demonstrably has the panorama
-// open, so false positives cost little — the walk-back path (no POV) keeps
-// the strict gate because it re-runs a full billed lookup.
+// The LOOSE gate for the live-panorama (POV) path: anything a user says
+// while pointing at a live street scene. Grown in two reported rounds —
+// first scene CONTENTS the strict building gate can't cover ("Describe the
+// person" → no capture → the model asked "what person?"), then, when the
+// noun vocabulary kept leaking (Workers Logs 2026-07-08 ~13:22Z: 4 of 5
+// panorama follow-ups fired nothing), the structural classes below: bare
+// DEICTIC references ("what is that?", "is it open?", "vad är det där?"),
+// POSITIONAL phrasing ("the building to the left", "across from me"), and
+// VISUAL-ACT verbs ("describe", "read", "zoom", "beskriv", "läs"). Kept
+// SEPARATE from the strict gate on purpose: a POV capture is one cheap,
+// cached Static frame and the user demonstrably has the panorama open, so
+// false positives cost little — the walk-back path (no POV) keeps the
+// strict gate because it re-runs a full billed lookup.
 const SCENE_REFERENCE_RE = new RegExp(
   "(?<![\\p{L}\\p{M}])(?:" +
     // people & animals
@@ -291,9 +295,18 @@ const SCENE_REFERENCE_RE = new RegExp(
     "trees?|statues?|graffiti|posters?|flags?|logos?|bench(?:es)?|" +
     "skylt(?:en|ar|arna)?|affär(?:en|er|erna)?|butik(?:en|er|erna)?|restaurang(?:en|er|erna)?|" +
     "träd(?:et|en)?|staty(?:n|er)?|flagg(?:a|an|or)|bänk(?:en|ar)?|" +
-    // deictic questions about the scene
-    "who is (?:that|this|he|she|there)|who's (?:that|this)|what does (?:it|the sign|that) say|" +
-    "vem är (?:det|den|han|hon|där)|vad står det" +
+    // bare deictic references — the user is pointing at the scene
+    "that|this|it|these|those|there|" +
+    "det|den|där|här|denna|detta|dessa|dom|" +
+    // positional phrasing within the view
+    "left|right|behind|ahead|front|corner|opposite|across|next to|" +
+    "vänster|höger|bakom|framför|hörn(?:et)?|mittemot|bredvid|" +
+    // visual-act verbs
+    "describe|read|zoom|identify|" +
+    "beskriv(?:a)?|läs(?:a)?|zooma|identifiera|" +
+    // question phrases about the scene
+    "who is|who's|what does .{0,20} say|" +
+    "vem är|vad står" +
     ")(?![\\p{L}\\p{M}])",
   "iu",
 );
@@ -345,8 +358,11 @@ export function buildPovBlock(pov, parts) {
   } else {
     lines.push("The frame could not be examined by a vision model this time — answer from the location data above and say plainly that the view itself couldn't be inspected.");
   }
+  // Conditional on purpose: the capture fires generously for panorama
+  // conversations, so the question may or may not be about the view —
+  // steer without misdirecting the unrelated case.
   lines.push(
-    "The user's question refers to what is visible in their current view — answer it directly from the visual description above; do NOT ask them to clarify who or what they mean (e.g. never ask which person/car/building — it is the one in their view).",
+    "If the question refers to something visible (a person, vehicle, sign, building — anything in the scene), answer it directly from the visual description above and never ask them to clarify who or what they mean: they mean what is in their view. If the question is unrelated to the view, answer it normally and ignore this block.",
   );
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";

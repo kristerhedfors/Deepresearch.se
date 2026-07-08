@@ -381,15 +381,20 @@ wires it (before any model call, alongside the Shodan enrichment).
   label), and `buildPovBlock` tells the model it is the user's currently
   visible view. A NEW address in the message still beats the POV (it's a
   new location); no POV (iframe fallback) degrades to the walk-back.
-  The POV path uses a LOOSE gate (`referencesStreetViewScene`): scene
-  contents — people, vehicles, signs, shops, "who is that", EN+SV — on top
-  of the strict imagery/building vocabulary, because a user pointing at a
-  live panorama asks about anything visible in it (reported 2026-07-08:
+  The POV path uses a LOOSE gate (`referencesStreetViewScene`), grown in
+  two reported rounds: scene contents (people, vehicles, signs, shops —
   "Describe the person" missed the strict gate and the model asked "what
-  person?" beside a panorama with the person in frame). The walk-back
-  keeps the strict gate — it re-runs a full billed lookup. Both blocks also
-  instruct the model to NEVER ask the user to disambiguate the resolved
-  location or clarify who/what they mean in the current view.
+  person?"), then STRUCTURAL classes when noun vocabulary kept leaking
+  (Workers Logs 2026-07-08 ~13:22Z: 4 of 5 panorama follow-ups fired
+  nothing): bare deictics (that/this/it/det/den/där…), positional phrasing
+  (left/behind/across/vänster/bakom…), and visual-act verbs
+  (describe/read/zoom/beskriv/läs…), EN+SV. Over-firing is deliberate and
+  cheap (one cached frame); the POV block's instruction is CONDITIONAL
+  ("if the question refers to something visible… otherwise answer normally
+  and ignore this block") so an unrelated question isn't misdirected. The
+  walk-back keeps the strict gate — it re-runs a full billed lookup. Both
+  blocks also instruct the model to NEVER ask the user to disambiguate the
+  resolved location or clarify who/what they mean in the current view.
 - **The vision helper answers the user's question**, not just a generic
   describe: `describeStreetView` gets the latest question (bounded, appended
   client blocks stripped) and is instructed to answer it strictly from what

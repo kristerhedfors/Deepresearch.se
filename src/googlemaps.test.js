@@ -258,10 +258,25 @@ describe("referencesStreetViewScene (the loose POV-path gate)", () => {
     assert.equal(referencesStreetViewScene("what am I looking at?"), true);
   });
 
-  test("still ignores ordinary research follow-ups", () => {
+  test("matches bare deictic / positional / visual-act phrasings (second reported leak)", () => {
+    // Workers Logs 2026-07-08 ~13:22Z: 4 of 5 panorama follow-ups fired
+    // nothing — noun vocabulary alone keeps leaking, so the structural
+    // classes carry the load.
+    assert.equal(referencesStreetViewScene("what is that?"), true);
+    assert.equal(referencesStreetViewScene("is it open?"), true);
+    assert.equal(referencesStreetViewScene("zoom in on the left"), true);
+    assert.equal(referencesStreetViewScene("read the text on the wall"), true);
+    assert.equal(referencesStreetViewScene("what's behind me?"), true);
+    assert.equal(referencesStreetViewScene("vad är det där?"), true);
+    assert.equal(referencesStreetViewScene("vad kostar det?"), true); // deictic "det" — in a panorama convo this points at the view
+    assert.equal(referencesStreetViewScene("beskriv"), true);
+    assert.equal(referencesStreetViewScene("vad finns till vänster?"), true);
+  });
+
+  test("still ignores follow-ups with no reference to the scene at all", () => {
     assert.equal(referencesStreetViewScene("summarize the sources"), false);
     assert.equal(referencesStreetViewScene("what does the company do?"), false);
-    assert.equal(referencesStreetViewScene("vad kostar det?"), false);
+    assert.equal(referencesStreetViewScene("who owns the property according to public records?"), false);
     assert.equal(referencesStreetViewScene(null), false);
   });
 });
@@ -405,9 +420,12 @@ describe("buildPovBlock", () => {
     assert.ok(!block.includes("key="), "the block must never leak an API key");
   });
 
-  test("tells the model the question refers to what is visible — never ask which person/car", () => {
+  test("tells the model to answer view questions from the description — never ask which person/car", () => {
     const block = buildPovBlock(pov, { date: "", description: "A man in a black jacket crosses the street.", framesShown: 1 });
-    assert.match(block, /do NOT ask them to clarify who or what they mean/);
+    assert.match(block, /never ask them to clarify who or what they mean/);
+    // Conditional wording: the capture over-fires by design, so an
+    // unrelated question must not be misdirected.
+    assert.match(block, /unrelated to the view, answer it normally/);
   });
 
   test("says plainly when the frame couldn't be examined (no vision model)", () => {
