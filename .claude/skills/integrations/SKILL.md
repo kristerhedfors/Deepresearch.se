@@ -298,8 +298,11 @@ no-function-calling way as the reverse-geocoder and Shodan: the location is
 extracted deterministically, three Maps Platform APIs (sharing the one key)
 are called server-side, and the result is folded into the conversation as one
 labeled `--- Google Maps ---` block every phase can reason and search with.
-`src/googlemaps.js` is the client; `src/enrichment.js`'s `runGoogleMapsEnrichment`
-wires it (before any model call, alongside the Shodan enrichment).
+`src/googlemaps.js` is the client (REST calls, edge-cached lookup
+orchestration, block builders); the pure text analysis — address/place
+extraction, the intent gates, `pickLookup` — lives in `src/googlemaps-text.js`;
+`src/enrichment.js`'s `runGoogleMapsEnrichment` wires it (before any model
+call, alongside the Shodan enrichment).
 
 - **The knob** (`src/settings.js`): a third key alongside `server_history`
   and `shodan_mcp` in `users.settings_json`. **Default OFF** (only an explicit
@@ -337,7 +340,7 @@ wires it (before any model call, alongside the Shodan enrichment).
   panorama for the iframe, drops the dead POV, and routes future renders
   straight to the iframe (observed live 2026-07 before the JS API was
   enabled on the key).
-- **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
+- **Deterministic location extraction** (`src/googlemaps-text.js`'s `extractPlace`,
   pure + unit-tested): parses a single geocodable street-address candidate out
   of the latest message (a "<words> <number>" span whose word before the number
   is a known Swedish street morpheme — …vägen/…gatan — or an exact English
@@ -436,7 +439,8 @@ wires it (before any model call, alongside the Shodan enrichment).
   is visible in the frames first, then describe — so a follow-up reasons
   about that particular image instead of replaying a canned description.
 - **Cross-request lookup cache** (`runGoogleMapsLookup`, same pattern as
-  `src/exa.js`'s search cache): successful lookups — imagery data URLs
+  `src/exa.js`'s search cache — both go through the shared fail-soft helpers
+  in `src/edge-cache.js`): successful lookups — imagery data URLs
   included — are cached in `caches.default` for 10 min, keyed by the
   normalized target + whether imagery was fetched, so a follow-up exchange
   about the same place re-bills Google nothing. Fail-soft in every branch;

@@ -103,8 +103,11 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
+| `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
+| `googlemaps.js` | Google Maps Platform clients (Places, Street View, Static Maps), the edge-cached lookup orchestration, and the labeled context-block builders (opt-in `google_maps` knob) |
+| `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, street-view intent gates, locality corrections, `pickLookup` — all Node-tested |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |
@@ -171,7 +174,10 @@ source rule, the JSON-only reinforcement toggle), `chat.js`
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),
-`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec), and
+`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
+`edge-cache.js` (the fail-soft Workers Cache get/put helpers, against a
+mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
+builders; address/place extraction, intent gates, `pickLookup`), and
 `chatlog.js` (the interaction log's pure logic: truncation markers,
 inline-image scrubbing, row assembly/projection, the text rendering,
 LIKE escaping).

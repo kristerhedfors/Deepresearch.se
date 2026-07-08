@@ -4,6 +4,8 @@
 // the x-api-key header. See CLAUDE.md ("Web search — Exa") for parameter
 // rules and the canonical reference URL.
 
+import { cacheGet, cachePut } from "./edge-cache.js";
+
 const EXA_URL = "https://api.exa.ai/search";
 const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
 // Bounds the /contents fetch the same way the two Berget calls are bounded —
@@ -79,24 +81,16 @@ export async function webSearch(env, log, query, depth = {}) {
   // fresh — a repeated query (e.g. a follow-up turn) costs nothing and
   // returns instantly. Fail-soft: any cache miss/error falls through to a
   // live search below.
-  const cache = globalThis.caches?.default;
   const cacheKey = searchCacheKey(query, type, numResults);
-  if (cache) {
-    try {
-      const hit = await cache.match(new Request(cacheKey));
-      if (hit) {
-        const payload = await hit.json();
-        log.info("exa.cache_hit", {
-          duration_ms: Date.now() - startedAt,
-          results: payload.resultCount,
-          query_chars: query.length,
-          type,
-        });
-        return { ...payload, durationMs: Date.now() - startedAt, cached: true };
-      }
-    } catch (err) {
-      log.warn("exa.cache_read_failed", { error: err?.message || String(err) });
-    }
+  const cached = await cacheGet(log, "exa.cache", cacheKey);
+  if (cached) {
+    log.info("exa.cache_hit", {
+      duration_ms: Date.now() - startedAt,
+      results: cached.resultCount,
+      query_chars: query.length,
+      type,
+    });
+    return { ...cached, durationMs: Date.now() - startedAt, cached: true };
   }
 
   let resp;
@@ -169,21 +163,7 @@ export async function webSearch(env, log, query, depth = {}) {
   // free hit. Only good results are cached (errors and empty results return
   // early above and are deliberately left uncached so a retry can find
   // something). Fail-soft: a cache write error never affects the response.
-  if (cache) {
-    try {
-      await cache.put(
-        new Request(cacheKey),
-        new Response(JSON.stringify(result), {
-          headers: {
-            "content-type": "application/json",
-            "cache-control": `max-age=${CACHE_TTL_S}`,
-          },
-        }),
-      );
-    } catch (err) {
-      log.warn("exa.cache_write_failed", { error: err?.message || String(err) });
-    }
-  }
+  await cachePut(log, "exa.cache", cacheKey, result, CACHE_TTL_S);
 
   return { ...result, durationMs, cached: false };
 }
@@ -212,19 +192,11 @@ export async function fetchContents(env, urls, log) {
     return empty();
   }
 
-  const cache = globalThis.caches?.default;
   const cacheKey = contentsCacheKey(list);
-  if (cache) {
-    try {
-      const hit = await cache.match(new Request(cacheKey));
-      if (hit) {
-        const payload = await hit.json();
-        log.info("exa.contents_cache_hit", { duration_ms: Date.now() - startedAt, results: payload.results?.length || 0 });
-        return { ...payload, durationMs: Date.now() - startedAt, cached: true };
-      }
-    } catch (err) {
-      log.warn("exa.contents_cache_read_failed", { error: err?.message || String(err) });
-    }
+  const cached = await cacheGet(log, "exa.contents_cache", cacheKey);
+  if (cached) {
+    log.info("exa.contents_cache_hit", { duration_ms: Date.now() - startedAt, results: cached.results?.length || 0 });
+    return { ...cached, durationMs: Date.now() - startedAt, cached: true };
   }
 
   let resp;
@@ -258,17 +230,8 @@ export async function fetchContents(env, urls, log) {
   log.info("exa.contents", { duration_ms: durationMs, requested: list.length, results: results.length });
 
   const result = { results };
-  if (cache && results.length) {
-    try {
-      await cache.put(
-        new Request(cacheKey),
-        new Response(JSON.stringify(result), {
-          headers: { "content-type": "application/json", "cache-control": `max-age=${CACHE_TTL_S}` },
-        }),
-      );
-    } catch (err) {
-      log.warn("exa.contents_cache_write_failed", { error: err?.message || String(err) });
-    }
+  if (results.length) {
+    await cachePut(log, "exa.contents_cache", cacheKey, result, CACHE_TTL_S);
   }
   return { ...result, durationMs, cached: false };
 }

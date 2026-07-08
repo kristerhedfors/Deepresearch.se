@@ -5,20 +5,22 @@ import {
   buildMapsBlock,
   buildPovBlock,
   compassDir,
-  extractPlace,
   googleMapsAvailable,
   googleMapsEmbedKey,
   mapLink,
   panoLink,
-  pickLookup,
+  unresolvedMapsBlock,
+} from "./googlemaps.js";
+import {
   extractLocalityFix,
+  extractPlace,
   extractPlaceQuery,
   matchAddressFragment,
+  pickLookup,
   referencesStreetView,
-  streetViewIntent,
-  unresolvedMapsBlock,
   referencesStreetViewScene,
-} from "./googlemaps.js";
+  streetViewIntent,
+} from "./googlemaps-text.js";
 
 test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
   assert.equal(googleMapsAvailable({}), false);

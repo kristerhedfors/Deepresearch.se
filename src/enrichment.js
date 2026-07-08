@@ -17,12 +17,11 @@ import {
   buildPovBlock,
   compassDir,
   googleMapsEmbedKey,
-  pickLookup,
   runGoogleMapsLookup,
   runStreetViewPovCapture,
-  streetViewIntent,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
+import { pickLookup, streetViewIntent } from "./googlemaps-text.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 

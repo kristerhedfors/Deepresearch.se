@@ -180,29 +180,38 @@ export function conversationAsText() {
   return conversationCopyText(history, convEmbeds);
 }
 
-// Sidebar "load": replace the on-screen conversation with a previously
-// saved one. Aborts any in-flight request and bumps `generation` exactly
-// like clearHistory, so a stream from the conversation being replaced can
-// never write into the newly loaded one.
-export function applyLoadedConversation(record) {
+// Replaces the on-screen conversation with a stored record — the shared
+// core of the sidebar "load" and the boot-time pending-answer resume.
+// Aborts any in-flight request and bumps `generation` exactly like
+// clearHistory, so a stream from the conversation being replaced can never
+// write into the newly opened one; then adopts the record's state and
+// re-renders. Returns the new generation for callers that keep polling.
+function openConversationRecord(id, record) {
   controller?.abort();
   controller = null;
   generation++;
   history.length = 0;
   history.push(...record.messages);
-  currentId = record.id;
-  convTitle = record.title;
-  convCreatedAt = record.createdAt;
+  currentId = id;
+  convTitle = record.title || null;
+  convCreatedAt = record.createdAt || null;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   convEmbeds = Array.isArray(record.embeds) ? record.embeds : [];
   convIncognito = false; // a saved conversation is by definition not incognito
-  resetStreetViewPov(); // any on-screen panorama belongs to the conversation being left
-  clearPending(); // opening another conversation cancels any pending-answer resume
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
   renderStoredConversation(record.messages, convEmbeds);
+  return generation;
+}
+
+// Sidebar "load": replace the on-screen conversation with a previously
+// saved one.
+export function applyLoadedConversation(record) {
+  openConversationRecord(record.id, record);
+  resetStreetViewPov(); // any on-screen panorama belongs to the conversation being left
+  clearPending(); // opening another conversation cancels any pending-answer resume
   scrollDown(true);
 }
 
@@ -271,14 +280,21 @@ export function clearHistory() {
   controller?.abort();
   controller = null;
   clearPending(); // "New chat" abandons any pending-answer resume too
+  resetConversationMeta(); // the next send re-adopts whatever project is active
+  convIncognito = false; // incognito is chosen per conversation, never inherited
+  resetStreetViewPov(); // a fresh chat must not inherit the old panorama's view
+}
+
+// Forgets the identity/metadata of the current conversation (id, title,
+// timestamps, RAG docs, embeds, project scope) — the messages themselves and
+// the incognito flag are the caller's to handle.
+function resetConversationMeta() {
   currentId = null;
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
   convEmbeds = [];
-  convProjectId = null; // the next send re-adopts whatever project is active
-  convIncognito = false; // incognito is chosen per conversation, never inherited
-  resetStreetViewPov(); // a fresh chat must not inherit the old panorama's view
+  convProjectId = null;
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -300,6 +316,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function ackAnswer(requestId) {
   if (!requestId) return;
   fetch("/api/chat/answer?id=" + encodeURIComponent(requestId), { method: "DELETE" }).catch(() => {});
+}
+
+// A recovered answer landing in the conversation (boot-time resume, or
+// in-session recovery after a dropped stream): render it — with its final
+// stats when the server kept them — append it to history, purge the
+// server's recovery copy, and persist.
+async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
+  setText(turn, recovered.text);
+  if (recovered.stats) {
+    turn.model = recovered.stats.model || "";
+    turn.doneStats = recovered.stats;
+    renderStats(turn, recovered.stats);
+  }
+  history.push({ role: "assistant", content: recovered.text });
+  ackAnswer(requestId);
+  await persistConversation(opts);
 }
 
 // The pipeline may still be researching when our connection dies (it runs
@@ -404,12 +436,7 @@ async function abandonUnanswered(opts) {
     await persistConversation(opts); // follow-up: store the reverted history
   } else {
     const id = currentId;
-    currentId = null;
-    convTitle = null;
-    convCreatedAt = null;
-    convRagDocs = [];
-    convEmbeds = [];
-    convProjectId = null; // the discarded conversation is gone; next send starts fresh
+    resetConversationMeta(); // the discarded conversation is gone; next send starts fresh
     try { await deleteConversation(id); } catch { /* best effort */ }
     onHistoryChange(id);
   }
@@ -457,22 +484,9 @@ export async function resumePendingAnswer({ onLoad } = {}) {
     return false;
   }
 
-  // Reopen the conversation, mirroring applyLoadedConversation.
-  controller?.abort();
-  controller = null;
-  generation++;
-  const gen = generation;
-  history.length = 0;
-  history.push(...msgs);
-  currentId = pending.convId;
-  convTitle = record.title || null;
-  convCreatedAt = record.createdAt || Date.now();
-  convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
-  convEmbeds = Array.isArray(record.embeds) ? record.embeds : [];
-  convIncognito = false;
-  convProjectId = record.projectId || null;
-  setActiveProject(convProjectId);
-  renderStoredConversation(msgs, convEmbeds);
+  // Reopen the conversation — the pending pointer, not the sidebar, chose
+  // it, and it stays armed until recovery settles below.
+  const gen = openConversationRecord(pending.convId, record);
   if (onLoad) {
     try { onLoad(record); } catch { /* settings restore is best-effort */ }
   }
@@ -496,15 +510,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   if (gen !== generation || reason === "aborted") return false; // user navigated away while polling
   clearPending();
   if (recovered) {
-    setText(turn, recovered.text);
-    if (recovered.stats) {
-      turn.model = recovered.stats.model || "";
-      turn.doneStats = recovered.stats;
-      renderStats(turn, recovered.stats);
-    }
-    history.push({ role: "assistant", content: recovered.text });
-    ackAnswer(pending.requestId);
-    await persistConversation(opts);
+    await deliverRecoveredAnswer(turn, recovered, pending.requestId, opts);
     return true;
   }
   setError(
@@ -901,16 +907,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   // the outcome is now decided here, so the pointer has done its job.
   clearPending();
   if (recovered) {
-    acc = recovered.text;
-    setText(turn, acc);
-    if (recovered.stats) {
-      turn.model = recovered.stats.model || "";
-      turn.doneStats = recovered.stats;
-      renderStats(turn, recovered.stats);
-    }
-    history.push({ role: "assistant", content: acc });
-    ackAnswer(requestId);
-    await persistConversation(opts);
+    await deliverRecoveredAnswer(turn, recovered, requestId, opts);
     return;
   }
 
