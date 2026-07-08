@@ -49,6 +49,7 @@ import {
 } from "./conversation.js";
 import { runGoogleMapsEnrichment, runShodanEnrichment } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
+import { hfIntent, hfSearch } from "./hf.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
@@ -863,6 +864,46 @@ async function runSearches(ctx, queries, round) {
       },
     });
     addSources(state, result.items);
+  }
+  await maybeHfSearch(ctx, batch, round);
+}
+
+// Hugging Face Hub search alongside a wave's Exa searches — only when the
+// question explicitly targets Hugging Face (hfIntent on the latest user
+// message, so an ordinary question costs nothing and shows no spurious
+// step), capped at 3 waves per request. Uses the wave's first planned query
+// (the most on-topic angle; every planned query is self-contained per the
+// triage rules). Runs AFTER the Exa batch is processed so source numbering
+// stays deterministic. Fully fail-soft: an HF API failure degrades to the
+// Exa-only registry. The results are ordinary registry sources — the
+// per-owner diversity keying in sources.js (diversityKeyOf) keeps the
+// domain cap meaningful for them. HF Hub search is free — nothing is
+// billed or counted against the Exa search quota.
+const MAX_HF_SEARCHES = 3;
+async function maybeHfSearch(ctx, batch, round) {
+  const { env, log, state } = ctx;
+  if (!batch.length || !hfIntent(ctx.lastUser)) return;
+  if ((state.hfSearchCount || 0) >= MAX_HF_SEARCHES) return;
+  state.hfSearchCount = (state.hfSearchCount || 0) + 1;
+  const stepId = `hf${round}`;
+  ctx.step(stepId, "Searching Hugging Face Hub…");
+  try {
+    const { items } = await hfSearch(env, log, batch[0]);
+    if (!items.length) {
+      ctx.stepDone(stepId, "Hugging Face Hub: no matching models, datasets, or papers");
+      return;
+    }
+    const before = state.sources.length;
+    addSources(state, items);
+    const added = state.sources.length - before;
+    ctx.stepDone(
+      stepId,
+      `Hugging Face Hub: ${items.length} result${items.length === 1 ? "" : "s"} (${added} new source${added === 1 ? "" : "s"})`,
+      items.map((i) => i.title),
+    );
+  } catch (err) {
+    log.warn("hf.search_failed", { error: err?.message || String(err) });
+    ctx.stepDone(stepId, "Hugging Face Hub search unavailable — continuing with web results");
   }
 }
 

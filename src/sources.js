@@ -29,6 +29,33 @@ export function hostnameOf(url) {
   }
 }
 
+// The diversity-cap key for a URL. Normally the hostname — but huggingface.co
+// is a PLATFORM hosting millions of independently-authored repos (the same
+// way subdomains separate independent blogs): keying the whole hub as one
+// origin would cap an HF-focused research question (the HF Hub search in
+// src/hf.js feeds sources here) at 3 hub sources TOTAL, starving exactly the
+// registry that question needs. Key hf.co URLs by owner namespace instead
+// (`huggingface.co/<owner>`), so the cap still does its real job — no single
+// AUTHOR dominating (3 models from one org still cap) — while different
+// owners count as the different origins they are. Papers share one
+// `huggingface.co/papers` bucket (they're editorially independent arXiv
+// mirrors, but capping the paper firehose at 3 is the conservative choice).
+export function diversityKeyOf(url) {
+  const host = hostnameOf(url);
+  if (host !== "huggingface.co") return host;
+  try {
+    const segs = new URL(url).pathname.split("/").filter(Boolean);
+    if (!segs.length) return host;
+    if (segs[0] === "papers") return `${host}/papers`;
+    if (segs[0] === "datasets" || segs[0] === "spaces") {
+      return segs[1] ? `${host}/${segs[1]}` : host;
+    }
+    return `${host}/${segs[0]}`;
+  } catch {
+    return host;
+  }
+}
+
 // Adds search-result items to the registry. Sources beyond DOMAIN_CAP for
 // their origin are held in an overflow list rather than dropped outright —
 // backfillOverflowSources() uses them if the capped registry ends up short
@@ -40,13 +67,13 @@ export function addSources(state, items) {
   for (const item of items || []) {
     if (!item?.url || state.byUrl.has(item.url)) continue;
     if (state.sources.length >= state.plan.maxSources) return;
-    const host = hostnameOf(item.url);
-    const count = state.domainCounts.get(host) || 0;
+    const key = diversityKeyOf(item.url);
+    const count = state.domainCounts.get(key) || 0;
     if (count >= DOMAIN_CAP) {
       state.sourceOverflow.push(item);
       continue;
     }
-    state.domainCounts.set(host, count + 1);
+    state.domainCounts.set(key, count + 1);
     pushSource(state, item);
   }
 }

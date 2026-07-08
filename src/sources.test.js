@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { hostnameOf, addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
+import { hostnameOf, diversityKeyOf, addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
 
 function freshState(maxSources = 10) {
   return {
@@ -146,5 +146,37 @@ describe("sourceDigest", () => {
 
   test("empty source list returns an empty string", () => {
     assert.equal(sourceDigest([], 1000), "");
+  });
+});
+
+describe("diversityKeyOf — hf.co owner-namespace keying", () => {
+  test("non-HF URLs key by hostname as before", () => {
+    assert.equal(diversityKeyOf("https://www.bbc.com/news/article"), "bbc.com");
+  });
+
+  test("HF models/datasets/spaces key by owner; papers share one bucket", () => {
+    assert.equal(diversityKeyOf("https://huggingface.co/KBLab/kb-whisper-large"), "huggingface.co/KBLab");
+    assert.equal(diversityKeyOf("https://huggingface.co/datasets/vtllms/sealqa"), "huggingface.co/vtllms");
+    assert.equal(diversityKeyOf("https://huggingface.co/spaces/foo/bar"), "huggingface.co/foo");
+    assert.equal(diversityKeyOf("https://huggingface.co/papers/2505.17538"), "huggingface.co/papers");
+    assert.equal(diversityKeyOf("https://huggingface.co/google"), "huggingface.co/google");
+    assert.equal(diversityKeyOf("https://huggingface.co/"), "huggingface.co");
+  });
+
+  test("the domain cap therefore applies per HF owner, not per hub", () => {
+    const state = freshState(10);
+    addSources(state, [
+      { url: "https://huggingface.co/orgA/m1", title: "a1" },
+      { url: "https://huggingface.co/orgA/m2", title: "a2" },
+      { url: "https://huggingface.co/orgA/m3", title: "a3" },
+      { url: "https://huggingface.co/orgA/m4", title: "a4" }, // 4th from orgA -> overflow
+      { url: "https://huggingface.co/datasets/orgB/d1", title: "b1" }, // different owner: admitted
+      { url: "https://huggingface.co/orgC/m1", title: "c1" },
+    ]);
+    const urls = state.sources.map((s) => s.url);
+    assert.ok(!urls.includes("https://huggingface.co/orgA/m4"));
+    assert.ok(urls.includes("https://huggingface.co/datasets/orgB/d1"));
+    assert.ok(urls.includes("https://huggingface.co/orgC/m1"));
+    assert.equal(state.sourceOverflow.length, 1);
   });
 });

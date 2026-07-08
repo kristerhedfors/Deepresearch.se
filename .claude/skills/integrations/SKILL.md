@@ -4,7 +4,7 @@ description: >-
   Load when integrating or modifying an external data source — Berget the LLM
   provider (src/berget.js), Exa web search (src/exa.js), OpenStreetMap Nominatim
   reverse geocoding (src/geocode.js), Shodan host intelligence (src/shodan.js),
-  or Google Maps / Street View (src/googlemaps.js) — or adding a new enrichment
+  Google Maps / Street View (src/googlemaps.js), or Hugging Face Hub search (src/hf.js) — or adding a new enrichment
   in the same deterministic no-function-calling pattern.
 ---
 
@@ -383,3 +383,49 @@ wires it (before any model call, alongside the Shodan enrichment).
   account/session identifier. Server-side only; the API key is used solely for
   the internal fetches and never appears in a log, a context block, or the
   citable links (those are Google's keyless Maps URLs).
+
+## Hugging Face Hub search — a search-phase source (no knob)
+
+`src/hf.js` + `src/pipeline.js`'s `maybeHfSearch`: when the latest user
+message EXPLICITLY targets Hugging Face (`hfIntent` — "hugging face" /
+"huggingface" / hf.co / "HF hub"; a bare "HF" or an org/name path is
+deliberately NOT enough), each search wave also queries the HF Hub API and
+the hits join the numbered source registry as ordinary citable sources.
+Unlike Shodan/Maps there is NO settings knob: like Exa, only the AI-derived
+search terms cross the wire (never the conversation or identity), the API is
+free, and it's gated behind the web-search toggle by virtue of living inside
+the search phase.
+
+- **Auth:** `HUGGINGFACE_API_TOKEN` (Worker secret, confirmed present) rides
+  as a Bearer header when set — OPTIONAL by design (public search works
+  without it; the token buys rate-limit headroom and gated-repo visibility).
+- **Endpoint behavior (established empirically 2026-07-08 — re-verify if
+  results look off):**
+  - `GET /api/models?search=` and `/api/datasets?search=` are NAME-substring
+    matches: verbose research queries return NOTHING ("swedish speech
+    recognition" → 0 hits; "whisper swedish" → hits). Hence `hfTerms`
+    (noise-word stripping) + `hfAttempts` (token-drop ladder: all terms →
+    last two → single longest, retried until an attempt returns hits).
+    List responses already carry downloads/likes/pipeline_tag/lastModified —
+    no per-hit detail fetch needed. `sort=downloads` for determinism and the
+    common "most used" intent.
+  - `GET /api/papers/search?q=` IS verbose-friendly (full-text) — gets the
+    raw planned query. Items nest as `{paper: {id, title, summary,
+    publishedAt}}`.
+  - `/api/quicksearch` exists but is also name-matching AND shallow
+    (id + trendingWeight only) — rejected.
+- **Pipeline wiring:** runs AFTER a wave's Exa batch is processed (source
+  numbering stays deterministic), uses the wave's FIRST planned query,
+  capped at 3 waves/request (`MAX_HF_SEARCHES`), caps 4 models + 4 datasets
+  + 3 papers per search. Emits a step naming the service ("Searching
+  Hugging Face Hub…", details = hit titles); NO step when intent is absent.
+  Fail-soft in every branch (a failed endpoint contributes zero items;
+  failure degrades to the Exa-only registry). HF searches are free — never
+  billed or counted against Exa search quota.
+- **Diversity cap interaction** (`src/sources.js` `diversityKeyOf`): hf.co
+  URLs are capped per OWNER namespace (`huggingface.co/<owner>`; papers
+  share one `huggingface.co/papers` bucket), not per hostname — otherwise
+  the 3-per-domain cap would throttle an HF-focused question to 3 hub
+  sources total. The cap still stops any single org dominating.
+- **Eval:** bench questions kind `hf` (`tests/bench-questions.mjs`,
+  `hf_*` ids) exercise it; A/B history in `tests/EVAL-BENCH-FINDINGS.md`.

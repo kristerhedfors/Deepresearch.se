@@ -86,7 +86,7 @@ Server (`src/`):
 | `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate) |
-| `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-domain diversity cap + overflow backfill, the numbered digest |
+| `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-origin diversity cap (per-domain; per-OWNER for huggingface.co) + overflow backfill, the numbered digest |
 | `enrichment.js` | Opt-in pre-pipeline context enrichments (Shodan, Google Maps incl. the Street View vision-describe helper) — appended as labeled blocks before any model call |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
@@ -95,6 +95,7 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `exa.js` | Exa web search |
+| `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |

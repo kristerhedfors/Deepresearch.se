@@ -407,6 +407,67 @@ export const BENCH_QUESTIONS = [
     ],
     notes: "Numeric + contested + recency; a strong all-round test.",
   },
+  // --- Hugging Face Hub research (added 2026-07-08, kind "hf") -------------
+  // Exercise "deep research within Hugging Face": questions whose best
+  // sources live on the HF Hub itself (model/dataset pages with live
+  // download/license metadata), added alongside the src/hf.js Hub-search
+  // integration. Append-only like everything above.
+  {
+    id: "hf_swedish_asr",
+    question:
+      "Which models on Hugging Face are most widely used for Swedish automatic speech recognition, who published them, and what training data are they based on?",
+    lang: "en",
+    kind: "hf",
+    rubric: [
+      "Names concrete Swedish ASR models hosted on Hugging Face (e.g. KBLab's kb-whisper family or Swedish Whisper fine-tunes)",
+      "Identifies the publishers behind them (e.g. KBLab / the National Library of Sweden)",
+      "Says something sourced about their training data or base model (Whisper) ",
+      "Cites huggingface.co model or paper pages among the sources",
+    ],
+    notes: "Hub-centric: the authoritative answer lives on hf.co model cards.",
+  },
+  {
+    id: "hf_deep_research_datasets",
+    question:
+      "What evaluation datasets are available on Hugging Face for benchmarking web-search or deep-research AI agents, and what does each of them measure?",
+    lang: "en",
+    kind: "hf",
+    rubric: [
+      "Names at least two real benchmark datasets hosted on Hugging Face (e.g. SealQA, DeepSearchQA, BrowseComp variants, GAIA)",
+      "Describes what each named benchmark measures (search under noisy results, multi-hop causal chains, browsing, ...)",
+      "Distinguishes datasets by access or format where relevant (gated, encrypted answers, short-answer vs rubric)",
+      "Cites huggingface.co dataset pages or their papers among the sources",
+    ],
+    notes: "The self-referential case: researching eval sets ON the hub.",
+  },
+  {
+    id: "hf_gated_llama",
+    question:
+      "Are Meta's Llama models gated on Hugging Face, and what does gated access mean in practice for someone who wants to download the weights?",
+    lang: "en",
+    kind: "hf",
+    rubric: [
+      "States that meta-llama repositories are gated on Hugging Face",
+      "Explains the practical gate: accepting Meta's license / requesting access with an HF account before download",
+      "Mentions the license/terms dimension (community license, acceptable-use)",
+      "Cites huggingface.co pages (model cards or docs) among the sources",
+    ],
+    notes: "Policy + platform mechanics; answer verifiable on hf.co itself.",
+  },
+  {
+    id: "hf_swedish_llms",
+    question:
+      "Vilka \u00f6ppna svenska spr\u00e5kmodeller finns publicerade p\u00e5 Hugging Face, vilka organisationer st\u00e5r bakom dem, och hur skiljer de sig \u00e5t?",
+    lang: "sv",
+    kind: "hf",
+    rubric: [
+      "Namnger konkreta svenska spr\u00e5kmodeller p\u00e5 Hugging Face (t.ex. AI Swedens GPT-SW3-familj, KBLab-modeller)",
+      "Anger organisationerna bakom dem (AI Sweden, KBLab/Kungliga biblioteket m.fl.)",
+      "Beskriver n\u00e5gon skillnad (storlek, tr\u00e4ningsdata, licens, anv\u00e4ndningsomr\u00e5de) med k\u00e4llst\u00f6d",
+      "Citerar huggingface.co-sidor bland k\u00e4llorna",
+    ],
+    notes: "Svenska + hub-centriskt; kartl\u00e4ggningsfr\u00e5ga med verifierbara svar.",
+  },
 ];
 
 // Convenience: filter helpers the runner uses for env overrides.
