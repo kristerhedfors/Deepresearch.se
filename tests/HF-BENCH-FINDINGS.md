@@ -84,14 +84,53 @@ ephemeral). This ledger is the durable record.
 - **SealQA drift**: record `effective_year` distribution; the upstream set
   refreshes (pull fresh rows near a battery, don't cache across weeks).
 
-## Round 0 — 2026-07-08 (harness smoke test)
+## Round 0 — 2026-07-08 (baseline, pre-decomposition pipeline)
 
-See the dated entry appended by the first real run. The harness was built
-alongside the triage-decomposition pipeline change (complexity
-classification + sub-questions + dependent-hop gap rule + conflicts
-surfacing); the intended first use is a before/after on that change once it
-deploys: `HF_DATASET=deepsearchqa HF_SAMPLE=25 HF_SEED=1 EVAL_BUDGET_S=120`
-against the pre-change deployment (baseline), then the same command against
-the post-change deployment. DeepSearchQA is the primary A/B set (multi-hop
-is what the change targets); SealQA `seal_hard` is the secondary
-(freshness/conflicting-source calibration).
+**Run config (hold fixed for the A/B):** `HF_SAMPLE=25 HF_SEED=1
+EVAL_BUDGET_S=120 EVAL_CONCURRENCY=2`, answer AND judge model
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506`, against the live site
+running `main@852dbe7` — i.e. BEFORE the triage-decomposition change
+(complexity classification + sub-questions + dependent-hop gap rule +
+conflict surfacing) deploys. That change is the reason this baseline
+exists: it targets multi-hop, and DeepSearchQA is multi-hop by
+construction.
+
+**Results:**
+
+| dataset | accuracy | partial-mean | failed | leak-tainted |
+|---|---|---|---|---|
+| `google/deepsearchqa` (eval, seed-1 25-subset) | **8.0%** (2/25) | 16.0% | 0 | 2 |
+| `vtllms/sealqa` seal_hard (test, seed-1 25-subset) | **16.0%** (4/25) | 16.0% | 0 | 3 |
+
+**Reading the numbers:** low absolute scores are EXPECTED and are the
+point — both sets are built to defeat memorization and naive
+single-wave search, and even purpose-built deep-research agents score
+far below ceiling on them. 0 failed runs out of 50 means the pipeline
+itself was stable throughout; every miss was a genuine research miss
+(graded answer ≠ gold), not an error.
+
+**Observed failure patterns (from reading the per-run records):**
+- DeepSearchQA's misses cluster on *set answers requiring exhaustive
+  enumeration from official statistics portals* (NCES, Statistics
+  Canada, UK Hansard, data.nysed.gov): Exa highlights carry prose, not
+  data tables, so the pipeline can name SOME set elements (the 0.25–0.5
+  partials) but can't enumerate all — a retrieval-modality limit, not a
+  planning one. The decomposition change may help the multi-hop chains
+  but will not conjure table data out of search highlights; if the A/B
+  shows partial-mean rising while strict accuracy stays flat, that's
+  why.
+- SealQA misses are dominated by "how many X currently…" counting
+  questions where sources conflict or trail the present — the exact
+  calibration trap the set is built around.
+- The leak detector earned its keep immediately: 5/50 runs cited a
+  github.com/HF mirror of the underlying data (e.g. a Maddison-Project
+  R-package repo) — flagged, kept in the score, worth watching in
+  comparisons.
+
+**Next:** once the decomposition change (branch
+`claude/deep-research-architecture-eval-h8p4nx`) is merged and deployed,
+rerun BOTH rows with the identical config above and append the deltas
+here. Expectation to test: multi-hop chains (DeepSearchQA) improve via
+sub-question coverage audit + dependent-hop queries; SealQA calibration
+improves via conflict surfacing; `simple`-complexity capping should not
+affect these sets (few of their questions triage as simple).
