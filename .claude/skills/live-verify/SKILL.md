@@ -147,6 +147,19 @@ description: >-
   window (the parked answer is purged by then) — the honest limit, since
   iOS offers web pages no way to keep a stream itself alive in the
   background (no service-worker longevity, no Background Fetch on iOS).
+- **Mid-generation idle guard (the "stuck after a few tokens" fix,
+  2026-07-08)**: the connect timeout bounds time-to-FIRST-response only; a
+  Berget stream going silent MID-generation (socket open, no chunks, no
+  EOF) used to hang the pipeline forever — and the 15s SSE keepalives kept
+  the connection alive AND kept stamping the client watchdog's
+  `lastByteAt`, so NEITHER side ever timed out: an infinite spinner by
+  construction. `streamCompletion` now passes `idleMs: 60s` to
+  `consumeChatStream` (the guard machinery the enrichment describe call
+  already used). A stall near the start of the answer (<400 chars) gets
+  one retry with a `discard_text` so the retried answer replaces the
+  rendered tokens; a stall deep into a long answer surfaces as an honest
+  `(ref …)` error. Log event: `chat.stream_stalled`
+  (model/attempt/received).
 - Stream errors shown in the UI carry a short `(ref xxxxxxxx)` — the
   first 8 chars of the request id, quotable straight into a log search.
 - `BERGET_URL` env override exists solely so local tests can point the
