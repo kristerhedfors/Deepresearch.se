@@ -62,12 +62,14 @@ import {
   directPrompt,
   gapPrompt,
   notesPrompt,
+  quizPrompt,
   revisePrompt,
   searchOffPrompt,
   synthPrompt,
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
+import { normalizeQuiz, quizIntent } from "./quiz.js";
 
 // Declared shapes for the three JSON planning phases — a hardening layer over
 // the raw model JSON (src/schema.js), applied BEHIND the existing fail-soft
@@ -163,15 +165,39 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     stepDone,
   };
 
+  // Inline quiz mode (src/quiz.js): a deterministic gate on the latest user
+  // message ("quiz me on X…"). Gated on state.quizzes so only the /api/chat
+  // channel gets the interactive event — the MCP channel builds its own
+  // state without the flag and keeps getting a plain text answer. The quiz
+  // replaces synthesis as the answer phase; material is the conversation
+  // (attachments/project blocks ride inside it) plus, when triage chose
+  // research, the search wave's source registry. Fully fail-soft: an
+  // unusable quiz JSON falls through to the normal answer path below.
+  const quizReq = state.quizzes ? quizIntent(ctx.lastUser) : null;
+
   // Web search off: answer purely from Berget — no triage, no Exa.
-  if (!state.webSearch) return runWithoutSearch(ctx);
+  if (!state.webSearch) {
+    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
+    return runWithoutSearch(ctx);
+  }
 
   const decision = await runTriage(ctx);
-  if (decision.action === "direct") return runDirectReply(ctx);
+  if (decision.action === "direct") {
+    // Quiz from the material already in front of us (conversation, attached
+    // documents, project materials) — triage decided no web sources needed.
+    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
+    return runDirectReply(ctx);
+  }
   if (decision.action === "clarify") return runClarify(ctx, decision.question);
 
   // ---- Phase 2: initial search wave -------------------------------------
   await runSearches(ctx, decision.queries, 1);
+  // Quiz from web research: one search wave gathers the material, then the
+  // quiz IS the answer — gap rounds, synthesis, and validation don't apply
+  // (nothing streams that could be fact-checked; the quiz's own prompt pins
+  // every question to the collected sources). On failure, fall through and
+  // the searches feed the normal research answer instead.
+  if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
   // ---- Phase 2.5: notes digest (budget-gated, mid/high tiers) ------------
   await maybeDigest(ctx);
   // ---- Phase 3: gap-check iterations (budgeted) -------------------------
@@ -237,6 +263,52 @@ async function runTriage(ctx) {
     [...queries, ...state.subquestions.map((s) => `Sub-question: ${s}`)],
   );
   return { ...decision, queries };
+}
+
+// The quiz answer phase (see the quizReq gate in runPipeline). One JSON call
+// on the reliable JSON model — like the planning phases, because a broken
+// quiz JSON means no quiz at all, so JSON reliability outranks the user's
+// answer-model choice — hardened by normalizeQuiz. On success: the intro
+// streams as the assistant text (that's what history/chatlog/recovery hold),
+// then ONE `quiz` status event carries the full question set — alternatives,
+// the correct index, explanations — and the client (public/js/quiz.js) runs
+// the whole interaction locally: sequential questions, multiple-choice plus
+// a free-text field, immediate feedback, final score. Returns true when the
+// quiz was delivered; false lets the caller fall through to the normal
+// answer path (fail-soft — a quiz request never errors the chat).
+async function runQuizGeneration(ctx, quizReq) {
+  const { state, lastUser, convText } = ctx;
+  ctx.step("quiz", "Writing quiz questions…");
+  const digest = sourceDigest(state.sources, state.plan.digestCap);
+  const raw = await jsonPhase(ctx, {
+    label: "quiz",
+    statKey: "quiz",
+    maxTokens: 3000,
+    messages: [
+      { role: "system", content: quizPrompt(quizReq.questions, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      {
+        role: "user",
+        content:
+          `Quiz request (latest user message):\n${lastUser}\n\nConversation and attached material:\n${convText}\n\n` +
+          (digest ? `Numbered web sources gathered as quiz material:\n${digest}\n` : ""),
+      },
+    ],
+  });
+  const quiz = normalizeQuiz(raw, quizReq.questions);
+  if (!quiz) {
+    ctx.stepDone("quiz", "Couldn't build a quiz from this material — answering normally");
+    return false;
+  }
+  // Metadata for the chat log / done stats; the full quiz for chatlog meta
+  // (the agentic-debugging workflow reads what users were actually asked).
+  state.quiz = quiz;
+  ctx.stepDone(
+    "quiz",
+    `Quiz ready — ${quiz.questions.length} question${quiz.questions.length === 1 ? "" : "s"}`,
+  );
+  emitChunked(ctx, quiz.intro);
+  ctx.emit({ status: { type: "quiz", quiz } });
+  return true;
 }
 
 async function runDirectReply(ctx) {

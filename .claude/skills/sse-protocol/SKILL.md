@@ -69,6 +69,29 @@ unknown `status` types (forward compatibility).
   export (id-numbered `[Embedded element #N: …]` lines) — any NEW event
   type that renders a persistent turn-body element must do the same (see
   the **add-research-source** skill, section 6).
+- `{"status":{"type":"quiz","quiz":{"title":"…","intro":"…","questions":[{"question":"…","alternatives":["…","…"],"correct":1,"explanation":"…"}]}}}`
+  — the inline-quiz capability (src/quiz.js's deterministic `quizIntent` gate
+  + src/pipeline.js's `runQuizGeneration`; /api/chat channel only, gated by
+  `state.quizzes` — the MCP channel keeps getting plain text). The quiz
+  REPLACES synthesis as the answer: the `intro` streams first as ordinary
+  deltas (that's the assistant message history/chatlog/answer-recovery hold),
+  then this ONE event carries the full hardened question set — `correct` is
+  the 0-based index into `alternatives` (the key ships to the client
+  deliberately: multiple-choice grades locally; it's a self-study tool, not
+  an exam). The client (public/js/quiz.js) renders an interactive card in the
+  turn body: sequential questions, the alternatives as buttons PLUS a
+  free-text "own words" field (graded via `POST /api/quiz/grade`, fail-soft
+  to a visible "ungraded"), immediate feedback with explanations, and a final
+  score verdict with a recap. Persistence follows the embed rules above:
+  recorded in `stream.js`'s `convEmbeds` registry (kind `"quiz"`, with the
+  user's `answers` updated as they're given and a `completed` flag),
+  re-rendered on history load (resuming an unfinished quiz or showing the
+  finished recap), referenced in the copy-text export via `embedRef` — and on
+  completion the score summary is APPENDED to the quiz's assistant message in
+  history (stream.js `quizHooks`) so follow-up questions can discuss the
+  result. Compacted to title + question count in the per-turn research log
+  (`sanitizeResearchEvent`). A dropped stream loses the interactive quiz
+  (answer recovery returns only the intro text) — accepted fail-soft.
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer
