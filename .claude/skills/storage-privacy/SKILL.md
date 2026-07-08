@@ -11,6 +11,21 @@ description: >-
 
 # Storage, encryption & privacy model
 
+## The interaction log — full Q&A logged server-side (ghost opts out)
+
+Since 2026-07-08 (explicit product decision, superseding the earlier
+metadata-only-logs posture): every completed research exchange is logged
+server-side IN FULL — complete question, complete answer, conversation
+as sent, research metadata, errors — to the D1 `chat_logs` table
+(`src/chatlog.js`; read API `/api/admin/chatlogs`, built for the agentic
+debugging workflow — see the **chat-logs** skill). The ONE exception is
+the ghost (incognito) toggle below: an incognito conversation sends
+`incognito: true` and no log row is ever written for it. This log is a
+separate thing from chat HISTORY (the sidebar store documented next) —
+history remains browser-first and encrypted; the log is the server's
+own product-improvement record. Keep `/help/`, the privacy notice, and
+the ghost button titles consistent with this whenever any of it changes.
+
 ## Chat history — encrypted (project chats excepted); browser-local, with an opt-out cloud copy
 
 Conversations are encrypted client-side before they rest anywhere
@@ -77,18 +92,22 @@ directly LEFT of the account button (`#ghostbtn`, wired in `app.js`,
 state in `stream.js`). Pressed BEFORE the first message of a fresh
 conversation, that conversation is never written to chat history at
 all — `persistConversation` is a no-op for it, so neither the encrypted
-local store nor the cloud copy ever sees it; it exists only in the
-tab's memory until "New chat"/reload discards it. The choice locks once
+local store nor the cloud copy ever sees it — AND every send carries
+`incognito: true`, which keeps it out of the server's interaction log
+too (`src/chatlog.js` — see "The interaction log" above); it exists
+only in the tab's memory until "New chat"/reload discards it. The
+choice locks once
 the conversation has started, in either direction — an ordinary chat
 can't retroactively vanish, an incognito one can't retroactively
-persist. Once an ORDINARY conversation starts the button is REMOVED
+persist (or retroactively un-log). Once an ORDINARY conversation starts
+the button is REMOVED
 from the header (the choice can no longer be made, so the affordance
 goes away); an incognito conversation keeps it visible-but-disabled as
 the "nothing is being saved" indicator. Resets to off on every new
 chat; loading a saved conversation is by definition not incognito.
-Hidden entirely when encrypted history isn't available (same
-`historyAvailable()` check as the history button — with no store
-there's nothing to keep out of). The mini-row below the account button
+Always shown for a fresh conversation — it used to hide when encrypted
+history wasn't available, but the server-log opt-out is meaningful
+regardless of local storage. The mini-row below the account button
 that the ghost used to occupy now holds `#copybtn` — the
 copy-conversation-to-clipboard button (`conversationCopyText` in
 `message-content.js`): plain-text "User:/Assistant:" turns with images

@@ -8,11 +8,16 @@
 //   DELETE /api/admin/users/:id
 //   PUT    /api/admin/config         partial config patch -> full config
 //   POST   /api/admin/alerts/:id/ack dismiss one operational alert
+//   GET    /api/admin/chatlogs       full-visibility chat interaction log,
+//   GET    /api/admin/chatlogs/:id   newest first (src/chatlog.js — built for
+//                                    the agentic debugging workflow; see the
+//                                    chat-logs skill for query params)
 //
 // Accounts are provisioned by Google sign-in (src/google.js) — there is no
 // create-user endpoint; the admin manages roles, status, and quotas.
 
 import { acknowledgeAlert, listAlerts } from "./alerts.js";
+import { handleChatLogs } from "./chatlog.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -73,6 +78,9 @@ export async function handleAdminApi(request, env, url, log, identity) {
       const config = await saveConfig(env, body);
       log.info("admin.config_saved", {});
       return jsonResponse({ config });
+    }
+    if ((path === "/chatlogs" || /^\/chatlogs\/\d+$/.test(path)) && method === "GET") {
+      return handleChatLogs(request, env, url, log);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

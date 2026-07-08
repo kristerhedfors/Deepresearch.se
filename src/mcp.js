@@ -201,8 +201,20 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
     return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
   } catch (err) {
     const message = err?.message || String(err);
-    // Metadata only — never the question or answer content.
     log.error("mcp.tool_failed", { tool: name, user_id: identity?.id, error: message });
+    // Failed interactions land in the full-visibility chat log too (the
+    // success path records inside runDeepResearch, where the pipeline state
+    // lives). Dynamic import keeps the pure helpers above import-light.
+    const { recordChatLog } = await import("./chatlog.js");
+    await recordChatLog(env, log, {
+      request_id: requestId,
+      user_id: String(identity?.id ?? ""),
+      channel: "mcp",
+      conversation: [{ role: "user", content: question }],
+      status: "error",
+      error: message,
+      web_search: args.web_search !== false,
+    });
     return jsonResponse(jsonRpcResult(id, toolResult("Research failed: " + message, true)));
   }
 }
@@ -294,7 +306,41 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     // Nothing usable came back — surface the soft error if one was emitted.
     throw new Error(emittedError || "The pipeline produced no answer.");
   }
-  return withSources(finalText, state.sources);
+  const result = withSources(finalText, state.sources);
+
+  // Full-visibility interaction log (src/chatlog.js), same table as
+  // /api/chat, channel 'mcp'. MCP has no ghost toggle — every tool call is
+  // an explicit machine-to-machine request. Fails soft; dynamic import like
+  // the other heavy deps above.
+  const { recordChatLog } = await import("./chatlog.js");
+  await recordChatLog(env, log, {
+    request_id: requestId,
+    user_id: String(identity?.id ?? ""),
+    channel: "mcp",
+    model,
+    json_model: jsonModel,
+    conversation,
+    answer: result,
+    status: emittedError ? "error" : "ok",
+    error: emittedError,
+    web_search: webSearch,
+    budget_s: budgetS,
+    rounds: state.iterations,
+    searches: state.searchCount,
+    sources: state.sources.length,
+    prompt_tokens: state.totals.prompt_tokens + state.jsonTotals.prompt_tokens,
+    completion_tokens: state.totals.completion_tokens + state.jsonTotals.completion_tokens,
+    duration_ms: Date.now() - state.startedAt,
+    meta: {
+      queries: [...state.ranQueries],
+      sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
+      complexity: state.complexity ?? null,
+      subquestions: state.subquestions ?? [],
+      cached_searches: state.cachedSearchCount || 0,
+    },
+  });
+
+  return result;
 }
 
 // Which model runs the JSON planning phases — replicated from chat.js's

@@ -63,10 +63,12 @@
     <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
     (EU-hosted) and web searches go through
     <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
-    <div class="privacy-flag"><b>Privacy in one line:</b> your conversations
-    are never stored on our server — chat history lives only in your browser,
-    encrypted (see "Chat history" below). The server keeps metadata for
-    quotas (token counts, search counts, durations), never message content.</div>
+    <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
+    lives in your browser, encrypted (see "Chat history" below). To improve
+    the service, the server keeps a log of completed research interactions —
+    the question, the answer, and the research steps — <b>unless you start
+    the conversation with the ghost (incognito) toggle</b>, which keeps it
+    out of chat history and the server's log alike.</div>
   </section>
 
   <section>
@@ -97,9 +99,10 @@
     time target, and web-search setting it was sent with); the pencil
     renames it, the trash bin deletes it.</p>
     <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
-    modern, larger-capacity successor to <code>localStorage</code>) — never
-    on our server. Nothing about a conversation, not even its title, is
-    ever sent anywhere to be saved.</p>
+    modern, larger-capacity successor to <code>localStorage</code>). The
+    server never holds a readable copy of your saved history; separate from
+    history, completed exchanges go to the server's interaction log unless
+    the conversation was started incognito (see "Privacy, in full" below).</p>
     <h3>How the encryption works</h3>
     <p>Every conversation is encrypted (AES-256-GCM) before it touches your
     browser's storage. The key comes from the server, derived per-account
@@ -317,12 +320,19 @@
     <h2>Privacy, in full</h2>
     <ul>
       <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
-        answers; never stored on our server. Saved locally in your browser,
+        answers. Saved locally in your browser,
         encrypted (see "Chat history" above) — erased only when you delete
         a conversation there or clear this browser's site data. Chats inside
         a <b>project</b> are the exception: they're indexed for retrieval and
         stored readable, like the project's documents (see "The exception"
         above).</li>
+      <li><b>The interaction log</b>: to improve the service, the server
+        logs each completed exchange — your question, the answer, the
+        searches run and sources found, timings, and any error. Start the
+        conversation with the <b>ghost (incognito) toggle</b> and nothing
+        content-derived is logged for it (usage numbers for quotas are still
+        counted). The choice is made before the first message and locks for
+        that conversation.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an
@@ -339,9 +349,10 @@
         (or the photo's coordinates) is sent to Google Maps Platform to fetch
         the place, its Street View coverage and a road map — never your whole
         question or anything identifying you.</li>
-      <li><b>What our server keeps</b>: your account (Google email, name)
-        and per-request usage numbers — token counts, search counts,
-        durations — used for the quota bars. No message text, ever.</li>
+      <li><b>What our server keeps</b>: your account (Google email, name),
+        per-request usage numbers — token counts, search counts, durations —
+        used for the quota bars, and the interaction log above (which the
+        ghost toggle opts a conversation out of).</li>
       <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
         <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
       <li><b>In your browser only</b>: model choice, time target, and the

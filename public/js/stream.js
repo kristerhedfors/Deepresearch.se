@@ -137,7 +137,9 @@ let onHistoryChange = () => {};
 
 // Incognito (the header's ghost toggle): while true, persistConversation
 // is a no-op — the conversation exists only in this tab's memory, never
-// written to the encrypted local store or the cloud copy. Set only before
+// written to the encrypted local store or the cloud copy — AND every send
+// carries `incognito: true` so the server keeps the exchange out of its
+// full-visibility interaction log too (src/chatlog.js). Set only before
 // the first message of a fresh conversation (app.js locks the toggle once
 // the conversation has started) and reset by clearHistory / loading a
 // saved conversation, so a chat can't retroactively vanish and a
@@ -724,6 +726,10 @@ export async function sendMessage(text, opts) {
       web_search: opts.webSearch,
     };
     if (opts.model) payload.model = opts.model;
+    // Ghost toggle: tells the server to keep this exchange out of the
+    // server-side interaction log too (src/chatlog.js) — the same choice
+    // that keeps it out of local/cloud chat history.
+    if (convIncognito) payload.incognito = true;
     // Raw GPS coordinates ride separately from the message text — the
     // Worker resolves them to a place name (src/geocode.js) and appends
     // that as its own context block, rather than the client guessing.

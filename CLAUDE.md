@@ -44,10 +44,16 @@ git push origin main
    ciphertext in BOTH the browser and (if the cloud knob is on) R2 — the ONLY
    readable exceptions are RAG-indexed material and project chats, because
    retrieval needs plaintext. The encryption key is derived server-side and
-   held only in memory, never at rest beside the ciphertext. Logs are
-   metadata-only (never secrets or message content). Outbound requests to
-   third parties carry the minimum (a query, a coordinate, a host) — never the
-   conversation, filename, or account identity.
+   held only in memory, never at rest beside the ciphertext. Since 2026-07-08
+   (explicit product decision) the server ALSO keeps a full-visibility
+   interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
+   exchange's complete question, answer, and research metadata — UNLESS the
+   conversation was started with the ghost (incognito) toggle, the
+   anonymous-chat promise that must keep suppressing the log row
+   (`incognito: true` on `/api/chat`). Secrets never appear in any log.
+   Outbound requests to third parties carry the minimum (a query, a
+   coordinate, a host) — never the conversation, filename, or account
+   identity.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -83,7 +89,8 @@ Server (`src/`):
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
-| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config |
+| `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
+| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config, chatlogs |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
@@ -163,8 +170,11 @@ source rule, the JSON-only reinforcement toggle), `chat.js`
 `pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
-`settings.js` (`parseSettings` coercion, `storageAvailability`), and
-`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec).
+`settings.js` (`parseSettings` coercion, `storageAvailability`),
+`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec), and
+`chatlog.js` (the interaction log's pure logic: truncation markers,
+inline-image scrubbing, row assembly/projection, the text rendering,
+LIKE escaping).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -316,6 +326,10 @@ what docs claim); and update the skill list below plus the skill's
   `x-request-id` / `(ref …)` correlation, and the
   disconnect/answer-recovery/heartbeat/stall-watchdog machinery that only
   reproduces in production.
+- **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
+  D1 `chat_logs`): pulling the latest live questions/answers/errors for
+  debugging (`scripts/chatlogs`, `/api/admin/chatlogs`), the ghost
+  (incognito) opt-out rule, and the row shape/truncation conventions.
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.

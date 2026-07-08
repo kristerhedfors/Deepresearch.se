@@ -55,6 +55,32 @@ CREATE TABLE IF NOT EXISTS alerts (
   last_seen_at INTEGER NOT NULL,
   acknowledged_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS chat_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT,
+  ts INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'chat',
+  model TEXT,
+  json_model TEXT,
+  question TEXT,
+  answer TEXT,
+  conversation_json TEXT,
+  status TEXT NOT NULL DEFAULT 'ok',
+  error TEXT,
+  meta_json TEXT,
+  web_search INTEGER NOT NULL DEFAULT 1,
+  budget_s INTEGER,
+  rounds INTEGER NOT NULL DEFAULT 0,
+  searches INTEGER NOT NULL DEFAULT 0,
+  sources INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  client_gone INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_chat_logs_ts ON chat_logs(ts);
+CREATE INDEX IF NOT EXISTS idx_chat_logs_user_ts ON chat_logs(user_id, ts);
 CREATE TABLE IF NOT EXISTS user_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,

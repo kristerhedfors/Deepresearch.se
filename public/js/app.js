@@ -20,7 +20,6 @@ import { initProjectsUi } from "./projects-ui.js";
 import { loadSettings } from "./settings.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
-import { historyAvailable } from "./history-store.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
 import { readPending } from "./pending-answer.js";
 import {
@@ -170,30 +169,28 @@ document.addEventListener("click", (e) => {
 // Upper right, directly left of the account button: pressed BEFORE the first
 // message, the conversation is never written to chat history — not the
 // encrypted local store, not the cloud copy (stream.js's persistConversation
-// is a no-op for it). The choice is per-conversation and made up front:
-// once an ORDINARY conversation has started the button is removed from the
-// header (the choice can no longer be made, so the affordance goes away);
-// an INCOGNITO conversation keeps it visible but locked — it doubles as the
-// "nothing is being saved" indicator for the rest of the chat. Hidden
-// entirely when encrypted history isn't available (nothing would be saved
-// anyway, same check as the history button).
+// is a no-op for it) — and never to the SERVER'S interaction log either
+// (stream.js sends `incognito: true`; src/chatlog.js skips the row). The
+// choice is per-conversation and made up front: once an ORDINARY
+// conversation has started the button is removed from the header (the
+// choice can no longer be made, so the affordance goes away); an INCOGNITO
+// conversation keeps it visible but locked — it doubles as the "nothing is
+// being saved" indicator for the rest of the chat. Always shown for a fresh
+// conversation (it used to hide with unavailable encrypted history, but the
+// server-log opt-out is meaningful regardless of local storage).
 
 const ghostBtn = document.getElementById("ghostbtn");
-let ghostAvailable = false;
-historyAvailable()
-  .then((ok) => { ghostAvailable = ok; syncGhostState(); })
-  .catch(() => {});
 
 function syncGhostState() {
   const locked = conversationStarted();
   const on = isIncognito();
-  ghostBtn.hidden = !ghostAvailable || (locked && !on);
+  ghostBtn.hidden = locked && !on;
   ghostBtn.disabled = locked;
   ghostBtn.classList.toggle("on", on);
   ghostBtn.setAttribute("aria-pressed", on ? "true" : "false");
   ghostBtn.title = on
-    ? "Incognito — this conversation won't be saved to chat history"
-    : "Incognito chat — keep this conversation out of chat history";
+    ? "Incognito — this conversation won't be saved to chat history or logged on the server"
+    : "Incognito chat — keep this conversation out of chat history and the server's log";
 }
 
 ghostBtn.addEventListener("click", () => {
@@ -204,7 +201,7 @@ ghostBtn.addEventListener("click", () => {
   const empty = chat.querySelector(".empty");
   if (empty) {
     empty.textContent = isIncognito()
-      ? "Incognito chat — this conversation won't be saved to chat history. Ask a research question to get started."
+      ? "Incognito chat — this conversation won't be saved to chat history or logged on the server. Ask a research question to get started."
       : EMPTY_TEXT;
   }
   syncGhostState();
