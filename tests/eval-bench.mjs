@@ -266,7 +266,7 @@ async function main() {
   const results = await pool(jobs, CONCURRENCY, async ({ model, q }) => {
     const result = await runOne(model, judgeModelId, q);
     completed++;
-    const status = result.judge && result.judge.ok
+    const status = result.scores
       ? `cit ${result.scores.citation} cov ${result.scores.coverage} cal ${result.scores.calibration} (overall ${result.overall}), div ${result.metrics.diversity.score}`
       : `NO SCORE: ${result.research_error || (result.judge && result.judge.error) || "unknown"}`;
     console.log(`[${completed}/${jobs.length}] ${model.id} :: ${q.id} -> ${status}`);
