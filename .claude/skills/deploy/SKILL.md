@@ -76,3 +76,32 @@ deploy` (and the git-connected deploy) will REJECT the config outright
 (code 100328, "CPU limits are not supported for the Free plan") — remove
 the `[limits]` section first. Full incident history in the
 **pipeline-architecture** skill and `tests/MODEL-EVAL-FINDINGS.md`.
+
+## Client assets: deploys × unversioned ES modules (2026-07-08 incident)
+
+The app ships ~20 UNVERSIONED ES modules (no build step). A day of several
+deploys that changed cross-module exports bricked a real device: browsers
+had been heuristically caching modules (assets carried NO Cache-Control),
+so the device linked a MIXED graph (fresh stream.js + stale activity.js)
+→ module linking fails → app.js never runs → no submit handler → Send
+falls through to a NATIVE form submit → page reloads to a blank chat
+("no queries work"). Fresh-browser repros pass, which is exactly why it's
+deceptive — the bug lives in returning devices' caches.
+
+Standing fixes (keep them intact):
+- `src/index.js` `serveAsset()` — every asset response carries an explicit
+  policy: `no-cache` for js/css/html/md/webmanifest and extensionless HTML
+  routes (etag revalidation = cheap 304, consistent graph every load),
+  `max-age=3600` for icons/media.
+- `public/index.html` inline boot guard + `window.__appReady` (set at the
+  END of app.js) — until the module graph has linked, native submits are
+  blocked and a "tap to reload" banner shows. Any future graph failure is
+  LOUD instead of eating queries.
+
+Rules that follow: keep the guard inline and classic (never a module);
+when renaming/adding cross-module exports remember old clients may hold
+half-old graphs until their next revalidation — the guard is the net;
+debug "works for me, broken for the user" client reports with header
+inspection (curl -I: is cache-control still there?) and a REAL browser
+repro via Playwright against live (tests/playwright.config.js has the
+sandbox quirks), not just API probes.
