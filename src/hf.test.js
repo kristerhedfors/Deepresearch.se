@@ -99,6 +99,8 @@ describe("hfTermKey — the cross-wave dedup key", () => {
       hfTermKey("swedish speech recognition"),
     );
     assert.deepEqual(hfTerms("independent expert analysis vs official announcements"), []);
+    // Question-meta words about artifacts ("variants of X") strip too.
+    assert.deepEqual(hfTerms("most downloaded whisper variants on hf"), ["whisper"]);
   });
 });
 

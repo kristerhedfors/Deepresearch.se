@@ -69,6 +69,11 @@ const NOISE = new Set([
   "compare", "compared", "alternative", "alternatives", "versus", "vs",
   "analysis", "expert", "experts", "opinion", "opinions", "coverage",
   "news", "official", "announcement", "announcements", "third-party",
+  // Question-meta words about the artifacts, not of them: a live probe
+  // showed "whisper variants" ranking "variants" as the distinctive term
+  // and returning name-matched junk; stripping it leaves the actual
+  // subject ("whisper" → the canonical repos, sorted by downloads).
+  "variant", "variants", "version", "versions", "fine-tunes", "finetunes",
 ]);
 
 export function hfTerms(query) {
