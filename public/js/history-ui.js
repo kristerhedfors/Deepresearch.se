@@ -85,9 +85,35 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h8 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}]`);
+    parts.push(`[h9 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
+  }
+
+  // Stylesheet freshness — checked HERE (not only in app.js) because a
+  // wedged device can hold a stale module MIX where app.js (and its
+  // handshake) is old while this module is current. A mismatched
+  // stylesheet gets one force-refresh per page load, and the stamp
+  // shows what was seen so the state is visible in any report.
+  const CSS_WANT = "h9";
+  let cssFixTried = false;
+  function cssBit() {
+    let seen = "";
+    try {
+      seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
+    } catch { /* leave empty */ }
+    if (seen === CSS_WANT) return "";
+    if (!cssFixTried) {
+      cssFixTried = true;
+      fetch("/css/app.css", { cache: "reload" })
+        .then(() => {
+          const link = document.querySelector('link[rel="stylesheet"][href*="app.css"]');
+          if (link) link.href = "/css/app.css?v=" + CSS_WANT;
+          setTimeout(() => { if (!overlay.hidden) refresh(); }, 400);
+        })
+        .catch(() => {});
+    }
+    return ` · css ${seen || "old"}→refreshing`;
   }
 
   const PENCIL_SVG =
@@ -137,15 +163,29 @@ export function initHistorySidebar(opts = {}) {
   }
 
   // Mount the rename/delete strip into a row on demand (see renderList's
-  // comment for why it can't live in the markup permanently).
+  // comment for why it can't live in the markup permanently). EVERY
+  // style the interaction depends on is INLINE: a device wedged on a
+  // stale cached stylesheet (2026-07-08: one had a pre-swipe app.css
+  // that knew no .history-actions layout — the strip rendered as a
+  // plain block and shoved the card downward, with the buttons hidden
+  // by an old opacity rule) must still get a working, correctly-laid-
+  // out swipe. The classes remain for fresh-CSS cosmetics only.
+  const BTN_CSS =
+    "flex:none;width:36px;height:36px;border-radius:10px;display:grid;" +
+    "place-items:center;padding:0;background:rgba(255,255,255,.45);" +
+    "border:1px solid rgba(255,255,255,.55);opacity:1;";
   function mountActions(item) {
     let strip = item.querySelector(".history-actions");
     if (strip) return strip;
     strip = document.createElement("div");
     strip.className = "history-actions";
+    strip.style.cssText =
+      "position:absolute;top:0;right:0;bottom:0;width:88px;display:flex;" +
+      "align-items:center;justify-content:flex-end;gap:.35rem;" +
+      "padding-right:.2rem;margin:0;opacity:0;pointer-events:none;";
     strip.innerHTML =
-      `<button type="button" class="history-rename" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>` +
-      `<button type="button" class="history-delete" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>`;
+      `<button type="button" class="history-rename" style="${BTN_CSS}color:#2f5d8e;" title="Rename" aria-label="Rename conversation">${PENCIL_SVG}</button>` +
+      `<button type="button" class="history-delete" style="${BTN_CSS}color:#d64545;" title="Delete" aria-label="Delete conversation">${TRASH_SVG}</button>`;
     const id = item.dataset.id;
     strip.querySelector(".history-rename").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -155,24 +195,32 @@ export function initHistorySidebar(opts = {}) {
       e.stopPropagation();
       removeConversation(id);
     });
-    // BEFORE the open button: a transformed (sliding) card then paints
-    // above the strip, covering it at rest and revealing it as it moves.
     item.insertBefore(strip, item.firstChild);
     return strip;
   }
+  function showStrip(strip, on) {
+    if (!strip) return;
+    strip.style.opacity = on ? "1" : "0";
+    strip.style.pointerEvents = on ? "auto" : "none";
+  }
 
   // Slide the card back (if it's out) and restore the rest-state DOM
-  // once the settle animation has finished.
+  // once the settle animation has finished. All inline styles — see
+  // mountActions for why nothing here may depend on the stylesheet.
   function closeActions(item) {
     const row = item.querySelector(".history-open");
+    showStrip(item.querySelector(".history-actions"), false);
     if (item.classList.contains("swiped")) {
-      item.classList.add("swiping"); // keeps clip + transition during the slide-back
       item.classList.remove("swiped");
-      row.style.marginLeft = "";
+      row.style.transition = "margin-left .18s ease";
+      row.style.marginLeft = "0px";
     }
     setTimeout(() => {
       if (item.classList.contains("swiped")) return; // re-opened meanwhile
       item.classList.remove("swiping");
+      row.style.transition = "";
+      row.style.marginLeft = "";
+      item.style.overflow = "";
       const strip = item.querySelector(".history-actions");
       if (strip && !item.matches(":hover")) strip.remove();
     }, 200);
@@ -211,6 +259,7 @@ export function initHistorySidebar(opts = {}) {
           item.dataset.swipeLock = "1";
           mountActions(item);
           item.classList.add("swiping");
+          item.style.overflow = "hidden";
           // Close any other card that's sitting open.
           list.querySelectorAll(".history-item.swiped").forEach((other) => {
             if (other !== item) closeActions(other);
@@ -231,20 +280,17 @@ export function initHistorySidebar(opts = {}) {
       if (!tracking) return;
       tracking = false;
       if (axis !== "x") return;
-      row.style.transition = ""; // hand easing back to the .swiping/.swiped rules
-      const strip = item.querySelector(".history-actions");
-      if (strip) strip.style.opacity = "";
       // pointercancel's coordinates are unreliable (iOS often reports 0):
       // treat it as an aborted gesture and snap back.
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = e.type === "pointercancel" ? 0 : from + (e.clientX - startX);
       if (offset < -REVEAL_PX / 2) {
-        row.style.marginLeft = ""; // .swiped's -88px takes over (animated)
+        row.style.transition = "margin-left .18s ease";
+        row.style.marginLeft = -REVEAL_PX + "px";
         item.classList.add("swiped");
+        showStrip(item.querySelector(".history-actions"), true);
         setTimeout(() => { item.classList.remove("swiping"); }, 200);
       } else {
-        item.classList.remove("swiped");
-        row.style.marginLeft = "";
         closeActions(item);
       }
       // Let the click that follows this pointerup see the lock, then clear it.
@@ -253,9 +299,12 @@ export function initHistorySidebar(opts = {}) {
     item.addEventListener("pointerup", settle);
     item.addEventListener("pointercancel", settle);
 
-    // Mouse hover mounts the strip so the CSS :hover reveal has something
-    // to reveal; leaving unmounts it again (unless swiped open).
-    item.addEventListener("mouseenter", () => mountActions(item));
+    // Mouse hover shows the strip as an overlay (no slide); leaving
+    // removes it again (unless swiped open).
+    item.addEventListener("mouseenter", (e) => {
+      if (e.pointerType && e.pointerType !== "mouse") return;
+      showStrip(mountActions(item), true);
+    });
     item.addEventListener("mouseleave", () => {
       if (!item.classList.contains("swiped")) closeActions(item);
     });
@@ -327,8 +376,10 @@ export function initHistorySidebar(opts = {}) {
           pulling = false;
           // Re-render regardless of the count: the note must reflect the
           // pull's outcome (including "nothing came down"), not just its
-          // successes.
-          if (!overlay.hidden) refresh();
+          // successes. But NEVER rebuild the list mid-interaction — a
+          // re-render destroys the card the finger is dragging (observed
+          // as the card "switching places" on a real device).
+          if (!overlay.hidden && !list.querySelector(".swiping, .swiped")) refresh();
           else updateNote();
         });
     } else if (settingsLoaded() === false) {
@@ -360,9 +411,12 @@ export function initHistorySidebar(opts = {}) {
 
   return {
     // stream.js calls this after every autosaved turn — refresh the list
-    // (and the active highlight) only if the panel is actually open, so a
-    // background chat doesn't do decrypt-everything work for no reason.
-    onSaved: () => { if (!overlay.hidden) refresh(); },
+    // (and the active highlight) only if the panel is actually open (and
+    // no card is mid-swipe — a rebuild would destroy it under the finger),
+    // so a background chat doesn't do decrypt-everything work for no reason.
+    onSaved: () => {
+      if (!overlay.hidden && !list.querySelector(".swiping, .swiped")) refresh();
+    },
   };
 }
 
