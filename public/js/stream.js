@@ -61,6 +61,37 @@ const history = []; // {role, content} pairs sent to the API
 // record (`ragDocs`) and restored on load.
 let convRagDocs = []; // [{id, name}]
 
+// Elements the pipeline embedded into a turn's body this conversation —
+// the Street View panorama (`streetview_embed`) and vision-frame strip
+// (`streetview_frames`). Recorded so the copy-to-clipboard export can
+// reference them with stable per-conversation id numbers ("[Embedded
+// element #N: …]" — message-content.js's embedRef); persisted in the
+// conversation record (`embeds`, additive) so a reloaded conversation's
+// export still references them even though the live panorama itself is
+// session-only. `msgIndex` is the index of the assistant message the
+// element renders beside — captured as history.length while the answer
+// streams, which is exactly where that answer lands on completion.
+let convEmbeds = []; // [{id, kind, msgIndex, …kind-specific metadata}]
+
+function recordEmbed(meta) {
+  const existing = convEmbeds.find((e) => e.msgIndex === history.length && e.kind === meta.kind);
+  if (existing) {
+    // Mirror the render behavior (activity.js): one panorama per turn
+    // (repeats ignored), one frame strip per turn (last event wins).
+    if (meta.kind === "streetview_frames") Object.assign(existing, meta);
+    return;
+  }
+  const id = convEmbeds.reduce((m, e) => Math.max(m, e.id || 0), 0) + 1;
+  convEmbeds.push({ id, msgIndex: history.length, ...meta });
+}
+
+// An exchange that reverted its user message (send failed, stopped before
+// any text) also drops the embeds recorded for the answer that never
+// landed — their msgIndex now points past the end of history.
+function pruneEmbeds() {
+  convEmbeds = convEmbeds.filter((e) => e.msgIndex < history.length);
+}
+
 // The project this conversation belongs to (null = none): adopted from the
 // active project on the FIRST send of a fresh conversation, persisted in
 // the encrypted record, restored on load. Project scope means: retrieval
@@ -124,7 +155,7 @@ export function currentConversationId() {
 // context blocks reduced to references — message-content.js's pure
 // conversationCopyText over this tab's live history.
 export function conversationAsText() {
-  return conversationCopyText(history);
+  return conversationCopyText(history, convEmbeds);
 }
 
 // Sidebar "load": replace the on-screen conversation with a previously
@@ -141,6 +172,7 @@ export function applyLoadedConversation(record) {
   convTitle = record.title;
   convCreatedAt = record.createdAt;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
+  convEmbeds = Array.isArray(record.embeds) ? record.embeds : [];
   convIncognito = false; // a saved conversation is by definition not incognito
   resetStreetViewPov(); // any on-screen panorama belongs to the conversation being left
   clearPending(); // opening another conversation cancels any pending-answer resume
@@ -175,6 +207,7 @@ async function persistConversation(opts) {
         budgetS: opts?.budgetS ?? null,
         webSearch: opts?.webSearch !== false,
         ragDocs: convRagDocs,
+        embeds: convEmbeds,
         projectId: convProjectId,
         createdAt: convCreatedAt,
         updatedAt: now,
@@ -220,6 +253,7 @@ export function clearHistory() {
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
+  convEmbeds = [];
   convProjectId = null; // the next send re-adopts whatever project is active
   convIncognito = false; // incognito is chosen per conversation, never inherited
   resetStreetViewPov(); // a fresh chat must not inherit the old panorama's view
@@ -342,6 +376,7 @@ async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = null) {
 async function abandonUnanswered(opts) {
   clearPending();
   history.pop();
+  pruneEmbeds(); // any embeds of the answer that never landed go with it
   if (!currentId) return; // nothing was persisted (incognito, or never armed)
   if (history.length) {
     await persistConversation(opts); // follow-up: store the reverted history
@@ -351,6 +386,7 @@ async function abandonUnanswered(opts) {
     convTitle = null;
     convCreatedAt = null;
     convRagDocs = [];
+    convEmbeds = [];
     convProjectId = null; // the discarded conversation is gone; next send starts fresh
     try { await deleteConversation(id); } catch { /* best effort */ }
     onHistoryChange(id);
@@ -410,6 +446,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   convTitle = record.title || null;
   convCreatedAt = record.createdAt || Date.now();
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
+  convEmbeds = Array.isArray(record.embeds) ? record.embeds : [];
   convIncognito = false;
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
@@ -474,8 +511,17 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "search_done") finishSearchStep(turn, s);
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
-    else if (s.type === "streetview_embed") renderStreetViewEmbed(turn, s);
-    else if (s.type === "streetview_frames") renderStreetViewFrames(turn, s);
+    else if (s.type === "streetview_embed") {
+      renderStreetViewEmbed(turn, s);
+      recordEmbed({ kind: "streetview_embed", lat: s.lat, lng: s.lng });
+    } else if (s.type === "streetview_frames") {
+      renderStreetViewFrames(turn, s);
+      recordEmbed({
+        kind: "streetview_frames",
+        query: s.query || "",
+        directions: (Array.isArray(s.frames) ? s.frames : []).map((f) => f?.dir || f?.label || "").filter(Boolean),
+      });
+    }
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export
@@ -677,6 +723,7 @@ export async function sendMessage(text, opts) {
       if (gen === generation) {
         setError(turn, err.error || "Something went wrong.");
         history.pop();
+        pruneEmbeds();
       }
       return;
     }
@@ -762,6 +809,7 @@ async function handleStopped(turn, acc, requestId, opts) {
   } else {
     setError(turn, "Stopped before any response arrived.");
     history.pop();
+    pruneEmbeds();
   }
 }
 

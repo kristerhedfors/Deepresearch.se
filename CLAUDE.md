@@ -110,8 +110,9 @@ SSE send loop, autosaves to encrypted local history after every turn),
 Node-tested), `message-content.js` (pure builders for the outgoing
 message: labeled document / image-metadata / RAG-excerpt blocks, title
 derivation, history image-stripping, `splitUserContent`, plus
-`conversationCopyText` — the header copy-button's plain-text
-"User:/Assistant:" conversation export with images and appended blocks
+`conversationCopyText`/`embedRef` — the header copy-button's plain-text
+"User:/Assistant:" conversation export with images, appended blocks, and
+pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,

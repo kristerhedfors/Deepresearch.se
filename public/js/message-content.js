@@ -92,12 +92,15 @@ export function splitUserContent(content) {
 // Plain-text export of a conversation for the header's copy-to-clipboard
 // button (app.js): one labeled paragraph per turn ("User: …" /
 // "Assistant: …"), blank-line separated. Non-text content is REFERENCED,
-// never dumped — attached images become "[Image attached]" lines and every
+// never dumped — attached images become "[Image attached]" lines, every
 // appended context block (inline documents, retrieval excerpts, project
 // materials, related project chats) collapses to a one-line reference
-// carrying its display name, so the reader gets the conversation, not
-// kilobytes of excerpt plumbing. Image-metadata blocks are dropped
-// outright: the image reference already stands for the image.
+// carrying its display name, and elements the pipeline embedded into a
+// turn's body (the Street View panorama / vision-frame strip — stream.js's
+// convEmbeds registry) become id-numbered "[Embedded element #N: …]" lines
+// under their assistant turn, so the reader gets the conversation, not
+// kilobytes of excerpt plumbing or JPEG data URLs. Image-metadata blocks
+// are dropped outright: the image reference already stands for the image.
 
 // Where the appended labeled blocks begin in a user message's text — the
 // same block family chat-rag.js strips before indexing (kept in sync with
@@ -115,9 +118,31 @@ function blockRefName(name) {
   return name.replace(/ \((?:truncated|large document[^)]*|an earlier conversation[^)]*)\)$/, "").trim();
 }
 
-export function conversationCopyText(messages) {
+// One embedded element's reference line. `e` is a convEmbeds entry
+// ({id, kind, …metadata}); each kind formats its own metadata. Unknown
+// kinds still get an id-numbered line — a new source's embed must never
+// silently vanish from the export (see the add-research-source skill).
+export function embedRef(e) {
+  if (e?.kind === "streetview_embed") {
+    return `[Embedded element #${e.id}: interactive Google Street View panorama at ${e.lat}, ${e.lng}]`;
+  }
+  if (e?.kind === "streetview_frames") {
+    const dirs = (e.directions || []).filter(Boolean).join(", ");
+    return (
+      `[Embedded element #${e.id}: Street View frames` +
+      (e.query ? ` of "${e.query}"` : "") +
+      (dirs ? ` (${dirs})` : "") +
+      "]"
+    );
+  }
+  return `[Embedded element #${e?.id}: ${e?.kind || "element"}]`;
+}
+
+export function conversationCopyText(messages, embeds = []) {
   const out = [];
-  for (const m of messages || []) {
+  const msgs = messages || [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
     const { text, imageUrls } = splitUserContent(m?.content);
     const refs = [];
     let main = text;
@@ -129,9 +154,12 @@ export function conversationCopyText(messages) {
       }
       main = main.slice(0, cut);
     }
-    imageUrls.forEach((_, i) => {
-      refs.push(imageUrls.length > 1 ? `[Image ${i + 1} attached]` : "[Image attached]");
+    imageUrls.forEach((_, n) => {
+      refs.push(imageUrls.length > 1 ? `[Image ${n + 1} attached]` : "[Image attached]");
     });
+    for (const e of embeds || []) {
+      if (e?.msgIndex === i) refs.push(embedRef(e));
+    }
     const body = [main.trim(), ...refs].filter(Boolean).join("\n");
     if (!body) continue;
     out.push((m?.role === "assistant" ? "Assistant: " : "User: ") + body);

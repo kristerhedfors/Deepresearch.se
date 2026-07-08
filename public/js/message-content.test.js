@@ -6,6 +6,7 @@ import {
   STREAM_STALL_MS,
   conversationCopyText,
   deriveTitle,
+  embedRef,
   imageMetadataBlock,
   inlineDocBlock,
   isStreamStale,
@@ -299,4 +300,45 @@ test("conversationCopyText skips empty messages and survives malformed content",
   assert.equal(out, "Assistant: only me");
   assert.equal(conversationCopyText([]), "");
   assert.equal(conversationCopyText(undefined), "");
+});
+
+test("embedRef formats each embed kind with its id number", () => {
+  assert.equal(
+    embedRef({ id: 1, kind: "streetview_embed", lat: 59.33421, lng: 18.06324 }),
+    "[Embedded element #1: interactive Google Street View panorama at 59.33421, 18.06324]",
+  );
+  assert.equal(
+    embedRef({ id: 2, kind: "streetview_frames", query: "Kungsgatan 1, Stockholm", directions: ["north", "east", "", "your current view"] }),
+    '[Embedded element #2: Street View frames of "Kungsgatan 1, Stockholm" (north, east, your current view)]',
+  );
+  // No query, no directions — still a well-formed reference.
+  assert.equal(embedRef({ id: 3, kind: "streetview_frames" }), "[Embedded element #3: Street View frames]");
+  // An unknown kind (a future source's embed) never silently vanishes.
+  assert.equal(embedRef({ id: 4, kind: "sonar_sweep" }), "[Embedded element #4: sonar_sweep]");
+});
+
+test("conversationCopyText appends embed references under their assistant turn", () => {
+  const messages = [
+    { role: "user", content: "what is at these coordinates?" },
+    { role: "assistant", content: "It's the Royal Palace." },
+    { role: "user", content: "and further north?" },
+    { role: "assistant", content: "The museum." },
+  ];
+  const embeds = [
+    { id: 1, kind: "streetview_embed", msgIndex: 1, lat: 59.1, lng: 18.2 },
+    { id: 2, kind: "streetview_frames", msgIndex: 3, query: "museum", directions: ["north"] },
+  ];
+  const out = conversationCopyText(messages, embeds);
+  const paras = out.split("\n\n");
+  assert.equal(paras[1], "Assistant: It's the Royal Palace.\n[Embedded element #1: interactive Google Street View panorama at 59.1, 18.2]");
+  assert.equal(paras[3], 'Assistant: The museum.\n[Embedded element #2: Street View frames of "museum" (north)]');
+});
+
+test("conversationCopyText without embeds is unchanged and out-of-range embeds are ignored", () => {
+  const messages = [{ role: "user", content: "q" }, { role: "assistant", content: "a" }];
+  assert.equal(conversationCopyText(messages), "User: q\n\nAssistant: a");
+  assert.equal(
+    conversationCopyText(messages, [{ id: 1, kind: "streetview_embed", msgIndex: 9, lat: 1, lng: 2 }]),
+    "User: q\n\nAssistant: a",
+  );
 });

@@ -167,6 +167,31 @@ all of this for free from its `service` field. Enrichments (shape 2) keep
 using steps + labeled context blocks instead — they add context, not
 citable sources.
 
+**Copy-to-clipboard visibility — embedded elements must be recorded.**
+The header's copy-conversation button exports the chat as plain text
+("User:/Assistant:" turns — `message-content.js`'s
+`conversationCopyText`). It reads the `{role, content}` history plus
+`stream.js`'s `convEmbeds` registry — it does NOT see the DOM. So if a
+new source's SSE event renders a persistent element into the turn body
+(the way `streetview_embed` renders the panorama and `streetview_frames`
+the thumbnail strip), three touches keep it from silently vanishing from
+the export:
+
+1. In `stream.js`'s `handleEvent`, call `recordEmbed({kind, …metadata})`
+   next to the render call — kind is the event type; metadata is the
+   SMALL identifying subset (coordinates, query, direction labels —
+   never data URLs; same discipline as `sanitizeResearchEvent`).
+2. Add a formatting branch to `message-content.js`'s `embedRef` so the
+   export line reads `[Embedded element #N: <what it is + metadata>]`
+   (unknown kinds fall back to an id + kind line, so the element is
+   referenced even before this branch exists — but write the branch).
+3. Nothing else: ids are assigned per conversation, `msgIndex` anchors
+   the reference under the right assistant turn, the registry persists
+   in the conversation record (`embeds`, additive) and every revert path
+   (`abandonUnanswered`/stop-with-nothing) prunes via `pruneEmbeds`.
+
+Unit-test the `embedRef` branch in `message-content.test.js`.
+
 ## 7. Parallel work — how several sessions work on different sources
 
 Multiple sessions push to `main` continuously (observed: an HF session

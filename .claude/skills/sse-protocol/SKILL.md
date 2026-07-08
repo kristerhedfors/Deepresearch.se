@@ -58,6 +58,12 @@ unknown `status` types (forward compatibility).
   `sanitizeResearchEvent`: frame count + directions/labels only), so the
   "Copy research JSON" export stays small. Like the embed, it's live-session
   only (a reloaded conversation keeps the answer + link, not the images).
+  Both embed events are ALSO recorded in `stream.js`'s `convEmbeds`
+  registry (small metadata only, persisted in the conversation record as
+  `embeds`) so the header's copy-conversation export can reference them as
+  id-numbered `[Embedded element #N: …]` lines — any NEW event type that
+  renders a persistent turn-body element must do the same (see the
+  **add-research-source** skill, section 6).
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

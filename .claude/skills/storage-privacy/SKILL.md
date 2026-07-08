@@ -93,7 +93,13 @@ that the ghost used to occupy now holds `#copybtn` — the
 copy-conversation-to-clipboard button (`conversationCopyText` in
 `message-content.js`): plain-text "User:/Assistant:" turns with images
 and appended context blocks reduced to one-line references, never the
-block bodies.
+block bodies. Elements the pipeline embedded beside an answer (Street
+View panorama / vision frames) are referenced too, as id-numbered
+"[Embedded element #N: …]" lines — `stream.js` records them in
+`convEmbeds` and persists that list in the conversation record
+(`embeds`, an additive field inside the encrypted blob), so the export
+stays complete after a reload even though the live embeds themselves
+are session-only.
 
 **What's stored per conversation**: title, the same `{role, content}`
 message array `stream.js` already sends to `/api/chat`, plus the model /
