@@ -200,19 +200,16 @@ async function runWithoutSearch(ctx) {
 async function runTriage(ctx) {
   const { state, lastUser, convText, step, stepDone } = ctx;
   step("plan", "Analyzing request…");
-  const triage = await phase(ctx, "triage", () =>
-    runJsonPhase(
-      ctx,
-      "triage",
-      "triage",
-      [
-        { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-        { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
-      ],
-      500,
-    ),
-    "triage",
-  );
+  const triage = await jsonPhase(ctx, {
+    label: "triage",
+    statKey: "triage",
+    recordStat: true,
+    maxTokens: 500,
+    messages: [
+      { role: "system", content: triagePrompt(Math.max(4, state.plan.queries), { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
+    ],
+  });
   const decision = normalizeTriage(hardenJson(TRIAGE_SCHEMA, triage), lastUser, previousUserText(ctx.conversation));
 
   if (decision.action === "direct") {
@@ -272,31 +269,28 @@ async function runGapChecks(ctx) {
     const stepId = `gap${it}`;
     ctx.step(stepId, `Checking coverage (round ${it})…`);
 
-    const gapRaw = await phase(ctx, `gap_check_${it}`, () =>
-      runJsonPhase(
-        ctx,
-        `gap_check_${it}`,
-        "gap",
-        [
-          { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly }) },
-          {
-            role: "user",
-            // convText rides along so a bare follow-up ("what's the latest")
-            // is audited against the original question's breadth, not just
-            // the sub-topic the collected sources already cluster on.
-            content:
-              `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-              // Distilled notes ride along when the digest phase ran (mid/high
-              // tiers only) so coverage is audited against claims, not just raw
-              // highlights. Empty (and thus absent) at the default budget.
-              notesSection(state.notes) +
-              `Sources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
-          },
-        ],
-        400,
-      ),
-      "gap",
-    );
+    const gapRaw = await jsonPhase(ctx, {
+      label: `gap_check_${it}`,
+      statKey: "gap",
+      recordStat: true,
+      maxTokens: 400,
+      messages: [
+        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly }) },
+        {
+          role: "user",
+          // convText rides along so a bare follow-up ("what's the latest")
+          // is audited against the original question's breadth, not just
+          // the sub-topic the collected sources already cluster on.
+          content:
+            `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
+            // Distilled notes ride along when the digest phase ran (mid/high
+            // tiers only) so coverage is audited against claims, not just raw
+            // highlights. Empty (and thus absent) at the default budget.
+            notesSection(state.notes) +
+            `Sources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
+        },
+      ],
+    });
     const gap = hardenJson(GAP_SCHEMA, gapRaw);
     collectConflicts(state, gap);
 
@@ -390,22 +384,16 @@ async function maybeDigest(ctx) {
   const freshDigest = sourceDigest(fresh, plan.digestCap);
   if (!freshDigest) return;
   const priorEntities = notesEntities(state.notes).slice(0, 40);
-  const result = await phase(
-    ctx,
-    "digest",
-    () =>
-      runJsonPhase(
-        ctx,
-        "digest",
-        "digest",
-        [
-          { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-          { role: "user", content: `New numbered sources:\n${freshDigest}` },
-        ],
-        1500,
-      ),
-    "digest",
-  );
+  const result = await jsonPhase(ctx, {
+    label: "digest",
+    statKey: "digest",
+    recordStat: true,
+    maxTokens: 1500,
+    messages: [
+      { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      { role: "user", content: `New numbered sources:\n${freshDigest}` },
+    ],
+  });
   const incoming = extractNotes(result);
   if (incoming.length) state.notes = mergeNotes(state.notes, incoming);
 }
@@ -465,22 +453,16 @@ async function maybeFullContentDigest(ctx) {
     })
     .join("\n\n");
   const priorEntities = notesEntities(state.notes).slice(0, 40);
-  const digestRes = await phase(
-    ctx,
-    "content_digest",
-    () =>
-      runJsonPhase(
-        ctx,
-        "content_digest",
-        "digest",
-        [
-          { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-          { role: "user", content: `Full text of the top sources (numbered as in the registry):\n${blocks}` },
-        ],
-        2000,
-      ),
-    "digest",
-  );
+  const digestRes = await jsonPhase(ctx, {
+    label: "content_digest",
+    statKey: "digest",
+    recordStat: true,
+    maxTokens: 2000,
+    messages: [
+      { role: "system", content: notesPrompt(priorEntities, { reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      { role: "user", content: `Full text of the top sources (numbered as in the registry):\n${blocks}` },
+    ],
+  });
   const incoming = extractNotes(digestRes);
   if (incoming.length) state.notes = mergeNotes(state.notes, incoming);
 }
@@ -564,22 +546,19 @@ async function runValidation(ctx, draft) {
 // and gets the corrected answer; any other outcome keeps the draft as-is.
 async function runSinglePassValidation(ctx, draft, digest) {
   const { lastUser } = ctx;
-  const verdictRaw = await phase(ctx, "validate", () =>
-    runJsonPhase(
-      ctx,
-      "validate",
-      "validate",
-      [
-        { role: "system", content: validatePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-        {
-          role: "user",
-          content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
-        },
-      ],
-      3000,
-    ),
-    "validate",
-  );
+  const verdictRaw = await jsonPhase(ctx, {
+    label: "validate",
+    statKey: "validate",
+    recordStat: true,
+    maxTokens: 3000,
+    messages: [
+      { role: "system", content: validatePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      {
+        role: "user",
+        content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
+      },
+    ],
+  });
   const verdict = hardenJson(VALIDATE_SCHEMA, verdictRaw);
 
   if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
@@ -607,20 +586,17 @@ async function runSinglePassValidation(ctx, draft, digest) {
 async function runClaimValidation(ctx, draft, digest) {
   const { lastUser } = ctx;
 
-  const extractRaw = await phase(ctx, "claim_extract", () =>
-    runJsonPhase(
-      ctx,
-      "claim_extract",
-      "validate",
-      [
-        { role: "system", content: claimExtractionPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-        { role: "user", content: `Numbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}` },
-      ],
-      2000,
-    ),
-    // No stat key: don't skew the `validate` EWMA with extract/revise timings —
-    // the single-pass validate remains the canonical validate measurement.
-  );
+  const extractRaw = await jsonPhase(ctx, {
+    label: "claim_extract",
+    statKey: "validate",
+    // recordStat off: don't skew the `validate` EWMA with extract/revise
+    // timings — the single-pass validate remains the canonical measurement.
+    maxTokens: 2000,
+    messages: [
+      { role: "system", content: claimExtractionPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      { role: "user", content: `Numbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}` },
+    ],
+  });
   const claims = extractClaims(extractRaw);
   if (!claims.length) return false; // nothing to check claim-by-claim → fall back
 
@@ -641,23 +617,20 @@ async function runClaimValidation(ctx, draft, digest) {
   }
 
   const issueList = issues.slice(0, 10);
-  const reviseRaw = await phase(ctx, "claim_revise", () =>
-    runJsonPhase(
-      ctx,
-      "claim_revise",
-      "validate",
-      [
-        { role: "system", content: revisePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-        {
-          role: "user",
-          content:
-            `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\n` +
-            `Draft answer:\n${draft}\n\nFact-check issues to fix:\n${issueList.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
-        },
-      ],
-      3000,
-    ),
-  );
+  const reviseRaw = await jsonPhase(ctx, {
+    label: "claim_revise",
+    statKey: "validate",
+    maxTokens: 3000,
+    messages: [
+      { role: "system", content: revisePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      {
+        role: "user",
+        content:
+          `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\n` +
+          `Draft answer:\n${draft}\n\nFact-check issues to fix:\n${issueList.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      },
+    ],
+  });
   const revised = hardenJson(REVISE_SCHEMA, reviseRaw);
   if (revised && typeof revised.revised_answer === "string" && revised.revised_answer.trim()) {
     ctx.stepDone(
@@ -683,18 +656,15 @@ async function verifyClaim(ctx, claim) {
   const ids = Array.isArray(claim.source_ids) ? claim.source_ids : [];
   const cited = state.sources.filter((s) => ids.includes(s.n));
   const digest = sourceDigest(cited.length ? cited : state.sources, state.plan.digestCap);
-  const raw = await phase(ctx, "claim_verify", () =>
-    runJsonPhase(
-      ctx,
-      "claim_verify",
-      "claim",
-      [
-        { role: "system", content: claimVerifyPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
-        { role: "user", content: `Claim:\n${claim.claim}\n\nCited numbered sources:\n${digest || "(none)"}` },
-      ],
-      400,
-    ),
-  );
+  const raw = await jsonPhase(ctx, {
+    label: "claim_verify",
+    statKey: "claim",
+    maxTokens: 400,
+    messages: [
+      { role: "system", content: claimVerifyPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+      { role: "user", content: `Claim:\n${claim.claim}\n\nCited numbered sources:\n${digest || "(none)"}` },
+    ],
+  });
   const v = hardenJson(CLAIM_VERIFY_SCHEMA, raw);
   if (v?.verdict === "unsupported") {
     return { verdict: "unsupported", issue: typeof v.issue === "string" ? v.issue : "" };
@@ -722,40 +692,36 @@ function extractClaims(value) {
 
 // ---- internals -------------------------------------------------------------
 
-// Runs one JSON-mode phase call: the completeJson request, usage
-// accounting, and the parse-mode/finish-reason diagnostic log — every JSON
-// phase (triage, gap-check, validation) follows this exact shape, so it's
-// one call site here instead of three near-identical blocks. `statKey`
-// (budget.js's phase bucket: triage/gap/validate) resolves a per-model
-// max_tokens override if model-profiles.js has one for this model;
-// `diagLabel` is the specific label logged for this call (equal to
-// statKey except gap-check, which logs "gap_check_N" per round).
-async function runJsonPhase(ctx, diagLabel, statKey, messages, defaultMaxTokens) {
-  // JSON phases run on the fixed JSON model with ITS profile; their tokens go
-  // to state.jsonTotals so chat.js can bill them at that model's rate.
-  const maxTokens = ctx.jsonProfile.maxTokensOverride?.[statKey] ?? defaultMaxTokens;
-  const r = await completeJson(ctx.env, messages, { model: ctx.jsonModel, maxTokens });
-  addUsage(ctx.state.jsonTotals, r.usage);
-  ctx.log.info("chat.json_diag", { phase: diagLabel, model: ctx.jsonModel, ...r.diagnostics });
-  return r.value;
-}
-
-// Runs a helper phase, logging duration; returns null on failure so the
-// pipeline can degrade instead of breaking. When statKey is given the
-// duration feeds the per-model rolling stats used by the budget planner —
-// keyed by ctx.jsonModel, since phase() only wraps the JSON planning phases
-// (triage/gap/validate), which run on that model.
-async function phase(ctx, name, fn, statKey) {
+// Runs one JSON planning phase end-to-end: the completeJson request on the
+// fixed JSON model, usage accounting, the parse-mode/finish-reason diagnostic
+// log, duration logging, and the fail-soft catch — every JSON phase (triage,
+// gap check, digest, validation, the claim checks) follows this exact shape,
+// so it's one helper instead of a near-identical block per call site.
+// Returns the parsed value, or null on any failure so the pipeline can
+// degrade instead of breaking. The phase's tokens go to state.jsonTotals so
+// chat.js can bill them at the JSON model's rate.
+//
+// `label` is the specific label logged for this call (e.g. "gap_check_N" per
+// round); `statKey` (budget.js's phase bucket: triage/gap/digest/validate/
+// claim) resolves a per-model max_tokens override if model-profiles.js has
+// one for the JSON model; `recordStat` additionally feeds the duration into
+// the per-model rolling stats the budget planner uses — left off the claim
+// extract/verify/revise calls so they don't skew the canonical `validate`
+// (and other) EWMA measurements.
+async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
   const startedAt = Date.now();
   try {
-    const result = await fn();
+    const max = ctx.jsonProfile.maxTokensOverride?.[statKey] ?? maxTokens;
+    const r = await completeJson(ctx.env, messages, { model: ctx.jsonModel, maxTokens: max });
+    addUsage(ctx.state.jsonTotals, r.usage);
+    ctx.log.info("chat.json_diag", { phase: label, model: ctx.jsonModel, ...r.diagnostics });
     const duration_ms = Date.now() - startedAt;
-    if (statKey) recordPhase(ctx.jsonModel, statKey, duration_ms);
-    ctx.log.info("chat.phase", { phase: name, model: ctx.jsonModel, duration_ms, ok: result != null });
-    return result;
+    if (recordStat) recordPhase(ctx.jsonModel, statKey, duration_ms);
+    ctx.log.info("chat.phase", { phase: label, model: ctx.jsonModel, duration_ms, ok: r.value != null });
+    return r.value;
   } catch (err) {
     ctx.log.warn("chat.phase_failed", {
-      phase: name,
+      phase: label,
       model: ctx.jsonModel,
       duration_ms: Date.now() - startedAt,
       error: err?.message || String(err),
