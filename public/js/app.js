@@ -25,6 +25,7 @@ import { initModels, selectedModelId, selectModel } from "./models.js";
 import { readPending } from "./pending-answer.js";
 import {
   clearHistory,
+  conversationAsText,
   conversationStarted,
   initStream,
   isIncognito,
@@ -166,28 +167,33 @@ document.addEventListener("click", (e) => {
 });
 
 // ---- Incognito (ghost) toggle ---------------------------------------------
-// Upper right, directly below the account button: pressed BEFORE the first
+// Upper right, directly left of the account button: pressed BEFORE the first
 // message, the conversation is never written to chat history — not the
 // encrypted local store, not the cloud copy (stream.js's persistConversation
-// is a no-op for it). Locked once the conversation has started, in either
-// direction: an ordinary chat can't retroactively vanish, an incognito one
-// can't retroactively persist. Hidden entirely when encrypted history isn't
-// available (nothing would be saved anyway, same check as the history button).
+// is a no-op for it). The choice is per-conversation and made up front:
+// once an ORDINARY conversation has started the button is removed from the
+// header (the choice can no longer be made, so the affordance goes away);
+// an INCOGNITO conversation keeps it visible but locked — it doubles as the
+// "nothing is being saved" indicator for the rest of the chat. Hidden
+// entirely when encrypted history isn't available (nothing would be saved
+// anyway, same check as the history button).
 
 const ghostBtn = document.getElementById("ghostbtn");
-historyAvailable().then((ok) => { ghostBtn.hidden = !ok; }).catch(() => {});
+let ghostAvailable = false;
+historyAvailable()
+  .then((ok) => { ghostAvailable = ok; syncGhostState(); })
+  .catch(() => {});
 
 function syncGhostState() {
   const locked = conversationStarted();
   const on = isIncognito();
+  ghostBtn.hidden = !ghostAvailable || (locked && !on);
   ghostBtn.disabled = locked;
   ghostBtn.classList.toggle("on", on);
   ghostBtn.setAttribute("aria-pressed", on ? "true" : "false");
   ghostBtn.title = on
     ? "Incognito — this conversation won't be saved to chat history"
-    : locked
-      ? "Incognito is only available before the first message — start a new chat to use it"
-      : "Incognito chat — keep this conversation out of chat history";
+    : "Incognito chat — keep this conversation out of chat history";
 }
 
 ghostBtn.addEventListener("click", () => {
@@ -205,6 +211,51 @@ ghostBtn.addEventListener("click", () => {
 });
 syncGhostState();
 
+// ---- Copy conversation ------------------------------------------------------
+// Directly below the account button: copies the whole on-screen conversation
+// as plain text — "User: …" / "Assistant: …" turns, with images and appended
+// context blocks (documents, project materials) reduced to one-line
+// references (stream.js's conversationAsText). Visible only once there is a
+// conversation to copy; the icon flips to a checkmark briefly as the
+// confirmation (a title attribute alone is invisible on touch devices).
+
+const copyBtn = document.getElementById("copybtn");
+const COPY_ICON = copyBtn.innerHTML;
+const COPIED_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+let copiedTimer = 0;
+
+function syncCopyState() {
+  copyBtn.hidden = !conversationStarted();
+}
+
+copyBtn.addEventListener("click", async () => {
+  const text = conversationAsText();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // The async clipboard API can be missing or denied (older webviews) —
+    // fall back to the legacy selection path so the button still works.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch { /* nothing left to try */ }
+    ta.remove();
+  }
+  copyBtn.innerHTML = COPIED_ICON;
+  copyBtn.classList.add("copied");
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => {
+    copyBtn.innerHTML = COPY_ICON;
+    copyBtn.classList.remove("copied");
+  }, 1500);
+});
+syncCopyState();
+
 // ---- Header: clear chat / chat history / projects ---------------------------
 
 // The header's "New chat" leaves any project context (a plain chat);
@@ -215,6 +266,7 @@ function newChat(keepProject = false) {
   clearHistory(); // also resets incognito — the ghost choice is per conversation
   clearChatDom();
   syncGhostState();
+  syncCopyState();
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
@@ -233,7 +285,8 @@ function applyRecordSettings(record) {
   webSearchBox.checked = record.webSearch !== false;
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
   syncSearchToggle();
-  syncGhostState(); // loaded conversation → started, not incognito → ghost locks
+  syncGhostState(); // loaded conversation → started, not incognito → ghost goes away
+  syncCopyState(); // …and the loaded conversation is copyable
 }
 
 // Encrypted local history sidebar (public/js/history-ui.js + history-store.js).
@@ -309,7 +362,10 @@ form.addEventListener("submit", async (e) => {
   setSendMode(true);
   // The first message is going out — lock the incognito choice right away
   // (conversationStarted() only flips once sendMessage pushes the message).
+  // An ordinary send removes the ghost immediately; an incognito one keeps
+  // it as the locked "nothing is being saved" indicator.
   ghostBtn.disabled = true;
+  if (!isIncognito()) ghostBtn.hidden = true;
   const { images, docs } = takeAttachments();
   await sendMessage(text, {
     images,
@@ -322,6 +378,7 @@ form.addEventListener("submit", async (e) => {
   // Re-sync rather than assume locked: a send that failed outright pops
   // itself back out of the history, making the ghost available again.
   syncGhostState();
+  syncCopyState();
   input.focus();
 });
 

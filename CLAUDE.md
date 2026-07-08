@@ -109,7 +109,10 @@ SSE send loop, autosaves to encrypted local history after every turn),
 `sse.js` (the pure SSE line-buffer parser `stream.js`'s read loop feeds —
 Node-tested), `message-content.js` (pure builders for the outgoing
 message: labeled document / image-metadata / RAG-excerpt blocks, title
-derivation, history image-stripping, `splitUserContent` — the
+derivation, history image-stripping, `splitUserContent`, plus
+`conversationCopyText` — the header copy-button's plain-text
+"User:/Assistant:" conversation export with images and appended blocks
+reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (account & usage panel), `turns.js`
@@ -175,7 +178,9 @@ ids, the appended-block-stripping turn-text extraction, the
 sibling-chat scope picker), `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
 RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
-`stripOldImages`, and `splitUserContent`, the pure
+`stripOldImages`, `splitUserContent`, and `conversationCopyText` (the
+copy-conversation export: turn labeling, image/attachment references,
+block-body suppression), the pure
 core extracted out of `stream.js`'s send path), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
 malformed-JSON tolerance), and `activity.js`'s

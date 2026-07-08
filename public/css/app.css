@@ -545,9 +545,13 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
 /* With the model selector moved into the composer, the account button
-   anchors the row's right edge on its own. */
+   anchors the row's right edge on its own — unless the ghost is showing,
+   in which case the ghost carries the gap so the pair (ghost, account)
+   sits together at the right edge. */
 #accountbtn { margin-left: auto; }
-#historybtn, #clearbtn, #accountbtn, #ghostbtn {
+#ghostbtn:not([hidden]) { margin-left: auto; }
+#ghostbtn:not([hidden]) + #accountbtn { margin-left: 0; }
+#historybtn, #clearbtn, #accountbtn, #ghostbtn, #copybtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -575,19 +579,28 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .notif-badge[hidden] { display: none; }
 #historybtn[hidden] { display: none; }
 
-/* Incognito ghost: its own right-aligned mini-row directly below the
-   account button. Pressed (accent) = this conversation is never written
-   to chat history (local or cloud); locked once the first message is
-   sent — the choice is per-conversation and must be made up front. The
-   row itself stays click-transparent like the rest of the header strip. */
-.header-sub { display: flex; justify-content: flex-end; pointer-events: none; }
-#ghostbtn { pointer-events: auto; }
+/* Incognito ghost, left of the account button. Pressed (accent) = this
+   conversation is never written to chat history (local or cloud). The
+   choice is per-conversation and made before the first message: once an
+   ordinary conversation starts the button is removed (app.js); an
+   incognito one keeps it visible as the "nothing is being saved"
+   indicator. */
 #ghostbtn[hidden] { display: none; }
 #ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #ghostbtn:disabled { opacity: .4; }
 /* Active incognito stays clearly visible while the chat runs — the lock
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }
+
+/* Copy-conversation button: its own right-aligned mini-row directly below
+   the account button (the spot the ghost used to occupy). Appears once the
+   conversation has content; flips to a checkmark (accent) briefly after a
+   copy. The row itself stays click-transparent like the rest of the header
+   strip. */
+.header-sub { display: flex; justify-content: flex-end; pointer-events: none; }
+#copybtn { pointer-events: auto; }
+#copybtn[hidden] { display: none; }
+#copybtn.copied { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* Chat history drawer (public/js/history-ui.js): a left-anchored slide-in
    panel, same dimmed backdrop as the account overlay but docked left

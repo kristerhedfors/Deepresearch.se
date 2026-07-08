@@ -73,18 +73,27 @@ client hides the History button entirely (`historyAvailable()` in
 unencrypted. A plaintext fallback would defeat the point of the feature.
 
 **Incognito (the ghost toggle)**: a ghost button in the upper right,
-directly below the account button (`#ghostbtn`, wired in `app.js`,
+directly LEFT of the account button (`#ghostbtn`, wired in `app.js`,
 state in `stream.js`). Pressed BEFORE the first message of a fresh
 conversation, that conversation is never written to chat history at
 all — `persistConversation` is a no-op for it, so neither the encrypted
 local store nor the cloud copy ever sees it; it exists only in the
 tab's memory until "New chat"/reload discards it. The choice locks once
-the conversation has started (button disabled, in either direction — an
-ordinary chat can't retroactively vanish, an incognito one can't
-retroactively persist) and resets to off on every new chat; loading a
-saved conversation is by definition not incognito. Hidden entirely when
-encrypted history isn't available (same `historyAvailable()` check as
-the history button — with no store there's nothing to keep out of).
+the conversation has started, in either direction — an ordinary chat
+can't retroactively vanish, an incognito one can't retroactively
+persist. Once an ORDINARY conversation starts the button is REMOVED
+from the header (the choice can no longer be made, so the affordance
+goes away); an incognito conversation keeps it visible-but-disabled as
+the "nothing is being saved" indicator. Resets to off on every new
+chat; loading a saved conversation is by definition not incognito.
+Hidden entirely when encrypted history isn't available (same
+`historyAvailable()` check as the history button — with no store
+there's nothing to keep out of). The mini-row below the account button
+that the ghost used to occupy now holds `#copybtn` — the
+copy-conversation-to-clipboard button (`conversationCopyText` in
+`message-content.js`): plain-text "User:/Assistant:" turns with images
+and appended context blocks reduced to one-line references, never the
+block bodies.
 
 **What's stored per conversation**: title, the same `{role, content}`
 message array `stream.js` already sends to `/api/chat`, plus the model /
