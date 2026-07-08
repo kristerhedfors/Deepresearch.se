@@ -169,16 +169,30 @@ export async function listConversations() {
   const db = await openDb();
   const records = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
   const items = [];
+  lastUndecryptable = 0;
   for (const r of records) {
     try {
       const data = await readRecordData(r);
       items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt, projectId: r.projectId || null });
     } catch {
-      // Undecryptable — leave it out of the list rather than break the sidebar.
+      // Undecryptable — leave it out of the list rather than break the
+      // sidebar, but COUNT it so the sidebar can say "N conversations can't
+      // be decrypted" instead of presenting a silently empty list (an
+      // undecryptable store looks identical to an empty one otherwise —
+      // that ambiguity cost real debugging time on 2026-07-08).
+      lastUndecryptable++;
     }
   }
   items.sort((a, b) => b.updatedAt - a.updatedAt);
   return items;
+}
+
+// How many stored conversations the LAST listConversations() call had to
+// skip because they wouldn't decrypt (corrupted, or written under a
+// different key). 0 until a list has run.
+let lastUndecryptable = 0;
+export function undecryptableConversations() {
+  return lastUndecryptable;
 }
 
 export async function loadConversation(id) {

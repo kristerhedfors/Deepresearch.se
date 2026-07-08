@@ -12,8 +12,10 @@ import {
   listConversations,
   loadConversation,
   saveConversation,
+  undecryptableConversations,
 } from "./history-store.js";
 import { renderProjectsList } from "./projects-ui.js";
+import { serverHistoryOn } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
 
@@ -30,6 +32,22 @@ export function initHistorySidebar(opts = {}) {
 
   historyAvailable().then((ok) => { btn.hidden = !ok; });
 
+  // Diagnostic note under the list: an empty pane must SAY why it's empty
+  // (records that won't decrypt, a cloud restore in progress) instead of
+  // looking identical to "no chats saved" — that silent ambiguity cost
+  // real debugging time on 2026-07-08.
+  const note = document.createElement("p");
+  note.className = "history-note";
+  note.hidden = true;
+  list.after(note);
+  let baseNote = "";
+  let pulling = false;
+  function updateNote() {
+    const text = pulling ? "Checking the cloud for conversations…" : baseNote;
+    note.textContent = text;
+    note.hidden = !text;
+  }
+
   async function refresh() {
     list.innerHTML = '<p class="muted">Loading…</p>';
     renderProjectsList().catch(() => {});
@@ -37,6 +55,11 @@ export function initHistorySidebar(opts = {}) {
     // Project conversations live inside their project's panel — the main
     // list shows plain chats only, so nothing appears twice.
     renderList(items.filter((c) => !c.projectId));
+    const skipped = undecryptableConversations();
+    baseNote = skipped
+      ? `${skipped} saved conversation${skipped === 1 ? "" : "s"} can't be decrypted on this device right now — not deleted, just unreadable with the current key. Reload the page (signed in) and reopen this panel to retry.`
+      : "";
+    updateNote();
   }
 
   const PENCIL_SVG =
@@ -201,10 +224,19 @@ export function initHistorySidebar(opts = {}) {
     // .open in the same frame would skip the transition entirely.
     requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("open")));
     refresh();
-    // Cloud-storage accounts: quietly fetch anything newer written from
-    // another device (no-op while the knob is off) and re-render if it
-    // actually brought something down.
-    pullNewer().then((n) => { if (n && !overlay.hidden) refresh(); }).catch(() => {});
+    // Cloud-storage accounts: fetch anything newer written from another
+    // device (no-op while the knob is off) and re-render if it actually
+    // brought something down. Visible while it runs — a device restoring
+    // its whole history pulls for several seconds and must not read as
+    // "no saved conversations" meanwhile.
+    if (serverHistoryOn()) {
+      pulling = true;
+      updateNote();
+      pullNewer()
+        .then((n) => { if (n && !overlay.hidden) refresh(); })
+        .catch(() => {})
+        .finally(() => { pulling = false; updateNote(); });
+    }
   }
   function close() {
     overlay.classList.remove("open");

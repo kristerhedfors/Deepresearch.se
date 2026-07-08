@@ -819,6 +819,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   color: var(--muted);
 }
 .history-delete { color: #d64545; }
+/* Diagnostic line under the list (history-ui.js): why the pane is empty —
+   undecryptable records, or a cloud restore in progress. */
+.history-note { font-size: .72rem; color: var(--muted); line-height: 1.4; margin: 0; }
 
 /* Account & usage panel (quota bars from /api/me) */
 #account {
