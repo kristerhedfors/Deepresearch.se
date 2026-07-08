@@ -88,6 +88,57 @@ export function splitUserContent(content) {
   return { text: "", imageUrls: [] };
 }
 
+// ---- Copy-conversation export ----------------------------------------------
+// Plain-text export of a conversation for the header's copy-to-clipboard
+// button (app.js): one labeled paragraph per turn ("User: …" /
+// "Assistant: …"), blank-line separated. Non-text content is REFERENCED,
+// never dumped — attached images become "[Image attached]" lines and every
+// appended context block (inline documents, retrieval excerpts, project
+// materials, related project chats) collapses to a one-line reference
+// carrying its display name, so the reader gets the conversation, not
+// kilobytes of excerpt plumbing. Image-metadata blocks are dropped
+// outright: the image reference already stands for the image.
+
+// Where the appended labeled blocks begin in a user message's text — the
+// same block family chat-rag.js strips before indexing (kept in sync with
+// inlineDocBlock / ragExcerptBlocks / project-context.js / the image-
+// metadata block below).
+const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project chat:|Image metadata:)/;
+
+// One appended block's opening line, capturing kind + display name.
+const BLOCK_OPENER = /^--- (Attached document|Related project chat|Project|Image metadata): (.*?) ---$/gm;
+
+// The block openers decorate the name with a parenthetical descriptor
+// ("(truncated)", "(large document, indexed for retrieval — …)", "(an
+// earlier conversation in this project, …)") — strip it for the reference.
+function blockRefName(name) {
+  return name.replace(/ \((?:truncated|large document[^)]*|an earlier conversation[^)]*)\)$/, "").trim();
+}
+
+export function conversationCopyText(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    const { text, imageUrls } = splitUserContent(m?.content);
+    const refs = [];
+    let main = text;
+    const cut = main.search(APPENDED_BLOCK);
+    if (cut >= 0) {
+      for (const [, kind, name] of main.slice(cut).matchAll(BLOCK_OPENER)) {
+        if (kind === "Image metadata") continue;
+        refs.push(`[${kind === "Project" ? "Project materials" : kind}: ${blockRefName(name)}]`);
+      }
+      main = main.slice(0, cut);
+    }
+    imageUrls.forEach((_, i) => {
+      refs.push(imageUrls.length > 1 ? `[Image ${i + 1} attached]` : "[Image attached]");
+    });
+    const body = [main.trim(), ...refs].filter(Boolean).join("\n");
+    if (!body) continue;
+    out.push((m?.role === "assistant" ? "Assistant: " : "User: ") + body);
+  }
+  return out.join("\n\n");
+}
+
 // One inline (non-RAG) document as a labeled text block: the doc's parsed
 // text, its extracted metadata (docProps / tracked changes / PDF Info dict —
 // see docs.js) as its own sub-block, and a truncation marker when the parse

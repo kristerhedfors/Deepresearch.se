@@ -40,6 +40,7 @@ import {
 } from "./projects.js";
 import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
+  conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
   inlineDocBlock,
@@ -116,6 +117,14 @@ export function initStream(scrollFn, opts = {}) {
 // not-yet-saved chat — used by the sidebar to highlight the active entry.
 export function currentConversationId() {
   return currentId;
+}
+
+// The on-screen conversation as plain text for the header's copy button
+// (app.js): "User: …" / "Assistant: …" turns with images and appended
+// context blocks reduced to references — message-content.js's pure
+// conversationCopyText over this tab's live history.
+export function conversationAsText() {
+  return conversationCopyText(history);
 }
 
 // Sidebar "load": replace the on-screen conversation with a previously

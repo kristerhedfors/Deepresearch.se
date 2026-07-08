@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
+  conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
   inlineDocBlock,
@@ -223,4 +224,79 @@ test("splitUserContent: malformed parts are skipped, never a throw", () => {
 test("splitUserContent: non-string, non-array content yields empty", () => {
   assert.deepEqual(splitUserContent(undefined), { text: "", imageUrls: [] });
   assert.deepEqual(splitUserContent({ weird: true }), { text: "", imageUrls: [] });
+});
+
+test("conversationCopyText labels turns User:/Assistant:, blank-line separated", () => {
+  const out = conversationCopyText([
+    { role: "user", content: "What is X?" },
+    { role: "assistant", content: "X is Y.\n\nMore detail." },
+  ]);
+  assert.equal(out, "User: What is X?\n\nAssistant: X is Y.\n\nMore detail.");
+});
+
+test("conversationCopyText references images instead of dumping data URLs", () => {
+  const one = conversationCopyText([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "what's in this photo?" },
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64,AAA" } },
+      ],
+    },
+  ]);
+  assert.equal(one, "User: what's in this photo?\n[Image attached]");
+  assert.ok(!one.includes("base64"));
+
+  const two = conversationCopyText([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "compare these" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,BBB" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,CCC" } },
+      ],
+    },
+  ]);
+  assert.ok(two.includes("[Image 1 attached]"));
+  assert.ok(two.includes("[Image 2 attached]"));
+});
+
+test("conversationCopyText collapses appended document blocks to references", () => {
+  const content =
+    "summarize this" +
+    "\n\n--- Attached document: report.pdf (truncated) ---\nSECRET-BODY-TEXT\n--- End of document ---" +
+    "\n\n--- Attached document: big.docx (large document, indexed for retrieval — " +
+    "showing the excerpts most relevant to this question) ---\n[Excerpt — part 1]\nEXCERPT-TEXT\n--- End of document excerpts ---";
+  const out = conversationCopyText([{ role: "user", content }]);
+  assert.equal(
+    out,
+    "User: summarize this\n[Attached document: report.pdf]\n[Attached document: big.docx]",
+  );
+  assert.ok(!out.includes("SECRET-BODY-TEXT"));
+  assert.ok(!out.includes("EXCERPT-TEXT"));
+});
+
+test("conversationCopyText references project materials and related chats, drops image metadata", () => {
+  const content =
+    "question" +
+    "\n\n--- Project: Alpha ---\nfiles listed here\n--- End of project ---" +
+    "\n\n--- Related project chat: Earlier analysis (an earlier conversation in this project, " +
+    "indexed for retrieval — showing the excerpts most relevant to this question) ---\nchat text\n--- End of chat excerpts ---" +
+    "\n\n--- Image metadata: photo.jpg ---\nGPS: 59.3, 18.1\n--- End of image metadata ---";
+  const out = conversationCopyText([{ role: "user", content }]);
+  assert.ok(out.includes("[Project materials: Alpha]"));
+  assert.ok(out.includes("[Related project chat: Earlier analysis]"));
+  assert.ok(!out.includes("Image metadata"));
+  assert.ok(!out.includes("GPS"));
+});
+
+test("conversationCopyText skips empty messages and survives malformed content", () => {
+  const out = conversationCopyText([
+    { role: "user", content: "" },
+    { role: "user", content: null },
+    { role: "assistant", content: "only me" },
+  ]);
+  assert.equal(out, "Assistant: only me");
+  assert.equal(conversationCopyText([]), "");
+  assert.equal(conversationCopyText(undefined), "");
 });
