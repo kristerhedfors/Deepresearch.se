@@ -10,17 +10,21 @@ import {
   toPaperItem,
 } from "./hf.js";
 
-describe("hfIntent — explicit-mention detection only", () => {
-  test("matches the explicit forms", () => {
+describe("hfIntent — explicit-mention detection", () => {
+  test("matches the explicit forms, including a bare 'HF' word", () => {
     assert.ok(hfIntent("most downloaded Swedish models on Hugging Face"));
     assert.ok(hfIntent("search huggingface for whisper variants"));
     assert.ok(hfIntent("what's at hf.co/datasets/vtllms/sealqa?"));
     assert.ok(hfIntent("look on the HF hub"));
+    assert.ok(hfIntent("most downloaded whisper variants on hf?"));
+    // Accepted tradeoff (requested): ham-radio HF fires too — the hub
+    // search is free and fail-soft, and irrelevant results go uncited.
+    assert.ok(hfIntent("HF radio propagation at night"));
   });
 
-  test("does NOT match a bare 'HF', an org/name path, or unrelated text", () => {
-    assert.equal(hfIntent("HF radio propagation at night"), false);
+  test("does NOT match an org/name path, an hf-substring, or unrelated text", () => {
     assert.equal(hfIntent("compare meta-llama/Llama-3.3 to mistral"), false);
+    assert.equal(hfIntent("the shfted spectrum"), false);
     assert.equal(hfIntent("latest EU AI act deadlines"), false);
     assert.equal(hfIntent(""), false);
     assert.equal(hfIntent(null), false);

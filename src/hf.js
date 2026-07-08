@@ -34,12 +34,17 @@ const MAX_MODELS = 4;
 const MAX_DATASETS = 4;
 const MAX_PAPERS = 3;
 
-// Explicit-mention intent only: "hugging face" / "huggingface" / hf.co URLs /
-// "HF hub". A bare "HF" or a bare org/name path is deliberately NOT enough —
-// too ambiguous, and a false positive adds a spurious "Searching Hugging
-// Face" step to an unrelated question.
+// Explicit-mention intent: "hugging face" / "huggingface" / hf.co URLs /
+// a bare "HF" as its own word ("most downloaded whisper variants on HF") —
+// requested explicitly, since on a research site "HF" overwhelmingly means
+// Hugging Face. Known tradeoff, accepted: a question about HF radio ("HF
+// propagation at night") also fires — the cost is one free, fail-soft hub
+// search whose (likely zero or irrelevant) results the domain cap and the
+// synthesis's source-grounding absorb. A bare org/name path remains NOT
+// enough — no reliable way to distinguish it from a file path or package
+// name without a lookup.
 export function hfIntent(text) {
-  return /hugging\s*face|huggingface|hf\.co\b|\bhf\s+hub\b/i.test(String(text || ""));
+  return /hugging\s*face|huggingface|hf\.co\b|\bhf\b/i.test(String(text || ""));
 }
 
 // Noise words stripped before the name-substring search: platform words

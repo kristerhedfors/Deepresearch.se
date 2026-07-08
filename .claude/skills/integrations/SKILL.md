@@ -421,8 +421,9 @@ wires it (before any model call, alongside the Shodan enrichment).
 
 `src/hf.js` + `src/pipeline.js`'s `maybeHfSearch`: when the latest user
 message EXPLICITLY targets Hugging Face (`hfIntent` — "hugging face" /
-"huggingface" / hf.co / "HF hub"; a bare "HF" or an org/name path is
-deliberately NOT enough), each search wave also queries the HF Hub API and
+"huggingface" / hf.co / a bare "HF" word (requested 2026-07-08; the
+HF-radio false positive is an accepted tradeoff — free, fail-soft, junk
+goes uncited); an org/name path alone is NOT enough), each search wave also queries the HF Hub API and
 the hits join the numbered source registry as ordinary citable sources.
 Unlike Shodan/Maps there is NO settings knob: like Exa, only the AI-derived
 search terms cross the wire (never the conversation or identity), the API is
