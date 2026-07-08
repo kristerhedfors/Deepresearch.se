@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { collectConflicts, normalizeTriage } from "./pipeline.js";
+import { collectConflicts, isTransientConnectStatus, normalizeTriage } from "./pipeline.js";
 
 describe("normalizeTriage", () => {
   test("clarify with a real question is preserved and trimmed", () => {
@@ -147,5 +147,19 @@ describe("collectConflicts", () => {
     collectConflicts(state, { conflicts: ["1", "2", "3", "4"] });
     collectConflicts(state, { conflicts: ["5", "6", "7", "8"] });
     assert.equal(state.conflicts.length, 6);
+  });
+});
+
+describe("isTransientConnectStatus", () => {
+  test("provider-side statuses are retryable", () => {
+    for (const status of [500, 502, 503, 504, 429, 408]) {
+      assert.equal(isTransientConnectStatus(status), true, `status ${status}`);
+    }
+  });
+
+  test("deterministic client errors are not retried", () => {
+    for (const status of [400, 401, 403, 404, 413, 422]) {
+      assert.equal(isTransientConnectStatus(status), false, `status ${status}`);
+    }
   });
 });

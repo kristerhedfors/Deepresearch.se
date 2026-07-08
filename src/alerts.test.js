@@ -22,6 +22,21 @@ describe("classifyChatError", () => {
     assert.equal(twoAttempts.severity, "warning");
   });
 
+  test("connect-phase failures (abort or provider-side HTTP error) classify distinctly", () => {
+    const abort = classifyChatError("The operation was aborted");
+    const http502 = classifyChatError("Berget API error (502): upstream unavailable");
+    const http429 = classifyChatError("Berget API error (429): too many requests");
+    assert.equal(abort.type, "chat_connect_failed");
+    assert.equal(http502.type, "chat_connect_failed");
+    assert.equal(http429.type, "chat_connect_failed");
+  });
+
+  test("deterministic 4xx Berget errors stay in the generic bucket, and wallet depletion is not shadowed", () => {
+    assert.equal(classifyChatError("Berget API error (400): bad request").type, "chat_stream_failed");
+    const wallet = classifyChatError('Berget API error (402): {"error":{"code":"INSUFFICIENT_WALLET_BALANCE"}}');
+    assert.equal(wallet.type, "berget_insufficient_balance");
+  });
+
   test("dropped stream (missing finish_reason) classifies distinctly", () => {
     const c = classifyChatError("Berget stream ended without a finish_reason (0 chars received) — likely a dropped connection");
     assert.equal(c.type, "chat_dropped_stream");

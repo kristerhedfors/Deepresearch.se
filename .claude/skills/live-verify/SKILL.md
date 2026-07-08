@@ -160,6 +160,19 @@ description: >-
   rendered tokens; a stall deep into a long answer surfaces as an honest
   `(ref …)` error. Log event: `chat.stream_stalled`
   (model/attempt/received).
+- **Connect-phase retry (the "operation was aborted" fix, 2026-07-08)**: the
+  30s connect timeout in `berget.js` used to throw straight out of
+  `streamCompletion` as a fatal chat error — observed live (ref `6b753392`):
+  a loaded Mistral Medium sat on the synthesis request for 30.0s, every
+  search already done, and the user got "The operation was aborted" instead
+  of an answer. Connect failures are now retried within the same
+  `maxCompletionAttempts` budget as the stall/empty cases (they're the
+  cheapest retry — zero streamed text, nothing to diverge): fetch
+  rejections (abort/network) always retry; non-ok responses retry only on
+  provider-side statuses (5xx/429/408, `isTransientConnectStatus` — a
+  deterministic 400/413 still fails immediately). Log event:
+  `chat.connect_failed` (model/attempt/error, plus status on the HTTP
+  branch).
 - Stream errors shown in the UI carry a short `(ref xxxxxxxx)` — the
   first 8 chars of the request id, quotable straight into a log search.
 - `BERGET_URL` env override exists solely so local tests can point the
@@ -171,5 +184,37 @@ description: >-
   matching log entries.
 - `[observability] enabled = true` in `wrangler.toml` persists logs to
   Workers Logs (dashboard: Worker → Logs). Live tail: `npx wrangler tail`.
+- **Querying Workers Logs RETROACTIVELY** (tail is live-only; this is how a
+  past incident's full trace is pulled, verified working 2026-07-08 for ref
+  `6b753392`): POST to
+  `/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/observability/telemetry/query`
+  with the env's `CLOUDFLARE_API_TOKEN` (both already set in this
+  environment). Body shape (undocumented — discovered via the sibling
+  `/telemetry/keys` endpoint):
+
+  ```json
+  {
+    "queryId": "adhoc",
+    "timeframe": {"from": <epoch_ms>, "to": <epoch_ms>},
+    "parameters": {
+      "datasets": ["cloudflare-workers"],
+      "filters": [{"key": "$metadata.requestId", "operation": "eq",
+                   "type": "string", "value": "<x-request-id>"}]
+    },
+    "view": "events",
+    "limit": 100
+  }
+  ```
+
+  Events come back under `result.events.events[]`; the structured log
+  object is each event's `source` field. Gotchas that cost real time:
+  (1) get epoch ms from `date +%s%3N` — hand-computing it risks a wrong
+  year, and an out-of-range `timeframe` is silently CLAMPED to "now", not
+  rejected, so you get 0 events with no error; (2) filter on
+  `$metadata.requestId` (it carries our `x-request-id` / the chatlog row's
+  `request_id` / the `(ref …)`), NOT on `$metadata.message` — the message
+  field is empty for structured-JSON console lines, so an `includes`
+  filter there also returns 0 events; (3) omit `filters` to see all
+  traffic in the window.
 - On `/api/chat`, `request.complete` fires when the SSE headers are returned;
   `chat.complete` (rounds, searches, duration) marks the end of the stream.

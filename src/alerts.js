@@ -22,6 +22,17 @@ export function classifyChatError(message) {
       message: "Berget wallet balance is depleted — every research request will fail until it's topped up at berget.ai.",
     };
   }
+  if (/operation was aborted/i.test(msg) || /Berget API error \((?:5\d\d|429|408)\)/i.test(msg)) {
+    // The connect-phase family: the 30s connect timeout's abort, or a
+    // provider-side HTTP error accepting the request. pipeline.js retries
+    // these within maxCompletionAttempts, so this alert means EVERY attempt
+    // failed to get a stream open — sustained backend overload, not a blip.
+    return {
+      type: "chat_connect_failed",
+      severity: "warning",
+      message: "Berget failed to accept a completion request (connect timeout or provider-side error) even after retrying — backend overload or instability.",
+    };
+  }
   if (/empty response \d+ times? in a row/i.test(msg)) {
     return {
       type: "chat_empty_completion",
@@ -52,6 +63,8 @@ export function classifyChatError(message) {
 const REMEDIATIONS = {
   berget_insufficient_balance:
     "Top up the Berget.ai account balance in their dashboard (billing/wallet section) — every research request fails until it's funded again. Confirm it's resolved by sending any chat message; a 402 error means it's still empty.",
+  chat_connect_failed:
+    "Berget's backend for that model was too loaded to accept a new completion stream (observed live 2026-07-08 on Mistral Medium). The pipeline already retried within maxCompletionAttempts before this fired. Transient provider load usually clears on its own; if one model keeps recurring here, check Berget's status/dashboard and consider steering users off that model until it stabilizes.",
   chat_empty_completion:
     "Usually a transient model quirk — the pipeline already retries once automatically before this fires, so this alert means BOTH attempts came back empty. If one specific model keeps recurring here, consider a model-profiles.js override (e.g. widening the retry) once the pattern is clearly evidenced across several occurrences, not a one-off.",
   chat_dropped_stream:

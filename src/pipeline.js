@@ -980,14 +980,41 @@ async function runAuxSearch(ctx, source, batch, round) {
 // bound already (src/enrichment.js).
 const STREAM_IDLE_TIMEOUT_MS = 60_000;
 
+// Whether a failed connect attempt looks provider-side and transient (worth
+// another attempt) rather than deterministic (our request is at fault — a
+// 400/401/413 will fail identically on every retry). Exported for tests.
+export function isTransientConnectStatus(status) {
+  return status >= 500 || status === 429 || status === 408;
+}
+
 // Streams one chat completion to the client; returns the full text.
 async function streamCompletion(ctx, messages) {
   const maxAttempts = ctx.profile.maxCompletionAttempts;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
+    // Connect-phase failures get the same retry budget as the stall/empty
+    // cases below — they're the CHEAPEST kind to retry (nothing has streamed
+    // yet, so a second attempt can't visibly diverge from text already on
+    // screen). Observed live (2026-07-08, ref 6b753392): a loaded Mistral
+    // Medium sat on the synthesis request past berget.js's 30s connect
+    // timeout and the abort ("The operation was aborted") threw straight
+    // out of the pipeline as a fatal chat error — a provider blip the user
+    // paid for with a dead research run, all searches already done.
+    let upstream;
+    try {
+      upstream = await chatCompletion(ctx.env, messages, { model: ctx.model });
+    } catch (err) {
+      // fetch() itself rejected: the connect-timeout abort or a network
+      // reset. Always transient by nature.
+      ctx.log.warn("chat.connect_failed", { model: ctx.model, attempt, error: err?.message || String(err) });
+      if (attempt < maxAttempts) continue;
+      throw err;
+    }
     if (!upstream.ok || !upstream.body) {
-      const detail = await upstream.text().catch(() => "");
-      throw new Error(`Berget API error (${upstream.status}): ${detail.slice(0, 300)}`);
+      const detail = (await upstream.text().catch(() => "")).slice(0, 300);
+      const transient = !upstream.body || isTransientConnectStatus(upstream.status);
+      ctx.log.warn("chat.connect_failed", { model: ctx.model, attempt, status: upstream.status, error: detail });
+      if (transient && attempt < maxAttempts) continue;
+      throw new Error(`Berget API error (${upstream.status}): ${detail}`);
     }
     let streamed;
     let received = 0;
