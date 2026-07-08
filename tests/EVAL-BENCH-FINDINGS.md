@@ -86,3 +86,59 @@ prompt tweak, a diversity-cap adjustment, a budget re-tier, …), run the
 same set with the same judge/budget after, and compare the aggregate
 deltas — an improvement in citation faithfulness or source diversity with
 no regression elsewhere is the evidence.
+
+## 2026-07-08 — Hugging Face Hub search integration (build → A → improve → B)
+
+**What was tested:** the new HF Hub search-phase source (`src/hf.js` +
+`maybeHfSearch` — Hub models/datasets/papers joining the registry when the
+question explicitly targets Hugging Face), using four new kind-`hf` bench
+questions (`hf_swedish_asr`, `hf_deep_research_datasets`, `hf_gated_llama`,
+`hf_swedish_llms`). Config held fixed throughout: 120s budget, concurrency
+2, Mistral Small 3.2 as both answer and judge model.
+
+**Protocol and scores (judge overall, per question):**
+
+| question | pre-integration | A (first build) | B (after fixes) |
+|---|---|---|---|
+| hf_deep_research_datasets | 4.000 | 5.000 | 3.667 |
+| hf_swedish_asr | 4.333 | 5.000 | 5.000 |
+| hf_gated_llama | 4.000 | 4.667 | 4.667 |
+| hf_swedish_llms | 3.667 | 4.333 | 4.667 |
+| **mean** | **4.00** | **4.75** | **4.50** |
+
+**Fixes between A and B, each traced to A's traces + live probes:**
+1. **Distinctive-term ladder** — the Hub's `?search=` endpoints are
+   name-substring matchers; A's naive token-drop kept generic words and
+   returned high-download junk ("speech recognition" → Russian
+   emotion-recognition models). Verified live post-fix: "swedish" leads the
+   fallback and returns KBLab's canonical 2.5M-download Swedish ASR model
+   at rank 1.
+2. **Search-intent qualifier stripping + cross-wave dedup** — gap-round
+   queries carry Exa-oriented qualifiers ("independent reviews") that
+   sabotaged name-matching AND caused repeat hub searches for zero new
+   sources; both verified fixed by probe.
+3. **search_done events instead of a generic step** — A's hub sources were
+   cited [n] in answers but INVISIBLE to the client source panel, the debug
+   JSON, and the registry the eval judge fact-checks against (all three
+   reconstruct from search_done). B's traces confirm 8–25 hub-API items per
+   run now sit in the reconstructed registry.
+
+**Honest reading:** pre→A (+0.75) suggests the integration helps, and A→B
+(−0.25) is flat within this benchmark's known single-sample noise (±2 per
+cell — see the de-noise driver note above); the B fixes' verified value is
+in RELEVANCE (junk eliminated — probe-verified, which the judge couldn't
+see in A because A's junk went uncited), duplicate elimination, and source
+-panel/eval integrity, not in a judge delta at n=4×1. The one B drop
+(hf_deep_research_datasets coverage 5→3) reads as generation variance: the
+judge note says rubric points were "briefly mentioned", and that question's
+hub hits are name-matched "web-bench"-style datasets rather than the
+canonical benchmarks — see carried-forward.
+
+**Carried forward:**
+1. Name-substring matching cannot surface canonical benchmark datasets for
+   compound/hyphenated terms (sealqa, deepsearchqa never appear for the
+   datasets question) — the papers/search endpoint partially compensates.
+   If a future round shows this mattering on more questions, consider a
+   dataset full-text search fallback or distinctive-bigram attempts.
+2. De-noise (multi-sample) these 4 questions before trusting any
+   per-question delta here as real.
