@@ -221,16 +221,19 @@ description: >-
   at `/` get the app, as always.
 - **History pane rows & the iOS paint constraint (2026-07-08):** each
   chat row is a swipe-to-reveal card (`history-ui.js`): swiping left
-  slides the WHOLE card (inline transform while dragging, `.swiped`
-  parks it at −88px) uncovering a lazily-mounted rename/🗑-delete strip;
-  mouse devices get a hover fade-in overlay instead. HARD-WON RULE
-  (three failed fixes on a real iPhone): a row AT REST must be
+  slides the WHOLE card via inline `margin-left` (`.swiped` parks it at
+  −88px) uncovering a lazily-mounted rename/🗑-delete strip; mouse
+  devices get a hover fade-in overlay instead. HARD-WON RULES (four
+  failed fixes on a real iPhone): (1) a row AT REST must be
   structurally identical to a project row — just the open button. A row
   that PERMANENTLY carries an absolutely-positioned (even `opacity: 0`)
   strip inside the backdrop-filtered `.history-panel` renders INVISIBLE
-  on real iOS Safari (present in DOM, selectable, unpainted); Linux
-  WebKit does NOT reproduce it, so desktop/Playwright green means
-  nothing here — verify on a real device. All interaction artifacts
+  on real iOS Safari (present in DOM, selectable, unpainted). (2) The
+  slide must be pure LAYOUT (`margin-left`) — a `transform` on the
+  card, even transient during the drag, breaks painting the same way
+  (h7: card flickered, never moved). Linux WebKit does NOT reproduce
+  either, so desktop/Playwright green means nothing here — verify on a
+  real device. All interaction artifacts
   (strip, `overflow: hidden`, transform, transition) are mounted at
   gesture-claim and removed on close. The pane also self-diagnoses: a
   bracketed status stamp (`[h7 · N here + M in projects · cloud: …]`)
