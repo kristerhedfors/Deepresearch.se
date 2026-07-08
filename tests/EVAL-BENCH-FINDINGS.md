@@ -142,3 +142,48 @@ canonical benchmarks — see carried-forward.
    dataset full-text search fallback or distinctive-bigram attempts.
 2. De-noise (multi-sample) these 4 questions before trusting any
    per-question delta here as real.
+
+## 2026-07-08 — Round C: hub↔web cross-pollination fixes
+
+**Trigger:** a user-supplied production trace ("Search hf for the latest
+and greatest on cybersecurity") showing (a) three hub searches returning
+~95% identical results, (b) ZERO hub artifacts cited in the answer despite
+the explicit "search hf" ask, (c) triage planning 1 query against 4
+sub-questions.
+
+**Fixes (same config as A/B; all probe-verified against the exact trace
+query before the battery):**
+1. Winning-attempt dedup (`usedKeys`/`skipKeys` through the registry
+   contract) — probe: dup URLs per hub wave fell from ~11/11 to 1-2/11,
+   papers kept contributing fresh items.
+2. Most-specific-query picking (`pickQuery`, identifier terms weighted) +
+   survey meta-words (trends/discussions/developments/…) into the noise
+   list — the web→hub insight path (gap-learned CVE ids now reach the hub).
+3. synthPrompt platform-inventory rule AND the decisive one: a registry
+   CAPACITY race — wave-1 Exa results filled plan.maxSources before the
+   hub search ran, so hub items sat in overflow, absent from the digest,
+   uncitable. Aux sources now reserve up to one search's worth of registry
+   slots on first contribution. Probe after: the answer opens with a
+   "Latest Hugging Face Models for Cybersecurity" section citing artifact
+   pages directly.
+4. triagePrompt: queries must collectively cover the sub-questions —
+   probes now plan 2-3 angles (was 1).
+
+**Scores (A → B → C):** overall 4.75 → 4.50 → **4.667**; per question:
+datasets 5.00→3.67→**4.33**, gated_llama 4.67→4.67→**5.00**, swedish_asr
+5.00→5.00→**5.00**, swedish_llms 4.33→4.67→**4.33**. Calibration mean
+**5.00**. Hub-API sources per reconstructed registry: 14–29 (the capacity
+reserve working at scale).
+
+**Notes:** (1) the non-LLM `diversity` metric dropped (0.41→0.29) — a
+METRIC ARTIFACT, not a regression: it keys plain domains, so the newly
+admitted hf.co artifact sources read as concentration even though the
+registry keys them per owner; if hub-heavy questions become common, teach
+bench-score's sourceDiversity the same per-owner keying. (2) Inventory-
+rule adherence varies by answer model (Mistral Small follows it cleanly;
+one Mistral-Medium probe leaned on web sources) — single-sample
+observations; watch, don't tune yet.
+
+**Carried forward:** consider `sort=trendingScore` (or lastModified) for
+"latest/greatest" hub intents — sort=downloads surfaces popular-but-stale
+repos; needs an empirical probe of the API's supported sort values first.
