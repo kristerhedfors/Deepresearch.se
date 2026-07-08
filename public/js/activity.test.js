@@ -163,6 +163,23 @@ test("sanitizeResearchEvent compacts streetview_frames (drops the data URLs, kee
   assert.ok(JSON.stringify(out).length < 200);
 });
 
+test("sanitizeResearchEvent compacts quiz events (question count + title, never the question set)", () => {
+  const out = sanitizeResearchEvent({
+    type: "quiz",
+    quiz: {
+      title: "Nordic capitals",
+      intro: "Ready?",
+      questions: Array.from({ length: 5 }, () => ({
+        question: "q".repeat(200),
+        alternatives: ["a", "b", "c"],
+        correct: 0,
+        explanation: "e".repeat(200),
+      })),
+    },
+  });
+  assert.deepEqual(out, { type: "quiz", title: "Nordic capitals", questions: 5 });
+});
+
 test("sanitizeResearchEvent passes every other event through unchanged", () => {
   const done = { type: "search_done", round: 1, query: "q", results: 2, duration_ms: 5, sources: [] };
   assert.equal(sanitizeResearchEvent(done), done); // same reference — untouched

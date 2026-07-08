@@ -19,6 +19,7 @@
 //   src/settings.js  — per-user settings (/api/settings: server_history + shodan_mcp knobs)
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
+//   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
@@ -48,6 +49,7 @@ import {
 import { handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleStorage } from "./storage.js";
 import { handleEmbed, handleRag } from "./rag.js";
+import { handleQuizGrade } from "./quiz-api.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -264,6 +266,11 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
+  }
+  // Free-text quiz-answer grading (the inline-quiz capability —
+  // src/quiz-api.js; multiple-choice picks grade client-side).
+  if (url.pathname === "/api/quiz/grade" && request.method === "POST") {
+    return handleQuizGrade(request, env, log, identity);
   }
   // Document-RAG embedding proxy (used in BOTH storage modes) + the
   // server-side index endpoints (knob-gated inside src/rag.js).

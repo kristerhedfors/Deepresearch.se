@@ -88,6 +88,20 @@ description: >-
     the full extracted summary. This is deliberately visible before send,
     not just logged — the same transparency-first posture as the rest of
     this app's privacy design.
+- **Inline quiz card** (`public/js/quiz.js`, `.quiz-*` styles): the `quiz`
+  SSE event renders an interactive card in the turn body (before the stats
+  footer, like the Street View embeds — it persists beside the answer, not
+  in the collapsing activity panel). One question at a time: the
+  alternatives as full-width buttons plus a free-text "answer in your own
+  words" field; answering reveals the correct alternative, the verdict, and
+  the explanation, then Next; the last answer flips to a score verdict with
+  a per-question recap. Free text grades via `POST /api/quiz/grade`
+  (fail-soft: an ungraded answer is visibly excluded from the score).
+  Answers/completion persist via `stream.js`'s embeds registry (kind
+  `"quiz"`) — a reopened conversation resumes an unfinished quiz or shows
+  the finished recap, and completing one appends the score summary to the
+  assistant message in history (follow-ups can discuss the result). See the
+  **sse-protocol** skill for the event contract.
 - Processing indicators are the site icon pulsing (`pulse-screw` keyframes).
 - **Floating chrome (no hide/show):** header and footer are FIXED,
   click-transparent strips (`pointer-events: none`) whose glass items

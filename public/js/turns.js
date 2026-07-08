@@ -5,6 +5,7 @@
 import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
+import { renderQuiz } from "./quiz.js";
 
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -51,7 +52,10 @@ function splitUserContent(content) {
 // data URLs, and the interactive panorama rebuilt from its coordinates via
 // the Maps JS SDK — a reopened conversation used to lose all imagery
 // (reported bug). Frames whose URLs were size-capped away degrade to text.
-export function renderStoredConversation(messages, embeds = []) {
+// Quizzes re-render from their embed record too — resuming an unfinished one
+// or showing the finished recap; `opts.quizHooks(embed)` (stream.js) wires
+// their answers/completion back into the registry and history.
+export function renderStoredConversation(messages, embeds = [], opts = {}) {
   clearChatDom();
   let lastUser = { text: "", imageUrls: [] };
   messages.forEach((m, i) => {
@@ -69,6 +73,8 @@ export function renderStoredConversation(messages, embeds = []) {
           renderStreetViewEmbed(turn, { lat: e.lat, lng: e.lng });
         } else if (e.kind === "streetview_frames" && e.frames?.some((f) => f?.url)) {
           renderStreetViewFrames(turn, { query: e.query || "", frames: e.frames.filter((f) => f?.url) });
+        } else if (e.kind === "quiz" && e.quiz) {
+          renderQuiz(turn, e.quiz, opts.quizHooks ? opts.quizHooks(e) : { answers: e.answers || [] });
         }
       }
     }

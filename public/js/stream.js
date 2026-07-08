@@ -51,6 +51,7 @@ import {
   STREAM_STALL_MS,
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
+import { renderQuiz } from "./quiz.js";
 import { createSseParser } from "./sse.js";
 
 const history = []; // {role, content} pairs sent to the API
@@ -76,13 +77,40 @@ let convEmbeds = []; // [{id, kind, msgIndex, …kind-specific metadata}]
 function recordEmbed(meta) {
   const existing = convEmbeds.find((e) => e.msgIndex === history.length && e.kind === meta.kind);
   if (existing) {
-    // Mirror the render behavior (activity.js): one panorama per turn
-    // (repeats ignored), one frame strip per turn (last event wins).
+    // Mirror the render behavior (activity.js/quiz.js): one panorama per
+    // turn (repeats ignored), one frame strip per turn (last event wins),
+    // one quiz per turn (repeats ignored).
     if (meta.kind === "streetview_frames") Object.assign(existing, meta);
-    return;
+    return existing;
   }
   const id = convEmbeds.reduce((m, e) => Math.max(m, e.id || 0), 0) + 1;
-  convEmbeds.push({ id, msgIndex: history.length, ...meta });
+  const entry = { id, msgIndex: history.length, ...meta };
+  convEmbeds.push(entry);
+  return entry;
+}
+
+// The interaction hooks one quiz card (public/js/quiz.js) gets for its
+// embeds-registry entry: answers persist into the entry as they're given,
+// and completion appends the result summary to the quiz's assistant message
+// in history — so follow-up questions (and the copy-conversation export)
+// know the score and what was missed — then persists. The `completed` guard
+// keeps a reloaded, already-finished quiz from appending the summary twice.
+function quizHooks(embed) {
+  return {
+    answers: Array.isArray(embed.answers) ? embed.answers : [],
+    onAnswer(answers) {
+      embed.answers = answers;
+    },
+    onComplete(summary) {
+      if (embed.completed) return;
+      embed.completed = true;
+      const msg = history[embed.msgIndex];
+      if (msg && msg.role === "assistant" && typeof msg.content === "string") {
+        msg.content += "\n\n" + summary;
+      }
+      persistConversation(lastSendOpts).catch(() => {});
+    },
+  };
 }
 
 // An exchange that reverted its user message (send failed, stopped before
@@ -119,6 +147,12 @@ function capEmbedBytes() {
 // (inventory + image EXIF) rides in each message, and persistence honors
 // the project's cloud knob.
 let convProjectId = null;
+
+// The most recent send's persistence options (model/budget/webSearch) — a
+// quiz answered AFTER its stream finished still needs to persist the
+// conversation with the right metadata (quizHooks above). Seeded from the
+// record on load so a reload-then-finish doesn't clobber stored metadata.
+let lastSendOpts = {};
 
 let scrollDown = () => {};
 let inFlight = false;
@@ -202,7 +236,10 @@ function openConversationRecord(id, record) {
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
-  renderStoredConversation(record.messages, convEmbeds);
+  // Finishing a reloaded quiz re-persists the conversation — with the
+  // record's own metadata, not a stale (or empty) previous send's.
+  lastSendOpts = { model: record.model || "", budgetS: record.budgetS ?? null, webSearch: record.webSearch !== false };
+  renderStoredConversation(record.messages, convEmbeds, { quizHooks });
   return generation;
 }
 
@@ -557,6 +594,15 @@ function handleEvent(turn, evt, acc) {
           .map((f) => ({ dir: f.dir || "", label: f.label || "", url: f.url })),
       });
       capEmbedBytes();
+    } else if (s.type === "quiz" && Array.isArray(s.quiz?.questions) && s.quiz.questions.length) {
+      // The inline quiz (src/pipeline.js runQuizGeneration): the full
+      // question set arrives in one event; the interaction — sequential
+      // questions, alternatives + free-text, grading, the verdict — runs
+      // entirely in quiz.js against the embeds-registry entry recorded
+      // here, so the quiz (and its answers) survives reload like the
+      // Street View elements do.
+      const embed = recordEmbed({ kind: "quiz", quiz: s.quiz, answers: [] });
+      renderQuiz(turn, s.quiz, quizHooks(embed));
     }
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
@@ -689,6 +735,9 @@ export async function sendMessage(text, opts) {
     }
   }
   history.push({ role: "user", content });
+  // Captured for out-of-band persistence (a quiz finished after this stream
+  // ends re-persists with the same metadata — see quizHooks).
+  lastSendOpts = { model: opts.model, budgetS: opts.budgetS, webSearch: opts.webSearch };
   const imageUrls = opts.images.map((a) => a.dataUrl);
   addUserBubble(text, imageUrls, opts.docs.map((d) => d.name));
   const turn = addAssistantTurn(text, imageUrls);

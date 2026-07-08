@@ -96,6 +96,8 @@ Server (`src/`):
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
 | `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-origin diversity cap (per-domain; per-OWNER for huggingface.co) + overflow backfill, the numbered digest |
 | `enrichment.js` | Opt-in pre-pipeline context enrichments (Shodan, Google Maps incl. the Street View vision-describe helper) — the ENRICHMENTS registry, run once via `runEnrichments`, blocks appended before any model call |
+| `quiz.js` | The inline-quiz capability's pure logic: `quizIntent` (deterministic "quiz me…" gate, EN+SV, question-count parsing), `normalizeQuiz` (hardens the quiz-generation JSON the client renders), grade-request validation/normalization — the pipeline phase is `pipeline.js`'s `runQuizGeneration` (JSON model, fail-soft to a normal answer), the interaction runs client-side (`public/js/quiz.js`) |
+| `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
@@ -128,7 +130,13 @@ Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (account & usage panel), `turns.js`
 (bubbles/content/tools, plus reconstructing a stored conversation on
-load), `activity.js` (step bars, stats, collapse, and
+load), `quiz.js` (the interactive inline-quiz card a `quiz` SSE event
+renders into the turn body: sequential questions with alternatives PLUS
+a free-text field, local multiple-choice grading, `/api/quiz/grade` for
+written answers, the score verdict/recap — answers persist via the
+embeds registry, the completed summary is appended to the assistant
+message in history; pure scoring/summary core Node-tested),
+`activity.js` (step bars, stats, collapse, and
 `buildResearchDebugJson` — the "Copy research JSON" export of a turn's
 COMPLETE response for pasting into Claude Code: the research process AND
 the full resulting generation AND every error, server- or client-side),
@@ -180,7 +188,9 @@ mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and
 `chatlog.js` (the interaction log's pure logic: truncation markers,
 inline-image scrubbing, row assembly/projection, the text rendering,
-LIKE escaping).
+LIKE escaping), and `quiz.js` (the inline-quiz pure logic: the
+deterministic intent gate incl. question-count parsing, quiz-JSON
+hardening, grade-request validation/normalization).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -200,7 +210,9 @@ copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
 core extracted out of `stream.js`'s send path), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
-malformed-JSON tolerance), and `activity.js`'s
+malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
+scoring incl. ungraded free-text handling, the completed-quiz summary
+block), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
 `answer`, the `errored` flag + `errors` list, and the ordered timeline).
