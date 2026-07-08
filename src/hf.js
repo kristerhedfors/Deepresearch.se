@@ -15,8 +15,14 @@
 //   hfTerms (noise-word stripping) + hfAttempts (a token-drop ladder retried
 //   until an attempt returns hits). List responses already carry downloads/
 //   likes/pipeline_tag/lastModified, so no per-hit detail fetch is needed.
-//   sort=downloads matches the common "most used / best known" intent and
-//   keeps result order deterministic.
+//   Each attempt fetches TWO slices per endpoint (2026-07-08, user ask:
+//   "no stale stuff unless really relevant"): sort=downloads (the canonical,
+//   really-relevant repos — allowed to be old) and sort=lastModified (the
+//   fresh ones — junk-guarded by a download floor, since brand-new 0-download
+//   uploads dominate that sort). Merged, deduped, popular-first
+//   (mergeSlices). expand[] params make downloads/likes/lastModified present
+//   on EVERY sort (the plain list response omits lastModified except when
+//   sorting by it — established empirically).
 // - /api/papers/search?q= handles verbose queries fine (full-text), so it
 //   gets the raw query, not the term ladder.
 // - /api/quicksearch exists but is ALSO name-matching and its items are
@@ -30,8 +36,9 @@
 // the conversation, filenames, or any account identity.
 
 const HF_TIMEOUT_MS = 6000;
-const MAX_MODELS = 4;
-const MAX_DATASETS = 4;
+const SLICE = 3; // per-sort fetch size (popular slice + fresh slice)
+const MAX_PER_ENDPOINT = 5; // merged cap per endpoint (models / datasets)
+const MIN_FRESH_DOWNLOADS = 20; // junk guard for the lastModified slice
 const MAX_PAPERS = 3;
 
 // Explicit-mention intent: "hugging face" / "huggingface" / hf.co URLs /
@@ -272,6 +279,30 @@ async function hfGet(env, url) {
   return res.json();
 }
 
+// Merges the popular (sort=downloads) and fresh (sort=lastModified) slices
+// of one attempt: popular first (the canonical repos — old is fine, they are
+// the "really relevant" exception), then fresh items not already present and
+// above the download floor (brand-new 0-download uploads dominate the
+// lastModified sort and are noise, not "the latest and greatest"). Pure,
+// exported for tests.
+export function mergeSlices(popular, fresh, cap = MAX_PER_ENDPOINT, minFreshDownloads = MIN_FRESH_DOWNLOADS) {
+  const out = [];
+  const seen = new Set();
+  for (const it of popular || []) {
+    if (it?.id && !seen.has(it.id)) {
+      seen.add(it.id);
+      out.push(it);
+    }
+  }
+  for (const it of fresh || []) {
+    if (!it?.id || seen.has(it.id)) continue;
+    if ((it.downloads || 0) < minFreshDownloads) continue;
+    seen.add(it.id);
+    out.push(it);
+  }
+  return out.slice(0, cap);
+}
+
 // Runs the attempt ladder against one name-substring endpoint; returns the
 // first attempt's hits (or []) plus every attempt it consumed (`tried`) so
 // the caller can record them — a production trace showed three waves whose
@@ -279,12 +310,22 @@ async function hfGet(env, url) {
 // recording consumed attempts lets the orchestrator skip them next wave.
 // Attempts are sequential by design — the whole point is to only fall back
 // when the previous attempt found nothing.
-async function ladderSearch(env, base, attempts, limit) {
+async function ladderSearch(env, base, attempts, expandFields) {
+  const expand = expandFields.map((f) => `expand%5B%5D=${f}`).join("&");
   const tried = [];
   for (const q of attempts) {
     tried.push(q);
-    const list = await hfGet(env, `${base}?search=${encodeURIComponent(q)}&limit=${limit}&sort=downloads`);
-    if (Array.isArray(list) && list.length) return { list, tried };
+    const url = (sort) =>
+      `${base}?search=${encodeURIComponent(q)}&limit=${SLICE}&sort=${sort}&${expand}`;
+    const [popular, fresh] = await Promise.all([
+      hfGet(env, url("downloads")).catch(() => []),
+      hfGet(env, url("lastModified")).catch(() => []),
+    ]);
+    const list = mergeSlices(
+      Array.isArray(popular) ? popular : [],
+      Array.isArray(fresh) ? fresh : [],
+    );
+    if (list.length) return { list, tried };
   }
   return { list: [], tried };
 }
@@ -306,13 +347,13 @@ export async function hfSearch(env, log, query, { skipKeys } = {}) {
   const attempts = hfAttempts(terms).filter((a) => !skipKeys?.has(a));
   const empty = { list: [], tried: [] };
   const [modelsR, datasetsR, papers] = await Promise.all([
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/models", attempts, MAX_MODELS).catch(() => empty) : empty,
-    attempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", attempts, MAX_DATASETS).catch(() => empty) : empty,
+    attempts.length ? ladderSearch(env, "https://huggingface.co/api/models", attempts, ["downloads", "likes", "lastModified", "pipeline_tag", "gated"]).catch(() => empty) : empty,
+    attempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", attempts, ["downloads", "likes", "lastModified", "gated"]).catch(() => empty) : empty,
     hfGet(env, `https://huggingface.co/api/papers/search?q=${encodeURIComponent(String(query || "").slice(0, 200))}`).catch(() => []),
   ]);
   const items = [
-    ...modelsR.list.slice(0, MAX_MODELS).map(toModelItem),
-    ...datasetsR.list.slice(0, MAX_DATASETS).map(toDatasetItem),
+    ...modelsR.list.slice(0, MAX_PER_ENDPOINT).map(toModelItem),
+    ...datasetsR.list.slice(0, MAX_PER_ENDPOINT).map(toDatasetItem),
     ...(Array.isArray(papers) ? papers.slice(0, MAX_PAPERS).map(toPaperItem) : []),
   ].filter(Boolean);
   const usedKeys = [...new Set([...modelsR.tried, ...datasetsR.tried])];

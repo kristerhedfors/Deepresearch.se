@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   hfAttempts,
+  mergeSlices,
   hfIntent,
   hfPickQuery,
   hfTermKey,
@@ -188,5 +189,27 @@ describe("hfAttempts — year guard and meta-word stripping (dup-search fixes)",
     // reduce to the same term set so the winning-attempt dedup can bite.
     assert.equal(hfTermKey("cybersecurity trends 2026"), hfTermKey("cybersecurity discussions 2026"));
     assert.deepEqual(hfTerms("recent breakthroughs and innovations in cybersecurity"), ["cybersecurity"]);
+  });
+});
+
+describe("mergeSlices — popular + fresh, no stale flood, no new-junk flood", () => {
+  test("popular (canonical) items lead; fresh items append after the download floor", () => {
+    const popular = [{ id: "a/old-canonical", downloads: 90000 }, { id: "b/second", downloads: 500 }];
+    const fresh = [
+      { id: "c/brand-new-junk", downloads: 0 },   // below floor: dropped
+      { id: "d/fresh-real", downloads: 400 },
+      { id: "a/old-canonical", downloads: 90000 }, // dup: dropped
+    ];
+    assert.deepEqual(mergeSlices(popular, fresh).map((x) => x.id), [
+      "a/old-canonical",
+      "b/second",
+      "d/fresh-real",
+    ]);
+  });
+
+  test("caps the merged list and tolerates junk", () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ id: `p/${i}`, downloads: 100 }));
+    assert.equal(mergeSlices(many, [], 5).length, 5);
+    assert.deepEqual(mergeSlices(null, [{ id: null }, null, { id: "x/y", downloads: 100 }]).map((x) => x.id), ["x/y"]);
   });
 });
