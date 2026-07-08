@@ -330,7 +330,13 @@ wires it (before any model call, alongside the Shodan enrichment).
   (e.g. a dedicated key restricted to the Embed API only), the client falls
   back to the old Embed iframe automatically — still navigable, but the
   current-view capture is unavailable and follow-ups use the cardinal-frames
-  walk-back instead.
+  walk-back instead. NOTE the SDK script can load fine and STILL be rejected
+  asynchronously (ApiNotActivatedMapError etc.) — Google then paints a
+  "Sorry! Something went wrong." panel INTO the container and calls the
+  global `gm_authFailure` hook; `activity.js` hooks it, swaps every live
+  panorama for the iframe, drops the dead POV, and routes future renders
+  straight to the iframe (observed live 2026-07 before the JS API was
+  enabled on the key).
 - **Deterministic location extraction** (`src/googlemaps.js`'s `extractPlace`,
   pure + unit-tested): parses a single geocodable street-address candidate out
   of the latest message (a "<words> <number>" span whose word before the number

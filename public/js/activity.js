@@ -19,6 +19,8 @@ import { mapsEmbedKey } from "./settings.js";
 
 let currentPov = null; // the view the user last panned/moved to (this session)
 let mapsApiPromise = null; // lazy one-time SDK load
+let sdkAuthFailed = false; // Google rejected the key for the JS API (gm_authFailure)
+const panoFallbacks = new Set(); // per-panorama "replace me with the iframe" closures
 
 // What stream.js attaches to the next /api/chat body, or null when no live
 // panorama exists (fresh session, iframe fallback, reloaded conversation).
@@ -30,6 +32,31 @@ export function getStreetViewPov() {
 // belongs to the conversation being sent, so its POV must not ride along.
 export function resetStreetViewPov() {
   currentPov = null;
+}
+
+// The SDK script can load fine and STILL fail afterwards: Google validates
+// the key asynchronously and, on rejection (key not enabled for the Maps
+// JavaScript API, referer not allowed, invalid key), paints a "Sorry!
+// Something went wrong." panel INTO the map container and calls the global
+// gm_authFailure hook — the script's onerror never fires (a reported bug:
+// that error panel sat where the panorama should be). Hook it once: replace
+// every live panorama with the Embed iframe fallback, drop the now-dead POV,
+// and route all future renders straight to the iframe.
+function installAuthFailureHook() {
+  if (globalThis.__drGmAuthHooked) return;
+  globalThis.__drGmAuthHooked = true;
+  globalThis.gm_authFailure = () => {
+    sdkAuthFailed = true;
+    currentPov = null; // no live panorama ⇒ no current view to send
+    for (const fallback of panoFallbacks) {
+      try {
+        fallback();
+      } catch {
+        // best-effort — a failed swap just leaves Google's error panel
+      }
+    }
+    panoFallbacks.clear();
+  };
 }
 
 // Loads the Maps JS SDK once, on demand (only when a streetview_embed event
@@ -94,8 +121,32 @@ export function renderStreetViewEmbed(turn, s) {
   turn.el.insertBefore(wrap, turn.stats);
   turn._svEmbed = wrap;
 
+  // The Embed-iframe fallback for every way the SDK can fail (script load
+  // error, timeout, missing class, async key rejection) — still navigable,
+  // just without the current-view capture.
+  const renderIframeFallback = () => {
+    const iframe = document.createElement("iframe");
+    iframe.loading = "lazy";
+    iframe.allow = "fullscreen";
+    iframe.title = "Google Street View";
+    const params = new URLSearchParams({ key, location: `${lat},${lng}` });
+    if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
+    iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
+    box.replaceChildren(iframe);
+    label.textContent = "Street View — drag to look around";
+  };
+
+  // Google already rejected this key for the JS API — don't render its error
+  // panel again, go straight to the iframe.
+  if (sdkAuthFailed) {
+    renderIframeFallback();
+    return;
+  }
+  installAuthFailureHook();
+
   loadMapsApi(key)
     .then((maps) => {
+      if (sdkAuthFailed) throw new Error("maps js auth failed");
       if (!maps?.StreetViewPanorama) throw new Error("StreetViewPanorama unavailable");
       const pano = new maps.StreetViewPanorama(box, {
         position: { lat, lng },
@@ -128,19 +179,11 @@ export function renderStreetViewEmbed(turn, s) {
       pano.addListener("pano_changed", record);
       record();
       label.textContent = "Street View — drag to look around; follow-up questions see your current view";
+      // If Google rejects the key AFTER the panorama rendered (gm_authFailure
+      // fires whenever), this closure swaps it for the working iframe.
+      panoFallbacks.add(renderIframeFallback);
     })
-    .catch(() => {
-      // SDK unavailable (key not enabled for the Maps JavaScript API, network,
-      // CSP…): fall back to the Embed iframe — still navigable, no POV capture.
-      const iframe = document.createElement("iframe");
-      iframe.loading = "lazy";
-      iframe.allow = "fullscreen";
-      iframe.title = "Google Street View";
-      const params = new URLSearchParams({ key, location: `${lat},${lng}` });
-      if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
-      iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
-      box.replaceChildren(iframe);
-    });
+    .catch(renderIframeFallback);
 }
 
 // The snapped Street View frames the server's vision helper reasoned about,
