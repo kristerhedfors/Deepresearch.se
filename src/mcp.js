@@ -336,6 +336,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     mapsCount: 0,
     vision: false,
     visionModel: null,
+    visionModels: [],
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: [],
     streetViewPov: null,

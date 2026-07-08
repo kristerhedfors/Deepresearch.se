@@ -4,6 +4,7 @@
 
 import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
+import { renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -44,11 +45,16 @@ function splitUserContent(content) {
 // Loads a previously saved conversation (public/js/history-ui.js) into the
 // chat DOM: user bubbles and assistant turns with their final text set
 // directly, no typing animation or activity steps (those were live-session
-// UI, never persisted — only the message content itself is saved).
-export function renderStoredConversation(messages) {
+// UI, never persisted — only the message content itself is saved). Street
+// View elements ARE persisted (stream.js's `embeds` registry, keyed by
+// assistant-message index) and re-rendered: the frame strip from its stored
+// data URLs, and the interactive panorama rebuilt from its coordinates via
+// the Maps JS SDK — a reopened conversation used to lose all imagery
+// (reported bug). Frames whose URLs were size-capped away degrade to text.
+export function renderStoredConversation(messages, embeds = []) {
   clearChatDom();
   let lastUser = { text: "", imageUrls: [] };
-  for (const m of messages) {
+  messages.forEach((m, i) => {
     if (m.role === "user") {
       lastUser = splitUserContent(m.content);
       addUserBubble(lastUser.text, lastUser.imageUrls);
@@ -57,8 +63,16 @@ export function renderStoredConversation(messages) {
       // works the same as it does on a live turn.
       const turn = addAssistantTurn(lastUser.text, lastUser.imageUrls);
       setText(turn, m.content);
+      for (const e of embeds) {
+        if (e?.msgIndex !== i) continue;
+        if (e.kind === "streetview_embed") {
+          renderStreetViewEmbed(turn, { lat: e.lat, lng: e.lng });
+        } else if (e.kind === "streetview_frames" && e.frames?.some((f) => f?.url)) {
+          renderStreetViewFrames(turn, { query: e.query || "", frames: e.frames.filter((f) => f?.url) });
+        }
+      }
     }
-  }
+  });
 }
 
 export function addUserBubble(text, imageUrls = [], docNames = []) {

@@ -233,6 +233,8 @@ export interface RequestState {
   vision: boolean;
   /** Helper model to describe Street View for a non-vision answer model. */
   visionModel: string | null;
+  /** Ranked describe-helper candidates (first = visionModel) for failover. */
+  visionModels: string[];
   visionTotals: TokenTotals;
   imageLocations: ImageLocation[];
   /** The user's current panorama view, for the capture-what-they-see path. */

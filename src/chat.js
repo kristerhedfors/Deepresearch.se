@@ -113,7 +113,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // model when it's already vision, else the first up + vision-capable catalog
   // model, else null (no describe — the block then just points at the link).
   // This is why "describe this street view" works regardless of model choice.
-  const visionModel = modelIsVision ? model : catalog?.find((m) => m.vision && m.up)?.id || null;
+  // Ranked failover list, not a single pick: the describe call was observed
+  // (2026-07-08, describe_failed "The operation was aborted") timing out on
+  // a loaded Mistral Medium while other vision models answered instantly —
+  // a one-model helper goes blind exactly when the backend is busiest.
+  const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
+  const visionModels = (modelIsVision
+    ? [model, ...visionCandidates.filter((id) => id !== model)]
+    : visionCandidates
+  ).slice(0, 3);
+  const visionModel = visionModels[0] || null;
   const imageLocations = validateImageLocations(body.imageLocations);
   // The user's CURRENT view in the inline Street View panorama (they may have
   // panned/moved it) — lets a follow-up capture exactly what's on their
@@ -158,6 +167,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       googleMaps: googleMapsOn,
       vision: modelIsVision,
       visionModel,
+      visionModels,
       imageLocations,
       streetViewPov,
     });
@@ -361,6 +371,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     mapsCount: 0, // 1 when Google Maps data was found & folded in
     vision: !!extras.vision, // chosen answer model supports image input
     visionModel: extras.visionModel || null, // helper model to describe Street View for a non-vision answer model
+    // Ranked describe-helper candidates (first = visionModel); the describe
+    // fails over down this list when a model times out under load.
+    visionModels: extras.visionModels || (extras.visionModel ? [extras.visionModel] : []),
     // Tokens for the Street View vision-describe helper — its own model, so
     // billed at its own catalog rate (like jsonTotals), summed for the counters.
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },

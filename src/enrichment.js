@@ -309,47 +309,62 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
 // fail-soft: any error yields "" and the block falls back to the keyless
 // Street View link.
 async function describeStreetView(env, log, state, intro, images, question = "") {
-  try {
-    const ask = question
-      ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in these photos — if the photos cannot answer it, say so plainly. Then briefly describe`
-      : "Describe";
-    const content = [
-      {
-        type: "text",
-        text:
-          `${intro} ` +
-          `${ask} the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, ` +
-          "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
-          "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",
-      },
-      ...images.map((url) => ({ type: "image_url", image_url: { url } })),
-    ];
-    const upstream = await chatCompletion(env, [{ role: "user", content }], { model: state.visionModel });
-    if (!upstream.ok || !upstream.body) {
-      // Capture Berget's error body: the bare status was not enough to
-      // diagnose the Mistral-Medium image-count 400 (the detail had to be
-      // re-derived with live probes — see model-profiles.js).
-      const detail = await upstream.text().catch(() => "");
-      log.warn("googlemaps.describe_failed", {
-        status: upstream.status,
-        model: state.visionModel,
-        images: images.length,
-        detail: detail.slice(0, 200),
+  const ask = question
+    ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in these photos — if the photos cannot answer it, say so plainly. Then briefly describe`
+    : "Describe";
+  const content = [
+    {
+      type: "text",
+      text:
+        `${intro} ` +
+        `${ask} the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, ` +
+        "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
+        "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",
+    },
+    ...images.map((url) => ({ type: "image_url", image_url: { url } })),
+  ];
+
+  // Failover, not a single shot: production trace 2026-07-08 (describe_failed
+  // "The operation was aborted") showed a loaded Mistral Medium missing the
+  // 30s connect timeout while other vision models answered instantly — one
+  // flaky model must not blind every answer about the imagery.
+  const candidates = state.visionModels?.length ? state.visionModels : [state.visionModel].filter(Boolean);
+  for (const model of candidates) {
+    try {
+      const upstream = await chatCompletion(env, [{ role: "user", content }], { model });
+      if (!upstream.ok || !upstream.body) {
+        // Capture Berget's error body: the bare status was not enough to
+        // diagnose the Mistral-Medium image-count 400 (the detail had to be
+        // re-derived with live probes — see model-profiles.js).
+        const detail = await upstream.text().catch(() => "");
+        log.warn("googlemaps.describe_failed", {
+          status: upstream.status,
+          model,
+          images: images.length,
+          detail: detail.slice(0, 200),
+        });
+        continue;
+      }
+      // Bounded read: the describe runs BEFORE triage, so an accepted-but-
+      // stalled vision stream would otherwise hang the entire request on
+      // "Checking Google Maps…" with no way out. A tripped guard throws into
+      // the catch below — the next candidate gets its turn.
+      const { text, usage } = await consumeChatStream(upstream.body, () => {}, {
+        idleMs: 20_000,
+        maxMs: 45_000,
       });
-      return "";
+      addUsage(state.visionTotals, usage);
+      const out = (text || "").trim();
+      if (out) {
+        // Bill the vision tokens at the rate of the model that actually
+        // produced them (failed attempts contribute no usage).
+        state.visionModel = model;
+        return out;
+      }
+      log.warn("googlemaps.describe_failed", { model, images: images.length, error: "empty completion" });
+    } catch (err) {
+      log.warn("googlemaps.describe_failed", { model, error: err?.message || String(err) });
     }
-    // Bounded read: the describe runs BEFORE triage, so an accepted-but-
-    // stalled vision stream would otherwise hang the entire request on
-    // "Checking Google Maps…" with no way out. A tripped guard throws into
-    // the catch below — description degrades to "", the chat proceeds.
-    const { text, usage } = await consumeChatStream(upstream.body, () => {}, {
-      idleMs: 20_000,
-      maxMs: 45_000,
-    });
-    addUsage(state.visionTotals, usage);
-    return (text || "").trim();
-  } catch (err) {
-    log.warn("googlemaps.describe_failed", { error: err?.message || String(err) });
-    return "";
   }
+  return "";
 }

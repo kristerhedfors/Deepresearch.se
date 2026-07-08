@@ -56,14 +56,19 @@ unknown `status` types (forward compatibility).
   Deliberately bulky — the ONE event whose payload is compacted before
   entering the per-turn research log (`activity.js`'s
   `sanitizeResearchEvent`: frame count + directions/labels only), so the
-  "Copy research JSON" export stays small. Like the embed, it's live-session
-  only (a reloaded conversation keeps the answer + link, not the images).
+  "Copy research JSON" export stays small.
   Both embed events are ALSO recorded in `stream.js`'s `convEmbeds`
-  registry (small metadata only, persisted in the conversation record as
-  `embeds`) so the header's copy-conversation export can reference them as
-  id-numbered `[Embedded element #N: …]` lines — any NEW event type that
-  renders a persistent turn-body element must do the same (see the
-  **add-research-source** skill, section 6).
+  registry, persisted in the conversation record as `embeds` and
+  RE-RENDERED on history load (`turns.js` `renderStoredConversation`):
+  the panorama is rebuilt from its coordinates via the Maps JS SDK, and
+  the frame strip from its stored data URLs (kept in the encrypted record
+  like user-attached images; `capEmbedBytes` drops the oldest embeds'
+  URLs past ~4 MB — metadata stays for the copy-text export). Reopened
+  conversations used to lose all Street View imagery (reported
+  2026-07-08). The registry also feeds the header's copy-conversation
+  export (id-numbered `[Embedded element #N: …]` lines) — any NEW event
+  type that renders a persistent turn-body element must do the same (see
+  the **add-research-source** skill, section 6).
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

@@ -92,6 +92,26 @@ function pruneEmbeds() {
   convEmbeds = convEmbeds.filter((e) => e.msgIndex < history.length);
 }
 
+// Frame images are the one bulky embed payload (~150 KB per data URL). Cap
+// the total stored across the conversation at ~4 MB by dropping the URLS
+// from the OLDEST frame embeds first — their metadata (query, directions)
+// stays for the copy-text export; only the reload-render of those old turns
+// degrades back to text.
+const MAX_EMBED_BYTES = 4_000_000;
+function capEmbedBytes() {
+  let total = 0;
+  for (const e of convEmbeds) {
+    for (const f of e.frames || []) total += (f.url || "").length;
+  }
+  for (const e of convEmbeds) {
+    if (total <= MAX_EMBED_BYTES) break;
+    for (const f of e.frames || []) {
+      total -= (f.url || "").length;
+      delete f.url;
+    }
+  }
+}
+
 // The project this conversation belongs to (null = none): adopted from the
 // active project on the FIRST send of a fresh conversation, persisted in
 // the encrypted record, restored on load. Project scope means: retrieval
@@ -180,7 +200,7 @@ export function applyLoadedConversation(record) {
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
-  renderStoredConversation(record.messages);
+  renderStoredConversation(record.messages, convEmbeds);
   scrollDown(true);
 }
 
@@ -450,7 +470,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   convIncognito = false;
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
-  renderStoredConversation(msgs);
+  renderStoredConversation(msgs, convEmbeds);
   if (onLoad) {
     try { onLoad(record); } catch { /* settings restore is best-effort */ }
   }
@@ -520,7 +540,15 @@ function handleEvent(turn, evt, acc) {
         kind: "streetview_frames",
         query: s.query || "",
         directions: (Array.isArray(s.frames) ? s.frames : []).map((f) => f?.dir || f?.label || "").filter(Boolean),
+        // The actual frame images (data URLs), so a conversation reopened
+        // from history shows the imagery again instead of losing it
+        // (reported: "all images are gone") — stored in the encrypted
+        // record like user-attached images, size-capped by capEmbedBytes.
+        frames: (Array.isArray(s.frames) ? s.frames : [])
+          .filter((f) => typeof f?.url === "string")
+          .map((f) => ({ dir: f.dir || "", label: f.label || "", url: f.url })),
       });
+      capEmbedBytes();
     }
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
