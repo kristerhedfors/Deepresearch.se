@@ -231,8 +231,13 @@ function firstMatch(raw, re) {
 // ---- named-place street-view requests (pure — exported for unit tests) ------
 
 // An EXPLICIT street-view ask, the precondition for the free-text place
-// query below and for the honest unresolved note.
-const STREETVIEW_INTENT_RE = /\b(?:street\s?view|gatuvy)\b/iu;
+// query below and for the honest unresolved note. Typo-tolerant: an
+// enumerated set of common misspellings, not a loose pattern — reported
+// verbatim 2026-07-08: "Streer view" missed the exact-match regex and the
+// whole ask fell through to a clarify.
+const SV_WORDS = "(?:street|streer|stret|streat|steet|sreet|stere)\\s*(?:view|veiw|vew|wiev)|streetview|gatu?vy";
+const STREETVIEW_INTENT_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "iu");
+const STREETVIEW_INTENT_ALL_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "giu");
 export function streetViewIntent(text) {
   return STREETVIEW_INTENT_RE.test(typeof text === "string" ? text : "");
 }
@@ -251,7 +256,7 @@ export function extractPlaceQuery(text) {
   const raw = typeof text === "string" ? text : "";
   if (!streetViewIntent(raw) || extractPlace(raw)) return "";
   const words = raw
-    .replace(/\b(?:street\s?view|streetview|gatuvy)\b/giu, " ")
+    .replace(STREETVIEW_INTENT_ALL_RE, " ")
     .split(/\s+/)
     .filter(Boolean);
   // Trim LEADING intent/filler only — interior connectors ("in Copenhagen")
@@ -281,6 +286,73 @@ export function unresolvedMapsBlock() {
     "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
     "--- End of Google Maps ---"
   );
+}
+
+// ---- fragment answers to "which office?" (pure — exported for unit tests) ---
+
+// NUMBERED addresses anywhere in a text — used on ASSISTANT messages, whose
+// research answers surface the addresses the user then refers back to
+// ("Accenture has offices at Alströmergatan 12, Rådmansgatan 42, …" →
+// user: "Alstromer"). Numbered-only on purpose: assistant prose mentions
+// many bare street names; a street + house number is a high-precision
+// candidate.
+function addressesInText(text) {
+  const raw = typeof text === "string" ? text : "";
+  const out = [];
+  for (const m of raw.matchAll(ADDRESS_RE)) {
+    const words = m[0].trim().replace(/\s+/g, " ").split(" ");
+    if (words.length < 2) continue;
+    const streetIdx = words.length - 2;
+    const streetWord = normWord(words[streetIdx]);
+    if (!SWEDISH_STREET_SUFFIX_RE.test(streetWord) && !ENGLISH_STREET_WORDS.has(streetWord)) continue;
+    let start = streetIdx;
+    while (start > 0 && !STOPWORDS.has(normWord(words[start - 1]))) start--;
+    out.push(words.slice(start).join(" "));
+  }
+  return out;
+}
+
+// Diacritics-insensitive normalization so a user's quick "Alstromer" matches
+// "Alströmergatan" (fragments are typed fast, without ö/ä/å).
+const normForMatch = (s) =>
+  (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
+// Matches a short fragment the user typed (usually answering the model's own
+// "which office?" clarify) against every address the CONVERSATION has
+// surfaced — assistant research answers included, which the user-only
+// walk-back can never see (reported verbatim 2026-07-08: assistant listed
+// three Accenture offices, user answered "Alstromer", and the model just
+// asked again). Returns the address only on a UNIQUE match; ambiguous or
+// unknown fragments return "" so the clarify loop can continue honestly.
+export function matchAddressFragment(conversation, fragment) {
+  const frag = normForMatch((fragment || "").trim());
+  if (frag.length < 4) return "";
+  const msgs = Array.isArray(conversation) ? conversation : [];
+  const candidates = [];
+  const seen = new Set();
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const t = textOf(msgs[i]?.content);
+    const found = msgs[i]?.role === "assistant" ? addressesInText(t) : [extractPlace(t)].filter(Boolean);
+    for (const a of found) {
+      const key = normForMatch(a);
+      if (!seen.has(key)) {
+        seen.add(key);
+        candidates.push(a);
+      }
+    }
+  }
+  const hits = candidates.filter((a) => {
+    const n = normForMatch(a);
+    return n.startsWith(frag) || n.includes(" " + frag) || n.includes(frag);
+  });
+  return hits.length === 1 ? hits[0] : "";
+}
+
+// True when this conversation is street-view flavored: some earlier USER
+// turn explicitly asked for it (typo-tolerant), so a bare fragment answer
+// like "Alstromer" can be read as picking a location.
+function conversationAsksStreetView(users) {
+  return users.some((m) => streetViewIntent(textOf(m?.content)));
 }
 
 // ---- locality-correction extraction (pure — exported for unit tests) --------
@@ -951,6 +1023,15 @@ export function pickLookup(conversation, imageLocations, pov = null) {
   // re-runs the walked-back street in the corrected city — and outranks the
   // POV, whose on-screen panorama is by definition showing the WRONG place.
   const latestFix = extractLocalityFix(latest);
+  // A short fragment answering the model's own "which office?" clarify
+  // ("Alstromer" after the assistant listed three Accenture addresses):
+  // matched — diacritics-insensitively — against addresses the whole
+  // conversation has surfaced, assistant research answers included.
+  const trimmed = latest.trim();
+  if (conversationAsksStreetView(users) && trimmed && trimmed.length <= 40 && trimmed.split(/\s+/).length <= 3) {
+    const picked = matchAddressFragment(conversation, trimmed);
+    if (picked) return { coords: "", address: picked, followUp: true };
+  }
   // The POV path uses the LOOSE gate (people/vehicles/signs — anything one
   // asks pointing at a live street scene); the walk-back keeps the strict
   // imagery/building gate since it re-runs a full billed lookup.
@@ -966,6 +1047,21 @@ export function pickLookup(conversation, imageLocations, pov = null) {
     const prior = extractPlace(t);
     if (prior) return { coords: "", address: withLocalityFix(prior, fix), followUp: true };
     if (!fix) fix = extractLocalityFix(t);
+  }
+  // The user's own turns name nothing — but the assistant's research answer
+  // may have surfaced addresses. Exactly ONE distinct address is
+  // unambiguous ("street view" right after an answer about a single office);
+  // several stay silent so the model can honestly ask which one.
+  const fromAssistant = new Map();
+  for (const m of Array.isArray(conversation) ? conversation : []) {
+    if (m?.role !== "assistant") continue;
+    for (const a of addressesInText(textOf(m.content))) {
+      fromAssistant.set(normForMatch(a), a);
+    }
+  }
+  if (fromAssistant.size === 1) {
+    const only = fromAssistant.values().next().value;
+    return { coords: "", address: withLocalityFix(only, fix), followUp: true };
   }
   return null;
 }

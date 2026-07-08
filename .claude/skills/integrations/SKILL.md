@@ -363,6 +363,18 @@ wires it (before any model call, alongside the Shodan enrichment).
   new address does. An explicit ask that resolves to NOTHING appends
   `unresolvedMapsBlock()` (feature is ON, ask which place, never give
   enable instructions) so a silent miss can't produce bogus setup steps.
+- **Fragment answers & typo-tolerant intent** (`matchAddressFragment`,
+  typo-set `streetViewIntent`, pure + unit-tested). Reported verbatim
+  2026-07-08: assistant research listed three Accenture offices; "Streer
+  view" (typo) missed the exact-match intent regex, and the user's
+  clarify-answer "Alstromer" (no diacritics, no suffix) matched nothing —
+  endless re-clarify. Intent is now an enumerated misspelling set
+  (streer/stret/steet/veiw/gatvy…), and a short fragment answering the
+  model's own "which office?" is matched diacritics-insensitively against
+  every address the CONVERSATION surfaced — assistant answers included
+  (numbered addresses only there, for precision). Unique hit → lookup;
+  ambiguous → the clarify continues honestly. A bare "street view" with
+  exactly ONE assistant-surfaced address uses it outright.
 - **Locality corrections re-run the lookup in the corrected city**
   (`extractLocalityFix` + `withLocalityFix`, pure + unit-tested). Reported
   verbatim 2026-07-08: "Street view lidbecksgatan 10" resolved the wrong

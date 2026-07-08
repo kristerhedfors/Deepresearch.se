@@ -13,6 +13,7 @@ import {
   pickLookup,
   extractLocalityFix,
   extractPlaceQuery,
+  matchAddressFragment,
   referencesStreetView,
   streetViewIntent,
   unresolvedMapsBlock,
@@ -140,6 +141,58 @@ describe("extractPlaceQuery / streetViewIntent / unresolvedMapsBlock", () => {
     assert.match(block, /ENABLED/);
     assert.match(block, /Ask the user which address or place/);
     assert.match(block, /Do NOT instruct the user to enable/);
+  });
+});
+
+describe("fragment answers & typo-tolerant intent — the verbatim Accenture conversation", () => {
+  const research = { role: "assistant", content:
+    "Accenture has offices at Alströmergatan 12, 112 47 Stockholm; Rådmansgatan 42, 113 57 Stockholm; and Kungstensgatan 23A, 113 57 Stockholm." };
+
+  test("streetViewIntent tolerates common misspellings", () => {
+    assert.equal(streetViewIntent("Streer view"), true); // reported verbatim
+    assert.equal(streetViewIntent("stret view"), true);
+    assert.equal(streetViewIntent("street veiw"), true);
+    assert.equal(streetViewIntent("gatvy"), true);
+    assert.equal(streetViewIntent("a street with a view"), false);
+  });
+
+  test("a bare fragment answering the clarify picks the matching assistant-surfaced address", () => {
+    // "Alstromer" (no diacritics, no suffix) → Alströmergatan 12, uniquely.
+    const convo = [
+      { role: "user", content: "Show me Accenture offices in Stockholm" },
+      research,
+      { role: "user", content: "Streer view" },
+      { role: "assistant", content: "Which office do you want street view images of?" },
+      { role: "user", content: "Alstromer" },
+    ];
+    assert.deepEqual(pickLookup(convo, []), { coords: "", address: "Alströmergatan 12", followUp: true });
+  });
+
+  test("matchAddressFragment is diacritics-insensitive and demands a UNIQUE hit", () => {
+    const convo = [research];
+    assert.equal(matchAddressFragment(convo, "Alstromer"), "Alströmergatan 12");
+    assert.equal(matchAddressFragment(convo, "radmansgatan"), "Rådmansgatan 42");
+    assert.equal(matchAddressFragment(convo, "gatan"), ""); // matches all three — ambiguous
+    assert.equal(matchAddressFragment(convo, "abc"), ""); // too short / unknown
+    assert.equal(matchAddressFragment([], "Alstromer"), "");
+  });
+
+  test("bare 'street view' with SEVERAL assistant addresses stays null — the clarify is honest", () => {
+    const convo = [
+      { role: "user", content: "Show me Accenture offices in Stockholm" },
+      research,
+      { role: "user", content: "Streer view" },
+    ];
+    assert.equal(pickLookup(convo, []), null);
+  });
+
+  test("bare 'street view' with exactly ONE assistant-surfaced address uses it", () => {
+    const convo = [
+      { role: "user", content: "Where is the Accenture Liquid Studio?" },
+      { role: "assistant", content: "It is located at Alströmergatan 12, 112 47 Stockholm." },
+      { role: "user", content: "street view" },
+    ];
+    assert.deepEqual(pickLookup(convo, []), { coords: "", address: "Alströmergatan 12", followUp: true });
   });
 });
 
