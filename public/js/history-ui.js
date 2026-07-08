@@ -85,7 +85,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h9 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h10 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -234,39 +234,33 @@ export function initHistorySidebar(opts = {}) {
   // (transforms on these rows break painting on real iOS, see app.css) —
   // then settles parked at -REVEAL_PX (.swiped) or back at rest, where
   // every interaction artifact (strip, clip, margin) is removed again.
+  //
+  // GESTURE PLUMBING (2026-07-08, real-device iteration 5): on real iOS
+  // Safari the drag must be driven by TOUCH events with preventDefault()
+  // once horizontal intent is detected. Pointer events + touch-action:
+  // pan-y are NOT honored for a horizontal drag inside this vertically
+  // scrollable panel — iOS starts a native scroll (the list visibly
+  // nudges a few px), fires pointercancel, and never delivers the moves,
+  // so the card never slides. Synthetic-event tests can't catch this
+  // (they bypass native gesture arbitration); only a real device shows it.
   const REVEAL_PX = 88; // matches .history-actions width in app.css
   function attachSwipe(item) {
     const row = item.querySelector(".history-open");
     let startX = 0, startY = 0, axis = null, tracking = false;
 
-    item.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "mouse") return;
-      tracking = true;
-      axis = null;
-      startX = e.clientX;
-      startY = e.clientY;
-    });
+    function claim() {
+      // Mark the gesture so the tap that may follow doesn't open the chat.
+      item.dataset.swipeLock = "1";
+      mountActions(item);
+      item.classList.add("swiping");
+      item.style.overflow = "hidden";
+      // Close any other card that's sitting open.
+      list.querySelectorAll(".history-item.swiped").forEach((other) => {
+        if (other !== item) closeActions(other);
+      });
+    }
 
-    item.addEventListener("pointermove", (e) => {
-      if (!tracking) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (!axis) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        if (axis === "x") {
-          // Claim the gesture so a stray tap at the end doesn't open the chat.
-          item.dataset.swipeLock = "1";
-          mountActions(item);
-          item.classList.add("swiping");
-          item.style.overflow = "hidden";
-          // Close any other card that's sitting open.
-          list.querySelectorAll(".history-item.swiped").forEach((other) => {
-            if (other !== item) closeActions(other);
-          });
-        }
-      }
-      if (axis !== "x") return;
+    function drag(dx) {
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = Math.max(-REVEAL_PX, Math.min(0, from + dx));
       row.style.transition = "none"; // follow the finger, no easing lag
@@ -274,16 +268,11 @@ export function initHistorySidebar(opts = {}) {
       // The strip (painting above the static card) fades in as the gap opens.
       const strip = item.querySelector(".history-actions");
       if (strip) strip.style.opacity = String(Math.min(1, -offset / REVEAL_PX));
-    });
+    }
 
-    function settle(e) {
-      if (!tracking) return;
-      tracking = false;
-      if (axis !== "x") return;
-      // pointercancel's coordinates are unreliable (iOS often reports 0):
-      // treat it as an aborted gesture and snap back.
+    function finish(dx, aborted) {
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
-      const offset = e.type === "pointercancel" ? 0 : from + (e.clientX - startX);
+      const offset = aborted ? 0 : from + dx;
       if (offset < -REVEAL_PX / 2) {
         row.style.transition = "margin-left .18s ease";
         row.style.marginLeft = -REVEAL_PX + "px";
@@ -293,11 +282,68 @@ export function initHistorySidebar(opts = {}) {
       } else {
         closeActions(item);
       }
-      // Let the click that follows this pointerup see the lock, then clear it.
+      // Let the click that follows the gesture see the lock, then clear it.
       setTimeout(() => { delete item.dataset.swipeLock; }, 0);
     }
-    item.addEventListener("pointerup", settle);
-    item.addEventListener("pointercancel", settle);
+
+    function moveLogic(dx, dy, preventDefaultFn) {
+      if (!axis) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (axis === "x") claim();
+      }
+      if (axis !== "x") return;
+      preventDefaultFn(); // keep iOS from stealing the gesture for scroll
+      drag(dx);
+    }
+
+    if ("ontouchstart" in window) {
+      item.addEventListener("touchstart", (e) => {
+        if (e.touches.length !== 1) return;
+        tracking = true;
+        axis = null;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+      // passive: false — preventDefault() must actually work here.
+      item.addEventListener("touchmove", (e) => {
+        if (!tracking || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        moveLogic(t.clientX - startX, t.clientY - startY, () => {
+          if (e.cancelable) e.preventDefault();
+        });
+      }, { passive: false });
+      const end = (e) => {
+        if (!tracking) return;
+        tracking = false;
+        if (axis !== "x") return;
+        const t = e.changedTouches && e.changedTouches[0];
+        finish(t ? t.clientX - startX : 0, e.type === "touchcancel" || !t);
+      };
+      item.addEventListener("touchend", end);
+      item.addEventListener("touchcancel", end);
+    } else {
+      item.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse") return;
+        tracking = true;
+        axis = null;
+        startX = e.clientX;
+        startY = e.clientY;
+      });
+      item.addEventListener("pointermove", (e) => {
+        if (!tracking) return;
+        moveLogic(e.clientX - startX, e.clientY - startY, () => {});
+      });
+      const settle = (e) => {
+        if (!tracking) return;
+        tracking = false;
+        if (axis !== "x") return;
+        // pointercancel's coordinates are unreliable: treat as aborted.
+        finish(e.clientX - startX, e.type === "pointercancel");
+      };
+      item.addEventListener("pointerup", settle);
+      item.addEventListener("pointercancel", settle);
+    }
 
     // Mouse hover shows the strip as an overlay (no slide); leaving
     // removes it again (unless swiped open).
