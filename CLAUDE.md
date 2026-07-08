@@ -260,7 +260,25 @@ deploy mid-battery, append-only ledgers.
 ## Skills
 
 Detailed guidance is split into on-demand skills under `.claude/skills/` — load
-the relevant one before working in its area:
+the relevant one before working in its area.
+
+**Persist solved tasks as skills.** When a task gets solved in a session and
+is likely to recur — a deployment path, a debugging workflow, an eval
+procedure, an API quirk that cost real time to figure out — write (or extend)
+a skill for it before the session ends, so the knowledge survives the session
+instead of being re-derived next time. The **deploy** skill is the canonical
+example: how deployment actually works here (git-connected auto-deploy vs
+direct `wrangler deploy`, what the env's API token can and can't do, how to
+verify a deploy went live) was figured out empirically and would otherwise
+have to be rediscovered. Prefer extending an existing skill over creating a
+near-duplicate; keep entries evidence-based (what was actually observed, not
+what docs claim); and update the skill list below plus the skill's
+`description` frontmatter so it gets loaded when relevant.
+
+- **deploy** — how code reaches production: push-to-`main` git-connected
+  auto-deploy, direct `npx wrangler deploy` (and the token's route-update
+  limitation), verifying a deploy is actually live, and the
+  don't-deploy-mid-battery interaction with the eval harnesses.
 
 - **pipeline-architecture** — the research pipeline engine (`src/pipeline.js`,
   `budget.js`, `model-profiles.js`, `berget.js`): the 5 phases, split model
