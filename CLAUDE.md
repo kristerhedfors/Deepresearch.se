@@ -10,8 +10,11 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 assistant, matching its name: `/api/chat` runs a Worker-orchestrated pipeline
 (triage → search → gap check → synthesis → validation) with **no function
 calling** — every phase is a direct JSON-mode or streamed call, so it is
-deterministic and works on any model in the catalog. The LLM provider is
-**Berget.ai** (OpenAI-compatible, NOT Anthropic); web search is **Exa**.
+deterministic and works on any model in the catalog. The primary LLM provider
+is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** is a second,
+key-gated provider for answer/synthesis models (opus/sonnet/haiku —
+`src/anthropic.js`, dispatched via `src/providers.js`; the JSON planning
+phases always stay on Berget). Web search is **Exa**.
 
 ## Git workflow
 
@@ -39,7 +42,9 @@ git push origin main
 3. **Split model routing.** The three JSON planning phases (triage, gap check,
    validation) always run on the fixed reliable `DEFAULT_MODEL` (Mistral Small);
    only synthesis (and direct/search-off replies) run on the user's chosen
-   model. Token accounting, budgeting, and profiles are all split accordingly.
+   model — regardless of which PROVIDER serves that model (an Anthropic answer
+   model still gets Berget-Mistral JSON phases). Token accounting, budgeting,
+   and profiles are all split accordingly.
 4. **The privacy split.** Conversations and attached-file originals rest as
    ciphertext in BOTH the browser and (if the cloud knob is on) R2 — the ONLY
    readable exceptions are RAG-indexed material and project chats, because
@@ -115,7 +120,9 @@ Server (`src/`):
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
-| `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
+| `berget.js` | Berget client (primary provider): streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
+| `anthropic.js` | Anthropic (Claude) client — second, `ANTHROPIC_API_KEY`-gated provider: raw-fetch Messages API with an SSE adapter re-emitting Anthropic streams as OpenAI-style SSE (so `consumeChatStream` + all its guards work unchanged), static EUR-priced catalog (opus/sonnet/haiku) — see the **add-llm-provider** skill |
+| `providers.js` | The LLM-provider dispatch seam: merged model catalog (`listChatModels`) + `chatCompletion`/`completeJson` routed by model-id namespace (`claude-*` → Anthropic) — everything downstream is provider-agnostic |
 | `exa.js` | Exa web search |
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
@@ -190,6 +197,10 @@ on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`
 (`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`), `berget.js`
 (`consumeChatStream`: SSE parsing + the opt-in idle/total stream guards),
+`anthropic.js` (payload conversion incl. system/image handling, the
+Anthropic→OpenAI SSE adapter composed through the real `consumeChatStream`,
+key-gated catalog, stop-reason mapping), `providers.js` (the dispatch
+routing predicate),
 `pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
@@ -341,9 +352,19 @@ what docs claim); and update the skill list below plus the skill's
   encryption-asymmetry rule (`storage.js`, `settings.js`, `rag.js`,
   `history-store.js`, `sync.js`, `projects.js`).
 - **integrations** — external providers and the enrichment pattern: Berget,
-  Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps / Street View,
-  Hugging Face Hub search (`berget.js`, `exa.js`, `geocode.js`, `shodan.js`,
-  `googlemaps.js`, `hf.js`).
+  Anthropic, Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps /
+  Street View, Hugging Face Hub search (`berget.js`, `anthropic.js`,
+  `exa.js`, `geocode.js`, `shodan.js`, `googlemaps.js`, `hf.js`).
+- **add-llm-provider** — the playbook for adding a NEW LLM provider or new
+  models to the dropdown (how Anthropic was added): the dispatch seam
+  (`providers.js`), the catalog contract, the adapt-at-the-wire SSE pattern,
+  split-routing/no-function-calling constraints, secrets/feature gating, and
+  the validation ladder (unit tests → mock-HTTP smoke → live probe → bench).
+- **tune-provider-models** — tuning new models per codified use case
+  (synthesis, JSON phases, vision describe, quiz) and running their first
+  eval battery: which knob lives where (provider wire config vs
+  `model-profiles.js` vs priors), which harness measures which use case,
+  and the evidence-before-override rule.
 - **add-research-source** — the end-to-end playbook for integrating a NEW
   deep-research source (like the HF Hub was): choosing the shape
   (search-phase source vs enrichment), intent routing, the triage-prompt

@@ -1,19 +1,23 @@
 ---
 name: integrations
 description: >-
-  Load when integrating or modifying an external data source — Berget the LLM
-  provider (src/berget.js), Exa web search (src/exa.js), OpenStreetMap Nominatim
-  reverse geocoding (src/geocode.js), Shodan host intelligence (src/shodan.js),
-  Google Maps / Street View (src/googlemaps.js), or Hugging Face Hub search (src/hf.js) — or adding a new enrichment
-  in the same deterministic no-function-calling pattern.
+  Load when integrating or modifying an external data source — Berget the
+  primary LLM provider (src/berget.js), Anthropic the second LLM provider
+  (src/anthropic.js, dispatched via src/providers.js), Exa web search
+  (src/exa.js), OpenStreetMap Nominatim reverse geocoding (src/geocode.js),
+  Shodan host intelligence (src/shodan.js), Google Maps / Street View
+  (src/googlemaps.js), or Hugging Face Hub search (src/hf.js) — or adding a
+  new enrichment in the same deterministic no-function-calling pattern.
 ---
 
 # External providers & the enrichment pattern
 
-## LLM provider — Berget.ai
+## LLM provider — Berget.ai (primary)
 
-**This project uses Berget.ai, NOT Anthropic.** Berget exposes an
-OpenAI-compatible API at `https://api.berget.ai/v1`.
+**Berget.ai is the primary LLM provider** — the default model, the JSON
+planning phases, and embeddings all run here. Berget exposes an
+OpenAI-compatible API at `https://api.berget.ai/v1`. (Anthropic is a
+second, key-gated provider for answer models — see the next section.)
 
 - **Auth:** the Worker reads the `BERGET_API_TOKEN` secret (already configured
   on the Worker in the Cloudflare dashboard) and sends it as
@@ -51,6 +55,42 @@ OpenAI-compatible API at `https://api.berget.ai/v1`.
   the latest user message are forwarded to the synthesis call so research
   can use them; image-only sends get an explicit analyze instruction; JSON
   helper phases are text-only and see an `[N image(s) attached]` marker.
+
+## LLM provider — Anthropic (Claude), second provider
+
+Added 2026-07-09 (`src/anthropic.js` + the dispatch seam `src/providers.js`).
+Full playbook + contracts: the **add-llm-provider** skill; per-model tuning
+and the first eval battery: the **tune-provider-models** skill.
+
+- **Auth:** the `ANTHROPIC_API_KEY` dashboard secret, sent as `x-api-key`
+  with `anthropic-version: 2023-06-01`. Never in the repo. Absent, the
+  feature is invisible: the claude-* models don't appear in `/api/models`
+  and nothing routes to Anthropic.
+- **Endpoint:** `POST https://api.anthropic.com/v1/messages` (raw fetch, no
+  SDK — no build step / no runtime deps). `ANTHROPIC_URL` is the test-only
+  mock override, mirroring `BERGET_URL`.
+- **Models (static catalog, a product choice):** `claude-opus-4-8`,
+  `claude-sonnet-5`, `claude-haiku-4-5` — all vision-capable, priced in
+  the catalog as EUR-per-token (converted from USD at the fixed rate
+  documented in anthropic.js) so quota cost accounting works unchanged.
+- **Routing:** by model-id namespace — `claude-*` dispatches to Anthropic,
+  everything else to Berget (`src/providers.js`). The JSON planning phases
+  ALWAYS stay on Berget's `DEFAULT_MODEL` (split model routing, CLAUDE.md
+  invariant 3); Anthropic only serves synthesis/direct answers (and can be
+  drafted as a vision-describe helper, since its models are `vision && up`).
+- **Stream shape:** Anthropic SSE (message_start / content_block_delta /
+  message_delta / message_stop) is adapted on the fly into OpenAI-style SSE
+  (`openAiStreamFromAnthropic`), so `consumeChatStream`, the idle/total
+  guards, the finish_reason dropped-connection check, STREAM_MAX_CHARS, and
+  the pipeline's failover/retry machinery all apply to Claude streams
+  unchanged. Stop reasons map end_turn→stop, max_tokens→length.
+- **Thinking:** Sonnet 5 runs adaptive thinking when the param is omitted —
+  explicitly disabled in the payload builder (hidden token spend inside
+  max_tokens + a silent pre-answer pause vs the 60s idle guard). Opus 4.8 /
+  Haiku 4.5 default to no thinking (param omitted). Revisit with a bench A/B.
+- **Privacy note:** like Berget, Anthropic is an LLM provider — the
+  conversation itself goes there when a Claude model is selected. This is
+  the user's explicit model choice in the dropdown, not an enrichment.
 
 ## Web search — Exa
 
