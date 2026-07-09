@@ -913,6 +913,25 @@ export function hereAskIntent(conversation) {
   return isHereAsk(textOf(users[users.length - 1]?.content), users);
 }
 
+// True when the latest turn is a relocation-family ask that would have
+// matched — a "go to X", a nearby search, a barrier crossing, a "go
+// there", or a fragment continuing a pending relocation — but pickLookup
+// returned nothing because there was NO ANCHOR (no live view, no device
+// location). The enrichment then appends the allow-location-access note
+// instead of leaving the model to freestyle a clarify (verbatim
+// 2026-07-09: "Lets go to hemköp stäket" with no location sent got
+// "I'm not sure what that refers to… did you mean Hammarby Sjöstad?").
+export function needsAnchorAsk(conversation) {
+  const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
+  const latest = textOf(users[users.length - 1]?.content);
+  if (extractRelocationQuery(latest)) return true;
+  if (extractNearbyPlaceQuery(latest)) return true;
+  if (extractCrossBarrierAsk(latest)) return true;
+  const t = latest.trim();
+  if (GO_THERE_RE.test(t) && pendingRelocation(users)) return true;
+  return !!t && t.length <= 40 && t.split(/\s+/).length <= 3 && !!pendingRelocation(users);
+}
+
 // Destination of a move from (lat, lng) `meters` toward `bearingDeg`.
 // Equirectangular approximation — exact enough for the ≤3km moves the
 // parser allows (centimeter error at this scale), rounded to ~10cm so

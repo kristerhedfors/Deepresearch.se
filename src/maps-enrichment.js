@@ -34,7 +34,15 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { bearingDeg, distanceMeters, hereAskIntent, pickLookup, samplePolyline, streetViewIntent } from "./googlemaps-text.js";
+import {
+  bearingDeg,
+  distanceMeters,
+  hereAskIntent,
+  needsAnchorAsk,
+  pickLookup,
+  samplePolyline,
+  streetViewIntent,
+} from "./googlemaps-text.js";
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 
@@ -58,10 +66,12 @@ const DIR_HEADINGS = { north: 0, east: 90, south: 180, west: 270 };
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
   // How routing went, made visible (requested 2026-07-09 after a run of
-  // silent intent misses): which matcher decided — or "none" — lands in
-  // Workers Logs here and rides into the chat_logs meta via
-  // state.mapsIntent, so scripts/chatlogs shows the routing per exchange.
-  state.mapsIntent = target ? target.intent || "matched" : "none";
+  // silent intent misses): which matcher decided — or "none" /
+  // "anchor-missing" — lands in Workers Logs here and rides into the
+  // chat_logs meta via state.mapsIntent, so scripts/chatlogs shows the
+  // routing per exchange.
+  const anchorMissing = !target && needsAnchorAsk(conversation);
+  state.mapsIntent = target ? target.intent || "matched" : anchorMissing ? "anchor-missing" : "none";
   log.info("maps.intent", { intent: state.mapsIntent, mode: target?.nearby?.mode });
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
@@ -70,11 +80,13 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     // "Street view of LEGO offices in Copenhagen", pre-named-place support).
     // A HERE-ask landing here — "street view here", a plain "where am I?",
     // or a short "my location" answer to an earlier street-view turn
-    // (hereAskIntent, the conversation-level gate) — means the device
-    // location never arrived: the note asks for location access instead of
-    // "which address?".
+    // (hereAskIntent) — or a RELOCATION-family ask whose only missing piece
+    // was the anchor (needsAnchorAsk — verbatim 2026-07-09: "Lets go to
+    // hemköp stäket" with no device location got a hallucinated clarify)
+    // means the device location never arrived: the note asks for location
+    // access instead of "which address?".
     const lastText = textOf(lastUserMessage(conversation)?.content);
-    const hereAsk = hereAskIntent(conversation);
+    const hereAsk = hereAskIntent(conversation) || anchorMissing;
     if (hereAsk || streetViewIntent(lastText)) {
       return withAppendedText(conversation, unresolvedMapsBlock(hereAsk));
     }
