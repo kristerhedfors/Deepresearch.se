@@ -37,7 +37,7 @@ import {
   stopGeneration,
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
-import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
+import { applyFeedbackMode, clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -97,6 +97,9 @@ initAccountPanel();
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
   .then((s) => {
+    // Feedback mode (account panel knob): reveal the per-reply Feedback
+    // buttons — turns.js keeps them in the DOM, the body class shows them.
+    applyFeedbackMode(s?.feedback_mode === true);
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});
@@ -408,7 +411,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h18";
+const CSS_VERSION = "h19";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

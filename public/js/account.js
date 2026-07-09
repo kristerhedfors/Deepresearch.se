@@ -16,8 +16,57 @@
 //   shows anything derived from actual chat content — see src/user-messages.js.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
-import { loadSettings, setServerHistory, setShodanMcp, setGoogleMaps } from "./settings.js";
+import {
+  feedbackAvailable,
+  feedbackModeOn,
+  loadSettings,
+  setFeedbackMode,
+  setGoogleMaps,
+  setServerHistory,
+  setShodanMcp,
+} from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
+import { applyFeedbackMode } from "./turns.js";
+
+// One settings switch row — the shared building block of the Settings
+// sub-view AND the summary's Feedback-mode knob. A single line — one label,
+// one info glyph, one switch — with the full explanation tucked into a
+// press-and-hold popover (the same gesture the composer's web-search knob
+// uses; see wireSettingPopovers). The switch itself is the original
+// slide-toggle design the composer's web-search knob used before it became
+// the spiderweb (generic .switch classes, not tied to the composer). A row
+// is shown disabled (forced off) when the account can't use it —
+// break-glass identity, or a server missing the feature's backing — rather
+// than hidden, so the state stays explainable.
+function settingRow({ id, label, checked, disabled, popId, info }) {
+  return `
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">${label}
+          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${label}”">ⓘ</button>
+        </span>
+        <label class="switch">
+          <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+        </label>
+      </div>
+      <div class="setting-pop" id="${popId}" hidden>${info}</div>
+    </div>`;
+}
+
+// Feedback mode lives DIRECTLY on the account summary (not buried in the
+// Settings sub-view): it's the dialogue-with-the-developers switch, meant
+// to be one tap away.
+const FEEDBACK_INFO = `<strong>Feedback mode</strong><br>
+  <b>On:</b> every reply — including earlier ones — gets a <b>Feedback</b>
+  button. Press it to tell the developers what was good or bad about that
+  answer; your note is sent together with the question and the reply it's
+  about. The development agent reads every submission, and its answers show
+  up as a dialogue under <b>Feedback</b> here in the account panel.<br>
+  <b>Off (default):</b> no feedback buttons, nothing is sent.<br>
+  <b>Privacy:</b> only what you choose to submit is stored — the comment you
+  write plus that one question and reply — readable by the site's
+  developers. Withdrawing an entry deletes it, thread included.`;
 
 export function initAccountPanel() {
   const overlay = document.getElementById("account");
@@ -98,34 +147,6 @@ export function initAccountPanel() {
         await loadMessages();
       });
     });
-  }
-
-  // The "settings" view — its own level below the summary, like "Full
-  // usage & history" and "Messages", built as a list of switch rows so
-  // future settings just add rows. The switch itself is the original
-  // slide-toggle design the composer's web-search knob used before it
-  // became the spiderweb (generic .switch classes, not tied to the
-  // composer). Each row is a SINGLE line — one label, one info glyph, one
-  // switch — with the full explanation tucked into a press-and-hold
-  // popover (the same gesture the composer's web-search knob uses), so the
-  // panel stays compact no matter how many knobs it grows. A row is shown
-  // disabled (forced off) when the account can't use it — break-glass
-  // identity, or a server missing the feature's backing — rather than
-  // hidden, so the state stays explainable.
-  function settingRow({ id, label, checked, disabled, popId, info }) {
-    return `
-      <div class="settings-item">
-        <div class="settings-row">
-          <span class="settings-label">${label}
-            <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${label}”">ⓘ</button>
-          </span>
-          <label class="switch">
-            <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
-            <span class="switch-track"><span class="switch-thumb"></span></span>
-          </label>
-        </div>
-        <div class="setting-pop" id="${popId}" hidden>${info}</div>
-      </div>`;
   }
 
   const CLOUD_INFO = `<strong>Store history in the cloud</strong><br>
@@ -362,6 +383,10 @@ export function initAccountPanel() {
       loadSettingsView();
       return;
     }
+    if (view === "feedback") {
+      loadFeedbackView();
+      return;
+    }
     body.innerHTML = view === "full" ? renderFullUsage(me) : renderSummary(me);
     if (view === "full") {
       document.getElementById("usagebackbtn").addEventListener("click", () => show("summary"));
@@ -369,12 +394,108 @@ export function initAccountPanel() {
       document.getElementById("fullusagebtn")?.addEventListener("click", () => show("full"));
       document.getElementById("messagesbtn")?.addEventListener("click", () => show("messages"));
       document.getElementById("settingsbtn")?.addEventListener("click", () => show("settings"));
+      document.getElementById("feedbackbtn")?.addEventListener("click", () => show("feedback"));
+      wireFeedbackKnob();
       document.getElementById("logoutbtn").addEventListener("click", async () => {
         await fetch("/logout", { method: "POST" });
         location.href = "/login";
       });
     }
   };
+
+  // The summary's Feedback-mode knob: persists via /api/settings
+  // (feedback_mode) and flips the body's `feedback-mode` class so every
+  // on-screen reply — existing ones included — shows/hides its Feedback
+  // button immediately (turns.js).
+  function wireFeedbackKnob() {
+    wireSettingPopovers(body);
+    const knob = document.getElementById("fbknob");
+    if (!knob || knob.disabled) return;
+    const status = document.getElementById("fbstatus");
+    knob.addEventListener("change", async () => {
+      const on = knob.checked;
+      knob.disabled = true;
+      status.hidden = false;
+      try {
+        await setFeedbackMode(on);
+        applyFeedbackMode(on);
+        status.textContent = on
+          ? "Feedback mode is on — every reply now has a Feedback button."
+          : "Feedback mode is off. Your existing feedback dialogues stay under Feedback.";
+      } catch (err) {
+        knob.checked = !on;
+        status.textContent = err?.message || "Could not update the setting.";
+      } finally {
+        knob.disabled = false;
+      }
+    });
+  }
+
+  // The Feedback view: the user's submitted entries as dialogue threads —
+  // the user-facing half of the development loop (the agent's half is the
+  // feedback-loop skill working /api/admin/feedback). Reply boxes keep the
+  // dialogue going; Withdraw deletes an entry, thread included. Opening the
+  // view marks the agent's replies read server-side (GET does it), so the
+  // badge clears like the message center's does.
+  async function loadFeedbackView() {
+    body.innerHTML = `
+      <button id="fbbackbtn" type="button" class="back-link">← Back</button>
+      <p class="section-lbl">Feedback</p>
+      <p class="muted">Loading…</p>`;
+    document.getElementById("fbbackbtn").addEventListener("click", () => show("summary"));
+    let entries = null;
+    try {
+      const res = await fetch("/api/feedback");
+      if (res.ok) entries = (await res.json()).feedback || [];
+    } catch { /* entries stays null → error note below */ }
+    if (me?.notifications) {
+      me.notifications.total -= me.notifications.unread_feedback || 0;
+      me.notifications.unread_feedback = 0;
+      renderBadge();
+    }
+    const list =
+      entries === null
+        ? '<p class="muted">Could not load feedback — try again in a moment.</p>'
+        : entries.length
+          ? entries.map(renderFeedbackEntry).join("")
+          : `<p class="muted">No feedback yet. Switch on Feedback mode, then press
+             <b>Feedback</b> under any reply to start a dialogue with the developers.</p>`;
+    body.innerHTML = `
+      <button id="fbbackbtn" type="button" class="back-link">← Back</button>
+      <p class="section-lbl">Feedback</p>
+      ${list}`;
+    document.getElementById("fbbackbtn").addEventListener("click", () => show("summary"));
+    body.querySelectorAll("[data-fb-reply]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.fbReply;
+        const ta = body.querySelector(`textarea[data-fb-ta="${id}"]`);
+        const text = ta?.value.trim();
+        if (!text) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/feedback/${id}/messages`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ body: text }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "HTTP " + res.status);
+          await loadFeedbackView();
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = err?.message || "Failed — try again";
+        }
+      });
+    });
+    body.querySelectorAll("[data-fb-del]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          await fetch(`/api/feedback/${btn.dataset.fbDel}`, { method: "DELETE" });
+        } catch { /* the reload below shows whatever the server now has */ }
+        await loadFeedbackView();
+      });
+    });
+  }
 
   document.getElementById("accountbtn").addEventListener("click", async () => {
     overlay.hidden = false;
@@ -402,17 +523,33 @@ function renderSummary(me) {
     ? `${me.name && me.name !== me.email ? me.name + " · " : ""}${me.email}`
     : "Site administrator";
   const msgCount = me.notifications?.total || 0;
+  const fbCount = me.notifications?.unread_feedback || 0;
+  // Feedback mode sits directly on the summary — knob state from the cached
+  // /api/settings copy (fetched at boot in app.js; refreshed by the Settings
+  // view). Disabled when the account can't use it (break-glass, no D1).
+  const feedbackRow = me.email
+    ? settingRow({
+        id: "fbknob",
+        label: "Feedback mode",
+        checked: feedbackAvailable() && feedbackModeOn(),
+        disabled: !feedbackAvailable(),
+        popId: "fbpop",
+        info: FEEDBACK_INFO,
+      }) + '<p id="fbstatus" class="muted setting-note" hidden></p>'
+    : "";
   return `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
     ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
+    ${feedbackRow}
     <!-- Page links open NEW TABS: even though history now persists across
          reloads (encrypted, local — see /help/), a same-tab navigation
          would still abort any in-flight research request. -->
     <div class="account-actions">
       <button id="messagesbtn" type="button"${msgCount ? ' class="has-badge"' : ""}>Messages${msgCount ? ` (${msgCount})` : ""}</button>
+      ${me.email ? `<button id="feedbackbtn" type="button">Feedback${fbCount ? ` (${fbCount})` : ""}</button>` : ""}
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
       <a href="/build/" target="_blank" rel="noopener">About this project</a>
@@ -520,6 +657,52 @@ function renderMessages(personal, admin) {
     <p class="section-lbl">Message center</p>
     ${personalHtml}
     ${adminHtml}`;
+}
+
+// User-facing status labels for a feedback entry — friendlier than the raw
+// lifecycle enums (src/feedback.js).
+const FB_STATUS = {
+  new: ["received", "new"],
+  seen: ["seen", "seen"],
+  in_progress: ["being worked on", "working"],
+  resolved: ["resolved", "done"],
+  declined: ["declined", "done"],
+};
+
+// One feedback entry: status + date header, the context line (which reply it
+// was about), the dialogue (the original comment is the first user message,
+// then the thread), a reply box, and Withdraw. All user/agent text is
+// escaped — same posture as the message center.
+function renderFeedbackEntry(e) {
+  const [statusLabel, statusClass] = FB_STATUS[e.status] || [e.status, "new"];
+  const about = e.question
+    ? `<div class="muted fb-about">About: “${escapeHtml(e.question.length > 120 ? e.question.slice(0, 120) + "…" : e.question)}”</div>`
+    : "";
+  const thread = [{ author: "user", body: e.comment, created_at: e.created_at }, ...e.messages]
+    .map(
+      (m) => `
+      <div class="fb-msg ${m.author === "agent" ? "agent" : "user"}">
+        <div class="fb-msg-head muted">${m.author === "agent" ? "DeepResearch.se" : "You"} · ${escapeHtml(new Date(m.created_at).toLocaleString())}</div>
+        <div>${escapeHtml(m.body)}</div>
+      </div>`,
+    )
+    .join("");
+  return `
+    <div class="fb-entry">
+      <div class="fb-head">
+        <span class="fb-status ${statusClass}">${statusLabel}</span>
+        <span class="muted">${escapeHtml(new Date(e.created_at).toLocaleString())}</span>
+      </div>
+      ${about}
+      ${thread}
+      <div class="fb-replybox">
+        <textarea data-fb-ta="${e.id}" rows="2" placeholder="Reply…"></textarea>
+        <div class="fb-actions">
+          <button type="button" data-fb-reply="${e.id}">Send reply</button>
+          <button type="button" class="fb-del" data-fb-del="${e.id}" title="Delete this feedback and its whole dialogue">Withdraw</button>
+        </div>
+      </div>
+    </div>`;
 }
 
 // Users see: an OPAQUE research-budget bar (cost-backed server-side, but

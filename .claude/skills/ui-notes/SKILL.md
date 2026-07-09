@@ -175,12 +175,21 @@ description: >-
   NEVER sideways: tables and code wrap instead of forcing width. Append
   to `history.md`, not rewrite — it's a chronological record; keep
   adding a new section per session the way earlier entries did.
-- **Account panel** (`public/js/account.js`) is three views: the default
+- **Account panel** (`public/js/account.js`) is five views: the default
   view shows only the rolling 5-hour window (the one that actually gates
-  the next message) plus navigation (Messages, Full usage & history, About
-  this project, The build story, Documentation, Admin, Sign out); "Full
-  usage & history" drills into today/this-week/this-month (reuses the
-  cached `/api/me` response); "Messages" is the message center.
+  the next message) and the **Feedback mode** knob (directly on the
+  summary, NOT in Settings — deliberate placement; it toggles the body's
+  `feedback-mode` class, revealing a Feedback button on EVERY assistant
+  reply, existing ones included — the buttons are always in the DOM,
+  `turns.js`, CSS shows them), plus navigation (Messages, Feedback, Full
+  usage & history, Settings, About this project, The build story,
+  Documentation, Admin, Sign out); "Full usage & history" drills into
+  today/this-week/this-month (reuses the cached `/api/me` response);
+  "Messages" is the message center; "Feedback" lists the user's feedback
+  entries as dialogue threads with the development agent — reply box,
+  Withdraw, unread-reply badge from `/api/me`'s `unread_feedback`
+  (server side `src/feedback.js`; the agent side is the **feedback-loop**
+  skill); "Settings" holds the other knobs (cloud/Shodan/Maps).
 - **Message center** (`GET /api/messages`, `src/user-api.js` +
   `src/user-messages.js`): account-level notices for EVERY user — quota
   exhausted, quota available again, sign-in approved, quota changed by an

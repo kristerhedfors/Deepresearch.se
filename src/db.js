@@ -91,6 +91,29 @@ CREATE TABLE IF NOT EXISTS user_messages (
   read_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_user_messages_user_created ON user_messages(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new',
+  comment TEXT NOT NULL,
+  question TEXT,
+  answer_excerpt TEXT,
+  model TEXT,
+  page TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, id DESC);
+CREATE TABLE IF NOT EXISTS feedback_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  feedback_id INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_messages_fb ON feedback_messages(feedback_id, id);
 `;
 
 // Additive migrations for databases created before the column existed.

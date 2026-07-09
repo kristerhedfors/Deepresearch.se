@@ -29,7 +29,7 @@ import { jsonResponse } from "./http.js";
 import { shodanAvailable } from "./shodan.js";
 import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 
-// Three knobs today:
+// Four knobs today:
 //  - server_history: default ON  (only an explicit stored `false` opts out).
 //  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
 //    sends the host/IP to a third party, so it stays off until asked for;
@@ -38,7 +38,12 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    sent to Google Maps Platform (Places + Street View + Static Maps) and the
 //    imagery fetches are billed, so it stays off until asked for; only an
 //    explicit stored `true` enables it).
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false };
+//  - feedback_mode:  default OFF (opt-in — switches a Feedback button onto
+//    every assistant reply, existing ones included; a submission stores the
+//    comment PLUS that reply's question/answer readable server-side for the
+//    development loop (src/feedback.js), so it stays off until the user
+//    asks for it; only an explicit stored `true` enables it).
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
@@ -58,6 +63,7 @@ export function parseSettings(json) {
     server_history: raw.server_history !== false,
     shodan_mcp: raw.shodan_mcp === true,
     google_maps: raw.google_maps === true,
+    feedback_mode: raw.feedback_mode === true,
   };
 }
 
@@ -81,6 +87,9 @@ export function featureAvailability(env, identity) {
     ...storageAvailability(env, identity),
     shodan: !!(shodanAvailable(env) && identity.user),
     google_maps: !!(googleMapsAvailable(env) && identity.user),
+    // Feedback needs D1 (the entries/threads live there) and a real user row
+    // to attribute entries and route the agent's replies back to.
+    feedback: !!(env.DB && identity.user),
   };
 }
 
@@ -111,6 +120,14 @@ export function googleMapsEnabled(env, identity) {
   return featureAvailability(env, identity).google_maps && getSettings(identity).google_maps;
 }
 
+// The effective Feedback-mode state: the knob on AND D1 + a real user row
+// behind it. Gates creating new entries (src/feedback.js) — replying on an
+// existing thread deliberately does NOT check this, so a dialogue survives
+// the knob being switched off mid-conversation.
+export function feedbackEnabled(env, identity) {
+  return featureAvailability(env, identity).feedback && getSettings(identity).feedback_mode;
+}
+
 async function saveSettings(env, userId, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -133,6 +150,7 @@ function settingsPayload(env, identity, settings) {
     server_history: available.storage && settings.server_history,
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
+    feedback_mode: available.feedback && settings.feedback_mode,
     // Browser key for the interactive Street View embed — public by design,
     // safe because the key is HTTP-referrer-locked to the site. Prefers a
     // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY
@@ -148,12 +166,12 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body may carry either knob (partial updates allowed):
-// {server_history?: boolean, shodan_mcp?: boolean}. Turning a knob ON
-// requires its backing to actually exist — cloud storage needs the R2
-// binding, Shodan needs the SHODAN_API_KEY secret — so a knob can't be
-// switched on with nothing behind it (which would silently lose data or do
-// nothing).
+// PUT /api/settings — body may carry any knob (partial updates allowed):
+// {server_history?, shodan_mcp?, google_maps?, feedback_mode?}. Turning a
+// knob ON requires its backing to actually exist — cloud storage needs the
+// R2 binding, Shodan needs the SHODAN_API_KEY secret, feedback needs D1 —
+// so a knob can't be switched on with nothing behind it (which would
+// silently lose data or do nothing).
 export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
@@ -167,9 +185,13 @@ export async function handleSettingsPut(request, env, log, identity) {
   const hasHistory = body?.server_history !== undefined;
   const hasShodan = body?.shodan_mcp !== undefined;
   const hasGoogleMaps = body?.google_maps !== undefined;
-  if (!hasHistory && !hasShodan && !hasGoogleMaps) {
+  const hasFeedback = body?.feedback_mode !== undefined;
+  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback) {
     return jsonResponse(
-      { error: "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean}." },
+      {
+        error:
+          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean}.",
+      },
       400,
     );
   }
@@ -181,6 +203,9 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   if (hasGoogleMaps && typeof body.google_maps !== "boolean") {
     return jsonResponse({ error: "google_maps must be a boolean." }, 400);
+  }
+  if (hasFeedback && typeof body.feedback_mode !== "boolean") {
+    return jsonResponse({ error: "feedback_mode must be a boolean." }, 400);
   }
   const available = featureAvailability(env, identity);
   if (hasHistory && body.server_history && !available.storage) {
@@ -201,16 +226,24 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
+  if (hasFeedback && body.feedback_mode && !available.feedback) {
+    return jsonResponse(
+      { error: "Feedback is not configured on this server (database missing)." },
+      503,
+    );
+  }
   const settings = { ...getSettings(identity) };
   if (hasHistory) settings.server_history = body.server_history;
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   if (hasGoogleMaps) settings.google_maps = body.google_maps;
+  if (hasFeedback) settings.feedback_mode = body.feedback_mode;
   await saveSettings(env, identity.user.id, settings);
   log.info("settings.updated", {
     user_id: identity.id,
     server_history: settings.server_history,
     shodan_mcp: settings.shodan_mcp,
     google_maps: settings.google_maps,
+    feedback_mode: settings.feedback_mode,
   });
   return jsonResponse(settingsPayload(env, identity, settings));
 }
