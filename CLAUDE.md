@@ -113,7 +113,8 @@ Server (`src/`):
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
 | `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-origin diversity cap (per-domain; per-OWNER for huggingface.co) + overflow backfill, the numbered digest |
-| `enrichment.js` | Opt-in pre-pipeline context enrichments (Shodan, Google Maps incl. the Street View vision-describe helper) — the ENRICHMENTS registry, run once via `runEnrichments`, blocks appended before any model call |
+| `enrichment.js` | Opt-in pre-pipeline context enrichments: the ENRICHMENTS registry (run once via `runEnrichments`, blocks appended before any model call) + the Shodan runner; the Google Maps runners live in `maps-enrichment.js` |
+| `maps-enrichment.js` | The Google Maps enrichment runners — one per lookup-target shape (address/place lookup, POV & map-view captures, jumps, nearby/relocation Places searches, cross-barrier crossings, the journey view) incl. the Street View vision-describe helper; orchestrates lookups → SSE events → context blocks, dispatched by `runGoogleMapsEnrichment` |
 | `quiz.js` | The inline-quiz capability's pure logic: `quizIntent` (deterministic "quiz me…" gate, EN+SV, typo-tolerant, question-count parsing; triage carries a fail-soft `quiz:true` backup flag for phrasings the regexes miss), `normalizeQuiz` (hardens the quiz-generation JSON the client renders), grade-request validation/normalization — the pipeline phase is `pipeline.js`'s `runQuizGeneration` (JSON model, fail-soft to a normal answer), the interaction runs client-side (`public/js/quiz.js`) |
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `prompts.js` | All LLM prompt builders |
@@ -130,7 +131,7 @@ Server (`src/`):
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
 | `googlemaps.js` | Google Maps Platform clients (Places, Street View, Static Maps), the edge-cached lookup orchestration, and the labeled context-block builders (opt-in `google_maps` knob) |
-| `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, street-view intent gates, locality corrections, `pickLookup` — all Node-tested |
+| `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, every intent gate (street-view, moves, here-asks, nearby/relocation, barriers, journey), locality corrections, the conversation-state recovery (`pendingRelocation`, `extractJourneyPoints`), and `pickLookup` — the ORDERED LOOKUP_MATCHERS registry (one small matcher per ask shape; the order is the spec) — all Node-tested |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
 | `http.js` | Response helpers (json, SSE) |

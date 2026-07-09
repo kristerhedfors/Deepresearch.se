@@ -940,30 +940,79 @@ export function movePoint(lat, lng, bearingDeg, meters) {
 // turn; the client prefilter in message-content.js mirrors isHereAsk) —
 // checked BEFORE the free-text place query so "street view at my current
 // location" is never sent to Places as a literal place name.
-export function pickLookup(conversation, imageLocations, pov = null, mapView = null, userLocation = null) {
-  const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
-  if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
-    return { coords: `${c.lat},${c.lon}`, address: "" };
+// ---- relocation-to-a-NAME asks + the pending-relocation memory ---------------
+
+// "Go to hemköp" / "teleport to willys": a relocation verb aimed at an
+// arbitrary NAME (a brand, a shop — no place-TYPE word, no address).
+// Reported verbatim 2026-07-09: "Go to hemköp" mid-journey fell straight
+// into the web-research pipeline (sources, comparison tables, and another
+// "I cannot physically move you"). The message must BEGIN with the
+// relocation verb phrase (TELEPORT_LEAD_RE is ^-anchored — prose like
+// "when I go to the shop…" never fires) and the remainder must be a short
+// plausible name; a small idiom set ("go to sleep", "gå till jobbet")
+// stays out. Returns { query, mode } or null. Place-TYPE asks ("go to
+// nearest gas station") are matched earlier by the nearby gate.
+const RELOCATION_JUNK = new Set([
+  "sleep", "bed", "work", "hell", "heaven", "home", "town", "toilet", "bathroom",
+  "sängs", "sangs", "jobbet", "hem", "helvetet", "stan", "toaletten", "badrummet",
+]);
+export function extractRelocationQuery(text) {
+  const raw = (typeof text === "string" ? text : "").trim();
+  if (!raw || raw.length > 80) return null;
+  if (extractPlace(raw)) return null; // a real address owns the message
+  if (!TELEPORT_VERB_RE.test(raw) && !TRAVEL_TO_RE.test(raw)) return null;
+  const stripped = raw.replace(TELEPORT_LEAD_RE, "");
+  if (stripped === raw) return null; // the message must START with the verb phrase
+  const q = stripped.replace(NEARBY_TRAIL_RE, "").trim();
+  const words = q.split(/\s+/).filter(Boolean);
+  if (!q || words.length > 4) return null;
+  if (HERE_RE.test(q) || WHERE_AM_I_RE.test(q)) return null; // here-asks own these
+  if (words.some((w) => RELOCATION_JUNK.has(normWord(w)))) return null;
+  if (words.every((w) => STOPWORDS.has(normWord(w)))) return null;
+  return { query: q.slice(0, MAX_LOCATION_CHARS), mode: nearbyAskMode(raw) };
+}
+
+// The conversation's UNFINISHED relocation — "remember we were going
+// there, in the process of figuring it out" (same report: after "Go to
+// hemköp" listed two stores, the pick "Stäket" fell into web research).
+// Deterministically recovered from the transcript, newest first, within
+// the last few user turns: a relocation-to-name ask or a nearby-place ask.
+// Pure and exported for tests.
+const PENDING_RELOCATION_WINDOW = 6;
+export function pendingRelocation(users) {
+  const list = Array.isArray(users) ? users : [];
+  const stop = Math.max(0, list.length - 1 - PENDING_RELOCATION_WINDOW);
+  for (let i = list.length - 2; i >= stop; i--) {
+    const t = textOf(list[i]?.content);
+    const reloc = extractRelocationQuery(t);
+    if (reloc) return reloc;
+    const nearbyQuery = extractNearbyPlaceQuery(t);
+    if (nearbyQuery) return { query: nearbyQuery, mode: nearbyAskMode(t) };
   }
+  return null;
+}
+
+// ---- the lookup-intent registry -----------------------------------------------
+// pickLookup used to be one long if-chain; every reported miss this far has
+// been "a new ask shape fell through it". It is now an ORDERED REGISTRY of
+// small named matchers over one shared context — adding an ask shape is one
+// matcher function + one line in the list, and the precedence is readable
+// top to bottom. Each matcher returns a target (the shapes documented on
+// pickLookup) or null; the first match wins.
+//
+// The shared context:
+//   latest / trimmed — the newest user turn's text
+//   users / conversation — for cross-turn matchers
+//   pov / mapView / userLocation — the raw live-view inputs
+//   anchor — the resolved current position (see matchers using it):
+//            physical-location asks flip to the device; else panorama
+//            (has heading) → map center → device location
+//   latestFix — a locality correction in the latest turn, shared by the
+//            fragment/scene/walk-back matchers
+
+function buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation) {
   const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
   const latest = textOf(users[users.length - 1]?.content);
-  const address = extractPlace(latest);
-  if (address) return { coords: "", address };
-  // "Show how we traveled" — the journey view. Needs no anchor: the
-  // waypoints come from the mandated coordinate links in the ASSISTANT
-  // turns, so this works even after the live view was closed. Fewer than
-  // two distinct stops → nothing to draw, fall through.
-  if (journeyAsk(latest)) {
-    const points = extractJourneyPoints(conversation);
-    if (points.length >= 2) return { coords: "", address: "", journey: { points }, followUp: true };
-  }
-  // Jumps from the live/current position. The anchor, most view-specific
-  // first: the panorama (has a heading, so "along this road" works), the
-  // interactive map's center, the device's reported location. EXCEPTION
-  // (requested 2026-07-09): an explicit physical-location ask ("my actual
-  // location", "min faktiska plats") flips the precedence — the user has
-  // navigated the view somewhere else and is saying they mean their real
-  // position, so the device location outranks the live view.
   const anchor =
     physicalLocationAsk(latest) && userLocation
       ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
@@ -974,122 +1023,218 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
           : userLocation
             ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
             : null;
-  if (anchor) {
-    const move = extractRelativeMove(latest);
-    // Facing-relative moves ("along this road", "back") need a heading —
-    // only the panorama has one; a map/device anchor takes compass moves.
-    if (move && (move.mode === "bearing" || anchor.hasHeading)) {
-      const bearing =
-        move.mode === "bearing" ? move.bearing : move.mode === "back" ? (anchor.heading + 180) % 360 : anchor.heading;
-      const dest = movePoint(anchor.lat, anchor.lng, bearing, move.meters);
-      return {
-        coords: "",
-        address: "",
-        jump: { lat: dest.lat, lng: dest.lng, heading: bearing, meters: move.meters, dir: move.dir },
-        followUp: true,
-      };
-    }
-    // A CROSS-BARRIER relocation ("Get to the other side of the railway",
-    // "hoppa över spåret"): the enrichment probes free Street View metadata
-    // along the travel bearing for a coverage GAP (the barrier corridor)
-    // followed by renewed coverage (the other side) and relocates there,
-    // with a photo series of the virtual crossing.
-    const barrierAsk = extractCrossBarrierAsk(latest);
-    if (barrierAsk) {
-      return {
-        coords: "",
-        address: "",
-        crossBarrier: {
-          barrier: barrierAsk.barrier,
-          lat: anchor.lat,
-          lng: anchor.lng,
-          heading: anchor.heading,
-          hasHeading: anchor.hasHeading,
-        },
-        followUp: true,
-      };
-    }
-    // A NEARBY-place ask searches Places around the anchor — checked BEFORE
-    // the here-ask so "gas station here" searches rather than jumping, and
-    // before the POV scene gate below so the deictic "there" can't demote a
-    // search ask into a look-at-the-current-frame capture (the reported
-    // failure shape).
-    const nearbyQuery = extractNearbyPlaceQuery(latest);
-    if (nearbyQuery) {
-      return {
-        coords: "",
-        address: "",
-        nearby: { query: nearbyQuery, lat: anchor.lat, lng: anchor.lng, mode: nearbyAskMode(latest) },
-        followUp: true,
-      };
-    }
-    if (isHereAsk(latest, users)) {
-      return {
-        coords: "",
-        address: "",
-        jump: { lat: anchor.lat, lng: anchor.lng, heading: anchor.heading, meters: 0, dir: "here" },
-        followUp: true,
-      };
-    }
+  return {
+    conversation,
+    users,
+    latest,
+    trimmed: latest.trim(),
+    imageLocations,
+    pov,
+    mapView,
+    userLocation,
+    anchor,
+    latestFix: extractLocalityFix(latest),
+  };
+}
+
+// An attached photo's GPS coordinates are the most specific input of all.
+function matchPhotoCoords(ctx) {
+  const c = Array.isArray(ctx.imageLocations) ? ctx.imageLocations[0] : null;
+  if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+    return { coords: `${c.lat},${c.lon}`, address: "" };
   }
-  // An explicit street-view ask naming a PLACE rather than an address
-  // ("Street view of LEGO offices in Copenhagen") — Places resolves the
-  // free-text name. A new named place outranks corrections/POV/walk-back,
-  // exactly like a new address does.
-  const placeQuery = extractPlaceQuery(latest);
-  if (placeQuery) return { coords: "", address: placeQuery };
-  // A VISUAL question about a NAMED place with no address and no street-view
-  // keyword ("what's the color of the building across the road from ”Rosa
-  // Pantern” in Uppsala?" — chat_logs #47): the name+anchor extraction is
-  // deterministic; the street-view flavor comes from the same strict gate the
-  // walk-back uses (plus the explicit-intent one), so an ordinary research
-  // question mentioning a restaurant never bills a lookup. A new named place
-  // outranks corrections/POV/walk-back exactly like a new address does.
-  const namedPlace = extractNamedPlaceQuery(latest);
-  if (namedPlace && (streetViewIntent(latest) || referencesStreetView(latest))) {
-    return { coords: "", address: namedPlace };
-  }
-  // A locality CORRECTION in the latest message ("I meant in hallstahammar!")
-  // re-runs the walked-back street in the corrected city — and outranks the
-  // POV, whose on-screen panorama is by definition showing the WRONG place.
-  const latestFix = extractLocalityFix(latest);
-  // A short fragment answering the model's own "which office?" clarify
-  // ("Alstromer" after the assistant listed three Accenture addresses):
-  // matched — diacritics-insensitively — against addresses the whole
-  // conversation has surfaced, assistant research answers included.
-  const trimmed = latest.trim();
-  if (conversationAsksStreetView(users) && trimmed && trimmed.length <= 40 && trimmed.split(/\s+/).length <= 3) {
-    const picked = matchAddressFragment(conversation, trimmed);
-    if (picked) return { coords: "", address: picked, followUp: true };
-  }
-  // The POV path uses the LOOSE gate (people/vehicles/signs — anything one
-  // asks pointing at a live street scene); the walk-back keeps the strict
-  // imagery/building gate since it re-runs a full billed lookup.
-  if (pov && !latestFix && referencesStreetViewScene(latest)) return { coords: "", address: "", pov, followUp: true };
-  // The live interactive MAP gets the same loose gate: "what's that big
-  // building?", "vad är det där?", "and now" while panning the map must
-  // capture the area on screen, not walk back to a stale address.
-  if (mapView && !latestFix && referencesStreetViewScene(latest)) {
-    return { coords: "", address: "", mapView, followUp: true };
-  }
-  if (!latestFix && !referencesStreetView(latest)) return null;
-  // Walk back for the most recent address; corrections encountered on the
-  // way (messages NEWER than the address) ride along, so a later "street
-  // view" follow-up still lands in the corrected city even though street
-  // and city never appeared in one message together.
-  let fix = latestFix;
-  for (let i = users.length - 2; i >= 0; i--) {
-    const t = textOf(users[i]?.content);
+  return null;
+}
+
+// An address the LATEST message names — a new location beats everything
+// the conversation was doing before.
+function matchNewAddress(ctx) {
+  const address = extractPlace(ctx.latest);
+  return address ? { coords: "", address } : null;
+}
+
+// "Show how we traveled" — the journey view. Needs no anchor: the
+// waypoints come from the mandated coordinate links in the ASSISTANT
+// turns, so this works even after the live view was closed. Fewer than
+// two distinct stops → nothing to draw, fall through.
+function matchJourney(ctx) {
+  if (!journeyAsk(ctx.latest)) return null;
+  const points = extractJourneyPoints(ctx.conversation);
+  if (points.length < 2) return null;
+  return { coords: "", address: "", journey: { points }, followUp: true };
+}
+
+// A relative move ("100 meters along this road", "gå 200 m norrut").
+// Facing-relative moves ("along this road", "back") need a heading — only
+// the panorama has one; a map/device anchor takes compass moves.
+function matchRelativeMove(ctx) {
+  if (!ctx.anchor) return null;
+  const move = extractRelativeMove(ctx.latest);
+  if (!move || (move.mode !== "bearing" && !ctx.anchor.hasHeading)) return null;
+  const bearing =
+    move.mode === "bearing" ? move.bearing : move.mode === "back" ? (ctx.anchor.heading + 180) % 360 : ctx.anchor.heading;
+  const dest = movePoint(ctx.anchor.lat, ctx.anchor.lng, bearing, move.meters);
+  return {
+    coords: "",
+    address: "",
+    jump: { lat: dest.lat, lng: dest.lng, heading: bearing, meters: move.meters, dir: move.dir },
+    followUp: true,
+  };
+}
+
+// A CROSS-BARRIER relocation ("Get to the other side of the railway",
+// "hoppa över spåret"): the enrichment probes free Street View metadata
+// along the travel bearing for a coverage GAP (the barrier corridor)
+// followed by renewed coverage (the other side) and relocates there, with
+// a photo series of the virtual crossing.
+function matchCrossBarrier(ctx) {
+  if (!ctx.anchor) return null;
+  const ask = extractCrossBarrierAsk(ctx.latest);
+  if (!ask) return null;
+  return {
+    coords: "",
+    address: "",
+    crossBarrier: {
+      barrier: ask.barrier,
+      lat: ctx.anchor.lat,
+      lng: ctx.anchor.lng,
+      heading: ctx.anchor.heading,
+      hasHeading: ctx.anchor.hasHeading,
+    },
+    followUp: true,
+  };
+}
+
+// A NEARBY-place ask (place-TYPE word + nearby/relocation word) searches
+// Places around the anchor — BEFORE the here-ask so "gas station here"
+// searches rather than jumping, and before the POV scene gate so the
+// deictic "there" can't demote a search ask into a frame capture.
+function matchNearbyPlace(ctx) {
+  if (!ctx.anchor) return null;
+  const query = extractNearbyPlaceQuery(ctx.latest);
+  if (!query) return null;
+  return {
+    coords: "",
+    address: "",
+    nearby: { query, lat: ctx.anchor.lat, lng: ctx.anchor.lng, mode: nearbyAskMode(ctx.latest) },
+    followUp: true,
+  };
+}
+
+// A relocation verb aimed at an arbitrary NAME ("Go to hemköp") — same
+// nearby target shape, so the whole Places/travel machinery serves it.
+function matchRelocationToName(ctx) {
+  if (!ctx.anchor) return null;
+  const ask = extractRelocationQuery(ctx.latest);
+  if (!ask) return null;
+  return {
+    coords: "",
+    address: "",
+    nearby: { query: ask.query, lat: ctx.anchor.lat, lng: ctx.anchor.lng, mode: ask.mode },
+    followUp: true,
+  };
+}
+
+// A here-ask ("street view here", "where am I?", a here-fragment after a
+// street-view turn): pop the view at the anchor.
+function matchHereAsk(ctx) {
+  if (!ctx.anchor || !isHereAsk(ctx.latest, ctx.users)) return null;
+  return {
+    coords: "",
+    address: "",
+    jump: { lat: ctx.anchor.lat, lng: ctx.anchor.lng, heading: ctx.anchor.heading, meters: 0, dir: "here" },
+    followUp: true,
+  };
+}
+
+// An explicit street-view ask naming a PLACE rather than an address
+// ("Street view of LEGO offices in Copenhagen") — Places resolves the
+// free-text name. A new named place outranks corrections/POV/walk-back,
+// exactly like a new address does.
+function matchPlaceQuery(ctx) {
+  const placeQuery = extractPlaceQuery(ctx.latest);
+  return placeQuery ? { coords: "", address: placeQuery } : null;
+}
+
+// A VISUAL question about a NAMED place with no address and no street-view
+// keyword ("what's the color of the building across the road from ”Rosa
+// Pantern” in Uppsala?" — chat_logs #47): the name+anchor extraction is
+// deterministic; the street-view flavor comes from the same strict gate the
+// walk-back uses (plus the explicit-intent one), so an ordinary research
+// question mentioning a restaurant never bills a lookup.
+function matchNamedPlace(ctx) {
+  const namedPlace = extractNamedPlaceQuery(ctx.latest);
+  if (!namedPlace || !(streetViewIntent(ctx.latest) || referencesStreetView(ctx.latest))) return null;
+  return { coords: "", address: namedPlace };
+}
+
+// A short fragment answering the model's own "which office?" clarify
+// ("Alstromer" after the assistant listed three Accenture addresses):
+// matched — diacritics-insensitively — against addresses the whole
+// conversation has surfaced, assistant research answers included.
+function matchAddressFragmentAnswer(ctx) {
+  if (!conversationAsksStreetView(ctx.users)) return null;
+  const t = ctx.trimmed;
+  if (!t || t.length > 40 || t.split(/\s+/).length > 3) return null;
+  const picked = matchAddressFragment(ctx.conversation, t);
+  return picked ? { coords: "", address: picked, followUp: true } : null;
+}
+
+// A short fragment resolving the conversation's UNFINISHED relocation
+// ("Go to hemköp" → two stores listed → "Stäket"): the pending ask's query
+// and the fragment combine into one Places search ("hemköp Stäket"),
+// inheriting the pending mode — so the travel the user started two turns
+// ago completes instead of falling into web research.
+function matchRelocationFragmentAnswer(ctx) {
+  if (!ctx.anchor) return null;
+  const t = ctx.trimmed;
+  if (!t || t.length > 40 || t.split(/\s+/).length > 3) return null;
+  const words = t.split(/\s+/);
+  if (words.every((w) => STOPWORDS.has(normWord(w)))) return null;
+  const pending = pendingRelocation(ctx.users);
+  if (!pending) return null;
+  return {
+    coords: "",
+    address: "",
+    nearby: { query: `${pending.query} ${t}`.slice(0, MAX_LOCATION_CHARS), lat: ctx.anchor.lat, lng: ctx.anchor.lng, mode: pending.mode },
+    followUp: true,
+  };
+}
+
+// The POV path uses the LOOSE gate (people/vehicles/signs — anything one
+// asks pointing at a live street scene); the walk-back keeps the strict
+// imagery/building gate since it re-runs a full billed lookup. A locality
+// correction outranks the POV — the on-screen panorama shows the WRONG
+// place by definition.
+function matchPovScene(ctx) {
+  if (!ctx.pov || ctx.latestFix || !referencesStreetViewScene(ctx.latest)) return null;
+  return { coords: "", address: "", pov: ctx.pov, followUp: true };
+}
+
+// The live interactive MAP gets the same loose gate: "what's that big
+// building?", "vad är det där?", "and now" while panning the map must
+// capture the area on screen, not walk back to a stale address.
+function matchMapScene(ctx) {
+  if (!ctx.mapView || ctx.latestFix || !referencesStreetViewScene(ctx.latest)) return null;
+  return { coords: "", address: "", mapView: ctx.mapView, followUp: true };
+}
+
+// The walk-back: the most recent address an EARLIER user turn named, with
+// locality corrections encountered on the way riding along — and, when the
+// user's own turns name nothing, the assistant's research answers, but
+// ONLY when they surfaced exactly one distinct address (several stay
+// silent so the model can honestly ask which one).
+function matchWalkBack(ctx) {
+  if (!ctx.latestFix && !referencesStreetView(ctx.latest)) return null;
+  let fix = ctx.latestFix;
+  for (let i = ctx.users.length - 2; i >= 0; i--) {
+    const t = textOf(ctx.users[i]?.content);
     const prior = extractPlace(t);
     if (prior) return { coords: "", address: withLocalityFix(prior, fix), followUp: true };
     if (!fix) fix = extractLocalityFix(t);
   }
-  // The user's own turns name nothing — but the assistant's research answer
-  // may have surfaced addresses. Exactly ONE distinct address is
-  // unambiguous ("street view" right after an answer about a single office);
-  // several stay silent so the model can honestly ask which one.
   const fromAssistant = new Map();
-  for (const m of Array.isArray(conversation) ? conversation : []) {
+  for (const m of Array.isArray(ctx.conversation) ? ctx.conversation : []) {
     if (m?.role !== "assistant") continue;
     for (const a of addressesInText(textOf(m.content))) {
       fromAssistant.set(normForMatch(a), a);
@@ -1098,6 +1243,39 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   if (fromAssistant.size === 1) {
     const only = fromAssistant.values().next().value;
     return { coords: "", address: withLocalityFix(only, fix), followUp: true };
+  }
+  return null;
+}
+
+// Precedence, top to bottom — the ORDER IS THE SPEC. Most-specific inputs
+// first (a photo's GPS, a typed address), then the anchored relocations
+// (moves, barriers, nearby/named destinations, here-asks), then the
+// named/fragment resolutions, then the scene captures, and the walk-back
+// last (it re-bills a full lookup, so everything cheaper gets a chance
+// first).
+const LOOKUP_MATCHERS = [
+  matchPhotoCoords,
+  matchNewAddress,
+  matchJourney,
+  matchRelativeMove,
+  matchCrossBarrier,
+  matchNearbyPlace,
+  matchRelocationToName,
+  matchHereAsk,
+  matchPlaceQuery,
+  matchNamedPlace,
+  matchAddressFragmentAnswer,
+  matchRelocationFragmentAnswer,
+  matchPovScene,
+  matchMapScene,
+  matchWalkBack,
+];
+
+export function pickLookup(conversation, imageLocations, pov = null, mapView = null, userLocation = null) {
+  const ctx = buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation);
+  for (const matcher of LOOKUP_MATCHERS) {
+    const target = matcher(ctx);
+    if (target) return target;
   }
   return null;
 }

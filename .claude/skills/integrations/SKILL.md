@@ -685,6 +685,30 @@ call, alongside the Shodan enrichment).
   teleport… the views beside this reply are the relocation") — the model
   had answered a working teleport with "Note: I can't actually
   'teleport' you".
+- **Relocation to a NAME + the pending-relocation memory (2026-07-09
+  refactor)**: "Go to hemköp" (a relocation verb aimed at a brand/name —
+  no place-TYPE word, no address) is `extractRelocationQuery` — the
+  message must BEGIN with the verb phrase (so prose never fires), the
+  remainder is ≤4 words with an idiom exclusion set ("go to sleep", "gå
+  till jobbet") — and routes through the same nearby/Places machinery
+  with its mode. And the conversation REMEMBERS an unfinished relocation:
+  `pendingRelocation(users)` recovers the most recent relocation/nearby
+  ask from the last ~6 user turns, so a short fragment answering the
+  clarify ("Stäket" after "Go to hemköp" listed two stores) resolves as
+  one combined Places search ("hemköp Stäket"), inheriting the pending
+  mode — previously both fell into the web-research pipeline with more
+  cannot-move-you disclaimers.
+- **The maps subsystem's module seams (2026-07-09 refactor)**:
+  `googlemaps-text.js` decides WHAT is being asked — `pickLookup` is now
+  an ORDERED registry of small named matchers (LOOKUP_MATCHERS; the order
+  is the spec, one matcher per ask shape) over one shared context, plus
+  the pure conversation-state recovery (pendingRelocation,
+  extractJourneyPoints). `googlemaps.js` talks to Google (REST clients,
+  edge cache, pure block builders). `maps-enrichment.js` (split out of
+  enrichment.js) orchestrates one resolved target into a reply — one
+  runner per target shape, dispatched by `runGoogleMapsEnrichment`;
+  enrichment.js keeps the registry + Shodan. Adding an ask shape = one
+  extractor + one matcher + (usually) one runner branch.
 - **"Jump"/"teleport" mean INSTANT relocation, and barriers can be
   crossed** (user's explicitly stated semantics, 2026-07-09, after "Get to
   the other side of the railway" — twice — drew a real-world safety

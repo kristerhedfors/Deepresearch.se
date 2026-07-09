@@ -28,12 +28,14 @@ import {
   extractPlace,
   extractPlaceQuery,
   extractRelativeMove,
+  extractRelocationQuery,
   hereAskIntent,
   hereFragmentAnswer,
   journeyAsk,
   matchAddressFragment,
   movePoint,
   nearbyAskMode,
+  pendingRelocation,
   physicalLocationAsk,
   pickLookup,
   referencesStreetView,
@@ -1123,6 +1125,45 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.equal(bearingDeg(59.0, 17.0, 59.0, 18.0), 90); // due east
     const ne = bearingDeg(59.45, 17.8, 59.46, 17.83); // northeast-ish
     assert.ok(ne > 30 && ne < 80, `expected NE-ish, got ${ne}`);
+  });
+
+  test("'Go to hemköp' — a relocation to a NAME, no place-type word (the verbatim report)", () => {
+    // Reported 2026-07-09: this fell into the web-research pipeline
+    // (sources, comparison tables, "I cannot physically move you").
+    assert.deepEqual(extractRelocationQuery("Go to hemköp"), { query: "hemköp", mode: "travel" });
+    assert.deepEqual(extractRelocationQuery("Teleport to willys"), { query: "willys", mode: "instant" });
+    assert.deepEqual(extractRelocationQuery("ta mig till ica maxi"), { query: "ica maxi", mode: "travel" });
+    // Idioms and prose never fire.
+    assert.equal(extractRelocationQuery("go to sleep"), null);
+    assert.equal(extractRelocationQuery("gå till jobbet"), null);
+    assert.equal(extractRelocationQuery("when I go to the shop each week I take the bus"), null);
+    assert.equal(extractRelocationQuery("go to the other side of the railway"), null); // barrier matcher owns it? — no: barrier word IS the remainder
+    const pov2 = { panoId: "p", lat: 59.455, lng: 17.8027, heading: 90, pitch: 0, fov: 90 };
+    const out = pickLookup([{ role: "user", content: "Go to hemköp" }], [], pov2);
+    assert.deepEqual(out.nearby, { query: "hemköp", lat: 59.455, lng: 17.8027, mode: "travel" });
+  });
+
+  test("a fragment resolves the conversation's pending relocation — 'Go to hemköp' → 'Stäket'", () => {
+    // The verbatim conversation: the travel was in progress, the pick fell
+    // into web research. The pending ask and the fragment combine into one
+    // Places query, inheriting the travel mode.
+    const pov2 = { panoId: "p", lat: 59.462, lng: 17.8229, heading: 0, pitch: 0, fov: 90 };
+    const convo = [
+      { role: "user", content: "Teleport to nearest gas station" },
+      { role: "assistant", content: "The nearest gas station is Qstar…" },
+      { role: "user", content: "Go to hemköp" },
+      { role: "assistant", content: "There are two Hemköp stores near your location…" },
+      { role: "user", content: "Stäket" },
+    ];
+    const out = pickLookup(convo, [], pov2);
+    assert.deepEqual(out.nearby, { query: "hemköp Stäket", lat: 59.462, lng: 17.8229, mode: "travel" });
+    // pendingRelocation looks back through user turns, newest first.
+    const users = convo.filter((m) => m.role === "user");
+    assert.deepEqual(pendingRelocation(users), { query: "hemköp", mode: "travel" });
+    // No pending relocation → a bare fragment resolves nothing.
+    assert.equal(pickLookup([{ role: "user", content: "Stäket" }], [], pov2), null);
+    // Without an anchor the fragment also resolves nothing (no position to search near).
+    assert.equal(pickLookup(convo, []), null);
   });
 
   test("buildNearbyPlacesBlock mode framing: instant drops, travel narrates the way", () => {
