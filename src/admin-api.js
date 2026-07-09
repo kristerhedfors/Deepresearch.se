@@ -18,6 +18,7 @@
 
 import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { handleChatLogs } from "./chatlog.js";
+import { handleAdminFeedback } from "./feedback.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -81,6 +82,11 @@ export async function handleAdminApi(request, env, url, log, identity) {
     }
     if ((path === "/chatlogs" || /^\/chatlogs\/\d+$/.test(path)) && method === "GET") {
       return handleChatLogs(request, env, url, log);
+    }
+    // The feedback queue (src/feedback.js): the agent/operator side of
+    // Feedback mode — list, read, set status, reply, delete.
+    if (path === "/feedback" || path.startsWith("/feedback/")) {
+      return handleAdminFeedback(request, env, url, log);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

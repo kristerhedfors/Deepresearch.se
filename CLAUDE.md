@@ -103,12 +103,13 @@ Server (`src/`):
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
-| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage knob — `GET/PUT /api/settings` |
+| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
-| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config, chatlogs |
+| `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
+| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config, chatlogs, feedback |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
@@ -150,9 +151,13 @@ pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
-downscaling), `account.js` (account & usage panel), `turns.js`
-(bubbles/content/tools, plus reconstructing a stored conversation on
-load), `quiz.js` (the interactive inline-quiz card a `quiz` SSE event
+downscaling), `account.js` (account & usage panel: the Feedback-mode
+knob directly on the summary + the Feedback dialogue-threads view),
+`turns.js`
+(bubbles/content/tools — incl. the per-reply Feedback button + inline
+form, present on every turn and shown via the body's `feedback-mode`
+class so flipping the knob covers existing replies — plus
+reconstructing a stored conversation on load), `quiz.js` (the interactive inline-quiz card a `quiz` SSE event
 renders into the turn body: sequential questions with alternatives PLUS
 a free-text field, local multiple-choice grading, `/api/quiz/grade` for
 written answers, the score verdict/recap — answers persist via the
@@ -225,9 +230,12 @@ mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and
 `chatlog.js` (the interaction log's pure logic: truncation markers,
 inline-image scrubbing, row assembly/projection, the text rendering,
-LIKE escaping), and `quiz.js` (the inline-quiz pure logic: the
+LIKE escaping), `quiz.js` (the inline-quiz pure logic: the
 deterministic intent gate incl. question-count parsing, quiz-JSON
-hardening, grade-request validation/normalization).
+hardening, grade-request validation/normalization), and `feedback.js`
+(the feedback pipeline's pure logic: create/reply validation incl.
+truncation markers, the status lifecycle, row projection, the
+`?format=text` rendering).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -411,6 +419,11 @@ what docs claim); and update the skill list below plus the skill's
   logged message through the deterministic gates, fixing at the right
   layer with the verbatim message as a regression test, and live
   verification.
+- **feedback-loop** — Claude Code as the back end of Feedback mode
+  (`src/feedback.js`, `scripts/feedback`, `/api/admin/feedback*`): the
+  gather → decide (human-in-the-loop, EVERY entry) → act → verify →
+  message-back loop over the user-feedback queue, the status lifecycle,
+  the plain-language reply conventions, and running it as a standing loop.
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.

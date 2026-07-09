@@ -46,6 +46,7 @@ import {
   handleMessages,
   handleModels,
 } from "./user-api.js";
+import { handleFeedbackApi } from "./feedback.js";
 import { handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleStorage } from "./storage.js";
 import { handleEmbed, handleRag } from "./rag.js";
@@ -282,6 +283,11 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
+  }
+  // Feedback mode (src/feedback.js): the user's own feedback entries and
+  // their dialogue threads with the development agent.
+  if (url.pathname === "/api/feedback" || url.pathname.startsWith("/api/feedback/")) {
+    return handleFeedbackApi(request, env, url, log, identity);
   }
   // Free-text quiz-answer grading (the inline-quiz capability —
   // src/quiz-api.js; multiple-choice picks grade client-side).
