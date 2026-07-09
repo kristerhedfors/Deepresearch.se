@@ -216,6 +216,13 @@ export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
 // materials, and RAG excerpts all ride inside it as labeled blocks) plus the
 // numbered web-source registry when triage chose research. The shape is
 // hardened by src/quiz.js's normalizeQuiz; `correct` is a 0-based index.
+// The substance-over-structure bullet exists because a real quiz (built from
+// Segelflyghandboken, the Swedish gliding handbook) asked "which chapter
+// should a glider pilot read to know what to consider when operating?" —
+// table-of-contents trivia: it tests the document's packaging, not the
+// subject, the answer is circular (it just points back at where the knowledge
+// lives), and it doesn't survive outside that exact edition. The quiz must
+// test what the material teaches, not where the material keeps it.
 export const quizPrompt = (numQuestions, { reinforceJsonOnly = false } = {}) =>
   `You create an interactive quiz for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
   "From the provided material (the conversation — including any attached documents and project materials — and the numbered web sources when present), write a quiz that tests the user's understanding of the subject they asked to be quizzed on. Respond ONLY with a JSON object:\n" +
@@ -224,6 +231,7 @@ export const quizPrompt = (numQuestions, { reinforceJsonOnly = false } = {}) =>
   "- Each question has 3-4 plausible alternatives with EXACTLY ONE correct; \"correct\" is the 0-based index into that question's alternatives. Vary the position of the correct alternative across questions and keep alternatives similar in length and tone — the correct one must not stand out.\n" +
   "- explanation: 1-2 sentences saying why the correct alternative is right (and, when useful, why a tempting wrong one is wrong), grounded in the material.\n" +
   "- Base every question and every correct answer ONLY on the provided material; skip anything the material leaves ambiguous. Order questions from easier to harder.\n" +
+  "- Test the knowledge the material CONTAINS, never the material's own structure or packaging: no questions about which chapter/section/page/source covers a topic, what a heading or document is called, figure or table numbers, or author/edition metadata (unless the user explicitly asked to be quizzed on that). Knowing where something is written proves nothing about understanding it — if the material says a chapter covers pre-flight considerations, quiz the considerations themselves, not the chapter.\n" +
   '- intro: 1-2 sentences presenting the quiz (subject + question count). title: a short quiz title. Write everything in the language the user wrote their request in.' +
   ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
