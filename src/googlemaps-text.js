@@ -264,6 +264,7 @@ const PLACE_TYPE_RE = new RegExp(
     // parking, care, groceries.
     "gas ?stations?|petrol ?stations?|fuel ?stations?|service ?stations?|pharmac(?:y|ies)|drugstores?|" +
     "atms?|banks?|grocer(?:y|ies)|grocery ?stores?|parking|hospitals?|clinics?|police ?stations?|" +
+    "librar(?:y|ies)|bibliotek(?:et|en)?|" +
     "restaurang(?:en|er|erna)?|gatukök(?:et|en)?|kaf[ée](?:et|er)?|krog(?:en|ar|arna)?|hotell(?:et|en)?|" +
     "butik(?:en|er|erna)?|affär(?:en|er|erna)?|köpcentr(?:um|et)|museet|skol(?:a|an|or|orna)|" +
     "universitet(?:et)?|kyrk(?:a|an|or|orna)|kiosk(?:en|er)?|pizzeri(?:a|an|or)|" +
@@ -374,14 +375,30 @@ const NEARBY_LEAD_RE =
 const NEARBY_TRAIL_RE =
   /[\s,]*(?:right\s+)?(?:around\s+here|close\s+by|nearby|i\s+närheten|häromkring|härifrån|here|there|här|där)?[\s?!.]*$/iu;
 
+// A SUPERLATIVE opener ("nearest coop", "närmaste willys") makes a short
+// NAME a nearby search even without a place-TYPE word — reported verbatim
+// 2026-07-09: "nearest coop"-shaped asks got clarifies because Coop is a
+// brand, not a type. Typo forms included, matching the move/street-view
+// convention.
+const NEAREST_LEAD_RE = /^(?:the\s+)?(?:near[e]?st|neares|neardst|closest|närmaste|närmsta|narmaste|narmsta)(?![\p{L}\p{M}])/iu;
+
 export function extractNearbyPlaceQuery(text) {
   const raw = (typeof text === "string" ? text : "").trim();
   if (!raw || raw.length > 120) return "";
   if (extractPlace(raw)) return ""; // a real address owns the message
-  const asksNearby = NEARBY_WORD_RE.test(raw) || TELEPORT_VERB_RE.test(raw) || TRAVEL_TO_RE.test(raw);
-  if (!PLACE_TYPE_RE.test(raw) || !asksNearby) return "";
+  const asksNearby = NEARBY_WORD_RE.test(raw) || TELEPORT_VERB_RE.test(raw) || TRAVEL_TO_RE.test(raw) || NEAREST_LEAD_RE.test(raw);
+  if (!asksNearby) return "";
   const q = raw.replace(TELEPORT_LEAD_RE, "").replace(NEARBY_LEAD_RE, "").replace(NEARBY_TRAIL_RE, "").trim();
-  if (!q || !PLACE_TYPE_RE.test(q)) return "";
+  if (!q) return "";
+  if (PLACE_TYPE_RE.test(raw)) {
+    if (!PLACE_TYPE_RE.test(q)) return "";
+    return q.slice(0, MAX_LOCATION_CHARS);
+  }
+  // No place-TYPE word: only the superlative + a short NAME qualifies
+  // ("nearest coop") — the name must carry a non-stopword.
+  const words = q.split(/\s+/).filter(Boolean);
+  if (!NEAREST_LEAD_RE.test(q) || words.length < 2 || words.length > 4) return "";
+  if (words.slice(1).every((w) => STOPWORDS.has(normWord(w)))) return "";
   return q.slice(0, MAX_LOCATION_CHARS);
 }
 
@@ -428,8 +445,11 @@ const TRAVEL_TO_RE =
 // to the nearest gas station" searches for "nearest gas station". The
 // word-boundary lookaheads matter: without them the diacritic-less Swedish
 // verb "ga" ate the start of "Gas station…".
+// The optional openers include "let's/lets" (and the reported adjacent-key
+// typo "legs" — verbatim 2026-07-09: "Legs go to coop" got a clarify) and a
+// bare "ok" ("Ok nearest gas station").
 const TELEPORT_LEAD_RE =
-  /^(?:please\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
+  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
 
 // "The other side of the railway" — a barrier the user wants the panorama
 // relocated across (reported verbatim 2026-07-09: "Get to the other side
@@ -992,6 +1012,61 @@ export function pendingRelocation(users) {
   return null;
 }
 
+// ---- route polylines ------------------------------------------------------------
+
+// Google's encoded-polyline algorithm (5-decimal precision) → [{lat,lng}].
+// The Routes API returns the actual road path this way; the travel mode
+// samples its Street View waypoints along it, so "go to X" really walks the
+// route instead of cutting straight across terrain (reported 2026-07-09:
+// travel answers looked "just like teleport" — no waypoints in between).
+// Malformed input degrades to the points decoded so far. Pure — tested
+// against Google's reference example.
+export function decodePolyline(encoded) {
+  const s = typeof encoded === "string" ? encoded : "";
+  const points = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < s.length) {
+    let result = 0;
+    let shift = 0;
+    let b;
+    do {
+      b = s.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    result = 0;
+    shift = 0;
+    do {
+      b = s.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+}
+
+// Intermediate sample points along a polyline, one every ~everyM meters
+// (endpoints excluded — the caller owns start and destination), capped.
+// The travel mode's step-by-step Street View waypoints come from this. Pure.
+export function samplePolyline(points, everyM = 400, maxSamples = 4) {
+  const pts = Array.isArray(points) ? points : [];
+  const out = [];
+  let acc = 0;
+  for (let i = 1; i < pts.length - 1 && out.length < maxSamples; i++) {
+    acc += distanceMeters(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng);
+    if (acc >= everyM) {
+      out.push({ lat: pts[i].lat, lng: pts[i].lng });
+      acc = 0;
+    }
+  }
+  return out;
+}
+
 // ---- the lookup-intent registry -----------------------------------------------
 // pickLookup used to be one long if-chain; every reported miss this far has
 // been "a new ask shape fell through it". It is now an ORDERED REGISTRY of
@@ -1135,6 +1210,24 @@ function matchRelocationToName(ctx) {
   };
 }
 
+// "Go there" (and the reported adjacent-key typo "Co there") resumes the
+// conversation's PENDING relocation — verbatim 2026-07-09: "Go there"
+// after failed "go to coop" asks got "What specific information are you
+// seeking about 'Go there'?". Always travel mode: the user said go.
+const GO_THERE_RE =
+  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:go|co|gå|ga|take\s+(?:me|us)|ta\s+(?:mig|oss))\s+(?:there|dit)\s*[?!.]*$/iu;
+function matchGoThereResume(ctx) {
+  if (!ctx.anchor || !GO_THERE_RE.test(ctx.trimmed)) return null;
+  const pending = pendingRelocation(ctx.users);
+  if (!pending) return null;
+  return {
+    coords: "",
+    address: "",
+    nearby: { query: pending.query, lat: ctx.anchor.lat, lng: ctx.anchor.lng, mode: "travel" },
+    followUp: true,
+  };
+}
+
 // A here-ask ("street view here", "where am I?", a here-fragment after a
 // street-view turn): pop the view at the anchor.
 function matchHereAsk(ctx) {
@@ -1261,6 +1354,7 @@ const LOOKUP_MATCHERS = [
   matchCrossBarrier,
   matchNearbyPlace,
   matchRelocationToName,
+  matchGoThereResume,
   matchHereAsk,
   matchPlaceQuery,
   matchNamedPlace,
@@ -1275,7 +1369,16 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   const ctx = buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation);
   for (const matcher of LOOKUP_MATCHERS) {
     const target = matcher(ctx);
-    if (target) return target;
+    if (target) {
+      // Which matcher decided rides on the target as DIAGNOSTICS — the
+      // enrichment logs it (maps.intent) and it lands in the chat_logs
+      // meta, so "how did routing go?" is answerable from the logs
+      // (requested 2026-07-09 after a run of silent intent misses).
+      // Non-enumerable on purpose: it is not part of the target-shape
+      // contract the runners and tests consume.
+      Object.defineProperty(target, "intent", { value: matcher.name.replace(/^match/, ""), enumerable: false });
+      return target;
+    }
   }
   return null;
 }

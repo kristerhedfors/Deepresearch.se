@@ -96,3 +96,14 @@ chain.
 Deliberately unbounded for now (the product decision was full visibility;
 "skip the zero-retention paradigm"). If the table ever needs pruning, do
 it as an explicit admin action — do not add silent TTLs.
+
+## The maps routing trace (added 2026-07-09)
+
+Every non-incognito exchange's meta (`scripts/chatlogs --id N`) carries
+`maps_intent`: which pickLookup matcher decided the maps routing for that
+message — e.g. `NearbyPlace`, `RelocationToName`, `GoThereResume`,
+`HereAsk`, `Journey` — or `"none"` when nothing matched (absent entirely
+when the user's Maps knob is off, since the enrichment never ran). The
+same value logs as the `maps.intent` event in Workers Logs with the
+nearby mode. This is the first thing to check when a location-ish
+message got a research answer or a clarify instead of a maps action.

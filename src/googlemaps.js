@@ -37,7 +37,7 @@
 // enrichment is never a hard requirement for the chat to work.
 
 import { cacheGet, cachePut } from "./edge-cache.js";
-import { distanceMeters, movePoint } from "./googlemaps-text.js";
+import { decodePolyline, distanceMeters, movePoint } from "./googlemaps-text.js";
 
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
@@ -341,7 +341,13 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
     }
     if (parts.routeMapShown) {
       lines.push(
-        `A route map with numbered waypoints (1 = the user's position, 2 = ${top.name}) is displayed to the user beside this reply.`,
+        `A route map with numbered waypoints (1 = the user's position, last = ${top.name}) is displayed to the user beside this reply.`,
+      );
+    }
+    if (parts.route) {
+      const mins = parts.route.durationS ? Math.max(1, Math.round(parts.route.durationS / 60)) : null;
+      lines.push(
+        `Along roads/paths (Google Routes, walking): ≈${fmtMeters(parts.route.distanceMeters)}${mins ? `, about ${mins} min on foot` : ""}.`,
       );
     }
     if (parts.description) {
@@ -896,17 +902,32 @@ function staticMapUrl(env, location) {
 // A Static Maps image of the JOURNEY: numbered markers at every stop and a
 // straight-line path between them. No center/zoom — Static Maps auto-fits
 // to the path and markers. Billed like the other Static fetches (~$2/1k).
-export async function routeMapImage(env, log, points) {
+// `pathPoints` (optional) draws the path along a REAL route polyline (the
+// Routes API's road path, downsampled to keep the URL within limits) while
+// the numbered markers stay on the logical stops; without it the path
+// connects the stops straight-line.
+export async function routeMapImage(env, log, points, pathPoints = null) {
+  const path = Array.isArray(pathPoints) && pathPoints.length >= 2 ? downsamplePath(pathPoints, 60) : points;
   const qs = new URLSearchParams({
     size: STATICMAP_SIZE,
     scale: "1",
     format: "jpg",
     maptype: "roadmap",
-    path: "color:0x2563ebff|weight:4|" + points.map((p) => `${p.lat},${p.lng}`).join("|"),
+    path: "color:0x2563ebff|weight:4|" + path.map((p) => `${p.lat},${p.lng}`).join("|"),
     key: env.GOOGLE_MAPS_API_KEY,
   });
   points.forEach((p, i) => qs.append("markers", `label:${(i + 1) % 10}|${p.lat},${p.lng}`));
   return fetchImageDataUrl(env, log, `${STATICMAP_URL}?${qs}`, "googlemaps.routemap_error");
+}
+
+// Keep every Nth point (endpoints always) so a long polyline fits the
+// Static Maps URL limit.
+function downsamplePath(points, max) {
+  if (points.length <= max) return points;
+  const step = Math.ceil(points.length / max);
+  const out = points.filter((_, i) => i % step === 0);
+  if (out[out.length - 1] !== points[points.length - 1]) out.push(points[points.length - 1]);
+  return out;
 }
 
 // Along-road walking distance + duration over the journey's stops — Routes
@@ -925,7 +946,10 @@ export async function computeWalkingRoute(env, log, points) {
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
-        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+        // The encoded polyline is the actual ROAD PATH — the travel mode
+        // samples its Street View waypoints along it and the route map
+        // draws it, so "go to X" follows roads instead of a straight line.
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
       },
       body: JSON.stringify({
         origin: wp(points[0]),
@@ -944,8 +968,9 @@ export async function computeWalkingRoute(env, log, points) {
     const dist = Number(route?.distanceMeters);
     const dur = typeof route?.duration === "string" ? Number(route.duration.replace(/s$/, "")) : NaN;
     if (!Number.isFinite(dist) || dist <= 0) return null;
-    log.info("googlemaps.routes", { distance_m: dist });
-    return { distanceMeters: dist, durationS: Number.isFinite(dur) ? dur : null };
+    const polyline = decodePolyline(route?.polyline?.encodedPolyline || "");
+    log.info("googlemaps.routes", { distance_m: dist, polyline_points: polyline.length });
+    return { distanceMeters: dist, durationS: Number.isFinite(dur) ? dur : null, polyline };
   } catch (err) {
     log.warn("googlemaps.routes_error", { error: err?.message || String(err) });
     return null;

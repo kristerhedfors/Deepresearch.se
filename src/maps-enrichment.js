@@ -34,7 +34,7 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { bearingDeg, distanceMeters, hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
+import { bearingDeg, distanceMeters, hereAskIntent, pickLookup, samplePolyline, streetViewIntent } from "./googlemaps-text.js";
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 
@@ -53,6 +53,12 @@ const MAX_MAPS_IMAGES = 4;
 // Street View metadata check an ordinary question costs nothing.
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
+  // How routing went, made visible (requested 2026-07-09 after a run of
+  // silent intent misses): which matcher decided — or "none" — lands in
+  // Workers Logs here and rides into the chat_logs meta via
+  // state.mapsIntent, so scripts/chatlogs shows the routing per exchange.
+  state.mapsIntent = target ? target.intent || "matched" : "none";
+  log.info("maps.intent", { intent: state.mapsIntent, mode: target?.nearby?.mode });
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
     // honest note: with no block at all the model invents "enable Google
@@ -440,29 +446,47 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   // relocation verb) is informational — results + destination + route map.
   const mode = nearby.mode === "instant" || nearby.mode === "travel" ? nearby.mode : "search";
   const dest = { lat: top.lat, lng: top.lng };
-  const travelBearing = bearingDeg(anchor.lat, anchor.lng, dest.lat, dest.lng);
-  // Travel photo waypoints: start and the halfway point (each snapped to
-  // the nearest road pano, facing the direction of travel; the midpoint
-  // only when the trip is long enough for it to be a distinct place).
-  const travelPoints =
-    mode === "travel"
-      ? [
-          { label: "start", lat: anchor.lat, lng: anchor.lng },
-          ...(distanceMeters(anchor.lat, anchor.lng, dest.lat, dest.lng) > 400
-            ? [{ label: "on the way", lat: (anchor.lat + dest.lat) / 2, lng: (anchor.lng + dest.lng) / 2 }]
-            : []),
-        ]
-      : [];
+  const straightM = distanceMeters(anchor.lat, anchor.lng, dest.lat, dest.lng);
+  // Travel mode goes STEP BY STEP over Street View (reported 2026-07-09:
+  // travel answers looked "just like teleport" — a start frame, then the
+  // destination, nothing in between). The Routes API's walking polyline is
+  // the actual ROAD PATH: the photo waypoints are sampled ALONG it (one
+  // every ~fifth of the trip, up to 4), each snapped to the nearest
+  // panorama facing the next waypoint — so the series really walks the
+  // route. No route (API off/unreachable) degrades to straight-line
+  // samples; the block then reports straight-line figures only.
+  const route = mode === "travel" ? await computeWalkingRoute(env, log, [anchor, dest]) : null;
+  let travelPoints = [];
+  if (mode === "travel") {
+    const spacing = Math.max(300, Math.round((route?.distanceMeters || straightM) / 5));
+    const samples =
+      route?.polyline?.length >= 2
+        ? samplePolyline(route.polyline, spacing, 4)
+        : straightM > 400
+          ? [{ lat: (anchor.lat + dest.lat) / 2, lng: (anchor.lng + dest.lng) / 2 }]
+          : [];
+    const fmt = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+    travelPoints = [
+      { label: "start", lat: anchor.lat, lng: anchor.lng },
+      ...samples.map((p) => ({ label: `on the way — ≈${fmt(distanceMeters(anchor.lat, anchor.lng, p.lat, p.lng))} in`, ...p })),
+    ];
+  }
+  const headingAt = (i) => {
+    const next = travelPoints[i + 1] || dest;
+    return bearingDeg(travelPoints[i].lat, travelPoints[i].lng, next.lat, next.lng);
+  };
   const [found, routeImg, anchorPlace, travelCaptures] = await Promise.all([
     runStreetViewJumpLookup(env, log, { lat: dest.lat, lng: dest.lng, heading: 0, meters: 0 }).catch((err) => {
       log.warn("googlemaps.nearby_pano_failed", { error: err?.message || String(err) });
       return null;
     }),
-    mode === "instant" ? null : routeMapImage(env, log, [anchor, dest]).catch(() => null),
+    mode === "instant"
+      ? null
+      : routeMapImage(env, log, [anchor, ...travelPoints.slice(1), dest], route?.polyline || null).catch(() => null),
     mode === "instant" ? null : reverseGeocode(env, log, anchor.lat, anchor.lng),
     Promise.all(
-      travelPoints.map((w) =>
-        runStreetViewJumpLookup(env, log, { lat: w.lat, lng: w.lng, heading: travelBearing, meters: 0 }).catch(() => null),
+      travelPoints.map((w, i) =>
+        runStreetViewJumpLookup(env, log, { lat: w.lat, lng: w.lng, heading: headingAt(i), meters: 0 }).catch(() => null),
       ),
     ),
   ]);
@@ -479,11 +503,15 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     );
   }
   // The deck frames, in travel order: the along-the-way waypoints (travel
-  // mode), the destination, then the waypoint route map (search/travel).
+  // mode; consecutive samples that snapped to the SAME panorama collapse),
+  // the destination, then the waypoint route map (search/travel).
   const frames = [];
+  let lastPano = "";
   travelPoints.forEach((w, i) => {
     const c = travelCaptures[i];
-    if (c?.image) frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, url: c.image });
+    if (!c?.image || (c.panoId && c.panoId === lastPano)) return;
+    lastPano = c.panoId || "";
+    frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, url: c.image });
   });
   if (found?.image) {
     frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image });
@@ -513,6 +541,7 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       anchorPlace,
       routeMapShown: !!routeImg,
       mode,
+      route,
       seriesShown: frames.filter((f) => f.kind !== "map").length,
     }),
   );

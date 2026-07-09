@@ -332,6 +332,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             conflicts: state.conflicts,
             shodan_hosts: state.shodanCount,
             google_maps: state.mapsCount,
+            // Which maps intent matcher decided (or "none") — the routing
+            // trace scripts/chatlogs surfaces (undefined when the knob is
+            // off and the enrichment never ran).
+            maps_intent: state.mapsIntent,
             cached_searches: state.cachedSearchCount || 0,
             // Present only when the chosen model was unavailable and the
             // answer was written by the reliable fallback (pipeline.js's

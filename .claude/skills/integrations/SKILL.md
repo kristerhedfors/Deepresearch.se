@@ -698,6 +698,27 @@ call, alongside the Shodan enrichment).
   one combined Places search ("hemköp Stäket"), inheriting the pending
   mode — previously both fell into the web-research pipeline with more
   cannot-move-you disclaimers.
+- **Openers, superlatives, go-there, and the ROUTE (2026-07-09, the
+  "Legs go to coop" session)**: relocation asks take let's-openers incl.
+  the adjacent-key typo ("Lets/Let's/Legs go to coop") and "ok"; a
+  SUPERLATIVE + short NAME is a nearby search without a type word
+  ("nearest coop", "närmaste willys" — typo forms included); library/
+  bibliotek joined the place types; "Go there" (typo "Co there") RESUMES
+  pendingRelocation as travel. Travel mode now goes STEP BY STEP over
+  Street View: computeWalkingRoute requests the Routes API's
+  `routes.polyline.encodedPolyline`, `decodePolyline` (pure, tested
+  against Google's reference vector) turns it into the road path,
+  `samplePolyline` places up to 4 photo waypoints along it (one per
+  ~fifth of the trip, each snapped to the nearest pano facing the NEXT
+  waypoint, consecutive same-pano samples collapsed), and
+  `routeMapImage(points, pathPoints)` draws the REAL road path behind
+  the numbered stops. The nearby block reports the walking
+  distance/time. ROUTING IS OBSERVABLE: pickLookup tags the winning
+  matcher on the target (non-enumerable `intent`), maps-enrichment logs
+  `maps.intent` to Workers Logs and puts it in state.mapsIntent, and
+  chat.js writes it into the chat_logs meta (`maps_intent`) — so
+  scripts/chatlogs answers "how did routing go?" per exchange, including
+  "none" for misses.
 - **The maps subsystem's module seams (2026-07-09 refactor)**:
   `googlemaps-text.js` decides WHAT is being asked — `pickLookup` is now
   an ORDERED registry of small named matchers (LOOKUP_MATCHERS; the order

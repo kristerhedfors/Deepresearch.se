@@ -19,6 +19,7 @@ import {
 } from "./googlemaps.js";
 import {
   bearingDeg,
+  decodePolyline,
   distanceMeters,
   extractCrossBarrierAsk,
   extractLocalityFix,
@@ -37,6 +38,7 @@ import {
   nearbyAskMode,
   pendingRelocation,
   physicalLocationAsk,
+  samplePolyline,
   pickLookup,
   referencesStreetView,
   referencesStreetViewScene,
@@ -1166,6 +1168,66 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.equal(pickLookup(convo, []), null);
   });
 
+  test("the verbatim 'Legs go to coop' session (2026-07-09): lets/typo openers, nearest-NAME, go-there resume", () => {
+    const pov2 = { panoId: "p", lat: 59.4566, lng: 17.801, heading: 0, pitch: 0, fov: 90 };
+    // "Lets go to coop" (and the adjacent-key typo "Legs go to coop") — a
+    // relocation to a brand name behind a let's-opener.
+    assert.deepEqual(extractRelocationQuery("Lets go to coop"), { query: "coop", mode: "travel" });
+    assert.deepEqual(extractRelocationQuery("Legs go to coop"), { query: "coop", mode: "travel" });
+    assert.deepEqual(extractRelocationQuery("Let's go to coop"), { query: "coop", mode: "travel" });
+    // "nearest coop" — a superlative + NAME, no place-type word.
+    assert.equal(extractNearbyPlaceQuery("nearest coop"), "nearest coop");
+    assert.equal(extractNearbyPlaceQuery("närmaste coop"), "närmaste coop");
+    assert.equal(extractNearbyPlaceQuery("nearest"), ""); // no name — nothing to search
+    // "Lets go to the nearest library" — library is a place type now.
+    const lib = pickLookup([{ role: "user", content: "Lets go to the nearest library" }], [], pov2);
+    assert.equal(lib?.nearby?.query, "nearest library");
+    assert.equal(lib?.nearby?.mode, "travel");
+    assert.equal(pickLookup([{ role: "user", content: "gå till närmaste bibliotek" }], [], pov2)?.nearby?.mode, "travel");
+    // "Go there" / typo "Co there" resume the pending relocation as travel.
+    const convo = [
+      { role: "user", content: "Lets go to coop" },
+      { role: "assistant", content: "Which Coop do you mean?" },
+      { role: "user", content: "Go there" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], pov2).nearby, { query: "coop", lat: 59.4566, lng: 17.801, mode: "travel" });
+    const typo = [...convo.slice(0, 2), { role: "user", content: "Co there" }];
+    assert.deepEqual(pickLookup(typo, [], pov2).nearby, { query: "coop", lat: 59.4566, lng: 17.801, mode: "travel" });
+    // No pending relocation → "go there" falls through to the POV scene
+    // gate (the deictic "there" while a panorama is live captures the
+    // current view — there is no destination to resume).
+    const bare = pickLookup([{ role: "user", content: "Go there" }], [], pov2);
+    assert.ok(bare?.pov, "expected the POV scene capture");
+    assert.equal(bare.intent, "PovScene");
+  });
+
+  test("pickLookup tags the winning matcher (non-enumerable) — the routing trace the logs surface", () => {
+    const pov2 = { panoId: "p", lat: 59.4566, lng: 17.801, heading: 0, pitch: 0, fov: 90 };
+    assert.equal(pickLookup([{ role: "user", content: "nearest gas station" }], [], pov2).intent, "NearbyPlace");
+    assert.equal(pickLookup([{ role: "user", content: "Lets go to coop" }], [], pov2).intent, "RelocationToName");
+    assert.equal(pickLookup([{ role: "user", content: "street view here" }], [], pov2).intent, "HereAsk");
+    // Non-enumerable: not part of the target-shape contract.
+    assert.equal(Object.keys(pickLookup([{ role: "user", content: "street view here" }], [], pov2)).includes("intent"), false);
+  });
+
+  test("decodePolyline: Google's reference example; samplePolyline spaces the waypoints", () => {
+    const pts = decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@");
+    assert.deepEqual(pts, [
+      { lat: 38.5, lng: -120.2 },
+      { lat: 40.7, lng: -120.95 },
+      { lat: 43.252, lng: -126.453 },
+    ]);
+    assert.deepEqual(decodePolyline(""), []);
+    assert.deepEqual(decodePolyline(undefined), []);
+    // A straight north line of 11 points, ~111m apart: sampling every 300m
+    // takes roughly every third point and never the endpoints.
+    const line = Array.from({ length: 11 }, (_, i) => ({ lat: 59 + i * 0.001, lng: 17.8 }));
+    const samples = samplePolyline(line, 300, 4);
+    assert.ok(samples.length >= 2 && samples.length <= 4, `got ${samples.length}`);
+    assert.ok(samples.every((p) => p.lat > 59 && p.lat < 59.01));
+    assert.deepEqual(samplePolyline([], 300), []);
+  });
+
   test("buildNearbyPlacesBlock mode framing: instant drops, travel narrates the way", () => {
     const places = [{ name: "Qstar", address: "Enköpingsvägen 199", lat: 59.4618, lng: 17.8232, type: "gas station", rating: null, ratingCount: 0, status: "" }];
     const instant = buildNearbyPlacesBlock("nearest gas station", { lat: 59.45, lng: 17.8 }, places, { mode: "instant", panoramaShown: true });
@@ -1229,7 +1291,7 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     });
     assert.match(block, /current position reverse-geocodes to \(OpenStreetMap Nominatim\): Nyboda, Stäket/);
     assert.match(block, /Open the answer by saying where the user currently is/);
-    assert.match(block, /route map with numbered waypoints \(1 = the user's position, 2 = Qstar\)/);
+    assert.match(block, /route map with numbered waypoints \(1 = the user's position, last = Qstar\)/);
     assert.match(block, /If the user asked to "jump" or "teleport", that relocation HAS happened/);
     assert.match(block, /NEVER say you cannot teleport/);
   });
