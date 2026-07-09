@@ -344,6 +344,10 @@ what docs claim); and update the skill list below plus the skill's
 - **model-eval** — the model-matrix eval harness, `QUERY_SETS`, the findings
   ledger, deciding evidence-driven `model-profiles.js` entries, and
   don't-commit-mid-battery.
+- **model-tuning** — onboarding/tuning a model across the codified use
+  cases: the use-case→knob inventory (profiles, budget priors, prompts,
+  vision caps), the preflight→battery→codify→ledger run, and the
+  Anthropic-specific watch list.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
   `server_history` cloud knob, RAG documents, projects, and the
   encryption-asymmetry rule (`storage.js`, `settings.js`, `rag.js`,
