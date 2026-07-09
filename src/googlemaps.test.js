@@ -18,6 +18,7 @@ import {
   unresolvedMapsBlock,
 } from "./googlemaps.js";
 import {
+  bearingDeg,
   distanceMeters,
   extractCrossBarrierAsk,
   extractLocalityFix,
@@ -32,6 +33,7 @@ import {
   journeyAsk,
   matchAddressFragment,
   movePoint,
+  nearbyAskMode,
   physicalLocationAsk,
   pickLookup,
   referencesStreetView,
@@ -1077,7 +1079,7 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.deepEqual(out, {
       coords: "",
       address: "",
-      nearby: { query: "Gas station near e18", lat: 59.455, lng: 17.8027 },
+      nearby: { query: "Gas station near e18", lat: 59.455, lng: 17.8027, mode: "search" },
       followUp: true,
     });
   });
@@ -1093,8 +1095,52 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
   test("anchors follow the usual precedence: device location works; no anchor resolves nothing", () => {
     const convo = [{ role: "user", content: "nearest gas station" }];
     const fromDevice = pickLookup(convo, [], null, null, { lat: 59.44, lng: 17.8, zoom: 17 });
-    assert.deepEqual(fromDevice.nearby, { query: "nearest gas station", lat: 59.44, lng: 17.8 });
+    assert.deepEqual(fromDevice.nearby, { query: "nearest gas station", lat: 59.44, lng: 17.8, mode: "search" });
     assert.equal(pickLookup(convo, []), null); // ordinary pipeline handles it
+  });
+
+  test("nearbyAskMode: teleport = instant drop, travel verbs = the actual travel, else search", () => {
+    // The user's refined semantics (2026-07-09): "teleport should just
+    // drop you there. If I say 'go to nearest …' then we do the actual
+    // travel with waypoints and map views."
+    assert.equal(nearbyAskMode("Teleport to nearest gas station"), "instant");
+    assert.equal(nearbyAskMode("jump to the pharmacy"), "instant");
+    assert.equal(nearbyAskMode("hoppa till närmaste mack"), "instant");
+    assert.equal(nearbyAskMode("go to nearest gas station"), "travel");
+    assert.equal(nearbyAskMode("take me to a pharmacy"), "travel");
+    assert.equal(nearbyAskMode("ta mig till närmaste bensinstation"), "travel");
+    assert.equal(nearbyAskMode("gas station near e18 there"), "search");
+    assert.equal(nearbyAskMode("nearest pharmacy"), "search");
+    // The mode rides through pickLookup.
+    const pov2 = { panoId: "p", lat: 59.455, lng: 17.8027, heading: 90, pitch: 0, fov: 90 };
+    assert.equal(pickLookup([{ role: "user", content: "go to nearest gas station" }], [], pov2).nearby.mode, "travel");
+    assert.equal(pickLookup([{ role: "user", content: "teleport to nearest gas station" }], [], pov2).nearby.mode, "instant");
+  });
+
+  test("bearingDeg points the travel captures at the destination", () => {
+    assert.equal(bearingDeg(59.0, 17.0, 60.0, 17.0), 0); // due north
+    assert.equal(bearingDeg(59.0, 17.0, 58.0, 17.0), 180); // due south
+    assert.equal(bearingDeg(59.0, 17.0, 59.0, 18.0), 90); // due east
+    const ne = bearingDeg(59.45, 17.8, 59.46, 17.83); // northeast-ish
+    assert.ok(ne > 30 && ne < 80, `expected NE-ish, got ${ne}`);
+  });
+
+  test("buildNearbyPlacesBlock mode framing: instant drops, travel narrates the way", () => {
+    const places = [{ name: "Qstar", address: "Enköpingsvägen 199", lat: 59.4618, lng: 17.8232, type: "gas station", rating: null, ratingCount: 0, status: "" }];
+    const instant = buildNearbyPlacesBlock("nearest gas station", { lat: 59.45, lng: 17.8 }, places, { mode: "instant", panoramaShown: true });
+    assert.match(instant, /asked to TELEPORT — they have been dropped straight at the first result/);
+    assert.match(instant, /no travel narrative/);
+    assert.ok(!instant.includes("Open the answer by saying where the user currently is"));
+    const travel = buildNearbyPlacesBlock("nearest gas station", { lat: 59.45, lng: 17.8 }, places, {
+      mode: "travel",
+      panoramaShown: true,
+      anchorPlace: "Nyboda, Stäket",
+      routeMapShown: true,
+      seriesShown: 3,
+    });
+    assert.match(travel, /asked to GO there — present it as the actual travel/);
+    assert.match(travel, /photo waypoints and route map beside this reply/);
+    assert.match(travel, /Open the answer by saying where the user currently is/);
   });
 
   test("distanceMeters: zero at the same point, ~1.1 km per 0.01° latitude", () => {

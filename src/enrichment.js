@@ -33,7 +33,7 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { distanceMeters, hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
+import { bearingDeg, distanceMeters, hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
@@ -505,18 +505,38 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   }
   state.mapsCount = places.length;
   const top = places[0];
-  // The destination pano, the WAYPOINT ROUTE MAP (user's position → the
-  // hit — requested 2026-07-09: the reply must include a map view with the
-  // waypoints), and the reverse geocode of the user's OWN position (the
-  // same request: first say where the user is, then relocate) are all
-  // independent — run together, each fail-soft.
-  const [found, routeImg, anchorPlace] = await Promise.all([
-    runStreetViewJumpLookup(env, log, { lat: top.lat, lng: top.lng, heading: 0, meters: 0 }).catch((err) => {
+  // The user's refined semantics (2026-07-09): "instant" (teleport) just
+  // DROPS at the destination — no route map, no start narrative, no
+  // series; "travel" ("go to nearest …") does the actual travel — start
+  // narrative, photo waypoints along the way, route map; "search" (no
+  // relocation verb) is informational — results + destination + route map.
+  const mode = nearby.mode === "instant" || nearby.mode === "travel" ? nearby.mode : "search";
+  const dest = { lat: top.lat, lng: top.lng };
+  const travelBearing = bearingDeg(anchor.lat, anchor.lng, dest.lat, dest.lng);
+  // Travel photo waypoints: start and the halfway point (each snapped to
+  // the nearest road pano, facing the direction of travel; the midpoint
+  // only when the trip is long enough for it to be a distinct place).
+  const travelPoints =
+    mode === "travel"
+      ? [
+          { label: "start", lat: anchor.lat, lng: anchor.lng },
+          ...(distanceMeters(anchor.lat, anchor.lng, dest.lat, dest.lng) > 400
+            ? [{ label: "on the way", lat: (anchor.lat + dest.lat) / 2, lng: (anchor.lng + dest.lng) / 2 }]
+            : []),
+        ]
+      : [];
+  const [found, routeImg, anchorPlace, travelCaptures] = await Promise.all([
+    runStreetViewJumpLookup(env, log, { lat: dest.lat, lng: dest.lng, heading: 0, meters: 0 }).catch((err) => {
       log.warn("googlemaps.nearby_pano_failed", { error: err?.message || String(err) });
       return null;
     }),
-    routeMapImage(env, log, [anchor, { lat: top.lat, lng: top.lng }]).catch(() => null),
-    reverseGeocode(env, log, anchor.lat, anchor.lng),
+    mode === "instant" ? null : routeMapImage(env, log, [anchor, dest]).catch(() => null),
+    mode === "instant" ? null : reverseGeocode(env, log, anchor.lat, anchor.lng),
+    Promise.all(
+      travelPoints.map((w) =>
+        runStreetViewJumpLookup(env, log, { lat: w.lat, lng: w.lng, heading: travelBearing, meters: 0 }).catch(() => null),
+      ),
+    ),
   ]);
   const embedKeyOk = !!googleMapsEmbedKey(env);
   let description = "";
@@ -530,15 +550,18 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       question,
     );
   }
-  // Like the jump path, the best hit's frame always joins the reply so the
-  // found place is a clickable deck image with its own position — followed
-  // by the waypoint route map (start → destination, numbered).
+  // The deck frames, in travel order: the along-the-way waypoints (travel
+  // mode), the destination, then the waypoint route map (search/travel).
   const frames = [];
+  travelPoints.forEach((w, i) => {
+    const c = travelCaptures[i];
+    if (c?.image) frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, url: c.image });
+  });
   if (found?.image) {
     frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image });
   }
   if (routeImg) {
-    frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: top.lat, lng: top.lng, url: routeImg });
+    frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: dest.lat, lng: dest.lng, url: routeImg });
   }
   if (frames.length) {
     emit({ status: { type: "streetview_frames", query: top.name || nearby.query, frames } });
@@ -561,6 +584,8 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       description,
       anchorPlace,
       routeMapShown: !!routeImg,
+      mode,
+      seriesShown: frames.filter((f) => f.kind !== "map").length,
     }),
   );
 }

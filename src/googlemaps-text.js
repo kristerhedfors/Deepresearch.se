@@ -385,6 +385,33 @@ export function extractNearbyPlaceQuery(text) {
   return q.slice(0, MAX_LOCATION_CHARS);
 }
 
+// How the nearby ask wants to be ANSWERED — the user's explicitly refined
+// semantics (2026-07-09): "teleport should just drop you there. If I say
+// 'go to nearest …' then we do the actual travel with waypoints and map
+// views."
+//   "instant" — teleport/jump verbs: DROP at the destination, no travel
+//               narrative, no route map, no series.
+//   "travel"  — go/get/take-me/walk-to verbs: the actual travel — start
+//               narrative, photo waypoints along the way, the route map.
+//   "search"  — no relocation verb ("gas station near e18"): informational
+//               — results + destination view + route map.
+export function nearbyAskMode(text) {
+  const t = typeof text === "string" ? text : "";
+  if (TELEPORT_VERB_RE.test(t)) return "instant";
+  if (TRAVEL_TO_RE.test(t)) return "travel";
+  return "search";
+}
+
+// Initial bearing (degrees clockwise from north) from point 1 toward point
+// 2 — equirectangular like movePoint/distanceMeters, exact enough for the
+// ≤ a-few-km travel captures. Pure and exported for tests.
+export function bearingDeg(lat1, lng1, lat2, lng2) {
+  const rad = Math.PI / 180;
+  const x = (lng2 - lng1) * Math.cos(((lat1 + lat2) / 2) * rad);
+  const y = lat2 - lat1;
+  return Math.round(((Math.atan2(x, y) * 180) / Math.PI + 360) % 360);
+}
+
 // ---- teleport & cross-barrier asks -------------------------------------------
 
 // "jump"/"teleport" mean INSTANT relocation — the user's explicitly stated
@@ -992,7 +1019,7 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
       return {
         coords: "",
         address: "",
-        nearby: { query: nearbyQuery, lat: anchor.lat, lng: anchor.lng },
+        nearby: { query: nearbyQuery, lat: anchor.lat, lng: anchor.lng, mode: nearbyAskMode(latest) },
         followUp: true,
       };
     }

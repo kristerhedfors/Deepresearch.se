@@ -672,14 +672,19 @@ call, alongside the Shodan enrichment).
   (top-link markdown mandate, never invent a place on zero hits, no
   enable-steps, no fabricated URLs). Fail-soft in every branch; no
   anchor → ordinary pipeline (web search) handles the question.
-  **Teleport polish (same day, verbatim "Teleport to nearest gas
-  station")**: the reply also reverse-geocodes the user's OWN position
-  (the block opens the answer with where they are, then the relocation),
-  appends a WAYPOINT ROUTE MAP frame (1 = user, 2 = destination —
-  `routeMapImage`) to the strip, and carries the never-disclaim note
-  ("NEVER say you cannot teleport… the views beside this reply are the
-  relocation") — the model had answered a working teleport with "Note: I
-  can't actually 'teleport' you".
+  **Answer MODES (`nearbyAskMode`, user-refined semantics, same day)**:
+  "instant" (teleport/jump verbs) DROPS at the destination — no route
+  map, no start narrative, brief landed-here framing; "travel" (go/get/
+  take-me/walk-to verbs) does the ACTUAL travel — start reverse-geocoded
+  and narrated, photo waypoints along the way (start + a midpoint when
+  >400m, each snapped to the nearest pano facing `bearingDeg` toward the
+  destination), the waypoint route map (1 = user, 2 = destination —
+  `routeMapImage`); "search" (no relocation verb) is informational —
+  results + destination view + route map + the where-you-are opener.
+  ALL modes carry the never-disclaim note ("NEVER say you cannot
+  teleport… the views beside this reply are the relocation") — the model
+  had answered a working teleport with "Note: I can't actually
+  'teleport' you".
 - **"Jump"/"teleport" mean INSTANT relocation, and barriers can be
   crossed** (user's explicitly stated semantics, 2026-07-09, after "Get to
   the other side of the railway" — twice — drew a real-world safety

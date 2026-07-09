@@ -300,8 +300,20 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
     `The user asked for a nearby place ("${query}") and Google Places was searched around their CURRENT position (${anchor.lat}, ${anchor.lng}). ` +
       "The position is where they have navigated the live view (or their device location) — do NOT ask them to confirm it.",
   ];
-  // Requested 2026-07-09 ("first find my location, then teleport"): the
-  // answer opens by SAYING where the user is, then presents the relocation.
+  // Mode framing (the user's refined semantics, 2026-07-09): teleport =
+  // DROP, "go to" = the actual travel, verb-less = informational search.
+  if (parts.mode === "instant") {
+    lines.push(
+      "The user asked to TELEPORT — they have been dropped straight at the first result; the panorama beside this reply is there. " +
+        "Answer briefly with where they landed and what's around it — no travel narrative, no route description.",
+    );
+  } else if (parts.mode === "travel") {
+    lines.push(
+      "The user asked to GO there — present it as the actual travel: where they started, the way there (the photo waypoints and route map beside this reply, in order), and the arrival.",
+    );
+  }
+  // The say-where-you-are opener (search/travel modes): the answer opens
+  // with the user's own position, then presents the found place.
   if (parts.anchorPlace) {
     lines.push(
       `The user's current position reverse-geocodes to (OpenStreetMap Nominatim): ${parts.anchorPlace}. ` +
