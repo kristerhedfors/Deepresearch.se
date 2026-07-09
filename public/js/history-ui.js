@@ -126,7 +126,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h15 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
+    parts.push(`[h16 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -136,7 +136,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h14";
+  const CSS_WANT = "h16";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";
@@ -412,6 +412,12 @@ export function initHistorySidebar(opts = {}) {
             });
           } else {
             releaseRest(); // vertical: hand the gesture back to the scroller
+            // iOS-Mail convention: scrolling the list closes any card
+            // that's sitting open, so its buttons never linger while the
+            // user has visibly moved on.
+            list.querySelectorAll(".history-item.swiped").forEach((other) => {
+              if (other !== item) closeActions(other);
+            });
           }
         }
         if (axis !== "x") return;

@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h14;
+  --css-version: h16;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -828,7 +828,14 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   transition: margin-left .18s ease;
 }
 .history-item.swiped .history-open { margin-left: -88px; }
-.history-item:hover .history-open, .history-open:focus-visible { background: rgba(255, 255, 255, .35); }
+/* Hover highlight ONLY where hover is real: iOS's emulated :hover
+   sticks to the last-touched card for seconds (device trace,
+   2026-07-08), leaving phantom highlights on cards the finger merely
+   passed — the same sticky-hover class of bug as the phantom buttons. */
+.history-open:focus-visible { background: rgba(255, 255, 255, .35); }
+@media (hover: hover) {
+  .history-item:hover .history-open { background: rgba(255, 255, 255, .35); }
+}
 .history-title {
   font-size: .85rem; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
