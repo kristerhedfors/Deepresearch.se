@@ -125,9 +125,9 @@ function blockRefName(name) {
 // whether to request the device's geolocation before sending, so the
 // permission prompt fires for exactly these asks and nothing else. Pure —
 // unit-tested.
-const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy|gatvy)/iu;
+const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy(?:n)?|gatubild(?:en)?)/iu;
 const HERE_WORD_RE =
-  /(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|min\s+(?:nuvarande\s+)?position|nuvarande\s+(?:plats|läge)|här)(?![\p{L}\p{M}])/iu;
+  /(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|var\s+jag\s+är|min\s+(?:nuvarande\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
 export function asksStreetViewHere(text) {
   const t = typeof text === "string" ? text : "";
   return SV_WORD_RE.test(t) && HERE_WORD_RE.test(t);

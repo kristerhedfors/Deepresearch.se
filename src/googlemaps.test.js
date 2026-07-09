@@ -976,3 +976,38 @@ describe("buildJumpBlock", () => {
     assert.match(block, /open Street View at their current position/);
   });
 });
+
+describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedish forms", () => {
+  test("street-view intent: definite form, typo, and the gatubild synonym", () => {
+    assert.equal(streetViewIntent("visa gatuvyn tack"), true);
+    assert.equal(streetViewIntent("gatvy storgatan"), true);
+    assert.equal(streetViewIntent("gatubild av Storgatan"), true);
+    assert.equal(streetViewIntent("gatubilden här"), true);
+  });
+
+  test("follow-up reference gate takes gatuvyn/gatubilden", () => {
+    assert.equal(referencesStreetView("kan du visa gatuvyn igen?"), true);
+    assert.equal(referencesStreetView("vad syns på gatubilden?"), true);
+  });
+
+  test("relative moves: Swedish forward/back/verb forms", () => {
+    assert.deepEqual(extractRelativeMove("fortsätt 100 meter längre fram"), { meters: 100, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("följ vägen 200 meter"), { meters: 200, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("gå 150 m uppför gatan"), { meters: 150, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("backa 50 meter"), { meters: 50, mode: "back", dir: "back" });
+    assert.deepEqual(extractRelativeMove("flytta 100 m österut"), { meters: 100, mode: "bearing", bearing: 90, dir: "east" });
+  });
+
+  test("English 'further' gets the same treatment as 'ahead'", () => {
+    assert.deepEqual(extractRelativeMove("continue 100 meters further"), { meters: 100, mode: "forward", dir: "forward" });
+  });
+
+  test("here-intent: min plats / var jag är / härifrån / den här platsen", () => {
+    assert.equal(streetViewHereIntent("gatuvy min plats"), true);
+    assert.equal(streetViewHereIntent("visa gatuvyn var jag är"), true);
+    assert.equal(streetViewHereIntent("gatubild härifrån"), true);
+    assert.equal(streetViewHereIntent("street view på den här platsen"), true);
+    // Still needs the street-view word — a bare Swedish here-phrase is not an ask.
+    assert.equal(streetViewHereIntent("vad finns på min plats?"), false);
+  });
+});

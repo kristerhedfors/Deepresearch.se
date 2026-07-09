@@ -371,3 +371,10 @@ test("asksStreetViewHere gates the device-geolocation prompt to explicit here-as
   assert.equal(asksStreetViewHere(""), false);
   assert.equal(asksStreetViewHere(undefined), false);
 });
+
+test("asksStreetViewHere takes the Swedish parity forms", () => {
+  assert.equal(asksStreetViewHere("visa gatuvyn min plats"), true);
+  assert.equal(asksStreetViewHere("gatubild där jag är"), true);
+  assert.equal(asksStreetViewHere("gatuvy härifrån"), true);
+  assert.equal(asksStreetViewHere("gatubilden av Storgatan 4"), false);
+});

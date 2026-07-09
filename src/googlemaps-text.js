@@ -185,7 +185,11 @@ function firstMatch(raw, re) {
 // enumerated set of common misspellings, not a loose pattern — reported
 // verbatim 2026-07-08: "Streer view" missed the exact-match regex and the
 // whole ask fell through to a clarify.
-const SV_WORDS = "(?:street|streer|stret|streat|steet|sreet|stere)\\s*(?:view|veiw|vew|wiev)|streetview|gatu?vy";
+// Swedish gets the same breadth as English: the definite form ("gatuvyn"),
+// the gatvy typo, and the synonym "gatubild(en)" (Swedish-language parity
+// audit 2026-07-09).
+const SV_WORDS =
+  "(?:street|streer|stret|streat|steet|sreet|stere)\\s*(?:view|veiw|vew|wiev)|streetview|gatu?vy(?:n)?|gatubild(?:en)?";
 const STREETVIEW_INTENT_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "iu");
 const STREETVIEW_INTENT_ALL_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "giu");
 export function streetViewIntent(text) {
@@ -354,7 +358,7 @@ function withLocalityFix(address, fix) {
 const FOLLOWUP_REFERENCE_RE = new RegExp(
   "(?<![\\p{L}\\p{M}])(?:" +
     // imagery / the view itself
-    "street ?view|gatuvy|imager?y|images?|pictures?|photos?|panoramas?|" +
+    "street ?view|gatuvy(?:n)?|gatubild(?:en)?|imager?y|images?|pictures?|photos?|panoramas?|" +
     "bild(?:en|er|erna)?|foto(?:t|n|na)?|" +
     // the building and its parts
     "buildings?|house[s]?|roof(?:s|top)?|fa[cç]ades?|windows?|doors?|garages?|" +
@@ -471,13 +475,13 @@ const DISTANCE_RE = /(\d+(?:[.,]\d+)?)\s*(km|kilomet(?:er|re)s?|m|met(?:er|re)s?
 // "framåt", "rakt fram", "längs vägen" — meaningful only from a panorama,
 // whose heading says which way "along" IS.
 const FORWARD_RE =
-  /(?<![\p{L}\p{M}])(?:along|down|up)\s+(?:this|the|that|samma)?\s*(?:road|street|way)|(?<![\p{L}\p{M}])(?:ahead|forwards?|onwards?|straight on|längs\s+(?:den här\s+|denna\s+|samma\s+)?(?:vägen|gatan|vägen här)|framåt|rakt fram|vidare)(?![\p{L}\p{M}])/iu;
-const BACK_RE = /(?<![\p{L}\p{M}])(?:back(?:wards?)?|behind (?:me|us)|bakåt|tillbaka)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:along|down|up)\s+(?:this|the|that|samma)?\s*(?:road|street|way)|(?<![\p{L}\p{M}])(?:ahead|forwards?|further|onwards?|straight on|längs\s+(?:den här\s+|denna\s+|samma\s+)?(?:vägen|gatan)|längre fram|följ\s+(?:vägen|gatan)|(?:uppför|nerför|nedför)\s+(?:gatan|vägen)|framåt|rakt fram|vidare)(?![\p{L}\p{M}])/iu;
+const BACK_RE = /(?<![\p{L}\p{M}])(?:back(?:wards?)?|behind (?:me|us)|bakåt|tillbaka|backa)(?![\p{L}\p{M}])/iu;
 // A movement/show verb — the anti-overfire requirement for bare compass
 // moves ("the shop is 100 meters north of the station" while a map is open
 // must NOT jump; "go 100 meters north" / a short bare "100 m north" must).
 const MOVE_VERB_RE =
-  /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|fortsätt|hoppa|ta mig|visa|öppna)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|fortsätt|hoppa|ta mig|visa|öppna|flytta|förflytta|promenera)(?![\p{L}\p{M}])/iu;
 
 const clampMeters = (n) => Math.max(5, Math.min(3000, Math.round(n)));
 
@@ -511,7 +515,7 @@ export function extractRelativeMove(text) {
 // position ("street view here", "popup street view at my current location",
 // "gatuvy här", "öppna gatuvy där jag är") — no address, no place name.
 const HERE_RE =
-  /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:location|position)|där jag är|min (?:nuvarande )?position|nuvarande (?:plats|läge)|här)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:location|position)|där jag är|var jag är|min (?:nuvarande )?(?:position|plats)|nuvarande (?:plats|läge)|denna plats|den här platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
 export function streetViewHereIntent(text) {
   const t = typeof text === "string" ? text : "";
   return streetViewIntent(t) && HERE_RE.test(t);
