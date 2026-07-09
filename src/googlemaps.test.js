@@ -1128,6 +1128,25 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.match(block, /already enabled — do NOT suggest/);
   });
 
+  test("teleport asks get the say-where-you-are opener, the waypoint route map, and the never-disclaim note", () => {
+    // The verbatim 2026-07-09 report: "Teleport to nearest gas station"
+    // answered without the user's own location, without a waypoint map, and
+    // with "Note: I can't actually 'teleport' you".
+    const places = [
+      { name: "Qstar", address: "Enköpingsvägen 199, Järfälla", lat: 59.4618, lng: 17.8232, type: "gas station", rating: 4.3, ratingCount: 57, status: "OPERATIONAL" },
+    ];
+    const block = buildNearbyPlacesBlock("nearest gas station", { lat: 59.4566, lng: 17.801 }, places, {
+      panoramaShown: true,
+      anchorPlace: "Nyboda, Stäket, Järfälla kommun",
+      routeMapShown: true,
+    });
+    assert.match(block, /current position reverse-geocodes to \(OpenStreetMap Nominatim\): Nyboda, Stäket/);
+    assert.match(block, /Open the answer by saying where the user currently is/);
+    assert.match(block, /route map with numbered waypoints \(1 = the user's position, 2 = Qstar\)/);
+    assert.match(block, /If the user asked to "jump" or "teleport", that relocation HAS happened/);
+    assert.match(block, /NEVER say you cannot teleport/);
+  });
+
   test("teleport/travel verbs count as the nearby trigger and strip out of the query", () => {
     // "if I say 'jump' or 'teleport' I mean just relocate there" — and the
     // instruction works for a place target too (the user's explicit ask).

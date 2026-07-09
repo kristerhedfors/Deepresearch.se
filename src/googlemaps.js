@@ -300,6 +300,14 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
     `The user asked for a nearby place ("${query}") and Google Places was searched around their CURRENT position (${anchor.lat}, ${anchor.lng}). ` +
       "The position is where they have navigated the live view (or their device location) — do NOT ask them to confirm it.",
   ];
+  // Requested 2026-07-09 ("first find my location, then teleport"): the
+  // answer opens by SAYING where the user is, then presents the relocation.
+  if (parts.anchorPlace) {
+    lines.push(
+      `The user's current position reverse-geocodes to (OpenStreetMap Nominatim): ${parts.anchorPlace}. ` +
+        "Open the answer by saying where the user currently is, then present the found place / relocation.",
+    );
+  }
   if (places.length) {
     lines.push(`${places.length} result${places.length === 1 ? "" : "s"}, best match first:`);
     for (const p of places) {
@@ -313,10 +321,16 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
     const top = places[0];
     if (parts.panoramaShown) {
       lines.push(
-        `An interactive Street View panorama at the first result (${top.name}) is displayed to the user directly beside this reply — refer to it as shared context.`,
+        `An interactive Street View panorama at the first result (${top.name}) is displayed to the user directly beside this reply — refer to it as shared context. ` +
+          "If the user asked to \"jump\" or \"teleport\", that relocation HAS happened: the panorama IS at the destination.",
       );
     } else if (parts.mapShown) {
       lines.push(`An interactive Google Map at the first result (${top.name}) is displayed to the user directly beside this reply.`);
+    }
+    if (parts.routeMapShown) {
+      lines.push(
+        `A route map with numbered waypoints (1 = the user's position, 2 = ${top.name}) is displayed to the user beside this reply.`,
+      );
     }
     if (parts.description) {
       lines.push(`Visual description of the first result's Street View (auto-generated): ${parts.description}`);
@@ -330,6 +344,9 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
     );
     lines.push(`Map link for the current position: ${mapLink(anchor.lat, anchor.lng)}`);
   }
+  lines.push(
+    "This is VIRTUAL Street View/map navigation — NEVER say you cannot teleport, move the user, or control navigation; the views beside this reply are the relocation.",
+  );
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   lines.push(NO_FABRICATED_IMAGE_URLS);
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";

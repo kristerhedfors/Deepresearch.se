@@ -505,12 +505,19 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   }
   state.mapsCount = places.length;
   const top = places[0];
-  let found = null;
-  try {
-    found = await runStreetViewJumpLookup(env, log, { lat: top.lat, lng: top.lng, heading: 0, meters: 0 });
-  } catch (err) {
-    log.warn("googlemaps.nearby_pano_failed", { error: err?.message || String(err) });
-  }
+  // The destination pano, the WAYPOINT ROUTE MAP (user's position → the
+  // hit — requested 2026-07-09: the reply must include a map view with the
+  // waypoints), and the reverse geocode of the user's OWN position (the
+  // same request: first say where the user is, then relocate) are all
+  // independent — run together, each fail-soft.
+  const [found, routeImg, anchorPlace] = await Promise.all([
+    runStreetViewJumpLookup(env, log, { lat: top.lat, lng: top.lng, heading: 0, meters: 0 }).catch((err) => {
+      log.warn("googlemaps.nearby_pano_failed", { error: err?.message || String(err) });
+      return null;
+    }),
+    routeMapImage(env, log, [anchor, { lat: top.lat, lng: top.lng }]).catch(() => null),
+    reverseGeocode(env, log, anchor.lat, anchor.lng),
+  ]);
   const embedKeyOk = !!googleMapsEmbedKey(env);
   let description = "";
   if (found && state.visionModel && found.image) {
@@ -524,15 +531,17 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     );
   }
   // Like the jump path, the best hit's frame always joins the reply so the
-  // found place is a clickable deck image with its own position.
+  // found place is a clickable deck image with its own position — followed
+  // by the waypoint route map (start → destination, numbered).
+  const frames = [];
   if (found?.image) {
-    emit({
-      status: {
-        type: "streetview_frames",
-        query: top.name || nearby.query,
-        frames: [{ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image }],
-      },
-    });
+    frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image });
+  }
+  if (routeImg) {
+    frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: top.lat, lng: top.lng, url: routeImg });
+  }
+  if (frames.length) {
+    emit({ status: { type: "streetview_frames", query: top.name || nearby.query, frames } });
   }
   if (embedKeyOk && found) {
     emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: 0 } });
@@ -550,6 +559,8 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       panoramaShown: !!(embedKeyOk && found),
       mapShown: !!(embedKeyOk && !found),
       description,
+      anchorPlace,
+      routeMapShown: !!routeImg,
     }),
   );
 }
