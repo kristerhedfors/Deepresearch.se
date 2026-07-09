@@ -353,6 +353,22 @@ export function initAccountPanel() {
     }
   }
 
+  // The "games" view — the games shelf, one row per game. Tokemon opens in
+  // a NEW TAB like the other page links (same-tab navigation would abort an
+  // in-flight research request).
+  function renderGamesView() {
+    body.innerHTML = `
+      <button id="gamesbackbtn" type="button" class="back-link">← Back</button>
+      <p class="section-lbl">Games</p>
+      <div class="account-actions">
+        <a href="/games/tokemon/" target="_blank" rel="noopener">👾 Tokemon — catch creatures on the real streets around you</a>
+      </div>
+      <p class="muted">Tokemon is an open-world augmented-reality game: walk the
+      actual street map (with GPS, or tap-to-walk), find and catch wild Tokemon,
+      collect items, and battle the villains of Team Glitch.</p>`;
+    document.getElementById("gamesbackbtn").addEventListener("click", () => show("summary"));
+  }
+
   const show = (view) => {
     if (view === "messages") {
       loadMessages();
@@ -362,6 +378,10 @@ export function initAccountPanel() {
       loadSettingsView();
       return;
     }
+    if (view === "games") {
+      renderGamesView();
+      return;
+    }
     body.innerHTML = view === "full" ? renderFullUsage(me) : renderSummary(me);
     if (view === "full") {
       document.getElementById("usagebackbtn").addEventListener("click", () => show("summary"));
@@ -369,6 +389,7 @@ export function initAccountPanel() {
       document.getElementById("fullusagebtn")?.addEventListener("click", () => show("full"));
       document.getElementById("messagesbtn")?.addEventListener("click", () => show("messages"));
       document.getElementById("settingsbtn")?.addEventListener("click", () => show("settings"));
+      document.getElementById("gamesbtn")?.addEventListener("click", () => show("games"));
       document.getElementById("logoutbtn").addEventListener("click", async () => {
         await fetch("/logout", { method: "POST" });
         location.href = "/login";
@@ -415,6 +436,7 @@ function renderSummary(me) {
       <button id="messagesbtn" type="button"${msgCount ? ' class="has-badge"' : ""}>Messages${msgCount ? ` (${msgCount})` : ""}</button>
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
+      <button id="gamesbtn" type="button">Games</button>
       <a href="/build/" target="_blank" rel="noopener">About this project</a>
       <a href="/story/" target="_blank" rel="noopener">The build story</a>
       <a href="/help/" target="_blank" rel="noopener">Documentation</a>

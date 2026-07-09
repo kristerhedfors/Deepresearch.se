@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS chat_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_logs_ts ON chat_logs(ts);
 CREATE INDEX IF NOT EXISTS idx_chat_logs_user_ts ON chat_logs(user_id, ts);
+CREATE TABLE IF NOT EXISTS tokemon_saves (
+  user_id TEXT PRIMARY KEY,
+  save_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS user_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
