@@ -106,3 +106,19 @@ export function setShodanMcp(on) {
 export function setGoogleMaps(on) {
   return updateSetting({ google_maps: on });
 }
+
+// Feedback mode knob (default off; needs the server's D1 database and a
+// signed-in account). While on, every assistant reply — existing ones
+// included — shows a Feedback button (turns.js; visibility toggled via the
+// body's `feedback-mode` class, see applyFeedbackMode in account.js/app.js).
+export function feedbackModeOn() {
+  return settings?.feedback_mode === true;
+}
+
+export function feedbackAvailable() {
+  return settings?.available?.feedback === true;
+}
+
+export function setFeedbackMode(on) {
+  return updateSetting({ feedback_mode: on });
+}

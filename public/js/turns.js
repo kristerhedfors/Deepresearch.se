@@ -157,8 +157,88 @@ export function addAssistantTurn(question = "", images = []) {
     researchLog: [],
     doneStats: null,
   };
-  tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));
+  tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn), makeFeedbackButton(turn));
   return turn;
+}
+
+// Feedback mode (the account panel's knob): while the body carries the
+// `feedback-mode` class, every assistant turn's tools row shows a Feedback
+// button — the button is ALWAYS in the DOM (live turns and reloaded ones
+// alike), CSS shows/hides it, so flipping the knob applies to existing
+// replies instantly with no re-render.
+export function applyFeedbackMode(on) {
+  document.body.classList.toggle("feedback-mode", on);
+}
+
+// The Feedback button + its inline form: a textarea under the reply, sent to
+// POST /api/feedback together with the reply it's about (question, answer
+// excerpt, model), where it becomes a dialogue thread with the development
+// agent (account panel → Feedback).
+function makeFeedbackButton(turn) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "tool-btn feedback-btn";
+  btn.textContent = "Feedback";
+  btn.title = "Tell the developers about this reply";
+  btn.addEventListener("click", () => {
+    const existing = turn.el.querySelector(".fb-form");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const form = document.createElement("div");
+    form.className = "fb-form";
+    const ta = document.createElement("textarea");
+    ta.rows = 3;
+    ta.placeholder = "What was good or bad about this reply? What should change?";
+    const actions = document.createElement("div");
+    actions.className = "fb-actions";
+    const send = document.createElement("button");
+    send.type = "button";
+    send.textContent = "Send feedback";
+    const note = document.createElement("span");
+    note.className = "muted fb-note";
+    note.textContent = "Sent with this question & reply. Answers arrive under Feedback in your account panel.";
+    send.addEventListener("click", async () => {
+      const comment = ta.value.trim();
+      if (!comment) return;
+      send.disabled = true;
+      send.textContent = "Sending…";
+      try {
+        const res = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            comment,
+            question: turn.question || undefined,
+            answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
+            model: turn.model || undefined,
+            page: location.pathname,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || "HTTP " + res.status);
+        }
+        form.replaceChildren();
+        const done = document.createElement("p");
+        done.className = "muted";
+        done.textContent = "Feedback sent ✓ — replies show up under Feedback in your account panel.";
+        form.appendChild(done);
+        setTimeout(() => form.remove(), 6000);
+      } catch (err) {
+        send.disabled = false;
+        send.textContent = "Send feedback";
+        note.textContent = (err?.message || "Could not send feedback.") + " Try again.";
+      }
+    });
+    actions.append(send, note);
+    form.append(ta, actions);
+    turn.el.insertBefore(form, turn.stats);
+    ta.focus();
+    scrollDown();
+  });
+  return btn;
 }
 
 function makeRawButton(turn) {

@@ -10,6 +10,7 @@ import { getDb } from "./db.js";
 import { deriveHistoryKey, historyKeyConfigured } from "./history-key.js";
 import { jsonResponse } from "./http.js";
 import { effectiveQuota, getUsage, PERIODS, quotaExceeded, windowReset } from "./quota.js";
+import { countUnreadFeedbackReplies } from "./feedback.js";
 import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-messages.js";
 
 // GET /api/models — model catalog for the UI dropdown (filtered + cached in
@@ -90,8 +91,17 @@ export async function handleMe(env, identity) {
   // count (quota exhausted/restored, approvals, quota changes — see
   // src/user-messages.js); admins additionally get pending sign-in
   // approvals + open operational alerts folded into the same total.
-  const unreadMessages = await countUnreadUserMessages(env, identity.id);
-  let notifications = { unread_messages: unreadMessages, total: unreadMessages };
+  // Unread agent replies on the user's feedback threads count too — the
+  // "the developers wrote back" signal Feedback mode's dialogue depends on.
+  const [unreadMessages, unreadFeedback] = await Promise.all([
+    countUnreadUserMessages(env, identity.id),
+    countUnreadFeedbackReplies(env, identity.id),
+  ]);
+  let notifications = {
+    unread_messages: unreadMessages,
+    unread_feedback: unreadFeedback,
+    total: unreadMessages + unreadFeedback,
+  };
   if (isAdmin) {
     const [pendingUsers, openAlerts] = await Promise.all([
       countPendingUsers(env),
@@ -99,9 +109,10 @@ export async function handleMe(env, identity) {
     ]);
     notifications = {
       unread_messages: unreadMessages,
+      unread_feedback: unreadFeedback,
       pending_users: pendingUsers,
       open_alerts: openAlerts,
-      total: unreadMessages + pendingUsers + openAlerts,
+      total: unreadMessages + unreadFeedback + pendingUsers + openAlerts,
     };
   }
   return jsonResponse({

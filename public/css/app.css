@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h17;
+  --css-version: h18;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1108,3 +1108,49 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border: 1px solid var(--border); border-radius: 8px; padding: .15rem .4rem;
   background: rgba(255,255,255,.7);
 }
+
+/* Feedback mode (account panel knob, src/feedback.js pipeline). The
+   Feedback tool button exists on EVERY assistant turn (live and reloaded);
+   the body class — applied at boot and on knob flips (turns.js's
+   applyFeedbackMode) — is what shows it, so switching the knob affects
+   existing replies instantly. */
+.feedback-btn { display: none; }
+body.feedback-mode .feedback-btn { display: inline-block; }
+
+/* The inline per-reply feedback form (turns.js) */
+.fb-form { margin: .4rem 0 .2rem; }
+.fb-form textarea, .fb-replybox textarea {
+  width: 100%; font: inherit; font-size: .85rem; color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .4rem .55rem; background: rgba(255,255,255,.75); resize: vertical;
+}
+.fb-actions { display: flex; gap: .6rem; align-items: center; margin-top: .3rem; flex-wrap: wrap; }
+.fb-actions button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .25rem .7rem; font-size: .8rem; cursor: pointer;
+}
+.fb-actions button:hover { border-color: var(--accent); }
+.fb-actions button.fb-del { color: var(--muted); background: transparent; }
+.fb-note { font-size: .72rem; }
+
+/* The account panel's Feedback view: one bordered card per entry, the
+   dialogue as user/agent message rows (account.js). */
+.fb-entry {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .55rem .7rem; margin: .5rem 0; background: var(--panel);
+}
+.fb-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-size: .8rem; }
+.fb-status {
+  font-size: .72rem; font-weight: 600; border-radius: 999px;
+  padding: .05rem .55rem; background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--border);
+}
+.fb-status.new { background: #fff3d6; border-color: #e3c576; color: #7a5c12; }
+.fb-status.working { background: var(--panel-2); border-color: var(--accent); color: var(--accent); }
+.fb-status.done { background: #e2f6ea; border-color: #9ed4b5; color: var(--ok); }
+.fb-about { font-size: .78rem; margin: .25rem 0 .1rem; }
+.fb-msg { margin: .35rem 0; padding: .35rem .55rem; border-radius: 8px; background: var(--user); font-size: .85rem; }
+.fb-msg.agent { background: var(--panel-2); border: 1px solid var(--border); }
+.fb-msg-head { font-size: .7rem; margin-bottom: .1rem; }
+.fb-replybox { margin-top: .4rem; }
