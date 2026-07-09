@@ -510,6 +510,11 @@ describe("referencesStreetView", () => {
 });
 
 describe("referencesStreetViewScene (the loose POV-path gate)", () => {
+  test("'What do we have here' fires — English 'here' has parity with Swedish 'här' (verbatim 2026-07-09)", () => {
+    assert.equal(referencesStreetViewScene("What do we have here"), true);
+    assert.equal(referencesStreetViewScene("vad har vi här"), true);
+  });
+
   test("matches scene contents the strict gate can't enumerate", () => {
     // Reported 2026-07-08 verbatim: "Describe the person" missed the strict
     // gate, no capture fired, and the model asked "what person?" while the

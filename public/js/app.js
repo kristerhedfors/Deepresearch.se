@@ -18,7 +18,7 @@ import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachm
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { loadSettings, mapsEmbedKey } from "./settings.js";
-import { setMapViewAnchor } from "./activity.js";
+import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk, setDeckEmbedKey } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
@@ -352,7 +352,10 @@ function setSendMode(streaming) {
 // browser-exposed, referrer-locked embed key the interactive views use.
 setDeckEmbedKey(mapsEmbedKey);
 onDeckAsk((text, point) => {
-  if (point) setMapViewAnchor(point);
+  // A PHOTO image anchors as a POV (position + heading — the server's POV
+  // path reproduces exactly that frame and renders a fresh Street View
+  // there as the new current location); a MAP image anchors as a map view.
+  if (point) (point.kind === "map" ? setMapViewAnchor : setPovAnchor)(point);
   input.value = text;
   form.requestSubmit();
 });

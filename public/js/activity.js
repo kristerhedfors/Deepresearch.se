@@ -53,6 +53,19 @@ export function setMapViewAnchor(point) {
   currentMapView = { lat, lng, zoom: 17 };
 }
 
+// The photo sibling (requested 2026-07-09): asking from a PHOTO deck image
+// makes that image's exact view — position AND heading — the current POV,
+// so the server's POV path captures precisely that frame, answers about
+// it, and renders a fresh Street View there as the new current location.
+export function setPovAnchor(point) {
+  const lat = Number(point?.lat);
+  const lng = Number(point?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const heading = Number.isFinite(Number(point?.heading)) ? ((Math.round(Number(point.heading)) % 360) + 360) % 360 : 0;
+  currentMapView = null;
+  currentPov = { panoId: "", lat, lng, heading, pitch: 0, fov: 90 };
+}
+
 // New chat / switching conversations: the panorama/map on screen no longer
 // belongs to the conversation being sent, so its view must not ride along —
 // and the outgoing conversation's embeds must not be locked by the next
@@ -419,6 +432,7 @@ export function renderStreetViewFrames(turn, s) {
       caption: f.label || (f.dir ? `looking ${f.dir}` : "") || s.query || "",
       lat: f.lat,
       lng: f.lng,
+      heading: f.heading,
       kind: f.kind,
     })),
   );

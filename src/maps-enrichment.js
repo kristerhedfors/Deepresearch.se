@@ -43,6 +43,10 @@ import { addUsage } from "./quota.js";
 // reliably (a report of 5 attached frames drew a Berget 400).
 const MAX_MAPS_IMAGES = 4;
 
+// Cardinal frame direction → degrees, for the per-frame `heading` the
+// image deck uses to reproduce a frame's exact view as a POV anchor.
+const DIR_HEADINGS = { north: 0, east: 90, south: 180, west: 270 };
+
 // Google Maps enrichment: resolve a location the message is about (a street
 // address parsed from it, or an attached photo's GPS coordinates) into Google
 // Maps data — Places (canonical place details + coordinates), Street View
@@ -204,7 +208,7 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
       status: {
         type: "streetview_frames",
         query: result.displayQuery,
-        frames: frames.map((f) => ({ ...f, lat: result.lat, lng: result.lng })),
+        frames: frames.map((f) => ({ ...f, lat: result.lat, lng: result.lng, heading: DIR_HEADINGS[f.dir] ?? 0 })),
       },
     });
   } else if (result.staticMapImage) {
@@ -318,7 +322,7 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
       status: {
         type: "streetview_frames",
         query: `your current view (${compassDir(pov.heading)})`,
-        frames: [{ dir: "", label: "your current view", lat: pov.lat, lng: pov.lng, url: capture.image }],
+        frames: [{ dir: "", label: "your current view", lat: pov.lat, lng: pov.lng, heading: pov.heading, url: capture.image }],
       },
     });
   }
@@ -390,7 +394,7 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
       status: {
         type: "streetview_frames",
         query: `${found.lat}, ${found.lng}`,
-        frames: [{ dir: "", label: "destination view", lat: found.lat, lng: found.lng, url: found.image }],
+        frames: [{ dir: "", label: "destination view", lat: found.lat, lng: found.lng, heading: found.heading, url: found.image }],
       },
     });
   }
@@ -511,10 +515,10 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     const c = travelCaptures[i];
     if (!c?.image || (c.panoId && c.panoId === lastPano)) return;
     lastPano = c.panoId || "";
-    frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, url: c.image });
+    frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, heading: c.heading, url: c.image });
   });
   if (found?.image) {
-    frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image });
+    frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, heading: found.heading, url: found.image });
   }
   if (routeImg) {
     frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: dest.lat, lng: dest.lng, url: routeImg });
@@ -595,7 +599,7 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
     routeMapImage(env, log, waypoints).catch(() => null),
   ]);
   const frames = waypoints
-    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, url: captures[i]?.image || null }))
+    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, heading: bearing, url: captures[i]?.image || null }))
     .filter((f) => f.url);
   if (routeImg) {
     frames.push({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });

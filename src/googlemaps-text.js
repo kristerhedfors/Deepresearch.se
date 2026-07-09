@@ -724,8 +724,11 @@ const SCENE_REFERENCE_RE = new RegExp(
     "skylt(?:en|ar|arna)?|affär(?:en|er|erna)?|butik(?:en|er|erna)?|restaurang(?:en|er|erna)?|" +
     "träd(?:et|en)?|staty(?:n|er)?|flagg(?:a|an|or)|bänk(?:en|ar)?|" +
     // bare deictic references — the user is pointing at the scene
-    // ("The one in view" — reported verbatim — carries ONLY these signals)
-    "that|this|it|these|those|there|views?|(?:the|that|this) ones?|" +
+    // ("The one in view" — reported verbatim — carries ONLY these signals).
+    // "here" included (reported verbatim 2026-07-09: "What do we have
+    // here" mid-panorama logged maps_intent "none" — Swedish "här" was in
+    // the list, English "here" wasn't; the parity rule cuts both ways)
+    "that|this|it|these|those|there|here|views?|(?:the|that|this) ones?|" +
     "det|den|där|här|denna|detta|dessa|dom|vyn?|(?:den|det) här|" +
     // temporal continuations — the user moved the panorama and re-asks
     // ("And now" — reported verbatim 2026-07-09: it fired nothing, no
