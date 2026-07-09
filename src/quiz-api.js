@@ -11,7 +11,7 @@
 // response, and the client marks the answer "ungraded" (excluded from the
 // score with a visible note) rather than breaking the quiz.
 
-import { completeJson, DEFAULT_MODEL, listModels } from "./berget.js";
+import { completeJson, DEFAULT_MODEL, listModels } from "./llm.js";
 import { quotaBlockedResponse } from "./chat.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";

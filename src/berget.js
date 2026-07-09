@@ -305,7 +305,9 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
 // code fences despite json_mode. Returns { value, parseMode }: "strict" when
 // the whole string parsed as-is, "repaired" when a balanced {...} object had
 // to be extracted from surrounding text, "failed" when neither worked.
-function parseLooseJson(s) {
+// Exported for other provider clients (src/anthropic.js) so every provider's
+// completeJson recovers JSON identically.
+export function parseLooseJson(s) {
   try {
     return { value: JSON.parse(s), parseMode: "strict" };
   } catch {

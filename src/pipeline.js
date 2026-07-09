@@ -31,7 +31,7 @@
 // (Shodan, Google Maps) in enrichment.js.
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
-import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
+import { chatCompletion, completeJson, consumeChatStream } from "./llm.js";
 import {
   applyComplexityToPlan,
   fitsDeadline,

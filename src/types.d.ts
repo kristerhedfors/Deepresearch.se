@@ -30,12 +30,17 @@ export interface Env {
   /** Vectorize index for server-side RAG retrieval. */
   RAG_INDEX?: VectorizeIndex;
 
-  // LLM provider (Berget) — see src/berget.js.
+  // LLM providers (routed in src/llm.js) — Berget (src/berget.js, default)
+  // and Anthropic (src/anthropic.js, opt-in).
   BERGET_API_TOKEN?: string;
   BERGET_MODEL?: string;
   BERGET_EMBED_MODEL?: string;
   /** Test-only override pointing the Berget client at a mock. */
   BERGET_URL?: string;
+  /** Enables the Anthropic models (Opus/Sonnet/Haiku) in the catalog. */
+  ANTHROPIC_API_KEY?: string;
+  /** Test-only override pointing the Anthropic client at a mock. */
+  ANTHROPIC_URL?: string;
 
   // Web search (Exa) — see src/exa.js.
   EXA_API_KEY?: string;

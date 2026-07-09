@@ -2,7 +2,7 @@
 // Request validation for POST /api/chat: message/content shape, image caps,
 // and model resolution (catalog membership, availability, vision).
 
-import { defaultModel } from "./berget.js";
+import { defaultModel } from "./llm.js";
 import { countImages, imagePartsOf, lastUserMessage } from "./conversation.js";
 import { getModelProfile } from "./model-profiles.js";
 

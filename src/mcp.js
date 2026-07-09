@@ -242,7 +242,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
-    import("./berget.js"),
+    import("./llm.js"),
     import("./pipeline.js"),
     import("./config.js"),
     import("./quota.js"),

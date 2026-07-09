@@ -10,10 +10,15 @@ description: >-
 
 # External providers & the enrichment pattern
 
-## LLM provider — Berget.ai
+## LLM providers — Berget.ai (default) + Anthropic (opt-in)
 
-**This project uses Berget.ai, NOT Anthropic.** Berget exposes an
-OpenAI-compatible API at `https://api.berget.ai/v1`.
+**Berget.ai is the default provider and the fixed JSON-phase provider.**
+Since 2026-07-09 the catalog also carries Anthropic's Claude models
+(Opus 4.8 / Sonnet 5 / Haiku 4.5) when the `ANTHROPIC_API_KEY` secret is
+set — routing per model id lives in `src/llm.js`, the Anthropic client in
+`src/anthropic.js`; the playbook and provider contract are in the
+**add-llm-provider** skill. Everything below is about Berget. Berget
+exposes an OpenAI-compatible API at `https://api.berget.ai/v1`.
 
 - **Auth:** the Worker reads the `BERGET_API_TOKEN` secret (already configured
   on the Worker in the Cloudflare dashboard) and sends it as

@@ -4,7 +4,7 @@
 
 import { countOpenAlerts } from "./alerts.js";
 import { countPendingUsers } from "./accounts.js";
-import { adminDefaultModelValid, defaultModel, listModels } from "./berget.js";
+import { adminDefaultModelValid, defaultModel, listModels } from "./llm.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { deriveHistoryKey, historyKeyConfigured } from "./history-key.js";
@@ -12,9 +12,10 @@ import { jsonResponse } from "./http.js";
 import { effectiveQuota, getUsage, PERIODS, quotaExceeded, windowReset } from "./quota.js";
 import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-messages.js";
 
-// GET /api/models — model catalog for the UI dropdown (filtered + cached in
-// src/berget.js), plus the effective default (admin-configured when valid
-// and up, else the Worker default).
+// GET /api/models — model catalog for the UI dropdown (the provider-merged
+// list from src/llm.js: Berget's filtered+cached catalog plus the Anthropic
+// models when configured), plus the effective default (admin-configured when
+// valid and up, else the Worker default).
 export async function handleModels(env, log) {
   try {
     const models = await listModels(env);

@@ -10,8 +10,11 @@ A Cloudflare Worker that serves a static chat UI (`public/`) and a streaming
 assistant, matching its name: `/api/chat` runs a Worker-orchestrated pipeline
 (triage → search → gap check → synthesis → validation) with **no function
 calling** — every phase is a direct JSON-mode or streamed call, so it is
-deterministic and works on any model in the catalog. The LLM provider is
-**Berget.ai** (OpenAI-compatible, NOT Anthropic); web search is **Exa**.
+deterministic and works on any model in the catalog. LLM providers, routed
+per model id by `src/llm.js`: **Berget.ai** (OpenAI-compatible, the default
+and the fixed JSON-phase provider) and **Anthropic** (Claude Opus/Sonnet/
+Haiku, opt-in via the `ANTHROPIC_API_KEY` secret — see the
+**add-llm-provider** skill); web search is **Exa**.
 
 ## Git workflow
 
@@ -115,7 +118,9 @@ Server (`src/`):
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
-| `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
+| `llm.js` | LLM provider ROUTER — the single import surface for chat completions + the merged model catalog; dispatches per model id to `berget.js`/`anthropic.js`, call sites stay provider-blind (see the **add-llm-provider** skill) |
+| `berget.js` | Berget client: streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing), `consumeChatStream` (the ONE shared SSE consumer every provider's stream satisfies) |
+| `anthropic.js` | Anthropic client (native Messages API, opt-in via `ANTHROPIC_API_KEY`): Claude Opus 4.8 / Sonnet 5 / Haiku 4.5 as catalog models — transcodes Anthropic SSE into OpenAI-style SSE so all downstream stream machinery works unchanged |
 | `exa.js` | Exa web search |
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
@@ -190,6 +195,9 @@ on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`
 (`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`), `berget.js`
 (`consumeChatStream`: SSE parsing + the opt-in idle/total stream guards),
+`anthropic.js` (request-shape conversion, catalog/pricing, the
+Anthropic→OpenAI SSE transcoder verified through `consumeChatStream`),
+`llm.js` (provider routing + catalog merging, against a stubbed fetch),
 `pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
@@ -344,6 +352,10 @@ what docs claim); and update the skill list below plus the skill's
   Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps / Street View,
   Hugging Face Hub search (`berget.js`, `exa.js`, `geocode.js`, `shodan.js`,
   `googlemaps.js`, `hf.js`).
+- **add-llm-provider** — the playbook for adding a NEW LLM provider next to
+  Berget (like Anthropic was): the provider-client contract, the
+  OpenAI-SSE transcoding trick, catalog/pricing/routing wiring (`llm.js`,
+  `anthropic.js`), secrets, and the validation protocol.
 - **add-research-source** — the end-to-end playbook for integrating a NEW
   deep-research source (like the HF Hub was): choosing the shape
   (search-phase source vs enrichment), intent routing, the triage-prompt

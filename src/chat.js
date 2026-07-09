@@ -8,7 +8,7 @@ import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { recordChatLog } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
-import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./berget.js";
+import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./llm.js";
 import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
