@@ -21,6 +21,7 @@ let currentPov = null; // the view the user last panned/moved to (this session)
 let mapsApiPromise = null; // lazy one-time SDK load
 let sdkAuthFailed = false; // Google rejected the key for the JS API (gm_authFailure)
 const panoFallbacks = new Set(); // per-panorama "replace me with the iframe" closures
+let lockActiveEmbed = null; // locks the newest panorama when a newer one renders
 
 // What stream.js attaches to the next /api/chat body, or null when no live
 // panorama exists (fresh session, iframe fallback, reloaded conversation).
@@ -29,9 +30,13 @@ export function getStreetViewPov() {
 }
 
 // New chat / switching conversations: the panorama on screen no longer
-// belongs to the conversation being sent, so its POV must not ride along.
+// belongs to the conversation being sent, so its POV must not ride along —
+// and the outgoing conversation's panorama must not be locked by the next
+// conversation's first embed (the DOM is cleared; the closure must not
+// linger and fire at a dead element's expense).
 export function resetStreetViewPov() {
   currentPov = null;
+  lockActiveEmbed = null;
 }
 
 // The SDK script can load fine and STILL fail afterwards: Google validates
@@ -121,6 +126,19 @@ export function renderStreetViewEmbed(turn, s) {
   turn.el.insertBefore(wrap, turn.stats);
   turn._svEmbed = wrap;
 
+  // Only the LATEST panorama stays navigable: rendering this one locks the
+  // previous (pointer events off, dimmed, honest label, POV recording
+  // stopped), so "the current view" the server reasons about is always the
+  // single view in sight — with several live panoramas, panning an OLD one
+  // could hijack the POV sent with follow-ups (reported 2026-07-09).
+  if (lockActiveEmbed) lockActiveEmbed();
+  let locked = false;
+  lockActiveEmbed = () => {
+    locked = true;
+    wrap.classList.add("locked");
+    label.textContent = "Street View — earlier view (locked); continue in the latest panorama";
+  };
+
   // The Embed-iframe fallback for every way the SDK can fail (script load
   // error, timeout, missing class, async key rejection) — still navigable,
   // just without the current-view capture.
@@ -163,8 +181,10 @@ export function renderStreetViewEmbed(turn, s) {
         fullscreenControl: true,
       });
       // Track the CURRENT view — a new panorama (a later lookup) simply takes
-      // over the shared slot, matching "the street view on screen".
+      // over the shared slot, matching "the street view on screen". A locked
+      // (superseded) panorama records nothing: only the latest view counts.
       const record = () => {
+        if (locked) return;
         try {
           const pos = pano.getPosition();
           const pov = pano.getPov();

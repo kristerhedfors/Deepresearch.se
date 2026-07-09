@@ -306,6 +306,14 @@ header {
   overflow: hidden;
   background: rgba(0, 0, 0, .04);
 }
+/* All but the LATEST panorama are locked: a superseded view can't be
+   navigated (so it can't hijack the "current view" sent with follow-ups)
+   and reads visibly as an earlier snapshot. Covers the SDK panorama and
+   the iframe fallback alike (both live inside .streetview-pano). */
+.streetview-embed.locked .streetview-pano {
+  pointer-events: none;
+  opacity: .55;
+}
 
 /* The snapped Street View frames (streetview_frames event) — the exact images
    the vision helper reasoned about, captioned by looking direction. */

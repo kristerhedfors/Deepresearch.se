@@ -413,6 +413,11 @@ const SCENE_REFERENCE_RE = new RegExp(
     // ("The one in view" — reported verbatim — carries ONLY these signals)
     "that|this|it|these|those|there|views?|(?:the|that|this) ones?|" +
     "det|den|där|här|denna|detta|dessa|dom|vyn?|(?:den|det) här|" +
+    // temporal continuations — the user moved the panorama and re-asks
+    // ("And now" — reported verbatim 2026-07-09: it fired nothing, no
+    // capture ran, and the model invented a scene; "what about now?",
+    // "again?", "och nu?", "nu då?")
+    "now|again|nu|igen|" +
     // positional phrasing within the view
     "left|right|behind|ahead|front|corner|opposite|across|next to|" +
     "vänster|höger|bakom|framför|hörn(?:et)?|mittemot|bredvid|" +

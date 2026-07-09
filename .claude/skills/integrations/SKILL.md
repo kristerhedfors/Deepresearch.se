@@ -428,7 +428,7 @@ call, alongside the Shodan enrichment).
   they are). A NEW address in the message still beats the POV (it's a
   new location); no POV (iframe fallback) degrades to the walk-back.
   The POV path uses a LOOSE gate (`referencesStreetViewScene`), grown in
-  three reported rounds: scene contents (people, vehicles, signs, shops —
+  four reported rounds: scene contents (people, vehicles, signs, shops —
   "Describe the person" missed the strict gate and the model asked "what
   person?"), then STRUCTURAL classes when noun vocabulary kept leaking
   (Workers Logs 2026-07-08 ~13:22Z: 4 of 5 panorama follow-ups fired
@@ -439,13 +439,25 @@ call, alongside the Shodan enrichment).
   no-image denial mid-panorama): the full phrasings ("what do you see",
   "vad ser du/ni", "vad kan du se") sit in the STRICT gate so they work
   even without a live POV, looser forms ("do you see…?", "ser du…?",
-  "kan du se…?") in the scene gate. Over-firing is deliberate and
+  "kan du se…?") in the scene gate — then temporal CONTINUATIONS
+  (2026-07-09 verbatim: "And now" after panning fired nothing and the
+  model invented a scene): now/again/nu/igen in the scene gate. Over-firing
+  is deliberate and
   cheap (one cached frame); the POV block's instruction is CONDITIONAL
   ("if the question refers to something visible… otherwise answer normally
   and ignore this block") so an unrelated question isn't misdirected. The
   walk-back keeps the strict gate — it re-runs a full billed lookup. Both
   blocks also instruct the model to NEVER ask the user to disambiguate the
   resolved location or clarify who/what they mean in the current view.
+  ONLY the latest panorama is live: rendering a new `streetview_embed`
+  locks the previous one client-side (`activity.js` `lockActiveEmbed` —
+  pointer events off, dimmed, "earlier view (locked)" label, POV recording
+  stopped; `.streetview-embed.locked` in `app.css`), so the "current view"
+  sent with follow-ups can only ever come from the one navigable panorama
+  (2026-07-09 report: with several live panoramas, reasoning had to apply
+  to the last view in sight only). The lock slot resets with the POV on
+  new chat / conversation switch; a reloaded conversation re-locks all but
+  its last embed naturally (embeds render in order).
 - **The vision helper answers the user's question**, not just a generic
   describe: `describeStreetView` gets the latest question (bounded, appended
   client blocks stripped) and is instructed to answer it strictly from what

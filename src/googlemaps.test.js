@@ -390,6 +390,17 @@ describe("referencesStreetViewScene (the loose POV-path gate)", () => {
     assert.equal(referencesStreetViewScene("ser du något?"), true);
   });
 
+  test("matches temporal continuations after a capture — 'And now' (fifth reported round, 2026-07-09)", () => {
+    // The user panned to a new spot and re-asked with just "And now" — the
+    // gate fired nothing, no capture ran, and the model invented a scene.
+    assert.equal(referencesStreetViewScene("And now"), true);
+    assert.equal(referencesStreetViewScene("what about now?"), true);
+    assert.equal(referencesStreetViewScene("again?"), true);
+    assert.equal(referencesStreetViewScene("och nu?"), true);
+    assert.equal(referencesStreetViewScene("nu då?"), true);
+    assert.equal(referencesStreetViewScene("igen"), true);
+  });
+
   test("matches the third reported round verbatim — 'Describe the dude' / 'The one in view'", () => {
     // Screenshot 2026-07-08 15:23 (pre-deploy of the deictic round): both
     // turns got "Need to narrow the scope first" clarifies while the person
