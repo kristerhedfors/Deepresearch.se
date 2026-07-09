@@ -90,7 +90,7 @@ export function initHistorySidebar(opts = {}) {
     // 2026-07-08 debugging marathon: it costs one muted line and turns
     // any user screenshot into a build/data report — see the
     // on-device-trace skill before removing it.
-    parts.push(`[h19 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h20 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -100,7 +100,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h19";
+  const CSS_WANT = "h20";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";

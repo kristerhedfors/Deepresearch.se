@@ -170,75 +170,124 @@ export function applyFeedbackMode(on) {
   document.body.classList.toggle("feedback-mode", on);
 }
 
-// The Feedback button + its inline form: a textarea under the reply, sent to
-// POST /api/feedback together with the reply it's about (question, answer
-// excerpt, model), where it becomes a dialogue thread with the development
-// agent (account panel → Feedback).
+// The Feedback button opens a MODAL dialog (same overlay pattern as the
+// account panel) — deliberately NOT an inline form: an inline textarea in
+// the chat column competes with the ever-present composer, and on a phone
+// the typing predictably lands in the composer and goes to the LLM instead
+// of the feedback pipeline (observed live 2026-07-09: two feedback attempts
+// arrived as chat questions #170/#171 while the feedback table stayed
+// empty). A dimmed full-screen dialog is the unambiguous answer: while it's
+// open, the composer isn't reachable at all.
 function makeFeedbackButton(turn) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "tool-btn feedback-btn";
   btn.textContent = "Feedback";
   btn.title = "Tell the developers about this reply";
-  btn.addEventListener("click", () => {
-    const existing = turn.el.querySelector(".fb-form");
-    if (existing) {
-      existing.remove();
+  btn.addEventListener("click", () => openFeedbackDialog(turn));
+  return btn;
+}
+
+function openFeedbackDialog(turn) {
+  document.querySelector(".fb-overlay")?.remove(); // one dialog at a time
+  const overlay = document.createElement("div");
+  overlay.className = "fb-overlay";
+  const card = document.createElement("div");
+  card.className = "fb-card";
+
+  const head = document.createElement("div");
+  head.className = "fb-card-head";
+  const title = document.createElement("strong");
+  title.textContent = "Feedback to the developers";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.textContent = "✕";
+  close.addEventListener("click", () => overlay.remove());
+  head.append(title, close);
+
+  const about = document.createElement("p");
+  about.className = "muted fb-about";
+  const q = (turn.question || "").trim();
+  about.textContent = q
+    ? `About the reply to: “${q.length > 110 ? q.slice(0, 110) + "…" : q}”`
+    : "About this reply";
+
+  const ta = document.createElement("textarea");
+  ta.rows = 4;
+  ta.placeholder = "What was good or bad about this reply? What should change?";
+
+  const note = document.createElement("p");
+  note.className = "muted fb-note";
+  note.textContent =
+    "This goes to the site's developers — not to the AI. It's sent together with the question and reply above; answers show up under Feedback in your account panel.";
+
+  const actions = document.createElement("div");
+  actions.className = "fb-actions";
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "fb-send";
+  send.textContent = "Send feedback";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => overlay.remove());
+  const status = document.createElement("span");
+  status.className = "muted fb-note";
+  actions.append(send, cancel, status);
+
+  send.addEventListener("click", async () => {
+    const comment = ta.value.trim();
+    if (!comment) {
+      ta.focus();
       return;
     }
-    const form = document.createElement("div");
-    form.className = "fb-form";
-    const ta = document.createElement("textarea");
-    ta.rows = 3;
-    ta.placeholder = "What was good or bad about this reply? What should change?";
-    const actions = document.createElement("div");
-    actions.className = "fb-actions";
-    const send = document.createElement("button");
-    send.type = "button";
-    send.textContent = "Send feedback";
-    const note = document.createElement("span");
-    note.className = "muted fb-note";
-    note.textContent = "Sent with this question & reply. Answers arrive under Feedback in your account panel.";
-    send.addEventListener("click", async () => {
-      const comment = ta.value.trim();
-      if (!comment) return;
-      send.disabled = true;
-      send.textContent = "Sending…";
-      try {
-        const res = await fetch("/api/feedback", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            comment,
-            question: turn.question || undefined,
-            answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
-            model: turn.model || undefined,
-            page: location.pathname,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.error || "HTTP " + res.status);
-        }
-        form.replaceChildren();
-        const done = document.createElement("p");
-        done.className = "muted";
-        done.textContent = "Feedback sent ✓ — replies show up under Feedback in your account panel.";
-        form.appendChild(done);
-        setTimeout(() => form.remove(), 6000);
-      } catch (err) {
-        send.disabled = false;
-        send.textContent = "Send feedback";
-        note.textContent = (err?.message || "Could not send feedback.") + " Try again.";
+    send.disabled = true;
+    send.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          comment,
+          question: turn.question || undefined,
+          answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
+          model: turn.model || undefined,
+          page: location.pathname,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "HTTP " + res.status);
       }
-    });
-    actions.append(send, note);
-    form.append(ta, actions);
-    turn.el.insertBefore(form, turn.stats);
-    ta.focus();
-    scrollDown();
+      card.replaceChildren();
+      const done = document.createElement("p");
+      done.className = "fb-done";
+      done.textContent = "Feedback sent ✓";
+      const hint = document.createElement("p");
+      hint.className = "muted";
+      hint.textContent =
+        "The developers read every submission — replies show up under Feedback in your account panel.";
+      card.append(done, hint);
+      setTimeout(() => overlay.remove(), 2500);
+    } catch (err) {
+      send.disabled = false;
+      send.textContent = "Send feedback";
+      status.textContent = (err?.message || "Could not send feedback.") + " Try again.";
+    }
   });
-  return btn;
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") overlay.remove();
+  });
+
+  card.append(head, about, ta, note, actions);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  ta.focus();
 }
 
 function makeRawButton(turn) {

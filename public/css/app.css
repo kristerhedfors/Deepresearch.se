@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h19;
+  --css-version: h20;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1166,13 +1166,35 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .feedback-btn { display: none; }
 body.feedback-mode .feedback-btn { display: inline-block; }
 
-/* The inline per-reply feedback form (turns.js) */
-.fb-form { margin: .4rem 0 .2rem; }
-.fb-form textarea, .fb-replybox textarea {
-  width: 100%; font: inherit; font-size: .85rem; color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: .4rem .55rem; background: rgba(255,255,255,.75); resize: vertical;
+/* The per-reply feedback MODAL (turns.js openFeedbackDialog) — a dimmed
+   full-screen dialog like the account panel, NOT an inline form: an inline
+   textarea competes with the composer and loses (2026-07-09: feedback typed
+   on a phone landed in the composer and went to the LLM). */
+.fb-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(10, 46, 92, .45);
+  display: grid; place-items: center;
+  padding: 1rem;
 }
+.fb-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: .9rem 1.1rem 1rem;
+  width: min(420px, 94vw); max-height: 86vh; overflow-y: auto;
+  font-size: .88rem; line-height: 1.5;
+  box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+}
+.fb-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .3rem; }
+.fb-card-head button {
+  background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem; cursor: pointer;
+}
+.fb-card .muted { color: var(--muted); font-size: .8rem; }
+.fb-card textarea, .fb-replybox textarea {
+  width: 100%; font: inherit; font-size: .9rem; color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; margin-top: .4rem;
+  padding: .45rem .55rem; background: rgba(255,255,255,.75); resize: vertical;
+}
+.fb-card .fb-send { background: var(--accent); color: #fff; border-color: var(--accent); }
+.fb-done { font-weight: 700; color: var(--ok); margin: .3rem 0 .2rem; }
 .fb-actions { display: flex; gap: .6rem; align-items: center; margin-top: .3rem; flex-wrap: wrap; }
 .fb-actions button {
   background: var(--panel-2); color: var(--text);
