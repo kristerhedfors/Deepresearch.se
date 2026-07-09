@@ -481,6 +481,29 @@ call, alongside the Shodan enrichment).
   returns the raw resolved data; the pipeline builds the block. The block
   carries keyless Google Maps / Street View links the user can open.
   `state.mapsCount` rides into the `chat.complete` log.
+- **The panorama search radius is 150m, not Google's 50m default**
+  (`STREETVIEW_SEARCH_RADIUS_M`; reported 2026-07-09, "Street view
+  basaltvägen 1 enköping", ref cac5c445): Places often returns a rooftop/
+  parcel coordinate set back from the road, and the metadata check at
+  Google's default 50m then returns ZERO_RESULTS — no imagery — while the
+  street outside has coverage. Address lookups pass `radius=150` +
+  `source=outdoor` (a business's indoor photosphere must not outrank the
+  street); the frame fetches then pin the metadata's `pano_id`, and the
+  embed + keyless Street View link center on the panorama's OWN
+  `location` — the image API and the client's `StreetViewPanorama` search
+  only 50m themselves, so centering them on the resolved address would
+  re-miss the very pano the metadata found.
+- **Genuinely no coverage degrades honestly, and fabricated image URLs are
+  banned** (same report): with no panorama, the road map is still shown to
+  the user (a `streetview_frames` event with an honest `title` — "Map — …
+  (no Street View here)"; the client prefers `s.title` over its built
+  "Street View — …" header), the vision-helper intro and the block label
+  the description as a MAP (`describedMapOnly`/`mapShown` parts), and the
+  block says plainly no Street View exists there. Every maps/POV block
+  also carries `NO_FABRICATED_IMAGE_URLS`: before it, a model wanting to
+  "show" imagery invented a `maps.googleapis.com/maps/api/streetview?…
+  key=YOUR_API_KEY` markdown image — a broken image in the reply. Only the
+  keyless links may be handed out.
 - **Vision-describe, never attach** (`enrichment.js`'s `describeStreetView`): the
   frames are NOT attached to the answer model — a report showed several frames
   on one message making the answer call fail with a Berget 400. Instead the
