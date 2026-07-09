@@ -45,28 +45,44 @@ export function initHistorySidebar(opts = {}) {
   let lastPull = null; // result of this pane-open's pullNewer, once it lands
   let showTrace = false;
   function updateNote() {
-    const text = showTrace
-      ? "TRACE: " + (TRACE.length ? TRACE.join(" | ") : "(no gesture recorded yet)")
-      : pulling ? "Checking the cloud for conversations…" : baseNote;
+    const text = pulling ? "Checking the cloud for conversations…" : baseNote;
     note.textContent = text;
     note.hidden = !text;
   }
 
   // On-device gesture trace (temporary diagnostics, 2026-07-08): records
   // exactly which touch/pointer events the device delivers and everything
-  // that touches the card afterwards. Tap the bracketed stamp line to
-  // toggle the dump; it's plain selectable text, so it can be copied
-  // straight into a bug report. Remove once the iOS swipe is confirmed.
+  // that touches the card afterwards. Tapping the bracketed stamp line
+  // toggles a dedicated box at the TOP of the pane (with breathing room —
+  // selecting text jammed at the bottom edge of the drawer is miserable
+  // on a phone); one tap on the box selects ALL of it (user-select: all)
+  // ready to copy. Inline-styled top to bottom, same stale-stylesheet
+  // immunity rule as the swipe strip. Remove once the swipe is confirmed.
   const TRACE = [];
   const t0 = Date.now();
+  const traceBox = document.createElement("div");
+  traceBox.style.cssText =
+    "display:none;margin:.4rem 0;padding:.6rem .7rem;border-radius:10px;" +
+    "background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.9);" +
+    "color:#0a2e5c;font-size:.72rem;line-height:1.5;word-break:break-all;" +
+    "max-height:40vh;overflow-y:auto;-webkit-user-select:all;user-select:all;";
+  // Right under the pane head, above the buttons and lists.
+  overlay.querySelector(".history-head").after(traceBox);
+  function renderTrace() {
+    traceBox.style.display = showTrace ? "block" : "none";
+    if (showTrace) {
+      traceBox.textContent =
+        "TRACE: " + (TRACE.length ? TRACE.join(" | ") : "(no gesture recorded yet — swipe a card, then tap the stamp line again)");
+    }
+  }
   function trace(s) {
     TRACE.push(`${Date.now() - t0}:${s}`);
     if (TRACE.length > 60) TRACE.splice(0, TRACE.length - 60);
-    if (showTrace) updateNote();
+    if (showTrace) renderTrace();
   }
   note.addEventListener("click", () => {
     showTrace = !showTrace;
-    updateNote();
+    renderTrace();
   });
 
   async function refresh() {
@@ -105,7 +121,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h12 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line for the gesture trace]`);
+    parts.push(`[h13 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace (appears at the top)]`);
     baseNote = parts.join(" ");
     updateNote();
   }
