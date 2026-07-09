@@ -344,6 +344,12 @@ what docs claim); and update the skill list below plus the skill's
   `x-request-id` / `(ref …)` correlation, and the
   disconnect/answer-recovery/heartbeat/stall-watchdog machinery that only
   reproduces in production.
+- **on-device-trace** — remote-debugging a bug that only reproduces on a
+  user's real device (iOS PWA especially): the visible build stamp,
+  self-explaining empty states, the CSS/JS version handshake, and the
+  copyable on-device event-trace overlay, iterated over chat with the user
+  as the probe — plus the iOS rendering/gesture facts the method
+  established.
 - **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
   D1 `chat_logs`): pulling the latest live questions/answers/errors for
   debugging (`scripts/chatlogs`, `/api/admin/chatlogs`), the ghost
