@@ -630,6 +630,56 @@ export function streetViewHereIntent(text) {
   return streetViewIntent(t) && HERE_RE.test(t);
 }
 
+// "WHERE AM I" — a plain ask about the user's own position, no street-view
+// word at all (reported verbatim 2026-07-09: "Where am i now" → "Street
+// view" → "My location" got three denials — every gate wanted street-view
+// word + here-word in ONE message, and a bare where-am-I ask had no gate at
+// all). It IS a here-ask: anchor to the device location (or live view) and
+// open the view/map that answers it. Enumerated forms with an EN typo set
+// and Swedish at the same breadth (invariant 6). The lookahead requires the
+// phrase to end the clause (allowing a short decoration word — "now", "nu",
+// "exactly" — then punctuation/end), so prose like "where are we going with
+// this" or "var är vi på väg" never fires.
+const WHERE_AM_I_RE =
+  /(?<![\p{L}\p{M}])(?:(?:where|wher|were|whree?)\s+(?:exactly\s+)?(?:am\s+i|are\s+we)|va(?:r|rt)\s+(?:exakt\s+)?(?:är|e)\s+(?:jag|vi)|var\s+n[åa]gonstans\s+(?:är|e)\s+(?:jag|vi)|var\s+befinner\s+(?:jag\s+mig|vi\s+oss))(?=\s*(?:right\s+now|just\s+nu|now|exactly|currently|located|somewhere|nu|egentligen|n[åa]gonstans)?\s*(?:[?!.,]|$))/iu;
+export function whereAmIIntent(text) {
+  return WHERE_AM_I_RE.test(typeof text === "string" ? text : "");
+}
+
+// A short HERE-answer to the assistant's own "which address or place?"
+// clarify ("My location", "här", "min plats") — the street-view word lives
+// in an EARLIER user turn, so streetViewHereIntent can't see it (same
+// 2026-07-09 report: "Street view" → clarify → "My location" fired nothing
+// and the model invented enable-in-Settings steps at a knob-ON user).
+// Deliberately tight — the fragment must be essentially nothing BUT a
+// here-phrase, so a longer sentence merely containing "here" can't
+// re-anchor the conversation to the device.
+export function hereFragmentAnswer(text) {
+  const t = (typeof text === "string" ? text : "").trim();
+  if (!t || t.length > 48 || t.split(/\s+/).length > 4) return false;
+  return HERE_RE.test(t);
+}
+
+// The full here-ask decision for the latest turn: an explicit street-view-
+// here ask, a plain where-am-I ask, or a here-fragment answering an earlier
+// street-view turn. Shared by pickLookup's jump gate and — via the exported
+// conversation-level wrapper below — enrichment.js, which phrases the
+// unresolved note as "allow location access" instead of "which address?"
+// when the device location never arrived.
+function isHereAsk(latest, users) {
+  return (
+    streetViewHereIntent(latest) ||
+    whereAmIIntent(latest) ||
+    (conversationAsksStreetView(users) && hereFragmentAnswer(latest))
+  );
+}
+
+/** True when the conversation's latest user turn is a here-ask (see above). */
+export function hereAskIntent(conversation) {
+  const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
+  return isHereAsk(textOf(users[users.length - 1]?.content), users);
+}
+
 // Destination of a move from (lat, lng) `meters` toward `bearingDeg`.
 // Equirectangular approximation — exact enough for the ≤3km moves the
 // parser allows (centimeter error at this scale), rounded to ~10cm so
@@ -675,9 +725,11 @@ export function movePoint(lat, lng, bearingDeg, meters) {
 // and relative moves ("100 meters along this road", "gå 200 m norrut"),
 // anchored to the live panorama (position + heading), else the live map
 // (center), else the device's reported location (`body.user_location`,
-// sent by the client only for explicit here-asks) — checked BEFORE the
-// free-text place query so "street view at my current location" is never
-// sent to Places as a literal place name.
+// sent by the client only for here-asks — "street view here", a plain
+// "where am I?", or a short here-fragment answering an earlier street-view
+// turn; the client prefilter in message-content.js mirrors isHereAsk) —
+// checked BEFORE the free-text place query so "street view at my current
+// location" is never sent to Places as a literal place name.
 export function pickLookup(conversation, imageLocations, pov = null, mapView = null, userLocation = null) {
   const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
@@ -712,7 +764,7 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
         followUp: true,
       };
     }
-    if (streetViewHereIntent(latest)) {
+    if (isHereAsk(latest, users)) {
       return {
         coords: "",
         address: "",

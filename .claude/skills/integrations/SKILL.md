@@ -607,16 +607,33 @@ call, alongside the Shodan enrichment).
   to the live panorama (position + heading — "along this road" uses the
   facing, "back" flips it), else the live map center (compass moves only),
   else `body.user_location` — the device's browser geolocation, which
-  `stream.js` requests ONLY when the message matches the client-side
-  `asksStreetViewHere` prefilter (`message-content.js`) and no live view
+  `stream.js` requests ONLY when the conversation matches the client-side
+  `asksDeviceLocation` prefilter (`message-content.js`) and no live view
   exists, so the permission prompt fires for exactly these asks; validated
-  server-side by `validateMapView`. `runJumpEnrichment` finds the nearest
+  server-side by `validateMapView`. **Here-asks span TURNS and include a
+  plain "where am I"** (reported verbatim 2026-07-09: "Where am i now" →
+  "Street view" → "My location" produced three denials — every gate wanted
+  street-view word + here-word in ONE message): `whereAmIIntent` (EN typo
+  set + SV parity — "var är jag", "vart är vi", "var befinner jag mig" —
+  with an end-of-clause guard so "where are we going with this" never
+  fires) and `hereFragmentAnswer` (a ≤4-word here-phrase — "My location",
+  "här", "min plats" — answering an earlier street-view turn; the
+  here-sibling of the address-fragment clarify answers) both count as
+  here-asks in `pickLookup`'s jump gate, and the client prefilter therefore
+  scans ALL user turns, not just the latest. `hereAskIntent(conversation)`
+  is the exported conversation-level gate `enrichment.js` uses so a
+  here-ask arriving with NO device location gets the "allow location
+  access" unresolved note (never "which address?", never invented
+  enable-in-Settings steps). `runJumpEnrichment` finds the nearest
   panorama (150m search), captures one frame facing the travel bearing
   (cached via the POV capture), vision-describes it, emits a fresh
   `streetview_embed` at the destination (locking superseded embeds), and
   appends `buildJumpBlock` (destination + links + Map-link mandate +
-  never-fabricate). No panorama near the destination → an interactive
-  `map_embed` of it plus an honest block — never an invented view.
+  never-fabricate) — which also carries a **Nominatim reverse-geocoded
+  place name** (free, fail-soft, fetched in parallel with the pano
+  search): the actual answer to "where am I?", not just coordinates. No
+  panorama near the destination → an interactive `map_embed` of it plus an
+  honest block — never an invented view.
 - **The map view has full panorama parity on follow-ups** (same day,
   follow-up request): the client tracks the live map's center/zoom and
   sends it as `body.map_view` (validated by `validateMapView`); a

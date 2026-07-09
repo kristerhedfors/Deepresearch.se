@@ -127,10 +127,33 @@ function blockRefName(name) {
 // unit-tested.
 const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy(?:n)?|gatubild(?:en)?)/iu;
 const HERE_WORD_RE =
-  /(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|var\s+jag\s+är|min\s+(?:nuvarande\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|var\s+jag\s+är|min\s+(?:nuvarande\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
 export function asksStreetViewHere(text) {
   const t = typeof text === "string" ? text : "";
   return SV_WORD_RE.test(t) && HERE_WORD_RE.test(t);
+}
+
+// A plain "where am I?" ask — mirrors the server's WHERE_AM_I_RE
+// (src/googlemaps-text.js): same EN typo set, same Swedish breadth, same
+// end-of-clause lookahead so "where are we going with this" never fires.
+const WHERE_AM_I_RE =
+  /(?<![\p{L}\p{M}])(?:(?:where|wher|were|whree?)\s+(?:exactly\s+)?(?:am\s+i|are\s+we)|va(?:r|rt)\s+(?:exakt\s+)?(?:är|e)\s+(?:jag|vi)|var\s+n[åa]gonstans\s+(?:är|e)\s+(?:jag|vi)|var\s+befinner\s+(?:jag\s+mig|vi\s+oss))(?=\s*(?:right\s+now|just\s+nu|now|exactly|currently|located|somewhere|nu|egentligen|n[åa]gonstans)?\s*(?:[?!.,]|$))/iu;
+
+// The conversation-level device-location prefilter (mirrors the server's
+// isHereAsk gate in src/googlemaps-text.js — reported verbatim 2026-07-09:
+// "Where am i now" → "Street view" → "My location" never requested the
+// device location because the old prefilter needed street-view word +
+// here-word in ONE message). True when the LATEST user turn asks
+// street-view-here outright, is a plain where-am-I ask, or is a short
+// here-fragment ("My location", "här", "min plats") answering an EARLIER
+// street-view turn. `userTexts` is every user turn's text, oldest first.
+export function asksDeviceLocation(userTexts) {
+  const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
+  const latest = texts[texts.length - 1] || "";
+  if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest)) return true;
+  const t = latest.trim();
+  const isFragment = !!t && t.length <= 48 && t.split(/\s+/).length <= 4 && HERE_WORD_RE.test(t);
+  return isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev));
 }
 
 // One embedded element's reference line. `e` is a convEmbeds entry

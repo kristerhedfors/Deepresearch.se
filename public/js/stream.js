@@ -42,7 +42,7 @@ import {
 } from "./projects.js";
 import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
-  asksStreetViewHere,
+  asksDeviceLocation,
   conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
@@ -801,17 +801,19 @@ export async function sendMessage(text, opts) {
   controller = new AbortController();
   const signal = controller.signal;
 
-  // The typed text of the latest user message (string or multimodal parts).
-  const latestUserText = (msgs) => {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i]?.role !== "user") continue;
-      const c = msgs[i].content;
-      if (typeof c === "string") return c;
-      if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
-      return "";
-    }
-    return "";
-  };
+  // The typed text of every user turn, oldest first (string or multimodal
+  // parts) — the device-location prefilter needs the EARLIER turns too: a
+  // short "My location" only reads as a here-ask because an earlier turn
+  // said "street view" (see asksDeviceLocation in message-content.js).
+  const userTexts = (msgs) =>
+    msgs
+      .filter((m) => m?.role === "user")
+      .map((m) => {
+        const c = m.content;
+        if (typeof c === "string") return c;
+        if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
+        return "";
+      });
   // One-shot device geolocation for "street view here" asks: resolves null
   // on any failure (no API, permission denied, timeout) — never throws, so
   // the send path is never blocked by it. Coordinates rounded (~1m), the
@@ -890,12 +892,14 @@ export async function sendMessage(text, opts) {
     // road-map image of exactly that area on a map-referencing follow-up.
     const mapView = getMapView();
     if (mapView) payload.map_view = mapView;
-    // "Street view here / at my current location" with NO live view on
-    // screen to anchor to: ask the browser for the device's location (the
-    // permission prompt fires for exactly these asks, nothing else) and
-    // send it as the jump anchor. Fail-soft: denied/unavailable/timeout
-    // sends nothing and the server honestly asks which place is meant.
-    if (!streetViewPov && !mapView && asksStreetViewHere(latestUserText(history))) {
+    // A here-ask ("street view here", a plain "where am I?", or a short
+    // "my location" answer to an earlier street-view turn) with NO live
+    // view on screen to anchor to: ask the browser for the device's
+    // location (the permission prompt fires for exactly these asks,
+    // nothing else) and send it as the jump anchor. Fail-soft:
+    // denied/unavailable/timeout sends nothing and the server honestly
+    // asks for location access instead.
+    if (!streetViewPov && !mapView && asksDeviceLocation(userTexts(history))) {
       const loc = await deviceLocation();
       if (loc) payload.user_location = loc;
     }

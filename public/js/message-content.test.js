@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
+  asksDeviceLocation,
   asksStreetViewHere,
   conversationCopyText,
   deriveTitle,
@@ -377,4 +378,39 @@ test("asksStreetViewHere takes the Swedish parity forms", () => {
   assert.equal(asksStreetViewHere("gatubild där jag är"), true);
   assert.equal(asksStreetViewHere("gatuvy härifrån"), true);
   assert.equal(asksStreetViewHere("gatubilden av Storgatan 4"), false);
+  // "there" must not read as "here" (the boundary guard on both sides).
+  assert.equal(asksStreetViewHere("street view over there"), false);
+});
+
+// The conversation-level prefilter — the verbatim 2026-07-09 report:
+// "Where am i now" → "Street view" → "My location" never requested the
+// device location, so the server could only deny.
+test("asksDeviceLocation fires on a plain where-am-I ask (EN + SV, typo set)", () => {
+  assert.equal(asksDeviceLocation(["Where am i now"]), true);
+  assert.equal(asksDeviceLocation(["where am I?"]), true);
+  assert.equal(asksDeviceLocation(["wher am i"]), true); // typo set, like the SV-word gate
+  assert.equal(asksDeviceLocation(["where are we right now?"]), true);
+  assert.equal(asksDeviceLocation(["var är jag nu"]), true);
+  assert.equal(asksDeviceLocation(["vart är vi?"]), true);
+  assert.equal(asksDeviceLocation(["var befinner jag mig?"]), true);
+  // Figurative/prose "where are we/am I" must NOT fire.
+  assert.equal(asksDeviceLocation(["where are we going with this"]), false);
+  assert.equal(asksDeviceLocation(["where am i going wrong here in the code"]), false);
+  assert.equal(asksDeviceLocation(["var är vi på väg"]), false);
+});
+
+test("asksDeviceLocation reads a short here-fragment against an earlier street-view turn", () => {
+  // The reported conversation, verbatim.
+  assert.equal(asksDeviceLocation(["Where am i now", "Street view", "My location"]), true);
+  assert.equal(asksDeviceLocation(["gatuvy", "min plats"]), true);
+  assert.equal(asksDeviceLocation(["street view", "här"]), true);
+  assert.equal(asksDeviceLocation(["streer view", "use my location"]), true); // typo-tolerant SV word
+  // No earlier street-view turn → a bare fragment stays silent.
+  assert.equal(asksDeviceLocation(["My location"]), false);
+  // A LONG later sentence merely containing a here-word stays silent.
+  assert.equal(asksDeviceLocation(["street view", "what restaurants are here in the town center"]), false);
+  // Single-message here-asks still work unchanged.
+  assert.equal(asksDeviceLocation(["street view here"]), true);
+  assert.equal(asksDeviceLocation([]), false);
+  assert.equal(asksDeviceLocation(undefined), false);
 });
