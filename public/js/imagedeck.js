@@ -39,11 +39,15 @@ export function addDeckEntries(frames) {
     if (typeof f?.url !== "string" || !f.url.startsWith("data:image/")) continue;
     const lat = Number(f.lat);
     const lng = Number(f.lng);
+    const heading = Number(f.heading);
     entries.push({
       url: f.url,
       caption: f.caption || "",
       lat: Number.isFinite(lat) ? lat : null,
       lng: Number.isFinite(lng) ? lng : null,
+      // The frame's viewing direction — lets an ask-from-this-image
+      // reproduce EXACTLY this view as the POV anchor.
+      heading: Number.isFinite(heading) ? heading : 0,
       kind: f.kind === "map" ? "map" : "photo",
     });
   }
@@ -174,10 +178,37 @@ export function openDeck(index) {
     const text = (input.value || "").trim();
     if (!text) return;
     const e = entries[current];
-    const point = e.lat != null && e.lng != null ? { lat: e.lat, lng: e.lng } : null;
+    const point = e.lat != null && e.lng != null ? { lat: e.lat, lng: e.lng, heading: e.heading, kind: e.kind } : null;
     closeDeck();
     if (askHandler) askHandler(text, point);
   });
+  // Touch swipe: left/right anywhere on the lightbox (except the ask
+  // input) steps through the deck — the mobile complement to the ‹/›
+  // buttons and arrow keys (reported 2026-07-09: "can't swipe back or
+  // forth when looking at an image").
+  let swipeX = null;
+  let swipeY = null;
+  overlay.addEventListener(
+    "touchstart",
+    (ev) => {
+      if (ev.target.closest(".imagedeck-ask")) return;
+      swipeX = ev.touches[0].clientX;
+      swipeY = ev.touches[0].clientY;
+    },
+    { passive: true },
+  );
+  overlay.addEventListener(
+    "touchend",
+    (ev) => {
+      if (swipeX == null) return;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - swipeX;
+      const dy = t.clientY - swipeY;
+      swipeX = swipeY = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) show(current + (dx < 0 ? 1 : -1));
+    },
+    { passive: true },
+  );
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
   show(index);

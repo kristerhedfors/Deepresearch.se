@@ -291,20 +291,28 @@ conversation-wide, ordered IMAGE DECK with an enlarged slideshow.
   `streetview_frames`; see the **sse-protocol** skill). Thumbnails get
   `cursor: zoom-in` and click-open the deck at themselves.
 - **The lightbox** (`openDeck`): enlarged image, ‹/›/arrow-key navigation
-  across EVERY image the conversation has produced (in order), Escape or
-  backdrop click closes, "N / M" position. Upper-left MINI-MAP of the
+  AND touch swipe (horizontal, 40px threshold, the ask input excluded —
+  added 2026-07-09 after "can't swipe back or forth") across EVERY image
+  the conversation has produced (in order), Escape or backdrop click
+  closes, "N / M" position. Upper-left MINI-MAP of the
   current image's position: a free Maps Embed iframe with
   `pointer-events: none` inside an `<a>` to the keyless Google Maps link
   — the iframe paints, the link takes the click (no key → a plain
   "Open in Google Maps" link stands; map-kind entries skip the iframe,
   the big image IS a map). Styles: `.imagedeck-*` in app.css.
 - **Per-image chat panel**: the input at the lightbox's bottom submits
-  through app.js's `onDeckAsk` wiring → `setMapViewAnchor(point)`
-  (activity.js: sets `currentMapView` to the image's position, zoom 17,
-  and CLEARS any live panorama POV) → the ordinary composer submit. The
-  next message therefore carries `body.map_view` at that waypoint and
-  the server's whole anchor machinery (moves, nearby search, here-asks,
-  scene captures) continues from that point — no new server protocol.
+  through app.js's `onDeckAsk` wiring → for a PHOTO image,
+  `setPovAnchor(point)` (activity.js: sets `currentPov` to the image's
+  position AND heading — frames carry per-frame `heading` from the
+  server since 2026-07-09 — so the server's POV path reproduces EXACTLY
+  that frame, answers about it, and renders a fresh Street View there
+  as the new current location); for a MAP image, `setMapViewAnchor`
+  (map_view, zoom 17). Then the ordinary composer submit — the whole
+  anchor machinery (moves, nearby search, here-asks, scene captures)
+  continues from that point with no new server protocol. The loose
+  scene gate routes image-referential questions ("What do we have
+  here" — English "here" gained parity with Swedish "här" the same
+  day); non-visual questions go to ordinary research, by design.
 - **Waypoint miniatures on the interactive map**: `renderMapEmbed`'s
   `path` branch asks `nearestDeckIndex(p, 30m)` per waypoint — a hit
   renders that image as a 40×40 marker icon whose click opens the deck

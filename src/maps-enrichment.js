@@ -34,7 +34,15 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { bearingDeg, distanceMeters, hereAskIntent, pickLookup, samplePolyline, streetViewIntent } from "./googlemaps-text.js";
+import {
+  bearingDeg,
+  distanceMeters,
+  hereAskIntent,
+  needsAnchorAsk,
+  pickLookup,
+  samplePolyline,
+  streetViewIntent,
+} from "./googlemaps-text.js";
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 
@@ -42,6 +50,10 @@ import { addUsage } from "./quota.js";
 // client's own per-message image cap, which Berget vision models accept
 // reliably (a report of 5 attached frames drew a Berget 400).
 const MAX_MAPS_IMAGES = 4;
+
+// Cardinal frame direction → degrees, for the per-frame `heading` the
+// image deck uses to reproduce a frame's exact view as a POV anchor.
+const DIR_HEADINGS = { north: 0, east: 90, south: 180, west: 270 };
 
 // Google Maps enrichment: resolve a location the message is about (a street
 // address parsed from it, or an attached photo's GPS coordinates) into Google
@@ -54,10 +66,12 @@ const MAX_MAPS_IMAGES = 4;
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
   // How routing went, made visible (requested 2026-07-09 after a run of
-  // silent intent misses): which matcher decided — or "none" — lands in
-  // Workers Logs here and rides into the chat_logs meta via
-  // state.mapsIntent, so scripts/chatlogs shows the routing per exchange.
-  state.mapsIntent = target ? target.intent || "matched" : "none";
+  // silent intent misses): which matcher decided — or "none" /
+  // "anchor-missing" — lands in Workers Logs here and rides into the
+  // chat_logs meta via state.mapsIntent, so scripts/chatlogs shows the
+  // routing per exchange.
+  const anchorMissing = !target && needsAnchorAsk(conversation);
+  state.mapsIntent = target ? target.intent || "matched" : anchorMissing ? "anchor-missing" : "none";
   log.info("maps.intent", { intent: state.mapsIntent, mode: target?.nearby?.mode });
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
@@ -66,11 +80,13 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     // "Street view of LEGO offices in Copenhagen", pre-named-place support).
     // A HERE-ask landing here — "street view here", a plain "where am I?",
     // or a short "my location" answer to an earlier street-view turn
-    // (hereAskIntent, the conversation-level gate) — means the device
-    // location never arrived: the note asks for location access instead of
-    // "which address?".
+    // (hereAskIntent) — or a RELOCATION-family ask whose only missing piece
+    // was the anchor (needsAnchorAsk — verbatim 2026-07-09: "Lets go to
+    // hemköp stäket" with no device location got a hallucinated clarify)
+    // means the device location never arrived: the note asks for location
+    // access instead of "which address?".
     const lastText = textOf(lastUserMessage(conversation)?.content);
-    const hereAsk = hereAskIntent(conversation);
+    const hereAsk = hereAskIntent(conversation) || anchorMissing;
     if (hereAsk || streetViewIntent(lastText)) {
       return withAppendedText(conversation, unresolvedMapsBlock(hereAsk));
     }
@@ -204,7 +220,7 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
       status: {
         type: "streetview_frames",
         query: result.displayQuery,
-        frames: frames.map((f) => ({ ...f, lat: result.lat, lng: result.lng })),
+        frames: frames.map((f) => ({ ...f, lat: result.lat, lng: result.lng, heading: DIR_HEADINGS[f.dir] ?? 0 })),
       },
     });
   } else if (result.staticMapImage) {
@@ -318,7 +334,7 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
       status: {
         type: "streetview_frames",
         query: `your current view (${compassDir(pov.heading)})`,
-        frames: [{ dir: "", label: "your current view", lat: pov.lat, lng: pov.lng, url: capture.image }],
+        frames: [{ dir: "", label: "your current view", lat: pov.lat, lng: pov.lng, heading: pov.heading, url: capture.image }],
       },
     });
   }
@@ -390,7 +406,7 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
       status: {
         type: "streetview_frames",
         query: `${found.lat}, ${found.lng}`,
-        frames: [{ dir: "", label: "destination view", lat: found.lat, lng: found.lng, url: found.image }],
+        frames: [{ dir: "", label: "destination view", lat: found.lat, lng: found.lng, heading: found.heading, url: found.image }],
       },
     });
   }
@@ -511,10 +527,10 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     const c = travelCaptures[i];
     if (!c?.image || (c.panoId && c.panoId === lastPano)) return;
     lastPano = c.panoId || "";
-    frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, url: c.image });
+    frames.push({ dir: "", label: w.label, lat: c.lat, lng: c.lng, heading: c.heading, url: c.image });
   });
   if (found?.image) {
-    frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image });
+    frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, heading: found.heading, url: found.image });
   }
   if (routeImg) {
     frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: dest.lat, lng: dest.lng, url: routeImg });
@@ -595,7 +611,7 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
     routeMapImage(env, log, waypoints).catch(() => null),
   ]);
   const frames = waypoints
-    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, url: captures[i]?.image || null }))
+    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, heading: bearing, url: captures[i]?.image || null }))
     .filter((f) => f.url);
   if (routeImg) {
     frames.push({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });

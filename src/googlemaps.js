@@ -92,8 +92,8 @@ export function googleMapsEmbedKey(env) {
 // look up Street View?" at a user pointing at their own position).
 export function unresolvedMapsBlock(hereAsk = false) {
   const middle = hereAsk
-    ? "The user asked about their CURRENT LOCATION (a street-view-here ask, a plain \"where am I?\", or a \"my location\" answer to a clarify), but no device location was shared with this request — the browser has not (yet) granted this site location access, or the location request timed out. " +
-      "Tell the user that, to use their current position, they need to allow location access for this site when the browser asks (or in the browser's site settings), then ask again — or they can simply name an address or place instead. "
+    ? "The user asked for something anchored at their CURRENT LOCATION (a street-view-here ask, \"where am I?\", a go-to/teleport/nearby ask that starts from their position, or an answer to such a clarify), but no device location was shared with this request — the browser has not (yet) granted this site location access, the location request timed out, or the app is running an older cached version (a full reload/relaunch fixes that). " +
+      "Tell the user that, to use their current position, they need to allow location access for this site when the browser asks (or in the browser's site settings) — and if no permission prompt ever appeared, to fully reload the app — then ask again. Or they can simply name an address or place instead. "
     : "The user asked for Street View, and Google Maps & Street View is ENABLED, but no address or place name could be identified in the message. " +
       "Ask the user which address or place they mean (one short question). ";
   return (

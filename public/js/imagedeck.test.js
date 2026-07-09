@@ -37,6 +37,16 @@ test("addDeckEntries drops non-data-URL frames and coerces junk coordinates", ()
   assert.equal(entries[0].lat, null); // one bad coordinate → no position at all
 });
 
+test("entries keep the frame's heading so an ask reproduces exactly that view", () => {
+  addDeckEntries([
+    { url: IMG, caption: "faced SE", lat: 59.45, lng: 17.8, heading: 156 },
+    { url: IMG, caption: "no heading", lat: 59.46, lng: 17.81 },
+  ]);
+  const entries = deckEntries();
+  assert.equal(entries[0].heading, 156);
+  assert.equal(entries[1].heading, 0); // defaults straight north
+});
+
 test("nearestDeckIndex finds the LATEST image within the radius — the deck opens where the user last was", () => {
   addDeckEntries([
     { url: IMG, caption: "start", lat: 59.45656, lng: 17.80099 },

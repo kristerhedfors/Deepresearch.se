@@ -724,8 +724,11 @@ const SCENE_REFERENCE_RE = new RegExp(
     "skylt(?:en|ar|arna)?|affär(?:en|er|erna)?|butik(?:en|er|erna)?|restaurang(?:en|er|erna)?|" +
     "träd(?:et|en)?|staty(?:n|er)?|flagg(?:a|an|or)|bänk(?:en|ar)?|" +
     // bare deictic references — the user is pointing at the scene
-    // ("The one in view" — reported verbatim — carries ONLY these signals)
-    "that|this|it|these|those|there|views?|(?:the|that|this) ones?|" +
+    // ("The one in view" — reported verbatim — carries ONLY these signals).
+    // "here" included (reported verbatim 2026-07-09: "What do we have
+    // here" mid-panorama logged maps_intent "none" — Swedish "här" was in
+    // the list, English "here" wasn't; the parity rule cuts both ways)
+    "that|this|it|these|those|there|here|views?|(?:the|that|this) ones?|" +
     "det|den|där|här|denna|detta|dessa|dom|vyn?|(?:den|det) här|" +
     // temporal continuations — the user moved the panorama and re-asks
     // ("And now" — reported verbatim 2026-07-09: it fired nothing, no
@@ -908,6 +911,25 @@ function isHereAsk(latest, users) {
 export function hereAskIntent(conversation) {
   const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
   return isHereAsk(textOf(users[users.length - 1]?.content), users);
+}
+
+// True when the latest turn is a relocation-family ask that would have
+// matched — a "go to X", a nearby search, a barrier crossing, a "go
+// there", or a fragment continuing a pending relocation — but pickLookup
+// returned nothing because there was NO ANCHOR (no live view, no device
+// location). The enrichment then appends the allow-location-access note
+// instead of leaving the model to freestyle a clarify (verbatim
+// 2026-07-09: "Lets go to hemköp stäket" with no location sent got
+// "I'm not sure what that refers to… did you mean Hammarby Sjöstad?").
+export function needsAnchorAsk(conversation) {
+  const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
+  const latest = textOf(users[users.length - 1]?.content);
+  if (extractRelocationQuery(latest)) return true;
+  if (extractNearbyPlaceQuery(latest)) return true;
+  if (extractCrossBarrierAsk(latest)) return true;
+  const t = latest.trim();
+  if (GO_THERE_RE.test(t) && pendingRelocation(users)) return true;
+  return !!t && t.length <= 40 && t.split(/\s+/).length <= 3 && !!pendingRelocation(users);
 }
 
 // Destination of a move from (lat, lng) `meters` toward `bearingDeg`.

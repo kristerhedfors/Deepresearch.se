@@ -36,6 +36,7 @@ import {
   matchAddressFragment,
   movePoint,
   nearbyAskMode,
+  needsAnchorAsk,
   pendingRelocation,
   physicalLocationAsk,
   samplePolyline,
@@ -510,6 +511,11 @@ describe("referencesStreetView", () => {
 });
 
 describe("referencesStreetViewScene (the loose POV-path gate)", () => {
+  test("'What do we have here' fires — English 'here' has parity with Swedish 'här' (verbatim 2026-07-09)", () => {
+    assert.equal(referencesStreetViewScene("What do we have here"), true);
+    assert.equal(referencesStreetViewScene("vad har vi här"), true);
+  });
+
   test("matches scene contents the strict gate can't enumerate", () => {
     // Reported 2026-07-08 verbatim: "Describe the person" missed the strict
     // gate, no capture fired, and the model asked "what person?" while the
@@ -1048,6 +1054,28 @@ describe("pickLookup — street-view jumps", () => {
     // (the client will have requested it, but it can still be denied).
     const noDevice = pickLookup(physical, [], pov);
     assert.deepEqual(noDevice.jump, { lat: pov.lat, lng: pov.lng, heading: pov.heading, meters: 0, dir: "here" });
+  });
+
+  test("needsAnchorAsk: relocation-family asks with no anchor get the allow-location note", () => {
+    // Verbatim 2026-07-09: three anchor-less relocation asks (all logged
+    // maps_intent "none") drew a hallucinated clarify instead of the
+    // allow-location-access note.
+    assert.equal(needsAnchorAsk([{ role: "user", content: "Lets go to hemköp stäket" }]), true);
+    assert.equal(needsAnchorAsk([{ role: "user", content: "Lets go to hemlöp stäket" }]), true); // even with the typo
+    assert.equal(needsAnchorAsk([{ role: "user", content: "nearest gas station" }]), true);
+    assert.equal(needsAnchorAsk([{ role: "user", content: "get to the other side of the railway" }]), true);
+    // A fragment continuing a pending relocation counts too.
+    assert.equal(
+      needsAnchorAsk([
+        { role: "user", content: "Lets go to hemlöp stäket" },
+        { role: "user", content: "Hemköp" },
+      ]),
+      true,
+    );
+    // Ordinary questions never trigger the note.
+    assert.equal(needsAnchorAsk([{ role: "user", content: "what is the capital of France" }]), false);
+    assert.equal(needsAnchorAsk([{ role: "user", content: "Hemköp" }]), false); // fragment with nothing pending
+    assert.equal(needsAnchorAsk([]), false);
   });
 
   test("physicalLocationAsk is a here-ask on its own (unresolved-note path)", () => {
