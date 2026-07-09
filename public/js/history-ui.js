@@ -126,7 +126,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h14 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
+    parts.push(`[h15 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -266,9 +266,20 @@ export function initHistorySidebar(opts = {}) {
       row.style.marginLeft = "";
       item.style.overflow = "";
       const strip = item.querySelector(".history-actions");
-      if (strip && !item.matches(":hover")) strip.remove();
+      // The :hover exception only applies where hover is REAL: on iOS the
+      // emulated hover sticks to the last-touched card for seconds
+      // (device trace: mouseleave arrived 14s after the gesture), which
+      // kept dead strips mounted.
+      if (strip && !(HAS_HOVER && item.matches(":hover"))) strip.remove();
     }, 200);
   }
+
+  // Whether this device has a real hover state (a mouse). iOS reports
+  // hover:none but still fires mouse-compat events on taps — attaching
+  // hover handlers there turned strips visibly ON at every tap and left
+  // them stuck until the emulated hover finally moved (device trace,
+  // 2026-07-08).
+  const HAS_HOVER = typeof matchMedia === "function" && matchMedia("(hover: hover)").matches;
 
   // Touch swipe-to-reveal: dragging a row left slides it over by the
   // action strip's width, exposing rename + delete. Swiping back (or
@@ -368,7 +379,7 @@ export function initHistorySidebar(opts = {}) {
         if (item.classList.contains("swiped") || item.classList.contains("swiping")) return;
         item.style.overflow = "";
         const strip = item.querySelector(".history-actions");
-        if (strip && !item.matches(":hover")) strip.remove();
+        if (strip && !(HAS_HOVER && item.matches(":hover"))) strip.remove();
       }
       let moveCount = 0;
       item.addEventListener("touchstart", (e) => {
@@ -445,16 +456,20 @@ export function initHistorySidebar(opts = {}) {
     }
 
     // Mouse hover shows the strip as an overlay (no slide); leaving
-    // removes it again (unless swiped open).
-    item.addEventListener("mouseenter", (e) => {
-      if (e.pointerType && e.pointerType !== "mouse") return;
-      trace("menter");
-      showStrip(mountActions(item), true);
-    });
-    item.addEventListener("mouseleave", () => {
-      trace("mleave");
-      if (!item.classList.contains("swiped")) closeActions(item);
-    });
+    // removes it again (unless swiped open). ONLY on real-hover devices:
+    // iOS fires these as tap-compat events — attaching them there showed
+    // strips on every tap and left them stuck until the sticky emulated
+    // hover moved on (device trace, 2026-07-08).
+    if (HAS_HOVER) {
+      item.addEventListener("mouseenter", () => {
+        trace("menter");
+        showStrip(mountActions(item), true);
+      });
+      item.addEventListener("mouseleave", () => {
+        trace("mleave");
+        if (!item.classList.contains("swiped")) closeActions(item);
+      });
+    }
   }
 
   async function openConversation(id) {
