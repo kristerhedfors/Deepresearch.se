@@ -37,6 +37,7 @@
 // enrichment is never a hard requirement for the chat to work.
 
 import { cacheGet, cachePut } from "./edge-cache.js";
+import { distanceMeters } from "./googlemaps-text.js";
 
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
@@ -233,6 +234,52 @@ export function buildJumpBlock(jump, parts) {
   lines.push(
     "The destination was computed from the user's own view and phrasing — do NOT ask them to confirm coordinates or clarify where they mean; answer about it directly.",
   );
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
+}
+
+// The labeled context block for a NEARBY-place search ("Gas station near
+// e18 there"): Google Places searched around the user's current position
+// and these are the hits, nearest-relevance first, each with its distance
+// from the anchor and a keyless Map link. `parts` carries the imagery facts
+// (panorama/frame shown, vision description) for the TOP hit when Street
+// View covered it. Pure — exported for unit tests.
+export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
+  const lines = [
+    `The user asked for a nearby place ("${query}") and Google Places was searched around their CURRENT position (${anchor.lat}, ${anchor.lng}). ` +
+      "The position is where they have navigated the live view (or their device location) — do NOT ask them to confirm it.",
+  ];
+  if (places.length) {
+    lines.push(`${places.length} result${places.length === 1 ? "" : "s"}, best match first:`);
+    for (const p of places) {
+      const meters = distanceMeters(anchor.lat, anchor.lng, p.lat, p.lng);
+      const dist = meters >= 1000 ? `≈${(meters / 1000).toFixed(1)} km away` : `≈${meters} m away`;
+      const facts = [p.type, dist, p.rating ? `rated ${p.rating} (${p.ratingCount})` : "", p.status && p.status !== "OPERATIONAL" ? p.status : ""]
+        .filter(Boolean)
+        .join(", ");
+      lines.push(`- ${p.name} — ${p.address}${facts ? ` (${facts})` : ""} — Map link: ${mapLink(p.lat, p.lng)}`);
+    }
+    const top = places[0];
+    if (parts.panoramaShown) {
+      lines.push(
+        `An interactive Street View panorama at the first result (${top.name}) is displayed to the user directly beside this reply — refer to it as shared context.`,
+      );
+    } else if (parts.mapShown) {
+      lines.push(`An interactive Google Map at the first result (${top.name}) is displayed to the user directly beside this reply.`);
+    }
+    if (parts.description) {
+      lines.push(`Visual description of the first result's Street View (auto-generated): ${parts.description}`);
+    }
+    lines.push(
+      `ALWAYS include the first result's Map link in your answer as a markdown link (e.g. [${top.name} on Google Maps](${mapLink(top.lat, top.lng)})) so the user can open it.`,
+    );
+  } else {
+    lines.push(
+      "Google Places returned NO results for this search near the current position. Say so plainly — never invent a place — and suggest widening the search or naming a place/address.",
+    );
+    lines.push(`Map link for the current position: ${mapLink(anchor.lat, anchor.lng)}`);
+  }
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   lines.push(NO_FABRICATED_IMAGE_URLS);
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
@@ -458,6 +505,59 @@ export async function placesTextSearch(env, log, query) {
     };
   } catch (err) {
     log.warn("googlemaps.places_error", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+// Places API (New) Text Search biased around a position — the NEARBY-place
+// search ("Gas station near e18 there" from a live panorama): same endpoint
+// and field mask as placesTextSearch, plus a locationBias circle at the
+// anchor (bias, not restriction — Places may still return the best match
+// slightly outside) and up to 3 results so the answer can name
+// alternatives. Returns an array (possibly empty) or null on failure.
+const NEARBY_BIAS_RADIUS_M = 5000;
+export async function placesNearbySearch(env, log, query, lat, lng) {
+  try {
+    const resp = await fetch(PLACES_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask":
+          "places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.userRatingCount,places.businessStatus",
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        maxResultCount: 3,
+        locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: NEARBY_BIAS_RADIUS_M } },
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      log.warn("googlemaps.places_nearby_error", { status: resp.status });
+      return null;
+    }
+    const data = await resp.json().catch(() => null);
+    const places = Array.isArray(data?.places) ? data.places : [];
+    log.info("googlemaps.places_nearby", { found: places.length });
+    return places
+      .map((place) => {
+        const plat = Number(place.location?.latitude);
+        const plng = Number(place.location?.longitude);
+        return {
+          name: place.displayName?.text || "",
+          address: place.formattedAddress || "",
+          lat: Number.isFinite(plat) ? plat : null,
+          lng: Number.isFinite(plng) ? plng : null,
+          type: typeof place.primaryType === "string" ? place.primaryType.replace(/_/g, " ") : "",
+          rating: Number.isFinite(place.rating) ? place.rating : null,
+          ratingCount: Number.isFinite(place.userRatingCount) ? place.userRatingCount : 0,
+          status: typeof place.businessStatus === "string" ? place.businessStatus : "",
+        };
+      })
+      .filter((p) => p.lat != null && p.lng != null);
+  } catch (err) {
+    log.warn("googlemaps.places_nearby_error", { error: err?.message || String(err) });
     return null;
   }
 }

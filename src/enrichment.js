@@ -17,9 +17,11 @@ import {
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
+  buildNearbyPlacesBlock,
   buildPovBlock,
   compassDir,
   googleMapsEmbedKey,
+  placesNearbySearch,
   runGoogleMapsLookup,
   runMapViewCapture,
   runStreetViewJumpLookup,
@@ -159,6 +161,12 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // the device's reported location) and the phrase; pop a panorama there.
   if (target.jump) {
     return runJumpEnrichment(env, log, emit, step, stepDone, conversation, state, target.jump, question);
+  }
+
+  // A NEARBY-place ask ("Gas station near e18 there"): search Google Places
+  // around the current position and show the best hit.
+  if (target.nearby) {
+    return runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversation, state, target.nearby, question);
   }
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
@@ -438,6 +446,66 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
       framesShown: !embedKeyOk && found.image ? 1 : 0,
       description,
       place,
+    }),
+  );
+}
+
+// The NEARBY-place path: the user asked for a kind of place around where
+// they are ("Gas station near e18 there", "närmaste apotek") — reported
+// verbatim 2026-07-09, when the deictic "there" routed this into the POV
+// capture and the model could only say the gas station wasn't visible in
+// the current frame. Google Places (New) Text Search runs with a location
+// bias circle at the anchor (the live view's position, or the device
+// location), the hits join the conversation as a labeled block with
+// distances and keyless links, and the BEST hit is shown like a jump
+// destination: nearest panorama + one described frame + a fresh embed
+// (interactive map when no Street View covers it). Fail-soft in every
+// branch — a Places error or zero hits degrades to an honest block, never
+// a blocked chat.
+async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversation, state, nearby, question) {
+  step("maps", "Searching Google Places near the current position…");
+  const anchor = { lat: nearby.lat, lng: nearby.lng };
+  const places = await placesNearbySearch(env, log, nearby.query, nearby.lat, nearby.lng);
+  if (!places || !places.length) {
+    stepDone("maps", `Google Places: nothing found for "${nearby.query}" nearby`);
+    return withAppendedText(conversation, buildNearbyPlacesBlock(nearby.query, anchor, []));
+  }
+  state.mapsCount = places.length;
+  const top = places[0];
+  let found = null;
+  try {
+    found = await runStreetViewJumpLookup(env, log, { lat: top.lat, lng: top.lng, heading: 0, meters: 0 });
+  } catch (err) {
+    log.warn("googlemaps.nearby_pano_failed", { error: err?.message || String(err) });
+  }
+  const embedKeyOk = !!googleMapsEmbedKey(env);
+  let description = "";
+  if (found && state.visionModel && found.image) {
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `This is the Google Street View frame at "${top.name}" (${top.address}) — the best Google Places match for the user's nearby-place search.`,
+      [found.image],
+      question,
+    );
+  }
+  if (embedKeyOk && found) {
+    emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: 0 } });
+  } else if (embedKeyOk) {
+    emit({ status: { type: "map_embed", lat: top.lat, lng: top.lng, zoom: 16 } });
+  }
+  stepDone(
+    "maps",
+    `Google Places: ${places.length} result${places.length === 1 ? "" : "s"} near the current position`,
+    places.map((p) => `${p.name} — ${p.address}`),
+  );
+  return withAppendedText(
+    conversation,
+    buildNearbyPlacesBlock(nearby.query, anchor, places, {
+      panoramaShown: !!(embedKeyOk && found),
+      mapShown: !!(embedKeyOk && !found),
+      description,
     }),
   );
 }

@@ -151,9 +151,41 @@ export function asksDeviceLocation(userTexts) {
   const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
   const latest = texts[texts.length - 1] || "";
   if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest) || asksPhysicalLocation(latest)) return true;
+  if (asksNearbyPlace(latest)) return true;
   const t = latest.trim();
   const isFragment = !!t && t.length <= 48 && t.split(/\s+/).length <= 4 && HERE_WORD_RE.test(t);
   return isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev));
+}
+
+// A NEARBY-place ask ("Gas station near e18 there", "närmaste mack") —
+// mirrors the server's extractNearbyPlaceQuery gate (src/googlemaps-text.js:
+// a place-TYPE word plus a NEARBY word). With no live view on screen the
+// server has nothing to anchor the Places search to, so these asks request
+// the device location like the other here-ask shapes. Sent location is
+// ignored server-side unless the user's Maps knob is on.
+const PLACE_TYPE_WORD_RE = new RegExp(
+  "(?<![\\p{L}\\p{M}])(?:" +
+    "restaurants?|diners?|caf[ée]s?|coffee ?shops?|bars?|pubs?|hotels?|hostels?|shops?|stores?|" +
+    "supermarkets?|malls?|museums?|galler(?:y|ies)|schools?|universit(?:y|ies)|church(?:es)?|stations?|" +
+    "kiosks?|pizzerias?|baker(?:y|ies)|gyms?|cinemas?|theatres?|theaters?|" +
+    "gas ?stations?|petrol ?stations?|fuel ?stations?|service ?stations?|pharmac(?:y|ies)|drugstores?|" +
+    "atms?|banks?|grocer(?:y|ies)|grocery ?stores?|parking|hospitals?|clinics?|police ?stations?|" +
+    "restaurang(?:en|er|erna)?|gatukök(?:et|en)?|kaf[ée](?:et|er)?|krog(?:en|ar|arna)?|hotell(?:et|en)?|" +
+    "butik(?:en|er|erna)?|affär(?:en|er|erna)?|köpcentr(?:um|et)|museet|skol(?:a|an|or|orna)|" +
+    "universitet(?:et)?|kyrk(?:a|an|or|orna)|kiosk(?:en|er)?|pizzeri(?:a|an|or)|" +
+    "bageri(?:et|er)?|biograf(?:en|er)?|teater(?:n|rar)?|" +
+    "bensinstation(?:en|er|erna)?|bensinmack(?:en|ar)?|mack(?:en|ar|arna)?|tankställe(?:t|n)?|" +
+    "apotek(?:et|en)?|bankomat(?:en|er|erna)?|uttagsautomat(?:en|er)?|parkering(?:en|ar|arna)?|" +
+    "sjukhus(?:et|en)?|vårdcentral(?:en|er|erna)?|polisstation(?:en|er)?|" +
+    "mataffär(?:en|er|erna)?|matbutik(?:en|er|erna)?|livsmedelsbutik(?:en|er|erna)?" +
+    ")(?![\\p{L}\\p{M}])",
+  "iu",
+);
+const NEARBY_WORD_RE =
+  /(?<![\p{L}\p{M}])(?:near(?:by|est)?|closest|close by|around here|here|there|närmaste|närmsta|nära|i närheten|häromkring|i området|runt här|här|där)(?![\p{L}\p{M}])/iu;
+export function asksNearbyPlace(text) {
+  const t = (typeof text === "string" ? text : "").trim();
+  return !!t && t.length <= 120 && PLACE_TYPE_WORD_RE.test(t) && NEARBY_WORD_RE.test(t);
 }
 
 // An EXPLICIT reference to the user's PHYSICAL location ("my actual

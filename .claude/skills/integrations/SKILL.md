@@ -648,6 +648,30 @@ call, alongside the Shodan enrichment).
   search): the actual answer to "where am I?", not just coordinates. No
   panorama near the destination → an interactive `map_embed` of it plus an
   honest block — never an invented view.
+- **NEARBY-place asks search Places, they don't stare at the frame**
+  (reported verbatim 2026-07-09: mid-panorama, "Gas station near e18
+  there" routed to the POV capture via the deictic "there", and the model
+  could only say no gas station was visible in the current view). A
+  place-TYPE word (PLACE_TYPE_RE — extended with the errand amenities:
+  gas/petrol station, pharmacy, ATM, parking, hospital…, Swedish parity
+  incl. "mack") plus a NEARBY word (near/nearest/i närheten/närmaste —
+  "here"/"there" count ONLY because the type word is also required) is a
+  SEARCH ask: `extractNearbyPlaceQuery` (googlemaps-text.js) builds the
+  Places query (leading "is there a"/"finns det" filler and trailing
+  deictics stripped), pickLookup returns a `nearby` target anchored at
+  the live view (or device location — the client's `asksNearbyPlace`
+  prefilter requests geolocation for fresh-chat nearby asks), checked
+  BEFORE the here-ask and POV branches so "gas station here" searches
+  rather than jumps. `runNearbyPlaceEnrichment` calls
+  `placesNearbySearch` — Places API (New) searchText with a 5km
+  `locationBias` circle (bias, not restriction), max 3 results, same
+  minimal field mask — and shows the BEST hit like a jump destination
+  (nearest panorama + described frame + fresh embed; map embed when no
+  coverage). `buildNearbyPlacesBlock` lists the hits with computed
+  distances (`distanceMeters`), keyless links, and the usual mandates
+  (top-link markdown mandate, never invent a place on zero hits, no
+  enable-steps, no fabricated URLs). Fail-soft in every branch; no
+  anchor → ordinary pipeline (web search) handles the question.
 - **The map view has full panorama parity on follow-ups** (same day,
   follow-up request): the client tracks the live map's center/zoom and
   sends it as `body.map_view` (validated by `validateMapView`); a

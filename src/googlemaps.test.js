@@ -5,6 +5,7 @@ import {
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
+  buildNearbyPlacesBlock,
   buildPovBlock,
   compassDir,
   googleMapsAvailable,
@@ -15,8 +16,10 @@ import {
   unresolvedMapsBlock,
 } from "./googlemaps.js";
 import {
+  distanceMeters,
   extractLocalityFix,
   extractNamedPlaceQuery,
+  extractNearbyPlaceQuery,
   extractPlace,
   extractPlaceQuery,
   extractRelativeMove,
@@ -1044,6 +1047,83 @@ describe("pickLookup — street-view jumps", () => {
   });
 });
 
+describe("nearby-place asks — the verbatim 'Gas station near e18 there' report (2026-07-09)", () => {
+  const pov = { panoId: "abc", lat: 59.455, lng: 17.8027, heading: 156, pitch: 0, fov: 90 };
+
+  test("extractNearbyPlaceQuery: type word + nearby word → the Places query", () => {
+    assert.equal(extractNearbyPlaceQuery("Gas station near e18 there"), "Gas station near e18");
+    assert.equal(extractNearbyPlaceQuery("is there a pharmacy nearby?"), "pharmacy");
+    assert.equal(extractNearbyPlaceQuery("nearest gas station"), "nearest gas station");
+    assert.equal(extractNearbyPlaceQuery("find me a restaurant around here"), "restaurant");
+  });
+
+  test("extractNearbyPlaceQuery negatives: no nearby word / no type word / a real address / junk", () => {
+    assert.equal(extractNearbyPlaceQuery("restaurants in Oslo"), ""); // ordinary research question
+    assert.equal(extractNearbyPlaceQuery("what is that there?"), ""); // deictic without a type — POV path owns it
+    assert.equal(extractNearbyPlaceQuery("street view here"), "");
+    assert.equal(extractNearbyPlaceQuery("gas station near Storgatan 4"), ""); // address owns the message
+    assert.equal(extractNearbyPlaceQuery(""), "");
+    assert.equal(extractNearbyPlaceQuery(undefined), "");
+  });
+
+  test("with a live panorama, the verbatim ask becomes a nearby search at the view's position — NOT a POV capture", () => {
+    const convo = [{ role: "user", content: "Gas station near e18 there" }];
+    const out = pickLookup(convo, [], pov);
+    assert.deepEqual(out, {
+      coords: "",
+      address: "",
+      nearby: { query: "Gas station near e18", lat: 59.455, lng: 17.8027 },
+      followUp: true,
+    });
+  });
+
+  test("'gas station here' searches nearby instead of here-jumping; 'street view here' still jumps", () => {
+    const svConvo = [{ role: "user", content: "street view" }, { role: "user", content: "gas station here" }];
+    const out = pickLookup(svConvo, [], pov);
+    assert.equal(out?.nearby?.query, "gas station");
+    const jump = pickLookup([{ role: "user", content: "street view here" }], [], pov);
+    assert.ok(jump?.jump, "street view here must stay a here-jump");
+  });
+
+  test("anchors follow the usual precedence: device location works; no anchor resolves nothing", () => {
+    const convo = [{ role: "user", content: "nearest gas station" }];
+    const fromDevice = pickLookup(convo, [], null, null, { lat: 59.44, lng: 17.8, zoom: 17 });
+    assert.deepEqual(fromDevice.nearby, { query: "nearest gas station", lat: 59.44, lng: 17.8 });
+    assert.equal(pickLookup(convo, []), null); // ordinary pipeline handles it
+  });
+
+  test("distanceMeters: zero at the same point, ~1.1 km per 0.01° latitude", () => {
+    assert.equal(distanceMeters(59.45, 17.8, 59.45, 17.8), 0);
+    const d = distanceMeters(59.45, 17.8, 59.46, 17.8);
+    assert.ok(d > 1080 && d < 1140, `expected ≈1112 m, got ${d}`);
+  });
+
+  test("buildNearbyPlacesBlock lists hits with distance and links, and mandates the top link", () => {
+    const anchor = { lat: 59.455, lng: 17.8027 };
+    const places = [
+      { name: "Circle K Stäket", address: "Enköpingsvägen 1, Järfälla", lat: 59.4462, lng: 17.8031, type: "gas station", rating: 4.2, ratingCount: 310, status: "OPERATIONAL" },
+      { name: "OKQ8 Kallhäll", address: "Skarprättarvägen 2, Järfälla", lat: 59.44, lng: 17.81, type: "gas station", rating: 4.0, ratingCount: 120, status: "OPERATIONAL" },
+    ];
+    const block = buildNearbyPlacesBlock("Gas station near e18", anchor, places, { panoramaShown: true, description: "A forecourt with pumps." });
+    assert.match(block, /Google Places was searched around their CURRENT position \(59\.455, 17\.8027\)/);
+    assert.match(block, /Circle K Stäket — Enköpingsvägen 1, Järfälla \(gas station, ≈979 m away, rated 4\.2 \(310\)\)/);
+    assert.match(block, /2 results, best match first/);
+    assert.match(block, /panorama at the first result \(Circle K Stäket\)/);
+    assert.match(block, /Visual description of the first result's Street View \(auto-generated\): A forecourt/);
+    assert.match(block, /ALWAYS include the first result's Map link/);
+    assert.match(block, /do NOT ask them to confirm it/);
+    assert.match(block, /NEVER construct or output Google Maps API image URLs/);
+    assert.ok(!block.includes("key="));
+  });
+
+  test("buildNearbyPlacesBlock with zero hits stays honest — no invented places, no enable steps", () => {
+    const block = buildNearbyPlacesBlock("gas station", { lat: 1, lng: 2 }, []);
+    assert.match(block, /NO results for this search near the current position/);
+    assert.match(block, /never invent a place/);
+    assert.match(block, /already enabled — do NOT suggest/);
+  });
+});
+
 describe("here-asks across turns — the verbatim 'Where am i now' conversation (2026-07-09)", () => {
   const userLocation = { lat: 59.33, lng: 18.06, zoom: 17 };
 
@@ -1245,6 +1325,15 @@ describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedis
     assert.equal(physicalLocationAsk("gatuvy min faktiska plats"), true);
     assert.equal(physicalLocationAsk("visa där jag faktiskt är"), true);
     assert.equal(physicalLocationAsk("min plats"), false);
+  });
+
+  test("nearby-place asks: närmaste bensinstation / mack i närheten / apotek nära", () => {
+    assert.equal(extractNearbyPlaceQuery("närmaste bensinstation"), "närmaste bensinstation");
+    assert.equal(extractNearbyPlaceQuery("finns det någon mack i närheten?"), "mack");
+    assert.equal(extractNearbyPlaceQuery("bensinstation nära e18 där"), "bensinstation nära e18");
+    assert.equal(extractNearbyPlaceQuery("apotek häromkring"), "apotek");
+    // Type word without a nearby word stays an ordinary question.
+    assert.equal(extractNearbyPlaceQuery("berätta om apoteket i Uppsala"), "");
   });
 });
 

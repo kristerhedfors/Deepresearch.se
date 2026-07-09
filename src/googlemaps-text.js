@@ -259,10 +259,21 @@ const PLACE_TYPE_RE = new RegExp(
     "restaurants?|diners?|caf[ée]s?|coffee ?shops?|bars?|pubs?|hotels?|hostels?|shops?|stores?|" +
     "supermarkets?|malls?|museums?|galler(?:y|ies)|schools?|universit(?:y|ies)|church(?:es)?|stations?|" +
     "kiosks?|pizzerias?|baker(?:y|ies)|gyms?|cinemas?|theatres?|theaters?|" +
+    // Roadside/errand amenities (added with the nearby-place search,
+    // 2026-07-09 — "Gas station near e18 there"): fuel, pharmacy, cash,
+    // parking, care, groceries.
+    "gas ?stations?|petrol ?stations?|fuel ?stations?|service ?stations?|pharmac(?:y|ies)|drugstores?|" +
+    "atms?|banks?|grocer(?:y|ies)|grocery ?stores?|parking|hospitals?|clinics?|police ?stations?|" +
     "restaurang(?:en|er|erna)?|gatukök(?:et|en)?|kaf[ée](?:et|er)?|krog(?:en|ar|arna)?|hotell(?:et|en)?|" +
     "butik(?:en|er|erna)?|affär(?:en|er|erna)?|köpcentr(?:um|et)|museet|skol(?:a|an|or|orna)|" +
     "universitet(?:et)?|kyrk(?:a|an|or|orna)|kiosk(?:en|er)?|pizzeri(?:a|an|or)|" +
-    "bageri(?:et|er)?|biograf(?:en|er)?|teater(?:n|rar)?" +
+    "bageri(?:et|er)?|biograf(?:en|er)?|teater(?:n|rar)?|" +
+    // The Swedish amenity parity set, definite/plural forms included; "mack"
+    // is the everyday word for a gas station.
+    "bensinstation(?:en|er|erna)?|bensinmack(?:en|ar)?|mack(?:en|ar|arna)?|tankställe(?:t|n)?|" +
+    "apotek(?:et|en)?|bankomat(?:en|er|erna)?|uttagsautomat(?:en|er)?|parkering(?:en|ar|arna)?|" +
+    "sjukhus(?:et|en)?|vårdcentral(?:en|er|erna)?|polisstation(?:en|er)?|" +
+    "mataffär(?:en|er|erna)?|matbutik(?:en|er|erna)?|livsmedelsbutik(?:en|er|erna)?" +
     ")(?![\\p{L}\\p{M}])",
   "iu",
 );
@@ -336,6 +347,51 @@ export function extractNamedPlaceQuery(text) {
   const locality = placeLocalityOf(raw, name);
   if (!locality && !PLACE_TYPE_RE.test(raw)) return "";
   return (locality ? `${name}, ${locality}` : name).slice(0, MAX_LOCATION_CHARS);
+}
+
+// ---- nearby-place asks (Google Places search around the current position) ----
+
+// Reported verbatim 2026-07-09: mid-panorama, "Gas station near e18 there"
+// routed to the POV scene capture ("there" is a deictic in the loose gate),
+// so the model LOOKED at the current frame instead of SEARCHING — the gas
+// station wasn't in view and the answer denied. A place-TYPE word plus a
+// NEARBY word is a search ask, not a look ask: with a live anchor it goes
+// to Places Text Search biased around the current position (pickLookup's
+// `nearby` shape → enrichment.js runNearbyPlaceEnrichment).
+//
+// "here"/"there" count as nearby words ONLY because the type word is also
+// required — "street view here" (no type) keeps its here-jump, while "is
+// there a pharmacy?" resolves the idiomatic "there" into the search it is.
+const NEARBY_WORD_RE =
+  /(?<![\p{L}\p{M}])(?:near(?:by|est)?|closest|close by|around here|here|there|närmaste|närmsta|nära|i närheten|häromkring|i området|runt här|här|där)(?![\p{L}\p{M}])/iu;
+// Leading question filler stripped off the Places query ("is there a",
+// "find me", "finns det någon", "var finns") — the remainder is what gets
+// searched, and Places' text search handles natural phrasing fine.
+const NEARBY_LEAD_RE =
+  /^(?:(?:is|are)\s+there\s+(?:a|an|any)?|find(?:\s+me)?(?:\s+(?:a|an|any))?|show(?:\s+me)?(?:\s+(?:a|an|any))?|any|hitta|visa(?:\s+mig)?|finns\s+det\s+(?:någon|nagon|något|nagot|några|nagra)?|var\s+finns)\s*/iu;
+// A trailing bare deictic ("… there", "… här") adds nothing to the query —
+// the location bias carries the position.
+const NEARBY_TRAIL_RE =
+  /[\s,]*(?:right\s+)?(?:around\s+here|close\s+by|nearby|i\s+närheten|häromkring|härifrån|here|there|här|där)?[\s?!.]*$/iu;
+
+export function extractNearbyPlaceQuery(text) {
+  const raw = (typeof text === "string" ? text : "").trim();
+  if (!raw || raw.length > 120) return "";
+  if (extractPlace(raw)) return ""; // a real address owns the message
+  if (!PLACE_TYPE_RE.test(raw) || !NEARBY_WORD_RE.test(raw)) return "";
+  const q = raw.replace(NEARBY_LEAD_RE, "").replace(NEARBY_TRAIL_RE, "").trim();
+  if (!q || !PLACE_TYPE_RE.test(q)) return "";
+  return q.slice(0, MAX_LOCATION_CHARS);
+}
+
+// Meters between two coordinates — equirectangular, exact enough for the
+// "≈X m away" labels in the nearby-places block (same approximation as
+// movePoint). Pure and exported for tests + googlemaps.js.
+export function distanceMeters(lat1, lng1, lat2, lng2) {
+  const rad = Math.PI / 180;
+  const x = (lng2 - lng1) * rad * Math.cos(((lat1 + lat2) / 2) * rad);
+  const y = (lat2 - lat1) * rad;
+  return Math.round(Math.sqrt(x * x + y * y) * 6371000);
 }
 
 // ---- fragment answers to "which office?" ------------------------------------
@@ -748,8 +804,8 @@ export function movePoint(lat, lng, bearingDeg, meters) {
 // stateless and the prior turn's Maps block was appended server-side only, so
 // the resent conversation text (and the client-held view) are the only durable
 // records. Returns null when nothing names (or refers back to) a location;
-// `followUp: true` / `pov` / `mapView` / `jump` mark the shape so the
-// enrichment labels the block.
+// `followUp: true` / `pov` / `mapView` / `jump` / `nearby` mark the shape so
+// the enrichment labels the block.
 // Between 2 and 3 sit the JUMPS (requested 2026-07-09): "street view here"
 // and relative moves ("100 meters along this road", "gå 200 m norrut"),
 // anchored to the live panorama (position + heading), else the live map
@@ -797,6 +853,20 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
         coords: "",
         address: "",
         jump: { lat: dest.lat, lng: dest.lng, heading: bearing, meters: move.meters, dir: move.dir },
+        followUp: true,
+      };
+    }
+    // A NEARBY-place ask searches Places around the anchor — checked BEFORE
+    // the here-ask so "gas station here" searches rather than jumping, and
+    // before the POV scene gate below so the deictic "there" can't demote a
+    // search ask into a look-at-the-current-frame capture (the reported
+    // failure shape).
+    const nearbyQuery = extractNearbyPlaceQuery(latest);
+    if (nearbyQuery) {
+      return {
+        coords: "",
+        address: "",
+        nearby: { query: nearbyQuery, lat: anchor.lat, lng: anchor.lng },
         followUp: true,
       };
     }

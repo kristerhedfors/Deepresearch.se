@@ -5,6 +5,7 @@ import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
   asksDeviceLocation,
+  asksNearbyPlace,
   asksPhysicalLocation,
   asksStreetViewHere,
   conversationCopyText,
@@ -400,6 +401,18 @@ test("asksDeviceLocation fires on a plain where-am-I ask (EN + SV, typo set)", (
   assert.equal(asksDeviceLocation(["var är vi på väg"]), false);
 });
 
+test("asksNearbyPlace: type word + nearby word requests the device location on a fresh chat", () => {
+  assert.equal(asksNearbyPlace("Gas station near e18 there"), true);
+  assert.equal(asksNearbyPlace("nearest pharmacy"), true);
+  assert.equal(asksNearbyPlace("närmaste bensinstation"), true);
+  assert.equal(asksNearbyPlace("finns det någon mack i närheten?"), true);
+  assert.equal(asksNearbyPlace("restaurants in Oslo"), false); // no nearby word
+  assert.equal(asksNearbyPlace("what is that there?"), false); // no type word
+  assert.equal(asksNearbyPlace(""), false);
+  // It rides into the conversation-level prefilter as a latest-turn shape.
+  assert.equal(asksDeviceLocation(["nearest gas station"]), true);
+});
+
 test("asksPhysicalLocation: explicit real-position asks only, EN + SV", () => {
   assert.equal(asksPhysicalLocation("street view at my actual location"), true);
   assert.equal(asksPhysicalLocation("show me where I actually am"), true);
@@ -422,8 +435,10 @@ test("asksDeviceLocation reads a short here-fragment against an earlier street-v
   assert.equal(asksDeviceLocation(["streer view", "use my location"]), true); // typo-tolerant SV word
   // No earlier street-view turn → a bare fragment stays silent.
   assert.equal(asksDeviceLocation(["My location"]), false);
-  // A LONG later sentence merely containing a here-word stays silent.
-  assert.equal(asksDeviceLocation(["street view", "what restaurants are here in the town center"]), false);
+  // A LONG later sentence merely containing a here-word stays silent (a
+  // place-TYPE word would make it a nearby-place ask instead — see
+  // asksNearbyPlace — so this negative uses a type-free phrase).
+  assert.equal(asksDeviceLocation(["street view", "what buildings are here in the town center"]), false);
   // Single-message here-asks still work unchanged.
   assert.equal(asksDeviceLocation(["street view here"]), true);
   assert.equal(asksDeviceLocation([]), false);
