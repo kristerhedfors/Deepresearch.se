@@ -394,6 +394,12 @@ what docs claim); and update the skill list below plus the skill's
   D1 `chat_logs`): pulling the latest live questions/answers/errors for
   debugging (`scripts/chatlogs`, `/api/admin/chatlogs`), the ghost
   (incognito) opt-out rule, and the row shape/truncation conventions.
+- **bugreport-bugfix** — the keyword-to-fix workflow for bug reports that
+  are just a chat keyword ("some recent chat about X failed to do Y"):
+  chatlogs keyword search, reading the meta counters, replaying the exact
+  logged message through the deterministic gates, fixing at the right
+  layer with the verbatim message as a regression test, and live
+  verification.
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.
