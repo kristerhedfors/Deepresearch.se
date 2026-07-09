@@ -39,7 +39,7 @@ a { color: #7fb4ff; }
 #tk-hud {
   position: fixed; top: 10px; left: 10px; right: 10px; z-index: 10;
   display: flex; align-items: center; gap: 12px;
-  background: rgba(16,20,24,.85); backdrop-filter: blur(8px);
+  background: rgba(16,20,24,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 8px 14px;
 }
 #tk-back { text-decoration: none; font-size: 20px; }
@@ -49,7 +49,7 @@ a { color: #7fb4ff; }
 #tk-bar {
   position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
   display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
-  background: rgba(16,20,24,.85); backdrop-filter: blur(8px);
+  background: rgba(16,20,24,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 8px;
   max-width: calc(100vw - 16px);
 }
@@ -108,8 +108,14 @@ a { color: #7fb4ff; }
 /* ---- Battle ---- */
 #tk-battle {
   position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-  background: rgba(6,8,10,.82); backdrop-filter: blur(4px); padding: 10px;
+  background: rgba(6,8,10,.82); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); padding: 10px;
 }
+/* The explicit display:flex above beats the `hidden` attribute's UA-level
+   display:none — without this override the (empty) overlay permanently
+   covers the whole game as a dark glass panel (reported on iPhone,
+   2026-07-09). Keep this rule next to any hidden-toggled element that
+   also sets its own display. */
+#tk-battle[hidden] { display: none; }
 .tk-battle-box {
   width: 100%; max-width: 560px; max-height: 96vh; overflow-y: auto;
   background: #131a21; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 14px;

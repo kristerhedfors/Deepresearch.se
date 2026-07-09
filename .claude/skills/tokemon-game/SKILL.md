@@ -91,6 +91,13 @@ power/acc/PP. Don't hand-tune numbers.
 
 ## Facts that cost time to establish
 
+- **The `hidden` attribute loses to any explicit `display`.** `#tk-battle`
+  sets `display:flex`, which beats the UA's `[hidden]{display:none}` — on
+  first ship the EMPTY battle overlay (dark glass + backdrop blur)
+  permanently covered the whole game (reported from an iPhone screenshot,
+  2026-07-09). Every hidden-toggled element that also sets its own
+  `display` needs an explicit `#el[hidden]{display:none}` companion rule.
+  iOS Safari also needs `-webkit-backdrop-filter` for the glass blur.
 - `Permissions-Policy` in `src/index.js` had `geolocation=()` — it now
   carries `geolocation=(self)` FOR the game. Don't "clean it up" back.
 - Spawn ids encode their derivation (`c:cx:cy:bucket:i`) — consuming a spawn
