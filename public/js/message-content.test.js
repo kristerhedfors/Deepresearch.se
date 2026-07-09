@@ -8,6 +8,7 @@ import {
   asksDeviceLocation,
   asksNearbyPlace,
   asksPhysicalLocation,
+  asksRelocation,
   asksStreetViewHere,
   conversationCopyText,
   deriveTitle,
@@ -423,6 +424,22 @@ test("asksCrossBarrier + teleport verbs request the device location when no live
   assert.equal(asksNearbyPlace("teleport to the gas station"), true);
   assert.equal(asksNearbyPlace("ta mig till närmaste mack"), true);
   assert.equal(asksDeviceLocation(["get to the other side of the railway"]), true);
+});
+
+test("asksRelocation + relocation fragments request the device location — the verbatim Hemköp report", () => {
+  // 2026-07-09, logged maps_intent "none": the server matchers were ready
+  // but the client never sent a location to anchor them.
+  assert.equal(asksRelocation("Lets go to hemköp stälet"), true);
+  assert.equal(asksRelocation("teleport to willys"), true);
+  assert.equal(asksRelocation("gå till ica maxi"), true);
+  assert.equal(asksRelocation("Legs go to coop"), true); // the adjacent-key typo opener
+  assert.equal(asksRelocation("when I go to the shop each week I usually take the bus home"), false); // prose
+  assert.equal(asksRelocation(""), false);
+  assert.equal(asksDeviceLocation(["Lets go to hemköp stälet"]), true);
+  // The follow-up fragment answering the clarify also needs the anchor.
+  assert.equal(asksDeviceLocation(["Lets go to hemköp stälet", "Hemköp stäket"]), true);
+  // A short fragment with NO recent relocation/nearby ask stays silent.
+  assert.equal(asksDeviceLocation(["tell me about semlor", "Hemköp stäket"]), false);
 });
 
 test("asksPhysicalLocation: explicit real-position asks only, EN + SV", () => {

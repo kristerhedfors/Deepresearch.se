@@ -151,10 +151,37 @@ export function asksDeviceLocation(userTexts) {
   const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
   const latest = texts[texts.length - 1] || "";
   if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest) || asksPhysicalLocation(latest)) return true;
-  if (asksNearbyPlace(latest) || asksCrossBarrier(latest)) return true;
+  if (asksNearbyPlace(latest) || asksCrossBarrier(latest) || asksRelocation(latest)) return true;
   const t = latest.trim();
   const isFragment = !!t && t.length <= 48 && t.split(/\s+/).length <= 4 && HERE_WORD_RE.test(t);
-  return isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev));
+  if (isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev))) return true;
+  // A short fragment right after a relocation/nearby ask continues it
+  // ("Lets go to hemköp stälet" → clarify → "Hemköp stäket" — verbatim
+  // 2026-07-09, logged maps_intent "none" because no location was sent):
+  // the server's pending-relocation matcher needs the anchor, so these
+  // fragments request the device location too.
+  const isShort = !!t && t.length <= 40 && t.split(/\s+/).length <= 3;
+  return (
+    isShort &&
+    texts
+      .slice(0, -1)
+      .slice(-6)
+      .some((prev) => asksRelocation(prev) || asksNearbyPlace(prev))
+  );
+}
+
+// A relocation ask aimed at a name or place ("Lets go to hemköp", "teleport
+// to willys", "gå till ica") — mirrors the server's extractRelocationQuery
+// gate loosely (the server is authoritative; junk like "go to sleep" is
+// rejected there): the message must START with an optional opener + a
+// relocation verb + to/till, and stay short. These need the device location
+// on a fresh chat exactly like the nearby asks — the verbatim 2026-07-09
+// report had the server matchers ready but anchor-less.
+const RELOCATION_START_RE =
+  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)\s+\S/iu;
+export function asksRelocation(text) {
+  const t = (typeof text === "string" ? text : "").trim();
+  return !!t && t.length <= 80 && t.split(/\s+/).length <= 8 && RELOCATION_START_RE.test(t);
 }
 
 // A NEARBY-place ask ("Gas station near e18 there", "närmaste mack") —
