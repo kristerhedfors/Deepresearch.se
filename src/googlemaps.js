@@ -864,6 +864,113 @@ function staticMapUrl(env, location) {
   return `${STATICMAP_URL}?${qs}`;
 }
 
+// A Static Maps image of the JOURNEY: numbered markers at every stop and a
+// straight-line path between them. No center/zoom — Static Maps auto-fits
+// to the path and markers. Billed like the other Static fetches (~$2/1k).
+export async function routeMapImage(env, log, points) {
+  const qs = new URLSearchParams({
+    size: STATICMAP_SIZE,
+    scale: "1",
+    format: "jpg",
+    maptype: "roadmap",
+    path: "color:0x2563ebff|weight:4|" + points.map((p) => `${p.lat},${p.lng}`).join("|"),
+    key: env.GOOGLE_MAPS_API_KEY,
+  });
+  points.forEach((p, i) => qs.append("markers", `label:${(i + 1) % 10}|${p.lat},${p.lng}`));
+  return fetchImageDataUrl(env, log, `${STATICMAP_URL}?${qs}`, "googlemaps.routemap_error");
+}
+
+// Along-road walking distance + duration over the journey's stops — Routes
+// API v2 computeRoutes, WALK mode, minimal field mask. This API must be
+// enabled on the key (routes.googleapis.com); when it isn't (or errors/
+// times out) this returns null and the journey block honestly reports the
+// straight-line numbers only — never a made-up walking time.
+const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
+const ROUTES_MAX_INTERMEDIATES = 8;
+export async function computeWalkingRoute(env, log, points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  try {
+    const wp = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
+    const resp = await fetch(ROUTES_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+      },
+      body: JSON.stringify({
+        origin: wp(points[0]),
+        destination: wp(points[points.length - 1]),
+        intermediates: points.slice(1, -1).slice(0, ROUTES_MAX_INTERMEDIATES).map(wp),
+        travelMode: "WALK",
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      log.warn("googlemaps.routes_error", { status: resp.status });
+      return null;
+    }
+    const data = await resp.json().catch(() => null);
+    const route = data?.routes?.[0];
+    const dist = Number(route?.distanceMeters);
+    const dur = typeof route?.duration === "string" ? Number(route.duration.replace(/s$/, "")) : NaN;
+    if (!Number.isFinite(dist) || dist <= 0) return null;
+    log.info("googlemaps.routes", { distance_m: dist });
+    return { distanceMeters: dist, durationS: Number.isFinite(dur) ? dur : null };
+  } catch (err) {
+    log.warn("googlemaps.routes_error", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+const fmtMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+
+// The labeled context block for the JOURNEY view ("show how we traveled"):
+// the visited positions ARE the conversation's own relocations, so the
+// block presents them as the journey confidently — the reported failure
+// was the model disclaiming that "no verified route" exists and refusing
+// to draw one. Pure — exported for unit tests.
+export function buildJourneyBlock(points, parts = {}) {
+  const total = points.length;
+  let straight = 0;
+  const lines = [
+    `The user asked to see how they traveled. This is the VIRTUAL journey of this conversation — the ${total} Street View/map positions visited, in order. ` +
+      "Present it AS the journey (these are the actual visited positions); do not disclaim it as unverified or refuse to draw it.",
+  ];
+  points.forEach((p, i) => {
+    const leg = i === 0 ? "" : ` — ${fmtMeters(distanceMeters(points[i - 1].lat, points[i - 1].lng, p.lat, p.lng))} from the previous stop (straight line)`;
+    if (i > 0) straight += distanceMeters(points[i - 1].lat, points[i - 1].lng, p.lat, p.lng);
+    const name = i === 0 && parts.startPlace ? ` (${parts.startPlace})` : i === total - 1 && parts.endPlace ? ` (${parts.endPlace})` : "";
+    const role = i === 0 ? "start" : i === total - 1 ? "current position" : `stop ${i + 1}`;
+    lines.push(`${i + 1}. ${role}: ${p.lat}, ${p.lng}${name}${leg}`);
+  });
+  lines.push(`Total straight-line distance along the stops: ≈${fmtMeters(straight)}.`);
+  if (parts.route) {
+    const mins = parts.route.durationS ? Math.max(1, Math.round(parts.route.durationS / 60)) : null;
+    lines.push(
+      `Along roads/paths (Google Routes, walking): ≈${fmtMeters(parts.route.distanceMeters)}${mins ? `, about ${mins} min on foot` : ""}.`,
+    );
+  } else {
+    lines.push(
+      "The along-road walking distance could not be computed this time (Routes API unavailable) — give the straight-line figures and say road distance would be somewhat longer; do NOT invent a walking time.",
+    );
+  }
+  const dirLink = `https://www.google.com/maps/dir/${points.map((p) => `${p.lat},${p.lng}`).join("/")}`;
+  lines.push(`Directions link through all stops: ${dirLink}`);
+  if (parts.mapShown) {
+    lines.push("A route map with the numbered stops and the path between them is displayed to the user directly beside this reply.");
+  }
+  if (parts.embedShown) {
+    lines.push("An interactive map of the journey is also displayed beside this reply.");
+  }
+  lines.push(
+    `ALWAYS include the directions link in your answer as a markdown link (e.g. [The route on Google Maps](${dirLink})).`,
+  );
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
+}
+
 // Cross-request lookup cache, the exact pattern src/exa.js uses for searches:
 // a follow-up turn is a SEPARATE /api/chat request, and the follow-up flow
 // above (pickLookup's walk-back) re-looks-up the SAME location on every

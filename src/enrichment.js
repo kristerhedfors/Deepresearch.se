@@ -15,14 +15,17 @@ import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conve
 import { getModelProfile } from "./model-profiles.js";
 import {
   buildCrossBarrierBlock,
+  buildJourneyBlock,
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
   buildNearbyPlacesBlock,
   buildPovBlock,
   compassDir,
+  computeWalkingRoute,
   googleMapsEmbedKey,
   placesNearbySearch,
+  routeMapImage,
   runBarrierCrossing,
   runGoogleMapsLookup,
   runMapViewCapture,
@@ -30,7 +33,7 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
+import { distanceMeters, hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
@@ -176,6 +179,12 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // panorama there, with a photo series of the virtual crossing.
   if (target.crossBarrier) {
     return runCrossBarrierEnrichment(env, log, emit, step, stepDone, conversation, state, target.crossBarrier, question);
+  }
+
+  // The JOURNEY view ("show how we traveled"): draw the conversation's
+  // visited positions as a route, with distances and walking time.
+  if (target.journey) {
+    return runJourneyEnrichment(env, log, emit, step, stepDone, conversation, state, target.journey);
   }
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
@@ -602,6 +611,61 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
       panoramaShown: embedKeyOk,
       description,
     }),
+  );
+}
+
+// The JOURNEY path ("Show how we traveled on maps" — requested 2026-07-09,
+// when the model listed coordinates and disclaimed that no travel trail
+// exists): the waypoints ARE the conversation's own relocations (parsed by
+// extractJourneyPoints from the mandated links in assistant turns), drawn
+// as a Static Maps route image (numbered markers + path, shown as a frames
+// strip), plus an interactive map embed carrying the path (the client
+// draws markers + polyline; older clients ignore the extra field — the
+// sse-protocol forward-compat rule), plus Google Routes walking distance/
+// time (fail-soft null → the block reports straight-line only, honestly).
+async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation, state, journey) {
+  step("maps", "Mapping the journey so far…");
+  const points = journey.points;
+  const [image, route, startPlace, endPlace] = await Promise.all([
+    routeMapImage(env, log, points).catch(() => null),
+    computeWalkingRoute(env, log, points),
+    reverseGeocode(env, log, points[0].lat, points[0].lng),
+    reverseGeocode(env, log, points[points.length - 1].lat, points[points.length - 1].lng),
+  ]);
+  state.mapsCount = 1;
+  if (image) {
+    emit({
+      status: {
+        type: "streetview_frames",
+        title: `Route — ${points.length} stops`,
+        query: "the journey so far",
+        frames: [{ dir: "", label: `the journey — ${points.length} stops`, url: image }],
+      },
+    });
+  }
+  const embedKeyOk = !!googleMapsEmbedKey(env);
+  if (embedKeyOk) {
+    const mid = {
+      lat: points.reduce((s, p) => s + p.lat, 0) / points.length,
+      lng: points.reduce((s, p) => s + p.lng, 0) / points.length,
+    };
+    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: points } });
+  }
+  let straight = 0;
+  for (let i = 1; i < points.length; i++) {
+    straight += distanceMeters(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+  }
+  const fmt = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  stepDone(
+    "maps",
+    `Journey mapped — ${points.length} stops`,
+    [
+      `≈${fmt(straight)} straight-line${route ? `, ≈${fmt(route.distanceMeters)} on foot` : ""}`,
+    ],
+  );
+  return withAppendedText(
+    conversation,
+    buildJourneyBlock(points, { route, startPlace, endPlace, mapShown: !!image, embedShown: embedKeyOk }),
   );
 }
 

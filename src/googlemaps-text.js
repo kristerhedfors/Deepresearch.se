@@ -422,6 +422,52 @@ const ACROSS_BARRIER_RE = new RegExp(
   "iu",
 );
 
+// ---- journey view ("show how we traveled") ------------------------------------
+
+// Requested 2026-07-09: after a session of relocations, "Show how we
+// traveled on maps" should draw the visited positions as a route — the
+// model instead listed coordinates with a disclaimer that no travel trail
+// exists. It does exist: every relocation answer carries the MANDATED
+// keyless coordinate links, so the journey is recoverable from the
+// conversation deterministically.
+const JOURNEY_ASK_RE =
+  /(?<![\p{L}\p{M}])(?:(?:show|draw|display|map|trace|plot|visa|rita|kartlägg|kartlagg)(?![\p{L}\p{M}])[\s\S]{0,40}?(?:how\s+(?:we|i)\s+(?:traveled|travelled|moved|went|got\s+here)|(?:our|my|the)\s+(?:route|path|journey|trail|trip|travels?|way\s+here)|hur\s+(?:vi|jag)\s+(?:åkte|akte|reste|rörde\s+(?:oss|mig)|rorde\s+(?:oss|mig)|tog\s+(?:oss|mig)|kom\s+hit|färdades|fardades)|(?:vår|var|min|hela)\s+(?:rutt(?:en)?|resa(?:n)?|färd(?:en)?|fard(?:en)?)|rutt(?:en)?|resan|färden|farden)|how\s+did\s+(?:we|i)\s+(?:travel|get\s+here)|hur\s+(?:åkte|akte|reste)\s+(?:vi|jag)|hur\s+kom\s+(?:vi|jag)\s+hit)(?![\p{L}\p{M}])/iu;
+export function journeyAsk(text) {
+  return JOURNEY_ASK_RE.test(typeof text === "string" ? text : "");
+}
+
+// The coordinates every Maps block MANDATES into the answers: the keyless
+// Google links (query=LAT,LNG / viewpoint=LAT,LNG) and the embed reference
+// lines ("panorama at LAT, LNG"). Assistant turns only — user text quoting
+// a coordinate must not fabricate a stop.
+const JOURNEY_COORD_RE =
+  /(?:[?&]query=|viewpoint=|panorama at )(-?\d{1,2}\.\d{3,}),\s?(-?\d{1,3}\.\d{3,})/g;
+// Consecutive stops closer than this are the same position (an answer's
+// query= and viewpoint= links repeat the same point).
+const JOURNEY_DEDUP_M = 20;
+const JOURNEY_MAX_POINTS = 12;
+
+// Walks the ASSISTANT turns in order and returns the journey's waypoints
+// ([{lat,lng}...], oldest first, consecutive duplicates collapsed, capped
+// to the most recent JOURNEY_MAX_POINTS). Pure and exported for tests.
+export function extractJourneyPoints(conversation) {
+  const points = [];
+  for (const m of Array.isArray(conversation) ? conversation : []) {
+    if (m?.role !== "assistant") continue;
+    const text = textOf(m.content);
+    for (const hit of text.matchAll(JOURNEY_COORD_RE)) {
+      const lat = Number(hit[1]);
+      const lng = Number(hit[2]);
+      if (!Number.isFinite(lat) || lat < -90 || lat > 90) continue;
+      if (!Number.isFinite(lng) || lng < -180 || lng > 180) continue;
+      const prev = points[points.length - 1];
+      if (prev && distanceMeters(prev.lat, prev.lng, lat, lng) < JOURNEY_DEDUP_M) continue;
+      points.push({ lat, lng });
+    }
+  }
+  return points.slice(-JOURNEY_MAX_POINTS);
+}
+
 // Returns { barrier } for a cross-barrier relocation ask, else null. A
 // relocation/travel verb makes any phrasing count; verb-less phrasings
 // must be short commands ("other side of the tracks"), so prose that
@@ -876,6 +922,14 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   const latest = textOf(users[users.length - 1]?.content);
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
+  // "Show how we traveled" — the journey view. Needs no anchor: the
+  // waypoints come from the mandated coordinate links in the ASSISTANT
+  // turns, so this works even after the live view was closed. Fewer than
+  // two distinct stops → nothing to draw, fall through.
+  if (journeyAsk(latest)) {
+    const points = extractJourneyPoints(conversation);
+    if (points.length >= 2) return { coords: "", address: "", journey: { points }, followUp: true };
+  }
   // Jumps from the live/current position. The anchor, most view-specific
   // first: the panorama (has a heading, so "along this road" works), the
   // interactive map's center, the device's reported location. EXCEPTION

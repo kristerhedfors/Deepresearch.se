@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildCrossBarrierBlock,
+  buildJourneyBlock,
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
@@ -21,12 +22,14 @@ import {
   extractCrossBarrierAsk,
   extractLocalityFix,
   extractNamedPlaceQuery,
+  extractJourneyPoints,
   extractNearbyPlaceQuery,
   extractPlace,
   extractPlaceQuery,
   extractRelativeMove,
   hereAskIntent,
   hereFragmentAnswer,
+  journeyAsk,
   matchAddressFragment,
   movePoint,
   physicalLocationAsk,
@@ -1204,6 +1207,100 @@ describe("cross-barrier relocations — the verbatim 'Get to the other side of t
     assert.match(block, /never invent a view or a destination/);
     assert.match(block, /interactive Google Map of the current area/);
     assert.match(block, /VIRTUAL Street View panorama navigation/);
+  });
+});
+
+describe("journey view — the verbatim 'Show how we traveled on maps' request (2026-07-09)", () => {
+  // Assistant turns shaped like the real transcript: every relocation
+  // answer carries the mandated keyless links.
+  const convo = [
+    { role: "user", content: "Where am i" },
+    {
+      role: "assistant",
+      content:
+        "You appear to be in Nyboda, Stäket.\n" +
+        "[View on Google Maps](https://www.google.com/maps/search/?api=1&query=59.45656464541731,17.80098981082323) · " +
+        "[Open Street View](https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=59.45656464541731,17.80098981082323)",
+    },
+    { role: "user", content: "Forward 100m" },
+    {
+      role: "assistant",
+      content:
+        "You're now about 100 m southeast.\n" +
+        "[View on Google Maps](https://www.google.com/maps/search/?api=1&query=59.45500465830343,17.80271919031539)\n" +
+        "[Embedded element #2: interactive Google Street View panorama at 59.45500465830343, 17.80271919031539]",
+    },
+    { role: "user", content: "Jump to other side of railway" },
+    {
+      role: "assistant",
+      content:
+        "You've been virtually relocated near Bolinder strand.\n" +
+        "[View on Google Maps](https://www.google.com/maps/search/?api=1&query=59.45343107809868,17.79708567685437)",
+    },
+    { role: "user", content: "Show how we traveled on maps" },
+  ];
+
+  test("journeyAsk: EN + SV forms, interrogatives, and negatives", () => {
+    assert.equal(journeyAsk("Show how we traveled on maps"), true);
+    assert.equal(journeyAsk("show our route"), true);
+    assert.equal(journeyAsk("draw the path we took on the map"), true);
+    assert.equal(journeyAsk("show the route"), true);
+    assert.equal(journeyAsk("how did we get here?"), true);
+    assert.equal(journeyAsk("visa rutten"), true);
+    assert.equal(journeyAsk("visa hur vi åkte"), true);
+    assert.equal(journeyAsk("rita vår färd på kartan"), true);
+    assert.equal(journeyAsk("hur kom vi hit?"), true);
+    assert.equal(journeyAsk("show me the gas station"), false);
+    assert.equal(journeyAsk("what is the best route between Stockholm and Oslo"), false);
+    assert.equal(journeyAsk(""), false);
+  });
+
+  test("extractJourneyPoints walks assistant turns, dedupes same-position links, ignores user text", () => {
+    const points = extractJourneyPoints(convo);
+    assert.deepEqual(points, [
+      { lat: 59.45656464541731, lng: 17.80098981082323 }, // query= and viewpoint= collapse to one stop
+      { lat: 59.45500465830343, lng: 17.80271919031539 }, // link + embed-ref line collapse too
+      { lat: 59.45343107809868, lng: 17.79708567685437 },
+    ]);
+    // User-quoted coordinates never fabricate a stop.
+    assert.deepEqual(extractJourneyPoints([{ role: "user", content: "query=59.1,17.1 viewpoint=59.2,17.2" }]), []);
+  });
+
+  test("pickLookup routes the verbatim ask to the journey view; a single stop falls through", () => {
+    const out = pickLookup(convo, []);
+    assert.equal(out.followUp, true);
+    assert.equal(out.journey.points.length, 3);
+    const oneStop = [convo[1], { role: "user", content: "Show how we traveled on maps" }];
+    assert.equal(pickLookup(oneStop, []), null);
+  });
+
+  test("buildJourneyBlock: confident journey framing, legs, totals, walking time, directions link", () => {
+    const points = extractJourneyPoints(convo);
+    const block = buildJourneyBlock(points, {
+      route: { distanceMeters: 1500, durationS: 1080 },
+      startPlace: "Nyboda, Stäket",
+      endPlace: "Bolinder strand, Järfälla",
+      mapShown: true,
+      embedShown: true,
+    });
+    // The reported failure: the model disclaimed "no verified route".
+    assert.match(block, /Present it AS the journey/);
+    assert.match(block, /do not disclaim it as unverified/);
+    assert.match(block, /1\. start: 59\.45656464541731, 17\.80098981082323 \(Nyboda, Stäket\)/);
+    assert.match(block, /3\. current position: .*\(Bolinder strand, Järfälla\).*from the previous stop \(straight line\)/);
+    assert.match(block, /Total straight-line distance along the stops: ≈/);
+    assert.match(block, /Along roads\/paths \(Google Routes, walking\): ≈1\.5 km, about 18 min on foot/);
+    assert.match(block, /Directions link through all stops: https:\/\/www\.google\.com\/maps\/dir\/59\.45656464541731,17\.80098981082323\//);
+    assert.match(block, /route map with the numbered stops/);
+    assert.match(block, /ALWAYS include the directions link/);
+    assert.ok(!block.includes("key="));
+  });
+
+  test("buildJourneyBlock without a Routes result stays honest about walking time", () => {
+    const points = [{ lat: 59.1, lng: 17.1 }, { lat: 59.2, lng: 17.2 }];
+    const block = buildJourneyBlock(points, {});
+    assert.match(block, /could not be computed this time/);
+    assert.match(block, /do NOT invent a walking time/);
   });
 });
 

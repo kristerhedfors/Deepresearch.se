@@ -305,6 +305,25 @@ export function renderMapEmbed(turn, s) {
         fullscreenControl: true,
       });
       if (s.q && maps.Marker) new maps.Marker({ position: { lat, lng }, map, title: s.q });
+      // A journey (map_embed's optional `path` field — the "show how we
+      // traveled" view): numbered markers at every stop, a polyline
+      // between them, and the viewport fitted to the whole route. Clients
+      // that don't know the field render the same event as a plain
+      // centered map (the sse-protocol forward-compat rule).
+      const path = Array.isArray(s.path)
+        ? s.path
+            .map((p) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))
+            .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        : [];
+      if (path.length >= 2 && maps.Polyline) {
+        new maps.Polyline({ path, map, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeWeight: 4 });
+        if (maps.Marker) path.forEach((p, i) => new maps.Marker({ position: p, map, label: String((i + 1) % 10) }));
+        if (maps.LatLngBounds) {
+          const bounds = new maps.LatLngBounds();
+          path.forEach((p) => bounds.extend(p));
+          map.fitBounds(bounds);
+        }
+      }
       // Track the CURRENT view on "idle" (fires once per settled pan/zoom).
       // Rounded (~1m / integer zoom) so re-asking about the same area hits
       // the server's capture cache instead of re-billing a Static fetch.

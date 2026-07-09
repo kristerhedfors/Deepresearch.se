@@ -703,6 +703,30 @@ call, alongside the Shodan enrichment).
     VIRTUAL navigation — no real-world safety/route guidance. Fail-soft:
     no gap-then-coverage found → honest block + map embed, never an
     invented view.
+- **The journey view — "show how we traveled"** (requested 2026-07-09,
+  after the model answered it with a coordinate list and a "no verified
+  route" disclaimer). The waypoints ARE recoverable deterministically:
+  every Maps block MANDATES keyless coordinate links into the answers, so
+  `extractJourneyPoints` (googlemaps-text.js) parses `query=`/`viewpoint=`
+  links and embed-ref lines from the ASSISTANT turns (user-quoted coords
+  never count), collapsing same-position duplicates (<20m), capped to the
+  last 12 stops. `journeyAsk` is the gate (EN + SV: "show how we
+  traveled", "visa rutten", "hur kom vi hit") — needs NO anchor, ≥2 stops.
+  `runJourneyEnrichment` renders it three ways at once: a Static Maps
+  ROUTE IMAGE (numbered markers + path, auto-fit — `routeMapImage`) shown
+  as a frames strip; an interactive `map_embed` carrying the new optional
+  `path` field (the client draws markers + polyline + fitBounds; older
+  clients show a plain map — sse-protocol forward-compat); and
+  `buildJourneyBlock` with per-leg + total straight-line distances
+  (`distanceMeters`), Google **Routes API v2** walking distance/time
+  (`computeWalkingRoute` — computeRoutes, WALK, minimal field mask; the
+  API must be enabled on the server key, and a failure degrades to an
+  honest straight-line-only block that forbids inventing a walking time),
+  reverse-geocoded start/end names, and a mandated keyless
+  `google.com/maps/dir/...` directions link through all stops. The block
+  explicitly instructs the model to present it AS the journey — the
+  visited positions are the conversation's own relocations, not
+  unverifiable estimates.
 - **The map view has full panorama parity on follow-ups** (same day,
   follow-up request): the client tracks the live map's center/zoom and
   sends it as `body.map_view` (validated by `validateMapView`); a
