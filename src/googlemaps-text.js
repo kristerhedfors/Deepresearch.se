@@ -562,15 +562,20 @@ export function referencesStreetViewScene(text) {
 
 // Compass words → bearing degrees (EN + SV incl. the "-ut" adverb forms).
 // 8-point names FIRST: "northeast" must not read as "north" + junk.
+// Diacritic-less Swedish variants (soderut, vasterut) ride along — users on
+// non-Swedish keyboards type them routinely, the same reality the
+// diacritics-insensitive address-fragment matching already handles. Bare
+// "vast"/"ost" (English words / cheese) are deliberately NOT included —
+// only the unambiguous -ut adverb and -er forms.
 const COMPASS_WORDS = [
   ["north[- ]?east|nordost(?:ut)?|nordöst(?:ut)?", 45],
   ["south[- ]?east|sydost(?:ut)?|sydöst(?:ut)?", 135],
-  ["south[- ]?west|sydväst(?:ut)?", 225],
-  ["north[- ]?west|nordväst(?:ut)?", 315],
+  ["south[- ]?west|sydväst(?:ut)?|sydvast(?:ut)?", 225],
+  ["north[- ]?west|nordväst(?:ut)?|nordvast(?:ut)?", 315],
   ["north|norrut|norr", 0],
-  ["south|söderut|söder|syd", 180],
-  ["east|österut|öster|öst", 90],
-  ["west|västerut|väster|väst", 270],
+  ["south|söderut|söder|soderut|soder|syd", 180],
+  ["east|österut|öster|osterut|oster|öst", 90],
+  ["west|västerut|väster|vasterut|vaster|väst", 270],
 ];
 const COMPASS_RES = COMPASS_WORDS.map(([words, bearing]) => ({
   re: new RegExp(`(?<![\\p{L}\\p{M}])(?:${words})(?![\\p{L}\\p{M}])`, "iu"),
@@ -582,15 +587,22 @@ const COMPASS_RES = COMPASS_WORDS.map(([words, bearing]) => ({
 const DISTANCE_RE = /(\d+(?:[.,]\d+)?)\s*(km|kilomet(?:er|re)s?|m|met(?:er|re)s?|meter)\b/iu;
 // Facing-relative words: "along this road", "down the street", "ahead",
 // "framåt", "rakt fram", "längs vägen" — meaningful only from a panorama,
-// whose heading says which way "along" IS.
+// whose heading says which way "along" IS. The forward word takes an
+// enumerated misspelling set like the street-view word does (reported
+// verbatim 2026-07-09: "Forwsrd 200m" mid-panorama fired nothing and the
+// model asked for GPS coordinates one turn after a successful "Forward
+// 100m"), plus diacritic-less Swedish (framat, langre fram, folj vagen).
 const FORWARD_RE =
-  /(?<![\p{L}\p{M}])(?:along|down|up)\s+(?:this|the|that|samma)?\s*(?:road|street|way)|(?<![\p{L}\p{M}])(?:ahead|forwards?|further|onwards?|straight on|längs\s+(?:den här\s+|denna\s+|samma\s+)?(?:vägen|gatan)|längre fram|följ\s+(?:vägen|gatan)|(?:uppför|nerför|nedför)\s+(?:gatan|vägen)|framåt|rakt fram|vidare)(?![\p{L}\p{M}])/iu;
-const BACK_RE = /(?<![\p{L}\p{M}])(?:back(?:wards?)?|behind (?:me|us)|bakåt|tillbaka|backa)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:along|down|up)\s+(?:this|the|that|samma)?\s*(?:road|street|way)|(?<![\p{L}\p{M}])(?:ahead|ahed|forw[sa]rds?|fowards?|forwads?|forwrds?|further|onwards?|straight on|(?:längs|langs)\s+(?:den här\s+|denna\s+|samma\s+)?(?:vägen|gatan|vagen)|längre fram|langre fram|(?:följ|folj)\s+(?:vägen|gatan|vagen)|(?:uppför|nerför|nedför|uppfor|nerfor|nedfor)\s+(?:gatan|vägen|vagen)|framåt|framat|rakt fram|vidare)(?![\p{L}\p{M}])/iu;
+const BACK_RE =
+  /(?<![\p{L}\p{M}])(?:back(?:wards?)?|bakwards?|behind (?:me|us)|bakåt|bakat|tillbaka|tilbaka|tillbaks|backa)(?![\p{L}\p{M}])/iu;
 // A movement/show verb — the anti-overfire requirement for bare compass
 // moves ("the shop is 100 meters north of the station" while a map is open
 // must NOT jump; "go 100 meters north" / a short bare "100 m north" must).
+// Diacritic-less Swedish forms included (ga, fortsatt, oppna) — safe here
+// because the verb only ever fires alongside a matched distance + compass.
 const MOVE_VERB_RE =
-  /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|fortsätt|hoppa|ta mig|visa|öppna|flytta|förflytta|promenera)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|ga|fortsätt|fortsatt|hoppa|ta mig|visa|öppna|oppna|flytta|förflytta|forflytta|promenera)(?![\p{L}\p{M}])/iu;
 
 const clampMeters = (n) => Math.max(5, Math.min(3000, Math.round(n)));
 
@@ -624,7 +636,7 @@ export function extractRelativeMove(text) {
 // position ("street view here", "popup street view at my current location",
 // "gatuvy här", "öppna gatuvy där jag är") — no address, no place name.
 const HERE_RE =
-  /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:location|position)|där jag är|var jag är|min (?:nuvarande )?(?:position|plats)|nuvarande (?:plats|läge)|denna plats|den här platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:actual |real |physical |current |own )?(?:location|position)|där jag (?:faktiskt |egentligen )?är|var jag är|min (?:nuvarande |faktiska |riktiga |verkliga |fysiska )?(?:position|plats)|nuvarande (?:plats|läge)|denna plats|den här platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
 export function streetViewHereIntent(text) {
   const t = typeof text === "string" ? text : "";
   return streetViewIntent(t) && HERE_RE.test(t);
@@ -660,16 +672,33 @@ export function hereFragmentAnswer(text) {
   return HERE_RE.test(t);
 }
 
+// An EXPLICIT reference to the user's PHYSICAL location ("my actual
+// location", "where I actually am", "min faktiska plats", "där jag
+// faktiskt är"). Requested 2026-07-09: once a live panorama/map exists,
+// follow-ups anchor to IT — moving around the map must not snap back to
+// the device — so the device location only wins the anchor again when the
+// user says they mean their real position, not the view they've navigated
+// to. This gate is that say-so; it also makes the client re-request the
+// device location even while a live view exists (message-content.js
+// mirrors it).
+const PHYSICAL_LOCATION_RE =
+  /(?<![\p{L}\p{M}])(?:my (?:actual|real|physical|true|own) (?:location|position)|where i (?:actually|really) am|min (?:faktiska|riktiga|verkliga|fysiska|egna) (?:plats|position)|där jag (?:faktiskt|egentligen) är|var jag faktiskt är)(?![\p{L}\p{M}])/iu;
+export function physicalLocationAsk(text) {
+  return PHYSICAL_LOCATION_RE.test(typeof text === "string" ? text : "");
+}
+
 // The full here-ask decision for the latest turn: an explicit street-view-
-// here ask, a plain where-am-I ask, or a here-fragment answering an earlier
-// street-view turn. Shared by pickLookup's jump gate and — via the exported
-// conversation-level wrapper below — enrichment.js, which phrases the
-// unresolved note as "allow location access" instead of "which address?"
-// when the device location never arrived.
+// here ask, a plain where-am-I ask, an explicit physical-location ask, or
+// a here-fragment answering an earlier street-view turn. Shared by
+// pickLookup's jump gate and — via the exported conversation-level wrapper
+// below — enrichment.js, which phrases the unresolved note as "allow
+// location access" instead of "which address?" when the device location
+// never arrived.
 function isHereAsk(latest, users) {
   return (
     streetViewHereIntent(latest) ||
     whereAmIIntent(latest) ||
+    physicalLocationAsk(latest) ||
     (conversationAsksStreetView(users) && hereFragmentAnswer(latest))
   );
 }
@@ -741,14 +770,21 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   if (address) return { coords: "", address };
   // Jumps from the live/current position. The anchor, most view-specific
   // first: the panorama (has a heading, so "along this road" works), the
-  // interactive map's center, the device's reported location.
-  const anchor = pov
-    ? { lat: pov.lat, lng: pov.lng, heading: pov.heading, hasHeading: true }
-    : mapView
-      ? { lat: mapView.lat, lng: mapView.lng, heading: 0, hasHeading: false }
-      : userLocation
-        ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
-        : null;
+  // interactive map's center, the device's reported location. EXCEPTION
+  // (requested 2026-07-09): an explicit physical-location ask ("my actual
+  // location", "min faktiska plats") flips the precedence — the user has
+  // navigated the view somewhere else and is saying they mean their real
+  // position, so the device location outranks the live view.
+  const anchor =
+    physicalLocationAsk(latest) && userLocation
+      ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
+      : pov
+        ? { lat: pov.lat, lng: pov.lng, heading: pov.heading, hasHeading: true }
+        : mapView
+          ? { lat: mapView.lat, lng: mapView.lng, heading: 0, hasHeading: false }
+          : userLocation
+            ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
+            : null;
   if (anchor) {
     const move = extractRelativeMove(latest);
     // Facing-relative moves ("along this road", "back") need a heading —

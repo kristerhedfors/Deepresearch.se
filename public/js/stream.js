@@ -43,6 +43,7 @@ import {
 import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
   asksDeviceLocation,
+  asksPhysicalLocation,
   conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
@@ -896,10 +897,16 @@ export async function sendMessage(text, opts) {
     // "my location" answer to an earlier street-view turn) with NO live
     // view on screen to anchor to: ask the browser for the device's
     // location (the permission prompt fires for exactly these asks,
-    // nothing else) and send it as the jump anchor. Fail-soft:
+    // nothing else) and send it as the jump anchor. EXCEPTION: an explicit
+    // PHYSICAL-location ask ("my actual location", "min faktiska plats")
+    // sends it even while a live view exists — the user has navigated the
+    // view elsewhere and means their real position, and the server flips
+    // the anchor precedence accordingly (pickLookup). Fail-soft:
     // denied/unavailable/timeout sends nothing and the server honestly
     // asks for location access instead.
-    if (!streetViewPov && !mapView && asksDeviceLocation(userTexts(history))) {
+    const texts = userTexts(history);
+    const latestText = texts[texts.length - 1] || "";
+    if (asksPhysicalLocation(latestText) || (!streetViewPov && !mapView && asksDeviceLocation(texts))) {
       const loc = await deviceLocation();
       if (loc) payload.user_location = loc;
     }

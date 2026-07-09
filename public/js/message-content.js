@@ -127,7 +127,7 @@ function blockRefName(name) {
 // unit-tested.
 const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy(?:n)?|gatubild(?:en)?)/iu;
 const HERE_WORD_RE =
-  /(?<![\p{L}\p{M}])(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|var\s+jag\s+är|min\s+(?:nuvarande\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:here|current\s+(?:location|position|spot)|my\s+(?:actual\s+|real\s+|physical\s+|current\s+|own\s+)?(?:location|position)|där\s+jag\s+(?:faktiskt\s+|egentligen\s+)?är|var\s+jag\s+är|min\s+(?:nuvarande\s+|faktiska\s+|riktiga\s+|verkliga\s+|fysiska\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
 export function asksStreetViewHere(text) {
   const t = typeof text === "string" ? text : "";
   return SV_WORD_RE.test(t) && HERE_WORD_RE.test(t);
@@ -150,10 +150,23 @@ const WHERE_AM_I_RE =
 export function asksDeviceLocation(userTexts) {
   const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
   const latest = texts[texts.length - 1] || "";
-  if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest)) return true;
+  if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest) || asksPhysicalLocation(latest)) return true;
   const t = latest.trim();
   const isFragment = !!t && t.length <= 48 && t.split(/\s+/).length <= 4 && HERE_WORD_RE.test(t);
   return isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev));
+}
+
+// An EXPLICIT reference to the user's PHYSICAL location ("my actual
+// location", "min faktiska plats") — mirrors the server's
+// PHYSICAL_LOCATION_RE (src/googlemaps-text.js). Unlike the other here-ask
+// shapes, this one requests the device location EVEN WHILE a live
+// panorama/map exists: the user has navigated the view elsewhere and is
+// saying they mean their real position (stream.js consults this
+// separately, outside the no-live-view guard).
+const PHYSICAL_LOCATION_RE =
+  /(?<![\p{L}\p{M}])(?:my\s+(?:actual|real|physical|true|own)\s+(?:location|position)|where\s+i\s+(?:actually|really)\s+am|min\s+(?:faktiska|riktiga|verkliga|fysiska|egna)\s+(?:plats|position)|där\s+jag\s+(?:faktiskt|egentligen)\s+är|var\s+jag\s+faktiskt\s+är)(?![\p{L}\p{M}])/iu;
+export function asksPhysicalLocation(text) {
+  return PHYSICAL_LOCATION_RE.test(typeof text === "string" ? text : "");
 }
 
 // One embedded element's reference line. `e` is a convEmbeds entry

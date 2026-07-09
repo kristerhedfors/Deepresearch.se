@@ -600,7 +600,12 @@ call, alongside the Shodan enrichment).
   regex + direction: facing-relative "along this road"/"ahead"/"framåt"
   words need no verb; bare compass moves — "100 m norrut" — need a move
   verb OR a ≤6-word message so prose like "the shop is 100 meters north of
-  the station" never jumps; distances clamp 5–3000m, km supported), and
+  the station" never jumps; distances clamp 5–3000m, km supported; the
+  move/direction words carry an enumerated TYPO set + diacritic-less
+  Swedish — "Forwsrd 200m" reported verbatim 2026-07-09: it fired nothing
+  one turn after a successful "Forward 100m" and the model asked for GPS
+  mid-panorama — foward/forwsrd/ahed, framat/langre fram/soderut/vasterut,
+  same convention as the street-view word), and
   `movePoint` (equirectangular destination math). `pickLookup` checks
   jumps between the address extract and the free-text place query (so "at
   my current location" is never sent to Places as a place name), anchored
@@ -624,7 +629,16 @@ call, alongside the Shodan enrichment).
   is the exported conversation-level gate `enrichment.js` uses so a
   here-ask arriving with NO device location gets the "allow location
   access" unresolved note (never "which address?", never invented
-  enable-in-Settings steps). `runJumpEnrichment` finds the nearest
+  enable-in-Settings steps). **Anchor precedence: the live view wins;
+  the device only comes back on an explicit physical-location ask**
+  (requested 2026-07-09): once a panorama/map is live, moves and
+  here-asks continue from IT — the device location is only the anchor
+  again when the message says so (`physicalLocationAsk`: "my actual/real
+  location", "where I actually am", "min faktiska plats", "där jag
+  faktiskt är"), which flips pickLookup's anchor order AND makes the
+  client request geolocation even while a live view exists
+  (`asksPhysicalLocation`, consulted outside the no-live-view guard).
+  `runJumpEnrichment` finds the nearest
   panorama (150m search), captures one frame facing the travel bearing
   (cached via the POV capture), vision-describes it, emits a fresh
   `streetview_embed` at the destination (locking superseded embeds), and

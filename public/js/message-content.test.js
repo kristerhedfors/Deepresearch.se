@@ -5,6 +5,7 @@ import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
   asksDeviceLocation,
+  asksPhysicalLocation,
   asksStreetViewHere,
   conversationCopyText,
   deriveTitle,
@@ -397,6 +398,20 @@ test("asksDeviceLocation fires on a plain where-am-I ask (EN + SV, typo set)", (
   assert.equal(asksDeviceLocation(["where are we going with this"]), false);
   assert.equal(asksDeviceLocation(["where am i going wrong here in the code"]), false);
   assert.equal(asksDeviceLocation(["var är vi på väg"]), false);
+});
+
+test("asksPhysicalLocation: explicit real-position asks only, EN + SV", () => {
+  assert.equal(asksPhysicalLocation("street view at my actual location"), true);
+  assert.equal(asksPhysicalLocation("show me where I actually am"), true);
+  assert.equal(asksPhysicalLocation("gatuvy min faktiska plats"), true);
+  assert.equal(asksPhysicalLocation("visa där jag faktiskt är"), true);
+  // Plain here-words are NOT physical — they keep anchoring to the live view.
+  assert.equal(asksPhysicalLocation("street view here"), false);
+  assert.equal(asksPhysicalLocation("my location"), false);
+  assert.equal(asksPhysicalLocation("min plats"), false);
+  assert.equal(asksPhysicalLocation(""), false);
+  // A physical ask also counts as a device-location ask outright.
+  assert.equal(asksDeviceLocation(["show me my actual location"]), true);
 });
 
 test("asksDeviceLocation reads a short here-fragment against an earlier street-view turn", () => {

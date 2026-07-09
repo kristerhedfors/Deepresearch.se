@@ -24,6 +24,7 @@ import {
   hereFragmentAnswer,
   matchAddressFragment,
   movePoint,
+  physicalLocationAsk,
   pickLookup,
   referencesStreetView,
   referencesStreetViewScene,
@@ -993,6 +994,54 @@ describe("pickLookup — street-view jumps", () => {
     const convo = [{ role: "user", content: "go 200 meters north" }];
     assert.equal(pickLookup(convo, []), null);
   });
+
+  test("'Forwsrd 200m' — the verbatim typo report (2026-07-09) still moves from the live panorama", () => {
+    // Reported: "Forward 100m" worked, then "Forwsrd 200m" fired nothing
+    // and the model asked for GPS coordinates mid-panorama.
+    assert.deepEqual(extractRelativeMove("Forwsrd 200m"), { meters: 200, mode: "forward", dir: "forward" });
+    const convo = [
+      { role: "user", content: "Where am i" },
+      { role: "user", content: "Forward 100m" },
+      { role: "user", content: "Forwsrd 200m" },
+    ];
+    const out = pickLookup(convo, [], pov);
+    assert.ok(out?.jump, "expected a jump from the live panorama");
+    assert.equal(out.jump.meters, 200);
+    assert.equal(out.jump.heading, pov.heading); // continues the view's facing
+  });
+
+  test("forward/back typo set: foward / forwad / ahed / bakat / tilbaka", () => {
+    assert.equal(extractRelativeMove("foward 100 m")?.mode, "forward");
+    assert.equal(extractRelativeMove("forwad 100m")?.mode, "forward");
+    assert.equal(extractRelativeMove("100 m ahed")?.mode, "forward");
+    assert.equal(extractRelativeMove("50 m bakat")?.mode, "back");
+    assert.equal(extractRelativeMove("tilbaka 50 meter")?.mode, "back");
+  });
+
+  test("an explicit PHYSICAL-location ask flips the anchor back to the device", () => {
+    // Requested 2026-07-09: follow-ups continue from the live view; the
+    // device location only wins again when the user says they mean their
+    // real position.
+    const userLocation = { lat: 59.45, lng: 17.8, zoom: 17 };
+    const physical = [{ role: "user", content: "street view at my actual location" }];
+    const out = pickLookup(physical, [], pov, null, userLocation);
+    assert.deepEqual(out.jump, { lat: 59.45, lng: 17.8, heading: 0, meters: 0, dir: "here" });
+    // Without the physical wording, the live panorama still wins.
+    const plain = [{ role: "user", content: "street view here" }];
+    const fromPov = pickLookup(plain, [], pov, null, userLocation);
+    assert.deepEqual(fromPov.jump, { lat: pov.lat, lng: pov.lng, heading: pov.heading, meters: 0, dir: "here" });
+    // Physical wording without a device location degrades to the live view
+    // (the client will have requested it, but it can still be denied).
+    const noDevice = pickLookup(physical, [], pov);
+    assert.deepEqual(noDevice.jump, { lat: pov.lat, lng: pov.lng, heading: pov.heading, meters: 0, dir: "here" });
+  });
+
+  test("physicalLocationAsk is a here-ask on its own (unresolved-note path)", () => {
+    assert.equal(physicalLocationAsk("show me my actual location"), true);
+    assert.equal(physicalLocationAsk("where i actually am"), true);
+    assert.equal(physicalLocationAsk("my location"), false); // plain here-word, not physical
+    assert.equal(hereAskIntent([{ role: "user", content: "show me my actual location" }]), true);
+  });
 });
 
 describe("here-asks across turns — the verbatim 'Where am i now' conversation (2026-07-09)", () => {
@@ -1183,6 +1232,19 @@ describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedis
     assert.equal(out?.jump?.dir, "here");
     assert.equal(hereFragmentAnswer("här"), true);
     assert.equal(hereFragmentAnswer("min position"), true);
+  });
+
+  test("diacritic-less Swedish moves: soderut / vasterut / framat / fortsatt / ga", () => {
+    assert.deepEqual(extractRelativeMove("flytta 100 m soderut"), { meters: 100, mode: "bearing", bearing: 180, dir: "south" });
+    assert.deepEqual(extractRelativeMove("ga 100 m vasterut"), { meters: 100, mode: "bearing", bearing: 270, dir: "west" });
+    assert.equal(extractRelativeMove("100 m framat")?.mode, "forward");
+    assert.equal(extractRelativeMove("fortsatt 200 meter langre fram")?.mode, "forward");
+  });
+
+  test("physical-location ask: min faktiska plats / där jag faktiskt är", () => {
+    assert.equal(physicalLocationAsk("gatuvy min faktiska plats"), true);
+    assert.equal(physicalLocationAsk("visa där jag faktiskt är"), true);
+    assert.equal(physicalLocationAsk("min plats"), false);
   });
 });
 
