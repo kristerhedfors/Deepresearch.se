@@ -229,6 +229,115 @@ export function extractPlaceQuery(text) {
   return q.slice(0, MAX_LOCATION_CHARS);
 }
 
+// ---- named-place visual questions (no street-view keyword, no address) -------
+
+// A visual question about a NAMED PLACE — "There is a fast food restaurant in
+// Uppsala, Sweden called ”Rosa Pantern”. What's the color of the building
+// across the road from it?" (reported verbatim 2026-07-09, chat_logs #47) —
+// carries no street address for extractPlace and no street-view keyword for
+// extractPlaceQuery, so the whole ask fired nothing: no lookup, no honest
+// unresolved note, and the model invented "enable Google Maps in Settings"
+// instructions — the LEGO-offices failure class one layer further out.
+// The extraction is deterministic and privacy-minimal (only the assembled
+// place candidate crosses the wire, never the message): a NAME — quoted
+// (”Rosa Pantern”, "rosapantern"), introduced by a naming cue ("called X",
+// "som heter X"), or right after a place-type word ("restaurangen Rosa
+// Pantern") — anchored by a place-type word or a capitalized locality
+// ("in Uppsala", "i Malmö"). pickLookup fires it only when the message ALSO
+// carries street-view/visual flavor (streetViewIntent or the strict
+// referencesStreetView gate), so ordinary quoted titles ("the book called
+// ”The Road”") never bill a lookup.
+
+// Double-quote pairs only (typographic included — Swedish uses ”…”); single
+// quotes/apostrophes live inside ordinary words ("I'm") and stay out.
+const QUOTED_NAME_RE = /["“”„«»]([^"“”„«»]{2,60})["“”„«»]/gu;
+const NAME_CUE_RE = /(?<![\p{L}\p{M}])(?:called|named|heter|kallas|kallad|kallat|vid namn)(?![\p{L}\p{M}])\s*/giu;
+// Place-type words that mark the neighboring name as a PLACE name. Swedish
+// gets the same breadth as English, definite forms included (parity rule).
+const PLACE_TYPE_RE = new RegExp(
+  "(?<![\\p{L}\\p{M}])(?:" +
+    "restaurants?|diners?|caf[ée]s?|coffee ?shops?|bars?|pubs?|hotels?|hostels?|shops?|stores?|" +
+    "supermarkets?|malls?|museums?|galler(?:y|ies)|schools?|universit(?:y|ies)|church(?:es)?|stations?|" +
+    "kiosks?|pizzerias?|baker(?:y|ies)|gyms?|cinemas?|theatres?|theaters?|" +
+    "restaurang(?:en|er|erna)?|gatukök(?:et|en)?|kaf[ée](?:et|er)?|krog(?:en|ar|arna)?|hotell(?:et|en)?|" +
+    "butik(?:en|er|erna)?|affär(?:en|er|erna)?|köpcentr(?:um|et)|museet|skol(?:a|an|or|orna)|" +
+    "universitet(?:et)?|kyrk(?:a|an|or|orna)|kiosk(?:en|er)?|pizzeri(?:a|an|or)|" +
+    "bageri(?:et|er)?|biograf(?:en|er)?|teater(?:n|rar)?" +
+    ")(?![\\p{L}\\p{M}])",
+  "iu",
+);
+// A capitalized locality after a place connector ("in Uppsala", "i Malmö",
+// "near Odenplan"). Deliberately NOT case-insensitive: with the i flag \p{Lu}
+// would match lowercase too, and a lowercase capture would turn ordinary
+// prose after "i"/"in" into a "locality". Bare "i" is lowercase-only — the
+// English pronoun is always capital, the Swedish preposition practically
+// always lowercase.
+const PLACE_LOCALITY_RE =
+  /(?<![\p{L}\p{M}])(?:[Ii]n|[Aa]t|[Pp]å|[Pp]a|[Vv]id|[Nn]ear|[Nn]ära|[Uu]tanför|[Oo]utside|i)\s+(\p{Lu}[\p{L}\p{M}'’.-]*(?:\s+\p{Lu}[\p{L}\p{M}'’.-]*)?)/gu;
+
+// Walk forward over the words after a cue/type match, collecting the name:
+// stops at intent/filler stopwords and at terminal punctuation (which ends a
+// name like `”Rosa Pantern”.` cleanly), strips surrounding quotes/punctuation
+// per word, keeps at most 4 words.
+function walkNameWords(rest) {
+  const out = [];
+  for (const w of rest.trim().split(/\s+/)) {
+    const core = w.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, "");
+    if (!core || STOPWORDS.has(normWord(core))) break;
+    out.push(core);
+    if (/[.,!?;:"”“»]$/u.test(w) || out.length >= 4) break;
+  }
+  const name = out.join(" ");
+  return /\p{L}/u.test(name) && name.length >= 2 ? name : "";
+}
+
+function quotedNameOf(raw) {
+  for (const m of raw.matchAll(QUOTED_NAME_RE)) {
+    const words = m[1].trim().split(/\s+/).filter(Boolean);
+    if (!words.length || words.length > 6) continue;
+    const name = words.join(" ");
+    if (!/\p{L}/u.test(name)) continue;
+    if (words.every((w) => STOPWORDS.has(normWord(w)))) continue;
+    return name;
+  }
+  return "";
+}
+
+function nameAfterMatch(raw, re) {
+  re.lastIndex = 0;
+  const m = re.exec(raw);
+  if (!m) return "";
+  return walkNameWords(raw.slice(m.index + m[0].length));
+}
+
+function placeLocalityOf(raw, name) {
+  const n = (name || "").toLowerCase();
+  for (const m of raw.matchAll(PLACE_LOCALITY_RE)) {
+    const loc = (m[1] || "").trim();
+    if (!loc) continue;
+    const l = loc.toLowerCase();
+    // "near Rosa Pantern" captures the name itself — that's not a locality.
+    if (n.includes(l) || l.includes(n)) continue;
+    if (STOPWORDS.has(normWord(loc.split(/\s+/)[0]))) continue;
+    return loc;
+  }
+  return "";
+}
+
+// The Places query for a named-place mention, or "" when the message names no
+// place. Requires an anchor (place-type word or locality) alongside the name
+// so a quoted book/film title never reads as a place. The street-view/visual
+// gate is applied by the caller (pickLookup), not here.
+export function extractNamedPlaceQuery(text) {
+  const raw = typeof text === "string" ? text : "";
+  if (!raw || extractPlace(raw)) return "";
+  const name = quotedNameOf(raw) || nameAfterMatch(raw, NAME_CUE_RE) || nameAfterMatch(raw, PLACE_TYPE_RE);
+  if (!name) return "";
+  const locality = placeLocalityOf(raw, name);
+  if (!locality && !PLACE_TYPE_RE.test(raw)) return "";
+  return (locality ? `${name}, ${locality}` : name).slice(0, MAX_LOCATION_CHARS);
+}
+
 // ---- fragment answers to "which office?" ------------------------------------
 
 // NUMBERED addresses anywhere in a text — used on ASSISTANT messages, whose
@@ -368,7 +477,7 @@ const FOLLOWUP_REFERENCE_RE = new RegExp(
     "staket(?:et|en)?|balkong(?:en|er|erna)?|entré(?:n|er|erna)?|våning(?:en|ar|arna)?|skorsten(?:en|ar)?|" +
     // visual attributes / surroundings
     "colou?rs?|visible|surroundings?|neighbou?rhoods?|parked|" +
-    "look(?:s|ed|ing)? (?:like|at)|across the street|opposite|" +
+    "look(?:s|ed|ing)? (?:like|at)|across the (?:street|road)|opposite|" +
     "färg(?:en|er|erna)?|syns|omgivning(?:en|ar|arna)?|grann(?:e|en|ar|arna)|parkerad(?:e|a)?|" +
     "ser (?:det|den|huset|byggnaden|platsen) ut|mittemot|tvärs över gatan|" +
     // panorama-referring phrases ("what am I looking at?", after panning)
@@ -618,6 +727,17 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   // exactly like a new address does.
   const placeQuery = extractPlaceQuery(latest);
   if (placeQuery) return { coords: "", address: placeQuery };
+  // A VISUAL question about a NAMED place with no address and no street-view
+  // keyword ("what's the color of the building across the road from ”Rosa
+  // Pantern” in Uppsala?" — chat_logs #47): the name+anchor extraction is
+  // deterministic; the street-view flavor comes from the same strict gate the
+  // walk-back uses (plus the explicit-intent one), so an ordinary research
+  // question mentioning a restaurant never bills a lookup. A new named place
+  // outranks corrections/POV/walk-back exactly like a new address does.
+  const namedPlace = extractNamedPlaceQuery(latest);
+  if (namedPlace && (streetViewIntent(latest) || referencesStreetView(latest))) {
+    return { coords: "", address: namedPlace };
+  }
   // A locality CORRECTION in the latest message ("I meant in hallstahammar!")
   // re-runs the walked-back street in the corrected city — and outranks the
   // POV, whose on-screen panorama is by definition showing the WRONG place.

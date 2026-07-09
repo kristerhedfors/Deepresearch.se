@@ -16,6 +16,7 @@ import {
 } from "./googlemaps.js";
 import {
   extractLocalityFix,
+  extractNamedPlaceQuery,
   extractPlace,
   extractPlaceQuery,
   extractRelativeMove,
@@ -149,6 +150,55 @@ describe("extractPlaceQuery / streetViewIntent / unresolvedMapsBlock", () => {
     assert.match(block, /ENABLED/);
     assert.match(block, /Ask the user which address or place/);
     assert.match(block, /Do NOT instruct the user to enable/);
+  });
+});
+
+// The verbatim chat_logs #47 report (2026-07-09): a visual question about a
+// NAMED place — no street address, no street-view keyword — fired nothing.
+const ROSA_PANTERN_Q =
+  "There is a fast food restaurant in Uppsala, Sweden called ”Rosa Pantern”. " +
+  "I’m curious, what’s the color of the building across the road from it?";
+
+describe("extractNamedPlaceQuery — visual questions about a named place (chat_logs #47)", () => {
+  test("the verbatim Rosa Pantern report resolves to a Places query and fires the lookup", () => {
+    assert.equal(extractNamedPlaceQuery(ROSA_PANTERN_Q), "Rosa Pantern, Uppsala");
+    assert.deepEqual(pickLookup([{ role: "user", content: ROSA_PANTERN_Q }], []), {
+      coords: "",
+      address: "Rosa Pantern, Uppsala",
+    });
+  });
+
+  test("the unquoted lowercase variant works via the place-type word", () => {
+    assert.equal(
+      extractNamedPlaceQuery("What does the building across the road from the restaurant rosapantern look like?"),
+      "rosapantern",
+    );
+  });
+
+  test("a naming cue without quotes works too", () => {
+    assert.equal(
+      extractNamedPlaceQuery("What color is the roof of the burger place called Rosa Pantern in Uppsala?"),
+      "Rosa Pantern, Uppsala",
+    );
+  });
+
+  test("a quoted title with NO place anchor is not a place — no billed lookup for a book question", () => {
+    assert.equal(extractNamedPlaceQuery('What color is the cover of the book called "The Road"?'), "");
+  });
+
+  test("a NON-visual question about the same place never fires a lookup", () => {
+    const q = "What are the opening hours of the restaurant ”Rosa Pantern” in Uppsala?";
+    assert.equal(extractNamedPlaceQuery(q), "Rosa Pantern, Uppsala"); // extraction works…
+    assert.equal(pickLookup([{ role: "user", content: q }], []), null); // …but no visual flavor, no lookup
+  });
+
+  test("a real street address stays owned by extractPlace", () => {
+    assert.equal(extractNamedPlaceQuery("the restaurant ”Rosa Pantern” at Storgatan 12 in Uppsala"), "");
+  });
+
+  test("null/empty are safe", () => {
+    assert.equal(extractNamedPlaceQuery(null), "");
+    assert.equal(extractNamedPlaceQuery(""), "");
   });
 });
 
@@ -1001,6 +1051,26 @@ describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedis
 
   test("English 'further' gets the same treatment as 'ahead'", () => {
     assert.deepEqual(extractRelativeMove("continue 100 meters further"), { meters: 100, mode: "forward", dir: "forward" });
+  });
+
+  test("named-place visual questions: Swedish quotes, cues, place types, and localities", () => {
+    // The Swedish sibling of the verbatim Rosa Pantern report (chat_logs #47).
+    const q = "Vad är det för färg på huset mittemot restaurangen ”Rosa Pantern” i Uppsala?";
+    assert.equal(extractNamedPlaceQuery(q), "Rosa Pantern, Uppsala");
+    assert.deepEqual(pickLookup([{ role: "user", content: q }], []), {
+      coords: "",
+      address: "Rosa Pantern, Uppsala",
+    });
+    // The "som heter" naming cue and a Swedish place-type word (gatukök).
+    assert.equal(
+      extractNamedPlaceQuery("Hur ser huset bredvid gatuköket som heter Rosa Pantern i Uppsala ut?"),
+      "Rosa Pantern, Uppsala",
+    );
+    // A Swedish non-visual question never fires a lookup.
+    assert.equal(
+      pickLookup([{ role: "user", content: "Vilka öppettider har restaurangen ”Rosa Pantern” i Uppsala?" }], []),
+      null,
+    );
   });
 
   test("here-intent: min plats / var jag är / härifrån / den här platsen", () => {
