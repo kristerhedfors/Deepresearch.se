@@ -98,7 +98,10 @@ async function fetchCatalog(env) {
     )
     .map((m) => ({
       id: m.id,
-      name: m.name || m.id,
+      // Display names are provider-branded: "<provider> <flag> <model>" —
+      // every provider's catalog builder does the same (src/anthropic.js;
+      // see the add-llm-provider skill) so the dropdown reads uniformly.
+      name: `Berget.ai 🇸🇪 ${m.name || m.id}`,
       pricing: formatPricing(m.pricing),
       // Raw EUR-per-token prices, kept for quota cost accounting.
       price_in: typeof m.pricing?.input === "number" ? m.pricing.input : 0,

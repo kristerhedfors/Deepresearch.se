@@ -27,7 +27,7 @@ test("listAnthropicModels exposes the catalog shape validation and pricing consu
   assert.equal(models.length, 3);
   const opus = models.find((m) => m.id === "claude-opus-4-8");
   assert.ok(opus);
-  assert.equal(opus.name, "Claude Opus 4.8");
+  assert.equal(opus.name, "Anthropic 🇺🇸 Claude Opus 4.8");
   assert.equal(opus.up, true);
   assert.equal(opus.vision, true);
   assert.match(opus.pricing, /\$5 in \/ \$25 out per 1M tokens/);

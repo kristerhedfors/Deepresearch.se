@@ -62,7 +62,8 @@ export function listAnthropicModels(env) {
   if (!anthropicEnabled(env)) return [];
   return USD_PER_MTOK.map((m) => ({
     id: m.id,
-    name: m.name,
+    // Provider-branded display name, matching berget.js's convention.
+    name: `Anthropic 🇺🇸 ${m.name}`,
     pricing: `$${m.in} in / $${m.out} out per 1M tokens`,
     price_in: (m.in / 1e6) * USD_TO_EUR,
     price_out: (m.out / 1e6) * USD_TO_EUR,
