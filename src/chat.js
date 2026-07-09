@@ -8,7 +8,8 @@ import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { recordChatLog } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
-import { adminDefaultModelValid, DEFAULT_MODEL, listModels } from "./berget.js";
+import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
+import { listChatModels } from "./providers.js";
 import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -50,7 +51,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // the default model rather than blocking chat.
   let catalog = null;
   try {
-    catalog = await listModels(env);
+    catalog = await listChatModels(env);
   } catch (err) {
     log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
   }

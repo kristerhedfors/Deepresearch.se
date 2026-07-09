@@ -129,7 +129,9 @@ export async function rawModelEntry(env, id) {
 }
 
 // "€0.30 in / €0.30 out per 1M tokens" — shown as a tooltip in the UI.
-function formatPricing(p) {
+// Exported for other providers' catalog builders (src/anthropic.js) so
+// every dropdown entry formats identically.
+export function formatPricing(p) {
   if (!p || typeof p.input !== "number" || typeof p.output !== "number") return null;
   const perM = (v) => (v * 1e6).toFixed(2).replace(/\.?0+$/, "");
   const cur = p.currency === "EUR" ? "€" : (p.currency || "") + " ";
@@ -193,7 +195,7 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
     const waitMs = Math.min(...budgets);
     if (waitMs <= 0) {
       reader.cancel().catch(() => {});
-      throw new Error(`Berget stream exceeded its ${maxMs}ms total budget — treating as hung`);
+      throw new Error(`Model stream exceeded its ${maxMs}ms total budget — treating as hung`);
     }
     let timer;
     try {
@@ -201,7 +203,7 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
         reader.read(),
         new Promise((_, reject) => {
           timer = setTimeout(
-            () => reject(new Error(`Berget stream produced nothing for ${waitMs}ms — treating as hung`)),
+            () => reject(new Error(`Model stream produced nothing for ${waitMs}ms — treating as hung`)),
             waitMs,
           );
         }),
@@ -250,7 +252,7 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
         if (text.length > STREAM_MAX_CHARS) {
           await reader.cancel();
           throw new Error(
-            `Berget stream exceeded the ${STREAM_MAX_CHARS}-char safety cap — likely a runaway/degenerate generation on the backend; aborted before it could exhaust the Worker's CPU budget`,
+            `Model stream exceeded the ${STREAM_MAX_CHARS}-char safety cap — likely a runaway/degenerate generation on the backend; aborted before it could exhaust the Worker's CPU budget`,
           );
         }
       }
@@ -305,7 +307,8 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
 // code fences despite json_mode. Returns { value, parseMode }: "strict" when
 // the whole string parsed as-is, "repaired" when a balanced {...} object had
 // to be extracted from surrounding text, "failed" when neither worked.
-function parseLooseJson(s) {
+// Exported for other providers' JSON completions (src/anthropic.js).
+export function parseLooseJson(s) {
   try {
     return { value: JSON.parse(s), parseMode: "strict" };
   } catch {

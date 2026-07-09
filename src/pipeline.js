@@ -31,7 +31,8 @@
 // (Shodan, Google Maps) in enrichment.js.
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
-import { chatCompletion, completeJson, consumeChatStream } from "./berget.js";
+import { consumeChatStream } from "./berget.js";
+import { chatCompletion, completeJson, providerName } from "./providers.js";
 import {
   applyComplexityToPlan,
   fitsDeadline,
@@ -1122,7 +1123,7 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
       const transient = !upstream.body || isTransientConnectStatus(upstream.status);
       ctx.log.warn("chat.connect_failed", { model, attempt, status: upstream.status, error: detail });
       if (transient && attempt < maxAttempts) continue;
-      const message = `Berget API error (${upstream.status}): ${detail}`;
+      const message = `${providerName(model)} API error (${upstream.status}): ${detail}`;
       // A deterministic 4xx is OUR request's fault — the fallback model
       // would just fail the same way, so it isn't failover-eligible.
       throw transient ? failoverError(message) : new Error(message);
@@ -1172,7 +1173,7 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
       // through chat.js's existing error handling — the user sees an honest
       // error instead of a confusing blank/truncated answer, and it's
       // finally visible in logs (chat.stream_failed) instead of invisible.
-      throw new Error(`Berget stream ended without a finish_reason (${text.length} chars received) — likely a dropped connection`);
+      throw new Error(`${providerName(model)} stream ended without a finish_reason (${text.length} chars received) — likely a dropped connection`);
     }
     if (text) return text;
     // A round 4 model-eval battery found a distinct failure mode from the
@@ -1188,7 +1189,7 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
     if (attempt === maxAttempts) {
       // Nothing was ever shown (the completions were empty) — eligible for
       // the failover model rather than surfacing an error.
-      throw failoverError(`Berget returned an empty response ${maxAttempts} times in a row for this model`);
+      throw failoverError(`${providerName(model)} returned an empty response ${maxAttempts} times in a row for this model`);
     }
   }
 }

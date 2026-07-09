@@ -235,7 +235,8 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   const [
     { resolveModel, validateMessages },
     { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER },
-    { adminDefaultModelValid, listModels, DEFAULT_MODEL },
+    { adminDefaultModelValid, DEFAULT_MODEL },
+    { listChatModels },
     { runPipeline },
     { getConfig },
     { getUsage, quotaExceeded, effectiveQuota, recordUsage, bergetCost },
@@ -243,6 +244,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     import("./validation.js"),
     import("./budget.js"),
     import("./berget.js"),
+    import("./providers.js"),
     import("./pipeline.js"),
     import("./config.js"),
     import("./quota.js"),
@@ -258,7 +260,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   // unreachable) — mirrors chat.js.
   let catalog = null;
   try {
-    catalog = await listModels(env);
+    catalog = await listChatModels(env);
   } catch (err) {
     log.warn("mcp.model_catalog_unavailable", { error: err?.message || String(err) });
   }

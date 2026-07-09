@@ -4,7 +4,8 @@
 
 import { countOpenAlerts } from "./alerts.js";
 import { countPendingUsers } from "./accounts.js";
-import { adminDefaultModelValid, defaultModel, listModels } from "./berget.js";
+import { adminDefaultModelValid, defaultModel } from "./berget.js";
+import { listChatModels } from "./providers.js";
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { deriveHistoryKey, historyKeyConfigured } from "./history-key.js";
@@ -17,7 +18,7 @@ import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-m
 // and up, else the Worker default).
 export async function handleModels(env, log) {
   try {
-    const models = await listModels(env);
+    const models = await listChatModels(env);
     const config = await getConfig(env);
     const configured = adminDefaultModelValid(config, models);
     log.debug("models.list", { count: models.length });

@@ -9,7 +9,8 @@
 // when it does, and fail-soft in every branch — the conversation comes back
 // unchanged rather than ever blocking a chat.
 
-import { chatCompletion, consumeChatStream } from "./berget.js";
+import { consumeChatStream } from "./berget.js";
+import { chatCompletion } from "./providers.js";
 import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conversation.js";
 import { getModelProfile } from "./model-profiles.js";
 import {

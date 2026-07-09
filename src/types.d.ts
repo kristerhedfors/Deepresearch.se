@@ -30,12 +30,18 @@ export interface Env {
   /** Vectorize index for server-side RAG retrieval. */
   RAG_INDEX?: VectorizeIndex;
 
-  // LLM provider (Berget) — see src/berget.js.
+  // Primary LLM provider (Berget) — see src/berget.js.
   BERGET_API_TOKEN?: string;
   BERGET_MODEL?: string;
   BERGET_EMBED_MODEL?: string;
   /** Test-only override pointing the Berget client at a mock. */
   BERGET_URL?: string;
+
+  // Second LLM provider (Anthropic/Claude) — see src/anthropic.js. The key
+  // gates the feature: absent, the claude-* models don't appear at all.
+  ANTHROPIC_API_KEY?: string;
+  /** Test-only override pointing the Anthropic client at a mock. */
+  ANTHROPIC_URL?: string;
 
   // Web search (Exa) — see src/exa.js.
   EXA_API_KEY?: string;
@@ -96,11 +102,12 @@ export interface Message {
 /** The conversation is the message array `/api/chat` receives. */
 export type Conversation = Message[];
 
-// ---- Model catalog (src/berget.js) -----------------------------------------
+// ---- Model catalog (src/providers.js) ---------------------------------------
 /**
  * One entry of the chat-capable model catalog `/api/models` exposes and
- * validation/pricing consume (`listModels`). `price_in`/`price_out` are raw
- * EUR-per-token prices used for quota cost accounting.
+ * validation/pricing consume (`listChatModels` — Berget's live catalog
+ * merged with the key-gated Anthropic entries). `price_in`/`price_out` are
+ * raw EUR-per-token prices used for quota cost accounting.
  */
 export interface ModelCatalogEntry {
   id: string;
@@ -109,10 +116,12 @@ export interface ModelCatalogEntry {
   pricing: string | null;
   price_in: number;
   price_out: number;
-  /** False when Berget reports the model down/in maintenance. */
+  /** False when the provider reports the model down/in maintenance. */
   up: boolean;
   /** True when the model accepts image input. */
   vision: boolean;
+  /** Which provider serves it ("anthropic"); absent for Berget entries. */
+  provider?: string;
 }
 export type ModelCatalog = ModelCatalogEntry[];
 
