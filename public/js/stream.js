@@ -9,6 +9,7 @@ import {
   collapseActivity,
   finishGenericStep,
   finishSearchStep,
+  getMapView,
   getStreetViewPov,
   renderMapEmbed,
   renderStats,
@@ -630,7 +631,7 @@ function handleEvent(turn, evt, acc) {
       recordEmbed({ kind: "streetview_embed", lat: s.lat, lng: s.lng, heading: s.heading, pitch: s.pitch });
     } else if (s.type === "map_embed") {
       renderMapEmbed(turn, s);
-      recordEmbed({ kind: "map_embed", lat: s.lat, lng: s.lng, q: s.q || "" });
+      recordEmbed({ kind: "map_embed", lat: s.lat, lng: s.lng, zoom: s.zoom, q: s.q || "" });
     } else if (s.type === "streetview_frames") {
       renderStreetViewFrames(turn, s);
       recordEmbed({
@@ -850,6 +851,11 @@ export async function sendMessage(text, opts) {
     // live panorama exists this session.
     const streetViewPov = getStreetViewPov();
     if (streetViewPov) payload.street_view_pov = streetViewPov;
+    // The map sibling: the center/zoom of the live interactive MAP (shown
+    // when a location has no Street View coverage) — the server captures a
+    // road-map image of exactly that area on a map-referencing follow-up.
+    const mapView = getMapView();
+    if (mapView) payload.map_view = mapView;
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

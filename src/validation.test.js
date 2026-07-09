@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { validateMessages, resolveModel, validateImageLocations, validateStreetViewPov } from "./validation.js";
+import { validateMessages, resolveModel, validateImageLocations, validateMapView, validateStreetViewPov } from "./validation.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 const noopLog = { warn: () => {} };
@@ -274,5 +274,27 @@ describe("validateStreetViewPov", () => {
     const out = validateStreetViewPov({ panoId: "<script>", lat: 1, lng: 2 });
     assert.deepEqual(out, { panoId: "", lat: 1, lng: 2, heading: 0, pitch: 0, fov: 90 });
     assert.equal(validateStreetViewPov({ panoId: "x".repeat(65), lat: 1, lng: 2 }).panoId, "");
+  });
+});
+
+describe("validateMapView", () => {
+  test("returns null for junk shapes and out-of-range coordinates", () => {
+    assert.equal(validateMapView(undefined), null);
+    assert.equal(validateMapView(null), null);
+    assert.equal(validateMapView("x"), null);
+    assert.equal(validateMapView({}), null);
+    assert.equal(validateMapView({ lat: 91, lng: 0 }), null);
+    assert.equal(validateMapView({ lat: 0, lng: 181 }), null);
+    assert.equal(validateMapView({ lat: "no", lng: 10 }), null);
+  });
+
+  test("keeps a well-formed view, rounding and clamping zoom to Static Maps' [0,21]", () => {
+    assert.deepEqual(validateMapView({ lat: 59.65, lng: 17.12, zoom: 16.6 }), { lat: 59.65, lng: 17.12, zoom: 17 });
+    assert.deepEqual(validateMapView({ lat: 1, lng: 2, zoom: 99 }), { lat: 1, lng: 2, zoom: 21 });
+    assert.deepEqual(validateMapView({ lat: 1, lng: 2, zoom: -3 }), { lat: 1, lng: 2, zoom: 0 });
+  });
+
+  test("defaults a missing zoom", () => {
+    assert.deepEqual(validateMapView({ lat: 1, lng: 2 }), { lat: 1, lng: 2, zoom: 17 });
   });
 });

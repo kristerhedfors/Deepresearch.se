@@ -137,6 +137,26 @@ export function validateStreetViewPov(raw) {
   };
 }
 
+// Sanitizes the client-reported interactive-map view (from the inline
+// google.maps.Map the user can pan/zoom — public/js/activity.js, forwarded
+// as body.map_view) before the server captures a road-map image of that
+// exact area. Untrusted input, arbitrary shape: anything unusable returns
+// null (the enrichment then falls back to the address walk-back), never a
+// blocked chat. Zoom clamps to the Static Maps API's [0,21].
+export function validateMapView(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat);
+  const lng = Number(raw.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  const zoom = Number(raw.zoom);
+  return {
+    lat,
+    lng,
+    zoom: Number.isFinite(zoom) ? Math.max(0, Math.min(21, Math.round(zoom))) : 17,
+  };
+}
+
 // Resolves the model for a request against the (possibly null) catalog:
 // validates the override, checks availability, and enforces vision when the
 // conversation carries images. Returns { model } on success or

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildMapsBlock,
+  buildMapViewBlock,
   buildPovBlock,
   compassDir,
   googleMapsAvailable,
@@ -603,6 +604,46 @@ describe("pickLookup", () => {
     assert.equal(pickLookup(convo, []), null);
   });
 
+  test("the user's current MAP view fires the capture path on a scene follow-up (no-coverage parity)", () => {
+    const mapView = { lat: 59.65, lng: 17.12, zoom: 17 };
+    const convo = [
+      { role: "user", content: "street view of Basaltgatan 3 in Enköping" },
+      { role: "assistant", content: "No Street View is available; here is a map…" },
+      { role: "user", content: "what's there on the left?" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], null, mapView), { coords: "", address: "", mapView, followUp: true });
+    // Without a live map the loose vocabulary must NOT trigger the billed
+    // address walk-back (same rule as the POV).
+    assert.equal(pickLookup(convo, []), null);
+  });
+
+  test("a NEW address in the latest message beats the live map view", () => {
+    const mapView = { lat: 59.65, lng: 17.12, zoom: 17 };
+    const convo = [
+      { role: "user", content: "street view of Basaltgatan 3" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "ok, now Storgatan 4 instead" },
+    ];
+    assert.deepEqual(pickLookup(convo, [], null, mapView), { coords: "", address: "Storgatan 4" });
+  });
+
+  test("a live PANORAMA outranks a map view (the client keeps one live, but defensively)", () => {
+    const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
+    const mapView = { lat: 59.65, lng: 17.12, zoom: 17 };
+    const convo = [{ role: "user", content: "what do you see?" }];
+    assert.deepEqual(pickLookup(convo, [], pov, mapView), { coords: "", address: "", pov, followUp: true });
+  });
+
+  test("a map view rides only on scene/imagery follow-ups — an ordinary question ignores it", () => {
+    const mapView = { lat: 59.65, lng: 17.12, zoom: 17 };
+    const convo = [
+      { role: "user", content: "street view of Basaltgatan 3" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "summarize the company's finances" },
+    ];
+    assert.equal(pickLookup(convo, [], null, mapView), null);
+  });
+
   test("a POV rides only on imagery follow-ups — an ordinary question ignores it", () => {
     const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 143, pitch: -5, fov: 90 };
     const convo = [
@@ -732,5 +773,36 @@ describe("buildPovBlock", () => {
     const block = buildPovBlock(pov, { date: "", description: "x", framesShown: 0, panoramaShown: true });
     assert.match(block, /NEVER construct or output Google Maps API image URLs/);
     assert.ok(!block.includes("key="));
+  });
+});
+
+describe("buildMapViewBlock", () => {
+  const view = { lat: 59.65123, lng: 17.11987, zoom: 16 };
+
+  test("describes the captured current map view with center, zoom, link and the fresh map", () => {
+    const block = buildMapViewBlock(view, {
+      description: "An industrial street grid with several labeled businesses.",
+      mapShown: true,
+    });
+    assert.match(block, /--- Google Maps ---/);
+    assert.match(block, /CURRENTLY VISIBLE map area was captured/);
+    assert.match(block, /centered at coordinates 59\.65123, 17\.11987, zoom level 16/);
+    assert.match(block, /Map link: /);
+    assert.match(block, /fresh interactive Google Map positioned at exactly this view is displayed to the user/);
+    assert.match(block, /ALWAYS include the Map link above in your answer as a markdown link/);
+    assert.match(block, /\[View on Google Maps\]\(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=59\.65123,17\.11987\)/);
+    assert.match(block, /Visual description of the user's current map view \(auto-generated — this is a MAP image, NOT Street View\): An industrial/);
+    assert.match(block, /already enabled — do NOT suggest the user enable it/);
+    assert.match(block, /NEVER construct or output Google Maps API image URLs/);
+    assert.ok(!block.includes("key="), "the block must never leak an API key");
+  });
+
+  test("says plainly when the view couldn't be examined, and misdirection stays conditional", () => {
+    const block = buildMapViewBlock(view, { description: "", mapShown: false });
+    assert.match(block, /could not be examined by a vision model/);
+    assert.ok(!/Visual description/.test(block));
+    assert.ok(!/fresh interactive Google Map/.test(block));
+    assert.match(block, /unrelated to the map, answer it normally/);
+    assert.match(block, /never ask them to clarify where they mean/);
   });
 });

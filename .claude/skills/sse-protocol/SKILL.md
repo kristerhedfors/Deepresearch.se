@@ -50,19 +50,34 @@ unknown `status` types (forward compatibility).
   them at a stale static frame. SDK load failure → Embed iframe fallback (no
   POV capture). No browser key configured → the client ignores the event and
   the keyless link stands.
-- `{"status":{"type":"map_embed","lat":59.65,"lng":17.12,"q":"Basaltgatan 3, 749 40 Enköping, Sweden"}}`
+- `{"status":{"type":"map_embed","lat":59.65,"lng":17.12,"zoom":17,"q":"Basaltgatan 3, 749 40 Enköping, Sweden"}}`
   — the no-Street-View-coverage counterpart of `streetview_embed` (added
   2026-07-09: a resolved location without a panorama used to show nothing
   interactive and the answer carried no link at all): the client renders an
-  inline, navigable Google MAP (Maps Embed API `place` mode iframe with a
-  marker at the coordinates — `activity.js`'s `renderMapEmbed`, reusing the
-  `.streetview-embed` styling; no JS SDK, no POV capture, no lock slot)
-  beside the answer. Emitted only when NO `streetview_embed` fires and the
-  browser embed key is configured; the key is NOT in the event (same
-  discipline as the panorama). `q` carries the resolved display address for
-  the label. Persisted in `convEmbeds` (kind `"map_embed"` — tiny, coords +
-  q), re-rendered on history load (`turns.js`), referenced in the copy-text
-  export (`embedRef`: "interactive Google Map at lat, lng (q)").
+  inline, navigable Google MAP beside the answer — a Maps JS SDK
+  `google.maps.Map` (`activity.js`'s `renderMapEmbed`, reusing the
+  `.streetview-embed` styling; marker at the coordinates when `q` names a
+  resolved address) with FULL panorama parity (same day, follow-up
+  request): pans/zooms are tracked (on `idle`, rounded ~1m/integer zoom)
+  into the map view `stream.js` sends as `body.map_view` with follow-ups;
+  a map-referencing follow-up (`referencesStreetViewScene`, the loose
+  gate) makes the server capture ONE Static Maps image of exactly that
+  area (`runMapViewCapture`, edge-cached), vision-describe it
+  (map-flavored instruction), append `buildMapViewBlock` (current-center
+  markdown Map-link mandate + never-fabricate line), and emit a fresh
+  `map_embed` at the current center/zoom (continue-from-here). Only the
+  LATEST view — across BOTH embed kinds — stays navigable: a new map or
+  panorama locks the superseded embeds (dimmed, pointer-events off,
+  honest label) and clears the other kind's view slot, so `map_view` and
+  `street_view_pov` never ride together. SDK failure → Embed API iframe
+  fallback (place mode with `q`, view mode without) — navigable, no view
+  capture. Emitted only when NO `streetview_embed` fires and the browser
+  embed key is configured; the key is NOT in the event (same discipline
+  as the panorama). `zoom` is optional (absent → 17). Persisted in
+  `convEmbeds` (kind `"map_embed"` — tiny, coords + zoom + q),
+  re-rendered on history load (`turns.js`, re-locking all but the last
+  naturally), referenced in the copy-text export (`embedRef`:
+  "interactive Google Map at lat, lng (q)").
   — the actual snapped Street View frames the vision-describe helper reasoned
   about (up to 4, JPEG data URLs); the client renders them as a captioned
   thumbnail strip beside the answer so the user sees the SAME imagery the

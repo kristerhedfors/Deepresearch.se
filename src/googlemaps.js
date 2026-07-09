@@ -165,6 +165,46 @@ export function buildPovBlock(pov, parts) {
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
+// The labeled context block for a captured CURRENT map view (the map-view
+// path, the road-map sibling of buildPovBlock): the user panned/zoomed the
+// inline interactive map and asked a follow-up, and a road-map image of
+// exactly the area on their screen was captured and (when possible)
+// described. Pure — exported for tests.
+export function buildMapViewBlock(view, parts) {
+  const lines = [
+    "The user is viewing an interactive Google Map beside this chat and may have panned or zoomed it.",
+    `Their CURRENTLY VISIBLE map area was captured for this question: centered at coordinates ${view.lat}, ${view.lng}, zoom level ${view.zoom}.`,
+    `Map link: ${mapLink(view.lat, view.lng)}`,
+  ];
+  if (parts.mapShown) {
+    lines.push(
+      "A fresh interactive Google Map positioned at exactly this view is displayed to the user directly beside this reply — they can keep exploring from there, so refer to the view as shared context.",
+    );
+  }
+  // The user panned/zoomed away from wherever the conversation started — the
+  // center above is where they are NOW, so the answer must link there.
+  lines.push(
+    `The user has moved within the map, so ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(view.lat, view.lng)})) so they can open their current position.`,
+  );
+  if (parts.description) {
+    lines.push(
+      `Visual description of the user's current map view (auto-generated — this is a MAP image, NOT Street View): ${parts.description}`,
+    );
+  } else {
+    lines.push(
+      "The map view could not be examined by a vision model this time — answer from the coordinates above and say plainly that the view itself couldn't be inspected.",
+    );
+  }
+  // Conditional on purpose, same as the POV block: the capture fires
+  // generously for map conversations, so the question may be unrelated.
+  lines.push(
+    "If the question refers to something on the map (a road, a labeled place, an area — anything in their view), answer it directly from the visual description above and never ask them to clarify where they mean: they mean what is on their map. If the question is unrelated to the map, answer it normally and ignore this block.",
+  );
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
+}
+
 // The labeled context block appended to the conversation, same plain-text
 // convention as geocode.js's resolved-location block and shodan.js's host
 // block. `parts` is the assembled lookup result (place / streetView / map).
@@ -449,6 +489,50 @@ export async function runStreetViewPovCapture(env, log, pov) {
   if (!image) return null;
 
   const result = { image, date: meta?.status === "OK" ? meta.date || "" : "" };
+  await cachePut(log, "googlemaps.cache", cacheKey, result, LOOKUP_CACHE_TTL_S);
+  return result;
+}
+
+// A road-map image of exactly the map area the user is viewing (center +
+// zoom from the client's live interactive map) — the map-view sibling of
+// streetViewPovImageUrl. No marker: the user panned freely, there is no
+// resolved place to mark.
+function staticMapViewUrl(env, view) {
+  const qs = new URLSearchParams({
+    center: `${view.lat},${view.lng}`,
+    zoom: String(view.zoom),
+    size: STATICMAP_SIZE,
+    scale: "1",
+    format: "jpg",
+    maptype: "roadmap",
+    key: env.GOOGLE_MAPS_API_KEY,
+  });
+  return `${STATICMAP_URL}?${qs}`;
+}
+
+// Captures the map area the user currently sees in the inline interactive
+// map (validated view from body.map_view): one billed Static Maps fetch at
+// their center/zoom. Cached like the POV capture (the view is rounded
+// client-side, so re-asking about the same area is a free hit). Returns
+// { image } or null on any failure — fail-soft, the caller degrades.
+export async function runMapViewCapture(env, log, view) {
+  if (!googleMapsAvailable(env)) return null;
+
+  const params = new URLSearchParams({
+    ll: `${view.lat},${view.lng}`,
+    z: String(view.zoom),
+  });
+  const cacheKey = `https://googlemaps-mapview-cache.internal/frame?${params.toString()}`;
+  const cached = await cacheGet(log, "googlemaps.cache", cacheKey);
+  if (cached && typeof cached === "object" && cached.image) {
+    log.info("googlemaps.mapview_cache_hit", {});
+    return cached;
+  }
+
+  const image = await fetchImageDataUrl(env, log, staticMapViewUrl(env, view), "googlemaps.mapview_error");
+  if (!image) return null;
+
+  const result = { image };
   await cachePut(log, "googlemaps.cache", cacheKey, result, LOOKUP_CACHE_TTL_S);
   return result;
 }

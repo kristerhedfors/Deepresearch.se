@@ -451,16 +451,22 @@ export function referencesStreetViewScene(text) {
 //   3. the user's CURRENT panorama view (body.street_view_pov) when the
 //      message refers back to the imagery/place — capture exactly what they
 //      panned/moved to,
-//   4. the walk-back: the most recent address an EARLIER user turn named
-//      (the panorama-less fallback — embed key missing or the Maps JS SDK
-//      failed to load, where only the iframe rendered and no POV exists).
-// 3 and 4 share the referencesStreetView gate: without a back-reference in
+//   4. the user's CURRENT interactive-map view (body.map_view) under the
+//      same gate — the road-map sibling of 3, live when a location resolved
+//      WITHOUT Street View coverage and a map embed rendered instead (the
+//      client keeps exactly one of POV/map view live at a time, so 3 and 4
+//      never really compete),
+//   5. the walk-back: the most recent address an EARLIER user turn named
+//      (the embed-less fallback — embed key missing or the Maps JS SDK
+//      failed to load, where only the iframe rendered and no view exists).
+// 3-5 share the referencesStreetView gate: without a back-reference in
 // the message, an ordinary follow-up must not re-bill Google. The server is
 // stateless and the prior turn's Maps block was appended server-side only, so
-// the resent conversation text (and the client-held POV) are the only durable
+// the resent conversation text (and the client-held view) are the only durable
 // records. Returns null when nothing names (or refers back to) a location;
-// `followUp: true` / `pov` mark the shape so the enrichment labels the block.
-export function pickLookup(conversation, imageLocations, pov = null) {
+// `followUp: true` / `pov` / `mapView` mark the shape so the enrichment
+// labels the block.
+export function pickLookup(conversation, imageLocations, pov = null, mapView = null) {
   const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
     return { coords: `${c.lat},${c.lon}`, address: "" };
@@ -492,6 +498,12 @@ export function pickLookup(conversation, imageLocations, pov = null) {
   // asks pointing at a live street scene); the walk-back keeps the strict
   // imagery/building gate since it re-runs a full billed lookup.
   if (pov && !latestFix && referencesStreetViewScene(latest)) return { coords: "", address: "", pov, followUp: true };
+  // The live interactive MAP gets the same loose gate: "what's that big
+  // building?", "vad är det där?", "and now" while panning the map must
+  // capture the area on screen, not walk back to a stale address.
+  if (mapView && !latestFix && referencesStreetViewScene(latest)) {
+    return { coords: "", address: "", mapView, followUp: true };
+  }
   if (!latestFix && !referencesStreetView(latest)) return null;
   // Walk back for the most recent address; corrections encountered on the
   // way (messages NEWER than the address) ride along, so a later "street

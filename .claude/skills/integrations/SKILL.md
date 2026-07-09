@@ -502,10 +502,23 @@ call, alongside the Shodan enrichment).
   block says plainly no Street View exists there. A no-coverage lookup
   ALSO gets an interactive map: the `map_embed` SSE event (emitted when no
   `streetview_embed` fires and the embed key exists — see the
-  **sse-protocol** skill) renders a navigable Maps Embed API `place`-mode
-  iframe with a marker beside the answer, and the block instructs the
-  answer to ALWAYS include the keyless Map link as a markdown link
-  (requested 2026-07-09 — the first no-coverage answers carried no link). Every maps/POV block
+  **sse-protocol** skill) renders a navigable Maps JS SDK map with a
+  marker beside the answer, and the block instructs the answer to ALWAYS
+  include the keyless Map link as a markdown link (requested 2026-07-09 —
+  the first no-coverage answers carried no link).
+- **The map view has full panorama parity on follow-ups** (same day,
+  follow-up request): the client tracks the live map's center/zoom and
+  sends it as `body.map_view` (validated by `validateMapView`); a
+  map-referencing follow-up routes through `pickLookup`'s `mapView` branch
+  (loose scene gate, right after the POV branch) to
+  `runMapViewEnrichment` — one edge-cached Static Maps capture of exactly
+  the on-screen area (`runMapViewCapture`), a map-flavored
+  vision-describe, `buildMapViewBlock` (current-center Map-link mandate,
+  conditional-relevance + never-fabricate lines), and a fresh
+  continue-from-here `map_embed` at the current view. Only the latest
+  embed (map OR panorama) is live — rendering either locks the superseded
+  ones and clears the other kind's view slot, so `map_view` and
+  `street_view_pov` never ride together. Every maps/POV block
   also carries `NO_FABRICATED_IMAGE_URLS`: before it, a model wanting to
   "show" imagery invented a `maps.googleapis.com/maps/api/streetview?…
   key=YOUR_API_KEY` markdown image — a broken image in the reply. Only the

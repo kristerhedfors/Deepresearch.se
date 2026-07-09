@@ -21,7 +21,7 @@ import {
   quotaExceeded,
   recordUsage,
 } from "./quota.js";
-import { resolveModel, validateImageLocations, validateMessages, validateStreetViewPov } from "./validation.js";
+import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
 import { shodanEnabled, googleMapsEnabled } from "./settings.js";
 
 export async function handleChat(request, env, log, identity, ctx, requestId) {
@@ -134,6 +134,9 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // panned/moved it) — lets a follow-up capture exactly what's on their
   // screen instead of the four generic cardinal frames.
   const streetViewPov = googleMapsOn ? validateStreetViewPov(body.street_view_pov) : null;
+  // The user's current view in the inline interactive MAP (the no-coverage
+  // stand-in for the panorama) — same follow-up idea, road-map flavored.
+  const mapView = googleMapsOn ? validateMapView(body.map_view) : null;
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -176,6 +179,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       visionModels,
       imageLocations,
       streetViewPov,
+      mapView,
     });
     disconnect.state = state;
 
@@ -440,6 +444,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // The user's current panorama view (validated), for the follow-up
     // capture-what-they-see Street View path (src/enrichment.js).
     streetViewPov: extras.streetViewPov || null,
+    // The user's current interactive-map view (validated), for the follow-up
+    // capture-what-they-see map path (src/enrichment.js).
+    mapView: extras.mapView || null,
     // This channel renders the interactive inline-quiz event (src/quiz.js;
     // pipeline.js runQuizGeneration). The MCP channel builds its own state
     // without this flag, so MCP callers keep getting plain text answers.

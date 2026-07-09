@@ -72,7 +72,7 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
         if (e.kind === "streetview_embed") {
           renderStreetViewEmbed(turn, { lat: e.lat, lng: e.lng, heading: e.heading, pitch: e.pitch });
         } else if (e.kind === "map_embed") {
-          renderMapEmbed(turn, { lat: e.lat, lng: e.lng, q: e.q || "" });
+          renderMapEmbed(turn, { lat: e.lat, lng: e.lng, zoom: e.zoom, q: e.q || "" });
         } else if (e.kind === "streetview_frames" && e.frames?.some((f) => f?.url)) {
           renderStreetViewFrames(turn, { query: e.query || "", frames: e.frames.filter((f) => f?.url) });
         } else if (e.kind === "quiz" && e.quiz) {

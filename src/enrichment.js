@@ -14,10 +14,12 @@ import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conve
 import { getModelProfile } from "./model-profiles.js";
 import {
   buildMapsBlock,
+  buildMapViewBlock,
   buildPovBlock,
   compassDir,
   googleMapsEmbedKey,
   runGoogleMapsLookup,
+  runMapViewCapture,
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
@@ -111,7 +113,7 @@ const MAX_MAPS_IMAGES = 4;
 // message names no address and carries no photo location; beyond one free
 // Street View metadata check an ordinary question costs nothing.
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
-  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov);
+  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView);
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
     // honest note: with no block at all the model invents "enable Google
@@ -133,6 +135,13 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // Static fetch at their heading/pitch/fov) instead of the four generic
   // cardinal frames of a place lookup.
   if (target.pov) return runPovEnrichment(env, log, emit, step, stepDone, conversation, state, target.pov, question);
+
+  // The map-view sibling: the user panned/zoomed the inline interactive MAP
+  // (shown when a location resolved without Street View coverage) and asked
+  // about it — capture a road-map image of exactly the area on their screen.
+  if (target.mapView) {
+    return runMapViewEnrichment(env, log, emit, step, stepDone, conversation, state, target.mapView, question);
+  }
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
   // isn't already carrying user images). We deliberately do NOT attach the
@@ -336,6 +345,65 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
     conversation,
     buildPovBlock(pov, { date: capture.date, description, framesShown: panoramaShown ? 0 : 1, panoramaShown }),
   );
+}
+
+// The current-map-view path (the road-map sibling of runPovEnrichment): the
+// user panned/zoomed the live interactive map, so capture a road-map image
+// of exactly the area they see (one Static Maps fetch at their center/zoom),
+// have the vision helper answer their question about THAT map, and render a
+// fresh interactive map at that view beside the reply so they can continue
+// exploring from where they are (the client locks the superseded map, same
+// as panoramas). Fail-soft like every branch: a failed capture degrades to
+// an honest note, never a blocked chat.
+async function runMapViewEnrichment(env, log, emit, step, stepDone, conversation, state, view, question) {
+  step("maps", "Capturing your current map view…");
+  let capture = null;
+  try {
+    capture = await runMapViewCapture(env, log, view);
+  } catch (err) {
+    log.warn("googlemaps.mapview_failed", { error: err?.message || String(err) });
+  }
+  const where = `${view.lat}, ${view.lng} (zoom ${view.zoom})`;
+  if (!capture) {
+    stepDone("maps", "Couldn't capture the current map view");
+    return withAppendedText(
+      conversation,
+      "\n\n--- Google Maps ---\n" +
+        `Google Maps & Street View is ENABLED and a capture of the user's current map view (centered at ${where}) was attempted, but no image could be fetched. ` +
+        "Answer from the conversation so far and say plainly that the current map view couldn't be captured this time. " +
+        "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
+        "--- End of Google Maps ---",
+    );
+  }
+
+  state.mapsCount = 1;
+  let description = "";
+  if (state.visionModel) {
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `This is a road-map image of exactly the area the user is currently viewing in an interactive Google Map beside this chat (centered at ${where}). There are NO Street View photos in this view.`,
+      [capture.image],
+      question,
+      { mapOnly: true },
+    );
+  }
+
+  // Continue-from-here: a fresh interactive map at the user's current view
+  // beside THIS reply; rendering it locks the superseded map client-side.
+  const mapShown = !!googleMapsEmbedKey(env);
+  if (mapShown) {
+    emit({ status: { type: "map_embed", lat: view.lat, lng: view.lng, zoom: view.zoom } });
+  }
+
+  stepDone(
+    "maps",
+    description ? "Current map view captured + described" : "Current map view captured",
+    [where],
+  );
+
+  return withAppendedText(conversation, buildMapViewBlock(view, { description, mapShown }));
 }
 
 // Runs Street View / map images through a vision-capable helper model to

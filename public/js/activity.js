@@ -18,10 +18,12 @@ import { mapsEmbedKey } from "./settings.js";
 // fallback — navigable, just without POV capture.
 
 let currentPov = null; // the view the user last panned/moved to (this session)
+let currentMapView = null; // the interactive MAP view they last panned/zoomed to
 let mapsApiPromise = null; // lazy one-time SDK load
 let sdkAuthFailed = false; // Google rejected the key for the JS API (gm_authFailure)
 const panoFallbacks = new Set(); // per-panorama "replace me with the iframe" closures
 let lockActiveEmbed = null; // locks the newest panorama when a newer one renders
+let lockActiveMapEmbed = null; // locks the newest interactive map likewise
 
 // What stream.js attaches to the next /api/chat body, or null when no live
 // panorama exists (fresh session, iframe fallback, reloaded conversation).
@@ -29,14 +31,22 @@ export function getStreetViewPov() {
   return currentPov;
 }
 
-// New chat / switching conversations: the panorama on screen no longer
-// belongs to the conversation being sent, so its POV must not ride along —
-// and the outgoing conversation's panorama must not be locked by the next
-// conversation's first embed (the DOM is cleared; the closure must not
+// The map sibling: the center/zoom of the live interactive map, sent as
+// body.map_view so a follow-up can capture exactly the area on screen.
+export function getMapView() {
+  return currentMapView;
+}
+
+// New chat / switching conversations: the panorama/map on screen no longer
+// belongs to the conversation being sent, so its view must not ride along —
+// and the outgoing conversation's embeds must not be locked by the next
+// conversation's first embed (the DOM is cleared; the closures must not
 // linger and fire at a dead element's expense).
 export function resetStreetViewPov() {
   currentPov = null;
+  currentMapView = null;
   lockActiveEmbed = null;
+  lockActiveMapEmbed = null;
 }
 
 // The SDK script can load fine and STILL fail afterwards: Google validates
@@ -53,6 +63,7 @@ function installAuthFailureHook() {
   globalThis.gm_authFailure = () => {
     sdkAuthFailed = true;
     currentPov = null; // no live panorama ⇒ no current view to send
+    currentMapView = null; // ditto for the interactive map
     for (const fallback of panoFallbacks) {
       try {
         fallback();
@@ -126,12 +137,15 @@ export function renderStreetViewEmbed(turn, s) {
   turn.el.insertBefore(wrap, turn.stats);
   turn._svEmbed = wrap;
 
-  // Only the LATEST panorama stays navigable: rendering this one locks the
-  // previous (pointer events off, dimmed, honest label, POV recording
-  // stopped), so "the current view" the server reasons about is always the
-  // single view in sight — with several live panoramas, panning an OLD one
-  // could hijack the POV sent with follow-ups (reported 2026-07-09).
+  // Only the LATEST view stays navigable: rendering this one locks the
+  // previous panorama (pointer events off, dimmed, honest label, POV
+  // recording stopped) AND any live interactive map, so "the current view"
+  // the server reasons about is always the single view in sight — with
+  // several live embeds, panning an OLD one could hijack the view sent
+  // with follow-ups (reported 2026-07-09).
   if (lockActiveEmbed) lockActiveEmbed();
+  if (lockActiveMapEmbed) lockActiveMapEmbed();
+  currentMapView = null;
   let locked = false;
   lockActiveEmbed = () => {
     locked = true;
@@ -216,31 +230,105 @@ export function renderStreetViewEmbed(turn, s) {
 // Interactive road map, from a `map_embed` status event — the no-coverage
 // counterpart of the Street View embed: the location resolved but Google has
 // no panorama near it, so a navigable MAP of the area stands in beside the
-// answer (requested 2026-07-09). A plain Maps Embed API iframe in place mode
-// (a marker at the exact coordinates) — no JS SDK, no view to capture, no
-// lock slot. Same key discipline: the browser key comes from /api/settings,
-// never from the event.
+// answer (requested 2026-07-09). Handled with full panorama parity (also
+// requested 2026-07-09): a real Maps JS SDK google.maps.Map whose pans/zooms
+// are tracked into the map view sent with follow-up queries (body.map_view),
+// with only the LATEST view (map or panorama) navigable — older embeds lock.
+// SDK failure → Maps Embed API iframe fallback (place mode with a marker
+// when a resolved address is named, view mode for a continue-from-here
+// map) — still navigable, just without the current-view capture. Same key
+// discipline: the browser key comes from /api/settings, never the event.
 export function renderMapEmbed(turn, s) {
   const key = mapsEmbedKey();
   if (!key || !turn?.el || turn._mapEmbed) return;
   const lat = Number(s.lat);
   const lng = Number(s.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const zoom = Number.isFinite(Number(s.zoom)) ? Math.round(Number(s.zoom)) : 17;
 
   const wrap = document.createElement("div");
   wrap.className = "streetview-embed";
   const label = document.createElement("div");
   label.className = "streetview-embed-label";
-  label.textContent = s.q ? `Map — ${s.q}` : "Map — drag and zoom to explore";
-  const iframe = document.createElement("iframe");
-  iframe.loading = "lazy";
-  iframe.allow = "fullscreen";
-  iframe.title = "Google Maps";
-  const params = new URLSearchParams({ key, q: `${lat},${lng}`, zoom: "17" });
-  iframe.src = `https://www.google.com/maps/embed/v1/place?${params}`;
-  wrap.append(label, iframe);
+  const baseLabel = s.q ? `Map — ${s.q}` : "Map — drag and zoom to explore";
+  label.textContent = baseLabel;
+  const box = document.createElement("div");
+  box.className = "streetview-pano";
+  wrap.append(label, box);
   turn.el.insertBefore(wrap, turn.stats);
   turn._mapEmbed = wrap;
+
+  // One live view at a time, across BOTH embed kinds: a new map locks the
+  // previous map AND any live panorama (whose stale POV must not ride along
+  // with follow-ups about this map).
+  if (lockActiveEmbed) lockActiveEmbed();
+  currentPov = null;
+  if (lockActiveMapEmbed) lockActiveMapEmbed();
+  let locked = false;
+  lockActiveMapEmbed = () => {
+    locked = true;
+    currentMapView = null;
+    wrap.classList.add("locked");
+    label.textContent = "Map — earlier view (locked); continue in the latest map";
+  };
+
+  const renderIframeFallback = () => {
+    const iframe = document.createElement("iframe");
+    iframe.loading = "lazy";
+    iframe.allow = "fullscreen";
+    iframe.title = "Google Maps";
+    // A resolved address gets place mode (marker + place card); a
+    // continue-from-here view (no q) centers the raw coordinates instead —
+    // view mode, since there is no place to mark.
+    iframe.src = s.q
+      ? `https://www.google.com/maps/embed/v1/place?${new URLSearchParams({ key, q: `${lat},${lng}`, zoom: String(zoom) })}`
+      : `https://www.google.com/maps/embed/v1/view?${new URLSearchParams({ key, center: `${lat},${lng}`, zoom: String(zoom) })}`;
+    box.replaceChildren(iframe);
+    label.textContent = baseLabel;
+  };
+
+  if (sdkAuthFailed) {
+    renderIframeFallback();
+    return;
+  }
+  installAuthFailureHook();
+
+  loadMapsApi(key)
+    .then((maps) => {
+      if (sdkAuthFailed) throw new Error("maps js auth failed");
+      if (!maps?.Map) throw new Error("Map unavailable");
+      const map = new maps.Map(box, {
+        center: { lat, lng },
+        zoom,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: true,
+      });
+      if (s.q && maps.Marker) new maps.Marker({ position: { lat, lng }, map, title: s.q });
+      // Track the CURRENT view on "idle" (fires once per settled pan/zoom).
+      // Rounded (~1m / integer zoom) so re-asking about the same area hits
+      // the server's capture cache instead of re-billing a Static fetch.
+      const record = () => {
+        if (locked) return;
+        try {
+          const c = map.getCenter();
+          if (!c) return;
+          currentMapView = {
+            lat: Math.round(c.lat() * 1e5) / 1e5,
+            lng: Math.round(c.lng() * 1e5) / 1e5,
+            zoom: Math.round(Number(map.getZoom()) || zoom),
+          };
+        } catch {
+          // view capture is best-effort — the map itself keeps working
+        }
+      };
+      map.addListener("idle", record);
+      record();
+      label.textContent = `${baseLabel}; follow-up questions see your current view`;
+      // Key rejected asynchronously (gm_authFailure) → swap for the iframe.
+      panoFallbacks.add(renderIframeFallback);
+    })
+    .catch(renderIframeFallback);
 }
 
 // The snapped Street View frames the server's vision helper reasoned about,
