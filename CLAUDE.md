@@ -11,10 +11,11 @@ assistant, matching its name: `/api/chat` runs a Worker-orchestrated pipeline
 (triage → search → gap check → synthesis → validation) with **no function
 calling** — every phase is a direct JSON-mode or streamed call, so it is
 deterministic and works on any model in the catalog. The primary LLM provider
-is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** is a second,
-key-gated provider for answer/synthesis models (opus/sonnet/haiku —
-`src/anthropic.js`, dispatched via `src/providers.js`; the JSON planning
-phases always stay on Berget). Web search is **Exa**.
+is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
+(GPT)** are secondary, key-gated providers for answer/synthesis models
+(claude-* opus/sonnet/haiku — `src/anthropic.js`; bare gpt-* —
+`src/openai.js`; both dispatched via the `src/providers.js` registry; the
+JSON planning phases always stay on Berget). Web search is **Exa**.
 
 ## Git workflow
 
@@ -122,7 +123,8 @@ Server (`src/`):
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client (primary provider): streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `anthropic.js` | Anthropic (Claude) client — second, `ANTHROPIC_API_KEY`-gated provider: raw-fetch Messages API with an SSE adapter re-emitting Anthropic streams as OpenAI-style SSE (so `consumeChatStream` + all its guards work unchanged), static EUR-priced catalog (opus/sonnet/haiku) — see the **add-llm-provider** skill |
-| `providers.js` | The LLM-provider dispatch seam: merged model catalog (`listChatModels`) + `chatCompletion`/`completeJson` routed by model-id namespace (`claude-*` → Anthropic) — everything downstream is provider-agnostic |
+| `openai.js` | OpenAI (GPT) client — third, `OPENAI_API_KEY`-gated provider: raw-fetch Chat Completions; NO stream adapter (OpenAI SSE is the native wire format `consumeChatStream` parses), only pinned wire params (`max_completion_tokens`, `reasoning_effort: "none"`, `stream_options.include_usage`), static EUR-priced catalog (gpt-5.6-sol/terra/luna + gpt-5.4-mini) |
+| `providers.js` | The LLM-provider dispatch seam: merged model catalog (`listChatModels`) + `chatCompletion`/`completeJson` routed by model-id namespace via the `SECONDARY_PROVIDERS` registry (`claude-*` → Anthropic, bare `gpt-*` → OpenAI, else Berget) — everything downstream is provider-agnostic |
 | `exa.js` | Exa web search |
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
@@ -199,8 +201,11 @@ source rule, the JSON-only reinforcement toggle), `chat.js`
 (`consumeChatStream`: SSE parsing + the opt-in idle/total stream guards),
 `anthropic.js` (payload conversion incl. system/image handling, the
 Anthropic→OpenAI SSE adapter composed through the real `consumeChatStream`,
-key-gated catalog, stop-reason mapping), `providers.js` (the dispatch
-routing predicate),
+key-gated catalog, stop-reason mapping), `openai.js` (the GPT wire params —
+`max_completion_tokens`/`reasoning_effort`/`stream_options` — native SSE
+through the real `consumeChatStream`, key-gated catalog, plus an in-suite
+mock-HTTP smoke over `node:http`), `providers.js` (the registry routing
+predicates + the catalog merge/degrade path),
 `pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
@@ -352,12 +357,14 @@ what docs claim); and update the skill list below plus the skill's
   encryption-asymmetry rule (`storage.js`, `settings.js`, `rag.js`,
   `history-store.js`, `sync.js`, `projects.js`).
 - **integrations** — external providers and the enrichment pattern: Berget,
-  Anthropic, Exa, OpenStreetMap Nominatim geocoding, Shodan, Google Maps /
-  Street View, Hugging Face Hub search (`berget.js`, `anthropic.js`,
-  `exa.js`, `geocode.js`, `shodan.js`, `googlemaps.js`, `hf.js`).
+  Anthropic, OpenAI, Exa, OpenStreetMap Nominatim geocoding, Shodan, Google
+  Maps / Street View, Hugging Face Hub search (`berget.js`, `anthropic.js`,
+  `openai.js`, `exa.js`, `geocode.js`, `shodan.js`, `googlemaps.js`,
+  `hf.js`).
 - **add-llm-provider** — the playbook for adding a NEW LLM provider or new
-  models to the dropdown (how Anthropic was added): the dispatch seam
-  (`providers.js`), the catalog contract, the adapt-at-the-wire SSE pattern,
+  models to the dropdown (how Anthropic and OpenAI were added): the provider
+  registry seam (`providers.js`), the catalog contract, the two worked
+  examples (foreign wire → SSE adapter; native wire → params only),
   split-routing/no-function-calling constraints, secrets/feature gating, and
   the validation ladder (unit tests → mock-HTTP smoke → live probe → bench).
 - **tune-provider-models** — tuning new models per codified use case

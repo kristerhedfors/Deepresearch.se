@@ -143,6 +143,7 @@ export function validateStreetViewPov(raw) {
 // exact area. Untrusted input, arbitrary shape: anything unusable returns
 // null (the enrichment then falls back to the address walk-back), never a
 // blocked chat. Zoom clamps to the Static Maps API's [0,21].
+/** @param {any} raw */
 export function validateMapView(raw) {
   if (!raw || typeof raw !== "object") return null;
   const lat = Number(raw.lat);

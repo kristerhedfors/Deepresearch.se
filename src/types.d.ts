@@ -43,6 +43,12 @@ export interface Env {
   /** Test-only override pointing the Anthropic client at a mock. */
   ANTHROPIC_URL?: string;
 
+  // Third LLM provider (OpenAI/GPT) — see src/openai.js. Same key-gating
+  // convention: absent, the gpt-* models don't appear at all.
+  OPENAI_API_KEY?: string;
+  /** Test-only override pointing the OpenAI client at a mock. */
+  OPENAI_URL?: string;
+
   // Web search (Exa) — see src/exa.js.
   EXA_API_KEY?: string;
 
@@ -106,8 +112,8 @@ export type Conversation = Message[];
 /**
  * One entry of the chat-capable model catalog `/api/models` exposes and
  * validation/pricing consume (`listChatModels` — Berget's live catalog
- * merged with the key-gated Anthropic entries). `price_in`/`price_out` are
- * raw EUR-per-token prices used for quota cost accounting.
+ * merged with the key-gated secondary-provider entries). `price_in`/
+ * `price_out` are raw EUR-per-token prices used for quota cost accounting.
  */
 export interface ModelCatalogEntry {
   id: string;
@@ -120,7 +126,7 @@ export interface ModelCatalogEntry {
   up: boolean;
   /** True when the model accepts image input. */
   vision: boolean;
-  /** Which provider serves it ("anthropic"); absent for Berget entries. */
+  /** Which provider serves it ("anthropic" | "openai"); absent for Berget entries. */
   provider?: string;
 }
 export type ModelCatalog = ModelCatalogEntry[];

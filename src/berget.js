@@ -129,14 +129,23 @@ export async function rawModelEntry(env, id) {
 }
 
 // "€0.30 in / €0.30 out per 1M tokens" — shown as a tooltip in the UI.
-// Exported for other providers' catalog builders (src/anthropic.js) so
-// every dropdown entry formats identically.
+// Exported for other providers' catalog builders (src/anthropic.js,
+// src/openai.js) so every dropdown entry formats identically.
 export function formatPricing(p) {
   if (!p || typeof p.input !== "number" || typeof p.output !== "number") return null;
   const perM = (v) => (v * 1e6).toFixed(2).replace(/\.?0+$/, "");
   const cur = p.currency === "EUR" ? "€" : (p.currency || "") + " ";
   return `${cur}${perM(p.input)} in / ${cur}${perM(p.output)} out per 1M tokens`;
 }
+
+// USD-per-1M-tokens → EUR-per-token, for providers that price in USD
+// (Anthropic, OpenAI) while the quota system accounts in EUR (quota.js
+// bergetCost, admin budgets). One fixed, documented rate shared by every
+// USD-priced catalog so the conversion can't drift apart per provider —
+// it only affects cost-accounting granularity, and admins tune budgets
+// around whatever rate is encoded here. Revisit if it drifts materially.
+export const USD_TO_EUR = 0.92;
+export const eurPerTokenFromUsd = (usdPerMTok) => (usdPerMTok * USD_TO_EUR) / 1e6;
 
 // Starts a streaming chat completion. `model` overrides the default.
 //

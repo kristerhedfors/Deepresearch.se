@@ -2,12 +2,13 @@
 name: integrations
 description: >-
   Load when integrating or modifying an external data source — Berget the
-  primary LLM provider (src/berget.js), Anthropic the second LLM provider
-  (src/anthropic.js, dispatched via src/providers.js), Exa web search
-  (src/exa.js), OpenStreetMap Nominatim reverse geocoding (src/geocode.js),
-  Shodan host intelligence (src/shodan.js), Google Maps / Street View
-  (src/googlemaps.js), or Hugging Face Hub search (src/hf.js) — or adding a
-  new enrichment in the same deterministic no-function-calling pattern.
+  primary LLM provider (src/berget.js), Anthropic and OpenAI the secondary
+  LLM providers (src/anthropic.js, src/openai.js, dispatched via the
+  src/providers.js registry), Exa web search (src/exa.js), OpenStreetMap
+  Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
+  (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
+  Hugging Face Hub search (src/hf.js) — or adding a new enrichment in the
+  same deterministic no-function-calling pattern.
 ---
 
 # External providers & the enrichment pattern
@@ -16,8 +17,9 @@ description: >-
 
 **Berget.ai is the primary LLM provider** — the default model, the JSON
 planning phases, and embeddings all run here. Berget exposes an
-OpenAI-compatible API at `https://api.berget.ai/v1`. (Anthropic is a
-second, key-gated provider for answer models — see the next section.)
+OpenAI-compatible API at `https://api.berget.ai/v1`. (Anthropic and
+OpenAI are secondary, key-gated providers for answer models — see the
+next two sections.)
 
 - **Auth:** the Worker reads the `BERGET_API_TOKEN` secret (already configured
   on the Worker in the Cloudflare dashboard) and sends it as
@@ -58,9 +60,10 @@ second, key-gated provider for answer models — see the next section.)
 
 ## LLM provider — Anthropic (Claude), second provider
 
-Added 2026-07-09 (`src/anthropic.js` + the dispatch seam `src/providers.js`).
-Full playbook + contracts: the **add-llm-provider** skill; per-model tuning
-and the first eval battery: the **tune-provider-models** skill.
+Added 2026-07-09 (`src/anthropic.js` + the provider registry
+`src/providers.js`). Full playbook + contracts: the **add-llm-provider**
+skill; per-model tuning and the first eval battery: the
+**tune-provider-models** skill.
 
 - **Auth:** the `ANTHROPIC_API_KEY` dashboard secret, sent as `x-api-key`
   with `anthropic-version: 2023-06-01`. Never in the repo. Absent, the
@@ -73,11 +76,12 @@ and the first eval battery: the **tune-provider-models** skill.
   `claude-sonnet-5`, `claude-haiku-4-5` — all vision-capable, priced in
   the catalog as EUR-per-token (converted from USD at the fixed rate
   documented in anthropic.js) so quota cost accounting works unchanged.
-- **Routing:** by model-id namespace — `claude-*` dispatches to Anthropic,
-  everything else to Berget (`src/providers.js`). The JSON planning phases
-  ALWAYS stay on Berget's `DEFAULT_MODEL` (split model routing, CLAUDE.md
-  invariant 3); Anthropic only serves synthesis/direct answers (and can be
-  drafted as a vision-describe helper, since its models are `vision && up`).
+- **Routing:** by model-id namespace — `claude-*` dispatches to Anthropic
+  via the `SECONDARY_PROVIDERS` registry, everything unmatched to Berget
+  (`src/providers.js`). The JSON planning phases ALWAYS stay on Berget's
+  `DEFAULT_MODEL` (split model routing, CLAUDE.md invariant 3); Anthropic
+  only serves synthesis/direct answers (and can be drafted as a
+  vision-describe helper, since its models are `vision && up`).
 - **Stream shape:** Anthropic SSE (message_start / content_block_delta /
   message_delta / message_stop) is adapted on the fly into OpenAI-style SSE
   (`openAiStreamFromAnthropic`), so `consumeChatStream`, the idle/total
@@ -91,6 +95,47 @@ and the first eval battery: the **tune-provider-models** skill.
 - **Privacy note:** like Berget, Anthropic is an LLM provider — the
   conversation itself goes there when a Claude model is selected. This is
   the user's explicit model choice in the dropdown, not an enrichment.
+
+## LLM provider — OpenAI (GPT), third provider
+
+Added 2026-07-09, same day as Anthropic (`src/openai.js` + a
+`SECONDARY_PROVIDERS` registry entry in `src/providers.js`). The
+already-OpenAI-shaped worked example in the **add-llm-provider** skill;
+tuning: **tune-provider-models**.
+
+- **Auth:** the `OPENAI_API_KEY` dashboard secret, sent as
+  `Authorization: Bearer`. Never in the repo. Absent, the feature is
+  invisible: the gpt-* models don't appear in `/api/models` and nothing
+  routes to OpenAI.
+- **Endpoint:** `POST https://api.openai.com/v1/chat/completions` (raw
+  fetch, no SDK). `OPENAI_URL` is the test-only mock override, mirroring
+  `BERGET_URL`/`ANTHROPIC_URL`.
+- **Models (static catalog, a product choice):** the mainstream GPT
+  lineup as of 2026-07 — `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`
+  (the three current flagship tiers) and `gpt-5.4-mini` (the compact
+  model) — all vision-capable, EUR-priced in the catalog via berget.js's
+  shared `eurPerTokenFromUsd` fixed-rate conversion.
+- **Routing:** bare `gpt-*` ids dispatch to OpenAI. **Watch the
+  lookalike:** Berget hosts `openai/gpt-oss-120b` — a vendor-PATH id
+  that stays on Berget; the predicate matches the bare prefix only. The
+  JSON planning phases ALWAYS stay on Berget's `DEFAULT_MODEL`
+  (invariant 3); OpenAI only serves synthesis/direct answers (and can be
+  drafted as a vision-describe helper).
+- **Stream shape:** NO adapter — OpenAI's Chat Completions SSE is the
+  native wire format `consumeChatStream` parses, so the raw Response
+  passes through and all the shared guards apply unchanged. The wire
+  PARAMS differ instead (`toOpenAiPayload`): `max_completion_tokens`
+  (GPT-5-era models reject the legacy `max_tokens`), `stream_options:
+  {include_usage: true}` (or no usage chunk arrives), `response_format:
+  json_object` on the JSON path.
+- **Reasoning:** every catalog GPT model is a reasoning model —
+  `reasoning_effort` is pinned to `"none"` (hidden token spend inside
+  max_completion_tokens + a silent pre-answer pause vs the budget
+  planner and the 60s idle guard; the exact same tradeoff as Sonnet 5's
+  adaptive thinking). Revisit with a bench A/B.
+- **Privacy note:** like Berget/Anthropic, the conversation itself goes
+  to OpenAI when a GPT model is selected — the user's explicit dropdown
+  choice, not an enrichment.
 
 ## Web search — Exa
 

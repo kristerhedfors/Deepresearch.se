@@ -19,7 +19,7 @@
 // convention as BERGET_API_TOKEN — never in the repo): absent, the models
 // don't appear in the catalog and nothing routes here (src/providers.js).
 
-import { formatPricing, parseLooseJson } from "./berget.js";
+import { eurPerTokenFromUsd, formatPricing, parseLooseJson } from "./berget.js";
 
 // ANTHROPIC_URL override exists solely so tests can point at a mock (the
 // same convention as BERGET_URL); production always uses the default.
@@ -38,12 +38,8 @@ const JSON_CALL_TIMEOUT_MS = 45_000;
 const MAX_TOKENS = 4096;
 
 // Anthropic prices are USD per 1M tokens; the quota system accounts in EUR
-// (quota.js bergetCost, admin budgets). Fixed approximate conversion — it
-// only affects cost-accounting granularity, and admins tune budgets around
-// whatever rate is encoded here. Revisit if the rate drifts materially.
-const USD_TO_EUR = 0.92;
-/** @param {number} usdPerMTok */
-const eurPerToken = (usdPerMTok) => (usdPerMTok * USD_TO_EUR) / 1e6;
+// — converted at the fixed shared rate documented in berget.js
+// (USD_TO_EUR / eurPerTokenFromUsd, shared with src/openai.js).
 
 // Static catalog — Anthropic's /v1/models carries no pricing, and the three
 // offered models are a deliberate product choice (opus/sonnet/haiku), so a
@@ -82,9 +78,9 @@ export function anthropicModels(env) {
   return MODELS.map((m) => ({
     id: m.id,
     name: m.name,
-    pricing: formatPricing({ input: eurPerToken(m.usd_in), output: eurPerToken(m.usd_out), currency: "EUR" }),
-    price_in: eurPerToken(m.usd_in),
-    price_out: eurPerToken(m.usd_out),
+    pricing: formatPricing({ input: eurPerTokenFromUsd(m.usd_in), output: eurPerTokenFromUsd(m.usd_out), currency: "EUR" }),
+    price_in: eurPerTokenFromUsd(m.usd_in),
+    price_out: eurPerTokenFromUsd(m.usd_out),
     up: true,
     vision: true,
     provider: "anthropic",
