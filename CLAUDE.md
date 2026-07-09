@@ -58,6 +58,18 @@ git push origin main
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
    finding, not a guess.
+6. **Equal Swedish and English support in ALL deterministic intent routing**
+   (explicit product expectation, 2026-07-09). Every regex gate / phrase set
+   that routes behavior — street-view & maps intents, follow-up/scene
+   references, relative moves and here-asks, locality corrections, quiz
+   intent, and any FUTURE gate — must take Swedish forms with the same
+   breadth as English (including definite forms like "gatuvyn", synonyms
+   like "gatubild", and common typos, mirroring the English typo sets).
+   When adding or extending a gate, add the Swedish forms AND a parity
+   unit test in the same change — never English-only with Swedish "later".
+   The LLM phases are language-agnostic by nature; the deterministic gates
+   are where parity can drift, so that's where it is enforced (see the
+   "Swedish language parity" test suite in `src/googlemaps.test.js`).
 
 > **Plan status (current): this Cloudflare account is on Workers PAID.**
 > `wrangler.toml` sets `[limits] cpu_ms = 300_000` (the Paid maximum, 5
