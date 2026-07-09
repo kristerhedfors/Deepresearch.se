@@ -201,6 +201,14 @@ export function buildMapsBlock(query, parts) {
     lines.push(
       "No Street View imagery is available for this location (Google has no panorama near these coordinates). If the user asked for Street View, say that plainly — never present anything else (a map, a guess) as Street View imagery.",
     );
+    // With no panorama, the map link is the user's way in — the first
+    // no-coverage answers shipped without any link at all (requested
+    // 2026-07-09: "include a google maps link with the maps view").
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      lines.push(
+        `ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(lat, lng)})) so the user can open the location on Google Maps.`,
+      );
+    }
   }
   const svCount = parts.streetViewCount || 0;
   if (parts.followUp) {
@@ -219,6 +227,11 @@ export function buildMapsBlock(query, parts) {
   if (parts.mapShown) {
     lines.push(
       "A road-map image of the area is displayed to the user directly beside this reply, so you can refer to it as shared context.",
+    );
+  }
+  if (parts.mapEmbedShown) {
+    lines.push(
+      "An interactive Google Map of the area (draggable, zoomable, with a marker at the resolved location) is displayed to the user directly beside this reply, so you can refer to it as shared context.",
     );
   }
   if (parts.description) {

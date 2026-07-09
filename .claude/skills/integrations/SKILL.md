@@ -499,7 +499,13 @@ call, alongside the Shodan enrichment).
   (no Street View here)"; the client prefers `s.title` over its built
   "Street View — …" header), the vision-helper intro and the block label
   the description as a MAP (`describedMapOnly`/`mapShown` parts), and the
-  block says plainly no Street View exists there. Every maps/POV block
+  block says plainly no Street View exists there. A no-coverage lookup
+  ALSO gets an interactive map: the `map_embed` SSE event (emitted when no
+  `streetview_embed` fires and the embed key exists — see the
+  **sse-protocol** skill) renders a navigable Maps Embed API `place`-mode
+  iframe with a marker beside the answer, and the block instructs the
+  answer to ALWAYS include the keyless Map link as a markdown link
+  (requested 2026-07-09 — the first no-coverage answers carried no link). Every maps/POV block
   also carries `NO_FABRICATED_IMAGE_URLS`: before it, a model wanting to
   "show" imagery invented a `maps.googleapis.com/maps/api/streetview?…
   key=YOUR_API_KEY` markdown image — a broken image in the reply. Only the

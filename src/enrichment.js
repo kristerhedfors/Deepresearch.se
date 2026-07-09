@@ -221,6 +221,14 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     });
   }
 
+  // With no panorama to embed, an interactive MAP of the area stands in
+  // beside the reply (requested 2026-07-09, right after the honest
+  // no-coverage degrade landed: "include a google maps link with the maps
+  // view, or better an interactive maps view"). Same key discipline as the
+  // Street View embed: coordinates only, the client holds the browser key.
+  const mapEmbedShown =
+    !result.embed && Number.isFinite(result.lat) && Number.isFinite(result.lng) && !!googleMapsEmbedKey(env);
+
   const block = buildMapsBlock(result.displayQuery, {
     place: result.place,
     lat: result.lat,
@@ -233,6 +241,7 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     followUp: !!target.followUp,
     framesShown: frames.length,
     mapShown: !frames.length && !!result.staticMapImage,
+    mapEmbedShown,
   });
 
   stepDone(
@@ -248,6 +257,8 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // never lands in the "Copy research JSON" debug export (which records events).
   if (result.embed && googleMapsEmbedKey(env)) {
     emit({ status: { type: "streetview_embed", lat: result.embed.lat, lng: result.embed.lng } });
+  } else if (mapEmbedShown) {
+    emit({ status: { type: "map_embed", lat: result.lat, lng: result.lng, q: result.displayQuery } });
   }
 
   return withAppendedText(conversation, block);

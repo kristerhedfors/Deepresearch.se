@@ -126,6 +126,9 @@ export function embedRef(e) {
   if (e?.kind === "streetview_embed") {
     return `[Embedded element #${e.id}: interactive Google Street View panorama at ${e.lat}, ${e.lng}]`;
   }
+  if (e?.kind === "map_embed") {
+    return `[Embedded element #${e.id}: interactive Google Map at ${e.lat}, ${e.lng}${e.q ? ` (${e.q})` : ""}]`;
+  }
   if (e?.kind === "streetview_frames") {
     const dirs = (e.directions || []).filter(Boolean).join(", ");
     return (

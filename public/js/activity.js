@@ -213,6 +213,36 @@ export function renderStreetViewEmbed(turn, s) {
     .catch(renderIframeFallback);
 }
 
+// Interactive road map, from a `map_embed` status event — the no-coverage
+// counterpart of the Street View embed: the location resolved but Google has
+// no panorama near it, so a navigable MAP of the area stands in beside the
+// answer (requested 2026-07-09). A plain Maps Embed API iframe in place mode
+// (a marker at the exact coordinates) — no JS SDK, no view to capture, no
+// lock slot. Same key discipline: the browser key comes from /api/settings,
+// never from the event.
+export function renderMapEmbed(turn, s) {
+  const key = mapsEmbedKey();
+  if (!key || !turn?.el || turn._mapEmbed) return;
+  const lat = Number(s.lat);
+  const lng = Number(s.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "streetview-embed";
+  const label = document.createElement("div");
+  label.className = "streetview-embed-label";
+  label.textContent = s.q ? `Map — ${s.q}` : "Map — drag and zoom to explore";
+  const iframe = document.createElement("iframe");
+  iframe.loading = "lazy";
+  iframe.allow = "fullscreen";
+  iframe.title = "Google Maps";
+  const params = new URLSearchParams({ key, q: `${lat},${lng}`, zoom: "17" });
+  iframe.src = `https://www.google.com/maps/embed/v1/place?${params}`;
+  wrap.append(label, iframe);
+  turn.el.insertBefore(wrap, turn.stats);
+  turn._mapEmbed = wrap;
+}
+
 // The snapped Street View frames the server's vision helper reasoned about,
 // from a `streetview_frames` status event — rendered as a captioned thumbnail
 // strip in the turn body so the user sees the SAME imagery the model saw.

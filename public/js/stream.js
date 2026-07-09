@@ -10,6 +10,7 @@ import {
   finishGenericStep,
   finishSearchStep,
   getStreetViewPov,
+  renderMapEmbed,
   renderStats,
   renderStreetViewEmbed,
   renderStreetViewFrames,
@@ -627,6 +628,9 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "streetview_embed") {
       renderStreetViewEmbed(turn, s);
       recordEmbed({ kind: "streetview_embed", lat: s.lat, lng: s.lng, heading: s.heading, pitch: s.pitch });
+    } else if (s.type === "map_embed") {
+      renderMapEmbed(turn, s);
+      recordEmbed({ kind: "map_embed", lat: s.lat, lng: s.lng, q: s.q || "" });
     } else if (s.type === "streetview_frames") {
       renderStreetViewFrames(turn, s);
       recordEmbed({

@@ -50,7 +50,19 @@ unknown `status` types (forward compatibility).
   them at a stale static frame. SDK load failure → Embed iframe fallback (no
   POV capture). No browser key configured → the client ignores the event and
   the keyless link stands.
-- `{"status":{"type":"streetview_frames","query":"Maskinistvägen 11","frames":[{"dir":"north","url":"data:image/jpeg;base64,…"}]}}`
+- `{"status":{"type":"map_embed","lat":59.65,"lng":17.12,"q":"Basaltgatan 3, 749 40 Enköping, Sweden"}}`
+  — the no-Street-View-coverage counterpart of `streetview_embed` (added
+  2026-07-09: a resolved location without a panorama used to show nothing
+  interactive and the answer carried no link at all): the client renders an
+  inline, navigable Google MAP (Maps Embed API `place` mode iframe with a
+  marker at the coordinates — `activity.js`'s `renderMapEmbed`, reusing the
+  `.streetview-embed` styling; no JS SDK, no POV capture, no lock slot)
+  beside the answer. Emitted only when NO `streetview_embed` fires and the
+  browser embed key is configured; the key is NOT in the event (same
+  discipline as the panorama). `q` carries the resolved display address for
+  the label. Persisted in `convEmbeds` (kind `"map_embed"` — tiny, coords +
+  q), re-rendered on history load (`turns.js`), referenced in the copy-text
+  export (`embedRef`: "interactive Google Map at lat, lng (q)").
   — the actual snapped Street View frames the vision-describe helper reasoned
   about (up to 4, JPEG data URLs); the client renders them as a captioned
   thumbnail strip beside the answer so the user sees the SAME imagery the

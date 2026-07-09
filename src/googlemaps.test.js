@@ -315,6 +315,28 @@ describe("buildMapsBlock", () => {
     assert.match(block, /No Street View imagery is available for this location/);
     assert.match(block, /never present anything else \(a map, a guess\) as Street View imagery/);
     assert.ok(!/Street View link: /.test(block));
+    // Without a panorama the map link is the user's only way in — the answer
+    // must carry it as a markdown link (requested 2026-07-09).
+    assert.match(block, /ALWAYS include the Map link above in your answer as a markdown link/);
+    assert.match(block, /\[View on Google Maps\]\(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=59\.65,17\.12\)/);
+  });
+
+  test("a block with coverage does not demand the markdown map link", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 1, lng: 2, streetView: { date: "" }, streetViewCount: 0, hasMap: false });
+    assert.ok(!/ALWAYS include the Map link/.test(block));
+  });
+
+  test("mentions the interactive map shown beside the reply (mapEmbedShown)", () => {
+    const block = buildMapsBlock("Basaltgatan 3, Enköping", {
+      place: null,
+      lat: 59.65,
+      lng: 17.12,
+      streetView: null,
+      streetViewCount: 0,
+      hasMap: false,
+      mapEmbedShown: true,
+    });
+    assert.match(block, /interactive Google Map of the area .* is displayed to the user directly beside this reply/);
   });
 
   test("a block with coverage carries no no-coverage note", () => {

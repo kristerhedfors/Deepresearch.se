@@ -313,6 +313,12 @@ test("embedRef formats each embed kind with its id number", () => {
   );
   // No query, no directions — still a well-formed reference.
   assert.equal(embedRef({ id: 3, kind: "streetview_frames" }), "[Embedded element #3: Street View frames]");
+  // The interactive map embed (the no-Street-View-coverage stand-in).
+  assert.equal(
+    embedRef({ id: 8, kind: "map_embed", lat: 59.65, lng: 17.12, q: "Basaltgatan 3, Enköping" }),
+    "[Embedded element #8: interactive Google Map at 59.65, 17.12 (Basaltgatan 3, Enköping)]",
+  );
+  assert.equal(embedRef({ id: 9, kind: "map_embed", lat: 1, lng: 2 }), "[Embedded element #9: interactive Google Map at 1, 2]");
   // An unknown kind (a future source's embed) never silently vanishes.
   assert.equal(embedRef({ id: 4, kind: "sonar_sweep" }), "[Embedded element #4: sonar_sweep]");
   // The inline quiz: title + question count, completion marker when done
