@@ -270,3 +270,43 @@ description: >-
   it force-reloads a stale cached stylesheet, which the boot guard's
   module-graph repair does not cover) whenever CSS and JS must move
   together.
+
+## The image deck (public/js/imagedeck.js)
+
+Requested 2026-07-09: the Street View/map frame strips became one
+conversation-wide, ordered IMAGE DECK with an enlarged slideshow.
+
+- **Registration**: `renderStreetViewFrames` (activity.js) pushes every
+  rendered frame into the deck (`addDeckEntries` — url, caption, and the
+  optional per-frame `lat`/`lng`/`kind:"map"` the server now sends on
+  `streetview_frames`; see the **sse-protocol** skill). Thumbnails get
+  `cursor: zoom-in` and click-open the deck at themselves.
+- **The lightbox** (`openDeck`): enlarged image, ‹/›/arrow-key navigation
+  across EVERY image the conversation has produced (in order), Escape or
+  backdrop click closes, "N / M" position. Upper-left MINI-MAP of the
+  current image's position: a free Maps Embed iframe with
+  `pointer-events: none` inside an `<a>` to the keyless Google Maps link
+  — the iframe paints, the link takes the click (no key → a plain
+  "Open in Google Maps" link stands; map-kind entries skip the iframe,
+  the big image IS a map). Styles: `.imagedeck-*` in app.css.
+- **Per-image chat panel**: the input at the lightbox's bottom submits
+  through app.js's `onDeckAsk` wiring → `setMapViewAnchor(point)`
+  (activity.js: sets `currentMapView` to the image's position, zoom 17,
+  and CLEARS any live panorama POV) → the ordinary composer submit. The
+  next message therefore carries `body.map_view` at that waypoint and
+  the server's whole anchor machinery (moves, nearby search, here-asks,
+  scene captures) continues from that point — no new server protocol.
+- **Waypoint miniatures on the interactive map**: `renderMapEmbed`'s
+  `path` branch asks `nearestDeckIndex(p, 30m)` per waypoint — a hit
+  renders that image as a 40×40 marker icon whose click opens the deck
+  at it (the LATEST image within the radius wins, not the closest — an
+  early exact-position frame must not shadow a revisit); waypoints
+  without imagery keep the numbered pin. Jump and nearby-place
+  destinations now ALWAYS emit their frame (previously only as the
+  no-embed-key fallback) so every stop has a deck image.
+- **Scope**: the deck is conversation-scoped and live-session only —
+  `resetStreetViewPov()` (new chat / conversation switch) also calls
+  `resetDeck()`, and data URLs are never persisted (a reloaded
+  conversation keeps answers and links, not imagery — same as the
+  strips themselves). Pure registry core is Node-tested
+  (imagedeck.test.js).

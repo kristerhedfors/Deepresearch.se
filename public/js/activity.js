@@ -4,6 +4,7 @@
 // object created by turns.js; scrolling is the caller's concern.
 
 import { mapsEmbedKey } from "./settings.js";
+import { addDeckEntries, deckEntries, nearestDeckIndex, openDeck, resetDeck } from "./imagedeck.js";
 
 // ---- Street View SDK panorama + current-view (POV) capture ------------------
 //
@@ -37,16 +38,33 @@ export function getMapView() {
   return currentMapView;
 }
 
+// The image deck's "continue from this point" anchor (requested
+// 2026-07-09): asking from the lightbox's chat panel makes THAT image's
+// position the current map view for the next message — the same map_view
+// anchor the live interactive map maintains, so the server's whole anchor
+// machinery (moves, nearby search, here-asks, scene captures) continues
+// from that waypoint. Any live panorama's POV is cleared: the user is
+// explicitly speaking from the deck image, not the on-screen panorama.
+export function setMapViewAnchor(point) {
+  const lat = Number(point?.lat);
+  const lng = Number(point?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  currentPov = null;
+  currentMapView = { lat, lng, zoom: 17 };
+}
+
 // New chat / switching conversations: the panorama/map on screen no longer
 // belongs to the conversation being sent, so its view must not ride along —
 // and the outgoing conversation's embeds must not be locked by the next
 // conversation's first embed (the DOM is cleared; the closures must not
-// linger and fire at a dead element's expense).
+// linger and fire at a dead element's expense). The image deck is
+// conversation-scoped too.
 export function resetStreetViewPov() {
   currentPov = null;
   currentMapView = null;
   lockActiveEmbed = null;
   lockActiveMapEmbed = null;
+  resetDeck();
 }
 
 // The SDK script can load fine and STILL fail afterwards: Google validates
@@ -317,7 +335,27 @@ export function renderMapEmbed(turn, s) {
         : [];
       if (path.length >= 2 && maps.Polyline) {
         new maps.Polyline({ path, map, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeWeight: 4 });
-        if (maps.Marker) path.forEach((p, i) => new maps.Marker({ position: p, map, label: String((i + 1) % 10) }));
+        if (maps.Marker) {
+          path.forEach((p, i) => {
+            // A waypoint that has a deck image nearby gets that image as a
+            // MINIATURE marker; clicking it opens the deck's slideshow at
+            // that image (requested 2026-07-09). Waypoints without imagery
+            // keep the plain numbered pin.
+            const deckIdx = nearestDeckIndex(p.lat, p.lng, 30);
+            const thumb = deckIdx >= 0 ? deckEntries()[deckIdx] : null;
+            if (thumb && maps.Size) {
+              const m = new maps.Marker({
+                position: p,
+                map,
+                title: `Stop ${i + 1} — click to view`,
+                icon: { url: thumb.url, scaledSize: new maps.Size(40, 40), anchor: maps.Point ? new maps.Point(20, 20) : undefined },
+              });
+              m.addListener("click", () => openDeck(deckIdx));
+            } else {
+              new maps.Marker({ position: p, map, label: String((i + 1) % 10) });
+            }
+          });
+        }
         if (maps.LatLngBounds) {
           const bounds = new maps.LatLngBounds();
           path.forEach((p) => bounds.extend(p));
@@ -372,7 +410,19 @@ export function renderStreetViewFrames(turn, s) {
   label.textContent = s.title || `Street View — ${s.query || "resolved location"}`;
   const strip = document.createElement("div");
   strip.className = "streetview-frames-strip";
-  for (const f of frames) {
+  // Every frame joins the conversation-wide image deck (imagedeck.js) so a
+  // click opens the enlarged slideshow at exactly this image; frames carry
+  // lat/lng from the server (optional — older events just get no mini-map).
+  const deckStart = addDeckEntries(
+    frames.map((f) => ({
+      url: f.url,
+      caption: f.label || (f.dir ? `looking ${f.dir}` : "") || s.query || "",
+      lat: f.lat,
+      lng: f.lng,
+      kind: f.kind,
+    })),
+  );
+  frames.forEach((f, i) => {
     const fig = document.createElement("figure");
     const img = document.createElement("img");
     img.src = f.url;
@@ -387,8 +437,11 @@ export function renderStreetViewFrames(turn, s) {
       cap.textContent = caption;
       fig.appendChild(cap);
     }
+    fig.classList.add("deck-openable");
+    fig.title = "Click to enlarge";
+    fig.addEventListener("click", () => openDeck(deckStart + i));
     strip.appendChild(fig);
-  }
+  });
   wrap.append(label, strip);
   // Before the embed if one is already rendered, else before the stats footer.
   turn.el.insertBefore(wrap, turn._svEmbed || turn.stats);

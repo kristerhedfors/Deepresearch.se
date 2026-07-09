@@ -53,9 +53,15 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"map_embed","lat":59.65,"lng":17.12,"zoom":17,"q":"Basaltgatan 3, 749 40 Enköping, Sweden"}}`
   — optionally also `"path":[{"lat":…,"lng":…},…]` (added 2026-07-09 with
   the journey view): when present and the SDK loaded, the client draws
-  numbered markers at every point, a polyline between them, and fits the
-  viewport to the route; clients that don't know the field render the same
-  event as a plain centered map (the forward-compat rule at work) —
+  markers at every point (a waypoint with a nearby image in the
+  conversation's image deck gets that image as a MINIATURE marker whose
+  click opens the deck's slideshow at it — imagedeck.js), a polyline
+  between them, and fits the viewport to the route; clients that don't
+  know the field render the same event as a plain centered map (the
+  forward-compat rule at work). `streetview_frames` frames likewise
+  gained optional per-frame `lat`/`lng`/`kind:"map"` fields the same day
+  — the deck uses them for the mini-map, the waypoint matching, and the
+  ask-from-this-point anchor; older clients ignore them —
   the no-Street-View-coverage counterpart of `streetview_embed` (added
   2026-07-09: a resolved location without a panorama used to show nothing
   interactive and the answer carried no link at all): the client renders an

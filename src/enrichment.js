@@ -261,15 +261,25 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // context the model saw (data URLs are already fetched — no extra billing).
   // With no Street View coverage the road map stands in — honestly labeled —
   // so an address lookup never comes back with nothing visual at all.
+  // Frames carry their position (lat/lng, optional — clients that don't
+  // know the fields ignore them) so the client's image deck can pin each
+  // image on the map and anchor follow-ups at it (see the sse-protocol
+  // skill's forward-compat rule).
   if (frames.length) {
-    emit({ status: { type: "streetview_frames", query: result.displayQuery, frames } });
+    emit({
+      status: {
+        type: "streetview_frames",
+        query: result.displayQuery,
+        frames: frames.map((f) => ({ ...f, lat: result.lat, lng: result.lng })),
+      },
+    });
   } else if (result.staticMapImage) {
     emit({
       status: {
         type: "streetview_frames",
         query: result.displayQuery,
         title: `Map — ${result.displayQuery} (no Street View here)`,
-        frames: [{ dir: "", label: "road map of the area", url: result.staticMapImage }],
+        frames: [{ dir: "", label: "road map of the area", kind: "map", lat: result.lat, lng: result.lng, url: result.staticMapImage }],
       },
     });
   }
@@ -374,7 +384,7 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
       status: {
         type: "streetview_frames",
         query: `your current view (${compassDir(pov.heading)})`,
-        frames: [{ dir: "", label: "your current view", url: capture.image }],
+        frames: [{ dir: "", label: "your current view", lat: pov.lat, lng: pov.lng, url: capture.image }],
       },
     });
   }
@@ -437,16 +447,21 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
     );
   }
 
-  if (embedKeyOk) {
-    emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: jump.heading } });
-  } else if (found.image) {
+  // The destination frame ALWAYS joins the reply (not just as the no-embed
+  // fallback): every jump stop contributes a clickable image to the
+  // conversation's image deck (imagedeck.js), which is how the journey's
+  // waypoints get their miniatures.
+  if (found.image) {
     emit({
       status: {
         type: "streetview_frames",
         query: `${found.lat}, ${found.lng}`,
-        frames: [{ dir: "", label: "destination view", url: found.image }],
+        frames: [{ dir: "", label: "destination view", lat: found.lat, lng: found.lng, url: found.image }],
       },
     });
+  }
+  if (embedKeyOk) {
+    emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: jump.heading } });
   }
 
   stepDone(
@@ -508,6 +523,17 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       question,
     );
   }
+  // Like the jump path, the best hit's frame always joins the reply so the
+  // found place is a clickable deck image with its own position.
+  if (found?.image) {
+    emit({
+      status: {
+        type: "streetview_frames",
+        query: top.name || nearby.query,
+        frames: [{ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, url: found.image }],
+      },
+    });
+  }
   if (embedKeyOk && found) {
     emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: 0 } });
   } else if (embedKeyOk) {
@@ -560,7 +586,7 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
     { label: `just before the ${ask.barrier}`, ...before },
     { label: `the other side of the ${ask.barrier}`, ...after },
   ].filter((w, i, arr) => i === 0 || w.panoId !== arr[i - 1].panoId || w.lat !== arr[i - 1].lat);
-  const [captures, place] = await Promise.all([
+  const [captures, place, routeImg] = await Promise.all([
     Promise.all(
       waypoints.map((w) =>
         runStreetViewPovCapture(env, log, { panoId: w.panoId || "", lat: w.lat, lng: w.lng, heading: bearing, pitch: 0, fov: 90 }).catch(
@@ -569,10 +595,18 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
       ),
     ),
     reverseGeocode(env, log, after.lat, after.lng),
+    // A route map with the crossing's waypoints joins the photo series
+    // (requested 2026-07-09: the initial reply should show a map view among
+    // the images, with all waypoints), so the strip reads photo → photo →
+    // photo → where-it-all-is.
+    routeMapImage(env, log, waypoints).catch(() => null),
   ]);
   const frames = waypoints
-    .map((w, i) => ({ dir: "", label: w.label, url: captures[i]?.image || null }))
+    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, url: captures[i]?.image || null }))
     .filter((f) => f.url);
+  if (routeImg) {
+    frames.push({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });
+  }
 
   let description = "";
   const destFrame = captures[captures.length - 1]?.image;
@@ -634,12 +668,13 @@ async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation
   ]);
   state.mapsCount = 1;
   if (image) {
+    const mid = points[Math.floor(points.length / 2)];
     emit({
       status: {
         type: "streetview_frames",
         title: `Route — ${points.length} stops`,
         query: "the journey so far",
-        frames: [{ dir: "", label: `the journey — ${points.length} stops`, url: image }],
+        frames: [{ dir: "", label: `the journey — ${points.length} stops`, kind: "map", lat: mid.lat, lng: mid.lng, url: image }],
       },
     });
   }

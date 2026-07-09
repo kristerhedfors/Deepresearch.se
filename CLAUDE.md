@@ -161,6 +161,14 @@ message in history; pure scoring/summary core Node-tested),
 `buildResearchDebugJson` — the "Copy research JSON" export of a turn's
 COMPLETE response for pasting into Claude Code: the research process AND
 the full resulting generation AND every error, server- or client-side),
+`imagedeck.js` (the conversation-wide IMAGE DECK: every Street View/map
+frame a reply shows joins one ordered deck; clicking a thumbnail — in a
+frames strip or a waypoint miniature on the interactive map — opens the
+enlarged slideshow with ‹/› navigation, a mini-map of the image's
+position linking to Google Maps, and a per-image chat panel whose
+question continues the conversation anchored AT that image's position
+via the map_view anchor; live-session only, pure registry core
+Node-tested),
 `markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
@@ -236,7 +244,9 @@ RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
 `stripOldImages`, `splitUserContent`, and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
-core extracted out of `stream.js`'s send path), `sse.js` (the SSE
+core extracted out of `stream.js`'s send path), `imagedeck.js`'s pure
+core (the deck registry: entry validation/order, the latest-within-radius
+waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
 malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
 scoring incl. ungraded free-text handling, the completed-quiz summary

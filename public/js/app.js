@@ -17,7 +17,9 @@ import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { loadSettings } from "./settings.js";
+import { loadSettings, mapsEmbedKey } from "./settings.js";
+import { setMapViewAnchor } from "./activity.js";
+import { onDeckAsk, setDeckEmbedKey } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
@@ -341,6 +343,19 @@ function setSendMode(streaming) {
   send.setAttribute("aria-label", streaming ? "Stop generating" : "Send");
   send.title = streaming ? "Stop generating" : "Send";
 }
+
+// The image deck's per-image chat panel (imagedeck.js): asking there
+// anchors the next message at that image's position (the map_view anchor —
+// activity.js setMapViewAnchor) and then goes through the ordinary composer
+// path, so quotas, attachments state, streaming controls and history all
+// behave exactly like a typed message. The mini-map uses the same
+// browser-exposed, referrer-locked embed key the interactive views use.
+setDeckEmbedKey(mapsEmbedKey);
+onDeckAsk((text, point) => {
+  if (point) setMapViewAnchor(point);
+  input.value = text;
+  form.requestSubmit();
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
