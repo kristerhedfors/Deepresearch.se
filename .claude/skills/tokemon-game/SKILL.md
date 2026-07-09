@@ -113,6 +113,16 @@ power/acc/PP. Don't hand-tune numbers.
   2026-07-09). Every hidden-toggled element that also sets its own
   `display` needs an explicit `#el[hidden]{display:none}` companion rule.
   iOS Safari also needs `-webkit-backdrop-filter` for the glass blur.
+- **WebKit drops content positioned past ~2^24 px (16.7M).** World-pixel
+  coordinates at zoom 17 reach 18.4M px at Stockholm's longitude — iOS
+  Safari silently dropped every tile <img> positioned there while emoji
+  markers survived on composited layers ("blank map, floating markers",
+  reported 2026-07-09; OSM itself served 200s). map.js therefore uses a
+  FLOATING ORIGIN — everything is positioned relative to an integer tile
+  origin near the viewport, re-anchored when the center drifts 30 tiles —
+  so no offset ever exceeds a few thousand px. Don't reintroduce absolute
+  world-pixel positioning. Verified headless via the scratchpad
+  map-check harness (real Chromium: 28/28 tiles, marker mid-screen).
 - Scene frames are billed per (pano, heading) but edge-cached in
   googlemaps.js; the client only refetches on deliberate changes (mode
   open, turns, commands, walk arrival — never GPS jitter). Street mode is
