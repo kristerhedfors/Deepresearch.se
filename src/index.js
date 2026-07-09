@@ -20,7 +20,8 @@
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
-//   src/tokemon-api.js — /api/tokemon/*: the open-world AR game (src/tokemon.js)
+//   src/games.js     — /api/games: the games registry/shelf + per-game dispatch
+//                      (Tokemon: src/tokemon-api.js, game core src/tokemon.js)
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
@@ -51,7 +52,7 @@ import { handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleStorage } from "./storage.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
-import { handleTokemon } from "./tokemon-api.js";
+import { handleGames } from "./games.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -310,10 +311,11 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   ) {
     return handleStorage(request, env, url, log, identity);
   }
-  // Tokemon — the open-world AR game (src/tokemon-api.js; game core in
-  // src/tokemon.js). Reached from Games in the account panel.
-  if (url.pathname.startsWith("/api/tokemon/")) {
-    return handleTokemon(request, env, url, log, identity);
+  // The games subsystem (src/games.js): GET /api/games lists the shelf the
+  // account panel renders; /api/games/<id>/* dispatches to the registered
+  // game's own API (Tokemon: src/tokemon-api.js, core in src/tokemon.js).
+  if (url.pathname === "/api/games" || url.pathname.startsWith("/api/games/")) {
+    return handleGames(request, env, url, log, identity);
   }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);

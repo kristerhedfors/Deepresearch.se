@@ -1,5 +1,6 @@
-// /api/tokemon/* — the Tokemon game's server API. All game logic lives in
-// src/tokemon.js (pure, Node-tested); this file is persistence + validation.
+// /api/games/tokemon/* — the Tokemon game's server API, dispatched by the
+// games registry (src/games.js). All game logic lives in src/tokemon.js
+// (pure, Node-tested); this file is persistence + validation.
 //
 // Server-authoritative: the save (party, items, dex, active battle) lives in
 // D1 (`tokemon_saves`, one row per user), spawns are re-derived
@@ -11,15 +12,17 @@
 // Requires the D1 binding; without it every endpoint answers 503 and the
 // game page explains itself (same degrade-don't-break posture as accounts).
 //
-// Routes (all authed via the normal identity gate in index.js):
-//   GET  /api/tokemon/state              → {save: publicSave}
-//   POST /api/tokemon/starter  {starter} → pick one of STARTERS (once)
-//   GET  /api/tokemon/spawns?lat=&lng=   → {spawns:[...]} near the player
-//   POST /api/tokemon/encounter {spawnId, lat, lng} → start a battle
-//   POST /api/tokemon/collect  {spawnId, lat, lng}  → pick up an item cache
-//   POST /api/tokemon/battle   {action}  → resolve one battle turn
-//   POST /api/tokemon/heal               → full-team recharge (cooldown)
-//   POST /api/tokemon/party    {op, ...} → lead | box | party | item (out of battle)
+// Routes (all authed via the normal identity gate in index.js; the
+// /api/games/tokemon/ prefix is stripped by the registry, which passes the
+// remainder as `subpath`):
+//   GET  …/state              → {save: publicSave}
+//   POST …/starter  {starter} → pick one of STARTERS (once)
+//   GET  …/spawns?lat=&lng=   → {spawns:[...]} near the player
+//   POST …/encounter {spawnId, lat, lng} → start a battle
+//   POST …/collect  {spawnId, lat, lng}  → pick up an item cache
+//   POST …/battle   {action}  → resolve one battle turn
+//   POST …/heal               → full-team recharge (cooldown)
+//   POST …/party    {op, ...} → lead | box | party | item (out of battle)
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -45,12 +48,12 @@ import {
   statsFor,
 } from "./tokemon.js";
 
-export async function handleTokemon(request, env, url, log, identity) {
+export async function handleTokemon(request, env, url, log, identity, subpath) {
   const db = await getDb(env);
   if (!db) {
     return jsonResponse({ error: "The game needs the accounts database, which isn't configured on this server." }, 503);
   }
-  const path = url.pathname.replace(/^\/api\/tokemon\/?/, "");
+  const path = (subpath || "").replace(/\/+$/, "");
   const method = request.method;
 
   if (path === "state" && method === "GET") return getState(db, identity);

@@ -1,9 +1,10 @@
-// Thin fetch wrappers for /api/tokemon/* — every call returns the parsed
-// JSON body; non-2xx throws an Error carrying the server's message so the
-// UI can toast it verbatim.
+// Thin fetch wrappers for /api/games/tokemon/* (the games-registry dispatch
+// seam, src/games.js) — every call returns the parsed JSON body; non-2xx
+// throws an Error carrying the server's message so the UI can toast it
+// verbatim.
 
 async function call(path, opts) {
-  const res = await fetch(`/api/tokemon/${path}`, opts);
+  const res = await fetch(`/api/games/tokemon/${path}`, opts);
   let body = null;
   try {
     body = await res.json();
