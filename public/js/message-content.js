@@ -151,7 +151,7 @@ export function asksDeviceLocation(userTexts) {
   const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
   const latest = texts[texts.length - 1] || "";
   if (asksStreetViewHere(latest) || WHERE_AM_I_RE.test(latest) || asksPhysicalLocation(latest)) return true;
-  if (asksNearbyPlace(latest)) return true;
+  if (asksNearbyPlace(latest) || asksCrossBarrier(latest)) return true;
   const t = latest.trim();
   const isFragment = !!t && t.length <= 48 && t.split(/\s+/).length <= 4 && HERE_WORD_RE.test(t);
   return isFragment && texts.slice(0, -1).some((prev) => SV_WORD_RE.test(prev));
@@ -183,9 +183,28 @@ const PLACE_TYPE_WORD_RE = new RegExp(
 );
 const NEARBY_WORD_RE =
   /(?<![\p{L}\p{M}])(?:near(?:by|est)?|closest|close by|around here|here|there|närmaste|närmsta|nära|i närheten|häromkring|i området|runt här|här|där)(?![\p{L}\p{M}])/iu;
+// Relocation verbs — "jump"/"teleport" mean instant relocation (the user's
+// stated semantics); travel verbs carry the same intent. Mirrors the
+// server's TELEPORT_VERB_RE / TRAVEL_TO_RE (src/googlemaps-text.js).
+const TELEPORT_VERB_RE =
+  /(?<![\p{L}\p{M}])(?:jump|teleport|beam(?:\s+(?:me|us))?|hoppa|teleportera)(?![\p{L}\p{M}])/iu;
+const TRAVEL_TO_RE =
+  /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
 export function asksNearbyPlace(text) {
   const t = (typeof text === "string" ? text : "").trim();
-  return !!t && t.length <= 120 && PLACE_TYPE_WORD_RE.test(t) && NEARBY_WORD_RE.test(t);
+  if (!t || t.length > 120 || !PLACE_TYPE_WORD_RE.test(t)) return false;
+  return NEARBY_WORD_RE.test(t) || TELEPORT_VERB_RE.test(t) || TRAVEL_TO_RE.test(t);
+}
+
+// A cross-barrier relocation ask ("get to the other side of the railway",
+// "hoppa över spåret") — mirrors the server's extractCrossBarrierAsk. With
+// no live view, the crossing probe needs the device location as its anchor.
+const BARRIER_SIDE_RE =
+  /(?:(?:other|far)\s+side\s+of|andra\s+sidan(?:\s+av)?|across|över|over)\s+(?:the\s+)?(?:railway|railroad|rail\s*way|train\s*tracks?|tracks?|rails|river|stream|canal|road|street|highway|motorway|freeway|bridge|järnväg(?:en)?|jarnvag(?:en)?|(?:tåg)?spår(?:et|en)?|(?:tag)?spar(?:et|en)|älven|alven|ån|floden|kanalen|vägen|vagen|gatan|motorvägen|motorvagen|bron)(?![\p{L}\p{M}])/iu;
+export function asksCrossBarrier(text) {
+  const t = (typeof text === "string" ? text : "").trim();
+  if (!t || t.length > 120 || !BARRIER_SIDE_RE.test(t)) return false;
+  return TELEPORT_VERB_RE.test(t) || TRAVEL_TO_RE.test(t) || t.split(/\s+/).length <= 8;
 }
 
 // An EXPLICIT reference to the user's PHYSICAL location ("my actual

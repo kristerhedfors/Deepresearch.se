@@ -378,10 +378,62 @@ export function extractNearbyPlaceQuery(text) {
   const raw = (typeof text === "string" ? text : "").trim();
   if (!raw || raw.length > 120) return "";
   if (extractPlace(raw)) return ""; // a real address owns the message
-  if (!PLACE_TYPE_RE.test(raw) || !NEARBY_WORD_RE.test(raw)) return "";
-  const q = raw.replace(NEARBY_LEAD_RE, "").replace(NEARBY_TRAIL_RE, "").trim();
+  const asksNearby = NEARBY_WORD_RE.test(raw) || TELEPORT_VERB_RE.test(raw) || TRAVEL_TO_RE.test(raw);
+  if (!PLACE_TYPE_RE.test(raw) || !asksNearby) return "";
+  const q = raw.replace(TELEPORT_LEAD_RE, "").replace(NEARBY_LEAD_RE, "").replace(NEARBY_TRAIL_RE, "").trim();
   if (!q || !PLACE_TYPE_RE.test(q)) return "";
   return q.slice(0, MAX_LOCATION_CHARS);
+}
+
+// ---- teleport & cross-barrier asks -------------------------------------------
+
+// "jump"/"teleport" mean INSTANT relocation — the user's explicitly stated
+// semantics (2026-07-09): "if I say 'jump' or 'teleport' I mean just
+// relocate there, no path finding". Travel verbs ("get to", "ta mig till")
+// carry the same relocation intent. Everything here is VIRTUAL panorama
+// navigation — the blocks say so, because the reported failure was the
+// model lecturing a panorama user to "never cross the tracks directly".
+const TELEPORT_VERB_RE =
+  /(?<![\p{L}\p{M}])(?:jump|teleport|beam(?:\s+(?:me|us))?|hoppa|teleportera)(?![\p{L}\p{M}])/iu;
+const TRAVEL_TO_RE =
+  /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
+// Strips the relocation verb phrase off a nearby-place query, so "teleport
+// to the nearest gas station" searches for "nearest gas station". The
+// word-boundary lookaheads matter: without them the diacritic-less Swedish
+// verb "ga" ate the start of "Gas station…".
+const TELEPORT_LEAD_RE =
+  /^(?:please\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
+
+// "The other side of the railway" — a barrier the user wants the panorama
+// relocated across (reported verbatim 2026-07-09: "Get to the other side
+// of the railway", twice, got a real-world safety lecture instead of a
+// relocation). Diacritic-less Swedish rides along; the bare diacritic-less
+// "spar"/"an" forms are excluded (ordinary words) — they need their
+// definite suffix.
+const BARRIER_WORDS =
+  "railway|railroad|rail\\s*way|train\\s*tracks?|tracks?|rails|river|stream|canal|road|street|highway|motorway|freeway|bridge|" +
+  "järnväg(?:en)?|jarnvag(?:en)?|(?:tåg)?spår(?:et|en)?|(?:tag)?spar(?:et|en)|älven|alven|ån|floden|kanalen|vägen|vagen|gatan|motorvägen|motorvagen|bron";
+const OTHER_SIDE_RE = new RegExp(
+  `(?:(?:other|far)\\s+side\\s+of|andra\\s+sidan(?:\\s+av)?)\\s+(?:the\\s+)?(${BARRIER_WORDS})(?![\\p{L}\\p{M}])`,
+  "iu",
+);
+const ACROSS_BARRIER_RE = new RegExp(
+  `(?:across|över|over)\\s+(?:the\\s+)?(${BARRIER_WORDS})(?![\\p{L}\\p{M}])`,
+  "iu",
+);
+
+// Returns { barrier } for a cross-barrier relocation ask, else null. A
+// relocation/travel verb makes any phrasing count; verb-less phrasings
+// must be short commands ("other side of the tracks"), so prose that
+// merely mentions a river's far side never fires.
+export function extractCrossBarrierAsk(text) {
+  const raw = (typeof text === "string" ? text : "").trim();
+  if (!raw || raw.length > 120) return null;
+  const m = raw.match(OTHER_SIDE_RE) || raw.match(ACROSS_BARRIER_RE);
+  if (!m) return null;
+  const hasVerb = TELEPORT_VERB_RE.test(raw) || TRAVEL_TO_RE.test(raw);
+  if (!hasVerb && raw.split(/\s+/).length > 8) return null;
+  return { barrier: m[1].toLowerCase().replace(/\s+/g, " ") };
 }
 
 // Meters between two coordinates — equirectangular, exact enough for the
@@ -804,8 +856,8 @@ export function movePoint(lat, lng, bearingDeg, meters) {
 // stateless and the prior turn's Maps block was appended server-side only, so
 // the resent conversation text (and the client-held view) are the only durable
 // records. Returns null when nothing names (or refers back to) a location;
-// `followUp: true` / `pov` / `mapView` / `jump` / `nearby` mark the shape so
-// the enrichment labels the block.
+// `followUp: true` / `pov` / `mapView` / `jump` / `nearby` / `crossBarrier`
+// mark the shape so the enrichment labels the block.
 // Between 2 and 3 sit the JUMPS (requested 2026-07-09): "street view here"
 // and relative moves ("100 meters along this road", "gå 200 m norrut"),
 // anchored to the live panorama (position + heading), else the live map
@@ -853,6 +905,26 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
         coords: "",
         address: "",
         jump: { lat: dest.lat, lng: dest.lng, heading: bearing, meters: move.meters, dir: move.dir },
+        followUp: true,
+      };
+    }
+    // A CROSS-BARRIER relocation ("Get to the other side of the railway",
+    // "hoppa över spåret"): the enrichment probes free Street View metadata
+    // along the travel bearing for a coverage GAP (the barrier corridor)
+    // followed by renewed coverage (the other side) and relocates there,
+    // with a photo series of the virtual crossing.
+    const barrierAsk = extractCrossBarrierAsk(latest);
+    if (barrierAsk) {
+      return {
+        coords: "",
+        address: "",
+        crossBarrier: {
+          barrier: barrierAsk.barrier,
+          lat: anchor.lat,
+          lng: anchor.lng,
+          heading: anchor.heading,
+          hasHeading: anchor.hasHeading,
+        },
         followUp: true,
       };
     }

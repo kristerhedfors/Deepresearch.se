@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
+  asksCrossBarrier,
   asksDeviceLocation,
   asksNearbyPlace,
   asksPhysicalLocation,
@@ -411,6 +412,17 @@ test("asksNearbyPlace: type word + nearby word requests the device location on a
   assert.equal(asksNearbyPlace(""), false);
   // It rides into the conversation-level prefilter as a latest-turn shape.
   assert.equal(asksDeviceLocation(["nearest gas station"]), true);
+});
+
+test("asksCrossBarrier + teleport verbs request the device location when no live view exists", () => {
+  assert.equal(asksCrossBarrier("Get to the other side of the railway"), true);
+  assert.equal(asksCrossBarrier("hoppa över spåret"), true);
+  assert.equal(asksCrossBarrier("andra sidan av bron"), true);
+  assert.equal(asksCrossBarrier("the houses on the other side of the river are much older than these ones"), false);
+  assert.equal(asksCrossBarrier(""), false);
+  assert.equal(asksNearbyPlace("teleport to the gas station"), true);
+  assert.equal(asksNearbyPlace("ta mig till närmaste mack"), true);
+  assert.equal(asksDeviceLocation(["get to the other side of the railway"]), true);
 });
 
 test("asksPhysicalLocation: explicit real-position asks only, EN + SV", () => {

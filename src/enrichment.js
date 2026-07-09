@@ -14,6 +14,7 @@ import { chatCompletion } from "./providers.js";
 import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conversation.js";
 import { getModelProfile } from "./model-profiles.js";
 import {
+  buildCrossBarrierBlock,
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
@@ -22,6 +23,7 @@ import {
   compassDir,
   googleMapsEmbedKey,
   placesNearbySearch,
+  runBarrierCrossing,
   runGoogleMapsLookup,
   runMapViewCapture,
   runStreetViewJumpLookup,
@@ -167,6 +169,13 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // around the current position and show the best hit.
   if (target.nearby) {
     return runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversation, state, target.nearby, question);
+  }
+
+  // A CROSS-BARRIER relocation ("Get to the other side of the railway"):
+  // find renewed Street View coverage beyond the barrier and relocate the
+  // panorama there, with a photo series of the virtual crossing.
+  if (target.crossBarrier) {
+    return runCrossBarrierEnrichment(env, log, emit, step, stepDone, conversation, state, target.crossBarrier, question);
   }
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
@@ -505,6 +514,92 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     buildNearbyPlacesBlock(nearby.query, anchor, places, {
       panoramaShown: !!(embedKeyOk && found),
       mapShown: !!(embedKeyOk && !found),
+      description,
+    }),
+  );
+}
+
+// The CROSS-BARRIER path ("Get to the other side of the railway" — reported
+// verbatim 2026-07-09, when it drew a real-world safety lecture instead of a
+// relocation, twice): runBarrierCrossing probes free Street View metadata
+// along the travel bearing for the barrier's coverage gap followed by
+// renewed coverage, relocates the panorama to the far side, and documents
+// the virtual crossing with a PHOTO SERIES (start → just before the barrier
+// → the other side; each a cached POV capture facing the travel bearing)
+// emitted as one streetview_frames strip. The destination also gets the
+// usual treatment: reverse-geocoded place name, vision describe, fresh
+// interactive embed. Fail-soft in every branch — no crossing found degrades
+// to an honest block plus a map of the current area, never an invented view.
+async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, conversation, state, ask, question) {
+  step("maps", `Looking for Street View on the other side of the ${ask.barrier}…`);
+  const crossing = await runBarrierCrossing(env, log, ask);
+  const embedKeyOk = !!googleMapsEmbedKey(env);
+  if (!crossing) {
+    stepDone("maps", `No Street View found beyond the ${ask.barrier} nearby`);
+    if (embedKeyOk) emit({ status: { type: "map_embed", lat: ask.lat, lng: ask.lng, zoom: 16 } });
+    return withAppendedText(conversation, buildCrossBarrierBlock(ask.barrier, ask, { found: false, mapShown: embedKeyOk }));
+  }
+  state.mapsCount = 1;
+  const { bearing, before, after } = crossing;
+
+  // The photo series: start, the last covered spot before the barrier, and
+  // the landing on the other side — dropping consecutive duplicates (the
+  // gap can start right at the user's feet). Captures and the reverse
+  // geocode are independent, so they all run together.
+  const waypoints = [
+    { label: "start", lat: ask.lat, lng: ask.lng, panoId: "" },
+    { label: `just before the ${ask.barrier}`, ...before },
+    { label: `the other side of the ${ask.barrier}`, ...after },
+  ].filter((w, i, arr) => i === 0 || w.panoId !== arr[i - 1].panoId || w.lat !== arr[i - 1].lat);
+  const [captures, place] = await Promise.all([
+    Promise.all(
+      waypoints.map((w) =>
+        runStreetViewPovCapture(env, log, { panoId: w.panoId || "", lat: w.lat, lng: w.lng, heading: bearing, pitch: 0, fov: 90 }).catch(
+          () => null,
+        ),
+      ),
+    ),
+    reverseGeocode(env, log, after.lat, after.lng),
+  ]);
+  const frames = waypoints
+    .map((w, i) => ({ dir: "", label: w.label, url: captures[i]?.image || null }))
+    .filter((f) => f.url);
+
+  let description = "";
+  const destFrame = captures[captures.length - 1]?.image;
+  if (state.visionModel && destFrame) {
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `This is the Google Street View frame on the other side of the ${ask.barrier}, where the user's panorama was just relocated (${after.lat}, ${after.lng}, facing ${bearing}° ${compassDir(bearing)}).`,
+      [destFrame],
+      question,
+    );
+  }
+
+  if (frames.length) {
+    emit({ status: { type: "streetview_frames", query: `other side of the ${ask.barrier}`, frames } });
+  }
+  if (embedKeyOk) {
+    emit({ status: { type: "streetview_embed", lat: after.lat, lng: after.lng, heading: bearing } });
+  }
+  stepDone(
+    "maps",
+    `Street View relocated across the ${ask.barrier}${frames.length ? ` — ${frames.length}-photo crossing series` : ""}`,
+    [`≈${after.distance} m ${compassDir(bearing)} — landed at ${after.lat}, ${after.lng}`],
+  );
+  return withAppendedText(
+    conversation,
+    buildCrossBarrierBlock(ask.barrier, ask, {
+      found: true,
+      bearing,
+      distance: after.distance,
+      lat: after.lat,
+      lng: after.lng,
+      place,
+      framesShown: frames.length,
+      panoramaShown: embedKeyOk,
       description,
     }),
   );

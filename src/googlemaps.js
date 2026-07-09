@@ -37,7 +37,7 @@
 // enrichment is never a hard requirement for the chat to work.
 
 import { cacheGet, cachePut } from "./edge-cache.js";
-import { distanceMeters } from "./googlemaps-text.js";
+import { distanceMeters, movePoint } from "./googlemaps-text.js";
 
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
@@ -234,6 +234,56 @@ export function buildJumpBlock(jump, parts) {
   lines.push(
     "The destination was computed from the user's own view and phrasing — do NOT ask them to confirm coordinates or clarify where they mean; answer about it directly.",
   );
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
+}
+
+// The labeled context block for a CROSS-BARRIER relocation ("get to the
+// other side of the railway"). The load-bearing line is the VIRTUAL note:
+// the reported failure was the model answering a panorama relocation with
+// real-world safety guidance ("never cross the tracks directly") — twice.
+// Pure — exported for unit tests.
+export function buildCrossBarrierBlock(barrier, anchor, parts = {}) {
+  const lines = [
+    `The user asked to get to the other side of the ${barrier}. This is VIRTUAL Street View panorama navigation — the user is NOT physically moving. ` +
+      "Do NOT give real-world safety or route guidance (no warnings about crossing tracks, traffic, or authorized paths); just describe where the view has been relocated to.",
+  ];
+  if (parts.found) {
+    lines.push(
+      `The panorama was relocated across the ${barrier}: heading ${parts.bearing}° (${compassDir(parts.bearing)}), ` +
+        `landing ≈${parts.distance} m from the previous position at ${parts.lat}, ${parts.lng} (detected as renewed Street View coverage after the ${barrier}'s coverage gap).`,
+    );
+    if (parts.place) lines.push(`The destination reverse-geocodes to (OpenStreetMap Nominatim): ${parts.place}`);
+    lines.push(`Map link: ${mapLink(parts.lat, parts.lng)}`);
+    lines.push(`Street View link: ${panoLink(parts.lat, parts.lng)}`);
+    if (parts.framesShown) {
+      lines.push(
+        `A photo series of the virtual crossing (start → just before the ${barrier} → the other side) is displayed to the user directly beside this reply — walk them through it in order.`,
+      );
+    }
+    if (parts.panoramaShown) {
+      lines.push(
+        "An interactive Street View panorama at the destination is displayed to the user directly beside this reply — they can keep looking around from there.",
+      );
+    }
+    if (parts.description) {
+      lines.push(`Visual description of the destination's Street View (auto-generated): ${parts.description}`);
+    }
+    lines.push(
+      `ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(parts.lat, parts.lng)})).`,
+    );
+  } else {
+    lines.push(
+      `No renewed Street View coverage was found beyond the ${barrier} within ~${CROSS_MAX_M} m of the current position in the probed directions. ` +
+        "Say so plainly — never invent a view or a destination.",
+    );
+    lines.push(`Map link for the current position: ${mapLink(anchor.lat, anchor.lng)}`);
+    if (parts.mapShown) {
+      lines.push("An interactive Google Map of the current area is displayed to the user directly beside this reply.");
+    }
+  }
+  lines.push("The relocation was computed from the user's own view and phrasing — do NOT ask them to confirm coordinates.");
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
   lines.push(NO_FABRICATED_IMAGE_URLS);
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
@@ -717,6 +767,60 @@ export async function runStreetViewJumpLookup(env, log, point) {
     // frame capture is an enhancement — the jump itself still resolves
   }
   return { lat, lng, panoId, heading: point.heading, date: capture?.date || meta.date || "", image: capture?.image || null };
+}
+
+// Cross-barrier probe ("get to the other side of the railway"): Street View
+// covers ROADS, so a rail corridor / river between two roads shows up as a
+// coverage GAP along a ray of metadata probes — covered panos, then
+// nothing, then covered panos again. The first renewed-coverage pano after
+// a gap IS "the other side". Metadata requests are FREE (Google doesn't
+// bill them), so a whole ray probes concurrently; with a panorama heading
+// the ray follows the view (±45° fallbacks), from a map/device anchor the
+// four cardinals are tried. Returns { bearing, before, after } (each
+// { lat, lng, panoId, distance }) or null when no gap-then-coverage
+// signature exists within CROSS_MAX_M.
+const CROSS_STEP_M = 40;
+const CROSS_MAX_M = 640;
+const CROSS_PROBE_RADIUS_M = 30;
+export async function runBarrierCrossing(env, log, anchor) {
+  if (!googleMapsAvailable(env)) return null;
+  const bearings = anchor.hasHeading
+    ? [anchor.heading, (anchor.heading + 315) % 360, (anchor.heading + 45) % 360]
+    : [0, 90, 180, 270];
+  const steps = [];
+  for (let d = CROSS_STEP_M; d <= CROSS_MAX_M; d += CROSS_STEP_M) steps.push(d);
+  for (const bearing of bearings) {
+    const metas = await Promise.all(
+      steps.map((d) => {
+        const p = movePoint(anchor.lat, anchor.lng, bearing, d);
+        return streetViewMetadata(env, log, `${p.lat},${p.lng}`, "", CROSS_PROBE_RADIUS_M);
+      }),
+    );
+    let before = null;
+    let inGap = false;
+    for (let i = 0; i < metas.length; i++) {
+      const meta = metas[i];
+      const lat = Number(meta?.location?.lat);
+      const lng = Number(meta?.location?.lng);
+      if (meta?.status !== "OK" || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        if (before) inGap = true;
+        continue;
+      }
+      const pano = {
+        lat,
+        lng,
+        panoId: typeof meta.pano_id === "string" ? meta.pano_id : "",
+        distance: steps[i],
+      };
+      if (inGap && pano.panoId && pano.panoId !== before?.panoId) {
+        log.info("googlemaps.barrier_crossing", { bearing, distance: pano.distance });
+        return { bearing, before, after: pano };
+      }
+      before = pano;
+    }
+  }
+  log.info("googlemaps.barrier_crossing", { found: false });
+  return null;
 }
 
 // Captures the map area the user currently sees in the inline interactive

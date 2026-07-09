@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildCrossBarrierBlock,
   buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
@@ -17,6 +18,7 @@ import {
 } from "./googlemaps.js";
 import {
   distanceMeters,
+  extractCrossBarrierAsk,
   extractLocalityFix,
   extractNamedPlaceQuery,
   extractNearbyPlaceQuery,
@@ -1121,6 +1123,87 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.match(block, /NO results for this search near the current position/);
     assert.match(block, /never invent a place/);
     assert.match(block, /already enabled — do NOT suggest/);
+  });
+
+  test("teleport/travel verbs count as the nearby trigger and strip out of the query", () => {
+    // "if I say 'jump' or 'teleport' I mean just relocate there" — and the
+    // instruction works for a place target too (the user's explicit ask).
+    assert.equal(extractNearbyPlaceQuery("teleport to the gas station"), "gas station");
+    assert.equal(extractNearbyPlaceQuery("jump to the nearest gas station"), "nearest gas station");
+    assert.equal(extractNearbyPlaceQuery("get me to a pharmacy"), "pharmacy");
+    assert.equal(extractNearbyPlaceQuery("ta mig till närmaste mack"), "närmaste mack");
+    assert.equal(extractNearbyPlaceQuery("hoppa till apoteket"), "apoteket");
+  });
+});
+
+describe("cross-barrier relocations — the verbatim 'Get to the other side of the railway' report (2026-07-09)", () => {
+  const pov = { panoId: "abc", lat: 59.455, lng: 17.8027, heading: 156, pitch: 0, fov: 90 };
+
+  test("extractCrossBarrierAsk: the verbatim ask, teleport verbs, and Swedish parity", () => {
+    assert.deepEqual(extractCrossBarrierAsk("Get to the other side of the railway"), { barrier: "railway" });
+    assert.deepEqual(extractCrossBarrierAsk("jump across the river"), { barrier: "river" });
+    assert.deepEqual(extractCrossBarrierAsk("teleport to the other side of the tracks"), { barrier: "tracks" });
+    assert.deepEqual(extractCrossBarrierAsk("hoppa över spåret"), { barrier: "spåret" });
+    assert.deepEqual(extractCrossBarrierAsk("ta mig till andra sidan järnvägen"), { barrier: "järnvägen" });
+    assert.deepEqual(extractCrossBarrierAsk("andra sidan av bron"), { barrier: "bron" }); // short verb-less command
+  });
+
+  test("extractCrossBarrierAsk negatives: prose mentions and no barrier word", () => {
+    // A long verb-less sentence merely mentioning a far side never fires.
+    assert.equal(extractCrossBarrierAsk("the houses on the other side of the river are much older than these ones"), null);
+    assert.equal(extractCrossBarrierAsk("get to the other side of the argument"), null);
+    assert.equal(extractCrossBarrierAsk(""), null);
+    assert.equal(extractCrossBarrierAsk(undefined), null);
+  });
+
+  test("with a live panorama the ask becomes a crossBarrier target carrying position + heading", () => {
+    const convo = [{ role: "user", content: "Get to the other side of the railway" }];
+    const out = pickLookup(convo, [], pov);
+    assert.deepEqual(out, {
+      coords: "",
+      address: "",
+      crossBarrier: { barrier: "railway", lat: 59.455, lng: 17.8027, heading: 156, hasHeading: true },
+      followUp: true,
+    });
+  });
+
+  test("device location anchors a fresh-chat crossing; no anchor resolves nothing", () => {
+    const convo = [{ role: "user", content: "get to the other side of the railway" }];
+    const fromDevice = pickLookup(convo, [], null, null, { lat: 59.45, lng: 17.8, zoom: 17 });
+    assert.equal(fromDevice.crossBarrier.barrier, "railway");
+    assert.equal(fromDevice.crossBarrier.hasHeading, false);
+    assert.equal(pickLookup(convo, []), null);
+  });
+
+  test("buildCrossBarrierBlock (found): virtual-navigation note, landing facts, series and mandates", () => {
+    const block = buildCrossBarrierBlock("railway", { lat: 59.455, lng: 17.8027 }, {
+      found: true,
+      bearing: 156,
+      distance: 240,
+      lat: 59.4531,
+      lng: 17.8039,
+      place: "Nyboda, Järfälla kommun",
+      framesShown: 3,
+      panoramaShown: true,
+      description: "A quiet residential street.",
+    });
+    // The load-bearing line — the reported failure was a real-world safety
+    // lecture at a panorama user.
+    assert.match(block, /VIRTUAL Street View panorama navigation — the user is NOT physically moving/);
+    assert.match(block, /Do NOT give real-world safety or route guidance/);
+    assert.match(block, /heading 156° \(southeast\), landing ≈240 m/);
+    assert.match(block, /reverse-geocodes to \(OpenStreetMap Nominatim\): Nyboda, Järfälla kommun/);
+    assert.match(block, /photo series of the virtual crossing \(start → just before the railway → the other side\)/);
+    assert.match(block, /ALWAYS include the Map link/);
+    assert.ok(!block.includes("key="));
+  });
+
+  test("buildCrossBarrierBlock (not found) stays honest — no invented destination", () => {
+    const block = buildCrossBarrierBlock("river", { lat: 1, lng: 2 }, { found: false, mapShown: true });
+    assert.match(block, /No renewed Street View coverage was found beyond the river/);
+    assert.match(block, /never invent a view or a destination/);
+    assert.match(block, /interactive Google Map of the current area/);
+    assert.match(block, /VIRTUAL Street View panorama navigation/);
   });
 });
 

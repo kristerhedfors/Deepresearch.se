@@ -672,6 +672,37 @@ call, alongside the Shodan enrichment).
   (top-link markdown mandate, never invent a place on zero hits, no
   enable-steps, no fabricated URLs). Fail-soft in every branch; no
   anchor → ordinary pipeline (web search) handles the question.
+- **"Jump"/"teleport" mean INSTANT relocation, and barriers can be
+  crossed** (user's explicitly stated semantics, 2026-07-09, after "Get to
+  the other side of the railway" — twice — drew a real-world safety
+  lecture: "never cross the tracks directly", at a user navigating a
+  PANORAMA). Two additions:
+  - **Teleport-to-place**: relocation verbs (`TELEPORT_VERB_RE` jump/
+    teleport/hoppa/teleportera + `TRAVEL_TO_RE` get/take me/ta mig …
+    to/till/över) count as the nearby-word trigger, so "teleport to the
+    gas station" / "ta mig till närmaste mack" resolves through the
+    nearby-place Places search and relocates to the top hit — no
+    pathfinding, exactly as asked. `TELEPORT_LEAD_RE` strips the verb
+    phrase from the query (word-boundary lookaheads are load-bearing:
+    the diacritic-less Swedish verb "ga" once ate the start of "Gas
+    station…").
+  - **Cross-barrier relocation** (`extractCrossBarrierAsk` → pickLookup's
+    `crossBarrier` target → `runCrossBarrierEnrichment`): "the other side
+    of the railway/river/road…" (EN + SV: "andra sidan järnvägen", "hoppa
+    över spåret"; verb-less phrasings must be ≤8-word commands so prose
+    about a river's far side never fires). The trick is that Street View
+    covers ROADS: `runBarrierCrossing` probes FREE metadata along the
+    travel bearing (concurrent ray of 40m steps to 640m, 30m tight
+    radius; panorama heading first with ±45° fallbacks, else the four
+    cardinals) for a coverage GAP followed by renewed coverage — the
+    renewed pano IS the other side. The crossing is documented with a
+    PHOTO SERIES (start → just before the barrier → the other side, one
+    `streetview_frames` strip with labels), plus the usual destination
+    treatment (reverse geocode, vision describe, fresh embed).
+    `buildCrossBarrierBlock`'s load-bearing line tells the model this is
+    VIRTUAL navigation — no real-world safety/route guidance. Fail-soft:
+    no gap-then-coverage found → honest block + map embed, never an
+    invented view.
 - **The map view has full panorama parity on follow-ups** (same day,
   follow-up request): the client tracks the live map's center/zoom and
   sends it as `body.map_view` (validated by `validateMapView`); a
