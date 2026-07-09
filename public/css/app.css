@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h9;
+  --css-version: h14;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -777,7 +777,12 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* New chat is the speech-bubble-with-a-plus icon (same glyph as the
    header's New chat and the project panel's new-chat-in-project). */
 #historynewbtn { display: flex; align-items: center; justify-content: center; line-height: 0; }
-.history-list { display: flex; flex-direction: column; gap: .35rem; flex: 1; min-height: 0; }
+/* No flex:1/min-height:0 here: inside the panel's overflow-y:auto flex
+   column, that combination collapses the list to ~zero height on iOS
+   Safari and its cards paint OVER the panel's other children (this was
+   the original "text in the background" bug report). The panel scrolls
+   as a whole; the list just flows. */
+.history-list { display: flex; flex-direction: column; gap: .35rem; }
 .history-list .muted { color: var(--muted); font-size: .82rem; }
 /* Each row is a swipe-to-reveal unit (history-ui.js): a left swipe
    slides the WHOLE card left, iOS-mail style, revealing the rename +

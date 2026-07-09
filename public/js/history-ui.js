@@ -61,13 +61,18 @@ export function initHistorySidebar(opts = {}) {
   const TRACE = [];
   const t0 = Date.now();
   const traceBox = document.createElement("div");
+  // position:FIXED, centered on the screen — the pane's own vertical
+  // layout cannot be trusted on the affected device (its list collapses
+  // and cards paint over in-flow siblings; the original 'text in the
+  // background' complaint was this same bug), so the trace ignores the
+  // panel entirely and floats above everything.
   traceBox.style.cssText =
-    "display:none;margin:.4rem 0;padding:.6rem .7rem;border-radius:10px;" +
-    "background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.9);" +
-    "color:#0a2e5c;font-size:.72rem;line-height:1.5;word-break:break-all;" +
-    "max-height:40vh;overflow-y:auto;-webkit-user-select:all;user-select:all;";
-  // Right under the pane head, above the buttons and lists.
-  overlay.querySelector(".history-head").after(traceBox);
+    "display:none;position:fixed;top:12vh;left:4vw;right:4vw;z-index:9999;" +
+    "padding:1rem;border-radius:14px;background:#eef6ff;border:2px solid #0d4fa0;" +
+    "box-shadow:0 8px 40px rgba(4,30,60,.45);color:#0a2e5c;" +
+    "font-size:.74rem;line-height:1.6;word-break:break-all;" +
+    "max-height:62vh;overflow-y:auto;-webkit-user-select:all;user-select:all;";
+  document.body.appendChild(traceBox);
   function renderTrace() {
     traceBox.style.display = showTrace ? "block" : "none";
     if (showTrace) {
@@ -121,7 +126,7 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h13 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace (appears at the top)]`);
+    parts.push(`[h14 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -131,7 +136,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h9";
+  const CSS_WANT = "h14";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";
