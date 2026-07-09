@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
   buildPovBlock,
@@ -16,10 +17,13 @@ import {
   extractLocalityFix,
   extractPlace,
   extractPlaceQuery,
+  extractRelativeMove,
   matchAddressFragment,
+  movePoint,
   pickLookup,
   referencesStreetView,
   referencesStreetViewScene,
+  streetViewHereIntent,
   streetViewIntent,
 } from "./googlemaps-text.js";
 
@@ -804,5 +808,171 @@ describe("buildMapViewBlock", () => {
     assert.ok(!/fresh interactive Google Map/.test(block));
     assert.match(block, /unrelated to the map, answer it normally/);
     assert.match(block, /never ask them to clarify where they mean/);
+  });
+});
+
+describe("extractRelativeMove", () => {
+  test("parses facing-relative moves — no verb needed, the phrasing is deictic", () => {
+    assert.deepEqual(extractRelativeMove("100 meters along this road"), { meters: 100, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("continue 250 m ahead"), { meters: 250, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("50 meter längs vägen"), { meters: 50, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("gå 100 m framåt"), { meters: 100, mode: "forward", dir: "forward" });
+    assert.deepEqual(extractRelativeMove("go 100 metres back"), { meters: 100, mode: "back", dir: "back" });
+    assert.deepEqual(extractRelativeMove("backa 75 m tillbaka"), { meters: 75, mode: "back", dir: "back" });
+  });
+
+  test("parses compass moves — as a command or a short standalone message", () => {
+    assert.deepEqual(extractRelativeMove("go 200 meters north"), { meters: 200, mode: "bearing", bearing: 0, dir: "north" });
+    assert.deepEqual(extractRelativeMove("100 m norrut"), { meters: 100, mode: "bearing", bearing: 0, dir: "north" });
+    assert.deepEqual(extractRelativeMove("fortsätt 300 meter söderut"), { meters: 300, mode: "bearing", bearing: 180, dir: "south" });
+    assert.deepEqual(extractRelativeMove("150 m northeast"), { meters: 150, mode: "bearing", bearing: 45, dir: "northeast" });
+    assert.deepEqual(extractRelativeMove("0.5 km west"), { meters: 500, mode: "bearing", bearing: 270, dir: "west" });
+  });
+
+  test("prose that merely MENTIONS a compass distance does not fire", () => {
+    assert.equal(extractRelativeMove("the shop is located about 100 meters north of the train station"), null);
+    assert.equal(extractRelativeMove("what is 100 meters in feet?"), null);
+    assert.equal(extractRelativeMove("the building is 20 m tall"), null);
+    assert.equal(extractRelativeMove(""), null);
+    assert.equal(extractRelativeMove(undefined), null);
+  });
+
+  test("clamps distances to a sane range", () => {
+    assert.equal(extractRelativeMove("go 1 m north").meters, 5);
+    assert.equal(extractRelativeMove("go 99 km north").meters, 3000);
+  });
+});
+
+describe("streetViewHereIntent", () => {
+  test("matches explicit street-view-at-current-location asks (EN + SV)", () => {
+    assert.equal(streetViewHereIntent("street view here"), true);
+    assert.equal(streetViewHereIntent("popup street view at my current location"), true);
+    assert.equal(streetViewHereIntent("show streetview at this spot"), true);
+    assert.equal(streetViewHereIntent("gatuvy här"), true);
+    assert.equal(streetViewHereIntent("öppna gatuvy där jag är"), true);
+  });
+
+  test("needs BOTH the street-view word and a here-word", () => {
+    assert.equal(streetViewHereIntent("street view of Storgatan 4"), false);
+    assert.equal(streetViewHereIntent("what is here?"), false);
+    assert.equal(streetViewHereIntent(""), false);
+  });
+});
+
+describe("movePoint", () => {
+  test("100 m north ≈ +0.0009° latitude, longitude unchanged", () => {
+    const p = movePoint(59.65, 17.12, 0, 100);
+    assert.ok(Math.abs(p.lat - 59.650898) < 0.000005, String(p.lat));
+    assert.equal(p.lng, 17.12);
+  });
+
+  test("east moves scale longitude by the latitude's cosine", () => {
+    const p = movePoint(59.65, 17.12, 90, 100);
+    assert.equal(p.lat, 59.65);
+    // 100 / (111320 * cos(59.65°)) ≈ 0.001778
+    assert.ok(Math.abs(p.lng - 17.121778) < 0.00001, String(p.lng));
+  });
+
+  test("south-west combines both components", () => {
+    const p = movePoint(59.65, 17.12, 225, 100);
+    assert.ok(p.lat < 59.65 && p.lng < 17.12);
+  });
+});
+
+describe("pickLookup — street-view jumps", () => {
+  const pov = { panoId: "abc", lat: 59.41, lng: 17.91, heading: 90, pitch: 0, fov: 90 };
+  const mapView = { lat: 59.65, lng: 17.12, zoom: 17 };
+
+  test("'100 meters along this road' from a live panorama moves along its heading", () => {
+    const convo = [{ role: "user", content: "100 meters along this road" }];
+    const out = pickLookup(convo, [], pov);
+    assert.ok(out?.jump, "expected a jump target");
+    assert.equal(out.jump.heading, 90);
+    assert.equal(out.jump.meters, 100);
+    assert.equal(out.jump.lat, 59.41); // due-east move: latitude unchanged
+    assert.ok(out.jump.lng > 17.91);
+    assert.equal(out.followUp, true);
+  });
+
+  test("a compass move works from the interactive map (no heading needed)", () => {
+    const convo = [{ role: "user", content: "go 200 meters north" }];
+    const out = pickLookup(convo, [], null, mapView);
+    assert.ok(out?.jump);
+    assert.equal(out.jump.heading, 0);
+    assert.ok(out.jump.lat > 59.65);
+    assert.equal(out.jump.lng, 17.12);
+  });
+
+  test("'along this road' from a MAP degrades to the map-view describe — a map has no facing to move along", () => {
+    const convo = [{ role: "user", content: "100 meters along this road" }];
+    const out = pickLookup(convo, [], null, mapView);
+    assert.ok(!out?.jump, "must not jump without a heading");
+    assert.deepEqual(out, { coords: "", address: "", mapView, followUp: true });
+  });
+
+  test("'street view here' pops at the map center / panorama position / device location", () => {
+    const convo = [{ role: "user", content: "street view here" }];
+    const fromMap = pickLookup(convo, [], null, mapView);
+    assert.deepEqual(fromMap.jump, { lat: 59.65, lng: 17.12, heading: 0, meters: 0, dir: "here" });
+    const fromPov = pickLookup(convo, [], pov);
+    assert.deepEqual(fromPov.jump, { lat: 59.41, lng: 17.91, heading: 90, meters: 0, dir: "here" });
+    const userLocation = { lat: 59.33, lng: 18.06, zoom: 17 };
+    const fromDevice = pickLookup(convo, [], null, null, userLocation);
+    assert.deepEqual(fromDevice.jump, { lat: 59.33, lng: 18.06, heading: 0, meters: 0, dir: "here" });
+  });
+
+  test("'street view at my current location' never leaks to Places as a place query", () => {
+    const convo = [{ role: "user", content: "popup street view at my current location" }];
+    const out = pickLookup(convo, [], null, mapView);
+    assert.ok(out?.jump, "must resolve as a jump, not an address/place lookup");
+    assert.equal(out.address, "");
+  });
+
+  test("a NEW address still beats a jump phrase", () => {
+    const convo = [{ role: "user", content: "show street view of Storgatan 4 here" }];
+    const out = pickLookup(convo, [], null, mapView);
+    assert.equal(out.address, "Storgatan 4");
+    assert.ok(!out.jump);
+  });
+
+  test("without any anchor, jump phrases resolve nothing", () => {
+    const convo = [{ role: "user", content: "go 200 meters north" }];
+    assert.equal(pickLookup(convo, []), null);
+  });
+});
+
+describe("buildJumpBlock", () => {
+  const jump = { lat: 59.411, lng: 17.9125, heading: 90, meters: 100, dir: "forward" };
+
+  test("a found destination carries links, the fresh panorama, and the description", () => {
+    const block = buildJumpBlock(jump, {
+      found: true,
+      date: "2023-07",
+      panoramaShown: true,
+      description: "A tree-lined residential street with parked cars.",
+    });
+    assert.match(block, /asked to open Street View about 100 meters along the road\/direction they are viewing/);
+    assert.match(block, /59\.411, 17\.9125, facing 90° \(east\)/);
+    assert.match(block, /imagery captured: 2023-07/);
+    assert.match(block, /Street View link: /);
+    assert.match(block, /interactive Street View panorama positioned at this destination/);
+    assert.match(block, /Visual description of the destination's Street View \(auto-generated\): A tree-lined/);
+    assert.match(block, /ALWAYS include the Map link above in your answer as a markdown link/);
+    assert.match(block, /do NOT ask them to confirm coordinates/);
+    assert.match(block, /NEVER construct or output Google Maps API image URLs/);
+    assert.ok(!block.includes("key="));
+  });
+
+  test("no coverage at the destination says so plainly and shows the map instead", () => {
+    const block = buildJumpBlock({ ...jump, dir: "north" }, { found: false, mapShown: true });
+    assert.match(block, /about 100 meters to the north of their current position/);
+    assert.match(block, /NO Street View panorama near that destination/);
+    assert.match(block, /interactive Google Map of the destination is displayed/);
+    assert.ok(!/Street View link: /.test(block));
+  });
+
+  test("a here-jump reads as the current position", () => {
+    const block = buildJumpBlock({ lat: 1, lng: 2, heading: 0, meters: 0, dir: "here" }, { found: true, panoramaShown: true, description: "x" });
+    assert.match(block, /open Street View at their current position/);
   });
 });

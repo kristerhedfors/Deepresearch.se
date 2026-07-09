@@ -440,6 +440,98 @@ export function referencesStreetViewScene(text) {
   return referencesStreetView(t) || SCENE_REFERENCE_RE.test(t);
 }
 
+// ---- street-view jumps: "street view here" & relative moves ------------------
+// (requested 2026-07-09) With a live view on screen (interactive map or
+// panorama), the user can pop open Street View at the position they're
+// looking at ("street view here", "gatuvy här") or a computed one ("100
+// meters along this road", "200 m norrut") — deterministic phrase parsing +
+// flat-earth-at-this-scale destination math, no model in the loop.
+
+// Compass words → bearing degrees (EN + SV incl. the "-ut" adverb forms).
+// 8-point names FIRST: "northeast" must not read as "north" + junk.
+const COMPASS_WORDS = [
+  ["north[- ]?east|nordost(?:ut)?|nordöst(?:ut)?", 45],
+  ["south[- ]?east|sydost(?:ut)?|sydöst(?:ut)?", 135],
+  ["south[- ]?west|sydväst(?:ut)?", 225],
+  ["north[- ]?west|nordväst(?:ut)?", 315],
+  ["north|norrut|norr", 0],
+  ["south|söderut|söder|syd", 180],
+  ["east|österut|öster|öst", 90],
+  ["west|västerut|väster|väst", 270],
+];
+const COMPASS_RES = COMPASS_WORDS.map(([words, bearing]) => ({
+  re: new RegExp(`(?<![\\p{L}\\p{M}])(?:${words})(?![\\p{L}\\p{M}])`, "iu"),
+  bearing,
+}));
+
+// A distance: "100 m", "100 meters", "0.5 km", "200 meter". Swedish "meter"
+// is both singular and plural, so the EN forms cover it.
+const DISTANCE_RE = /(\d+(?:[.,]\d+)?)\s*(km|kilomet(?:er|re)s?|m|met(?:er|re)s?|meter)\b/iu;
+// Facing-relative words: "along this road", "down the street", "ahead",
+// "framåt", "rakt fram", "längs vägen" — meaningful only from a panorama,
+// whose heading says which way "along" IS.
+const FORWARD_RE =
+  /(?<![\p{L}\p{M}])(?:along|down|up)\s+(?:this|the|that|samma)?\s*(?:road|street|way)|(?<![\p{L}\p{M}])(?:ahead|forwards?|onwards?|straight on|längs\s+(?:den här\s+|denna\s+|samma\s+)?(?:vägen|gatan|vägen här)|framåt|rakt fram|vidare)(?![\p{L}\p{M}])/iu;
+const BACK_RE = /(?<![\p{L}\p{M}])(?:back(?:wards?)?|behind (?:me|us)|bakåt|tillbaka)(?![\p{L}\p{M}])/iu;
+// A movement/show verb — the anti-overfire requirement for bare compass
+// moves ("the shop is 100 meters north of the station" while a map is open
+// must NOT jump; "go 100 meters north" / a short bare "100 m north" must).
+const MOVE_VERB_RE =
+  /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|fortsätt|hoppa|ta mig|visa|öppna)(?![\p{L}\p{M}])/iu;
+
+const clampMeters = (n) => Math.max(5, Math.min(3000, Math.round(n)));
+
+// Parses a relative move out of the message: distance + direction. Returns
+// null, or { meters, mode: "bearing"|"forward"|"back", bearing?, dir } where
+// `dir` is the normalized word for block phrasing ("north", "forward"…).
+export function extractRelativeMove(text) {
+  const t = typeof text === "string" ? text : "";
+  if (!t) return null;
+  const dm = t.match(DISTANCE_RE);
+  if (!dm) return null;
+  let meters = Number(dm[1].replace(",", "."));
+  if (!Number.isFinite(meters) || meters <= 0) return null;
+  if (/^k/i.test(dm[2])) meters *= 1000;
+  meters = clampMeters(meters);
+  // Facing-relative first: "100 meters along this road" is inherently about
+  // the view on screen, no extra verb needed.
+  if (FORWARD_RE.test(t)) return { meters, mode: "forward", dir: "forward" };
+  if (BACK_RE.test(t)) return { meters, mode: "back", dir: "back" };
+  const compass = COMPASS_RES.find((c) => c.re.test(t));
+  if (!compass) return null;
+  // A bare compass distance fires only as a command (a move verb) or as a
+  // short standalone message ("100 m norrut") — prose that merely MENTIONS
+  // a distance ("the shop is 100 meters north of the station") stays out.
+  if (!MOVE_VERB_RE.test(t) && t.trim().split(/\s+/).length > 6) return null;
+  const dirWord = COMPASS_WORDS[COMPASS_RES.indexOf(compass)][0].split("|")[0].replace(/\[- \]\?/g, "");
+  return { meters, mode: "bearing", bearing: compass.bearing, dir: dirWord };
+}
+
+// "Street view HERE": an explicit street-view ask pointing at the current
+// position ("street view here", "popup street view at my current location",
+// "gatuvy här", "öppna gatuvy där jag är") — no address, no place name.
+const HERE_RE =
+  /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:location|position)|där jag är|min (?:nuvarande )?position|nuvarande (?:plats|läge)|här)(?![\p{L}\p{M}])/iu;
+export function streetViewHereIntent(text) {
+  const t = typeof text === "string" ? text : "";
+  return streetViewIntent(t) && HERE_RE.test(t);
+}
+
+// Destination of a move from (lat, lng) `meters` toward `bearingDeg`.
+// Equirectangular approximation — exact enough for the ≤3km moves the
+// parser allows (centimeter error at this scale), rounded to ~10cm so
+// repeated identical asks hit the server's capture cache.
+export function movePoint(lat, lng, bearingDeg, meters) {
+  const rad = (bearingDeg * Math.PI) / 180;
+  const dLat = (meters * Math.cos(rad)) / 111320;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const dLng = (meters * Math.sin(rad)) / (111320 * (Math.abs(cosLat) > 1e-9 ? cosLat : 1e-9));
+  return {
+    lat: Math.round((lat + dLat) * 1e6) / 1e6,
+    lng: Math.round((lng + dLng) * 1e6) / 1e6,
+  };
+}
+
 // ---- lookup-input derivation --------------------------------------------------
 
 // Used by the pipeline's Maps enrichment: derive the lookup inputs from a
@@ -464,9 +556,16 @@ export function referencesStreetViewScene(text) {
 // stateless and the prior turn's Maps block was appended server-side only, so
 // the resent conversation text (and the client-held view) are the only durable
 // records. Returns null when nothing names (or refers back to) a location;
-// `followUp: true` / `pov` / `mapView` mark the shape so the enrichment
-// labels the block.
-export function pickLookup(conversation, imageLocations, pov = null, mapView = null) {
+// `followUp: true` / `pov` / `mapView` / `jump` mark the shape so the
+// enrichment labels the block.
+// Between 2 and 3 sit the JUMPS (requested 2026-07-09): "street view here"
+// and relative moves ("100 meters along this road", "gå 200 m norrut"),
+// anchored to the live panorama (position + heading), else the live map
+// (center), else the device's reported location (`body.user_location`,
+// sent by the client only for explicit here-asks) — checked BEFORE the
+// free-text place query so "street view at my current location" is never
+// sent to Places as a literal place name.
+export function pickLookup(conversation, imageLocations, pov = null, mapView = null, userLocation = null) {
   const c = Array.isArray(imageLocations) ? imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
     return { coords: `${c.lat},${c.lon}`, address: "" };
@@ -475,6 +574,40 @@ export function pickLookup(conversation, imageLocations, pov = null, mapView = n
   const latest = textOf(users[users.length - 1]?.content);
   const address = extractPlace(latest);
   if (address) return { coords: "", address };
+  // Jumps from the live/current position. The anchor, most view-specific
+  // first: the panorama (has a heading, so "along this road" works), the
+  // interactive map's center, the device's reported location.
+  const anchor = pov
+    ? { lat: pov.lat, lng: pov.lng, heading: pov.heading, hasHeading: true }
+    : mapView
+      ? { lat: mapView.lat, lng: mapView.lng, heading: 0, hasHeading: false }
+      : userLocation
+        ? { lat: userLocation.lat, lng: userLocation.lng, heading: 0, hasHeading: false }
+        : null;
+  if (anchor) {
+    const move = extractRelativeMove(latest);
+    // Facing-relative moves ("along this road", "back") need a heading —
+    // only the panorama has one; a map/device anchor takes compass moves.
+    if (move && (move.mode === "bearing" || anchor.hasHeading)) {
+      const bearing =
+        move.mode === "bearing" ? move.bearing : move.mode === "back" ? (anchor.heading + 180) % 360 : anchor.heading;
+      const dest = movePoint(anchor.lat, anchor.lng, bearing, move.meters);
+      return {
+        coords: "",
+        address: "",
+        jump: { lat: dest.lat, lng: dest.lng, heading: bearing, meters: move.meters, dir: move.dir },
+        followUp: true,
+      };
+    }
+    if (streetViewHereIntent(latest)) {
+      return {
+        coords: "",
+        address: "",
+        jump: { lat: anchor.lat, lng: anchor.lng, heading: anchor.heading, meters: 0, dir: "here" },
+        followUp: true,
+      };
+    }
+  }
   // An explicit street-view ask naming a PLACE rather than an address
   // ("Street view of LEGO offices in Copenhagen") — Places resolves the
   // free-text name. A new named place outranks corrections/POV/walk-back,

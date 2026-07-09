@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   EXCERPT_TOTAL_CHARS,
   STREAM_STALL_MS,
+  asksStreetViewHere,
   conversationCopyText,
   deriveTitle,
   embedRef,
@@ -358,4 +359,15 @@ test("conversationCopyText without embeds is unchanged and out-of-range embeds a
     conversationCopyText(messages, [{ id: 1, kind: "streetview_embed", msgIndex: 9, lat: 1, lng: 2 }]),
     "User: q\n\nAssistant: a",
   );
+});
+
+test("asksStreetViewHere gates the device-geolocation prompt to explicit here-asks", () => {
+  assert.equal(asksStreetViewHere("street view here"), true);
+  assert.equal(asksStreetViewHere("popup street view at my current location"), true);
+  assert.equal(asksStreetViewHere("gatuvy här"), true);
+  assert.equal(asksStreetViewHere("streer view here"), true); // typo-tolerant like the server gate
+  assert.equal(asksStreetViewHere("street view of Storgatan 4"), false);
+  assert.equal(asksStreetViewHere("what is here?"), false);
+  assert.equal(asksStreetViewHere(""), false);
+  assert.equal(asksStreetViewHere(undefined), false);
 });

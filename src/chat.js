@@ -137,6 +137,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // The user's current view in the inline interactive MAP (the no-coverage
   // stand-in for the panorama) — same follow-up idea, road-map flavored.
   const mapView = googleMapsOn ? validateMapView(body.map_view) : null;
+  // The device's reported location (browser geolocation) — sent by the
+  // client ONLY for explicit "street view here / at my current location"
+  // asks with no live view on screen. Same shape as a map view (zoom is
+  // ignored), so the same validator applies.
+  const userLocation = googleMapsOn ? validateMapView(body.user_location) : null;
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -180,6 +185,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       imageLocations,
       streetViewPov,
       mapView,
+      userLocation,
     });
     disconnect.state = state;
 
@@ -447,6 +453,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // The user's current interactive-map view (validated), for the follow-up
     // capture-what-they-see map path (src/enrichment.js).
     mapView: extras.mapView || null,
+    // The device's reported location (validated) — the anchor for explicit
+    // "street view here" asks when no live view is on screen.
+    userLocation: extras.userLocation || null,
     // This channel renders the interactive inline-quiz event (src/quiz.js;
     // pipeline.js runQuizGeneration). The MCP channel builds its own state
     // without this flag, so MCP callers keep getting plain text answers.

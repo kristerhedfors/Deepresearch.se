@@ -13,6 +13,7 @@ import { chatCompletion, consumeChatStream } from "./berget.js";
 import { imagePartsOf, lastUserMessage, textOf, withAppendedText } from "./conversation.js";
 import { getModelProfile } from "./model-profiles.js";
 import {
+  buildJumpBlock,
   buildMapsBlock,
   buildMapViewBlock,
   buildPovBlock,
@@ -20,6 +21,7 @@ import {
   googleMapsEmbedKey,
   runGoogleMapsLookup,
   runMapViewCapture,
+  runStreetViewJumpLookup,
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
@@ -113,7 +115,7 @@ const MAX_MAPS_IMAGES = 4;
 // message names no address and carries no photo location; beyond one free
 // Street View metadata check an ordinary question costs nothing.
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
-  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView);
+  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
     // honest note: with no block at all the model invents "enable Google
@@ -141,6 +143,13 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // about it — capture a road-map image of exactly the area on their screen.
   if (target.mapView) {
     return runMapViewEnrichment(env, log, emit, step, stepDone, conversation, state, target.mapView, question);
+  }
+
+  // A Street View JUMP: "street view here" / "100 meters along this road" —
+  // the destination was computed deterministically from the live view (or
+  // the device's reported location) and the phrase; pop a panorama there.
+  if (target.jump) {
+    return runJumpEnrichment(env, log, emit, step, stepDone, conversation, state, target.jump, question);
   }
 
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
@@ -344,6 +353,76 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
   return withAppendedText(
     conversation,
     buildPovBlock(pov, { date: capture.date, description, framesShown: panoramaShown ? 0 : 1, panoramaShown }),
+  );
+}
+
+// The Street View JUMP path: pop open a panorama at the user's current
+// position ("street view here", from the live view or the device's reported
+// location) or at a computed destination ("100 meters along this road" —
+// current position + compass bearing → point). Finds the nearest panorama
+// (150m search), captures one frame facing the travel direction for the
+// vision helper, and renders a fresh interactive panorama there (locking
+// superseded embeds client-side). No panorama near the destination degrades
+// to an interactive MAP of it plus an honest block — never an invented view.
+async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, state, jump, question) {
+  step("maps", "Opening Street View at the requested position…");
+  let found = null;
+  try {
+    found = await runStreetViewJumpLookup(env, log, jump);
+  } catch (err) {
+    log.warn("googlemaps.jump_failed", { error: err?.message || String(err) });
+  }
+  const embedKeyOk = !!googleMapsEmbedKey(env);
+
+  if (!found) {
+    stepDone("maps", "No Street View at that position — showing a map");
+    if (embedKeyOk) {
+      emit({ status: { type: "map_embed", lat: jump.lat, lng: jump.lng, zoom: 17 } });
+    }
+    return withAppendedText(conversation, buildJumpBlock(jump, { found: false, mapShown: embedKeyOk }));
+  }
+
+  state.mapsCount = 1;
+  const at = { ...jump, lat: found.lat, lng: found.lng };
+  let description = "";
+  if (state.visionModel && found.image) {
+    description = await describeStreetView(
+      env,
+      log,
+      state,
+      `This is the Google Street View frame at the position the user asked to jump to (${found.lat}, ${found.lng}, facing ${jump.heading}° ${compassDir(jump.heading)}).`,
+      [found.image],
+      question,
+    );
+  }
+
+  if (embedKeyOk) {
+    emit({ status: { type: "streetview_embed", lat: found.lat, lng: found.lng, heading: jump.heading } });
+  } else if (found.image) {
+    emit({
+      status: {
+        type: "streetview_frames",
+        query: `${found.lat}, ${found.lng}`,
+        frames: [{ dir: "", label: "destination view", url: found.image }],
+      },
+    });
+  }
+
+  stepDone(
+    "maps",
+    description ? "Street View opened at the destination + described" : "Street View opened at the destination",
+    [`${found.lat}, ${found.lng} facing ${compassDir(jump.heading)}${found.date ? ` — imagery ${found.date}` : ""}`],
+  );
+
+  return withAppendedText(
+    conversation,
+    buildJumpBlock(at, {
+      found: true,
+      date: found.date,
+      panoramaShown: embedKeyOk,
+      framesShown: !embedKeyOk && found.image ? 1 : 0,
+      description,
+    }),
   );
 }
 

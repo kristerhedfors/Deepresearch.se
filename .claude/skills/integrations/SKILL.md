@@ -506,6 +506,32 @@ call, alongside the Shodan enrichment).
   marker beside the answer, and the block instructs the answer to ALWAYS
   include the keyless Map link as a markdown link (requested 2026-07-09 —
   the first no-coverage answers carried no link).
+- **Street View JUMPS — "street view here" and relative moves** (requested
+  2026-07-09): deterministic phrase parsing pops a panorama at the user's
+  current position or at a computed destination, no model in the loop.
+  `googlemaps-text.js`: `streetViewHereIntent` (explicit street-view word +
+  here-word — "street view here", "popup street view at my current
+  location", "gatuvy här", "där jag är"), `extractRelativeMove` (distance
+  regex + direction: facing-relative "along this road"/"ahead"/"framåt"
+  words need no verb; bare compass moves — "100 m norrut" — need a move
+  verb OR a ≤6-word message so prose like "the shop is 100 meters north of
+  the station" never jumps; distances clamp 5–3000m, km supported), and
+  `movePoint` (equirectangular destination math). `pickLookup` checks
+  jumps between the address extract and the free-text place query (so "at
+  my current location" is never sent to Places as a place name), anchored
+  to the live panorama (position + heading — "along this road" uses the
+  facing, "back" flips it), else the live map center (compass moves only),
+  else `body.user_location` — the device's browser geolocation, which
+  `stream.js` requests ONLY when the message matches the client-side
+  `asksStreetViewHere` prefilter (`message-content.js`) and no live view
+  exists, so the permission prompt fires for exactly these asks; validated
+  server-side by `validateMapView`. `runJumpEnrichment` finds the nearest
+  panorama (150m search), captures one frame facing the travel bearing
+  (cached via the POV capture), vision-describes it, emits a fresh
+  `streetview_embed` at the destination (locking superseded embeds), and
+  appends `buildJumpBlock` (destination + links + Map-link mandate +
+  never-fabricate). No panorama near the destination → an interactive
+  `map_embed` of it plus an honest block — never an invented view.
 - **The map view has full panorama parity on follow-ups** (same day,
   follow-up request): the client tracks the live map's center/zoom and
   sends it as `body.map_view` (validated by `validateMapView`); a

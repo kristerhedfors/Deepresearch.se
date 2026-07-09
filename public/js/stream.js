@@ -42,6 +42,7 @@ import {
 } from "./projects.js";
 import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
+  asksStreetViewHere,
   conversationCopyText,
   deriveTitle,
   imageMetadataBlock,
@@ -800,6 +801,39 @@ export async function sendMessage(text, opts) {
   controller = new AbortController();
   const signal = controller.signal;
 
+  // The typed text of the latest user message (string or multimodal parts).
+  const latestUserText = (msgs) => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.role !== "user") continue;
+      const c = msgs[i].content;
+      if (typeof c === "string") return c;
+      if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
+      return "";
+    }
+    return "";
+  };
+  // One-shot device geolocation for "street view here" asks: resolves null
+  // on any failure (no API, permission denied, timeout) — never throws, so
+  // the send path is never blocked by it. Coordinates rounded (~1m), the
+  // same cache-friendly precision the map view uses.
+  const deviceLocation = () =>
+    new Promise((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) =>
+            resolve({
+              lat: Math.round(pos.coords.latitude * 1e5) / 1e5,
+              lng: Math.round(pos.coords.longitude * 1e5) / 1e5,
+            }),
+          () => resolve(null),
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 },
+        );
+      } catch {
+        resolve(null);
+      }
+    });
+
   // iOS suspends network for backgrounded apps/PWAs — the most common cause
   // of mid-stream drops. On return the torn-down socket frequently makes the
   // next reader.read() HANG with no error, so a plain try/catch would never
@@ -856,6 +890,15 @@ export async function sendMessage(text, opts) {
     // road-map image of exactly that area on a map-referencing follow-up.
     const mapView = getMapView();
     if (mapView) payload.map_view = mapView;
+    // "Street view here / at my current location" with NO live view on
+    // screen to anchor to: ask the browser for the device's location (the
+    // permission prompt fires for exactly these asks, nothing else) and
+    // send it as the jump anchor. Fail-soft: denied/unavailable/timeout
+    // sends nothing and the server honestly asks which place is meant.
+    if (!streetViewPov && !mapView && asksStreetViewHere(latestUserText(history))) {
+      const loc = await deviceLocation();
+      if (loc) payload.user_location = loc;
+    }
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

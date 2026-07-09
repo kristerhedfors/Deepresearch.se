@@ -118,6 +118,21 @@ function blockRefName(name) {
   return name.replace(/ \((?:truncated|large document[^)]*|an earlier conversation[^)]*)\)$/, "").trim();
 }
 
+// Whether the outgoing message explicitly asks for Street View at the
+// user's CURRENT location ("street view here", "popup street view at my
+// current location", "gatuvy här"). A cheap client-side prefilter — the
+// server's typo-tolerant gate is authoritative — used only to decide
+// whether to request the device's geolocation before sending, so the
+// permission prompt fires for exactly these asks and nothing else. Pure —
+// unit-tested.
+const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy|gatvy)/iu;
+const HERE_WORD_RE =
+  /(?:here|current\s+(?:location|position|spot)|my\s+(?:location|position)|där\s+jag\s+är|min\s+(?:nuvarande\s+)?position|nuvarande\s+(?:plats|läge)|här)(?![\p{L}\p{M}])/iu;
+export function asksStreetViewHere(text) {
+  const t = typeof text === "string" ? text : "";
+  return SV_WORD_RE.test(t) && HERE_WORD_RE.test(t);
+}
+
 // One embedded element's reference line. `e` is a convEmbeds entry
 // ({id, kind, …metadata}); each kind formats its own metadata. Unknown
 // kinds still get an id-numbered line — a new source's embed must never

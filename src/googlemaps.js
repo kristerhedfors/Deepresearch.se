@@ -165,6 +165,65 @@ export function buildPovBlock(pov, parts) {
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
+// Human phrasing of a jump ask, from the deterministic parse (pure).
+function jumpAskText(jump) {
+  if (jump.dir === "here") return "at their current position";
+  const dir =
+    jump.dir === "forward"
+      ? "along the road/direction they are viewing"
+      : jump.dir === "back"
+        ? "back the way they came"
+        : `to the ${jump.dir}`;
+  return `about ${jump.meters} meters ${dir} of their current position`;
+}
+
+// The labeled context block for a Street View JUMP: the user asked to pop
+// open Street View at their current position ("street view here") or at a
+// computed one ("100 meters along this road") — the destination was derived
+// deterministically from their live view/location and phrasing. Pure —
+// exported for tests. `jump` carries the (possibly pano-snapped) destination.
+export function buildJumpBlock(jump, parts) {
+  const lines = [
+    `The user asked to open Street View ${jumpAskText(jump)} — computed destination: ${jump.lat}, ${jump.lng}, facing ${jump.heading}° (${compassDir(jump.heading)}).`,
+  ];
+  if (parts.found) {
+    if (parts.date) lines.push(`Street View imagery captured: ${parts.date}`);
+    lines.push(`Map link: ${mapLink(jump.lat, jump.lng)}`);
+    lines.push(`Street View link: ${panoLink(jump.lat, jump.lng)}`);
+    if (parts.panoramaShown) {
+      lines.push(
+        "An interactive Street View panorama positioned at this destination is displayed to the user directly beside this reply — they can keep looking around from there, so refer to it as shared context.",
+      );
+    } else if (parts.framesShown) {
+      lines.push("The captured Street View frame of the destination is displayed to the user directly beside this reply.");
+    }
+    if (parts.description) {
+      lines.push(`Visual description of the destination's Street View (auto-generated): ${parts.description}`);
+    } else {
+      lines.push(
+        "The destination's imagery could not be examined by a vision model this time — answer from the location data above and say plainly that the view itself couldn't be inspected.",
+      );
+    }
+  } else {
+    lines.push(
+      "Google has NO Street View panorama near that destination. Say so plainly — never invent what it looks like or present anything else as Street View.",
+    );
+    lines.push(`Map link: ${mapLink(jump.lat, jump.lng)}`);
+    if (parts.mapShown) {
+      lines.push("An interactive Google Map of the destination is displayed to the user directly beside this reply instead.");
+    }
+  }
+  lines.push(
+    `ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(jump.lat, jump.lng)})) so the user can open the destination.`,
+  );
+  lines.push(
+    "The destination was computed from the user's own view and phrasing — do NOT ask them to confirm coordinates or clarify where they mean; answer about it directly.",
+  );
+  lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
+  return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
+}
+
 // The labeled context block for a captured CURRENT map view (the map-view
 // path, the road-map sibling of buildPovBlock): the user panned/zoomed the
 // inline interactive map and asked a follow-up, and a road-map image of
@@ -508,6 +567,30 @@ function staticMapViewUrl(env, view) {
     key: env.GOOGLE_MAPS_API_KEY,
   });
   return `${STATICMAP_URL}?${qs}`;
+}
+
+// Finds the panorama nearest a JUMPED-to point (a "street view here" popup
+// or a relative move like "100 meters along this road") and captures one
+// frame facing the travel bearing — reusing the POV capture's cached
+// metadata+frame fetch. Returns { lat, lng, panoId, heading, date, image }
+// (lat/lng snapped to the found panorama's own position) or null when
+// Google has no panorama within the search radius of the destination.
+export async function runStreetViewJumpLookup(env, log, point) {
+  if (!googleMapsAvailable(env)) return null;
+  const meta = await streetViewMetadata(env, log, `${point.lat},${point.lng}`, "", STREETVIEW_SEARCH_RADIUS_M);
+  if (meta?.status !== "OK") return null;
+  const panoId = typeof meta.pano_id === "string" ? meta.pano_id : "";
+  const mLat = Number(meta.location?.lat);
+  const mLng = Number(meta.location?.lng);
+  const lat = Number.isFinite(mLat) ? mLat : point.lat;
+  const lng = Number.isFinite(mLng) ? mLng : point.lng;
+  let capture = null;
+  try {
+    capture = await runStreetViewPovCapture(env, log, { panoId, lat, lng, heading: point.heading, pitch: 0, fov: 90 });
+  } catch {
+    // frame capture is an enhancement — the jump itself still resolves
+  }
+  return { lat, lng, panoId, heading: point.heading, date: capture?.date || meta.date || "", image: capture?.image || null };
 }
 
 // Captures the map area the user currently sees in the inline interactive
