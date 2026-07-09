@@ -1,7 +1,14 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { addDeckEntries, deckEntries, nearestDeckIndex, resetDeck } from "./imagedeck.js";
+import {
+  addDeckEntries,
+  deckEntries,
+  keylessMapEmbedUrl,
+  keylessStreetViewEmbedUrl,
+  nearestDeckIndex,
+  resetDeck,
+} from "./imagedeck.js";
 
 // The deck's pure core (registry order, validation, nearest-waypoint
 // lookup) runs in Node unmodified — the lightbox DOM only exists once
@@ -67,4 +74,35 @@ test("resetDeck empties the registry (conversation-scoped, like the POV/map view
   resetDeck();
   assert.deepEqual(deckEntries(), []);
   assert.equal(nearestDeckIndex(59.45, 17.8), -1);
+});
+
+// The keyless embed URLs — the fix for chat_logs #170/#171 (2026-07-09,
+// "mini image in maps view is just white"): the key-based embed/v1 renders
+// a white rejection page when the key lacks the Maps Embed API service, so
+// the mini-map and the SDK-failure fallbacks use Google's keyless
+// output=embed / output=svembed surfaces, which need no key at all.
+test("keylessMapEmbedUrl: keyless output=embed with the position and zoom", () => {
+  const u = new URL(keylessMapEmbedUrl(59.4693, 17.8119, 16));
+  assert.equal(u.origin + u.pathname, "https://maps.google.com/maps");
+  assert.equal(u.searchParams.get("q"), "59.4693,17.8119");
+  assert.equal(u.searchParams.get("z"), "16");
+  assert.equal(u.searchParams.get("output"), "embed");
+  assert.equal(u.searchParams.get("key"), null); // keyless is the point
+  // Junk zoom falls back to 16 instead of emitting "NaN".
+  assert.equal(new URL(keylessMapEmbedUrl(1, 2, "junk")).searchParams.get("z"), "16");
+});
+
+test("keylessStreetViewEmbedUrl: keyless output=svembed; cbp pitch is inverted vs the SDK's", () => {
+  const u = new URL(keylessStreetViewEmbedUrl(59.4693, 17.8119, 120, 10));
+  assert.equal(u.origin + u.pathname, "https://maps.google.com/maps");
+  assert.equal(u.searchParams.get("layer"), "c");
+  assert.equal(u.searchParams.get("cbll"), "59.4693,17.8119");
+  // SDK pitch +10 (up) must arrive as cbp -10 (verified against the
+  // embed?pb redirect: cbp …,-10 → pb 4f10).
+  assert.equal(u.searchParams.get("cbp"), "11,120,0,0,-10");
+  assert.equal(u.searchParams.get("output"), "svembed");
+  assert.equal(u.searchParams.get("key"), null);
+  // Defaults: no heading/pitch → 0s, junk coerces instead of "NaN".
+  assert.equal(new URL(keylessStreetViewEmbedUrl(1, 2)).searchParams.get("cbp"), "11,0,0,0,0");
+  assert.equal(new URL(keylessStreetViewEmbedUrl(1, 2, "x", "y")).searchParams.get("cbp"), "11,0,0,0,0");
 });

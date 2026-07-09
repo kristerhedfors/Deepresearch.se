@@ -4,7 +4,15 @@
 // object created by turns.js; scrolling is the caller's concern.
 
 import { mapsEmbedKey } from "./settings.js";
-import { addDeckEntries, deckEntries, nearestDeckIndex, openDeck, resetDeck } from "./imagedeck.js";
+import {
+  addDeckEntries,
+  deckEntries,
+  keylessMapEmbedUrl,
+  keylessStreetViewEmbedUrl,
+  nearestDeckIndex,
+  openDeck,
+  resetDeck,
+} from "./imagedeck.js";
 
 // ---- Street View SDK panorama + current-view (POV) capture ------------------
 //
@@ -184,18 +192,18 @@ export function renderStreetViewEmbed(turn, s) {
     label.textContent = "Street View — earlier view (locked); continue in the latest panorama";
   };
 
-  // The Embed-iframe fallback for every way the SDK can fail (script load
-  // error, timeout, missing class, async key rejection) — still navigable,
-  // just without the current-view capture.
+  // The iframe fallback for every way the SDK can fail (script load error,
+  // timeout, missing class, async key rejection) — still navigable, just
+  // without the current-view capture. KEYLESS, deliberately: a key the JS
+  // API just rejected (or one lacking the Maps Embed API service) would
+  // render embed/v1 as a white rejection page — a fallback that can itself
+  // fail invisibly is no fallback (chat_logs #170/#171; see imagedeck.js).
   const renderIframeFallback = () => {
     const iframe = document.createElement("iframe");
     iframe.loading = "lazy";
     iframe.allow = "fullscreen";
     iframe.title = "Google Street View";
-    const params = new URLSearchParams({ key, location: `${lat},${lng}` });
-    if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
-    if (Number.isFinite(Number(s.pitch))) params.set("pitch", String(Number(s.pitch)));
-    iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
+    iframe.src = keylessStreetViewEmbedUrl(lat, lng, Number(s.heading) || 0, Number(s.pitch) || 0);
     box.replaceChildren(iframe);
     label.textContent = "Street View — drag to look around";
   };
@@ -308,12 +316,12 @@ export function renderMapEmbed(turn, s) {
     iframe.loading = "lazy";
     iframe.allow = "fullscreen";
     iframe.title = "Google Maps";
-    // A resolved address gets place mode (marker + place card); a
-    // continue-from-here view (no q) centers the raw coordinates instead —
-    // view mode, since there is no place to mark.
-    iframe.src = s.q
-      ? `https://www.google.com/maps/embed/v1/place?${new URLSearchParams({ key, q: `${lat},${lng}`, zoom: String(zoom) })}`
-      : `https://www.google.com/maps/embed/v1/view?${new URLSearchParams({ key, center: `${lat},${lng}`, zoom: String(zoom) })}`;
+    // KEYLESS embed, deliberately: the key-based embed/v1 renders a white
+    // rejection page when the key lacks the Maps Embed API service, and a
+    // fallback that can itself fail invisibly is no fallback (same class as
+    // the image deck's white mini-map, chat_logs #170/#171 — see
+    // imagedeck.js keylessMapEmbedUrl). q=lat,lng drops a marker either way.
+    iframe.src = keylessMapEmbedUrl(lat, lng, zoom);
     box.replaceChildren(iframe);
     label.textContent = baseLabel;
   };

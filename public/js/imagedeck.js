@@ -54,6 +54,37 @@ export function addDeckEntries(frames) {
   return start;
 }
 
+// Keyless Google Maps embed URL — the classic `output=embed` surface, which
+// needs NO API key or service enablement (it 301s to google.com/maps/embed
+// and renders a normal navigable map). The key-based Embed API
+// (embed/v1/*) is deliberately NOT used for the mini-map: when the site's
+// key lacks the "Maps Embed API" service, embed/v1 renders a WHITE
+// rejection page that is undetectable from outside the iframe — observed
+// live 2026-07-09 (chat_logs #170/#171, "mini image in maps view is just
+// white") while the very same key served the JS SDK and Static Maps fine.
+// Pure — unit-tested in imagedeck.test.js.
+export function keylessMapEmbedUrl(lat, lng, zoom = 16) {
+  return `https://maps.google.com/maps?${new URLSearchParams({
+    q: `${lat},${lng}`,
+    z: String(Math.round(Number(zoom) || 16)),
+    output: "embed",
+  })}`;
+}
+
+// Keyless Street View embed — same rationale and surface as
+// keylessMapEmbedUrl (the classic output=svembed form, 301s to
+// google.com/maps/embed with the panorama params). The cbp pitch field is
+// INVERTED relative to the SDK's pitch (verified against the embed?pb
+// redirect: cbp …,-10 → pb 4f10), hence the negation. Pure — unit-tested.
+export function keylessStreetViewEmbedUrl(lat, lng, heading = 0, pitch = 0) {
+  return `https://maps.google.com/maps?${new URLSearchParams({
+    layer: "c",
+    cbll: `${lat},${lng}`,
+    cbp: `11,${Math.round(Number(heading) || 0)},0,0,${-Math.round(Number(pitch) || 0)}`,
+    output: "svembed",
+  })}`;
+}
+
 // Equirectangular meters — same approximation as the server's
 // distanceMeters (src/googlemaps-text.js).
 function metersBetween(lat1, lng1, lat2, lng2) {
@@ -82,12 +113,8 @@ export function nearestDeckIndex(lat, lng, maxM = 30) {
 // ---- lightbox (DOM from here down) ----------------------------------------------
 
 let askHandler = null; // (text, {lat,lng}) => void — wired by app.js
-let embedKeyFn = null; // () => string — wired by app.js (settings.js mapsEmbedKey)
 export function onDeckAsk(fn) {
   askHandler = fn;
-}
-export function setDeckEmbedKey(fn) {
-  embedKeyFn = fn;
 }
 
 let overlay = null;
@@ -119,9 +146,10 @@ function show(index) {
   overlay.querySelector(".imagedeck-prev").disabled = current === 0;
   overlay.querySelector(".imagedeck-next").disabled = current === entries.length - 1;
 
-  // Mini-map, upper-left: a free Maps Embed view of THIS image's position
-  // (pointer-events off — the wrapping link is the click target, opening
-  // actual Google Maps). Hidden when the entry carries no coordinates, and
+  // Mini-map, upper-left: a KEYLESS Google Maps embed of THIS image's
+  // position (pointer-events off — the wrapping link is the click target,
+  // opening actual Google Maps). Keyless deliberately: see
+  // keylessMapEmbedUrl. Hidden when the entry carries no coordinates, and
   // for map-kind entries the link alone stands (the big image IS a map).
   const mini = overlay.querySelector(".imagedeck-minimap");
   mini.replaceChildren();
@@ -131,12 +159,11 @@ function show(index) {
     a.target = "_blank";
     a.rel = "noopener";
     a.title = "Open in Google Maps";
-    const key = embedKeyFn ? embedKeyFn() : "";
-    if (key && e.kind !== "map") {
+    if (e.kind !== "map") {
       const iframe = document.createElement("iframe");
       iframe.loading = "lazy";
       iframe.title = "Mini map";
-      iframe.src = `https://www.google.com/maps/embed/v1/view?${new URLSearchParams({ key, center: `${e.lat},${e.lng}`, zoom: "16" })}`;
+      iframe.src = keylessMapEmbedUrl(e.lat, e.lng, 16);
       a.appendChild(iframe);
     } else {
       a.textContent = "Open in Google Maps";
