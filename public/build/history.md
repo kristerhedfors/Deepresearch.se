@@ -1317,3 +1317,59 @@ with lives of their own out of the two biggest modules:
   tolerance) is extracted to `public/js/sse.js` as a pure, Node-tested
   core — the same pattern `message-content.js` established — and the
   boot-resume message splitter moved there as `splitUserContent`.
+
+## The history-pane saga: sixteen builds against one iPhone (2026-07-08)
+
+What began as a two-line request — remove the privacy footnote from the
+chat-history drawer, add swipe-to-reveal rename/delete buttons — became
+the longest debugging session of the project, because the feature
+worked perfectly in every test and failed in five different ways on the
+one device that mattered: the iPhone the whole site was built from.
+
+- **The confounders came first.** Production turned out to auto-deploy
+  EVERY branch push, so parallel Claude sessions kept overwriting each
+  other's deploys ("all chats disappeared" was, in part, version
+  ping-pong); a stale-stylesheet cache class was found and covered with
+  a CSS↔JS version handshake; and the cloud-restore loop was hardened
+  (one bad record used to silently abort the whole restore).
+- **Then the real quarry: five distinct iOS Safari behaviors**, none
+  reproducible in desktop Chromium, Linux WebKit, or with synthetic
+  events, each isolated by shipping an instrumented build and reading
+  what the phone reported back:
+  1. rows permanently containing an absolutely-positioned (even
+     invisible) action strip inside the backdrop-blurred panel simply
+     stop painting — present in the DOM, selectable, invisible;
+  2. a `transform` on the card, even transiently during the drag,
+     breaks painting the same way — the slide had to become pure layout
+     (`margin-left`);
+  3. horizontal drags inside a vertically scrollable panel must be
+     driven by touch events with `preventDefault()` once claimed —
+     pointer events plus `touch-action: pan-y` lose to native scroll
+     arbitration, and mutating the DOM mid-touch cancels the gesture
+     (so the strip mounts at `touchstart` and is undone invisibly if
+     the touch turns out to be a tap or a scroll);
+  4. `flex: 1; min-height: 0` on the list inside the scrollable panel
+     collapses it and paints cards over the panel's other children —
+     retroactively explaining the original "text in the background"
+     report;
+  5. iOS's emulated `:hover` sticks to the last-touched card for
+     seconds and fires mouse-compat events on taps — every hover
+     behavior (JS handlers AND CSS rules) had to be gated behind
+     `matchMedia("(hover: hover)")`.
+- **The instrument that cracked it** is now a reusable method (the
+  `on-device-trace` skill): a build stamp with data counts always
+  visible in the pane, empty states that explain themselves, and a
+  copyable on-device event trace — a fixed, inline-styled overlay whose
+  one-tap-select dump the user pastes back into the chat. The trace
+  read like a flight recorder: it showed all 59 cloud records
+  downloading fine while the pane showed nothing, the browser
+  cancelling claimed gestures, and a `mouseleave` arriving fourteen
+  seconds after its gesture — each one the smoking gun for that
+  iteration's fix.
+- **The result** (h17): iOS-Mail-style swipe cards — the card follows
+  the finger, parks 88 px left, pencil and red trash in the vacated
+  space, scroll closes an open card — with every interaction artifact
+  mounted only during the gesture and removed at rest, all styles
+  inline, and the pane self-diagnosing (stamp, restore counts,
+  stylesheet self-repair). Verified on the real device; other devices
+  still to be exercised.

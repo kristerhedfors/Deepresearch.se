@@ -237,12 +237,28 @@ description: >-
   `touch-action: pan-y` are NOT honored for horizontal drags inside
   this vertically-scrollable panel on real iOS: Safari starts a native
   scroll, fires `pointercancel`, and stops delivering moves (h8/h9:
-  list nudged down a few px, card never slid). (4) Every style the
-  interaction needs is INLINE (mountActions) so a device wedged on a
-  stale stylesheet still gets working mechanics. Linux WebKit
-  reproduces NONE of these, and synthetic-event tests bypass native
-  gesture arbitration — desktop/Playwright green means nothing here;
-  verify on a real device. All interaction artifacts
+  list nudged down a few px, card never slid) — AND all DOM/style
+  mutations must happen at `touchstart`, not at gesture-claim time:
+  mutating mid-touch (mounting the strip, toggling overflow) makes iOS
+  cancel the active touch (h10/h11). (4) Every style the interaction
+  needs is INLINE (mountActions) so a device wedged on a stale
+  stylesheet still gets working mechanics. (5) ALL hover behavior — JS
+  handlers and CSS `:hover` rules alike, including `:hover` checks in
+  cleanup code — is gated behind `matchMedia("(hover: hover)")` /
+  `@media (hover: hover)`: iOS fires mouse-compat events on taps and
+  its emulated hover sticks to the last-touched card for SECONDS
+  (traced `mouseleave` 14s late), producing phantom buttons and stuck
+  highlights (h15/h16). (6) `flex: 1; min-height: 0` on a list inside
+  the panel's `overflow-y:auto` flex column collapses it on iOS and
+  paints cards over the panel's other children (the original "text in
+  the background" report) — the panel scrolls as a whole instead. A
+  vertical scroll gesture closes any swiped-open card (iOS-Mail
+  convention). Linux WebKit reproduces NONE of these, and
+  synthetic-event tests bypass native gesture arbitration —
+  desktop/Playwright green means nothing here; verify on a real
+  device. The debug trace overlay was removed in h17 (git history has
+  it); the `[hN · …]` stamp line stays — see the **on-device-trace**
+  skill before removing it. All interaction artifacts
   (strip, `overflow: hidden`, transform, transition) are mounted at
   gesture-claim and removed on close. The pane also self-diagnoses: a
   bracketed status stamp (`[h7 · N here + M in projects · cloud: …]`)

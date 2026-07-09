@@ -43,52 +43,11 @@ export function initHistorySidebar(opts = {}) {
   let baseNote = "";
   let pulling = false;
   let lastPull = null; // result of this pane-open's pullNewer, once it lands
-  let showTrace = false;
   function updateNote() {
     const text = pulling ? "Checking the cloud for conversations…" : baseNote;
     note.textContent = text;
     note.hidden = !text;
   }
-
-  // On-device gesture trace (temporary diagnostics, 2026-07-08): records
-  // exactly which touch/pointer events the device delivers and everything
-  // that touches the card afterwards. Tapping the bracketed stamp line
-  // toggles a dedicated box at the TOP of the pane (with breathing room —
-  // selecting text jammed at the bottom edge of the drawer is miserable
-  // on a phone); one tap on the box selects ALL of it (user-select: all)
-  // ready to copy. Inline-styled top to bottom, same stale-stylesheet
-  // immunity rule as the swipe strip. Remove once the swipe is confirmed.
-  const TRACE = [];
-  const t0 = Date.now();
-  const traceBox = document.createElement("div");
-  // position:FIXED, centered on the screen — the pane's own vertical
-  // layout cannot be trusted on the affected device (its list collapses
-  // and cards paint over in-flow siblings; the original 'text in the
-  // background' complaint was this same bug), so the trace ignores the
-  // panel entirely and floats above everything.
-  traceBox.style.cssText =
-    "display:none;position:fixed;top:12vh;left:4vw;right:4vw;z-index:9999;" +
-    "padding:1rem;border-radius:14px;background:#eef6ff;border:2px solid #0d4fa0;" +
-    "box-shadow:0 8px 40px rgba(4,30,60,.45);color:#0a2e5c;" +
-    "font-size:.74rem;line-height:1.6;word-break:break-all;" +
-    "max-height:62vh;overflow-y:auto;-webkit-user-select:all;user-select:all;";
-  document.body.appendChild(traceBox);
-  function renderTrace() {
-    traceBox.style.display = showTrace ? "block" : "none";
-    if (showTrace) {
-      traceBox.textContent =
-        "TRACE: " + (TRACE.length ? TRACE.join(" | ") : "(no gesture recorded yet — swipe a card, then tap the stamp line again)");
-    }
-  }
-  function trace(s) {
-    TRACE.push(`${Date.now() - t0}:${s}`);
-    if (TRACE.length > 60) TRACE.splice(0, TRACE.length - 60);
-    if (showTrace) renderTrace();
-  }
-  note.addEventListener("click", () => {
-    showTrace = !showTrace;
-    renderTrace();
-  });
 
   async function refresh() {
     list.innerHTML = '<p class="muted">Loading…</p>';
@@ -126,7 +85,12 @@ export function initHistorySidebar(opts = {}) {
     const pullBit = lastPull
       ? ` · cloud: ${lastPull.checked} checked, ${lastPull.pulled} restored${lastPull.failed ? `, ${lastPull.failed} failed` : ""}`
       : pulling ? " · cloud: checking…" : "";
-    parts.push(`[h16 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()} · tap this line to toggle the gesture trace overlay]`);
+    // Compact always-on status stamp (build marker + what this device
+    // holds + the cloud pull's outcome). Deliberately kept after the
+    // 2026-07-08 debugging marathon: it costs one muted line and turns
+    // any user screenshot into a build/data report — see the
+    // on-device-trace skill before removing it.
+    parts.push(`[h17 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -136,7 +100,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h16";
+  const CSS_WANT = "h17";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";
@@ -175,7 +139,6 @@ export function initHistorySidebar(opts = {}) {
     // iOS Safari (2026-07-08 device incident; Linux WebKit can't
     // reproduce it). The strip is mounted lazily by attachSwipe when a
     // swipe or hover actually happens, and removed again on close.
-    trace(`render n=${items.length}`);
     list.innerHTML = items
       .map(
         (c) => `
@@ -194,7 +157,6 @@ export function initHistorySidebar(opts = {}) {
         // A tap on a swiped-open row (or right after a swipe gesture)
         // just closes the actions — it shouldn't also open the chat.
         const item = el.closest(".history-item");
-        trace(`click lock=${item.dataset.swipeLock || 0} sw=${item.classList.contains("swiped") ? 1 : 0}`);
         if (item.dataset.swipeLock === "1" || item.classList.contains("swiped")) {
           delete item.dataset.swipeLock;
           closeActions(item);
@@ -251,7 +213,6 @@ export function initHistorySidebar(opts = {}) {
   // once the settle animation has finished. All inline styles — see
   // mountActions for why nothing here may depend on the stylesheet.
   function closeActions(item) {
-    trace("closeA");
     const row = item.querySelector(".history-open");
     showStrip(item.querySelector(".history-actions"), false);
     if (item.classList.contains("swiped")) {
@@ -329,26 +290,16 @@ export function initHistorySidebar(opts = {}) {
       const from = item.classList.contains("swiped") ? -REVEAL_PX : 0;
       const offset = aborted ? 0 : from + dx;
       if (offset < -REVEAL_PX / 2) {
-        trace(`park dx=${Math.round(dx)}`);
         row.style.transition = "margin-left .18s ease";
         row.style.marginLeft = -REVEAL_PX + "px";
         item.classList.add("swiped");
         showStrip(item.querySelector(".history-actions"), true);
         setTimeout(() => { item.classList.remove("swiping"); }, 200);
       } else {
-        trace(`close dx=${Math.round(dx)}`);
         closeActions(item);
       }
       // Let the click that follows the gesture see the lock, then clear it.
       setTimeout(() => { delete item.dataset.swipeLock; }, 0);
-      // What does the card ACTUALLY look like shortly after? If something
-      // reset it, this line is the smoking gun in the trace.
-      setTimeout(() => {
-        const r2 = item.isConnected ? item.querySelector(".history-open") : null;
-        trace(r2
-          ? `post ml=${getComputedStyle(r2).marginLeft} swiped=${item.classList.contains("swiped")} strip=${!!item.querySelector(".history-actions")}`
-          : "post item-REPLACED");
-      }, 320);
     }
 
     function moveLogic(dx, dy, preventDefaultFn) {
@@ -390,7 +341,6 @@ export function initHistorySidebar(opts = {}) {
         moveCount = 0;
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
-        trace("ts");
         mountActions(item);
         item.style.overflow = "hidden";
       }, { passive: true });
@@ -403,7 +353,6 @@ export function initHistorySidebar(opts = {}) {
         if (!axis) {
           if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
           axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
-          trace(`ax=${axis} ${Math.round(dx)},${Math.round(dy)}`);
           if (axis === "x") {
             item.dataset.swipeLock = "1";
             item.classList.add("swiping");
@@ -423,16 +372,12 @@ export function initHistorySidebar(opts = {}) {
         if (axis !== "x") return;
         if (e.cancelable) e.preventDefault();
         moveCount++;
-        if (moveCount <= 4 || moveCount % 8 === 0) {
-          trace(`m${moveCount} ${Math.round(dx)} c=${e.cancelable ? 1 : 0}p=${e.defaultPrevented ? 1 : 0}`);
-        }
         lastDx = dx;
         drag(dx);
       }, { passive: false });
       const end = (e) => {
         if (!tracking) return;
         tracking = false;
-        trace(`${e.type === "touchcancel" ? "CANCEL" : "end"} n=${moveCount} dx=${Math.round(lastDx)}`);
         if (axis === "x") finish(lastDx, false);
         else releaseRest();
       };
@@ -468,11 +413,9 @@ export function initHistorySidebar(opts = {}) {
     // hover moved on (device trace, 2026-07-08).
     if (HAS_HOVER) {
       item.addEventListener("mouseenter", () => {
-        trace("menter");
         showStrip(mountActions(item), true);
       });
       item.addEventListener("mouseleave", () => {
-        trace("mleave");
         if (!item.classList.contains("swiped")) closeActions(item);
       });
     }

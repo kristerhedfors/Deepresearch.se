@@ -91,8 +91,20 @@ DOM/style mutations mid-touch cancel the touch (pre-mutate at
 min-height: 0` lists inside `overflow-y:auto` flex columns collapse and
 paint children over siblings; taps fire mouse-compat events and the
 emulated `:hover` sticks to the last-touched element for seconds — gate
-ALL hover logic behind `matchMedia("(hover: hover)")`, including
-`:hover` checks in cleanup code.
+ALL hover logic behind `matchMedia("(hover: hover)")`: JS handlers,
+`:hover` checks in cleanup code, AND the CSS `:hover` rules themselves
+(`@media (hover: hover)`) — the CSS rules alone produced stuck
+highlights after the JS was already gated.
+
+## Status of the instruments (post-incident)
+
+The trace overlay itself was REMOVED once the device confirmed the fix
+(h17, 2026-07-08) — reintroduce it from git history (`history-ui.js`
+h12–h16) when the next device-only bug appears. The `[hN · …]` stamp
+line, the empty-state explanations, and the CSS↔JS version handshake
+were kept permanently: they cost one muted line and turn any user
+screenshot into a build/data report. Bump the stamp (and the handshake
+pair when CSS moves) on every change to the pane.
 
 ## Server-side companions
 
