@@ -189,23 +189,36 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // prior description. Fail-soft: no description → the block points at the
   // keyless link.
   let description = "";
+  const hasMap = !!result.staticMapImage && images.includes(result.staticMapImage);
+  // No Street View coverage (or every frame fetch failed) leaves only the
+  // road map — the intro and the block must then say MAP, not "Street View
+  // photos": mislabeling it here made the vision helper describe the map as
+  // street imagery and the answer present fake Street View (reported
+  // 2026-07-09, "Street view basaltvägen 1 enköping").
+  const mapOnly = hasMap && !frames.length;
   if (images.length) {
-    const hasMap = !!result.staticMapImage && images.includes(result.staticMapImage);
-    description = await describeStreetView(
-      env,
-      log,
-      state,
-      `These are Google Street View photos (looking in different directions)${hasMap ? " and a road map" : ""} of ${result.displayQuery}.`,
-      images,
-      question,
-    );
+    const intro = mapOnly
+      ? `This is a Google Maps road-map image of the area around ${result.displayQuery}. There are NO Street View photos of this location.`
+      : `These are Google Street View photos (looking in different directions)${hasMap ? " and a road map" : ""} of ${result.displayQuery}.`;
+    description = await describeStreetView(env, log, state, intro, images, question, { mapOnly });
   }
 
   // Snap the frames into the reply: the client renders the very images the
   // vision helper reasoned about beside the answer, so the user sees the same
   // context the model saw (data URLs are already fetched — no extra billing).
+  // With no Street View coverage the road map stands in — honestly labeled —
+  // so an address lookup never comes back with nothing visual at all.
   if (frames.length) {
     emit({ status: { type: "streetview_frames", query: result.displayQuery, frames } });
+  } else if (result.staticMapImage) {
+    emit({
+      status: {
+        type: "streetview_frames",
+        query: result.displayQuery,
+        title: `Map — ${result.displayQuery} (no Street View here)`,
+        frames: [{ dir: "", label: "road map of the area", url: result.staticMapImage }],
+      },
+    });
   }
 
   const block = buildMapsBlock(result.displayQuery, {
@@ -216,8 +229,10 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     streetViewCount: 0,
     hasMap: false,
     description,
+    describedMapOnly: mapOnly,
     followUp: !!target.followUp,
     framesShown: frames.length,
+    mapShown: !frames.length && !!result.staticMapImage,
   });
 
   stepDone(
@@ -323,18 +338,22 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
 // state.visionTotals so chat.js bills them at that model's rate. Fully
 // fail-soft: any error yields "" and the block falls back to the keyless
 // Street View link.
-async function describeStreetView(env, log, state, intro, images, question = "") {
+async function describeStreetView(env, log, state, intro, images, question = "", { mapOnly = false } = {}) {
   const ask = question
-    ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in these photos — if the photos cannot answer it, say so plainly. Then briefly describe`
+    ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in ${mapOnly ? "this map image" : "these photos"} — if ${mapOnly ? "the map" : "the photos"} cannot answer it, say so plainly. Then briefly describe`
     : "Describe";
+  // A road map can't show architecture — asking for façades/floors made the
+  // helper invent street-level detail from map labels; ask for what a MAP
+  // actually shows instead.
+  const detail = mapOnly
+    ? "what the map shows factually in 2-3 sentences: the street layout, labeled roads, and any labeled businesses or places near the marker. Only state what is visible on the map; do not describe buildings or scenery the map cannot show, and do not guess anything not shown."
+    : "the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, " +
+      "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
+      "street setting. Only state what is visible; do not guess an address, names, or anything not shown.";
   const content = [
     {
       type: "text",
-      text:
-        `${intro} ` +
-        `${ask} the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, ` +
-        "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
-        "street setting. Only state what is visible; do not guess an address, names, or anything not shown.",
+      text: `${intro} ${ask} ${detail}`,
     },
     ...images.map((url) => ({ type: "image_url", image_url: { url } })),
   ];

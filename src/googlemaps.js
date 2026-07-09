@@ -43,6 +43,14 @@ const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/met
 const STREETVIEW_IMAGE_URL = "https://maps.googleapis.com/maps/api/streetview";
 const STATICMAP_URL = "https://maps.googleapis.com/maps/api/staticmap";
 const TIMEOUT_MS = 6000;
+// How far from the resolved coordinates to search for a panorama. Google's
+// default is 50m, which misses real coverage when Places returns a rooftop/
+// parcel coordinate set back from the road (reported 2026-07-09: "Street view
+// basaltvägen 1 enköping" resolved to a business lot whose metadata check
+// came back ZERO_RESULTS — no imagery shown — while the street outside had
+// coverage). 150m reaches the street outside any normal lot without jumping
+// to a different block.
+const STREETVIEW_SEARCH_RADIUS_M = 150;
 const STREETVIEW_SIZE = "512x512"; // per frame; 4 frames + a map must fit Berget's ~1MB body
 const STATICMAP_SIZE = "600x400"; // JPEG below — small enough to attach alongside Street View
 // Four cardinal headings give the vision model a full look around the spot
@@ -87,6 +95,14 @@ export function unresolvedMapsBlock() {
 }
 
 // ---- pure link/block builders (exported for unit tests) --------------------
+
+// Appended to every Maps context block. Without it a model that wanted to
+// "show" imagery invented a Street View Static API markdown image with
+// key=YOUR_API_KEY — a broken image in the reply (reported 2026-07-09,
+// "Street view basaltvägen 1 enköping"). Any real imagery is rendered
+// beside the reply by the client, never by the model.
+const NO_FABRICATED_IMAGE_URLS =
+  "NEVER construct or output Google Maps API image URLs or markdown images (e.g. maps.googleapis.com/maps/api/streetview?...) — you have no API key, so such URLs render as broken images. Any available imagery is already shown to the user beside this reply; when linking, use only the keyless links given above.";
 
 // Keyless Google Maps Street View link (built from the pano's own
 // coordinates) the model can cite and the user can open. NEVER embeds the API
@@ -145,6 +161,7 @@ export function buildPovBlock(pov, parts) {
     "If the question refers to something visible (a person, vehicle, sign, building — anything in the scene), answer it directly from the visual description above and never ask them to clarify who or what they mean: they mean what is in their view. If the question is unrelated to the view, answer it normally and ignore this block.",
   );
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
@@ -170,8 +187,20 @@ export function buildMapsBlock(query, parts) {
     lines.push(`Map link: ${mapLink(lat, lng)}`);
   }
   if (parts.streetView) {
-    if (Number.isFinite(lat) && Number.isFinite(lng)) lines.push(`Street View link: ${panoLink(lat, lng)}`);
+    // Link the panorama's own position when the lookup reported one (it can
+    // sit up to the search radius from the resolved address), else the
+    // resolved coordinates.
+    const svLat = Number.isFinite(parts.streetView.lat) ? parts.streetView.lat : lat;
+    const svLng = Number.isFinite(parts.streetView.lng) ? parts.streetView.lng : lng;
+    if (Number.isFinite(svLat) && Number.isFinite(svLng)) lines.push(`Street View link: ${panoLink(svLat, svLng)}`);
     if (parts.streetView.date) lines.push(`Street View imagery captured: ${parts.streetView.date}`);
+  } else {
+    // The location resolved but Google has no panorama near it. Said
+    // explicitly, because omitting it made the model present a road-map
+    // description as "Street View imagery" (reported 2026-07-09).
+    lines.push(
+      "No Street View imagery is available for this location (Google has no panorama near these coordinates). If the user asked for Street View, say that plainly — never present anything else (a map, a guess) as Street View imagery.",
+    );
   }
   const svCount = parts.streetViewCount || 0;
   if (parts.followUp) {
@@ -187,10 +216,22 @@ export function buildMapsBlock(query, parts) {
       `${parts.framesShown} Street View photo(s) of this location are displayed to the user directly beside this reply, so you can refer to them ("in the photos", "the north-facing frame") as shared context.`,
     );
   }
+  if (parts.mapShown) {
+    lines.push(
+      "A road-map image of the area is displayed to the user directly beside this reply, so you can refer to it as shared context.",
+    );
+  }
   if (parts.description) {
     // A vision model already looked at the imagery for a non-vision answer
-    // model — hand over its description so the answer can relay it.
-    lines.push(`Visual description of the Street View imagery (auto-generated): ${parts.description}`);
+    // model — hand over its description so the answer can relay it. Label
+    // WHAT was described honestly: when only the road map could be examined
+    // (no Street View coverage, or every frame fetch failed), saying
+    // "Street View imagery" here made the model claim Street View it never
+    // had (reported 2026-07-09).
+    const describedWhat = parts.describedMapOnly
+      ? "Visual description of the road map of the area (auto-generated — this is a MAP image, NOT Street View)"
+      : "Visual description of the Street View imagery (auto-generated)";
+    lines.push(`${describedWhat}: ${parts.description}`);
   } else {
     const imgs = [];
     if (svCount) {
@@ -216,6 +257,7 @@ export function buildMapsBlock(query, parts) {
   // The knob is on (this block only exists when it is). Stop the model from
   // wrongly telling the user to enable an already-enabled feature.
   lines.push("Google Maps & Street View is already enabled — do NOT suggest the user enable it.");
+  lines.push(NO_FABRICATED_IMAGE_URLS);
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
@@ -299,11 +341,20 @@ export async function placesTextSearch(env, log, query) {
 // image. A pano id (from the client's live panorama) takes precedence over
 // the location string when given. Returns the parsed metadata (status "OK"
 // means imagery exists) or null.
-export async function streetViewMetadata(env, log, location, pano = "") {
+export async function streetViewMetadata(env, log, location, pano = "", radius = 0) {
   try {
     const qs = new URLSearchParams({ key: env.GOOGLE_MAPS_API_KEY });
     if (pano) qs.set("pano", pano);
-    else qs.set("location", location);
+    else {
+      qs.set("location", location);
+      if (radius > 0) {
+        // Widened panorama search (see STREETVIEW_SEARCH_RADIUS_M) — outdoor
+        // collections only, so a business's indoor photosphere can't outrank
+        // the street outside.
+        qs.set("radius", String(radius));
+        qs.set("source", "outdoor");
+      }
+    }
     const resp = await fetch(`${STREETVIEW_META_URL}?${qs}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!resp.ok) {
       log.warn("googlemaps.streetview_meta_error", { status: resp.status });
@@ -318,15 +369,23 @@ export async function streetViewMetadata(env, log, location, pano = "") {
   }
 }
 
-function streetViewImageUrl(env, location, heading) {
+function streetViewImageUrl(env, location, heading, pano = "") {
   const qs = new URLSearchParams({
     size: STREETVIEW_SIZE,
-    location,
     heading: String(heading),
     fov: "90",
     key: env.GOOGLE_MAPS_API_KEY,
     return_error_code: "true",
   });
+  // Pin the very panorama the metadata check found: the image API's own
+  // default search radius (50m) would otherwise re-miss a pano the widened
+  // metadata search located beyond it.
+  if (pano) qs.set("pano", pano);
+  else {
+    qs.set("location", location);
+    qs.set("radius", String(STREETVIEW_SEARCH_RADIUS_M));
+    qs.set("source", "outdoor");
+  }
   return `${STREETVIEW_IMAGE_URL}?${qs}`;
 }
 
@@ -470,8 +529,19 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
     Number.isFinite(lat) && Number.isFinite(lng) ? `${lat},${lng}` : address || "";
   if (!imageryLocation) return null;
 
-  const svMeta = await streetViewMetadata(env, log, imageryLocation);
+  const svMeta = await streetViewMetadata(env, log, imageryLocation, "", STREETVIEW_SEARCH_RADIUS_M);
   const svOk = svMeta?.status === "OK";
+  // The found panorama's own id and position: the id pins the imagery
+  // fetches to that exact pano, and the position (which can sit up to the
+  // search radius from the resolved coordinates) is what the interactive
+  // embed and the keyless Street View link must center on — the client's
+  // StreetViewPanorama searches only Google's default 50m radius, so
+  // centering it on the resolved address would re-miss the pano.
+  const svPano = svOk && typeof svMeta.pano_id === "string" ? svMeta.pano_id : "";
+  const svMetaLat = svOk ? Number(svMeta.location?.lat) : NaN;
+  const svMetaLng = svOk ? Number(svMeta.location?.lng) : NaN;
+  const svPoint =
+    Number.isFinite(svMetaLat) && Number.isFinite(svMetaLng) ? { lat: svMetaLat, lng: svMetaLng } : null;
 
   // Nothing to show: an address Places couldn't resolve and with no Street
   // View coverage is a false-positive address — stay silent. A photo's coords
@@ -490,7 +560,7 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   if (fetchImages) {
     const svJobs = svOk
       ? STREETVIEW_HEADINGS.map((h) =>
-          fetchImageDataUrl(env, log, streetViewImageUrl(env, imageryLocation, h.deg), "googlemaps.streetview_image_error"),
+          fetchImageDataUrl(env, log, streetViewImageUrl(env, imageryLocation, h.deg, svPano), "googlemaps.streetview_image_error"),
         )
       : [];
     const [svResults, mapResult] = await Promise.all([
@@ -504,8 +574,10 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   }
 
   // Coordinates for the client's interactive Street View embed (only when
-  // there's coverage and a real point to center on).
-  const embed = svOk && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  // there's coverage and a real point to center on) — the panorama's own
+  // position when the metadata reported one, so the embed can't re-miss it.
+  const embedPoint = svPoint || (Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null);
+  const embed = svOk && embedPoint ? embedPoint : null;
 
   // Prefer the formatted address (includes the city) so the activity detail
   // reveals WHICH "Maskinistvägen 11" Google resolved — makes a wrong-city hit
@@ -521,7 +593,7 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
     place,
     lat,
     lng,
-    streetView: svOk ? { date: svMeta.date || "" } : null,
+    streetView: svOk ? { date: svMeta.date || "", lat: svPoint?.lat ?? null, lng: svPoint?.lng ?? null } : null,
     streetViewFrames,
     staticMapImage,
     embed,

@@ -230,7 +230,9 @@ export function renderStreetViewFrames(turn, s) {
   wrap.className = "streetview-frames";
   const label = document.createElement("div");
   label.className = "streetview-embed-label";
-  label.textContent = `Street View — ${s.query || "resolved location"}`;
+  // A server-provided title wins: the road-map fallback (no Street View
+  // coverage at the resolved location) must not be headed "Street View".
+  label.textContent = s.title || `Street View — ${s.query || "resolved location"}`;
   const strip = document.createElement("div");
   strip.className = "streetview-frames-strip";
   for (const f of frames) {

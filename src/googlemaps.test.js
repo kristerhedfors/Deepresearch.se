@@ -299,6 +299,71 @@ describe("buildMapsBlock", () => {
     assert.match(block, /open the Street View link/);
     assert.ok(!block.includes("Attached to this message"));
   });
+
+  // The basaltvägen regression (2026-07-09): Places resolved a business but
+  // Street View metadata was ZERO_RESULTS — the block must say so plainly
+  // instead of letting the model pass a road map off as Street View.
+  test("says explicitly when the resolved location has NO Street View coverage", () => {
+    const block = buildMapsBlock("Basaltgatan 3, Enköping", {
+      place: { name: "Basalt AB", address: "Basaltgatan 3, 749 40 Enköping" },
+      lat: 59.65,
+      lng: 17.12,
+      streetView: null,
+      streetViewCount: 0,
+      hasMap: false,
+    });
+    assert.match(block, /No Street View imagery is available for this location/);
+    assert.match(block, /never present anything else \(a map, a guess\) as Street View imagery/);
+    assert.ok(!/Street View link: /.test(block));
+  });
+
+  test("a block with coverage carries no no-coverage note", () => {
+    const block = buildMapsBlock("x", { place: null, lat: 1, lng: 2, streetView: { date: "" }, streetViewCount: 0, hasMap: false });
+    assert.ok(!/No Street View imagery is available/.test(block));
+  });
+
+  test("the Street View link centers on the panorama's own position when the lookup reported one", () => {
+    const block = buildMapsBlock("x", {
+      place: null,
+      lat: 59.65,
+      lng: 17.12,
+      streetView: { date: "", lat: 59.6512, lng: 17.1187 },
+      streetViewCount: 0,
+      hasMap: false,
+    });
+    assert.match(block, /Street View link: .*viewpoint=59\.6512,17\.1187/);
+    // The resolved address still owns the coordinates + map link.
+    assert.match(block, /Coordinates: 59\.65, 17\.12/);
+  });
+
+  test("labels a map-only description as a MAP, never as Street View imagery", () => {
+    const block = buildMapsBlock("Basaltgatan 3, Enköping", {
+      place: null,
+      lat: 59.65,
+      lng: 17.12,
+      streetView: null,
+      streetViewCount: 0,
+      hasMap: false,
+      description: "The map shows an industrial street with several labeled businesses.",
+      describedMapOnly: true,
+      mapShown: true,
+    });
+    assert.match(block, /Visual description of the road map of the area \(auto-generated — this is a MAP image, NOT Street View\): The map shows/);
+    assert.ok(!/Visual description of the Street View imagery/.test(block));
+    assert.match(block, /road-map image of the area is displayed to the user/);
+  });
+
+  test("every block forbids fabricating Google Maps image URLs (the key=YOUR_API_KEY hallucination)", () => {
+    for (const parts of [
+      { place: null, lat: 1, lng: 2, streetView: null, streetViewCount: 0, hasMap: false },
+      { place: null, lat: 1, lng: 2, streetView: { date: "" }, streetViewCount: 4, hasMap: true, description: "x" },
+    ]) {
+      const block = buildMapsBlock("x", parts);
+      assert.match(block, /NEVER construct or output Google Maps API image URLs/);
+      assert.match(block, /use only the keyless links given above/);
+      assert.ok(!block.includes("key="), "the block must never leak or exemplify a keyed URL");
+    }
+  });
 });
 
 describe("referencesStreetView", () => {
@@ -639,5 +704,11 @@ describe("buildPovBlock", () => {
       assert.match(block, /ALWAYS include the Map link above in your answer as a markdown link/);
       assert.match(block, /\[View on Google Maps\]\(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=59\.41,17\.91\)/);
     }
+  });
+
+  test("forbids fabricating Google Maps image URLs, same as the lookup block", () => {
+    const block = buildPovBlock(pov, { date: "", description: "x", framesShown: 0, panoramaShown: true });
+    assert.match(block, /NEVER construct or output Google Maps API image URLs/);
+    assert.ok(!block.includes("key="));
   });
 });
