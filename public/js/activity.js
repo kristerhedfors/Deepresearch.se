@@ -131,6 +131,7 @@ export function renderStreetViewEmbed(turn, s) {
     iframe.title = "Google Street View";
     const params = new URLSearchParams({ key, location: `${lat},${lng}` });
     if (Number.isFinite(Number(s.heading))) params.set("heading", String(Number(s.heading)));
+    if (Number.isFinite(Number(s.pitch))) params.set("pitch", String(Number(s.pitch)));
     iframe.src = `https://www.google.com/maps/embed/v1/streetview?${params}`;
     box.replaceChildren(iframe);
     label.textContent = "Street View — drag to look around";
@@ -150,7 +151,13 @@ export function renderStreetViewEmbed(turn, s) {
       if (!maps?.StreetViewPanorama) throw new Error("StreetViewPanorama unavailable");
       const pano = new maps.StreetViewPanorama(box, {
         position: { lat, lng },
-        pov: { heading: Number.isFinite(Number(s.heading)) ? Number(s.heading) : 0, pitch: 0 },
+        // Heading/pitch ride along on the POV path (the panorama continues
+        // exactly where the user's captured current view was) — absent on an
+        // address lookup, where north/level is the neutral start.
+        pov: {
+          heading: Number.isFinite(Number(s.heading)) ? Number(s.heading) : 0,
+          pitch: Number.isFinite(Number(s.pitch)) ? Number(s.pitch) : 0,
+        },
         zoom: 1,
         addressControl: false,
         fullscreenControl: true,

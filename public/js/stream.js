@@ -626,7 +626,7 @@ function handleEvent(turn, evt, acc) {
     else if (s.type === "step_done") finishGenericStep(turn, s);
     else if (s.type === "streetview_embed") {
       renderStreetViewEmbed(turn, s);
-      recordEmbed({ kind: "streetview_embed", lat: s.lat, lng: s.lng });
+      recordEmbed({ kind: "streetview_embed", lat: s.lat, lng: s.lng, heading: s.heading, pitch: s.pitch });
     } else if (s.type === "streetview_frames") {
       renderStreetViewFrames(turn, s);
       recordEmbed({

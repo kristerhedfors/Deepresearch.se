@@ -369,7 +369,10 @@ const FOLLOWUP_REFERENCE_RE = new RegExp(
     "ser (?:det|den|huset|byggnaden|platsen) ut|mittemot|tvärs över gatan|" +
     // panorama-referring phrases ("what am I looking at?", after panning)
     "am i (?:seeing|looking)|in front of|this view|the view|" +
-    "vy(?:n|er|erna)?|tittar (?:jag|vi|man) på|ser jag|framför (?:mig|oss)" +
+    "vy(?:n|er|erna)?|tittar (?:jag|vi|man) på|ser jag|framför (?:mig|oss)|" +
+    // asking the ASSISTANT what it sees ("What do you see", "vad ser du" —
+    // reported verbatim 2026-07-09: both got a no-image denial mid-panorama)
+    "what (?:do|can|could) you see|vad ser (?:du|ni)|vad kan (?:du|ni) se" +
     ")(?![\\p{L}\\p{M}])",
   "iu",
 );
@@ -416,6 +419,10 @@ const SCENE_REFERENCE_RE = new RegExp(
     // visual-act verbs
     "describe|read|zoom|identify|" +
     "beskriv(?:a)?|läs(?:a)?|zooma|identifiera|" +
+    // asking the assistant what it sees, loose forms ("do you see the shop?",
+    // "kan du se…?") — the full "what do you see"/"vad ser du" phrasings sit
+    // in the strict gate so they work even without a live POV
+    "(?:do|can|could) you see|are you seeing|ser (?:du|ni)|kan (?:du|ni) se|" +
     // question phrases about the scene
     "who is|who's|what does .{0,20} say|" +
     "vem är|vad står" +

@@ -414,19 +414,32 @@ call, alongside the Shodan enrichment).
   address walk-back: `runStreetViewPovCapture` fetches ONE Street View
   Static frame at exactly that pano/heading/pitch/fov (metadata check for
   the capture date is free; the frame is cached like the address lookup),
-  the vision helper answers the question about THAT frame, the frame is
-  emitted to the client (`streetview_frames` with a "your current view"
-  label), and `buildPovBlock` tells the model it is the user's currently
-  visible view. A NEW address in the message still beats the POV (it's a
+  the vision helper answers the question about THAT frame, and
+  `buildPovBlock` tells the model it is the user's currently visible view.
+  The reply gets a FRESH interactive panorama, not the static capture: the
+  POV path emits `streetview_embed` at the captured lat/lng/heading/pitch
+  (2026-07-09 report: showing the stale frame froze the user at a view
+  they'd navigated away from), so the new turn renders a continue-from-here
+  panorama; the captured frame (`streetview_frames`, "your current view")
+  is emitted only when no embed key exists and the client can't build a
+  panorama. `buildPovBlock` also ALWAYS instructs the answer to include a
+  markdown Map link at the CURRENT coordinates (same report: the user has
+  moved, so links given for the original address no longer point at where
+  they are). A NEW address in the message still beats the POV (it's a
   new location); no POV (iframe fallback) degrades to the walk-back.
   The POV path uses a LOOSE gate (`referencesStreetViewScene`), grown in
-  two reported rounds: scene contents (people, vehicles, signs, shops —
+  three reported rounds: scene contents (people, vehicles, signs, shops —
   "Describe the person" missed the strict gate and the model asked "what
   person?"), then STRUCTURAL classes when noun vocabulary kept leaking
   (Workers Logs 2026-07-08 ~13:22Z: 4 of 5 panorama follow-ups fired
   nothing): bare deictics (that/this/it/det/den/där…), positional phrasing
   (left/behind/across/vänster/bakom…), and visual-act verbs
-  (describe/read/zoom/beskriv/läs…), EN+SV. Over-firing is deliberate and
+  (describe/read/zoom/beskriv/läs…), EN+SV — then asking the ASSISTANT what
+  it sees (2026-07-09 verbatim: "What do you see" / "vad ser du" both got a
+  no-image denial mid-panorama): the full phrasings ("what do you see",
+  "vad ser du/ni", "vad kan du se") sit in the STRICT gate so they work
+  even without a live POV, looser forms ("do you see…?", "ser du…?",
+  "kan du se…?") in the scene gate. Over-firing is deliberate and
   cheap (one cached frame); the POV block's instruction is CONDITIONAL
   ("if the question refers to something visible… otherwise answer normally
   and ignore this block") so an unrelated question isn't misdirected. The

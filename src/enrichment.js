@@ -240,10 +240,11 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
 
 // The current-view path: the user panned/moved the live panorama, so capture
 // the exact frame they see (one Static fetch at their heading/pitch/fov),
-// show it in the reply, and have the vision helper answer their question
-// about THAT frame. No Places call, no new embed event (the panorama is
-// already on their screen). Fail-soft like every branch: a failed capture
-// degrades to an honest note, never a blocked chat.
+// have the vision helper answer their question about THAT frame, and render
+// a fresh interactive panorama at that view beside the reply so they can
+// continue navigating from where they are (the static capture is only shown
+// when no embed key exists). No Places call. Fail-soft like every branch: a
+// failed capture degrades to an honest note, never a blocked chat.
 async function runPovEnrichment(env, log, emit, step, stepDone, conversation, state, pov, question) {
   step("maps", "Capturing your current Street View view…");
   let capture = null;
@@ -278,14 +279,26 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
     );
   }
 
-  // Show the very frame that was reasoned about beside the answer.
-  emit({
-    status: {
-      type: "streetview_frames",
-      query: `your current view (${compassDir(pov.heading)})`,
-      frames: [{ dir: "", label: "your current view", url: capture.image }],
-    },
-  });
+  // Continue-from-here: render a NEW interactive panorama positioned at the
+  // user's current view beside THIS reply (they navigated away from the
+  // original location, so the old panorama sits stale by an earlier turn and
+  // a static capture would freeze them there — reported 2026-07-09). The
+  // captured frame is only shown when no embed key is configured, i.e. when
+  // the client can't build a panorama at all.
+  const panoramaShown = !!googleMapsEmbedKey(env);
+  if (panoramaShown) {
+    emit({
+      status: { type: "streetview_embed", lat: pov.lat, lng: pov.lng, heading: pov.heading, pitch: pov.pitch },
+    });
+  } else {
+    emit({
+      status: {
+        type: "streetview_frames",
+        query: `your current view (${compassDir(pov.heading)})`,
+        frames: [{ dir: "", label: "your current view", url: capture.image }],
+      },
+    });
+  }
 
   stepDone(
     "maps",
@@ -293,7 +306,10 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
     [`${where}${capture.date ? ` — imagery ${capture.date}` : ""}`],
   );
 
-  return withAppendedText(conversation, buildPovBlock(pov, { date: capture.date, description, framesShown: 1 }));
+  return withAppendedText(
+    conversation,
+    buildPovBlock(pov, { date: capture.date, description, framesShown: panoramaShown ? 0 : 1, panoramaShown }),
+  );
 }
 
 // Runs Street View / map images through a vision-capable helper model to

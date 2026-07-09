@@ -37,13 +37,17 @@ unknown `status` types (forward compatibility).
     absent — older stored turns predate them. Search-step tracking is keyed
     by `source + "|" + query` (the same query text may run on two
     providers in one round).
-- `{"status":{"type":"streetview_embed","lat":59.4,"lng":17.9}}` — the Google
+- `{"status":{"type":"streetview_embed","lat":59.4,"lng":17.9,"heading":143,"pitch":-5}}`
+  — the Google
   Maps enrichment resolved a location with Street View coverage; the client
   renders an inline, navigable Maps JS SDK `StreetViewPanorama` beside the
   answer (using the browser key it holds from `/api/settings` — the key is
   deliberately NOT in this event, so it never enters the "Copy research JSON"
   export) and tracks the user's pans as the POV sent back with follow-up
-  queries (`street_view_pov`). SDK load failure → Embed iframe fallback (no
+  queries (`street_view_pov`). `heading`/`pitch` are optional (absent →
+  north/level): the POV-capture path sends them (2026-07-09) so the reply's
+  panorama continues exactly at the user's current view instead of freezing
+  them at a stale static frame. SDK load failure → Embed iframe fallback (no
   POV capture). No browser key configured → the client ignores the event and
   the keyless link stands.
 - `{"status":{"type":"streetview_frames","query":"Maskinistvägen 11","frames":[{"dir":"north","url":"data:image/jpeg;base64,…"}]}}`
@@ -51,8 +55,9 @@ unknown `status` types (forward compatibility).
   about (up to 4, JPEG data URLs); the client renders them as a captioned
   thumbnail strip beside the answer so the user sees the SAME imagery the
   model saw. Each frame carries a cardinal `dir` ("north") OR a free-form
-  `label` ("your current view" — the POV capture path, where the server
-  fetched exactly the frame the user panned the live panorama to).
+  `label` ("your current view" — the POV capture path when NO embed key is
+  configured; with one, that path emits `streetview_embed` instead so the
+  user can keep navigating).
   Deliberately bulky — the ONE event whose payload is compacted before
   entering the per-turn research log (`activity.js`'s
   `sanitizeResearchEvent`: frame count + directions/labels only), so the

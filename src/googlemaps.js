@@ -120,9 +120,19 @@ export function buildPovBlock(pov, parts) {
   if (parts.date) lines.push(`Street View imagery captured: ${parts.date}`);
   lines.push(`Map link: ${mapLink(pov.lat, pov.lng)}`);
   lines.push(`Street View link: ${panoLink(pov.lat, pov.lng)}`);
-  if (parts.framesShown) {
+  if (parts.panoramaShown) {
+    lines.push(
+      "An interactive Street View panorama positioned at exactly this view is displayed to the user directly beside this reply — they can keep looking around from there, so refer to the view as shared context.",
+    );
+  } else if (parts.framesShown) {
     lines.push("The captured frame is displayed to the user directly beside this reply, so you can refer to it as shared context.");
   }
+  // The user navigated here from wherever the conversation started — the
+  // coordinates above are where they are NOW, so the answer must hand them
+  // a link to this position, not rely on links given for the original place.
+  lines.push(
+    `The user has moved within Street View, so ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(pov.lat, pov.lng)})) so they can open their current position.`,
+  );
   if (parts.description) {
     lines.push(`Visual description of the user's current view (auto-generated): ${parts.description}`);
   } else {

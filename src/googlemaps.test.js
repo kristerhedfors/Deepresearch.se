@@ -328,6 +328,16 @@ describe("referencesStreetView", () => {
     assert.equal(referencesStreetView("beskriv vyn"), true);
   });
 
+  test("matches asking the assistant what IT sees — 'What do you see' / 'vad ser du' (reported 2026-07-09)", () => {
+    // Both got a "since I don't have access to images…" denial while the
+    // panorama stood open beside the chat.
+    assert.equal(referencesStreetView("What do you see"), true);
+    assert.equal(referencesStreetView("what can you see?"), true);
+    assert.equal(referencesStreetView("vad ser du"), true);
+    assert.equal(referencesStreetView("Vad ser ni?"), true);
+    assert.equal(referencesStreetView("vad kan du se?"), true);
+  });
+
   test("does NOT match ordinary research follow-ups", () => {
     assert.equal(referencesStreetView("summarize the sources"), false);
     assert.equal(referencesStreetView("tell me more about the company"), false);
@@ -370,6 +380,14 @@ describe("referencesStreetViewScene (the loose POV-path gate)", () => {
     assert.equal(referencesStreetViewScene("vad kostar det?"), true); // deictic "det" — in a panorama convo this points at the view
     assert.equal(referencesStreetViewScene("beskriv"), true);
     assert.equal(referencesStreetViewScene("vad finns till vänster?"), true);
+  });
+
+  test("matches loose what-do-you-see forms (fourth reported round, 2026-07-09)", () => {
+    assert.equal(referencesStreetViewScene("What do you see"), true);
+    assert.equal(referencesStreetViewScene("vad ser du"), true);
+    assert.equal(referencesStreetViewScene("do you see anything interesting?"), true);
+    assert.equal(referencesStreetViewScene("kan du se skylten?"), true);
+    assert.equal(referencesStreetViewScene("ser du något?"), true);
   });
 
   test("matches the third reported round verbatim — 'Describe the dude' / 'The one in view'", () => {
@@ -592,5 +610,23 @@ describe("buildPovBlock", () => {
     assert.match(block, /could not be examined by a vision model/);
     assert.ok(!/Visual description/.test(block));
     assert.ok(!/imagery captured/.test(block));
+  });
+
+  test("describes the live continue-from-here panorama when one is shown instead of the frame", () => {
+    const block = buildPovBlock(pov, { date: "", description: "A shop front.", framesShown: 0, panoramaShown: true });
+    assert.match(block, /interactive Street View panorama positioned at exactly this view/);
+    assert.match(block, /keep looking around from there/);
+    assert.ok(!/captured frame is displayed/.test(block));
+  });
+
+  test("always instructs the answer to include a markdown Map link at the CURRENT position (the user moved)", () => {
+    for (const parts of [
+      { date: "", description: "", framesShown: 1 },
+      { date: "", description: "x", framesShown: 0, panoramaShown: true },
+    ]) {
+      const block = buildPovBlock(pov, parts);
+      assert.match(block, /ALWAYS include the Map link above in your answer as a markdown link/);
+      assert.match(block, /\[View on Google Maps\]\(https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=59\.41,17\.91\)/);
+    }
   });
 });
