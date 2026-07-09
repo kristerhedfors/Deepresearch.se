@@ -118,6 +118,9 @@ Server (`src/`):
 | `maps-enrichment.js` | The Google Maps enrichment runners — one per lookup-target shape (address/place lookup, POV & map-view captures, jumps, nearby/relocation Places searches, cross-barrier crossings, the journey view) incl. the Street View vision-describe helper; orchestrates lookups → SSE events → context blocks, dispatched by `runGoogleMapsEnrichment` |
 | `quiz.js` | The inline-quiz capability's pure logic: `quizIntent` (deterministic "quiz me…" gate, EN+SV, typo-tolerant, question-count parsing; triage carries a fail-soft `quiz:true` backup flag for phrasings the regexes miss), `normalizeQuiz` (hardens the quiz-generation JSON the client renders), grade-request validation/normalization — the pipeline phase is `pipeline.js`'s `runQuizGeneration` (JSON model, fail-soft to a normal answer), the interaction runs client-side (`public/js/quiz.js`) |
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
+| `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
+| `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine — see the **tokemon-game** skill |
+| `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1 |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
@@ -198,6 +201,18 @@ knob at top, dropzone, add-text form, file/chat lists, header chip).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
+Games (`public/games/<id>/` — reached from the account panel's **Games**
+view in `account.js`, which renders the shelf from `GET /api/games`, the
+server-side registry in `src/games.js` — a new game appears on the shelf by
+registering it, with no client shelf change). Tokemon
+(`public/games/tokemon/`) is the first game: a standalone authed page —
+`js/map.js` (a dependency-free slippy map over OSM raster tiles,
+attribution included), `js/game.js` (GPS/tap-to-walk movement, spawn
+polling, party/bag/dex panels), `js/battle.js` (plays back the server's
+battle event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game
+RULES live server-side (`src/tokemon.js`); the page only presents. The
+site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
+
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`)
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
@@ -235,7 +250,13 @@ deterministic intent gate incl. question-count parsing, quiz-JSON
 hardening, grade-request validation/normalization), and `feedback.js`
 (the feedback pipeline's pure logic: create/reply validation incl.
 truncation markers, the status lifecycle, row projection, the
-`?format=text` rendering).
+`?format=text` rendering), and `games.js` (the
+games registry/dispatch seam: entry shape, shelf payload, subpath
+dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
+game core: type-chart parity vs the official matchups, Gen-1
+stat/damage/catch/escape formula checks against hand-computed values,
+spawn determinism + bucket scoping, battle flow incl. catching, fleeing,
+villain rewards, XP/level-up/evolution, save normalization).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -431,3 +452,8 @@ what docs claim); and update the skill list below plus the skill's
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message
   center, and the public (no-auth) surface.
+- **tokemon-game** — the games subsystem (the `src/games.js` registry/dispatch
+  seam + how to add a NEW game) and the Tokemon open-world AR game itself
+  (account panel → Games): the no-invented-game-logic rule (Pokémon Gen-1
+  mechanics verbatim, mapped species/moves), the pure-core/API/client split,
+  deterministic spawning, and the server-authoritative battle protocol.

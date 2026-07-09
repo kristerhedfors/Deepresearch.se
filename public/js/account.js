@@ -374,6 +374,49 @@ export function initAccountPanel() {
     }
   }
 
+  // The "games" view — the games shelf, rendered from the server's games
+  // registry (GET /api/games, src/games.js) so a newly registered game
+  // appears here with no client change. Games open in a NEW TAB like the
+  // other page links (same-tab navigation would abort an in-flight research
+  // request). A game whose backing is missing on this server is shown
+  // disabled with the reason — the same explain-don't-hide posture as the
+  // settings rows.
+  async function loadGamesView() {
+    const shell = (inner) => `
+      <button id="gamesbackbtn" type="button" class="back-link">← Back</button>
+      <p class="section-lbl">Games</p>
+      ${inner}`;
+    const wireBack = () =>
+      document.getElementById("gamesbackbtn").addEventListener("click", () => show("summary"));
+    body.innerHTML = shell('<p class="muted">Loading…</p>');
+    wireBack();
+    let games = null;
+    try {
+      const res = await fetch("/api/games");
+      if (res.ok) games = (await res.json()).games || [];
+    } catch { /* games stays null → error state below */ }
+    if (!games) {
+      body.innerHTML = shell('<p class="muted">Could not load the games list — try again in a moment.</p>');
+      wireBack();
+      return;
+    }
+    const rows = games.length
+      ? games
+          .map((g) =>
+            g.available
+              ? `<div class="account-actions">
+                   <a href="${escapeHtml(g.path)}" target="_blank" rel="noopener">${escapeHtml(g.emoji)} ${escapeHtml(g.name)} — ${escapeHtml(g.tagline)}</a>
+                 </div>
+                 <p class="muted">${escapeHtml(g.description)}</p>`
+              : `<div class="account-actions"><a aria-disabled="true">${escapeHtml(g.emoji)} ${escapeHtml(g.name)}</a></div>
+                 <p class="muted">Needs ${escapeHtml(g.requires || "server configuration")} — not available on this server.</p>`,
+          )
+          .join("")
+      : '<p class="muted">No games are registered on this server.</p>';
+    body.innerHTML = shell(rows);
+    wireBack();
+  }
+
   const show = (view) => {
     if (view === "messages") {
       loadMessages();
@@ -387,6 +430,10 @@ export function initAccountPanel() {
       loadFeedbackView();
       return;
     }
+    if (view === "games") {
+      loadGamesView();
+      return;
+    }
     body.innerHTML = view === "full" ? renderFullUsage(me) : renderSummary(me);
     if (view === "full") {
       document.getElementById("usagebackbtn").addEventListener("click", () => show("summary"));
@@ -396,6 +443,7 @@ export function initAccountPanel() {
       document.getElementById("settingsbtn")?.addEventListener("click", () => show("settings"));
       document.getElementById("feedbackbtn")?.addEventListener("click", () => show("feedback"));
       wireFeedbackKnob();
+      document.getElementById("gamesbtn")?.addEventListener("click", () => show("games"));
       document.getElementById("logoutbtn").addEventListener("click", async () => {
         await fetch("/logout", { method: "POST" });
         location.href = "/login";
@@ -552,6 +600,7 @@ function renderSummary(me) {
       ${me.email ? `<button id="feedbackbtn" type="button">Feedback${fbCount ? ` (${fbCount})` : ""}</button>` : ""}
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
+      <button id="gamesbtn" type="button">Games</button>
       <a href="/build/" target="_blank" rel="noopener">About this project</a>
       <a href="/story/" target="_blank" rel="noopener">The build story</a>
       <a href="/help/" target="_blank" rel="noopener">Documentation</a>

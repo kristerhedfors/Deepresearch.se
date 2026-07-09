@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Tokemon — Deepresearch.se</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/games/tokemon/tokemon.css">
+</head>
+<body>
+  <div id="tk-map" aria-label="Game map"></div>
+
+  <header id="tk-hud">
+    <a id="tk-back" href="/" title="Back to Deepresearch">←</a>
+    <div id="tk-lead">Loading…</div>
+    <div id="tk-balls"></div>
+  </header>
+
+  <nav id="tk-bar">
+    <button id="tk-party" type="button">👥 Party</button>
+    <button id="tk-bag" type="button">🎒 Bag</button>
+    <button id="tk-dex" type="button">📘 Dex</button>
+    <button id="tk-heal" type="button">⚡ Recharge</button>
+    <button id="tk-gps" type="button" title="Follow my real position">📍 GPS</button>
+    <button id="tk-center" type="button" title="Recenter">🎯</button>
+  </nav>
+
+  <div id="tk-toast" hidden></div>
+  <div id="tk-panel" class="tk-panel" hidden></div>
+
+  <div id="tk-attrib">map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+
+  <script type="module" src="/games/tokemon/js/game.js"></script>
+</body>
+</html>

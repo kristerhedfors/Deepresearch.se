@@ -20,6 +20,8 @@
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
+//   src/games.js     — /api/games: the games registry/shelf + per-game dispatch
+//                      (Tokemon: src/tokemon-api.js, game core src/tokemon.js)
 //   src/admin-api.js — /api/admin/* JSON API
 //   src/chat.js      — /api/chat: streaming research pipeline
 //   src/answers.js   — /api/chat/answer: TTL'd answer recovery cache
@@ -51,6 +53,7 @@ import { handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleStorage } from "./storage.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
+import { handleGames } from "./games.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -314,6 +317,12 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   ) {
     return handleStorage(request, env, url, log, identity);
   }
+  // The games subsystem (src/games.js): GET /api/games lists the shelf the
+  // account panel renders; /api/games/<id>/* dispatches to the registered
+  // game's own API (Tokemon: src/tokemon-api.js, core in src/tokemon.js).
+  if (url.pathname === "/api/games" || url.pathname.startsWith("/api/games/")) {
+    return handleGames(request, env, url, log, identity);
+  }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);
   }
@@ -401,7 +410,9 @@ const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
   "strict-transport-security": "max-age=63072000; includeSubDomains",
   "cross-origin-opener-policy": "same-origin",
-  "permissions-policy": "geolocation=(), microphone=(), camera=(), payment=()",
+  // geolocation=(self): the Tokemon game (/games/tokemon/) walks the map by
+  // real GPS position; everything else stays denied.
+  "permissions-policy": "geolocation=(self), microphone=(), camera=(), payment=()",
 };
 
 // Every response carries x-request-id so a user report can be correlated
