@@ -35,3 +35,6 @@ export const collect = (spawnId, lat, lng) => post("collect", { spawnId, lat, ln
 export const battleAction = (action) => post("battle", { action });
 export const heal = () => post("heal");
 export const party = (payload) => post("party", payload);
+export const scene = (lat, lng, heading) =>
+  call(`scene?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&heading=${Math.round(heading)}`);
+export const go = (command, lat, lng, heading) => post("go", { command, lat, lng, heading });

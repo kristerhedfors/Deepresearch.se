@@ -23,6 +23,12 @@
 //   POST …/battle   {action}  → resolve one battle turn
 //   POST …/heal               → full-team recharge (cooldown)
 //   POST …/party    {op, ...} → lead | box | party | item (out of battle)
+//   GET  …/scene?lat&lng&heading → a Street View frame at the player's
+//        position with spawns PROJECTED INTO the imagery (src/tokemon-nav.js)
+//        — gated on the per-user Google Maps knob, fail-soft without it
+//   POST …/go {command, lat, lng, heading} → text-command navigation
+//        ("go north 200 m", "gå till Kungsgatan 1", "look right"); moves and
+//        turns are pure math, "go to <place>" resolves via Places (knob-gated)
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -47,6 +53,16 @@ import {
   STARTERS,
   statsFor,
 } from "./tokemon.js";
+import {
+  destinationPoint,
+  normalizeHeading,
+  parseGoCommand,
+  projectSpawns,
+  SCENE_FOV,
+  SCENE_VIEW_DIST_M,
+} from "./tokemon-nav.js";
+import { googleMapsEnabled } from "./settings.js";
+import { placesTextSearch, runStreetViewPovCapture, streetViewMetadata } from "./googlemaps.js";
 
 export async function handleTokemon(request, env, url, log, identity, subpath) {
   const db = await getDb(env);
@@ -64,6 +80,8 @@ export async function handleTokemon(request, env, url, log, identity, subpath) {
   if (path === "battle" && method === "POST") return postBattle(request, db, log, identity);
   if (path === "heal" && method === "POST") return postHeal(db, log, identity);
   if (path === "party" && method === "POST") return postParty(request, db, identity);
+  if (path === "scene" && method === "GET") return getScene(db, env, url, log, identity);
+  if (path === "go" && method === "POST") return postGo(request, env, log, identity);
   return jsonResponse({ error: "Not found." }, 404);
 }
 
@@ -310,4 +328,140 @@ async function postHeal(db, log, identity) {
   await storeSave(db, identity.id, save);
   log.info("tokemon.heal", { user_id: identity.id });
   return jsonResponse({ save: publicSave(save) });
+}
+
+// ---------------------------------------------------------------------------
+// Street-view mode: the real-world AR view. GET …/scene captures a Street
+// View frame at the player's position+heading (edge-cached in
+// googlemaps.js, so re-looking at the same view is free) and projects the
+// live spawns INTO the image; POST …/go executes a text navigation command.
+// Both fail soft: no knob/coverage → a structured "unavailable" answer the
+// client explains, never an error page.
+
+async function getScene(db, env, url, log, identity) {
+  const pos = parseLatLng({ lat: url.searchParams.get("lat"), lng: url.searchParams.get("lng") });
+  if (!pos) return jsonResponse({ error: "lat and lng query params are required." }, 400);
+  const heading = normalizeHeading(Number(url.searchParams.get("heading")) || 0);
+  if (!googleMapsEnabled(env, identity)) {
+    return jsonResponse({
+      available: false,
+      reason: "disabled",
+      message:
+        "Street view mode needs the Google Maps & Street View setting — turn it on under Account → Settings. The map keeps working without it.",
+    });
+  }
+  // Free metadata probe: is there imagery here, and where exactly does the
+  // panorama stand? The pano position becomes the camera for projection.
+  const meta = await streetViewMetadata(env, log, `${pos.lat},${pos.lng}`, "", 100);
+  if (meta?.status !== "OK") {
+    return jsonResponse({
+      available: false,
+      reason: "no_coverage",
+      message: "No Street View imagery here — walk toward a road and try again.",
+    });
+  }
+  const camLat = Number(meta.location?.lat ?? pos.lat);
+  const camLng = Number(meta.location?.lng ?? pos.lng);
+  const frame = await runStreetViewPovCapture(env, log, {
+    panoId: meta.pano_id || "",
+    lat: camLat,
+    lng: camLng,
+    heading: Math.round(heading),
+    pitch: 0,
+    fov: SCENE_FOV,
+  });
+  if (!frame?.image) {
+    return jsonResponse({
+      available: false,
+      reason: "capture_failed",
+      message: "Couldn't fetch the imagery right now — try again in a moment.",
+    });
+  }
+  // Project the live spawns into the frame. Camera = the pano's true
+  // position; "near" (tappable) is measured from the PLAYER's position,
+  // the same check …/encounter enforces.
+  const save = await loadSave(db, identity.id);
+  const spawns = spawnsAround(camLat, camLng, Date.now(), levelCapFor(save)).filter((s) => !save.usedSpawns[s.id]);
+  const overlays = projectSpawns(camLat, camLng, heading, spawns).map((o) => {
+    const s = spawns.find((x) => x.id === o.id);
+    return {
+      ...o,
+      emoji: s.emoji,
+      name: s.kind === "creature" ? s.name : s.kind === "villain" ? s.villain : s.item,
+      level: s.level,
+      near: haversineM(pos.lat, pos.lng, s.lat, s.lng) <= ENCOUNTER_RADIUS_M,
+      lat: s.lat,
+      lng: s.lng,
+    };
+  });
+  log.info("tokemon.scene", { user_id: identity.id, overlays: overlays.length, heading: Math.round(heading) });
+  return jsonResponse({
+    available: true,
+    image: frame.image,
+    date: frame.date || "",
+    pano: { lat: camLat, lng: camLng },
+    heading: Math.round(heading),
+    fov: SCENE_FOV,
+    viewDistM: SCENE_VIEW_DIST_M,
+    overlays,
+  });
+}
+
+// Bilingual reply strings for …/go — the command grammar itself is
+// EN+SV-equal in src/tokemon-nav.js; replies follow the command's language.
+const GO_SAY = {
+  moved: (sv, dist, dir) => (sv ? `Gick ${dist} m ${dir}.` : `Walked ${dist} m ${dir}.`),
+  turned: (sv, dir) => (sv ? `Tittar ${dir}°.` : `Facing ${dir}°.`),
+  went: (sv, name) => (sv ? `Reste till ${name}.` : `Traveled to ${name}.`),
+  notFound: (sv, q) => (sv ? `Hittade inte "${q}".` : `Couldn't find "${q}".`),
+  needMaps: (sv) =>
+    sv
+      ? "Att resa till en plats kräver Google Maps-inställningen (Konto → Inställningar)."
+      : "Traveling to a place needs the Google Maps setting (Account → Settings).",
+  help: () =>
+    'Try: "go north 200 m" · "gå till Kungsgatan 1" · "look right" · "titta västerut"',
+};
+
+const DIR_WORD = { 0: ["north", "norrut"], 45: ["northeast", "nordost"], 90: ["east", "österut"], 135: ["southeast", "sydost"], 180: ["south", "söderut"], 225: ["southwest", "sydväst"], 270: ["west", "västerut"], 315: ["northwest", "nordväst"] };
+const dirWord = (bearing, sv) => (DIR_WORD[bearing] || [`${bearing}°`, `${bearing}°`])[sv ? 1 : 0];
+
+async function postGo(request, env, log, identity) {
+  const body = await readJson(request);
+  const pos = parseLatLng(body);
+  if (!pos) return jsonResponse({ error: "lat and lng are required." }, 400);
+  const heading = normalizeHeading(Number(body?.heading) || 0);
+  const cmd = parseGoCommand(body?.command);
+  if (!cmd) return jsonResponse({ error: GO_SAY.help() }, 400);
+
+  if (cmd.kind === "move") {
+    const to = destinationPoint(pos.lat, pos.lng, cmd.bearing, cmd.distanceM);
+    log.info("tokemon.go", { user_id: identity.id, kind: "move", dist: cmd.distanceM });
+    return jsonResponse({
+      pos: to,
+      heading: cmd.bearing,
+      moved: true,
+      say: GO_SAY.moved(cmd.sv, cmd.distanceM, dirWord(cmd.bearing, cmd.sv)),
+    });
+  }
+  if (cmd.kind === "look") {
+    const next = cmd.bearing !== undefined ? cmd.bearing : normalizeHeading(heading + cmd.turn);
+    log.info("tokemon.go", { user_id: identity.id, kind: "look" });
+    return jsonResponse({ pos, heading: next, moved: false, say: GO_SAY.turned(cmd.sv, next) });
+  }
+  // goto — resolving a free-text place sends the query to Google Places,
+  // so it rides the same per-user knob as every Maps feature.
+  if (!googleMapsEnabled(env, identity)) {
+    return jsonResponse({ error: GO_SAY.needMaps(cmd.sv) }, 403);
+  }
+  const place = await placesTextSearch(env, log, cmd.query);
+  if (!place || !Number.isFinite(place.lat) || !Number.isFinite(place.lng)) {
+    return jsonResponse({ error: GO_SAY.notFound(cmd.sv, cmd.query) }, 404);
+  }
+  log.info("tokemon.go", { user_id: identity.id, kind: "goto" });
+  return jsonResponse({
+    pos: { lat: place.lat, lng: place.lng },
+    heading,
+    moved: true,
+    say: GO_SAY.went(cmd.sv, place.name || place.address || cmd.query),
+  });
 }

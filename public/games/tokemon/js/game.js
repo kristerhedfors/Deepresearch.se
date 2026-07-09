@@ -1,11 +1,13 @@
-// Tokemon bootstrap: player state, movement (GPS follow or tap-to-walk),
-// spawn polling + markers, encounters, and the party/bag/dex panels. Game
-// rules all live server-side (src/tokemon.js) — this is presentation and
-// movement only.
+// Tokemon bootstrap: player state, movement (GPS follow, tap-to-walk, or
+// TEXT COMMANDS — "go north 200 m", "gå till Kungsgatan 1"), spawn polling +
+// markers, the street-view AR mode (creatures overlaid on real imagery),
+// encounters, and the party/bag/dex panels. Game rules all live server-side
+// (src/tokemon.js, src/tokemon-nav.js) — this is presentation and movement.
 
 import * as api from "./api.js";
 import { createBattleUI } from "./battle.js";
 import { createMap } from "./map.js";
+import { createStreetView } from "./street.js";
 
 const WALK_SPEED = 4; // m/s — brisk tap-to-walk so desktop play isn't a slog
 const SPAWN_POLL_MS = 30_000;
@@ -23,6 +25,15 @@ let lastSpawnFetch = { t: 0, lat: 0, lng: 0 };
 let map = null;
 let battleUI = null;
 let follow = true; // keep the camera on the player
+
+// Street mode: current camera heading, the pane module, and where/which-way
+// the last frame was captured. Frames are billed server-side (edge-cached
+// per pano+heading), so a new one is fetched only on deliberate changes —
+// mode open, turns, commands, walk arrival — never on GPS jitter.
+let mode = "map"; // "map" | "street"
+let heading = 0;
+let street = null;
+let lastScene = null; // {lat, lng, heading}
 
 const $ = (id) => document.getElementById(id);
 
@@ -60,6 +71,7 @@ function tick(last) {
     const d = haversineM(pos.lat, pos.lng, walkTarget.lat, walkTarget.lng);
     if (d < 1.5) {
       walkTarget = null;
+      refreshScene(); // arrived — show the street from here
     } else {
       const step = Math.min(1, (WALK_SPEED * dt) / d);
       setPos(pos.lat + (walkTarget.lat - pos.lat) * step, pos.lng + (walkTarget.lng - pos.lng) * step);
@@ -143,6 +155,7 @@ async function tapSpawn(s) {
       spawns = spawns.filter((x) => x.id !== s.id);
       renderMarkers();
       renderHud();
+      refreshScene(true);
     } else {
       const r = await api.encounter(s.id, pos.lat, pos.lng);
       save = r.save;
@@ -154,6 +167,63 @@ async function tapSpawn(s) {
       spawns = spawns.filter((x) => x.id !== s.id);
       renderMarkers();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Street mode & text commands
+
+function setMode(next) {
+  mode = next;
+  $("tk-street").hidden = mode !== "street";
+  $("tk-mode").textContent = mode === "street" ? "🗺 Map" : "🛰 Street";
+  if (mode === "street") refreshScene(true);
+}
+
+// Fetch a new frame when in street mode and the view meaningfully changed
+// (>15 m moved or any heading change); `force` skips the movement check.
+async function refreshScene(force = false) {
+  if (mode !== "street" || !street) return;
+  const changed =
+    !lastScene ||
+    lastScene.heading !== Math.round(heading) ||
+    haversineM(pos.lat, pos.lng, lastScene.lat, lastScene.lng) > 15;
+  if (!force && !changed) return;
+  lastScene = { lat: pos.lat, lng: pos.lng, heading: Math.round(heading) };
+  street.showLoading();
+  try {
+    const s = await api.scene(pos.lat, pos.lng, heading);
+    street.render(s);
+  } catch (err) {
+    street.showMessage(err.message || "Couldn't fetch the street view.");
+  }
+}
+
+// A tap on an overlaid spawn: near → interact (same endpoints as the map
+// markers); far → walk toward it, the scene refreshes on arrival.
+function tapStreetSpawn(o) {
+  const s = spawns.find((x) => x.id === o.id) || { id: o.id, kind: o.kind, lat: o.lat, lng: o.lng };
+  tapSpawn(s);
+}
+
+async function submitCommand() {
+  const input = $("tk-cmd");
+  const command = input.value.trim();
+  if (!command) return;
+  input.value = "";
+  try {
+    const r = await api.go(command, pos.lat, pos.lng, heading);
+    heading = r.heading ?? heading;
+    if (r.pos) {
+      walkTarget = null;
+      follow = true;
+      setPos(r.pos.lat, r.pos.lng);
+    }
+    toast(r.say || "Done.");
+    maybeFetchSpawns(true);
+    refreshScene(true);
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -316,9 +386,23 @@ async function boot() {
       save = s || save;
       renderHud();
       maybeFetchSpawns(true);
+      refreshScene(true); // a consumed spawn must leave the imagery too
       if (result === "caught") toast("Registered to the Tokedex!");
       if (result === "lost") toast("Your team fainted — Recharge or use Reboots.");
     },
+  });
+
+  street = createStreetView($("tk-street"), {
+    onTapSpawn: tapStreetSpawn,
+    onTurn: (delta) => {
+      heading = (((heading + delta) % 360) + 360) % 360;
+      refreshScene(true);
+    },
+  });
+  $("tk-mode").addEventListener("click", () => setMode(mode === "street" ? "map" : "street"));
+  $("tk-cmdbar").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitCommand();
   });
 
   $("tk-gps").addEventListener("click", toggleGps);

@@ -120,7 +120,8 @@ Server (`src/`):
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
 | `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine — see the **tokemon-game** skill |
-| `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1 |
+| `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
+| `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
@@ -207,10 +208,14 @@ server-side registry in `src/games.js` — a new game appears on the shelf by
 registering it, with no client shelf change). Tokemon
 (`public/games/tokemon/`) is the first game: a standalone authed page —
 `js/map.js` (a dependency-free slippy map over OSM raster tiles,
-attribution included), `js/game.js` (GPS/tap-to-walk movement, spawn
-polling, party/bag/dex panels), `js/battle.js` (plays back the server's
-battle event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game
-RULES live server-side (`src/tokemon.js`); the page only presents. The
+attribution included), `js/game.js` (movement — GPS follow, tap-to-walk,
+and the TEXT-COMMAND bar posting to `…/go` — spawn polling, mode toggle,
+party/bag/dex panels), `js/street.js` (street mode: renders `…/scene`'s
+Street View frame with the server-projected spawn overlays inside the
+imagery, turn buttons), `js/battle.js` (plays back the server's battle
+event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game RULES
+live server-side (`src/tokemon.js`, `src/tokemon-nav.js`); the page only
+presents. The
 site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
 
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`)
@@ -256,7 +261,10 @@ dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
 game core: type-chart parity vs the official matchups, Gen-1
 stat/damage/catch/escape formula checks against hand-computed values,
 spawn determinism + bucket scoping, battle flow incl. catching, fleeing,
-villain rewards, XP/level-up/evolution, save normalization).
+villain rewards, XP/level-up/evolution, save normalization), and
+`tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
+incl. the Swedish-parity suite, geodesy round-trips, spawn projection
+geometry).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/

@@ -9,6 +9,7 @@
 </head>
 <body>
   <div id="tk-map" aria-label="Game map"></div>
+  <div id="tk-street" hidden aria-label="Street view"></div>
 
   <header id="tk-hud">
     <a id="tk-back" href="/" title="Back to Deepresearch">←</a>
@@ -17,6 +18,7 @@
   </header>
 
   <nav id="tk-bar">
+    <button id="tk-mode" type="button" title="Switch between map and street view">🛰 Street</button>
     <button id="tk-party" type="button">👥 Party</button>
     <button id="tk-bag" type="button">🎒 Bag</button>
     <button id="tk-dex" type="button">📘 Dex</button>
@@ -24,6 +26,12 @@
     <button id="tk-gps" type="button" title="Follow my real position">📍 GPS</button>
     <button id="tk-center" type="button" title="Recenter">🎯</button>
   </nav>
+
+  <!-- Text navigation: "go north 200 m" · "gå till Kungsgatan 1" · "look right" -->
+  <form id="tk-cmdbar" autocomplete="off">
+    <input id="tk-cmd" type="text" placeholder='go north 200 m · gå till Kungsgatan 1 · look right' aria-label="Navigation command">
+    <button type="submit" aria-label="Send command">➤</button>
+  </form>
 
   <div id="tk-toast" hidden></div>
   <div id="tk-panel" class="tk-panel" hidden></div>
