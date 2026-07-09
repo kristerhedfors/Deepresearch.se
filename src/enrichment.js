@@ -26,7 +26,8 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { pickLookup, streetViewHereIntent, streetViewIntent } from "./googlemaps-text.js";
+import { hereAskIntent, pickLookup, streetViewIntent } from "./googlemaps-text.js";
+import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 
@@ -122,11 +123,15 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     // honest note: with no block at all the model invents "enable Google
     // Maps in Settings" steps at a user whose knob is ON (reported verbatim:
     // "Street view of LEGO offices in Copenhagen", pre-named-place support).
-    // A HERE-ask landing here means the device location never arrived —
-    // the note asks for location access instead of "which address?".
+    // A HERE-ask landing here — "street view here", a plain "where am I?",
+    // or a short "my location" answer to an earlier street-view turn
+    // (hereAskIntent, the conversation-level gate) — means the device
+    // location never arrived: the note asks for location access instead of
+    // "which address?".
     const lastText = textOf(lastUserMessage(conversation)?.content);
-    if (streetViewIntent(lastText)) {
-      return withAppendedText(conversation, unresolvedMapsBlock(streetViewHereIntent(lastText)));
+    const hereAsk = hereAskIntent(conversation);
+    if (hereAsk || streetViewIntent(lastText)) {
+      return withAppendedText(conversation, unresolvedMapsBlock(hereAsk));
     }
     return conversation;
   }
@@ -370,12 +375,18 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
 // to an interactive MAP of it plus an honest block — never an invented view.
 async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, state, jump, question) {
   step("maps", "Opening Street View at the requested position…");
-  let found = null;
-  try {
-    found = await runStreetViewJumpLookup(env, log, jump);
-  } catch (err) {
-    log.warn("googlemaps.jump_failed", { error: err?.message || String(err) });
-  }
+  // The panorama search and the reverse geocode (Nominatim — free,
+  // 4s-bounded, fail-soft to null) are independent, so they run together.
+  // The place NAME is what turns a bare-coordinates block into one that
+  // actually answers the here-ask family's "where am I?" — and it improves
+  // every jump reply ("100 m north" now lands somewhere nameable).
+  const [found, place] = await Promise.all([
+    runStreetViewJumpLookup(env, log, jump).catch((err) => {
+      log.warn("googlemaps.jump_failed", { error: err?.message || String(err) });
+      return null;
+    }),
+    reverseGeocode(env, log, jump.lat, jump.lng),
+  ]);
   const embedKeyOk = !!googleMapsEmbedKey(env);
 
   if (!found) {
@@ -383,7 +394,7 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
     if (embedKeyOk) {
       emit({ status: { type: "map_embed", lat: jump.lat, lng: jump.lng, zoom: 17 } });
     }
-    return withAppendedText(conversation, buildJumpBlock(jump, { found: false, mapShown: embedKeyOk }));
+    return withAppendedText(conversation, buildJumpBlock(jump, { found: false, mapShown: embedKeyOk, place }));
   }
 
   state.mapsCount = 1;
@@ -426,6 +437,7 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
       panoramaShown: embedKeyOk,
       framesShown: !embedKeyOk && found.image ? 1 : 0,
       description,
+      place,
     }),
   );
 }

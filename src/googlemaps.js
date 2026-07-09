@@ -91,7 +91,7 @@ export function googleMapsEmbedKey(env) {
 // look up Street View?" at a user pointing at their own position).
 export function unresolvedMapsBlock(hereAsk = false) {
   const middle = hereAsk
-    ? "The user asked for Street View at their CURRENT LOCATION, but no device location was shared with this request — the browser has not (yet) granted this site location access, or the location request timed out. " +
+    ? "The user asked about their CURRENT LOCATION (a street-view-here ask, a plain \"where am I?\", or a \"my location\" answer to a clarify), but no device location was shared with this request — the browser has not (yet) granted this site location access, or the location request timed out. " +
       "Tell the user that, to use their current position, they need to allow location access for this site when the browser asks (or in the browser's site settings), then ask again — or they can simply name an address or place instead. "
     : "The user asked for Street View, and Google Maps & Street View is ENABLED, but no address or place name could be identified in the message. " +
       "Ask the user which address or place they mean (one short question). ";
@@ -195,6 +195,11 @@ export function buildJumpBlock(jump, parts) {
   const lines = [
     `The user asked to open Street View ${jumpAskText(jump)} — computed destination: ${jump.lat}, ${jump.lng}, facing ${jump.heading}° (${compassDir(jump.heading)}).`,
   ];
+  // The destination NAMED, not just its coordinates — a here-jump is often
+  // a literal "where am I?", and this line is the actual answer to it.
+  if (parts.place) {
+    lines.push(`The destination reverse-geocodes to (OpenStreetMap Nominatim): ${parts.place}`);
+  }
   if (parts.found) {
     if (parts.date) lines.push(`Street View imagery captured: ${parts.date}`);
     lines.push(`Map link: ${mapLink(jump.lat, jump.lng)}`);

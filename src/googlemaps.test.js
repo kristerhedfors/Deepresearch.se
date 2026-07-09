@@ -19,6 +19,8 @@ import {
   extractPlace,
   extractPlaceQuery,
   extractRelativeMove,
+  hereAskIntent,
+  hereFragmentAnswer,
   matchAddressFragment,
   movePoint,
   pickLookup,
@@ -26,6 +28,7 @@ import {
   referencesStreetViewScene,
   streetViewHereIntent,
   streetViewIntent,
+  whereAmIIntent,
 } from "./googlemaps-text.js";
 
 test("googleMapsAvailable reflects the GOOGLE_MAPS_API_KEY secret", () => {
@@ -942,6 +945,74 @@ describe("pickLookup — street-view jumps", () => {
   });
 });
 
+describe("here-asks across turns — the verbatim 'Where am i now' conversation (2026-07-09)", () => {
+  const userLocation = { lat: 59.33, lng: 18.06, zoom: 17 };
+
+  test("whereAmIIntent: EN forms + typo set; end-of-clause guard against prose", () => {
+    assert.equal(whereAmIIntent("Where am i now"), true);
+    assert.equal(whereAmIIntent("where am I?"), true);
+    assert.equal(whereAmIIntent("wher am i"), true);
+    assert.equal(whereAmIIntent("where are we right now?"), true);
+    assert.equal(whereAmIIntent("Where am I? Can you show a map"), true);
+    assert.equal(whereAmIIntent("where are we going with this"), false);
+    assert.equal(whereAmIIntent("where am i going wrong here"), false);
+    assert.equal(whereAmIIntent(""), false);
+    assert.equal(whereAmIIntent(undefined), false);
+  });
+
+  test("hereFragmentAnswer: short here-phrases only", () => {
+    assert.equal(hereFragmentAnswer("My location"), true);
+    assert.equal(hereFragmentAnswer("use my location"), true);
+    assert.equal(hereFragmentAnswer("här"), true);
+    assert.equal(hereFragmentAnswer("what restaurants are here in the town center"), false);
+    assert.equal(hereFragmentAnswer("over there"), false);
+    assert.equal(hereFragmentAnswer(""), false);
+  });
+
+  test("'Where am i now' as the FIRST message jumps to the device location", () => {
+    const convo = [{ role: "user", content: "Where am i now" }];
+    const out = pickLookup(convo, [], null, null, userLocation);
+    assert.deepEqual(out.jump, { lat: 59.33, lng: 18.06, heading: 0, meters: 0, dir: "here" });
+  });
+
+  test("'My location' answering an earlier 'Street view' turn jumps to the device location", () => {
+    // The reported conversation, verbatim: the street-view word and the
+    // here-word arrive in SEPARATE turns.
+    const convo = [
+      { role: "user", content: "Where am i now" },
+      { role: "assistant", content: "I can’t determine your location from this chat alone." },
+      { role: "user", content: "Street view" },
+      { role: "assistant", content: "Which address or place would you like to view in Street View?" },
+      { role: "user", content: "My location" },
+    ];
+    const out = pickLookup(convo, [], null, null, userLocation);
+    assert.deepEqual(out.jump, { lat: 59.33, lng: 18.06, heading: 0, meters: 0, dir: "here" });
+  });
+
+  test("a bare here-fragment with NO earlier street-view turn resolves nothing", () => {
+    const convo = [{ role: "user", content: "My location" }];
+    assert.equal(pickLookup(convo, [], null, null, userLocation), null);
+  });
+
+  test("hereAskIntent mirrors the gate for the no-location unresolved note", () => {
+    // Same conversations WITHOUT a device location: pickLookup finds no
+    // anchor, and enrichment.js asks hereAskIntent to phrase the note as
+    // "allow location access" instead of "which address?".
+    assert.equal(hereAskIntent([{ role: "user", content: "Where am i now" }]), true);
+    assert.equal(
+      hereAskIntent([
+        { role: "user", content: "Street view" },
+        { role: "user", content: "My location" },
+      ]),
+      true,
+    );
+    assert.equal(hereAskIntent([{ role: "user", content: "street view here" }]), true);
+    assert.equal(hereAskIntent([{ role: "user", content: "My location" }]), false);
+    assert.equal(hereAskIntent([{ role: "user", content: "summarize the sources" }]), false);
+    assert.equal(hereAskIntent([]), false);
+  });
+});
+
 describe("buildJumpBlock", () => {
   const jump = { lat: 59.411, lng: 17.9125, heading: 90, meters: 100, dir: "forward" };
 
@@ -975,6 +1046,20 @@ describe("buildJumpBlock", () => {
   test("a here-jump reads as the current position", () => {
     const block = buildJumpBlock({ lat: 1, lng: 2, heading: 0, meters: 0, dir: "here" }, { found: true, panoramaShown: true, description: "x" });
     assert.match(block, /open Street View at their current position/);
+  });
+
+  test("a reverse-geocoded place names the destination — the actual 'where am I?' answer", () => {
+    const block = buildJumpBlock(
+      { lat: 1, lng: 2, heading: 0, meters: 0, dir: "here" },
+      { found: true, panoramaShown: true, description: "x", place: "Södermalm, Stockholm, Sverige" },
+    );
+    assert.match(block, /reverse-geocodes to \(OpenStreetMap Nominatim\): Södermalm, Stockholm, Sverige/);
+    // The no-coverage branch keeps the place line too — the map still answers.
+    const noPano = buildJumpBlock({ lat: 1, lng: 2, heading: 0, meters: 0, dir: "here" }, { found: false, mapShown: true, place: "Södermalm" });
+    assert.match(noPano, /reverse-geocodes to .*: Södermalm/);
+    // And without one, no empty line appears.
+    const bare = buildJumpBlock({ lat: 1, lng: 2, heading: 0, meters: 0, dir: "here" }, { found: false, mapShown: true });
+    assert.ok(!bare.includes("reverse-geocodes"));
   });
 });
 
@@ -1010,6 +1095,24 @@ describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedis
     assert.equal(streetViewHereIntent("street view på den här platsen"), true);
     // Still needs the street-view word — a bare Swedish here-phrase is not an ask.
     assert.equal(streetViewHereIntent("vad finns på min plats?"), false);
+  });
+
+  test("where-am-I intent: var är jag / vart är vi / var befinner jag mig / var någonstans", () => {
+    assert.equal(whereAmIIntent("var är jag nu"), true);
+    assert.equal(whereAmIIntent("vart är vi?"), true);
+    assert.equal(whereAmIIntent("var e jag"), true);
+    assert.equal(whereAmIIntent("var befinner jag mig just nu?"), true);
+    assert.equal(whereAmIIntent("var någonstans är jag"), true);
+    // Prose guard, same as English.
+    assert.equal(whereAmIIntent("var är vi på väg"), false);
+  });
+
+  test("here-fragment answers: min plats / här / min position", () => {
+    const convo = [{ role: "user", content: "gatuvy" }, { role: "user", content: "min plats" }];
+    const out = pickLookup(convo, [], null, null, { lat: 59.33, lng: 18.06, zoom: 17 });
+    assert.equal(out?.jump?.dir, "here");
+    assert.equal(hereFragmentAnswer("här"), true);
+    assert.equal(hereFragmentAnswer("min position"), true);
   });
 });
 
