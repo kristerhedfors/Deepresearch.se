@@ -9,6 +9,7 @@ import {
   compassDir,
   googleMapsAvailable,
   googleMapsEmbedKey,
+  jumpSearchRadius,
   mapLink,
   panoLink,
   unresolvedMapsBlock,
@@ -1009,5 +1010,32 @@ describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedis
     assert.equal(streetViewHereIntent("street view på den här platsen"), true);
     // Still needs the street-view word — a bare Swedish here-phrase is not an ask.
     assert.equal(streetViewHereIntent("vad finns på min plats?"), false);
+  });
+});
+
+describe("jump landing improvements (live report 2026-07-09)", () => {
+  test("jumpSearchRadius scales with the jump distance, floored and capped", () => {
+    assert.equal(jumpSearchRadius(0), 150); // "street view here"
+    assert.equal(jumpSearchRadius(100), 150); // short jumps keep the floor
+    assert.equal(jumpSearchRadius(300), 150);
+    assert.equal(jumpSearchRadius(500), 250);
+    assert.equal(jumpSearchRadius(1000), 500); // the 'Ol north 1km' case
+    assert.equal(jumpSearchRadius(3000), 1000); // capped
+    assert.equal(jumpSearchRadius(undefined), 150);
+  });
+
+  test("a here-ask with no device location asks for location ACCESS, not an address", () => {
+    const block = unresolvedMapsBlock(true);
+    assert.match(block, /CURRENT LOCATION/);
+    assert.match(block, /allow location access/);
+    assert.match(block, /name an address or place instead/);
+    assert.match(block, /Do NOT instruct the user to enable/);
+    assert.ok(!/Ask the user which address or place they mean/.test(block));
+  });
+
+  test("the generic unresolved note is unchanged without the here flag", () => {
+    const block = unresolvedMapsBlock();
+    assert.match(block, /Ask the user which address or place they mean/);
+    assert.ok(!/location access/.test(block));
   });
 });

@@ -25,7 +25,7 @@ import {
   runStreetViewPovCapture,
   unresolvedMapsBlock,
 } from "./googlemaps.js";
-import { pickLookup, streetViewIntent } from "./googlemaps-text.js";
+import { pickLookup, streetViewHereIntent, streetViewIntent } from "./googlemaps-text.js";
 import { addUsage } from "./quota.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 
@@ -121,8 +121,11 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     // honest note: with no block at all the model invents "enable Google
     // Maps in Settings" steps at a user whose knob is ON (reported verbatim:
     // "Street view of LEGO offices in Copenhagen", pre-named-place support).
-    if (streetViewIntent(textOf(lastUserMessage(conversation)?.content))) {
-      return withAppendedText(conversation, unresolvedMapsBlock());
+    // A HERE-ask landing here means the device location never arrived —
+    // the note asks for location access instead of "which address?".
+    const lastText = textOf(lastUserMessage(conversation)?.content);
+    if (streetViewIntent(lastText)) {
+      return withAppendedText(conversation, unresolvedMapsBlock(streetViewHereIntent(lastText)));
     }
     return conversation;
   }

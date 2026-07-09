@@ -83,12 +83,21 @@ export function googleMapsEmbedKey(env) {
 
 // The honest note for an explicit street-view ask that resolved to NOTHING:
 // the knob is on (this code only runs then), so the model must ask which
-// place is meant — never hand out "enable it in Settings" steps.
-export function unresolvedMapsBlock() {
+// place is meant — never hand out "enable it in Settings" steps. A
+// here-ask ("street view at my location") that reaches this point means
+// the DEVICE LOCATION never arrived (permission not yet granted, denied,
+// or geolocation timed out) — say that, not a useless "which address?"
+// (live report 2026-07-09, ref 7a75daf2: the reply was "Where should I
+// look up Street View?" at a user pointing at their own position).
+export function unresolvedMapsBlock(hereAsk = false) {
+  const middle = hereAsk
+    ? "The user asked for Street View at their CURRENT LOCATION, but no device location was shared with this request — the browser has not (yet) granted this site location access, or the location request timed out. " +
+      "Tell the user that, to use their current position, they need to allow location access for this site when the browser asks (or in the browser's site settings), then ask again — or they can simply name an address or place instead. "
+    : "The user asked for Street View, and Google Maps & Street View is ENABLED, but no address or place name could be identified in the message. " +
+      "Ask the user which address or place they mean (one short question). ";
   return (
     "\n\n--- Google Maps ---\n" +
-    "The user asked for Street View, and Google Maps & Street View is ENABLED, but no address or place name could be identified in the message. " +
-    "Ask the user which address or place they mean (one short question). " +
+    middle +
     "Do NOT instruct the user to enable Google Maps — it is already on.\n" +
     "--- End of Google Maps ---"
   );
@@ -569,6 +578,18 @@ function staticMapViewUrl(env, view) {
   return `${STATICMAP_URL}?${qs}`;
 }
 
+// How far around a jump destination to search for a panorama. Scales with
+// the jump distance: a 1km "go north" lands wherever the math says — often
+// a field or water — and the useful behavior is snapping to the nearest
+// covered road, not "no Street View" (live report 2026-07-09, "Ol north
+// 1km" → ZERO_RESULTS at 150m while roads sat within a few hundred
+// meters). Half the jump distance keeps the snap meaningfully "about that
+// far in that direction"; short jumps and here-pops keep the 150m floor.
+export function jumpSearchRadius(meters) {
+  const m = Number.isFinite(meters) ? meters : 0;
+  return Math.min(1000, Math.max(STREETVIEW_SEARCH_RADIUS_M, Math.round(m / 2)));
+}
+
 // Finds the panorama nearest a JUMPED-to point (a "street view here" popup
 // or a relative move like "100 meters along this road") and captures one
 // frame facing the travel bearing — reusing the POV capture's cached
@@ -577,7 +598,7 @@ function staticMapViewUrl(env, view) {
 // Google has no panorama within the search radius of the destination.
 export async function runStreetViewJumpLookup(env, log, point) {
   if (!googleMapsAvailable(env)) return null;
-  const meta = await streetViewMetadata(env, log, `${point.lat},${point.lng}`, "", STREETVIEW_SEARCH_RADIUS_M);
+  const meta = await streetViewMetadata(env, log, `${point.lat},${point.lng}`, "", jumpSearchRadius(point.meters));
   if (meta?.status !== "OK") return null;
   const panoId = typeof meta.pano_id === "string" ? meta.pano_id : "";
   const mLat = Number(meta.location?.lat);
