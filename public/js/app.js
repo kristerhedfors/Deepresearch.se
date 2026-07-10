@@ -191,7 +191,7 @@ function syncGhostState() {
   ghostBtn.hidden = false;
   ghostBtn.disabled = false;
   ghostBtn.title =
-    "Ghost mode — DRC at /cure: the khaki client-side twin where this server never sees your chats (your own API keys, browser-local storage)";
+    "Ghost mode — deepresearch.se/cure: the khaki client-side twin where this server never sees your chats (your own API keys, browser-local storage)";
 }
 
 ghostBtn.addEventListener("click", () => {

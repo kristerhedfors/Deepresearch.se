@@ -396,7 +396,7 @@ async function refreshModels() {
   // can serve DRC (direct browser calls); the hosted ones stay listed,
   // disabled, pointing at DRS.
   groups.push(
-    '<optgroup label="DRS only (hosted at /rver)">' +
+    '<optgroup label="DRS only — deepresearch.se/rver">' +
       '<option disabled>Berget — EU-hosted models</option>' +
       '<option disabled>Anthropic Claude</option>' +
       "</optgroup>",
@@ -604,7 +604,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d2 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d3 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }

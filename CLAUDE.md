@@ -17,6 +17,13 @@ is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 `src/openai.js`; both dispatched via the `src/providers.js` registry; the
 JSON planning phases always stay on Berget). Web search is **Exa**.
 
+**Branding rule (2026-07-10):** the two product tiers are ALWAYS written
+as their full URL without the scheme, with the wordplay tail in bold:
+deepresearch.**se/cure** (DRC, the client-side tier) and
+deepresearch.**se/rver** (DRS, the signed-in tier) — in UI text, headers,
+docs, and prompts alike (plain text drops the bold, never the full-URL
+form). No space inside the URL.
+
 ## Git workflow
 
 **Always push straight to `main` after every change.** This project does not use
