@@ -437,3 +437,33 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   padding: .45rem .65rem; background: var(--panel-2);
 }
 .pub-item:hover { border-color: var(--accent); }
+
+/* ---- Experimental: badge + the in-browser Linux sandbox knob -------------- */
+
+.exp-badge {
+  display: inline-block;
+  font-size: .58rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  margin-left: .35rem;
+  padding: .05rem .35rem;
+  border-radius: 6px;
+  background: rgba(124, 106, 36, .18);
+  color: var(--accent);
+  border: 1px solid rgba(124, 106, 36, .4);
+}
+#sandboxpanel { margin-top: .5rem; }
+#sandboxpanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
+.knob-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: .5rem 0 .3rem;
+  font-size: .88rem;
+  cursor: pointer;
+}
+.knob-row input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
+#bashlite:checked + .knob-track { background: var(--accent); }
+#bashlite:checked + .knob-track .knob { left: 22.5px; }

@@ -124,7 +124,9 @@ Server (`src/`):
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
-| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
+| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, and `bash_lite_mcp` (experimental execution sandbox) knobs — `GET/PUT /api/settings` |
+| `bash-agent.js` | The bash-lite agent's PURE core (Node-tested): `bashIntent` (deterministic EN+SV "wants a shell" gate), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, and `buildShellTranscript` (the labeled synthesis block). Shared shape with the client mirror (`public/js/bash-agent.js`) — see the **execution-sandbox** skill |
+| `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
@@ -407,7 +409,12 @@ archive encrypt/decrypt incl. tamper detection, archive-shape
 validation, the chunked base64 helpers), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
-`answer`, the `errored` flag + `errors` list, and the ordered timeline).
+`answer`, the `errored` flag + `errors` list, and the ordered timeline), and
+`bash-agent.js` (the DRS client mirror of the bash-lite agent: `bashIntent`
+EN+SV parity vs the server gate, `parseShellRequest`/`buildShellTranscript`
+mirrors, and `runShellLoop`/`fetchShellStep` against a mock step endpoint +
+mock sandbox — the browser VM glue in `public/js/sandbox.js` is deliberately
+NOT Node-testable and carries no `@ts-check`).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -593,6 +600,15 @@ what docs claim); and update the skill list below plus the skill's
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message
   center, and the public (no-auth) surface.
+- **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
+  and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
+  DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated
+  agentic loop runs shell commands (fenced-block convention, NO function
+  calling — `src/bash-agent.js`, `src/bash-api.js`, `public/js/sandbox.js`,
+  `public/js/bash-agent.js`), and the transcript feeds synthesis as ground
+  truth. Covers the COEP cross-origin-isolation headers, the fail-soft
+  contract, EN+SV intent parity, and the live browser verification still owed.
+
 - **tokemon-game** — the games subsystem (the `src/games.js` registry/dispatch
   seam + how to add a NEW game) and the Tokemon open-world AR game itself
   (account panel → Games): the no-invented-game-logic rule (Pokémon Gen-1

@@ -30,7 +30,8 @@ import {
   recordUsage,
 } from "./quota.js";
 import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
-import { shodanEnabled, googleMapsEnabled } from "./settings.js";
+import { bashLiteEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
+import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -51,6 +52,9 @@ import { shodanEnabled, googleMapsEnabled } from "./settings.js";
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
  * @property {any} [user_location] browser geolocation for "here" asks
+ * @property {any} [shell_transcript] bash-lite sandbox runs gathered client-side
+ *   before this request ({command,exitCode,stdout,stderr}[]); honored only when
+ *   the caller's bash_lite_mcp knob is on, ignored otherwise
  */
 
 /**
@@ -71,6 +75,7 @@ import { shodanEnabled, googleMapsEnabled } from "./settings.js";
  *   fetchedUrls: Set<string>,
  *   mapsIntent?: string,
  *   failoverModel?: string,
+ *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  * }} ChatRequestState
  */
 
@@ -142,6 +147,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
+  // The experimental bash-lite sandbox transcript: the browser ran an agentic
+  // shell loop (public/js/bash-agent.js) before sending, and attached what it
+  // ran + the real output. Honored only when this account's knob is on
+  // (defense: a client can't smuggle a transcript in with the feature off);
+  // folded into the answer as ground truth by the pipeline (ctx.shellBlock).
+  const shellTranscript = bashLiteEnabled(env, identity) ? resolveShellTranscript(body.shell_transcript) : [];
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -188,6 +199,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       streetViewPov: enrich.streetViewPov,
       mapView: enrich.mapView,
       userLocation: enrich.userLocation,
+      shellTranscript,
     });
     disconnect.state = state;
 
@@ -486,6 +498,31 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
 }
 
 /**
+ * Coerces the client's bash-lite `shell_transcript` into a clean, bounded
+ * array of runs — untrusted input, so every field is typed/clamped and the
+ * whole thing is capped (the loop runs at most MAX_SHELL_ROUNDS rounds × a few
+ * commands). Non-array or junk entries degrade to an empty transcript, so the
+ * answer path is byte-identical to a run without the sandbox.
+ * @param {any} raw
+ * @returns {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>}
+ */
+function resolveShellTranscript(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object" || typeof r.command !== "string" || !r.command.trim()) continue;
+    out.push({
+      command: r.command,
+      exitCode: Number.isFinite(Number(r.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1,
+      stdout: typeof r.stdout === "string" ? r.stdout : "",
+      stderr: typeof r.stderr === "string" ? r.stderr : "",
+    });
+    if (out.length >= MAX_SHELL_ROUNDS * 8) break;
+  }
+  return out;
+}
+
+/**
  * The request's Exa cost. The admin-configured per-search price is priced
  * for Exa's standard tier; a request whose time budget bought a costlier
  * tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its recorded
@@ -596,7 +633,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -627,6 +664,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // The device's reported location (validated) — the anchor for explicit
     // "street view here" asks when no live view is on screen.
     userLocation: extras.userLocation || null,
+    // The bash-lite sandbox transcript (resolveShellTranscript): commands the
+    // browser ran client-side and their real output, folded into the answer
+    // as ground truth (pipeline.js ctx.shellBlock). Empty unless the
+    // experimental knob is on AND the client attached one.
+    shellTranscript: extras.shellTranscript || [],
     // This channel renders the interactive inline-quiz event (src/quiz.js;
     // pipeline.js runQuizGeneration). The MCP channel builds its own state
     // without this flag, so MCP callers keep getting plain text answers.

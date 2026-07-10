@@ -144,6 +144,23 @@
         </div>
       </details>
 
+      <details id="sandboxpanel">
+        <summary>Execution sandbox (bash) <span class="exp-badge">Experimental</span></summary>
+        <p class="muted">When a message asks to run a shell or execute code
+          (“run this command”, “compute this in the sandbox”), a real
+          <b>Linux computer boots inside this browser</b> (a JavaScript x86
+          emulator) and the assistant runs commands in it, then answers from the
+          results. It runs entirely on your device — nothing leaves the browser.
+          Experimental, and the first boot downloads a Linux disk image, so it
+          takes a moment.</p>
+        <label class="knob-row">
+          <input id="bashlite" type="checkbox">
+          <span class="knob-track"><span class="knob"></span></span>
+          <span>Enable the in-browser Linux sandbox</span>
+        </label>
+        <span id="sandboxstatus" class="muted"></span>
+      </details>
+
       <p class="drawer-note">DRC — <i>deep research secure</i> — keeps everything in this
         browser and calls the model provider directly. The hosted tier with live web
         search, documents and cloud storage is DRS at

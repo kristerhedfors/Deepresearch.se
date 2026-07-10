@@ -32,6 +32,8 @@
 
 import { createSseParser } from "./sse.js";
 import { drcChatStream, drcCompleteJson, drcProvider } from "./drc-providers.js";
+import { MAX_SHELL_ROUNDS, bashIntent, buildShellTranscript, parseShellRequest } from "./bash-agent.js";
+import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 
 const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
@@ -94,6 +96,19 @@ export const drcValidatePrompt = () =>
 export const drcDirectPrompt = () =>
   `You are Deepresearch.se's DRC assistant. Today's date: ${today()}.\n` +
   "Answer helpfully and concisely in Markdown. You have no web access: never invent citations or URLs, and say when something is uncertain or may have changed after your training cutoff." +
+  ANTI_INJECTION;
+
+// The bash-lite agent step prompt (DRC's offline in-browser Linux sandbox —
+// the client-side counterpart of src/prompts.js bashAgentPrompt). Mirrors the
+// fenced-block convention: propose the next commands in a ```bash block, or
+// SHELL_DONE when finished. NO function calling.
+export const drcBashAgentPrompt = () =>
+  `You drive a Linux command-line sandbox for Deepresearch.se DRC. Today's date: ${today()}.\n` +
+  "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n" +
+  "Run commands step by step to accomplish the user's request, then stop so the answer can be written from what you found. Each turn respond in ONE of two ways:\n" +
+  "1. A short one-sentence plan, then a single fenced ```bash block with the commands to run this turn (one per line, no prose inside). Keep turns small (1-3 commands).\n" +
+  "2. When you have what the answer needs (or it cannot be done offline): reply with the single line SHELL_DONE and no code block.\n" +
+  "Commands must be non-interactive (no editors/pagers/prompts). Never attempt network access. Never fabricate output — rely only on real results shown to you. Stop (SHELL_DONE) as soon as more commands would not help." +
   ANTI_INJECTION;
 
 // ---- normalizers (fail-soft hardening, the triage.js lesson in miniature) ------
@@ -188,6 +203,63 @@ function emitChunked(text, onDelta) {
   for (let i = 0; i < text.length; i += 80) onDelta(text.slice(i, i + 80));
 }
 
+// The experimental bash-lite pre-pass (DRC): the agentic shell loop, run
+// ENTIRELY client-side (unlike DRS, where the step decision goes through the
+// server). Each round the model proposes commands (drcBashAgentPrompt, parsed
+// from a fenced block), the browser sandbox runs them, and the transcript
+// feeds the next round — until the model is done or the cap is hit. Returns
+// the transcript for synthesis/direct to use as ground truth. Fully fail-soft:
+// any error ends the loop with whatever was gathered. `sandbox` is injectable
+// for tests; defaults to the real public/js/sandbox.js bridge.
+async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox }) {
+  const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+  if (!sb.supported()) return [];
+  onStatus({ type: "phase", phase: "sandbox" });
+  const booted = await sb.boot();
+  if (!booted) return [];
+  const transcript = [];
+  for (let round = 1; round <= MAX_SHELL_ROUNDS; round++) {
+    let stepText = "";
+    try {
+      const priorBlock = buildShellTranscript(transcript);
+      const userMsg =
+        "Task: " + question + "\n\nConversation:\n" + context + "\n\n" +
+        (priorBlock
+          ? priorBlock + "\n\nDecide the next command(s), or reply SHELL_DONE."
+          : "No commands have run yet. Decide the first command(s), or reply SHELL_DONE if a shell is not actually needed.");
+      const res = await drcChatStream(
+        provider,
+        apiKey,
+        jsonModel,
+        [{ role: "system", content: drcBashAgentPrompt() }, { role: "user", content: userMsg }],
+        { signal, baseUrl },
+      );
+      if (!res.ok || !res.body) break;
+      stepText = await readStream(res, () => {});
+    } catch {
+      break;
+    }
+    const proposal = parseShellRequest(stepText);
+    if (proposal.done || !proposal.commands.length) break;
+    onStatus({ type: "phase", phase: "sandbox", detail: proposal.commands.length });
+    for (const command of proposal.commands) {
+      let r;
+      try {
+        r = await sb.exec(command);
+      } catch (err) {
+        r = { exitCode: 1, stdout: "", stderr: String(err?.message || err) };
+      }
+      transcript.push({
+        command,
+        exitCode: Number.isFinite(Number(r?.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1,
+        stdout: typeof r?.stdout === "string" ? r.stdout : "",
+        stderr: typeof r?.stderr === "string" ? r.stderr : "",
+      });
+    }
+  }
+  return transcript;
+}
+
 // ---- the flow ---------------------------------------------------------------------
 
 /**
@@ -202,6 +274,8 @@ export async function runDrcResearch({
   model,
   messages,
   research = true,
+  bash = false,
+  sandbox = null,
   onStatus = () => {},
   onDelta = () => {},
   signal,
@@ -213,6 +287,24 @@ export async function runDrcResearch({
   const jsonModel = provider.jsonModel;
   const question = messages[messages.length - 1]?.content || "";
   const context = drcContext(messages);
+
+  // Experimental bash-lite sandbox: when the message wants a shell and the
+  // sandbox can run here, run the agentic command loop first and fold its real
+  // output into whichever answer path runs (direct or synthesis) as ground
+  // truth. Empty (and thus absent) otherwise — the flow is byte-identical to a
+  // run without the feature.
+  let shellBlock = "";
+  if (bash && bashIntent(question)) {
+    try {
+      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox });
+      shellBlock = buildShellTranscript(transcript);
+    } catch {
+      shellBlock = "";
+    }
+  }
+  const shellExtra = shellBlock
+    ? shellBlock + "\n\nUse this real sandbox output directly in your answer — it is ground truth you produced (no citation needed)."
+    : null;
 
   const streamAnswer = async (system, extraUser = null) => {
     const convo = [{ role: "system", content: system }, ...messages];
@@ -228,7 +320,7 @@ export async function runDrcResearch({
   // ---- direct mode (research toggle off) ---------------------------------
   if (!research) {
     onStatus({ type: "phase", phase: "answer" });
-    return { answer: await streamAnswer(drcDirectPrompt()), action: "direct", subquestions: [], validated: false };
+    return { answer: await streamAnswer(drcDirectPrompt(), shellExtra), action: "direct", subquestions: [], validated: false };
   }
 
   // ---- triage (fail-soft: unusable → direct) ------------------------------
@@ -253,7 +345,7 @@ export async function runDrcResearch({
 
   if (!triage || triage.action === "direct") {
     onStatus({ type: "phase", phase: "answer" });
-    return { answer: await streamAnswer(drcDirectPrompt()), action: "direct", subquestions: [], validated: false };
+    return { answer: await streamAnswer(drcDirectPrompt(), shellExtra), action: "direct", subquestions: [], validated: false };
   }
   if (triage.action === "clarify") {
     onStatus({ type: "phase", phase: "clarify" });
@@ -309,7 +401,10 @@ export async function runDrcResearch({
   // ---- synthesis on the user's chosen model --------------------------------
   onStatus({ type: "phase", phase: "synth" });
   const notesBlock =
-    "Harvested notes (model knowledge, structured by sub-question):\n" + renderDrcNotes(harvest);
+    "Harvested notes (model knowledge, structured by sub-question):\n" + renderDrcNotes(harvest) +
+    // The bash-lite sandbox transcript rides along as ground truth when the
+    // experimental sandbox ran for this request (empty otherwise).
+    (shellBlock ? "\n\n" + shellBlock : "");
   let answer = await streamAnswer(drcSynthPrompt(), notesBlock);
 
   // ---- validation (fail-soft: accept the draft) -----------------------------

@@ -16,8 +16,9 @@
  * @property {boolean} [shodan_mcp]
  * @property {boolean} [google_maps]
  * @property {boolean} [feedback_mode]
+ * @property {boolean} [bash_lite_mcp]
  * @property {string} [maps_embed_key]
- * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean}} [available]
+ * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean, bash_lite?: boolean}} [available]
  */
 
 /** @type {Settings | null} */
@@ -149,4 +150,24 @@ export function feedbackAvailable() {
 /** @param {boolean} on */
 export function setFeedbackMode(on) {
   return updateSetting({ feedback_mode: on });
+}
+
+// The experimental bash-lite execution sandbox knob (default off; needs only
+// a signed-in account — the sandbox is a pure browser capability). While on,
+// a message that "wants a shell" (src/bash-agent.js bashIntent) boots an
+// in-browser Linux VM (CheerpX) and runs an agentic command loop whose
+// transcript feeds the answer. The app shell is served cross-origin-isolated
+// (COEP) when this is on so SharedArrayBuffer is available — set at page load,
+// so flipping this knob only takes full effect on the next reload.
+export function bashLiteOn() {
+  return settings?.bash_lite_mcp === true;
+}
+
+export function bashLiteAvailable() {
+  return settings?.available?.bash_lite === true;
+}
+
+/** @param {boolean} on */
+export function setBashLiteMcp(on) {
+  return updateSetting({ bash_lite_mcp: on });
 }
