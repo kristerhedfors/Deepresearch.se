@@ -116,7 +116,8 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| `free.js` | Free mode's ENTIRE server surface — and the site's DEFAULT face: unauthenticated `/` serves it, saved projects live at `/my/project-<hash>` (`/free` is a legacy alias), all routed BEFORE the identity gate (a signed-in account still gets the full app at `/`); page in `public/free/`. The Worker contributes the static page plus ONE dumb capability-addressed ciphertext store (R2 `free/blob/{id}`, `/api/free/blob/:id`). Everything else runs in the BROWSER: model calls go directly (cross-origin) to the user's own CORS-capable providers — OpenAI and Groq (`public/js/free-providers.js`) — and the deep-research flow runs client-side (`public/js/free-research.js`). The server is never in the chat path, never sees a key or a message in any form — "no content logging" is structural, not policy. No accounts, no quota/usage recording |
+| `free.js` | Free mode's ENTIRE server surface — and the site's DEFAULT face: `/` serves it for EVERYONE, saved projects live at `/my/project-<hash>` (`/free` is a legacy alias), all routed BEFORE the identity gate (the signed-in app lives at `/rver` — the "deep research server" wordplay; sign-in/terms redirects land there and the PWA manifest starts there); page in `public/free/`. The Worker contributes the static page plus ONE dumb capability-addressed ciphertext store (R2 `free/blob/{id}`, `/api/free/blob/:id`). Everything else runs in the BROWSER: model calls go directly (cross-origin) to the user's own CORS-capable providers — OpenAI and Groq (`public/js/free-providers.js`) — and the deep-research flow runs client-side (`public/js/free-research.js`). The server is never in the chat path, never sees a key or a message in any form — "no content logging" is structural, not policy. No accounts, no quota/usage recording |
+| `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public + the `public/cure/` viewer, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each with a "Continue with your own API keys" handoff (`/?continue=<slug>`) that seeds a free-mode conversation — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -261,7 +262,13 @@ creates, merging this tab's work in), and a project form that is a REAL
 username+password form (`autocomplete="username"`/`current-password`,
 switched to `new-password` on generate) so 1Password and Apple
 Passwords save/autofill the master secret; served for `/`,
-`/my/project-<hash>` deep links, and the `/free` legacy alias.
+`/my/project-<hash>` deep links, and the `/free` legacy alias; a
+`/?continue=<slug>` query seeds a conversation from a published replay
+(`/api/pub/<slug>`) so visitors continue it on their own keys. The
+published-replay viewer is `public/cure/` (`index.html` + `cure.js` +
+`cure.css`, riding on free.css + `markdown.js`): renders one frozen
+session at `/cure/<slug>` or the publication index at `/cure`, with the
+Continue link into free mode — see the **publish-research** skill.
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
@@ -314,6 +321,10 @@ namespacing, and the works-with-the-knob-OFF guarantee),
 `free.js` (free mode's whole server surface — the capability-addressed
 ciphertext blob store: round-trip, size floor/ceiling, id validation,
 and 404s for the removed server-side chat/keys families),
+`pub.js` (published research replays: slug rules incl. the dot-free
+asset-collision guard, `validatePublication`, the publish → public read
+→ index → unpublish round-trip against a mocked R2, storage-missing
+503s),
 `edge-cache.js` (the fail-soft Workers Cache get/put helpers, against a
 mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and
@@ -528,6 +539,12 @@ what docs claim); and update the skill list below plus the skill's
   copyable on-device event-trace overlay, iterated over chat with the user
   as the probe — plus the iOS rendering/gesture facts the method
   established.
+- **publish-research** — publishing frozen deep-research replays at
+  `deepresearch.se/cure/<slug>` ("deep research secure <slug>" — the slug
+  must complete the phrase): sourcing a session, the frozen JSON shape,
+  the admin-only `PUT /api/pub/:slug`, live verification, and the
+  continue-on-own-keys handoff into free mode (`src/pub.js`,
+  `public/cure/`).
 - **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
   D1 `chat_logs`): pulling the latest live questions/answers/errors for
   debugging (`scripts/chatlogs`, `/api/admin/chatlogs`), the ghost

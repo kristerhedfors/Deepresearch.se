@@ -373,9 +373,12 @@ secret" form).
 
 The no-account surface (added 2026-07-10, refactored same day to
 direct-from-browser provider calls, then promoted to the DEFAULT site):
-unauthenticated `/` serves it (signed-in accounts still get the full app
-at `/`), saved projects live at `/my/project-<hash>` (`/free` is a legacy
-alias), and the old promotional landing is a first-visit GLASS PANE on
+`/` serves it for EVERYONE (the signed-in app lives at `/rver` — the
+"deep research server" wordplay; sign-in and terms redirects land there,
+the PWA manifest starts there), saved projects live at
+`/my/project-<hash>` (`/free` is a legacy alias), published frozen
+replays at `/cure/<slug>` hand their conversation to free mode via
+`/?continue=<slug>` (see the **publish-research** skill), and the old promotional landing is a first-visit GLASS PANE on
 the page itself (`#intro`, dismissable, `dr_intro_seen` localStorage UI
 flag — carries nothing secret-derived; full landing still at /welcome/).
 `src/free.js` (the ENTIRE server surface — static page routing + one

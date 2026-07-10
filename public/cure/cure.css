@@ -1,0 +1,16 @@
+/* The published-research viewer (/cure/<slug>) — rides on free mode's
+   stylesheet (free.css) for the shared look; this file only adds the
+   replay-specific bits. */
+
+#pub header { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+#pub h1 { font-size: 1.25rem; margin: .4rem 0; }
+#pub .msg { max-width: 100%; }
+
+#publist { display: flex; flex-direction: column; gap: .5rem; margin: .8rem 0; }
+.pub-item {
+  display: flex; flex-direction: column; gap: .15rem;
+  text-decoration: none; color: var(--text);
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: .6rem .8rem; background: var(--panel-2);
+}
+.pub-item:hover { border-color: var(--accent); }

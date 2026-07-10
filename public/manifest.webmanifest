@@ -2,7 +2,7 @@
   "name": "DeepResearch.se",
   "short_name": "DeepResearch.se",
   "description": "Deep research assistant: multi-angle web search with validated, cited answers.",
-  "start_url": "/",
+  "start_url": "/rver",
   "display": "standalone",
   "background_color": "#6fc3fd",
   "theme_color": "#6fc3fd",

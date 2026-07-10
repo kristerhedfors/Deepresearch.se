@@ -60,6 +60,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handleFreeApi } from "./free.js";
+import { handlePubGet, handlePubWrite } from "./pub.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -143,8 +144,10 @@ function isPublicAsset(url, method) {
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
     // Free mode (src/free.js): a no-account surface by design — the page,
-    // its modules, and the vault/SSE primitives it reuses.
+    // its modules, and the vault/SSE primitives it reuses. /cure/ is the
+    // published-replays viewer (src/pub.js), public the same way.
     url.pathname.startsWith("/free/") ||
+    url.pathname.startsWith("/cure/") ||
     url.pathname === "/js/vault.js" ||
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/free-core.js" ||
@@ -224,18 +227,24 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await serveAsset(request, env) };
   }
 
-  // ---- free mode (src/free.js): deliberately BEFORE the identity gate ----
-  // Free mode IS the site's default face: unauthenticated visitors get it
-  // at / (see the identity-gate fallthrough below), and /my/project-<hash>
-  // is the shareable/bookmarkable project reference — served pre-auth so
-  // the links work for everyone (a signed-in account still gets the full
-  // app at /). No accounts here — the user's master secret is the only
+  // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
+  // The .se domain completes English words, and the site's surfaces publish
+  // under them:
+  //   deepresearch.se/            — free mode, the default face (everyone)
+  //   deepresearch.se/my/project-<hash> — a free-mode saved project
+  //   deepresearch.se/cure/<slug> — "deep research SECURE <slug>": published
+  //       frozen research replays (src/pub.js + the publish-research skill)
+  //   deepresearch.se/rver        — "deep research SERVER": the signed-in app
+  //       (handled in routeAuthed; unauthenticated visitors get the login page)
+  //
+  // Free mode has no accounts — the user's master secret is the only
   // credential, and it never reaches the server; the client reads the
-  // reference off the URL. /free is kept as a legacy alias. The API is
-  // capability-addressed (unguessable HKDF-derived ids).
+  // project reference off the URL. /free is kept as a legacy alias. The
+  // API is capability-addressed (unguessable HKDF-derived ids).
   if (
     (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/my" ||
+    (url.pathname === "/" ||
+      url.pathname === "/my" ||
       url.pathname === "/my/" ||
       url.pathname.startsWith("/my/project-") ||
       url.pathname === "/free" ||
@@ -245,6 +254,19 @@ async function route(request, env, url, log, ctx, requestId) {
   }
   if (url.pathname.startsWith("/api/free/")) {
     return { response: await handleFreeApi(request, env, url, log) };
+  }
+  // Published research replays: the viewer page and the public JSON reads.
+  // Slugs are dot-free, so /cure/cure.js (the page's own assets) still
+  // resolves as a public asset above, never as a slug.
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/cure" || /^\/cure\/[a-z0-9-]*$/.test(url.pathname))
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/cure/") };
+  }
+  if (request.method === "GET" && (url.pathname === "/api/pub" || url.pathname.startsWith("/api/pub/"))) {
+    const slug = url.pathname === "/api/pub" ? null : decodeURIComponent(url.pathname.slice("/api/pub/".length));
+    return { response: await handlePubGet(env, slug) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
@@ -261,15 +283,6 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- everything else requires an identity ------------------------------
   const identity = await identify(request, env);
   if (!identity) {
-    // Visitors hitting the root get FREE MODE — the site's default face:
-    // chat-first on their own API keys, with the old promotional landing
-    // reduced to a first-visit glass-pane overlay on that page (the full
-    // landing still lives at /welcome/, linked from the pane).
-    if (url.pathname === "/" && request.method === "GET") {
-      return {
-        response: await serveAsset(request, env, url.origin + "/free/"),
-      };
-    }
     log.warn("auth.denied", { reason: "unauthenticated" });
     if (url.pathname.startsWith("/api/")) {
       return { response: jsonResponse({ error: "Authentication required." }, 401) };
@@ -327,9 +340,24 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
     if (identity.role !== "admin") {
-      return new Response(null, { status: 302, headers: { Location: "/" } });
+      return new Response(null, { status: 302, headers: { Location: "/rver" } });
     }
     return serveAsset(request, env);
+  }
+
+  // Publishing (PUT/DELETE /api/pub/:slug) is the ONE write surface of the
+  // published-replays feature — admin only (the public reads are routed
+  // before the identity gate).
+  if (url.pathname.startsWith("/api/pub/")) {
+    if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
+    return handlePubWrite(request, env, log, decodeURIComponent(url.pathname.slice("/api/pub/".length)));
+  }
+
+  // The signed-in app lives at /rver ("deep research SERVER" — the URL
+  // wordplay above): serve the app shell there; the root now belongs to
+  // free mode for everyone.
+  if ((url.pathname === "/rver" || url.pathname === "/rver/") && request.method === "GET") {
+    return serveAsset(request, env, url.origin + "/");
   }
 
   return serveAsset(request, env);
@@ -356,7 +384,7 @@ async function termsGate(request, env, url, identity) {
 
   if (url.pathname === "/terms/accept" && request.method === "POST") {
     await acceptTerms(env, identity.user.id);
-    return new Response(null, { status: 303, headers: { Location: "/" } });
+    return new Response(null, { status: 303, headers: { Location: "/rver" } });
   }
   if (url.pathname.startsWith("/api/")) {
     return jsonResponse({ error: "The terms of use must be accepted first.", terms: true }, 403);

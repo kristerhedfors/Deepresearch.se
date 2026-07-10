@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Deepresearch — published research</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/free/free.css">
+  <link rel="stylesheet" href="/cure/cure.css">
+  <!-- Vendored renderer globals (classic scripts, same as the main app) -->
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+</head>
+<body>
+  <main>
+    <section id="pub">
+      <header>
+        <a class="btnlike" href="/">← Deepresearch</a>
+        <span class="flex"></span>
+        <a class="btnlike" id="continuelink" href="/" hidden>Continue with your own API keys</a>
+      </header>
+      <h1 id="pubtitle">Published research</h1>
+      <p id="pubdesc" class="muted" hidden></p>
+      <p id="pubmeta" class="muted" hidden></p>
+      <div id="msgs"><p class="muted">Loading…</p></div>
+      <div id="publist" hidden></div>
+      <p class="fineprint">These are frozen replays of deep-research sessions, published
+        read-only. "Continue" reopens the conversation in free mode, where follow-up
+        questions run on <b>your own</b> OpenAI or Groq API key — straight from your
+        browser, never through this site's server.
+        <a href="/welcome/">About</a> · <a href="/login">Sign in</a></p>
+    </section>
+  </main>
+  <script type="module" src="/cure/cure.js"></script>
+</body>
+</html>

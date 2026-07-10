@@ -116,6 +116,44 @@ function handleDeepLink() {
   return true;
 }
 
+// /?continue=<slug>: the handoff from a published replay (/cure/<slug> —
+// the viewer's "Continue with your own API keys" link). The frozen
+// session's messages seed a normal free-mode conversation; follow-ups run
+// on the visitor's own key like any other chat here.
+async function handleContinueParam() {
+  const slug = new URLSearchParams(location.search).get("continue");
+  if (!slug || !/^[a-z0-9-]{1,80}$/i.test(slug)) return false;
+  try {
+    const res = await fetch("/api/pub/" + encodeURIComponent(slug.toLowerCase()));
+    if (!res.ok) return false;
+    const pub = await res.json();
+    const messages = (pub?.messages || []).filter(
+      (m) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string",
+    );
+    if (!messages.length) return false;
+    const conv = {
+      id: crypto.randomUUID(),
+      title: (pub.title || deriveFreeTitle(messages)).slice(0, 80),
+      messages,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    state.conversations.push(conv);
+    convId = conv.id;
+    history.replaceState(null, "", "/");
+    renderConvPicker();
+    renderMessages();
+    workStatus(
+      "You're continuing a published research session. Follow-up questions run on YOUR API key " +
+        "(OpenAI or Groq), straight from this browser — add one under 'Provider API keys' if you " +
+        "haven't yet.",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function generateNew() {
   const secret = generateFreeSecret();
   $("secret").value = secret;
@@ -438,10 +476,11 @@ async function send(ev) {
 // ---- boot --------------------------------------------------------------------------
 
 const deepLinked = handleDeepLink();
-maybeShowIntro(deepLinked);
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
+// A replay continuation counts as a deep link — no intro pane over it.
+handleContinueParam().then((continued) => maybeShowIntro(deepLinked || continued));
 
 $("introstart").addEventListener("click", dismissIntro);
 $("aboutbtn").addEventListener("click", () => {
