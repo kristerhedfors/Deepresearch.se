@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Deepresearch — Free mode</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/free/free.css">
+  <!-- Vendored renderer globals (classic scripts, same as the main app) -->
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/purify.min.js"></script>
+</head>
+<body>
+  <main>
+    <!-- ---- the gate: one secret, saved by the password manager ---- -->
+    <section id="gate">
+      <h1>🔓 Free mode</h1>
+      <p class="lead">Chat on <b>your own model API keys</b> with <b>your own encrypted
+        storage</b> — no account, and the server logs <b>no message content, ever</b>.
+        One secret, kept in your password manager, derives everything: your project's
+        reference, its storage encryption, and the key that seals your API keys.</p>
+      <!-- A real form so 1Password / Apple Passwords capture the secret as a
+           site password: username = the project reference, password = the
+           secret. Submit is intercepted; nothing is ever posted. -->
+      <form id="unlockform" method="post" action="/free/">
+        <label for="refname">Project reference</label>
+        <input id="refname" name="username" type="text" autocomplete="username"
+               placeholder="project-…" spellcheck="false" autocapitalize="off">
+        <label for="secret">Secret</label>
+        <input id="secret" name="password" type="password" autocomplete="current-password"
+               placeholder="DR1-XXXX-…" required>
+        <div class="row">
+          <button type="submit" id="openbtn">Open</button>
+          <button type="button" id="newbtn">Create new project</button>
+        </div>
+      </form>
+      <div id="newsecret" hidden>
+        <p class="warn">This is your new secret — it is the ONLY way back into this
+          project. Press <b>Open</b> and your password manager will offer to save it;
+          you can also copy it now:</p>
+        <div class="secretrow">
+          <code id="newsecrettext"></code>
+          <button type="button" id="copysecret">Copy</button>
+        </div>
+      </div>
+      <p id="gatestatus" class="muted" hidden></p>
+      <p class="fineprint">Everything is encrypted in this browser before it is stored:
+        your chats under a key that never leaves this page, your API keys under a
+        derived key the server only ever holds in memory for the moment it calls the
+        model provider on your behalf. Losing the secret loses the project — there is
+        no recovery. <a href="/welcome/">About Deepresearch</a></p>
+    </section>
+
+    <!-- ---- the workspace ---- -->
+    <section id="work" hidden>
+      <header>
+        <strong id="projref">project-…</strong>
+        <span class="flex"></span>
+        <button type="button" id="lockbtn" title="Lock (forget the secret in this tab)">Lock</button>
+      </header>
+
+      <details id="keyspanel">
+        <summary>Model API keys <span id="keysbadge" class="muted"></span></summary>
+        <p class="muted">Stored encrypted under your secret; the server decrypts them
+          only in memory, per request, to call the provider. Leave a field blank to
+          keep what's already stored.</p>
+        <label for="key-berget">Berget API key</label>
+        <input id="key-berget" type="password" autocomplete="off" placeholder="not set">
+        <label for="key-anthropic">Anthropic API key (claude-…)</label>
+        <input id="key-anthropic" type="password" autocomplete="off" placeholder="not set">
+        <label for="key-openai">OpenAI API key (gpt-…)</label>
+        <input id="key-openai" type="password" autocomplete="off" placeholder="not set">
+        <div class="row">
+          <button type="button" id="savekeys">Save keys</button>
+          <span id="keysstatus" class="muted"></span>
+        </div>
+      </details>
+
+      <div class="row toolbar">
+        <select id="convpick" title="Conversation"></select>
+        <button type="button" id="newchat">New chat</button>
+        <span class="flex"></span>
+        <select id="modelpick" title="Model"><option value="">— model —</option></select>
+      </div>
+
+      <div id="msgs"></div>
+
+      <form id="composer">
+        <textarea id="prompt" rows="3" placeholder="Ask something…"></textarea>
+        <button type="submit" id="sendbtn">Send</button>
+      </form>
+      <p id="workstatus" class="muted" hidden></p>
+    </section>
+  </main>
+  <script type="module" src="/free/free.js"></script>
+</body>
+</html>

@@ -59,7 +59,13 @@ git push origin main
    exchange's complete question, answer, and research metadata — UNLESS the
    conversation was started with the ghost (incognito) toggle, the
    anonymous-chat promise that must keep suppressing the log row
-   (`incognito: true` on `/api/chat`). Secrets never appear in any log.
+   (`incognito: true` on `/api/chat`). Free mode (`/free`, `src/free.js`)
+   extends the strict tier to a whole surface: no accounts, the user's OWN
+   provider API keys (stored as client-sealed ciphertext, decrypted by the
+   server only transiently in memory per request), the user's own
+   client-side-encrypted storage, operator provider credentials
+   unreachable by construction, and NEVER a chat-log row or a logged
+   message/key — metadata-only log lines. Secrets never appear in any log.
    Outbound requests to third parties carry the minimum (a query, a
    coordinate, a host) — never the conversation, filename, or account
    identity.
@@ -109,6 +115,7 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
+| `free.js` | Free mode (`/free`, `/free/project-<hash>`, `/api/free/*` — routed BEFORE the identity gate; page in `public/free/`): a no-account chat surface on the USER's own provider API keys and own encrypted storage, all derived from one password-manager-held master secret (`public/js/free-core.js`). Capability-addressed R2 objects (`free/blob/{id}` client-side-ciphertext project state, `free/keys/{id}` client-sealed key bundle the server decrypts ONLY transiently in memory per chat/models request); `buildFreeEnv` makes operator provider credentials unreachable by construction; direct streamed chat (no pipeline/Exa — those run on operator keys); ABSOLUTELY no message-content logging (no `chatlog.js`, metadata-only log lines) and no quota/usage recording |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -225,7 +232,16 @@ normalization — HKDF id+key derivation, AES-256-GCM archive
 encrypt/decrypt, and the store/load orchestration packing a whole
 project — record, chats, decrypted file originals, RAG index with
 vectors — into ONE blob the server only ever sees encrypted; pure
-core Node-tested).
+core Node-tested), `free-core.js` (free mode's pure core, built on
+`vault.js`: ONE master secret → HKDF-independent public reference, blob
+id + blob key, key-bundle id + the per-request unlock key; key-bundle
+seal/open; the sealed project-state archive — Node-tested).
+Free mode's page is `public/free/` (`index.html` + `free.js` wiring +
+`free.css`): a standalone no-auth page whose unlock form is a REAL
+username+password form (`autocomplete="username"`/`current-password`,
+switched to `new-password` on create) so 1Password and Apple Passwords
+save/autofill the master secret; served for `/free` and every
+`/free/project-<hash>` deep link.
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
@@ -275,6 +291,11 @@ predicates + the catalog merge/degrade path),
 `vault.js` (the project-vault endpoints against a mocked R2 bucket:
 id validation, PUT/GET/DELETE round-trip, size/count caps, per-user
 namespacing, and the works-with-the-knob-OFF guarantee),
+`free.js` (free mode: `buildFreeEnv`'s operator-credentials-unreachable
+guarantee, model→key routing, message validation, blob/keys endpoints
+against a mocked R2, and an end-to-end chat over a mock provider on
+`node:http` asserting the user's key goes upstream and the logs carry
+NO message content, key, or unlock material),
 `edge-cache.js` (the fail-soft Workers Cache get/put helpers, against a
 mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and
@@ -318,7 +339,11 @@ waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
 malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
 scoring incl. ungraded free-text handling, the completed-quiz summary
-block), `vault.js`'s pure core (secret format/entropy/uniqueness, the
+block), `free-core.js` (free mode's derivations: determinism,
+format-insensitive input, pairwise independence of every derived value —
+including from the vault's derivation for the same secret — key-bundle
+seal/open incl. wrong-key rejection, sealed-state round-trip, state
+validation), `vault.js`'s pure core (secret format/entropy/uniqueness, the
 forgiving normalization incl. misread mapping and prefix stripping, the
 Crockford codec round-trip, HKDF id/key derivation determinism,
 archive encrypt/decrypt incl. tamper detection, archive-shape

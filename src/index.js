@@ -59,6 +59,7 @@ import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
+import { handleFreeApi } from "./free.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -141,6 +142,12 @@ function isPublicAsset(url, method) {
     url.pathname.startsWith("/help/") ||
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
+    // Free mode (src/free.js): a no-account surface by design — the page,
+    // its modules, and the vault/SSE primitives it reuses.
+    url.pathname.startsWith("/free/") ||
+    url.pathname === "/js/vault.js" ||
+    url.pathname === "/js/sse.js" ||
+    url.pathname === "/js/free-core.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||
@@ -213,6 +220,21 @@ async function route(request, env, url, log, ctx, requestId) {
 
   if (isPublicAsset(url, request.method)) {
     return { response: await serveAsset(request, env) };
+  }
+
+  // ---- free mode (src/free.js): deliberately BEFORE the identity gate ----
+  // No accounts here — the user's master secret is the only credential, and
+  // it never reaches the server. /free and the project-reference deep links
+  // both serve the same static page; the client reads the reference off the
+  // URL. The API is capability-addressed (unguessable HKDF-derived ids).
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/free" || url.pathname.startsWith("/free/project-"))
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/free/") };
+  }
+  if (url.pathname.startsWith("/api/free/")) {
+    return { response: await handleFreeApi(request, env, url, log) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
