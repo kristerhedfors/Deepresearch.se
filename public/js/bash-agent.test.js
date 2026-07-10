@@ -140,4 +140,41 @@ describe("runShellLoop", () => {
     const transcript = await runShellLoop({ messages: [], exec, fetchImpl: /** @type {any} */ (fetchImpl) });
     assert.deepEqual(transcript, []);
   });
+
+  test("ensureReady is NOT called when the model needs no shell (lazy boot)", async () => {
+    // The model decides: immediate done → the VM must never boot.
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) });
+    let booted = 0;
+    const ensureReady = async () => { booted++; return true; };
+    const exec = async () => ({ exitCode: 0, stdout: "", stderr: "" });
+    const transcript = await runShellLoop({ messages: [], exec, ensureReady, fetchImpl: /** @type {any} */ (fetchImpl) });
+    assert.equal(booted, 0);
+    assert.deepEqual(transcript, []);
+  });
+
+  test("ensureReady is called ONCE on the first proposed command", async () => {
+    const steps = [
+      { ok: true, json: async () => ({ commands: ["echo a"], done: false, reasoning: "" }) },
+      { ok: true, json: async () => ({ commands: ["echo b"], done: false, reasoning: "" }) },
+      { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) },
+    ];
+    let i = 0;
+    const fetchImpl = async () => steps[i++];
+    let booted = 0;
+    const ensureReady = async () => { booted++; return true; };
+    const exec = async (cmd) => ({ exitCode: 0, stdout: cmd, stderr: "" });
+    const transcript = await runShellLoop({ messages: [], exec, ensureReady, fetchImpl: /** @type {any} */ (fetchImpl) });
+    assert.equal(booted, 1); // booted once, not per round
+    assert.equal(transcript.length, 2);
+  });
+
+  test("a failed boot stops the loop with an empty transcript", async () => {
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ commands: ["echo a"], done: false, reasoning: "" }) });
+    const ensureReady = async () => false; // can't boot
+    let execCalls = 0;
+    const exec = async () => { execCalls++; return { exitCode: 0, stdout: "", stderr: "" }; };
+    const transcript = await runShellLoop({ messages: [], exec, ensureReady, fetchImpl: /** @type {any} */ (fetchImpl) });
+    assert.equal(execCalls, 0);
+    assert.deepEqual(transcript, []);
+  });
 });

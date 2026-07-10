@@ -192,13 +192,19 @@ export function buildShellTranscript(runs) {
 }
 
 /**
- * Run the agentic shell loop: repeatedly ask the server what to run, execute
- * each command in the sandbox, and accumulate a transcript, until the model is
- * done or the round cap is hit. Never throws — a failing step or exec ends the
- * loop with whatever was gathered so far.
+ * Run the agentic shell loop: repeatedly ask the server (the MODEL) what to run
+ * next and execute it in the sandbox, until the model is done or the round cap
+ * is hit. The MODEL decides whether a shell is needed at all — round 1 asks it
+ * cold, and it returns done immediately for anything that doesn't need a shell,
+ * so this is safe to run for every message when the knob is on (no brittle
+ * client-side keyword gate). `ensureReady` boots the VM LAZILY — it's called
+ * only once the model actually proposes a command, so a message that needs no
+ * shell never boots the (expensive) VM. Never throws — a failing step or exec
+ * ends the loop with whatever was gathered so far.
  * @param {{
  *   messages: object[],
  *   exec: (command: string) => Promise<{ exitCode: number, stdout: string, stderr: string }>,
+ *   ensureReady?: () => Promise<boolean>,
  *   onStep?: (info: { round: number, reasoning: string, commands: string[] }) => void,
  *   onResult?: (run: ShellRun) => void,
  *   maxRounds?: number,
@@ -206,12 +212,18 @@ export function buildShellTranscript(runs) {
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export async function runShellLoop({ messages, exec, onStep, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch }) {
+export async function runShellLoop({ messages, exec, ensureReady, onStep, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch }) {
   /** @type {ShellRun[]} */
   const transcript = [];
+  // null = not yet booted; true/false = boot outcome. No ensureReady → ready.
+  let ready = ensureReady ? null : true;
   for (let round = 1; round <= maxRounds; round++) {
     const step = await fetchShellStep(messages, transcript, fetchImpl);
     if (step.done || !step.commands.length) break;
+    // The model wants to run something — boot the VM now (once). If it can't
+    // boot, stop with whatever we have rather than looping on failures.
+    if (ready === null && ensureReady) ready = await ensureReady();
+    if (!ready) break;
     if (onStep) onStep({ round, reasoning: step.reasoning, commands: step.commands });
     for (const command of step.commands) {
       let res;

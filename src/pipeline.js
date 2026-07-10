@@ -292,7 +292,7 @@ async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt() },
+    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -400,7 +400,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: directPrompt() },
+    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);

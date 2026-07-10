@@ -33,13 +33,15 @@ export const MAX_COMMAND_CHARS = 2000; // a single command line is clamped to th
 
 // ---- intent gate ----------------------------------------------------------
 
-// Does the latest user message ask to run a shell / execute code / compute
-// something in the sandbox? Deterministic and typo-tolerant, with FULL
-// Swedish parity (invariant 6) — every English form has its Swedish
-// counterpart, definite forms included ("sandlådan", "terminalen"). Biased
-// toward reasonably explicit phrasing: the knob is opt-in and the whole flow
-// fail-soft, so a miss just yields a normal answer and a false positive only
-// boots a sandbox that finds nothing to do. Exported for unit tests.
+// Does the latest user message LOOK like it asks to run a shell / execute code
+// / compute something in the sandbox? A non-authoritative HEURISTIC — NOT the
+// execution gate. The MODEL decides whether a shell is actually needed (it is
+// asked cold each turn via bashAgentPrompt and returns SHELL_DONE for anything
+// that doesn't need one), because a regex misses obvious asks like "list
+// files" or "run la -la" (the production defect, chat_logs #200/#201). This is
+// kept as a cheap classifier for callers that want a quick signal without a
+// model call; deterministic and typo-tolerant with FULL Swedish parity.
+// Exported for unit tests.
 //
 // The gate matches when the message contains an execution VERB/NOUN that is
 // about running commands or code — not the many innocent senses of "run"

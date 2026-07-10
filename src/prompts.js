@@ -353,17 +353,41 @@ const CAPABILITIES_NOTE =
   "11. Cloud storage & cross-device sync. Optionally keeps an encrypted copy of your history, files, and search index in the site's storage so it follows your account across devices. TURN ON/OFF: Account panel → Settings → \"Store history in the cloud\", ON by default; turning it off downloads everything back to this browser and deletes the cloud copies.\n" +
   "12. Projects. Group related chats and files into a named project; chats and materials in a project are indexed so other chats in the same project can draw on them. Each project has its own cloud-storage switch at the top of its panel.\n" +
   "13. Report export. Each answer has Raw (plain-text), Copy, and PDF buttons; PDF downloads a branded DeepResearch.se report (with any images you attached) generated entirely in your browser.\n" +
-  "14. Interactive quizzes. Ask to be quizzed (e.g. \"quiz me on this document\", \"quiz me on the French Revolution with 8 questions\", \"förhör mig på kapitlet\") and the answer becomes an interactive quiz: one question at a time with multiple-choice alternatives plus a free-text field to answer in your own words, immediate feedback with explanations, and a final score. Questions are built from the conversation, attached documents, project materials, or fresh web research on the topic (with web search on). Written answers are graded on meaning, not exact wording. TURN ON/OFF: triggered by asking for a quiz — no separate switch.\n" +
-  "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
+  "14. Interactive quizzes. Ask to be quizzed (e.g. \"quiz me on this document\", \"quiz me on the French Revolution with 8 questions\", \"förhör mig på kapitlet\") and the answer becomes an interactive quiz: one question at a time with multiple-choice alternatives plus a free-text field to answer in your own words, immediate feedback with explanations, and a final score. Questions are built from the conversation, attached documents, project materials, or fresh web research on the topic (with web search on). Written answers are graded on meaning, not exact wording. TURN ON/OFF: triggered by asking for a quiz — no separate switch.\n";
+
+// The capabilities-note closing line, split out so it can flip when the
+// experimental execution sandbox actually ran for THIS request. Default: the
+// site does not run code. hasShell: it DID (the in-browser Linux sandbox), so
+// the model must answer from that output instead of denying the capability —
+// otherwise "run ls" answers "I can't run code" even though the sandbox just
+// ran it (the production defect this fixes; chat_logs #200/#201, 2026-07-10).
+/**
+ * @param {boolean} hasShell
+ * @returns {string}
+ */
+const capabilitiesTail = (hasShell) =>
+  hasShell
+    ? "For THIS request you DID run shell commands in the experimental in-browser Linux execution sandbox — the results are provided below as ground truth. Answer from them directly; do NOT say you cannot run code. (The site does not browse arbitrary URLs on demand, send email, or integrate with anything beyond the above and the sandbox.)"
+    : "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
 
 // Non-research replies (small talk, image analysis, search knob off).
-/** @returns {string} */
-export const directPrompt = () =>
+// `hasShell` (the bash-lite sandbox ran for this request) flips the closing
+// capabilities line so the model uses the sandbox output instead of refusing;
+// default false keeps the output byte-identical to a run without the feature.
+/**
+ * @param {{ hasShell?: boolean }} [opts]
+ * @returns {string}
+ */
+export const directPrompt = ({ hasShell = false } = {}) =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   CAPABILITIES_NOTE +
+  capabilitiesTail(hasShell) +
   ANTI_INJECTION_NOTE;
 
-/** @returns {string} */
-export const searchOffPrompt = () =>
-  directPrompt() +
+/**
+ * @param {{ hasShell?: boolean }} [opts]
+ * @returns {string}
+ */
+export const searchOffPrompt = ({ hasShell = false } = {}) =>
+  directPrompt({ hasShell }) +
   " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed.";

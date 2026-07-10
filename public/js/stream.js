@@ -23,7 +23,7 @@ import {
   updateGenericStep,
 } from "./activity.js";
 import { bashLiteOn } from "./settings.js";
-import { bashIntent, runShellLoop } from "./bash-agent.js";
+import { runShellLoop } from "./bash-agent.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 import {
   addAssistantTurn,
@@ -750,14 +750,16 @@ async function buildChatPayload(opts) {
 }
 
 // The experimental bash-lite sandbox pre-pass (the `bash_lite_mcp` knob). When
-// the latest message wants a shell (bashIntent) and the sandbox can run here
-// (cross-origin isolated), boot the in-browser Linux VM and run the agentic
-// command loop (public/js/bash-agent.js) BEFORE /api/chat, surfacing progress
-// as a step in the assistant turn. Returns the transcript (commands + real
-// output) for stream.js to attach as `shell_transcript`; the pipeline folds it
-// into the answer as ground truth. Fully fail-soft: any problem (knob off, no
-// isolation, boot failure, loop error) returns [] and the answer proceeds
-// normally.
+// the knob is on and the sandbox can run here (cross-origin isolated), the
+// MODEL — not a client-side keyword gate — decides whether this message needs a
+// shell: the agentic loop (public/js/bash-agent.js) asks it cold, and it
+// returns done immediately for anything that doesn't. So "list files", "run la
+// -la", or any phrasing the old regex missed now work, because the model makes
+// the call. The Linux VM boots LAZILY (bootOnce) — only once the model actually
+// proposes a command — so ordinary chat with the knob on pays one cheap model
+// call and never boots the VM. Returns the transcript for stream.js to attach
+// as `shell_transcript`; the pipeline folds it into the answer as ground truth.
+// Fully fail-soft: any problem returns [] and the answer proceeds normally.
 /**
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
@@ -765,32 +767,36 @@ async function buildChatPayload(opts) {
 async function maybeRunShellLoop(turn) {
   try {
     if (!bashLiteOn() || !sandboxSupported()) return [];
-    const texts = userTexts(history);
-    const latest = texts[texts.length - 1] || "";
-    if (!bashIntent(latest)) return [];
 
-    startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
-    const ok = await ensureSandboxBooted();
-    if (!ok) {
-      finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
-      return [];
-    }
+    let booted = false;
     let ran = 0;
+    // Boot the VM the first (and only the first) time the model asks to run
+    // something — surfaced as a turn step so the user sees the (slow) first
+    // boot. Returns whether the sandbox is usable.
+    const bootOnce = async () => {
+      startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
+      booted = await ensureSandboxBooted();
+      if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
+      return booted;
+    };
     const transcript = await runShellLoop({
       messages: stripOldImages(history),
       exec: execInSandbox,
+      ensureReady: bootOnce,
       onResult: () => {
         ran++;
         updateGenericStep(turn, "sandbox", `Running in sandbox — ${ran} command${ran === 1 ? "" : "s"}…`);
       },
     });
-    finishGenericStep(turn, {
-      id: "sandbox",
-      label: transcript.length
-        ? `Ran ${transcript.length} command${transcript.length === 1 ? "" : "s"} in the Linux sandbox`
-        : "Sandbox found nothing to run",
-      details: transcript.map((r) => `$ ${r.command}`),
-    });
+    // Only report a finished step if we actually booted and ran (a message the
+    // model judged not to need a shell shows no sandbox activity at all).
+    if (booted && transcript.length) {
+      finishGenericStep(turn, {
+        id: "sandbox",
+        label: `Ran ${transcript.length} command${transcript.length === 1 ? "" : "s"} in the Linux sandbox`,
+        details: transcript.map((r) => `$ ${r.command}`),
+      });
+    }
     return transcript;
   } catch (err) {
     try { finishGenericStep(turn, { id: "sandbox", label: "Sandbox error — answering normally" }); } catch {}

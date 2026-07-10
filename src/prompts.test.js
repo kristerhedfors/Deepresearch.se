@@ -322,6 +322,19 @@ describe("directPrompt / searchOffPrompt", () => {
     assert.match(p, /Web search is currently disabled/);
   });
 
+  test("hasShell flips the capabilities tail so the model does not deny running code", () => {
+    // Default: still says it can't run code (byte-identical to before).
+    assert.match(directPrompt(), /does NOT run code/);
+    assert.equal(directPrompt(), directPrompt({ hasShell: false }));
+    // Sandbox ran: it must NOT claim it can't run code, and must use the output.
+    const withShell = directPrompt({ hasShell: true });
+    assert.doesNotMatch(withShell, /does NOT run code/);
+    assert.match(withShell, /DID run shell commands/);
+    assert.match(withShell, /do NOT say you cannot run code/);
+    // searchOffPrompt threads it through.
+    assert.match(searchOffPrompt({ hasShell: true }), /DID run shell commands/);
+  });
+
   describe("capabilities grounding", () => {
     const p = directPrompt();
 

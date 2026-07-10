@@ -24,8 +24,24 @@ The sandbox executes **client-side** (the server never runs a shell), so the
 loop is **client-orchestrated**. It respects invariant 1 (NO function calling):
 the model proposes commands in a plain fenced ```bash block (a text
 convention), parsed by `parseShellRequest` — never a tool call. It is fully
-**fail-soft**: a missed intent, no cross-origin isolation, a boot failure, or a
-loop error all degrade to a normal answer.
+**fail-soft**: no cross-origin isolation, a boot failure, or a loop error all
+degrade to a normal answer.
+
+**The MODEL decides whether a shell is needed — not a regex.** When the knob is
+on, the loop asks the model cold on the first turn; it returns `SHELL_DONE`
+immediately for anything that doesn't need a shell. So "list files", "run la
+-la", and any phrasing a keyword gate would miss all work. `bashIntent`
+(EN+SV, mirrored both sides) is kept only as a non-authoritative heuristic —
+it does NOT gate execution (that was the 2026-07-10 production defect:
+chat_logs #200/#201 answered "I can't run code" because the regex missed the
+ask and never engaged the model). The VM boots **lazily** — only once the
+model actually proposes a command — so ordinary chat with the knob on pays one
+cheap model call and never boots the (expensive) VM.
+
+The answer prompts are sandbox-aware: `directPrompt`/`searchOffPrompt`/
+`synthPrompt` take `hasShell`, which flips the capabilities line from "does NOT
+run code" to "you DID run commands — use the output". Without this the model
+denies the capability even with a transcript in front of it.
 
 ## Where each piece lives
 
@@ -71,9 +87,10 @@ the shell comes back isolated.
 
 ## Conventions & caps
 
-- Intent gate (`bashIntent`) is deterministic, EN+SV parity (invariant 6),
-  biased to explicit phrasing — mirrored in `src/` and `public/js/`; keep the
-  two SHELL_PATTERNS arrays in lock-step (both have parity tests).
+- `bashIntent` is a non-authoritative heuristic (EN+SV parity, mirrored in
+  `src/` and `public/js/`, both with parity tests) — NOT the execution gate.
+  The model decides. Keep the two SHELL_PATTERNS arrays in lock-step if you
+  touch them, but do NOT reintroduce it as a precondition for running the loop.
 - `MAX_SHELL_ROUNDS=6`, `MAX_COMMANDS_PER_ROUND=6`, output clamped to
   `MAX_OUTPUT_CHARS=4000`. The sandbox is treated as OFFLINE (no network) in
   the prompts.

@@ -32,7 +32,7 @@
 
 import { createSseParser } from "./sse.js";
 import { drcChatStream, drcCompleteJson, drcProvider } from "./drc-providers.js";
-import { MAX_SHELL_ROUNDS, bashIntent, buildShellTranscript, parseShellRequest } from "./bash-agent.js";
+import { MAX_SHELL_ROUNDS, buildShellTranscript, parseShellRequest } from "./bash-agent.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 
 const MAX_SUBQUESTIONS = 4;
@@ -214,10 +214,11 @@ function emitChunked(text, onDelta) {
 async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox }) {
   const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
   if (!sb.supported()) return [];
-  onStatus({ type: "phase", phase: "sandbox" });
-  const booted = await sb.boot();
-  if (!booted) return [];
   const transcript = [];
+  // null = not yet booted; the VM boots LAZILY only once the model actually
+  // proposes a command (so a message the model judges not to need a shell pays
+  // one cheap model call and never boots the VM).
+  let ready = null;
   for (let round = 1; round <= MAX_SHELL_ROUNDS; round++) {
     let stepText = "";
     try {
@@ -241,6 +242,12 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
     }
     const proposal = parseShellRequest(stepText);
     if (proposal.done || !proposal.commands.length) break;
+    // The model wants to run something — boot the VM now (once).
+    if (ready === null) {
+      onStatus({ type: "phase", phase: "sandbox" });
+      ready = await sb.boot();
+    }
+    if (!ready) break;
     onStatus({ type: "phase", phase: "sandbox", detail: proposal.commands.length });
     for (const command of proposal.commands) {
       let r;
@@ -288,13 +295,14 @@ export async function runDrcResearch({
   const question = messages[messages.length - 1]?.content || "";
   const context = drcContext(messages);
 
-  // Experimental bash-lite sandbox: when the message wants a shell and the
-  // sandbox can run here, run the agentic command loop first and fold its real
-  // output into whichever answer path runs (direct or synthesis) as ground
-  // truth. Empty (and thus absent) otherwise — the flow is byte-identical to a
-  // run without the feature.
+  // Experimental bash-lite sandbox: when the knob is on and the sandbox can run
+  // here, let the MODEL decide whether this message needs a shell (it returns
+  // SHELL_DONE cold for anything that doesn't — no brittle keyword gate), run
+  // the agentic command loop, and fold its real output into whichever answer
+  // path runs (direct or synthesis) as ground truth. Empty (and thus absent)
+  // otherwise — the flow is byte-identical to a run without the feature.
   let shellBlock = "";
-  if (bash && bashIntent(question)) {
+  if (bash) {
     try {
       const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox });
       shellBlock = buildShellTranscript(transcript);
