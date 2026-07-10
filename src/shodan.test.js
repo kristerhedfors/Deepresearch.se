@@ -1,3 +1,5 @@
+// Unit tests for shodan.js's pure logic: target extraction (public-IP/hostname
+// de-noising, caps) and the key-gated availability check.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

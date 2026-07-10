@@ -1,3 +1,4 @@
+// @ts-check
 // Berget.ai client (OpenAI-compatible chat completions API).
 //
 // Auth uses the BERGET_API_TOKEN secret. The default model is Mistral Small,
@@ -5,9 +6,13 @@
 
 // BERGET_URL env override exists solely so local tests can point at a
 // mock (like GOOGLE_TOKEN_URL); production always uses the default.
+/** @param {import('./types.js').Env} env */
 const apiBase = (env) => env.BERGET_URL || "https://api.berget.ai/v1";
+/** @param {import('./types.js').Env} env */
 const chatUrl = (env) => apiBase(env) + "/chat/completions";
+/** @param {import('./types.js').Env} env */
 const modelsUrl = (env) => apiBase(env) + "/models";
+/** @param {import('./types.js').Env} env */
 const embeddingsUrl = (env) => apiBase(env) + "/embeddings";
 export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; // alias: mistral-small
 // Embedding model for the document-RAG feature (src/rag.js). Berget hosts
@@ -20,6 +25,7 @@ export const DEFAULT_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"; //
 export const DEFAULT_EMBED_MODEL = "intfloat/multilingual-e5-large";
 export const EMBED_DIMS = 1024;
 
+/** @param {import('./types.js').Env} env */
 export function embedModel(env) {
   return env.BERGET_EMBED_MODEL || DEFAULT_EMBED_MODEL;
 }
@@ -52,6 +58,7 @@ const STREAM_CONNECT_TIMEOUT_MS = 30_000;
 // limit kills the whole isolate with no error surfaced at all.
 const STREAM_MAX_CHARS = 32_000;
 
+/** @param {import('./types.js').Env} env */
 export function defaultModel(env) {
   return env.BERGET_MODEL || DEFAULT_MODEL;
 }
@@ -61,6 +68,11 @@ export function defaultModel(env) {
 // callers should treat it as authoritative over the Worker's built-in
 // default. Shared by chat.js (applying it to an unset request) and
 // user-api.js (reporting it as /api/models' `default`).
+/**
+ * @param {{ default_model?: string }} config the admin site config
+ * @param {import('./types.js').ModelCatalogEntry[] | null | undefined} catalog
+ * @returns {boolean}
+ */
 export function adminDefaultModelValid(config, catalog) {
   return !!(config.default_model && catalog?.some((m) => m.id === config.default_model && m.up));
 }
@@ -71,6 +83,8 @@ export function adminDefaultModelValid(config, catalog) {
 // with `up: false` so the UI can show them greyed out — they become
 // selectable automatically once Berget brings them back. Cached per isolate
 // to keep /api/models and per-request validation cheap.
+/** @typedef {{ at: number, list: import('./types.js').ModelCatalogEntry[] | null, raw: any[] | null }} ModelsCache */
+/** @type {ModelsCache} */
 let modelsCache = { at: 0, list: null, raw: null };
 const MODELS_TTL_MS = 5 * 60 * 1000;
 
@@ -78,6 +92,10 @@ const MODELS_TTL_MS = 5 * 60 * 1000;
 // shape the UI and validation consume) and `raw` (every catalog entry as
 // Berget returns it — needed to price non-chat models like the embedding
 // model, which the text-only filter below would otherwise hide).
+/**
+ * @param {import('./types.js').Env} env
+ * @returns {Promise<ModelsCache>}
+ */
 async function fetchCatalog(env) {
   if (modelsCache.list && Date.now() - modelsCache.at < MODELS_TTL_MS) {
     return modelsCache;
@@ -87,7 +105,7 @@ async function fetchCatalog(env) {
   });
   if (!resp.ok) throw new Error(`Berget models fetch failed (${resp.status})`);
   const data = await resp.json();
-  const raw = Array.isArray(data.data) ? data.data : [];
+  const raw = /** @type {any[]} */ (Array.isArray(data.data) ? data.data : []);
 
   const list = raw
     .filter(
@@ -111,6 +129,10 @@ async function fetchCatalog(env) {
   return modelsCache;
 }
 
+/**
+ * @param {import('./types.js').Env} env
+ * @returns {Promise<import('./types.js').ModelCatalogEntry[] | null>}
+ */
 export async function listModels(env) {
   return (await fetchCatalog(env)).list;
 }
@@ -119,10 +141,15 @@ export async function listModels(env) {
 // for quota accounting. Returns null (never throws) when the catalog is
 // unreachable or the model unknown: cost accounting degrades to zero-cost
 // rather than blocking the feature.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {string} id a model id or alias
+ * @returns {Promise<any | null>}
+ */
 export async function rawModelEntry(env, id) {
   try {
     const { raw } = await fetchCatalog(env);
-    return raw.find((m) => m.id === id || m.aliases?.includes(id)) || null;
+    return raw?.find((m) => m.id === id || m.aliases?.includes(id)) || null;
   } catch {
     return null;
   }
@@ -131,8 +158,13 @@ export async function rawModelEntry(env, id) {
 // "€0.30 in / €0.30 out per 1M tokens" — shown as a tooltip in the UI.
 // Exported for other providers' catalog builders (src/anthropic.js,
 // src/openai.js) so every dropdown entry formats identically.
+/**
+ * @param {{ input?: number, output?: number, currency?: string } | null | undefined} p
+ * @returns {string | null}
+ */
 export function formatPricing(p) {
   if (!p || typeof p.input !== "number" || typeof p.output !== "number") return null;
+  /** @param {number} v */
   const perM = (v) => (v * 1e6).toFixed(2).replace(/\.?0+$/, "");
   const cur = p.currency === "EUR" ? "€" : (p.currency || "") + " ";
   return `${cur}${perM(p.input)} in / ${cur}${perM(p.output)} out per 1M tokens`;
@@ -145,6 +177,7 @@ export function formatPricing(p) {
 // it only affects cost-accounting granularity, and admins tune budgets
 // around whatever rate is encoded here. Revisit if it drifts materially.
 export const USD_TO_EUR = 0.92;
+/** @param {number} usdPerMTok USD price per 1M tokens */
 export const eurPerTokenFromUsd = (usdPerMTok) => (usdPerMTok * USD_TO_EUR) / 1e6;
 
 // Starts a streaming chat completion. `model` overrides the default.
@@ -152,6 +185,12 @@ export const eurPerTokenFromUsd = (usdPerMTok) => (usdPerMTok * USD_TO_EUR) / 1e
 // The abort signal bounds only the time to receive a RESPONSE (headers) —
 // once fetch() settles the timer is cleared, so a legitimately long
 // stream can keep being read afterward without getting cut off mid-flight.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Conversation} messages
+ * @param {{ model?: string }} [opts]
+ * @returns {Promise<Response>}
+ */
 export function chatCompletion(env, messages, { model } = {}) {
   const payload = {
     model: model || defaultModel(env),
@@ -187,17 +226,35 @@ export function chatCompletion(env, messages, { model } = {}) {
 // downstream) opt in.
 //
 // Returns { text, usage, finishReason }.
+/**
+ * @typedef {object} StreamResult
+ * @property {string} text the accumulated answer text
+ * @property {any | null} usage merged token-usage chunk, if the backend sent one
+ * @property {string | null} finishReason the OpenAI finish_reason, if seen
+ */
+/**
+ * @param {ReadableStream<Uint8Array>} body an OpenAI-style SSE response body
+ * @param {(chunk: string) => void} onText called with each text delta
+ * @param {{ idleMs?: number, maxMs?: number }} [guards] opt-in idle/total budgets (0 = off)
+ * @returns {Promise<StreamResult>}
+ */
 export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } = {}) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
+  /** @type {any | null} */
   let usage = null;
+  /** @type {string | null} */
   let finishReason = null;
   const startedAt = Date.now();
 
+  // One reader.read(), optionally raced against the idle/total budgets. When
+  // both guards are off it is a plain read; otherwise a tripped budget cancels
+  // the reader and throws a normal, catchable error.
   const nextChunk = async () => {
     if (!idleMs && !maxMs) return reader.read();
+    /** @type {number[]} */
     const budgets = [];
     if (idleMs) budgets.push(idleMs);
     if (maxMs) budgets.push(maxMs - (Date.now() - startedAt));
@@ -206,16 +263,19 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
       reader.cancel().catch(() => {});
       throw new Error(`Model stream exceeded its ${maxMs}ms total budget — treating as hung`);
     }
+    /** @type {any} */
     let timer;
     try {
       return await Promise.race([
         reader.read(),
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Model stream produced nothing for ${waitMs}ms — treating as hung`)),
-            waitMs,
-          );
-        }),
+        /** @type {Promise<never>} */ (
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Model stream produced nothing for ${waitMs}ms — treating as hung`)),
+              waitMs,
+            );
+          })
+        ),
       ]);
     } catch (err) {
       reader.cancel().catch(() => {});
@@ -230,7 +290,7 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
-    buffer = lines.pop();
+    buffer = /** @type {string} */ (lines.pop());
 
     for (const line of lines) {
       if (!line.startsWith("data:")) continue;
@@ -277,6 +337,12 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
 // (callers must fall back gracefully; a broken helper phase must never break
 // the chat). diagnostics is metadata only (no content) for per-model
 // observability: how the JSON was obtained and whether output was truncated.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Conversation} messages
+ * @param {{ model?: string, maxTokens?: number }} [opts]
+ * @returns {Promise<{ value: any, usage: any | null, diagnostics: { parse_mode: string, finish_reason: string | null, content_length: number } }>}
+ */
 export async function completeJson(env, messages, { model, maxTokens = 900 } = {}) {
   const resp = await fetch(chatUrl(env), {
     method: "POST",
@@ -317,9 +383,13 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
 // the whole string parsed as-is, "repaired" when a balanced {...} object had
 // to be extracted from surrounding text, "failed" when neither worked.
 // Exported for other providers' JSON completions (src/anthropic.js).
+/**
+ * @param {unknown} s a model's raw output (possibly prose-wrapped JSON)
+ * @returns {{ value: any, parseMode: "strict" | "repaired" | "failed" }}
+ */
 export function parseLooseJson(s) {
   try {
-    return { value: JSON.parse(s), parseMode: "strict" };
+    return { value: JSON.parse(/** @type {string} */ (s)), parseMode: "strict" };
   } catch {
     // fall through to embedded-object extraction
   }
@@ -341,6 +411,12 @@ export function parseLooseJson(s) {
 // project once (see the round 2 note above).
 const EMBED_TIMEOUT_MS = 60_000;
 
+/**
+ * @param {import('./types.js').Env} env
+ * @param {string[]} texts
+ * @param {{ model?: string }} [opts]
+ * @returns {Promise<{ vectors: any[], usage: any | null, model: string }>}
+ */
 export async function embedTexts(env, texts, { model } = {}) {
   const resp = await fetch(embeddingsUrl(env), {
     method: "POST",
@@ -376,6 +452,10 @@ export async function embedTexts(env, texts, { model } = {}) {
 // braces inside quoted strings don't throw off the depth count. Safer than a
 // greedy regex when a model emits more than one JSON-shaped chunk (e.g.
 // reasoning prose containing an example object, followed by the real one).
+/**
+ * @param {string} s
+ * @returns {string | null} the first balanced `{…}` substring, or null
+ */
 function extractFirstBalancedObject(s) {
   const start = s.indexOf("{");
   if (start < 0) return null;

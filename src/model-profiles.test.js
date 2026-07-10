@@ -1,3 +1,5 @@
+// Unit tests for model-profiles.js: DEFAULT/override merging and the
+// clone-not-share deep copy of the nested lookup fields.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { getModelProfile } from "./model-profiles.js";

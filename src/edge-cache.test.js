@@ -1,3 +1,5 @@
+// Unit tests for edge-cache.js's fail-soft Workers Cache get/put helpers,
+// exercised against a mocked Cache API.
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
 

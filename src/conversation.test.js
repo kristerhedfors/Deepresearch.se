@@ -1,3 +1,5 @@
+// Unit tests for conversation.js: the message-array/content helpers (text
+// view, image counting, last/previous user turn, non-mutating appenders).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage } from "./conversation.js";

@@ -1,3 +1,5 @@
+// Unit tests for validation.js: message/image caps, model + vision
+// resolution, and the image-location / Street View POV / map-view sanitizers.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { validateMessages, resolveModel, validateImageLocations, validateMapView, validateStreetViewPov } from "./validation.js";

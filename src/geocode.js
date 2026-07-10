@@ -1,3 +1,4 @@
+// @ts-check
 // Reverse geocoding via OpenStreetMap's Nominatim — resolves a photo's GPS
 // EXIF coordinates (extracted client-side by public/js/exif.js) into a
 // human-readable place name. Raw decimal coordinates alone are of little
@@ -24,6 +25,13 @@ const GENERIC_USER_AGENT = "geocode-client/1.0";
 // Returns a human-readable place name or null on any failure/timeout —
 // fails soft, same as every other helper phase in this pipeline: a photo's
 // location is enrichment, never a hard requirement for the chat to work.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {Promise<string | null>} a place name, or null on any failure
+ */
 export async function reverseGeocode(env, log, lat, lon) {
   try {
     const url = `${REVERSE_URL}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=0`;
@@ -38,7 +46,7 @@ export async function reverseGeocode(env, log, lat, lon) {
     const data = await resp.json();
     return typeof data?.display_name === "string" && data.display_name ? data.display_name : null;
   } catch (err) {
-    log.warn("geocode.error", { error: err?.message || String(err) });
+    log.warn("geocode.error", { error: /** @type {any} */ (err)?.message || String(err) });
     return null;
   }
 }
@@ -59,6 +67,14 @@ export async function reverseGeocode(env, log, lat, lon) {
 // when there's no photo location to resolve, so an ordinary question shows
 // no spurious step. `emit` is optional — a plain no-op keeps the function
 // usable/testable outside the SSE path.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {((event: import('./types.js').SseEvent) => void) | undefined} emit optional SSE emitter
+ * @param {import('./types.js').Conversation} conversation
+ * @param {any} rawLocations untrusted client-reported photo GPS coordinates
+ * @returns {Promise<import('./types.js').Conversation>}
+ */
 export async function augmentWithLocations(env, log, emit, conversation, rawLocations) {
   const locations = validateImageLocations(rawLocations);
   if (!locations.length) return conversation;
@@ -88,5 +104,5 @@ export async function augmentWithLocations(env, log, emit, conversation, rawLoca
     "\n\n--- Resolved location(s) (via OpenStreetMap Nominatim) ---\n" +
     details.join("\n") +
     "\n--- End of resolved location(s) ---";
-  return withAppendedText(conversation, block);
+  return /** @type {import('./types.js').Conversation} */ (withAppendedText(conversation, block));
 }

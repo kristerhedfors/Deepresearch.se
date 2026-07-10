@@ -1,3 +1,5 @@
+// Unit tests for berget.js's consumeChatStream: OpenAI-style SSE parsing and
+// the opt-in idle/total stream guards.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
