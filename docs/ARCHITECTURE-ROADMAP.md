@@ -10,19 +10,28 @@ Written against the codebase as of 2026-07: ~16K lines of dependency-free
 plain JS (48 Worker modules in `src/`, 35 client modules in `public/js/`),
 no build step, deployed by `npx wrangler deploy` / git-connected push.
 
+> **Status update (2026-07-09).** Much of this document has since shipped
+> — per-section **Status** notes below record what, verified in code:
+> type checking (§2), the enrichment registry AND the `/mcp` server (§3),
+> the skills restructure (§4), the scored benchmarks (§5.0), and a
+> hand-rolled schema validator (§7). §§5.1/5.2/5.4 were built, benchmarked,
+> found net-negative, and switched OFF behind a flag — the benchmark-first
+> discipline this document argued for, working exactly as intended.
+> §5.3, §5.5 (full form) and §6 remain open.
+
 ---
 
 ## 0. Executive summary
 
-| Question | Verdict |
-|---|---|
-| Switch to TypeScript? | **Half-yes**: type-*check* everything now (JSDoc + `tsc --noEmit`, zero build step); consider full `.ts` for `src/` only later, via wrangler's built-in bundling. Never transpile the client. |
-| Switch to MCP exclusively for integrations? | **No** as internal plumbing — it would re-introduce the model-driven tool selection this pipeline deliberately removed. **Yes** as a *product surface*: expose DeepResearch itself as an MCP server. Internally, formalize the enrichment pattern the integrations already share. |
-| Move logic into skills? | **Yes** — for the *development* system, not the Worker. CLAUDE.md has grown into a ~10K-word monolith; restructure into a slim invariants file plus on-demand `.claude/skills/`. |
-| Biggest single lever for answer quality? | **Scored evaluation.** The model-eval harness collects data read by hand; it cannot hillclimb. Add an LLM-judged benchmark with tracked scores before adding pipeline sophistication. |
-| Biggest pipeline upgrades? | Research-notes compression, full-content fetch for top sources, outline-first synthesis at large budgets, claim-level validation — all expressible in the existing deterministic no-function-calling style. |
-| Biggest platform move? | **Cloudflare Workflows** (durable execution) when research runs grow past the current envelope — it would replace the hand-built answers-table + heartbeat + `waitUntil` recovery machinery with platform-level durability. Not urgent; the current machinery is battle-tested. |
-| New libraries? | Very few, deliberately: a tiny schema validator (Valibot or hand-rolled) for the JSON phases, `@cloudflare/workers-types` + `wrangler types` for typing. Skip Hono, skip generic LLM SDKs, skip agent frameworks. |
+| Question | Verdict | Status (2026-07-09) |
+|---|---|---|
+| Switch to TypeScript? | **Half-yes**: type-*check* everything now (JSDoc + `tsc --noEmit`, zero build step); consider full `.ts` for `src/` only later, via wrangler's built-in bundling. Never transpile the client. | **Shipped (step 1)** — `tsconfig.json`, `npm run typecheck`, `src/types.d.ts`, opt-in `// @ts-check` files |
+| Switch to MCP exclusively for integrations? | **No** as internal plumbing — it would re-introduce the model-driven tool selection this pipeline deliberately removed. **Yes** as a *product surface*: expose DeepResearch itself as an MCP server. Internally, formalize the enrichment pattern the integrations already share. | **Shipped, both halves** — `src/enrichment.js` + `src/search-sources.js` registries; `POST /mcp` (`src/mcp.js`) |
+| Move logic into skills? | **Yes** — for the *development* system, not the Worker. CLAUDE.md has grown into a ~10K-word monolith; restructure into a slim invariants file plus on-demand `.claude/skills/`. | **Shipped** — 17 skills in `.claude/skills/`, slim CLAUDE.md |
+| Biggest single lever for answer quality? | **Scored evaluation.** The model-eval harness collects data read by hand; it cannot hillclimb. Add an LLM-judged benchmark with tracked scores before adding pipeline sophistication. | **Shipped** — `tests/eval-bench.mjs` + `tests/hf-bench.mjs` + ledgers |
+| Biggest pipeline upgrades? | Research-notes compression, full-content fetch for top sources, outline-first synthesis at large budgets, claim-level validation — all expressible in the existing deterministic no-function-calling style. | **Built, benchmarked, disabled** (notes/full-content/claim-level — see §5.1/5.2/5.4); outline-first not built |
+| Biggest platform move? | **Cloudflare Workflows** (durable execution) when research runs grow past the current envelope — it would replace the hand-built answers-table + heartbeat + `waitUntil` recovery machinery with platform-level durability. Not urgent; the current machinery is battle-tested. | **Not adopted** — no trigger condition arrived |
+| New libraries? | Very few, deliberately: a tiny schema validator (Valibot or hand-rolled) for the JSON phases, `@cloudflare/workers-types` + `wrangler types` for typing. Skip Hono, skip generic LLM SDKs, skip agent frameworks. | **Shipped** — hand-rolled validator (`src/schema.js`); `typescript` + `@cloudflare/workers-types` as dev-deps only |
 
 ---
 
@@ -67,6 +76,13 @@ production finding rather than a preference.
 **Verdict: adopt type *checking* now, without a build step. Defer full
 TypeScript, and scope it to `src/` only if it ever happens. The client
 stays plain JS forever.**
+
+> **Status: step 1 shipped.** `tsconfig.json` (strict, `allowJs`,
+> `noEmit`; adoption is per-file via `// @ts-check` rather than global
+> `checkJs`), `npm run typecheck`, `typescript` +
+> `@cloudflare/workers-types` as the repo's only dev-deps, and a
+> hand-written `src/types.d.ts` for the seam types. Steps 2–3 remain as
+> written: no `.ts` renames, no client transpilation.
 
 ### The real constraint
 
@@ -138,6 +154,16 @@ step 1 is reversible by deleting two files.
 **Verdict: do not rebuild the internal integrations on MCP. Formalize the
 internal "enrichment" contract they already share. Separately — and much
 more interestingly — expose DeepResearch itself *as* an MCP server.**
+
+> **Status: shipped, both halves.** The enrichment contract is codified as
+> the `ENRICHMENTS` registry in `src/enrichment.js` (Shodan + Google Maps;
+> `pipeline.js` calls `runEnrichments()` once and never names an
+> enrichment), and search-phase sources got the same treatment in
+> `src/search-sources.js` (Hugging Face Hub is the first entry). The MCP
+> server exists at `POST /mcp` (`src/mcp.js`): hand-rolled Streamable
+> HTTP / JSON-RPC 2.0 exactly as sketched below — one `deep_research`
+> tool, wired after the identity gate so it inherits the site's access
+> control and usage recording.
 
 ### Why not MCP internally
 
@@ -222,6 +248,14 @@ lacks only a transport:
 CLAUDE.md plus on-demand skills. This is about the *development* loop,
 not the Worker.**
 
+> **Status: shipped.** `.claude/skills/` now holds 17 skills — including
+> every one proposed below (`model-eval`, `storage-privacy`,
+> `sse-protocol`, `live-verify`, and the enrichment how-to as
+> `add-research-source`) plus ones this document didn't foresee
+> (`chat-logs`, `feedback-loop`, `tokemon-game`, `add-llm-provider`, …) —
+> and CLAUDE.md is the slim invariants-plus-layout file with one-line
+> pointers into each. The boundary held: no product logic lives in skills.
+
 CLAUDE.md is now a ~10,000-word monolith: architecture, six integration
 guides, storage/encryption design, SSE protocol, testing conventions,
 deploy gotchas, incident history. Every session pays its full token cost
@@ -280,6 +314,15 @@ JSON-phase idiom*. No function calling required.
 
 ### 5.0 Measure first: scored evaluation
 
+> **Status: shipped.** Two scored benchmarks now sit beside the model-eval
+> harness: `tests/eval-bench.mjs` (LLM-judged rubric scores on ~27 fixed
+> synthetic questions, ledger `tests/EVAL-BENCH-FINDINGS.md`) and
+> `tests/hf-bench.mjs` (accuracy against external gold-answer HF question
+> sets chosen for low contamination, ledger `tests/HF-BENCH-FINDINGS.md`),
+> plus `tests/denoise-driver.mjs` for multi-sample A/Bs. They immediately
+> earned their keep: the §5.1/5.2/5.4 phases below were merged, measured,
+> found net-negative, and switched off on the numbers.
+
 **This is the highest-leverage item in this document.** `model-eval.mjs`
 collects raw SSE traces "read and analyzed by hand" — excellent for
 finding integration bugs (its track record: timeouts, injection,
@@ -308,6 +351,16 @@ gain here):
 
 ### 5.1 Research memory: notes compression between rounds
 
+> **Status: built, then disabled on the evidence.** Implemented as
+> `src/notes.js` + the `maybeDigest` phase in `pipeline.js`, exactly the
+> `{claim, source_ids, entities, contradicts?}` shape below — but the
+> de-noised benchmark found the notes/full-content/claim-level trio
+> NET-NEGATIVE at the deep tier (2.65 off → 2.43 on, with real regressions
+> on focused questions and no real multi-hop gain), so all three are
+> gated off behind `DEEP_TIER_FEATURES_ENABLED = false` in `src/budget.js`
+> pending an intent-gated (triage-decided, not budget-decided) rework.
+> The code and schema hardening remain.
+
 Today the source registry accumulates raw highlights and synthesis eats
 it whole (bounded by `sourceDigest`). At generous budgets this is the
 binding constraint: more searches ≠ more *usable* context. Add a budgeted
@@ -322,6 +375,12 @@ as one more phase type.
 
 ### 5.2 Full-content fetch for the sources that matter
 
+> **Status: built, then disabled** — `fetchContents` in `src/exa.js`
+> (Exa `/contents`, edge-cached, cost-accounted via
+> `CONTENTS_COST_MULTIPLIER`), gated by `wantsFullContent` and switched
+> off by the same `DEEP_TIER_FEATURES_ENABLED` flag as §5.1, for the
+> same benchmark reason.
+
 Highlights are token-efficient but shallow — a genuinely deep run should
 *read* its best sources. After the gap rounds, a budget-gated step fetches
 full text for the top 2–4 registry sources via Exa's `/contents` endpoint
@@ -330,6 +389,8 @@ notes (§5.1). Gate it to the ≥240s tiers alongside `searchDepth`, and
 account its cost the same way deep search tiers already are.
 
 ### 5.3 Outline-first synthesis at large budgets
+
+> **Status: not built.**
 
 A 10-minute run currently ends in the same single-pass synthesis as a
 15-second one, subject to one `max_tokens` ceiling and one chance at
@@ -343,6 +404,12 @@ untouched.
 
 ### 5.4 Claim-level validation
 
+> **Status: built, then disabled** — the per-claim path exists in
+> `pipeline.js`'s `runValidation` (`claimExtractionPrompt` /
+> `claimVerifyPrompt`), gated by `wantsClaimValidation` and switched off
+> by the same flag as §5.1/5.2. Tight budgets still run the cheap
+> single-pass validate, as before.
+
 Validation is one JSON pass over the whole draft — coarse, and its
 all-or-nothing `revise` is expensive UX (`discard_text` throws away a
 full stream). Evolve to: extract check-worthy claims (JSON), verify each
@@ -352,6 +419,15 @@ naturally with §5.3's sections). Same fail-soft rule: any failure
 degrades to accepting the draft.
 
 ### 5.5 Sub-question decomposition at the top tier
+
+> **Status: shipped in a lighter form.** Triage now emits `subquestions`
+> (threaded into the gap-check and synthesis prompts so coverage is
+> audited against each) and a `complexity` classification that caps
+> research depth BELOW the budget for simple questions
+> (`applyComplexityToPlan` in `src/budget.js` — the de-noised benchmark
+> found over-researching simple questions net-negative). The full form
+> below — concurrent bounded mini-pipelines per sub-question — remains
+> unbuilt.
 
 For the most generous budgets, triage can already produce multi-angle
 plans; the next step is letting it produce *sub-questions*, each running
@@ -371,6 +447,11 @@ then §5.5 — each merged only when the benchmark says it earned it.
 ---
 
 ## 6. Platform: Cloudflare Workflows, Durable Objects, and the recovery machinery
+
+> **Status: not adopted** — none of the trigger conditions below has
+> arrived; the hand-built recovery machinery (answers table, heartbeat,
+> stale-run detection, client stall watchdog) remains in place and
+> battle-tested.
 
 A striking amount of hard-won code exists because a long research run
 lives inside one fragile isolate: `ctx.waitUntil` survival, the D1
@@ -414,8 +495,8 @@ project doesn't want to own. Assessed against that bar:
 
 | Library | Verdict | Reasoning |
 |---|---|---|
-| `typescript` + `@cloudflare/workers-types` (dev) | **Adopt** | §2. Dev-only, zero runtime/deploy footprint, checked-JSDoc mode. `wrangler types` for `Env`. |
-| Schema validation — Valibot (~1KB core) or hand-rolled | **Adopt the pattern, maybe not the package** | Every JSON phase hand-parses model output (`normalizeTriage` and friends). Declaring the triage/gap/validate/settings shapes once — and validating with clear errors — hardens the exact boundary (model JSON → pipeline) this project's bugs come from, and doubles as the `SseEvent`/`Settings` source of truth for §2. Valibot tree-shakes to ~kB and has zero runtime deps of its own; if even that is too much, the same *contract* can be hand-rolled. Pair with Berget's structured-output / JSON-schema mode where models support it, validator behind it as the fail-soft net. |
+| `typescript` + `@cloudflare/workers-types` (dev) | **Adopt** — *adopted* | §2. Dev-only, zero runtime/deploy footprint, checked-JSDoc mode. |
+| Schema validation — Valibot (~1KB core) or hand-rolled | **Adopt the pattern, maybe not the package** — *hand-rolled shipped as `src/schema.js` (lenient, never throws, behind the existing fail-soft fallbacks)* | Every JSON phase hand-parses model output (`normalizeTriage` and friends). Declaring the triage/gap/validate/settings shapes once — and validating with clear errors — hardens the exact boundary (model JSON → pipeline) this project's bugs come from, and doubles as the `SseEvent`/`Settings` source of truth for §2. Valibot tree-shakes to ~kB and has zero runtime deps of its own; if even that is too much, the same *contract* can be hand-rolled. Pair with Berget's structured-output / JSON-schema mode where models support it, validator behind it as the fail-soft net. |
 | Content extraction (readability / HTML→text) | **Only if §5.2 can't use Exa `/contents`** | Prefer Exa's own contents endpoint first — same key, same client, no new dependency. Reach for a standalone extractor only if full-text reading needs sources Exa can't fetch, and weigh its bundle size against the Worker's cold-start budget. |
 | Hono / a router framework | **Skip** | `index.js`'s hand-rolled router is small, readable, and correct. A framework tidies syntax and buys nothing the routing table needs. |
 | Vercel AI SDK / OpenAI client / LangChain / LangGraph / Agents SDK | **Skip** | All assume model-driven control flow or agentic loops — the exact shape §1 rules out. The `fetch` calls in `berget.js`/`exa.js` are thin, own their timeouts and stream-loop invariants, and are the reason the hard-won bug fixes (missing `finish_reason`, `STREAM_MAX_CHARS`, connect timeouts) live where they can be seen. A framework would hide them. |
