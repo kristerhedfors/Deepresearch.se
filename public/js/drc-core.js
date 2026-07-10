@@ -50,7 +50,9 @@ export {
 };
 
 export const DRC_STATE_KIND = "deepresearch-free-project";
-export const DRC_STATE_V = 2; // v2 moved the provider keys into the sealed state
+// v2 moved the provider keys into the sealed state; v3 added the client-
+// side RAG index (rag — drc-rag.js), sealed like everything else.
+export const DRC_STATE_V = 3;
 
 // ---- derivation ---------------------------------------------------------------
 
@@ -92,10 +94,11 @@ export async function deriveDrcProfile(secret) {
 // ---- the project state --------------------------------------------------------
 
 // {v, kind, updatedAt, keys: {openai?, groq?}, providerId?, model?,
-//  research, conversations: [{id, title, messages, createdAt, updatedAt}]}
-// — everything the page persists, the provider API keys included, sealed
-// as one blob under blobKey. Conversations are plain {role, content} text
-// turns.
+//  research, conversations: [{id, title, messages, createdAt, updatedAt}],
+//  rag: {embedder?, docs: []}}
+// — everything the page persists, the provider API keys AND the RAG index
+// (chunk text + vectors, drc-rag.js) included, sealed as one blob under
+// blobKey. Conversations are plain {role, content} text turns.
 export function emptyDrcState() {
   return {
     v: DRC_STATE_V,
@@ -106,6 +109,7 @@ export function emptyDrcState() {
     model: null,
     research: true,
     conversations: [],
+    rag: { docs: [] },
   };
 }
 
@@ -114,7 +118,7 @@ export function validateDrcState(s) {
   const ok = !!(
     s &&
     typeof s === "object" &&
-    (s.v === 1 || s.v === DRC_STATE_V) && // v1 blobs (no keys field) still open
+    (s.v === 1 || s.v === 2 || s.v === DRC_STATE_V) && // older blobs still open
     s.kind === DRC_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
@@ -125,7 +129,11 @@ export function validateDrcState(s) {
         c.messages.every((m) => m && typeof m.role === "string" && typeof m.content === "string"),
     )
   );
-  return ok && (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys)));
+  return (
+    ok &&
+    (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys))) &&
+    (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs)))
+  );
 }
 
 /** Upgrades any accepted stored shape to the current one, in place. */
@@ -134,6 +142,7 @@ export function migrateDrcState(s) {
   if (!s.keys || typeof s.keys !== "object") s.keys = {};
   if (s.research === undefined) s.research = true;
   if (s.providerId === undefined) s.providerId = null;
+  if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
   return s;
 }
 

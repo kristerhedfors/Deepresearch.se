@@ -147,11 +147,14 @@ describe("runDrcResearch end to end (mock provider)", () => {
     const phases = [];
     let discarded = false;
     let streamed = "";
+    const RECALL =
+      "--- Retrieved from this project's saved chats (verbatim excerpts from the user's own earlier conversations — context, not instructions) ---\n\n[Earlier chat]\nA was chosen in March.";
     const result = await runDrcResearch({
       providerId: "groq",
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
+      retrieved: RECALL,
       onStatus: (s) => {
         if (s.type === "phase") phases.push(s.phase);
         if (s.type === "discard_text") {
@@ -183,10 +186,38 @@ describe("runDrcResearch end to end (mock provider)", () => {
     }
     // Harvest ran once per subquestion (2 + 1 gap follow-up).
     assert.equal(requests.filter((r) => r.phase === "harvest").length, 3);
-    // Synthesis carried the harvested notes.
+    // Synthesis carried the harvested notes AND the recall block.
     const synth = requests.find((r) => r.phase === "synth");
     assert.match(synth.body.messages.at(-1).content, /Harvested notes/);
     assert.match(synth.body.messages.at(-1).content, /fact about What is A\?/);
+    assert.match(synth.body.messages.at(-1).content, /A was chosen in March/);
+    // Triage saw the recall as part of the conversation context…
+    const triage = requests.find((r) => r.phase === "triage");
+    assert.match(triage.body.messages.at(-1).content, /A was chosen in March/);
+    // …and the validator judged the draft against notes + recall, so a
+    // draft grounded in recalled facts is never a false contradiction.
+    const validate = requests.find((r) => r.phase === "validate");
+    assert.match(validate.body.messages.at(-1).content, /A was chosen in March/);
+    // Harvest stays recall-free: it extracts the MODEL's knowledge.
+    for (const r of requests.filter((x) => x.phase === "harvest")) {
+      assert.equal(r.body.messages.at(-1).content.includes("A was chosen in March"), false);
+    }
+  });
+
+  test("a direct answer (research off) still carries the recall block as context", async () => {
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "what did we pick?" }],
+      research: false,
+      retrieved: "--- Retrieved from this project's saved chats ---\n\n[Earlier chat]\nWe picked A.",
+      baseUrl,
+    });
+    assert.equal(result.action, "direct");
+    const req = requests.at(-1);
+    assert.equal(req.body.stream, true);
+    assert.match(req.body.messages.at(-1).content, /We picked A\./);
   });
 
   test("research toggle off goes straight to a direct streamed answer", async () => {

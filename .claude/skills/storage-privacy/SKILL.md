@@ -8,7 +8,7 @@ description: >-
   projects, the secret-keyed project vault (store/load a project with a
   DR1-… secret), DRC — "deep research secure", the client-side public tier
   at /cure (the root redirects there; /my/project-<hash>; public/cure/,
-  public/js/drc-core.js, drc-providers.js, drc-research.js, drc-store.js:
+  public/js/drc-core.js, drc-providers.js, drc-rag.js, drc-research.js, drc-store.js:
   no-account deep research with DIRECT browser→provider calls on user keys
   — OpenAI + Groq, the CORS-capable providers — and BROWSER-LOCAL sealed
   storage; the server is in no DRC data path), or the
@@ -399,16 +399,34 @@ The two product tiers, named by the .se wordplay (2026-07-10 directive):
   /rver; the PWA manifest starts there.
 
 DRC's modularity is the design requirement: the page
-(`public/cure/index.html` + `drc.js` + `drc.css`) is wiring over four
+(`public/cure/index.html` + `drc.js` + `drc.css`) is wiring over five
 self-contained, Node-tested modules — `public/js/drc-core.js` (one
 master secret → HKDF-derived reference/blob id/blob key; the sealed
 state; NOTE: the HKDF info strings and state-kind constant are frozen
-pre-rename "free" values — changing them breaks existing secrets),
-`drc-providers.js` (the CORS-capable provider registry: OpenAI + Groq
-ONLY — providers without browser CORS can't join, that's the admission
-ticket), `drc-research.js` (the client-side pipeline: triage → parallel
-knowledge harvest → gap audit → streamed synthesis → validation, the
-pipeline invariants held client-side), and `drc-store.js` (the storage
+pre-rename "free" values — changing them breaks existing secrets;
+state v3 added the `rag` section), `drc-providers.js` (the CORS-capable
+provider registry: OpenAI + Groq ONLY — providers without browser CORS
+can't join, that's the admission ticket; also the `embed` entry +
+`drcEmbed` — browser-direct embeddings on the user's OpenAI key,
+`text-embedding-3-small` dimension-reduced to 512, chosen for send-path
+latency and the localStorage quota; Groq has no embeddings endpoint),
+`drc-rag.js` (DRC's client-side RAG over conversations and projects:
+each chat incrementally indexed after every exchange — only new turns
+embed — and each send retrieves top-k across the project's chats,
+siblings in full, the current chat only outside the recent-turns
+window, into a context-not-instructions recall block; the index rests
+INSIDE the sealed state, so chunk text and vectors are ciphertext at
+rest — deliberately STRICTER than DRS's readable-when-indexed
+exception, because retrieval happens in the tab that already holds the
+decrypted state and no server ever needs the plaintext; embedder
+mismatch wipes + lazily re-indexes; size caps + LRU-doc eviction hold
+the index inside the quota; a Groq-only session simply runs without
+RAG, fail-soft), `drc-research.js` (the client-side pipeline: triage →
+parallel knowledge harvest → gap audit → streamed synthesis →
+validation, the pipeline invariants held client-side; the recall block
+threads through triage/synthesis/validation as context, never into
+harvest, and is never persisted into the conversation), and
+`drc-store.js` (the storage
 SEAM: sealed-state bytes in localStorage, injectable backend — a future
 remote adapter slots in here, it is not a rewrite).
 

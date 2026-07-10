@@ -46,7 +46,8 @@ import {
   sealDrcState,
   validateDrcState,
 } from "/js/drc-core.js";
-import { configuredDrcProviders, drcProvider, listDrcModels } from "/js/drc-providers.js";
+import { configuredDrcProviders, drcEmbed, drcEmbedProvider, drcProvider, listDrcModels } from "/js/drc-providers.js";
+import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { renderMarkdownInto } from "/js/markdown.js";
@@ -476,6 +477,57 @@ function newChat() {
   closeDrawer();
 }
 
+// ---- client-side RAG (drc-rag.js): recall before the pipeline, index after ------------
+
+// The embedding hookup, when a key that can serve embeddings is stored
+// (OpenAI today — Groq has no embeddings endpoint). Returns null otherwise:
+// every caller degrades to the plain recent-turns context, silently.
+function embedHookup() {
+  const p = drcEmbedProvider(state.keys);
+  if (!p) return null;
+  return {
+    embedder: { provider: p.id, model: p.embed.model, dims: p.embed.dimensions },
+    embed: async (texts) => (await drcEmbed(p, state.keys[p.id], texts)).vectors,
+  };
+}
+
+// Top-k excerpts from the project's OTHER indexed chats (and this chat's
+// turns older than the context window) — one small embed call on the send
+// path; recall is a helper, so any failure means an empty block, never a
+// broken send.
+async function recallContext(conv, query) {
+  const hookup = embedHookup();
+  if (!hookup || !state.rag?.docs?.length) return "";
+  try {
+    phaseLine("Recalling project context…");
+    const rag = ensureDrcRag(state, hookup.embedder);
+    const { block } = await retrieveDrcContext({
+      rag,
+      convId: conv.id,
+      messageCount: conv.messages.length,
+      query,
+      embed: hookup.embed,
+    });
+    return block;
+  } catch {
+    return "";
+  }
+}
+
+// Index this conversation's not-yet-indexed turns into the sealed state —
+// runs AFTER the answer is rendered (perceived latency untouched) and
+// before the save, so vectors persist with the turns they index.
+async function indexExchange(conv) {
+  const hookup = embedHookup();
+  if (!hookup) return;
+  try {
+    const rag = ensureDrcRag(state, hookup.embedder);
+    await indexDrcChatTurns({ rag, conv, embed: hookup.embed });
+  } catch {
+    // srcMsgs only advances on success — the same turns retry next exchange
+  }
+}
+
 // ---- send: the client-side research pipeline -----------------------------------------
 
 async function send(ev) {
@@ -532,6 +584,8 @@ async function send(ev) {
   live.className = "msg assistant streaming";
   $("chat").appendChild(live);
 
+  const retrieved = await recallContext(conv, text);
+
   let shown = "";
   let errMsg = null;
   let result = null;
@@ -540,8 +594,9 @@ async function send(ev) {
       providerId,
       apiKey: state.keys[providerId],
       model,
-      messages: conv.messages.slice(-40),
+      messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
+      retrieved,
       onStatus: (s) => {
         if (s.type === "phase") {
           phaseLine(PHASE_LABELS[s.phase] || s.phase);
@@ -568,6 +623,7 @@ async function send(ev) {
     renderMarkdownInto(live, answer);
     conv.messages.push({ role: "assistant", content: answer });
     conv.updatedAt = Date.now();
+    await indexExchange(conv); // vectors join the state before it seals
     await saveState(); // sealed, browser-local
     if (!profile && !unsavedHintShown) {
       unsavedHintShown = true;
@@ -604,7 +660,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d5 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d6 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }

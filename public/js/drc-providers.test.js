@@ -8,6 +8,8 @@ import {
   extractJson,
   drcChatStream,
   drcCompleteJson,
+  drcEmbed,
+  drcEmbedProvider,
   drcProvider,
   listDrcModels,
 } from "./drc-providers.js";
@@ -21,6 +23,22 @@ test("the registry holds exactly the CORS-capable providers", () => {
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
+});
+
+test("the embedding config is the SMALL, dimension-reduced choice", () => {
+  // Latency + localStorage discipline: never the large embedding model.
+  const openai = drcProvider("openai");
+  assert.equal(openai.embed.model, "text-embedding-3-small");
+  assert.equal(openai.embed.dimensions, 512);
+  assert.equal(drcProvider("groq").embed, undefined); // Groq serves no /embeddings
+});
+
+test("drcEmbedProvider: the first embeddings-capable provider with a key", () => {
+  assert.equal(drcEmbedProvider({}), null);
+  assert.equal(drcEmbedProvider({ groq: "gsk" }), null); // a Groq-only session has no RAG
+  assert.equal(drcEmbedProvider({ openai: "sk" }).id, "openai");
+  assert.equal(drcEmbedProvider({ openai: "sk", groq: "gsk" }).id, "openai");
+  assert.equal(drcEmbedProvider({ openai: "" }), null);
 });
 
 test("configuredDrcProviders follows the stored keys", () => {
@@ -98,6 +116,19 @@ describe("provider calls over mock HTTP", () => {
         );
         return;
       }
+      if (req.url.endsWith("/embeddings")) {
+        const body = JSON.parse(raw);
+        // deliberately out of order — drcEmbed must sort by index
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            data: body.input
+              .map((_, i) => ({ index: i, embedding: [i + 0.5, 0, 0] }))
+              .reverse(),
+          }),
+        );
+        return;
+      }
       const body = JSON.parse(raw);
       if (body.stream) {
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -131,6 +162,24 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(req.headers.authorization, "Bearer good-key");
     assert.deepEqual(req.body.response_format, { type: "json_object" });
     assert.equal(req.body.model, "llama-3.1-8b-instant");
+  });
+
+  test("drcEmbed: small model + dimensions on the wire, vectors back in input order", async () => {
+    const openai = drcProvider("openai");
+    const { vectors, dims, model } = await drcEmbed(openai, "good-key", ["one", "two", "three"], { baseUrl });
+    assert.equal(model, "text-embedding-3-small");
+    assert.equal(dims, 3);
+    // the mock returned them reversed; drcEmbed re-sorts by index
+    assert.deepEqual(vectors.map((v) => v[0]), [0.5, 1.5, 2.5]);
+    const req = requests.at(-1);
+    assert.equal(req.url, "/v1/embeddings");
+    assert.equal(req.headers.authorization, "Bearer good-key");
+    assert.equal(req.body.model, "text-embedding-3-small");
+    assert.equal(req.body.dimensions, 512);
+    assert.equal(req.body.encoding_format, "float");
+    assert.deepEqual(req.body.input, ["one", "two", "three"]);
+    // a provider without an embed entry refuses up front
+    await assert.rejects(drcEmbed(drcProvider("groq"), "k", ["x"], { baseUrl }), /no embeddings/);
   });
 
   test("drcChatStream: returns the provider's SSE response as-is", async () => {

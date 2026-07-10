@@ -40,6 +40,12 @@ export const DRC_PROVIDERS = [
     modelFilter: (id) =>
       /^gpt-5\.\d/.test(id) && !/(audio|realtime|image|tts|transcribe|embedding|moderation|search|codex)/.test(id),
     params: (maxTokens) => ({ max_completion_tokens: maxTokens, reasoning_effort: "none" }),
+    // Client-side RAG's embedding config (drc-rag.js). Deliberately the
+    // SMALL model, dimension-reduced: DRC's index rests inside the sealed
+    // state in localStorage (quota ~5 MB) and the embed call sits on the
+    // send path, so latency and vector size beat the last few points of
+    // retrieval quality text-embedding-3-large would buy.
+    embed: { model: "text-embedding-3-small", dimensions: 512 },
   },
   {
     id: "groq",
@@ -59,6 +65,9 @@ export const DRC_PROVIDERS = [
       /^(llama-3\.3-|llama-3\.1-8b|llama-4|openai\/gpt-oss-|moonshotai\/kimi-k2|qwen)/.test(id) &&
       !/(whisper|tts|guard|embedding|allam)/i.test(id),
     params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed`: Groq serves no /embeddings endpoint, so a Groq-only
+    // session runs without client-side RAG (drc-rag.js degrades to the
+    // plain recent-turns context — fail-soft, never an error).
   },
 ];
 
@@ -69,6 +78,49 @@ export function drcProvider(id) {
 /** The providers the user has stored a key for. */
 export function configuredDrcProviders(keys) {
   return DRC_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
+}
+
+/**
+ * The provider whose key can serve embeddings (client-side RAG), or null —
+ * today that means OpenAI; a future embeddings-capable CORS provider joins
+ * by declaring an `embed` entry, with no caller change.
+ */
+export function drcEmbedProvider(keys) {
+  return DRC_PROVIDERS.find((p) => p.embed && typeof keys?.[p.id] === "string" && keys[p.id]) || null;
+}
+
+/**
+ * Embed texts straight from the browser on the user's key. Returns
+ * {vectors: number[][], dims, model}; throws on any failure (callers are
+ * fail-soft — RAG is a helper, never a reason a send breaks).
+ */
+export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl } = {}) {
+  if (!provider?.embed) throw new Error("This provider serves no embeddings.");
+  const timeout =
+    signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(30_000) : undefined);
+  const res = await fetch((baseUrl || provider.base) + "/embeddings", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + apiKey,
+    },
+    body: JSON.stringify({
+      model: provider.embed.model,
+      input: texts,
+      dimensions: provider.embed.dimensions,
+      encoding_format: "float",
+    }),
+    signal: timeout,
+  });
+  if (!res.ok) throw new Error(provider.label + " rejected the embedding request (" + res.status + ").");
+  const data = await res.json();
+  const vectors = (Array.isArray(data?.data) ? data.data : [])
+    .slice()
+    .sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))
+    .map((d) => d?.embedding)
+    .filter((v) => Array.isArray(v));
+  if (vectors.length !== texts.length) throw new Error(provider.label + " returned a mismatched embedding count.");
+  return { vectors, dims: vectors[0]?.length || 0, model: provider.embed.model };
 }
 
 // One OpenAI-compatible chat-completions payload; `json` asks for JSON mode

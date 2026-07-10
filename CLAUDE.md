@@ -253,8 +253,23 @@ strings/state-kind constant are frozen pre-rename values — Node-tested),
 `drc-providers.js` (the client-side provider registry: the CORS-capable
 providers ONLY — OpenAI and Groq, callable directly from the browser
 with the user's key; per-provider wire quirks, JSON mode, a fixed cheap
-`jsonModel` per provider, live `/models` with a static fallback —
-Node-tested over mock HTTP), `drc-research.js` (the deep-research
+`jsonModel` per provider, live `/models` with a static fallback, plus
+the per-provider `embed` entry + `drcEmbed` — browser-direct embeddings
+on the user's key: OpenAI `text-embedding-3-small` dimension-reduced to
+512, the deliberate small/fast/quota-friendly choice; Groq serves no
+embeddings endpoint, so a Groq-only session runs without RAG —
+Node-tested over mock HTTP), `drc-rag.js` (DRC's client-side RAG over
+conversations and projects: each chat is an incrementally-indexed doc —
+only not-yet-indexed turns embed, the chat-rag `srcMsgs` discipline —
+and each send retrieves top-k across the project's chats (siblings in
+full, the current chat only for turns outside the recent-turns window)
+into a labeled context-not-instructions recall block threaded through
+triage/synthesis/validation; the index — chunk text AND vectors — rests
+INSIDE the sealed state, ciphertext at rest (stricter than DRS's
+readable-when-indexed exception); an embedder change wipes + lazily
+re-indexes; per-doc/total chunk caps sized for the localStorage quota;
+pure over an injected embed fn, every call site fail-soft —
+Node-tested), `drc-research.js` (the deep-research
 pipeline PORTED TO THE BROWSER: triage → parallel knowledge HARVEST
 (the search wave's offline counterpart — no web search, the model's
 knowledge is the source pool and the prompts force that honesty) → gap
@@ -388,16 +403,24 @@ scoring incl. ungraded free-text handling, the completed-quiz summary
 block), `drc-core.js` (DRC's derivations: determinism,
 format-insensitive input, independence of every derived value —
 including from the vault's derivation for the same secret —
-sealed-state round-trip with the API keys unreadable in the stored
-form, v1→v2 migration, state validation), `drc-providers.js` (the
+sealed-state round-trip with the API keys AND the RAG chunk text
+unreadable in the stored form, v1/v2→v3 migration, state validation),
+`drc-providers.js` (the
 CORS-capable registry: per-provider wire quirks, JSON-mode payloads,
 lenient JSON extraction, model filters, live-vs-fallback catalog over
-mock HTTP), `drc-research.js` (the client-side pipeline: triage/notes
+mock HTTP, the embed config — small model, 512 dims, Groq has none —
+and `drcEmbed`'s wire shape/index-ordering over mock HTTP),
+`drc-rag.js` (DRC's client-side RAG: incremental chat indexing with
+srcMsgs advance-on-success-only, embedder-mismatch wipe, the
+recent-window exclusion for the current chat vs siblings-in-full,
+recall-block rendering/bounding, per-doc + total cap eviction order),
+`drc-research.js` (the client-side pipeline: triage/notes
 normalizers, prompt-structure assertions incl. the offline-honesty
 rules, and the FULL flow end to end against a mock provider —
 phase order, parallel harvest count, client-side split model routing,
 the user's key on every wire call, discard-and-replace revision,
-clarify short-circuit, triage fail-soft), `drc-store.js` (the
+clarify short-circuit, triage fail-soft, and the recall block threaded
+into triage/synthesis/validation but never harvest), `drc-store.js` (the
 browser-local storage adapter: round-trip over an injected backend,
 ciphertext-only at rest, listing, quota/corruption fail-soft),
 `vault.js`'s pure core (secret format/entropy/uniqueness, the
