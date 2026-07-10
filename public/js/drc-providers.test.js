@@ -53,15 +53,28 @@ test("extractJson forgives fences and prose, rejects garbage", () => {
   assert.equal(extractJson(""), null);
 });
 
-test("model filters keep chat models, drop the rest", () => {
+test("model filters are CURATED: recent language models only", () => {
   const openai = drcProvider("openai");
   assert.equal(openai.modelFilter("gpt-5.6-terra"), true);
-  assert.equal(openai.modelFilter("gpt-4o-audio-preview"), false);
+  assert.equal(openai.modelFilter("gpt-5.5"), true);
+  assert.equal(openai.modelFilter("gpt-5.4-mini"), true);
+  assert.equal(openai.modelFilter("gpt-5.5-nano"), true);
+  // legacy generations and non-chat modalities never show
+  assert.equal(openai.modelFilter("gpt-4o"), false);
+  assert.equal(openai.modelFilter("gpt-4o-mini"), false);
+  assert.equal(openai.modelFilter("gpt-3.5-turbo"), false);
+  assert.equal(openai.modelFilter("o3-mini"), false);
+  assert.equal(openai.modelFilter("gpt-5.5-audio-preview"), false);
   assert.equal(openai.modelFilter("text-embedding-3-large"), false);
   const groq = drcProvider("groq");
   assert.equal(groq.modelFilter("llama-3.3-70b-versatile"), true);
+  assert.equal(groq.modelFilter("llama-3.1-8b-instant"), true);
+  assert.equal(groq.modelFilter("openai/gpt-oss-120b"), true);
+  assert.equal(groq.modelFilter("moonshotai/kimi-k2-instruct"), true);
+  assert.equal(groq.modelFilter("llama-3.1-70b-versatile"), false); // superseded generation
   assert.equal(groq.modelFilter("whisper-large-v3"), false);
   assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
+  assert.equal(groq.modelFilter("gemma2-9b-it"), false);
 });
 
 describe("provider calls over mock HTTP", () => {
@@ -105,7 +118,7 @@ describe("provider calls over mock HTTP", () => {
   test("listDrcModels: live list filtered; fallback catalog on a rejected key", async () => {
     const groq = drcProvider("groq");
     const live = await listDrcModels(groq, "good-key", { baseUrl });
-    assert.deepEqual(live, ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]); // whisper filtered, sorted
+    assert.deepEqual(live, ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]); // whisper filtered, newest first
     const fallback = await listDrcModels(groq, "bad-key", { baseUrl });
     assert.deepEqual(fallback, groq.fallbackModels);
   });

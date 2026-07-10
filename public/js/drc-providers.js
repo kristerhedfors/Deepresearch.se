@@ -33,9 +33,12 @@ export const DRC_PROVIDERS = [
     // Shown until (or in place of) a live /models fetch; ids from the
     // server's static catalog (src/openai.js).
     fallbackModels: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4-mini"],
-    // Keep the live list to chat-capable text models.
+    // The dropdown is CURATED, not exhaustive (2026-07-10 directive):
+    // only the most recent language-model generation — gpt-5.x and its
+    // mini/nano variants — never legacy families (gpt-4*, gpt-3.5, o*)
+    // and never non-chat modalities.
     modelFilter: (id) =>
-      /^gpt-/.test(id) && !/(audio|realtime|image|tts|transcribe|embedding|moderation|search)/.test(id),
+      /^gpt-5\.\d/.test(id) && !/(audio|realtime|image|tts|transcribe|embedding|moderation|search|codex)/.test(id),
     params: (maxTokens) => ({ max_completion_tokens: maxTokens, reasoning_effort: "none" }),
   },
   {
@@ -49,7 +52,12 @@ export const DRC_PROVIDERS = [
       "openai/gpt-oss-120b",
       "openai/gpt-oss-20b",
     ],
-    modelFilter: (id) => !/(whisper|tts|guard|embedding|allam)/i.test(id),
+    // Same curation rule: the recent flagship + fast language models one
+    // would actually pick here, not Groq's whole zoo (no whisper/tts/
+    // guard/embedding, no older generations).
+    modelFilter: (id) =>
+      /^(llama-3\.3-|llama-3\.1-8b|llama-4|openai\/gpt-oss-|moonshotai\/kimi-k2|qwen)/.test(id) &&
+      !/(whisper|tts|guard|embedding|allam)/i.test(id),
     params: (maxTokens) => ({ max_tokens: maxTokens }),
   },
 ];
@@ -150,7 +158,8 @@ export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
     const ids = (Array.isArray(data?.data) ? data.data : [])
       .map((m) => m?.id)
       .filter((id) => typeof id === "string" && provider.modelFilter(id))
-      .sort();
+      .sort()
+      .reverse(); // newest generation first (gpt-5.6 above gpt-5.4)
     if (ids.length) return ids;
   } catch {
     // fall through to the static list
