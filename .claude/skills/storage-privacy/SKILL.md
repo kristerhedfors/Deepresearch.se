@@ -377,7 +377,11 @@ The two product tiers, named by the .se wordplay (2026-07-10 directive):
 - **DRC** — deepresearch.se/**cure** = "deep research SECURE"; the **C**
   also reads CLIENT-side. The public, no-account tier: minimal server
   components BY DESIGN, direct browser→provider model calls, and
-  BROWSER-LOCAL storage only. The root `/` 302s to `/cure`.
+  BROWSER-LOCAL storage only. The page is a look-and-feel TWIN of the
+  app in a KHAKI palette, with DRS-only features present as DIMMED
+  buttons that explain themselves and point to /rver. The root `/`
+  serves the promotional landing (which links /cure) to visitors and
+  302s signed-in arrivals to /rver.
 - **DRS** — deepresearch.se/**rver** = "deep research SERVER"; the **R**
   reads REMOTE, as in a remote cloud-server. The signed-in tier: the
   hosted pipeline, live web search, accounts, quotas, cloud storage —

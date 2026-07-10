@@ -246,9 +246,8 @@ async function route(request, env, url, log, ctx, requestId) {
   //       pipeline, web search, accounts, and cloud storage (handled in
   //       routeAuthed; unauthenticated visitors get the login page).
   // /free and /free/project-… are legacy aliases from DRC's free-mode era.
-  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") {
-    return { response: new Response(null, { status: 302, headers: { Location: "/cure" } }) };
-  }
+  // The root stays the PROMOTIONAL LANDING (public/welcome/) for visitors —
+  // it links both tiers; signed-in arrivals are forwarded to DRS below.
   if (
     (request.method === "GET" || request.method === "HEAD") &&
     (url.pathname === "/cure" ||
@@ -281,6 +280,14 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- everything else requires an identity ------------------------------
   const identity = await identify(request, env);
   if (!identity) {
+    // Visitors hitting the root get the promotional landing page (video,
+    // docs, build story, sign-in, and the DRC try-it-now link) rather
+    // than a bare login form.
+    if (url.pathname === "/" && request.method === "GET") {
+      return {
+        response: await serveAsset(request, env, url.origin + "/welcome/"),
+      };
+    }
     log.warn("auth.denied", { reason: "unauthenticated" });
     if (url.pathname.startsWith("/api/")) {
       return { response: jsonResponse({ error: "Authentication required." }, 401) };
@@ -352,10 +359,13 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   }
 
   // The signed-in app — DRS, "deep research SERVER" — lives at /rver (the
-  // URL wordplay above): serve the app shell there; the root redirects to
-  // DRC at /cure for everyone.
+  // URL wordplay above): serve the app shell there. A signed-in arrival at
+  // the root is forwarded home (the landing is for visitors).
   if ((url.pathname === "/rver" || url.pathname === "/rver/") && request.method === "GET") {
     return serveAsset(request, env, url.origin + "/");
+  }
+  if (url.pathname === "/" && request.method === "GET") {
+    return new Response(null, { status: 302, headers: { Location: "/rver" } });
   }
 
   return serveAsset(request, env);

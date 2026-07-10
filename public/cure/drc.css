@@ -1,68 +1,390 @@
-/* DRC — "deep research secure", the client-side tier at /cure — a
-   deliberately small, self-contained page: it must not pull the authed
-   app's (DRS, /rver) stylesheet or modules beyond the shared pure
-   primitives (vault/sse/markdown). Same visual family as the site: soft
-   blue glass on light, readable on small screens. */
-
+/* DRC — "deep research secure", the client-side tier at /cure.
+   DELIBERATELY a twin of the main app's look and feel (public/css/app.css
+   — the DRS app at /rver): same chrome, same shapes, same motion — but in
+   a KHAKI palette instead of the sky blue, so the tier is recognizable at
+   a glance. Feature buttons that exist only in DRS are present where the
+   app has them, dimmed (.drs), and explain themselves when tapped.
+   Self-contained on purpose: app.css is served behind auth and this page
+   must not depend on it. */
 :root {
-  --bg: #eef4fb;
-  --panel: rgba(255, 255, 255, .75);
-  --panel-2: rgba(255, 255, 255, .6);
-  --border: rgba(10, 46, 92, .18);
-  --text: #0a2e5c;
-  --muted: #5b708a;
-  --accent: #1769c2;
-  --warn: #8a4b00;
+  --bg: #c3b091;            /* khaki, where the app has sky blue */
+  --panel: #faf6e8;
+  --panel-2: #f0e9d2;
+  --border: #b3a26e;
+  --text: #3d3418;
+  --muted: #75683f;
+  --accent: #7c6a24;        /* dark olive, where the app has flag blue */
+  --ok: #157a4b;
+  --user: #ece1bd;
 }
-
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+html, body { height: 100%; margin: 0; overflow-x: hidden; }
+html { background: var(--bg); }
 body {
-  background: var(--bg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: transparent; /* waves live on body::before, behind content */
   color: var(--text);
-  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
-main { max-width: 720px; margin: 0 auto; padding: 1.2rem 1rem 4rem; }
-
-h1 { font-size: 1.5rem; margin: .6rem 0; }
-.lead { margin: .4rem 0 1rem; }
-.muted { color: var(--muted); font-size: .85rem; }
-.warn { color: var(--warn); font-weight: 600; font-size: .9rem; }
-.fineprint { color: var(--muted); font-size: .78rem; margin-top: 1.4rem; }
-.flex { flex: 1; }
-.row { display: flex; gap: .5rem; align-items: center; margin: .6rem 0; flex-wrap: wrap; }
-
-section { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 1rem 1.1rem; }
-[hidden] { display: none !important; }
-
-label { display: block; font-size: .82rem; font-weight: 600; margin: .6rem 0 .2rem; }
-input, textarea, select {
-  width: 100%; font: inherit; font-size: .92rem; color: var(--text);
-  padding: .5rem .65rem; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--panel-2);
+/* The app's drifting diagonal waves, khaki-toned. */
+body::before {
+  content: "";
+  position: fixed;
+  top: -200px; left: -200px; right: 0; bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, .06) 70px,
+    rgba(255, 255, 255, 0) 140px,
+    rgba(61, 52, 24, .045) 210px,
+    rgba(255, 255, 255, 0) 280px
+  );
+  animation: bg-drift 26s linear infinite;
 }
+@keyframes bg-drift {
+  to { transform: translate3d(198px, 198px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+
+/* Floating click-transparent chrome, exactly the app's pattern. */
+header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+#footer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.header-bar {
+  padding: .45rem 1rem .35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: .35rem;
+  background: transparent;
+}
+.brand {
+  align-self: center;
+  font-weight: 300;
+  font-size: .8rem;
+  letter-spacing: .03em;
+  text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
+  pointer-events: auto; /* unlike the app: tapping the brand reopens the intro */
+  cursor: pointer;
+}
+.brand-tier { color: var(--accent); font-weight: 500; }
+.header-right, #composer { pointer-events: auto; }
+.header-right { display: flex; align-items: center; gap: .5rem; }
+#ghostbtn { margin-left: auto; } /* (ghost, account) pair docks right, app-style */
+#historybtn, #clearbtn, #accountbtn, #ghostbtn {
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(60, 50, 10, .10);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .4rem .55rem; line-height: 0;
+  display: inline-flex; align-items: center;
+  position: relative;
+  cursor: pointer;
+}
+
+/* DRS-only features: present where the app has them, but dimmed. Still
+   tappable — the tap opens the explainer pointing to /rver. */
+.drs { opacity: .45; }
+.drs:hover { opacity: .65; }
+.drs-wrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; cursor: pointer; }
+.drs-wrap input { pointer-events: none; }
+
+#chat {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4.4rem 1.25rem 9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+.msg { overflow-wrap: anywhere; min-width: 0; }
+.empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+
+.msg {
+  padding: .75rem 1rem;
+  border-radius: 12px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  max-width: 85%;
+}
+.msg.user {
+  background: var(--user);
+  align-self: flex-end;
+  white-space: pre-wrap;
+}
+.msg.assistant {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  align-self: stretch;
+  max-width: 100%;
+}
+.msg.assistant.streaming { white-space: pre-wrap; }
+
+/* Rendered markdown — the app's rules, khaki-toned via the vars. */
+.msg.assistant :is(p, ul, ol) { margin: .5em 0; }
+.msg.assistant ul, .msg.assistant ol { padding-left: 1.4em; }
+.msg.assistant :is(h1, h2, h3, h4) { margin: .8em 0 .4em; line-height: 1.25; }
+.msg.assistant h1 { font-size: 1.25em; }
+.msg.assistant h2 { font-size: 1.15em; }
+.msg.assistant h3, .msg.assistant h4 { font-size: 1.05em; }
+.msg.assistant a { color: var(--accent); }
+.msg.assistant code {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 4px; padding: .05em .3em; font-size: .9em;
+}
+.msg.assistant pre {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem .8rem; overflow-x: auto;
+}
+.msg.assistant pre code { background: none; border: 0; padding: 0; }
+.msg.assistant blockquote {
+  border-left: 3px solid var(--border); margin: .5em 0;
+  padding-left: .7em; color: var(--muted);
+}
+.msg.assistant table { border-collapse: collapse; margin: .5em 0; display: block; overflow-x: auto; }
+.msg.assistant th, .msg.assistant td { border: 1px solid var(--border); padding: .3rem .55rem; }
+.msg.assistant th { background: var(--panel-2); }
+.msg.assistant > :first-child { margin-top: 0; }
+.msg.assistant > :last-child { margin-bottom: 0; }
+
+/* Composer: the app's ONE glass pane, verbatim shapes. */
+#composer {
+  background: rgba(255, 255, 255, .3);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 0 4px 18px rgba(60, 50, 10, .10);
+  border-radius: 18px;
+  max-width: 900px;
+  width: calc(100% - 1.5rem);
+  margin: .35rem auto .85rem;
+  padding: .5rem .65rem .55rem;
+  position: relative; /* anchors the DRS explainer popover */
+}
+#form { display: flex; flex-direction: column; gap: .35rem; }
+textarea#input {
+  width: 100%;
+  min-width: 0;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  outline: none;
+  padding: .45rem .35rem .2rem;
+  font: inherit;
+  line-height: 1.4;
+  min-height: 1.9rem;
+  max-height: 8.5rem;
+  overflow-y: auto;
+}
+textarea::placeholder { color: var(--muted); opacity: .75; }
 button {
-  font: inherit; font-size: .88rem; font-weight: 600; color: var(--text);
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
-  padding: .5rem .8rem; cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 1.25rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
-button[type="submit"], #openbtn { background: var(--accent); color: #fff; border-color: var(--accent); }
-button:disabled { opacity: .55; cursor: default; }
+button:disabled { opacity: .5; cursor: default; }
+#composer-row, #search-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+#model {
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .35rem .5rem;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 400;
+  flex: 1;
+  min-width: 0;
+}
+#attach, #camera {
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 50%;
+  width: 34px; height: 34px; flex: none;
+  padding: 0;
+  display: grid; place-items: center;
+}
+#send {
+  border-radius: 50%;
+  width: 34px; height: 34px; flex: none;
+  padding: 0;
+  display: grid; place-items: center;
+  box-shadow: 0 2px 8px rgba(60, 50, 10, .25);
+}
 
+/* The time slider (DRS feature): the app's clock-thumb slider, dimmed. */
+#budgetval { min-width: 3.6rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+#composer input[type="range"] {
+  flex: 1 1 60px; min-width: 40px; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  height: 6px; border-radius: 3px;
+  background: var(--border);
+}
+#composer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
+}
+#composer input[type="range"]::-moz-range-thumb {
+  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='26' text-anchor='middle'%3E%F0%9F%95%90%3C/text%3E%3C/svg%3E") center / cover no-repeat;
+}
+
+/* The research knob — the app's spiderweb toggle, olive-toned. Here it
+   flips the CLIENT-SIDE research phases (triage/harvest/review); live web
+   search stays a DRS feature. */
+#searchtoggle {
+  cursor: pointer; display: inline-flex;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; touch-action: manipulation;
+}
+#searchtoggle input { position: absolute; opacity: 0; pointer-events: none; }
+.knob-track {
+  width: 53px; height: 32px; border-radius: 16px;
+  background: var(--border);
+  position: relative; flex: none;
+  transition: background .15s ease;
+}
+#websearch:checked + .knob-track { background: var(--accent); }
+.knob {
+  position: absolute; top: 1.5px; left: 1.5px;
+  width: 29px; height: 29px; border-radius: 50%;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23a99e77' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M10 1.2v17.6M1.2 10h17.6M3.78 3.78l12.44 12.44M16.22 3.78L3.78 16.22'/%3E%3Cpolygon points='13.2 10 12.26 12.26 10 13.2 7.74 12.26 6.8 10 7.74 7.74 10 6.8 12.26 7.74'/%3E%3Cpolygon points='16 10 14.24 14.24 10 16 5.76 14.24 4 10 5.76 5.76 10 4 14.24 5.76'/%3E%3Cpolygon points='18.8 10 16.22 16.22 10 18.8 3.78 16.22 1.2 10 3.78 3.78 10 1.2 16.22 3.78'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+  box-shadow: 0 1px 2px rgba(60, 50, 10, .35);
+  transition: left .15s ease, box-shadow .15s ease;
+}
+#websearch:checked + .knob-track .knob {
+  left: 22.5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%237c6a24' stroke-width='1' stroke-linejoin='round'%3E%3Cpath d='M10 1.2v17.6M1.2 10h17.6M3.78 3.78l12.44 12.44M16.22 3.78L3.78 16.22'/%3E%3Cpolygon points='13.2 10 12.26 12.26 10 13.2 7.74 12.26 6.8 10 7.74 7.74 10 6.8 12.26 7.74'/%3E%3Cpolygon points='16 10 14.24 14.24 10 16 5.76 14.24 4 10 5.76 5.76 10 4 14.24 5.76'/%3E%3Cpolygon points='18.8 10 16.22 16.22 10 18.8 3.78 16.22 1.2 10 3.78 3.78 10 1.2 16.22 3.78'/%3E%3C/svg%3E");
+  box-shadow: 0 1px 2px rgba(60, 50, 10, .35), 0 0 10px 3px rgba(224, 205, 130, .95);
+}
+
+/* The DRS explainer popover — the app's #searchpop shape. */
+#drspop {
+  position: absolute; bottom: calc(100% + .45rem); left: 1.25rem; right: 1.25rem;
+  max-width: 380px; z-index: 6;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .7rem .85rem; font-size: .8rem; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(60, 50, 10, .25);
+}
+#drspop[hidden] { display: none; }
+#drspop a { color: var(--accent); font-weight: 600; }
+
+.statusline { margin: .25rem .35rem 0; font-size: .78rem; color: var(--muted); }
+.statusline[hidden] { display: none; }
+
+/* ---- the left drawer: the app's history sidebar, mirrored ---- */
+#drawer {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(61, 52, 24, .45);
+}
+#drawer[hidden] { display: none; }
+.drawer-panel {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: min(340px, 88vw);
+  background: rgba(255, 255, 255, .35);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border-right: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: 4px 0 30px rgba(60, 50, 10, .3);
+  border-radius: 0 18px 18px 0;
+  padding: .9rem 1rem 1rem;
+  display: flex; flex-direction: column; gap: .6rem;
+  overflow-y: auto;
+}
+.drawer-head { display: flex; align-items: center; gap: .5rem; }
+.drawer-head strong { flex: 1; font-size: .95rem; overflow-wrap: anywhere; }
+#drawerclose, #lockbtn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .35rem .6rem; font: inherit; font-size: .8rem; font-weight: 600;
+}
+#lockbtn[hidden] { display: none; }
+.drawer-new {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .5rem .7rem; font: inherit; font-size: .85rem; font-weight: 600;
+  text-align: left;
+}
+.conv-list { display: flex; flex-direction: column; gap: .35rem; }
+.conv-item {
+  background: var(--panel); color: var(--text); text-align: left;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .45rem .6rem; font: inherit; font-size: .85rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conv-item.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.drawer-note { font-size: .75rem; color: var(--muted); margin-top: auto; }
+.drawer-note a { color: var(--accent); font-weight: 600; }
+
+/* Panels inside the drawer (project + keys). */
+#keyspanel, #projpanel {
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: .5rem .7rem; background: rgba(255, 255, 255, .35);
+}
+#keyspanel summary, #projpanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
+.muted { color: var(--muted); font-size: .8rem; }
+.warn { color: #7c4a00; font-weight: 600; font-size: .85rem; }
+.row { display: flex; gap: .5rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+#drawer label { display: block; font-size: .78rem; font-weight: 600; margin: .55rem 0 .2rem; }
+#drawer input[type="text"], #drawer input[type="password"] {
+  width: 100%; font: inherit; font-size: .88rem; color: var(--text);
+  padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(255, 255, 255, .6);
+}
+#drawer button { padding: .45rem .8rem; font-size: .82rem; }
+#drawer #newbtn, #drawer #copysecret, #drawer #savekeys {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+}
 .secretrow { display: flex; gap: .4rem; align-items: center; margin: .4rem 0; }
 .secretrow code {
   flex: 1; min-width: 0; overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem;
   padding: .5rem .6rem; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--panel-2);
+  background: rgba(255, 255, 255, .6);
   -webkit-user-select: all; user-select: all;
 }
+[hidden] { display: none !important; }
 
-/* the first-visit glass pane: the landing, condensed to an overlay */
+/* ---- first-visit glass pane ---- */
 #intro {
   position: fixed; inset: 0; z-index: 20;
-  background: rgba(10, 46, 92, .35);
+  background: rgba(61, 52, 24, .35);
   -webkit-backdrop-filter: blur(10px) saturate(1.1); backdrop-filter: blur(10px) saturate(1.1);
   display: flex; align-items: center; justify-content: center; padding: 1rem;
   overflow-y: auto;
@@ -71,40 +393,20 @@ button:disabled { opacity: .55; cursor: default; }
   max-width: 560px; margin: auto;
   background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
   padding: 1.2rem 1.3rem;
-  box-shadow: 0 18px 50px rgba(4, 30, 60, .35);
+  box-shadow: 0 18px 50px rgba(60, 50, 10, .35);
 }
+.intro-card h1 { font-size: 1.5rem; margin: .2rem 0 .5rem; }
+h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: .15rem; }
+.lead { margin: .4rem 0 .8rem; line-height: 1.5; }
 .intro-points { padding-left: 1.1rem; margin: .6rem 0; }
-.intro-points li { margin: .35rem 0; }
+.intro-points li { margin: .35rem 0; line-height: 1.45; }
 .btnlike {
   display: inline-block; text-decoration: none;
   font-size: .88rem; font-weight: 600; color: var(--text);
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: .5rem .8rem;
 }
-#introstart { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-/* workspace */
-#work header { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
-#aboutbtn { width: 2rem; padding: .5rem 0; text-align: center; }
-#keyspanel, #projpanel { border: 1px solid var(--border); border-radius: 12px; padding: .5rem .7rem; margin: .6rem 0; }
-#keyspanel summary, #projpanel summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
-.toolbar select { width: auto; max-width: 46%; }
-label.inline { display: inline-flex; align-items: center; gap: .3rem; margin: 0; font-size: .82rem; }
-label.inline input { width: auto; }
-
-#msgs { display: flex; flex-direction: column; gap: .6rem; margin: .8rem 0; min-height: 6rem; }
-.msg { border: 1px solid var(--border); border-radius: 12px; padding: .55rem .75rem; max-width: 92%; overflow-wrap: anywhere; }
-.msg.user { align-self: flex-end; background: rgba(126, 201, 255, .25); white-space: pre-wrap; }
-.msg.assistant { align-self: flex-start; background: var(--panel-2); }
-.msg.assistant.streaming { white-space: pre-wrap; }
-.msg.assistant :is(p, ul, ol, pre) { margin: .4rem 0; }
-.msg.assistant pre { overflow-x: auto; padding: .5rem; background: rgba(10, 46, 92, .06); border-radius: 8px; }
-
-#composer { display: flex; gap: .5rem; align-items: flex-end; }
-#composer textarea { flex: 1; resize: vertical; }
-
-/* the intro pane's publication shelf + tier tag */
-h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin-top: .15rem; }
+#introstart { padding: .5rem .9rem; font-size: .88rem; }
 #introlist { display: flex; flex-direction: column; gap: .35rem; margin: .6rem 0; }
 .pub-item {
   display: block; text-decoration: none; color: var(--text); font-weight: 600; font-size: .9rem;

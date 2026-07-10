@@ -128,7 +128,50 @@ function dismissIntro() {
   } catch {
     // fine — it'll show again next visit
   }
-  $("prompt").focus();
+  $("input").focus();
+}
+
+// ---- the left drawer (the app's history sidebar, mirrored) -------------------------
+
+function openDrawer() {
+  $("drawer").hidden = false;
+}
+
+function closeDrawer() {
+  $("drawer").hidden = true;
+}
+
+// ---- the DRS explainer: dimmed buttons stand where DRS features live ---------------
+
+const DRS_FEATURES = {
+  ghost: {
+    title: "Incognito chats",
+    text: "The ghost toggle keeps a conversation out of chat history and the server's logs — a DRS feature. In DRC there is nothing to opt out of: this site's server never receives your messages in the first place.",
+  },
+  account: {
+    title: "Account & usage",
+    text: "Accounts, quotas, usage windows and the message center live in DRS — deep research server, the signed-in tier.",
+  },
+  attach: {
+    title: "Attachments & documents",
+    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a DRS feature: the hosted pipeline parses and indexes your documents for cited answers.",
+  },
+  camera: {
+    title: "Photos",
+    text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a DRS feature of the hosted pipeline.",
+  },
+  budget: {
+    title: "Research time target",
+    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. DRC's client-side phases run without a time budget; live web search itself is also DRS.",
+  },
+};
+
+function showDrs(feature) {
+  const f = DRS_FEATURES[feature];
+  if (!f) return;
+  $("drspop-title").textContent = f.title + " — a DRS feature";
+  $("drspop-text").textContent = f.text;
+  $("drspop").hidden = false;
 }
 
 // ---- deep links ---------------------------------------------------------------------
@@ -140,6 +183,7 @@ function handleProjectLink() {
   const m = location.pathname.match(/^\/(?:my|free)\/(project-[0-9a-z]+)/i);
   if (!m) return false;
   $("refname").value = m[1];
+  openDrawer();
   $("projpanel").open = true;
   gateStatus("Enter (or autofill) this project's secret to open it.");
   return true;
@@ -211,6 +255,7 @@ function projectOpened() {
   $("secret").setAttribute("autocomplete", "current-password");
   $("newsecret").hidden = true;
   $("projpanel").open = false;
+  closeDrawer();
   history.replaceState(null, "", "/my/project-" + profile.refHash);
 }
 
@@ -261,7 +306,7 @@ async function unlock(ev) {
 
     projectOpened();
     await saveState(); // create, or persist the merge
-    $("researchmode").checked = state.research !== false;
+    $("websearch").checked = state.research !== false;
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
@@ -330,7 +375,7 @@ async function saveKeys() {
 // One grouped dropdown across the configured providers; option values are
 // "provider::model" so the send knows where to route.
 async function refreshModels() {
-  const pick = $("modelpick");
+  const pick = $("model");
   const providers = configuredDrcProviders(state.keys);
   if (!providers.length) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
@@ -365,26 +410,43 @@ function activeConv() {
 }
 
 function renderConvPicker() {
-  const pick = $("convpick");
+  const box = $("convlist");
   const convs = [...(state?.conversations || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   if (!convs.length) {
-    pick.innerHTML = "<option value=''>New chat</option>";
+    box.innerHTML = "";
     convId = null;
     return;
   }
   if (!convId || !convs.some((c) => c.id === convId)) convId = convs[0].id;
-  pick.innerHTML = convs
+  box.innerHTML = convs
     .map(
       (c) =>
-        `<option value="${c.id}"${c.id === convId ? " selected" : ""}>${(c.title || "Chat").replace(/</g, "&lt;")}</option>`,
+        `<button type="button" class="conv-item${c.id === convId ? " active" : ""}" data-id="${c.id}">${(c.title || "Chat").replace(/</g, "&lt;")}</button>`,
     )
     .join("");
+  box.querySelectorAll(".conv-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      convId = el.dataset.id;
+      renderConvPicker();
+      renderMessages();
+      closeDrawer();
+    });
+  });
 }
 
 function renderMessages() {
-  const box = $("msgs");
+  const box = $("chat");
   box.innerHTML = "";
-  for (const m of activeConv()?.messages || []) {
+  const messages = activeConv()?.messages || [];
+  if (!messages.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent =
+      "Ask a research question to get started — it runs right here in your browser, on your own OpenAI or Groq API key.";
+    box.appendChild(empty);
+    return;
+  }
+  for (const m of messages) {
     box.appendChild(messageEl(m.role, m.content));
   }
   box.scrollTop = box.scrollHeight;
@@ -400,8 +462,9 @@ function messageEl(role, content) {
 
 function newChat() {
   convId = null;
-  $("convpick").value = "";
+  renderConvPicker();
   renderMessages();
+  closeDrawer();
 }
 
 // ---- send: the client-side research pipeline -----------------------------------------
@@ -409,12 +472,13 @@ function newChat() {
 async function send(ev) {
   ev.preventDefault();
   if (sending) return;
-  const text = $("prompt").value.trim();
+  const text = $("input").value.trim();
   if (!text) return;
 
   // The first-visit path: no key yet → a helpful pointer, never an error
   // wall. The message stays in the composer so nothing typed is lost.
   if (!configuredDrcProviders(state.keys).length) {
+    openDrawer();
     $("keyspanel").open = true;
     $("key-groq").focus();
     workStatus(
@@ -424,19 +488,19 @@ async function send(ev) {
     );
     return;
   }
-  const picked = $("modelpick").value;
+  const picked = $("model").value;
   if (!picked || !picked.includes("::")) {
     await refreshModels();
-    if (!$("modelpick").value.includes("::")) {
+    if (!$("model").value.includes("::")) {
       workStatus("Pick a model in the dropdown, then send again.");
       return;
     }
   }
-  const [providerId, ...rest] = $("modelpick").value.split("::");
+  const [providerId, ...rest] = $("model").value.split("::");
   const model = rest.join("::");
   state.providerId = providerId;
   state.model = model;
-  state.research = $("researchmode").checked;
+  state.research = $("websearch").checked;
 
   let conv = activeConv();
   if (!conv) {
@@ -447,16 +511,17 @@ async function send(ev) {
   conv.messages.push({ role: "user", content: text });
   conv.title = conv.title || deriveDrcTitle(conv.messages);
   conv.updatedAt = Date.now();
-  $("prompt").value = "";
+  $("input").value = "";
   renderConvPicker();
   renderMessages();
 
   sending = true;
-  $("sendbtn").disabled = true;
+  $("send").disabled = true;
   workStatus("");
+  $("chat").querySelector(".empty")?.remove();
   const live = document.createElement("div");
   live.className = "msg assistant streaming";
-  $("msgs").appendChild(live);
+  $("chat").appendChild(live);
 
   let shown = "";
   let errMsg = null;
@@ -480,7 +545,7 @@ async function send(ev) {
       onDelta: (chunk) => {
         shown += chunk;
         live.textContent = shown;
-        $("msgs").scrollTop = $("msgs").scrollHeight;
+        $("chat").scrollTop = $("chat").scrollHeight;
       },
     });
   } catch (err) {
@@ -507,7 +572,7 @@ async function send(ev) {
   }
   if (errMsg) workStatus(errMsg);
   sending = false;
-  $("sendbtn").disabled = false;
+  $("send").disabled = false;
 }
 
 // ---- boot --------------------------------------------------------------------------
@@ -520,11 +585,28 @@ renderMessages();
 handlePublicationLink().then((opened) => maybeShowIntro(projectLinked || opened));
 
 $("introstart").addEventListener("click", dismissIntro);
-$("aboutbtn").addEventListener("click", () => {
+$("brand").addEventListener("click", () => {
   $("intro").hidden = false;
 });
 $("intro").addEventListener("click", (e) => {
   if (e.target === $("intro")) dismissIntro();
+});
+// The drawer (chats, project, keys).
+$("historybtn").addEventListener("click", openDrawer);
+$("drawerclose").addEventListener("click", closeDrawer);
+$("drawer").addEventListener("click", (e) => {
+  if (e.target === $("drawer")) closeDrawer();
+});
+$("clearbtn").addEventListener("click", newChat);
+$("newchatbtn").addEventListener("click", newChat);
+// Dimmed DRS-feature buttons: the tap explains and points to /rver.
+for (const el of document.querySelectorAll("[data-feature]")) {
+  el.addEventListener("click", () => showDrs(el.dataset.feature));
+}
+document.addEventListener("click", (e) => {
+  if (!$("drspop").hidden && !$("drspop").contains(e.target) && !e.target.closest("[data-feature]")) {
+    $("drspop").hidden = true;
+  }
 });
 $("unlockform").addEventListener("submit", unlock);
 $("newbtn").addEventListener("click", () => generateNew().catch((e) => gateStatus(e?.message || "Failed.")));
@@ -538,21 +620,16 @@ $("copysecret").addEventListener("click", async () => {
 });
 $("lockbtn").addEventListener("click", () => location.assign("/my/project-" + (profile?.refHash || "")));
 $("savekeys").addEventListener("click", saveKeys);
-$("newchat").addEventListener("click", newChat);
-$("convpick").addEventListener("change", () => {
-  convId = $("convpick").value || null;
-  renderMessages();
-});
-$("modelpick").addEventListener("change", () => {
-  const [pid, ...rest] = $("modelpick").value.split("::");
+$("model").addEventListener("change", () => {
+  const [pid, ...rest] = $("model").value.split("::");
   if (pid && rest.length) {
     state.providerId = pid;
     state.model = rest.join("::");
     saveState();
   }
 });
-$("researchmode").addEventListener("change", () => {
-  state.research = $("researchmode").checked;
+$("websearch").addEventListener("change", () => {
+  state.research = $("websearch").checked;
   saveState();
 });
-$("composer").addEventListener("submit", send);
+$("form").addEventListener("submit", send);

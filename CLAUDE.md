@@ -117,7 +117,7 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (the root `/` 302s there; saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
+| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
@@ -257,20 +257,28 @@ Node-tested end to end against a mock provider), and `drc-store.js`
 ciphertext keyed by blob id, injectable backend, deliberately the seam
 a future remote adapter would slot into — Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
-`drc.css`): the standalone no-auth page served for `/cure` (and the
-root redirect) — CHAT-FIRST (a visitor can type immediately; the first
+`drc.css`): a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
+palette (2026-07-10 directive) — the same floating glass chrome, waves,
+composer, spiderweb knob and slider shapes as `css/app.css`,
+self-contained since app.css is auth-served. DRS-only features (ghost,
+account, attach, camera, the time slider) appear as DIMMED buttons
+(`.drs`) exactly where the app has them; tapping one opens the
+`#drspop` explainer pointing to `/rver`. The knob is REAL here — it
+flips the client-side research phases. A left drawer (the history
+sidebar mirrored) holds the local chat list, the Project panel and the
+API-keys panel. CHAT-FIRST (a visitor can type immediately; the first
 send without a key gets a helpful open-the-key-panel pointer, never an
-error wall), with the old promotional landing condensed into a
-first-visit glass pane (`#intro`, doubling as the publication shelf;
-full landing still at `/welcome/`), an unsaved-session →
-save-as-project flow (the Project panel's one submit opens OR creates a
-BROWSER-LOCAL project, merging this tab's work in), and a project form
-that is a REAL username+password form (`autocomplete="username"`/
-`current-password`, switched to `new-password` on generate) so
-1Password and Apple Passwords save/autofill the master secret; served
-for `/cure/<slug>` published replays (seeded as conversations, in
-place), `/my/project-<hash>` deep links, and the `/free*` legacy
-aliases (`/?continue=<slug>` is the legacy replay handoff).
+error wall), with a first-visit glass pane (`#intro`, doubling as the
+publication shelf; the full landing at `/` / `/welcome/` links here),
+an unsaved-session → save-as-project flow (the Project panel's one
+submit opens OR creates a BROWSER-LOCAL project, merging this tab's
+work in), and a project form that is a REAL username+password form
+(`autocomplete="username"`/`current-password`, switched to
+`new-password` on generate) so 1Password and Apple Passwords
+save/autofill the master secret; served for `/cure/<slug>` published
+replays (seeded as conversations, in place), `/my/project-<hash>` deep
+links, and the `/free*` legacy aliases (`/?continue=<slug>` is the
+legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
