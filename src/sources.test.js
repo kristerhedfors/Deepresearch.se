@@ -1,3 +1,9 @@
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
+// Covers sources.js: the source registry's dedup/numbering, the per-origin
+// diversity cap + overflow backfill, the platform (HF owner) keying, and
+// the capped sourceDigest block.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { hostnameOf, diversityKeyOf, addSources, backfillOverflowSources, sourceDigest } from "./sources.js";

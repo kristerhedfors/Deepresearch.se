@@ -1,3 +1,4 @@
+// @ts-check
 // The deep-research pipeline. The Worker orchestrates every phase directly
 // (no function calling), so the flow is deterministic and works on any
 // JSON-mode model:
@@ -17,18 +18,21 @@
 // return unparseable JSON, the pipeline degrades (single search, skip
 // iteration, accept draft) rather than failing the request.
 //
-// Status events emitted to the UI are documented in CLAUDE.md
-// ("/api/chat SSE protocol"). Each phase below is its own function, all
-// sharing one `ctx` object built once in runPipeline() — everything a
-// phase needs to read (env, model, per-request state, the resolved
-// model-profiles.js overrides, the conversation) plus the three UI-emit
-// helpers (emitDelta/step/stepDone), so phase functions take just ctx
-// plus whatever's specific to that call, instead of a long parameter list.
+// Status events emitted to the UI are documented in src/types.d.ts
+// (SseEvent) and the sse-protocol skill. Each phase below is its own
+// function, all sharing one `ctx` object built once in runPipeline() —
+// everything a phase needs to read (env, model, per-request state, the
+// resolved model-profiles.js overrides, the conversation) plus the three
+// UI-emit helpers (emitDelta/step/stepDone), so phase functions take just
+// ctx plus whatever's specific to that call, instead of a long parameter
+// list.
 //
 // This module owns the phase FLOW only. The pieces with lives of their
 // own are split out: the source registry (dedup, domain-diversity cap,
-// digest) in sources.js, and the opt-in pre-pipeline context enrichments
-// (Shodan, Google Maps) in enrichment.js.
+// digest) in sources.js, the auxiliary search-source registry (HF Hub &
+// co, iterated by runAuxSearches below) in search-sources.js, and the
+// opt-in pre-pipeline context enrichments (Shodan, Google Maps) in
+// enrichment.js.
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { consumeChatStream } from "./berget.js";
@@ -72,6 +76,90 @@ import {
 } from "./prompts.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 
+// ---- shared shapes -------------------------------------------------------
+
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./types.js').Conversation} Conversation */
+/** @typedef {import('./types.js').ModelProfile} ModelProfile */
+/** @typedef {import('./budget.js').BudgetPlan} BudgetPlan */
+
+/**
+ * Per-request bookkeeping for one auxiliary search source
+ * (state.aux[sourceId]): searches run, attempt keys consumed across waves,
+ * and whether the registry-capacity reserve was already granted.
+ * @typedef {{ count: number, ran: Set<string>, reserved?: boolean }} AuxSourceState
+ */
+
+/**
+ * The per-request state chat.js/mcp.js build (base shape documented as
+ * import('./types.js').RequestState) plus the fields the pipeline itself
+ * lays down as phases run. `plan` is re-declared against budget.js's own
+ * typedef, whose `estimates` also carries the budget-gated phases.
+ * @typedef {import('./types.js').RequestState & {
+ *   plan: BudgetPlan,
+ *   quizzes?: boolean,
+ *   quiz?: object,
+ *   complexity?: string | null,
+ *   subquestions?: string[],
+ *   conflicts?: string[],
+ *   notes?: object[],
+ *   notesCursor?: number,
+ *   fetchedUrls?: Set<string>,
+ *   aux?: Record<string, AuxSourceState>,
+ *   failoverModel?: string,
+ * }} PipelineState
+ */
+
+/**
+ * Writes one SSE event (a delta chunk, a status wrapper, or an error).
+ * The vocabulary is documented as import('./types.js').SseEvent; typed
+ * loosely here because the pipeline also emits registry-driven events
+ * (quiz, provider-labeled searches) that ride on the same channel.
+ * @typedef {(event: object) => void} EmitFn
+ */
+
+/**
+ * The bundle runPipeline builds once and passes to every phase helper.
+ * @typedef {{
+ *   env: Env,
+ *   log: Logger,
+ *   emit: EmitFn,
+ *   model: string,
+ *   jsonModel: string,
+ *   state: PipelineState,
+ *   profile: ModelProfile,
+ *   jsonProfile: ModelProfile,
+ *   conversation: Conversation,
+ *   reinforceJsonOnly: boolean,
+ *   lastUser: string,
+ *   convText: string,
+ *   imageParts: import('./types.js').ContentPart[],
+ *   emitDelta: (text: string) => void,
+ *   step: (id: string, label: string) => void,
+ *   stepDone: (id: string, label: string, details?: string[]) => void,
+ * }} PipelineCtx
+ */
+
+/**
+ * normalizeTriage's hardened verdict: exactly one of the three actions,
+ * with the optional decomposition/quiz fields riding on research/direct.
+ * @typedef {{ action: "direct", quiz?: boolean }
+ *   | { action: "clarify", question: string, quiz?: boolean }
+ *   | ResearchDecision} TriageDecision
+ */
+/**
+ * @typedef {{
+ *   action: "research",
+ *   queries: string[],
+ *   complexity?: string,
+ *   subquestions?: string[],
+ *   quiz?: boolean,
+ * }} ResearchDecision
+ */
+
+// ---- JSON-phase schemas --------------------------------------------------
+
 // Declared shapes for the three JSON planning phases — a hardening layer over
 // the raw model JSON (src/schema.js), applied BEHIND the existing fail-soft
 // fallbacks (normalizeTriage etc. stay the last-ditch net). On a clean match
@@ -87,7 +175,9 @@ const TRIAGE_SCHEMA = oneOf([
   // false `quiz:true` on a non-request costs one fail-soft generation
   // attempt at worst (schema.js's object() strips unknown fields, so the
   // flag must be declared here to survive hardening).
-  object({ action: stringEnum(["direct"]), quiz: boolean() }, { optional: ["quiz"] }),
+  // The `optional` casts here and below: schema.js's `optional = []` default
+  // makes tsc infer never[] for the option in unannotated schema.js.
+  object({ action: stringEnum(["direct"]), quiz: boolean() }, /** @type {any} */ ({ optional: ["quiz"] })),
   object({ action: stringEnum(["clarify"]), question: string({ allowEmpty: false }) }),
   object(
     {
@@ -101,7 +191,7 @@ const TRIAGE_SCHEMA = oneOf([
       subquestions: arrayOf(string({ allowEmpty: false })),
       quiz: boolean(),
     },
-    { optional: ["queries", "complexity", "subquestions", "quiz"] },
+    /** @type {any} */ ({ optional: ["queries", "complexity", "subquestions", "quiz"] }),
   ),
 ]);
 const GAP_SCHEMA = object(
@@ -112,7 +202,7 @@ const GAP_SCHEMA = object(
     // optional, and independent of `complete`.
     conflicts: arrayOf(string({ coerce: true })),
   },
-  { optional: ["complete", "queries", "conflicts"] },
+  /** @type {any} */ ({ optional: ["complete", "queries", "conflicts"] }),
 );
 const VALIDATE_SCHEMA = object(
   {
@@ -122,23 +212,38 @@ const VALIDATE_SCHEMA = object(
     issues: arrayOf(string({ coerce: true })),
     revised_answer: string(),
   },
-  { optional: ["issues", "revised_answer"] },
+  /** @type {any} */ ({ optional: ["issues", "revised_answer"] }),
 );
 // Claim-level validation (high tiers): per-claim verdict and the revision.
 const CLAIM_VERIFY_SCHEMA = object(
   { verdict: stringEnum(["supported", "unsupported"]), issue: string({ coerce: true }) },
-  { optional: ["issue"] },
+  /** @type {any} */ ({ optional: ["issue"] }),
 );
 const REVISE_SCHEMA = object({ revised_answer: string() });
 
 // Runs a JSON-phase value through its declared schema. ok → the normalized
 // object; miss → the raw value, so the caller's existing fallback path runs
 // unchanged. validate() never throws, so this is always safe.
+/**
+ * @param {object} schema One of the schema declarations above.
+ * @param {any} value Raw parsed model JSON (may be anything).
+ * @returns {any}
+ */
 function hardenJson(schema, value) {
   const r = validate(schema, value);
   return r.ok ? r.value : value;
 }
 
+/**
+ * Entry point (called by chat.js and mcp.js): runs the whole research
+ * pipeline for one request, streaming everything through `emit`.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {Conversation} conversation
+ * @param {string} model The user's chosen answer/synthesis model.
+ * @param {PipelineState} state
+ */
 export async function runPipeline(env, log, emit, conversation, model, state) {
   const profile = getModelProfile(model);
   // The JSON planning phases (triage/gap/validate) run on a fixed reliable
@@ -149,7 +254,9 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // policy applies to the model that actually runs each phase.
   const jsonModel = state.jsonModel || model;
   const jsonProfile = getModelProfile(jsonModel);
+  /** @type {PipelineCtx['step']} */
   const step = (id, label) => emit({ status: { type: "step_start", id, label } });
+  /** @type {PipelineCtx['stepDone']} */
   const stepDone = (id, label, details = []) =>
     emit({ status: { type: "step_done", id, label, details } });
 
@@ -170,7 +277,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
     imageParts: imagePartsOf(lastUserMessage(convo)),
-    emitDelta: (t) => emit({ choices: [{ delta: { content: t } }] }),
+    emitDelta: (/** @type {string} */ t) => emit({ choices: [{ delta: { content: t } }] }),
     step,
     stepDone,
   };
@@ -229,6 +336,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
 // ---- phases ------------------------------------------------------------
 
+/** @param {PipelineCtx} ctx */
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
@@ -241,6 +349,10 @@ async function runWithoutSearch(ctx) {
 // Phase 1: decide direct reply | clarifying question | research plan, and
 // announce the decision via the "plan" step. For "research" the returned
 // queries are already capped to the budget plan's angle count.
+/**
+ * @param {PipelineCtx} ctx
+ * @returns {Promise<TriageDecision>}
+ */
 async function runTriage(ctx) {
   const { state, lastUser, convText, step, stepDone } = ctx;
   step("plan", "Analyzing request…");
@@ -293,6 +405,11 @@ async function runTriage(ctx) {
 // a free-text field, immediate feedback, final score. Returns true when the
 // quiz was delivered; false lets the caller fall through to the normal
 // answer path (fail-soft — a quiz request never errors the chat).
+/**
+ * @param {PipelineCtx} ctx
+ * @param {{ questions: number }} quizReq
+ * @returns {Promise<boolean>}
+ */
 async function runQuizGeneration(ctx, quizReq) {
   const { state, lastUser, convText } = ctx;
   ctx.step("quiz", "Writing quiz questions…");
@@ -328,6 +445,7 @@ async function runQuizGeneration(ctx, quizReq) {
   return true;
 }
 
+/** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
     { role: "system", content: directPrompt() },
@@ -335,6 +453,10 @@ async function runDirectReply(ctx) {
   ]);
 }
 
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} question
+ */
 async function runClarify(ctx, question) {
   emitChunked(ctx, question);
 }
@@ -342,6 +464,7 @@ async function runClarify(ctx, question) {
 // Phase 3: audits source coverage and runs follow-up searches for the most
 // important gaps, up to plan.gapIterations rounds or until the time budget
 // won't allow another round.
+/** @param {PipelineCtx} ctx */
 async function runGapChecks(ctx) {
   const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
   const plan = state.plan;
@@ -386,7 +509,7 @@ async function runGapChecks(ctx) {
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
       ? []
-      : gap.queries.filter((q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
+      : gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
 
     if (followups.length === 0) {
       ctx.stepDone(stepId, "Coverage sufficient");
@@ -406,6 +529,10 @@ async function runGapChecks(ctx) {
 // Distilled-notes preamble for the gap/synth inputs — only present when the
 // budget-gated digest phase actually produced notes (never at default budget,
 // so the input string is byte-identical there).
+/**
+ * @param {object[] | undefined} notes
+ * @returns {string}
+ */
 function notesSection(notes) {
   const block = notesDigest(notes, 6000);
   return block ? `Distilled research notes so far:\n${block}\n\n` : "";
@@ -416,6 +543,11 @@ function notesSection(notes) {
 // instead of silently picking a side. Pure state bookkeeping — exported for
 // unit tests. Lenient by design: a missing/malformed conflicts field is
 // simply no conflicts.
+/**
+ * @param {{ conflicts?: string[] }} state The request state (only `conflicts` is touched).
+ * @param {any} gap Raw gap-check JSON.
+ * @returns {string[]} The accumulated conflict list.
+ */
 export function collectConflicts(state, gap) {
   const list = Array.isArray(gap?.conflicts) ? gap.conflicts : [];
   state.conflicts ||= [];
@@ -432,12 +564,20 @@ export function collectConflicts(state, gap) {
 // both empty (and thus absent, keeping the input byte-identical to the
 // pre-decomposition pipeline) unless triage decomposed the question or a gap
 // round reported disagreeing sources.
+/**
+ * @param {string[] | undefined} subquestions
+ * @returns {string}
+ */
 function subquestionsSection(subquestions) {
   const list = Array.isArray(subquestions) ? subquestions.filter(Boolean) : [];
   if (!list.length) return "";
   return `Sub-questions the answer must address:\n${list.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n`;
 }
 
+/**
+ * @param {string[] | undefined} conflicts
+ * @returns {string}
+ */
 function conflictsSection(conflicts) {
   const list = Array.isArray(conflicts) ? conflicts.filter(Boolean) : [];
   if (!list.length) return "";
@@ -450,6 +590,7 @@ function conflictsSection(conflicts) {
 // cheap JSON model, ONLY at mid/high budget tiers (wantsNotes), and is dropped
 // first under deadline pressure. Fully fail-soft: any failure advances the
 // cursor and proceeds on the raw registry exactly as at the default budget.
+/** @param {PipelineCtx} ctx */
 async function maybeDigest(ctx) {
   const { state } = ctx;
   const plan = state.plan;
@@ -495,12 +636,13 @@ async function maybeDigest(ctx) {
 // page. Emits a visible step naming the fetch. Fully fail-soft: no key, a
 // timeout, an error, or an empty result all degrade to the highlights already
 // held. Dropped first under deadline pressure, before synthesis/validation.
+/** @param {PipelineCtx} ctx */
 async function maybeFullContentDigest(ctx) {
   const { env, log, state } = ctx;
   const plan = state.plan;
   if (!wantsFullContent(plan) || !state.sources.length) return;
   state.notes ||= [];
-  state.fetchedUrls ||= new Set();
+  const fetchedUrls = (state.fetchedUrls ||= new Set());
 
   const est = plan.estimates;
   const upcoming = (est.fetch || 0) + (est.digest || 0) + est.synth + (plan.validate ? est.validate : 0);
@@ -510,14 +652,14 @@ async function maybeFullContentDigest(ctx) {
   }
 
   // The top 2-4 registry sources we haven't already fetched.
-  const urls = state.sources.slice(0, 4).map((s) => s.url).filter((u) => u && !state.fetchedUrls.has(u));
+  const urls = state.sources.slice(0, 4).map((s) => s.url).filter((u) => u && !fetchedUrls.has(u));
   if (!urls.length) return;
 
   ctx.step("contents", "Reading top sources in full…");
   let fetched = null;
   try {
     fetched = await fetchContents(env, urls, log);
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("chat.contents_failed", { error: err?.message || String(err) });
   }
   recordPhase(ctx.model, "fetch", fetched?.durationMs || 0);
@@ -526,7 +668,7 @@ async function maybeFullContentDigest(ctx) {
     ctx.stepDone("contents", "Full text unavailable — using highlights");
     return;
   }
-  for (const r of results) state.fetchedUrls.add(r.url);
+  for (const r of results) fetchedUrls.add(r.url);
   ctx.stepDone(
     "contents",
     `Read ${results.length} source${results.length === 1 ? "" : "s"} in full`,
@@ -558,6 +700,10 @@ async function maybeFullContentDigest(ctx) {
 }
 
 // Phase 4: writes the source-grounded draft answer. Returns the full text.
+/**
+ * @param {PipelineCtx} ctx
+ * @returns {Promise<string>}
+ */
 async function runSynthesis(ctx) {
   const { state, lastUser, convText, imageParts } = ctx;
   const plan = state.plan;
@@ -593,6 +739,10 @@ async function runSynthesis(ctx) {
 // any other outcome (skipped by policy/budget, or this model's validate
 // call failed to produce a usable verdict) keeps the draft as-is —
 // deliberately fail-soft, never a fatal error.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} draft
+ */
 async function runValidation(ctx, draft) {
   const { log, state, jsonProfile } = ctx;
   const plan = state.plan;
@@ -634,6 +784,11 @@ async function runValidation(ctx, draft) {
 // pass/revise verdict. Kept as the tight-budget path AND the fallback when
 // claim extraction can't produce claims. On "revise" the UI discards the draft
 // and gets the corrected answer; any other outcome keeps the draft as-is.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} draft
+ * @param {string} digest
+ */
 async function runSinglePassValidation(ctx, draft, digest) {
   const { lastUser } = ctx;
   const verdictRaw = await jsonPhase(ctx, {
@@ -673,6 +828,12 @@ async function runSinglePassValidation(ctx, draft, digest) {
 // only when it couldn't extract claims (caller then runs the single pass).
 // Fully fail-soft: a failed verify counts as SUPPORTED (never fabricates an
 // issue), and a failed revision keeps the draft.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} draft
+ * @param {string} digest
+ * @returns {Promise<boolean>}
+ */
 async function runClaimValidation(ctx, draft, digest) {
   const { lastUser } = ctx;
 
@@ -741,6 +902,11 @@ async function runClaimValidation(ctx, draft, digest) {
 // Verifies one claim against ONLY the sources it cites (falls back to the full
 // registry when it cites none). Fail-soft: an unparseable/missing verdict is
 // treated as SUPPORTED, so a failed check never fabricates an "unsupported".
+/**
+ * @param {PipelineCtx} ctx
+ * @param {Claim} claim
+ * @returns {Promise<{ verdict: "supported" | "unsupported", issue?: string }>}
+ */
 async function verifyClaim(ctx, claim) {
   const { state } = ctx;
   const ids = Array.isArray(claim.source_ids) ? claim.source_ids : [];
@@ -762,18 +928,25 @@ async function verifyClaim(ctx, claim) {
   return { verdict: "supported" };
 }
 
+/** @typedef {{ claim: string, source_ids: number[] }} Claim */
+
 // Pure, lenient parse of the claim-extraction JSON ({claims:[{claim,
 // source_ids}]} or a bare array) — drops junk, caps at 12, never throws.
+/**
+ * @param {any} value Raw claim-extraction JSON.
+ * @returns {Claim[]}
+ */
 function extractClaims(value) {
   const list = value && Array.isArray(value.claims) ? value.claims : Array.isArray(value) ? value : [];
+  /** @type {Claim[]} */
   const out = [];
   for (const c of list) {
     if (!c || typeof c !== "object") continue;
     const claim = typeof c.claim === "string" ? c.claim.trim() : "";
     if (!claim) continue;
     const source_ids = (Array.isArray(c.source_ids) ? c.source_ids : [])
-      .map((n) => (typeof n === "number" ? Math.trunc(n) : Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : NaN))
-      .filter((n) => Number.isFinite(n) && n >= 1);
+      .map((/** @type {any} */ n) => (typeof n === "number" ? Math.trunc(n) : Number.isFinite(Number(n)) ? Math.trunc(Number(n)) : NaN))
+      .filter((/** @type {number} */ n) => Number.isFinite(n) && n >= 1);
     out.push({ claim, source_ids });
     if (out.length >= 12) break;
   }
@@ -798,10 +971,16 @@ function extractClaims(value) {
 // the per-model rolling stats the budget planner uses — left off the claim
 // extract/verify/revise calls so they don't skew the canonical `validate`
 // (and other) EWMA measurements.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {{ label: string, statKey: string, messages: Conversation, maxTokens: number, recordStat?: boolean }} phase
+ * @returns {Promise<any>} The parsed JSON value, or null on any failure.
+ */
 async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat = false }) {
   const startedAt = Date.now();
   try {
-    const max = ctx.jsonProfile.maxTokensOverride?.[statKey] ?? maxTokens;
+    const overrides = /** @type {Record<string, number> | null} */ (ctx.jsonProfile.maxTokensOverride);
+    const max = overrides?.[statKey] ?? maxTokens;
     const r = await completeJson(ctx.env, messages, { model: ctx.jsonModel, maxTokens: max });
     addUsage(ctx.state.jsonTotals, r.usage);
     ctx.log.info("chat.json_diag", { phase: label, model: ctx.jsonModel, ...r.diagnostics });
@@ -809,7 +988,7 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
     if (recordStat) recordPhase(ctx.jsonModel, statKey, duration_ms);
     ctx.log.info("chat.phase", { phase: label, model: ctx.jsonModel, duration_ms, ok: r.value != null });
     return r.value;
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     ctx.log.warn("chat.phase_failed", {
       phase: label,
       model: ctx.jsonModel,
@@ -820,6 +999,14 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
   }
 }
 
+/**
+ * Hardens the raw triage JSON into a usable decision, with a model-free
+ * fallback (see below) when the JSON is unusable.
+ * @param {any} triage Raw triage JSON (may be anything).
+ * @param {string} lastUser The latest user message's text.
+ * @param {string} [priorUser] The previous user turn's text ("" when none).
+ * @returns {TriageDecision}
+ */
 export function normalizeTriage(triage, lastUser, priorUser = "") {
   // The optional quiz flag (triage's fail-soft backup for quizIntent —
   // see TRIAGE_SCHEMA) rides along on direct/research decisions; lenient
@@ -830,8 +1017,9 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
   }
   if (triage?.action === "research") {
     const queries = (Array.isArray(triage.queries) ? triage.queries : [])
-      .filter((q) => typeof q === "string" && q.trim());
+      .filter((/** @type {any} */ q) => typeof q === "string" && q.trim());
     if (queries.length > 0) {
+      /** @type {ResearchDecision} */
       const out = { action: "research", queries, ...quiz };
       // Optional decomposition fields (prompts.js DECOMPOSITION_RULE) —
       // lenient extraction so they survive the raw (schema-miss) path too.
@@ -841,8 +1029,8 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
         out.complexity = triage.complexity;
       }
       const subs = (Array.isArray(triage.subquestions) ? triage.subquestions : [])
-        .filter((s) => typeof s === "string" && s.trim())
-        .map((s) => s.trim())
+        .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
+        .map((/** @type {string} */ s) => s.trim())
         .slice(0, 5);
       if (subs.length) out.subquestions = subs;
       return out;
@@ -875,16 +1063,19 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
     : { action: "direct" };
 }
 
-// Queries within one round are independent, so they run concurrently
-// (Promise.all) instead of one fetch at a time — a round 6 assessment
-// found the sequential loop was leaving several seconds of wall-clock on
-// the table per round for no reason, time better spent on actual depth.
-// Filtering against the query cap happens BEFORE firing anything (not as
-// a mid-loop break) so a batch can't overrun plan.maxSearches; results
-// are processed back in original order so source numbering (citations)
-// stays deterministic regardless of which fetch happens to resolve first.
-async function runSearches(ctx, queries, round) {
-  const { env, log, emit, state } = ctx;
+// ---- search execution ----------------------------------------------------
+
+// The round's runnable slice of the planned queries: trimmed, deduped
+// against every query already run this request (state.ranQueries — marked
+// as run here), and cut off at plan.maxSearches. Filtering happens BEFORE
+// firing anything (not as a mid-loop break) so a batch can't overrun the
+// cap.
+/**
+ * @param {PipelineState} state
+ * @param {string[]} queries
+ * @returns {string[]}
+ */
+function takeSearchBatch(state, queries) {
   const batch = [];
   for (const raw of queries) {
     const query = String(raw || "").trim();
@@ -895,6 +1086,24 @@ async function runSearches(ctx, queries, round) {
     state.ranQueries.add(key);
     batch.push(query);
   }
+  return batch;
+}
+
+// Queries within one round are independent, so they run concurrently
+// (Promise.all) instead of one fetch at a time — a round 6 assessment
+// found the sequential loop was leaving several seconds of wall-clock on
+// the table per round for no reason, time better spent on actual depth.
+// Results are processed back in original order so source numbering
+// (citations) stays deterministic regardless of which fetch happens to
+// resolve first.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string[]} queries
+ * @param {number} round 1 for the initial wave, then one per gap round.
+ */
+async function runSearches(ctx, queries, round) {
+  const { env, log, emit, state } = ctx;
+  const batch = takeSearchBatch(state, queries);
   if (!batch.length) return;
   state.searchCount += batch.length;
 
@@ -956,12 +1165,23 @@ async function runSearches(ctx, queries, round) {
 // (search_done with 0 results). Platform-aware diversity keying in
 // sources.js keeps the per-origin cap meaningful for admitted sources.
 const MAX_AUX_SEARCHES_DEFAULT = 3;
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string[]} batch The wave's Exa queries (already deduped/capped).
+ * @param {number} round
+ */
 async function runAuxSearches(ctx, batch, round) {
   for (const source of SEARCH_SOURCES) {
     await runAuxSearch(ctx, source, batch, round);
   }
 }
 
+/**
+ * @param {PipelineCtx} ctx
+ * @param {import('./search-sources.js').SearchSource} source
+ * @param {string[]} batch
+ * @param {number} round
+ */
 async function runAuxSearch(ctx, source, batch, round) {
   const { env, log, emit, state } = ctx;
   if (!batch.length || !source.intent(ctx.lastUser)) return;
@@ -987,6 +1207,7 @@ async function runAuxSearch(ctx, source, batch, round) {
   // searches are visibly distinct.
   const shownQuery = key || query;
   emit({ status: { type: "search_start", round, query: shownQuery, source: source.id, service: source.service } });
+  /** @type {import('./search-sources.js').SearchSourceItem[]} */
   let items = [];
   let durationMs = 0;
   try {
@@ -997,7 +1218,7 @@ async function runAuxSearch(ctx, source, batch, round) {
     // whose ladders would collapse to the same attempt skip it instead of
     // re-fetching the same repos (the three-identical-hub-searches trace).
     for (const k of r.usedKeys || []) st.ran.add(k);
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn(`${source.id}.search_failed`, { error: err?.message || String(err) });
   }
   emit({
@@ -1027,6 +1248,8 @@ async function runAuxSearch(ctx, source, batch, round) {
   addSources(state, items);
 }
 
+// ---- answer streaming ------------------------------------------------------
+
 // The answer stream's inter-chunk inactivity bound. A production report
 // (2026-07-08, screenshot: "stuck after a few response tokens") exposed the
 // remaining unguarded hang: the round-2 fix bounds time-to-FIRST-response
@@ -1043,6 +1266,10 @@ const STREAM_IDLE_TIMEOUT_MS = 60_000;
 // Whether a failed connect attempt looks provider-side and transient (worth
 // another attempt) rather than deterministic (our request is at fault — a
 // 400/401/413 will fail identically on every retry). Exported for tests.
+/**
+ * @param {number} status HTTP status of the failed connect.
+ * @returns {boolean}
+ */
 export function isTransientConnectStatus(status) {
   return status >= 500 || status === 429 || status === 408;
 }
@@ -1050,8 +1277,12 @@ export function isTransientConnectStatus(status) {
 // Tags an error as eligible for the model failover in streamCompletion():
 // set only where the failing model never delivered a byte the user still
 // has on screen, so a different model's answer can't visibly diverge.
+/**
+ * @param {string} message
+ * @returns {Error & { failover: true }}
+ */
 function failoverError(message) {
-  const e = new Error(message);
+  const e = /** @type {Error & { failover: true }} */ (new Error(message));
   e.failover = true;
   return e;
 }
@@ -1071,17 +1302,22 @@ function failoverError(message) {
 // its usage is billed to the jsonTotals bucket (that's the model that ran),
 // and the provider issue still raises the admin alert an unrecovered
 // failure would have — users stop hurting, admins keep seeing it.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {import('./conversation.js').Msg[]} messages
+ * @returns {Promise<string>} The full streamed text.
+ */
 async function streamCompletion(ctx, messages) {
   try {
     return await streamOnModel(ctx, messages, ctx.model, ctx.profile, ctx.state.totals);
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     const fallback = ctx.jsonModel;
     if (!err?.failover || !fallback || fallback === ctx.model) throw err;
     ctx.log.warn("chat.model_failover", { from: ctx.model, to: fallback, error: err?.message || String(err) });
     const alert = classifyChatError(err?.message);
     await raiseAlert(ctx.env, alert.type, alert.severity, alert.message,
       `model: ${ctx.model} — failed over to ${fallback} — ${err?.message}`);
-    const name = (id) => String(id).split("/").pop();
+    const name = (/** @type {string} */ id) => String(id).split("/").pop();
     ctx.step("failover", `${name(ctx.model)} isn't responding — switching to ${name(fallback)}…`);
     try {
       const text = await streamOnModel(ctx, messages, fallback, ctx.jsonProfile, ctx.state.jsonTotals);
@@ -1097,6 +1333,14 @@ async function streamCompletion(ctx, messages) {
 
 // One model's full attempt loop; usage lands in the caller's totals bucket
 // (split billing — each bucket priced at its own model's catalog rate).
+/**
+ * @param {PipelineCtx} ctx
+ * @param {import('./conversation.js').Msg[]} messages
+ * @param {string} model
+ * @param {ModelProfile} profile This model's profile (retry budget).
+ * @param {import('./types.js').TokenTotals} totals Billing bucket for this model's usage.
+ * @returns {Promise<string>}
+ */
 async function streamOnModel(ctx, messages, model, profile, totals) {
   const maxAttempts = profile.maxCompletionAttempts;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -1110,8 +1354,10 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
     // paid for with a dead research run, all searches already done.
     let upstream;
     try {
-      upstream = await chatCompletion(ctx.env, messages, { model });
-    } catch (err) {
+      // Cast: conversation.js's helpers hand back its looser Msg shape; the
+      // messages here are the well-formed arrays the phase builders wrote.
+      upstream = await chatCompletion(ctx.env, /** @type {Conversation} */ (messages), { model });
+    } catch (/** @type {any} */ err) {
       // fetch() itself rejected: the connect-timeout abort or a network
       // reset. Always transient by nature.
       ctx.log.warn("chat.connect_failed", { model, attempt, error: err?.message || String(err) });
@@ -1133,13 +1379,13 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
     try {
       streamed = await consumeChatStream(
         upstream.body,
-        (t) => {
+        (/** @type {string} */ t) => {
           received += t.length;
           ctx.emitDelta(t);
         },
         { idleMs: STREAM_IDLE_TIMEOUT_MS },
       );
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       // A hang caught by the idle guard right at the START of the answer
       // (the reported case: a handful of tokens, then silence) is worth one
       // cheap retry — the same transient-blip reasoning as the empty-
@@ -1192,10 +1438,17 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
       throw failoverError(`${providerName(model)} returned an empty response ${maxAttempts} times in a row for this model`);
     }
   }
+  // Unreachable when maxCompletionAttempts >= 1 (model-profiles.js
+  // guarantees it): the final attempt always returns or throws above.
+  throw failoverError(`${providerName(model)} completion made no attempts`);
 }
 
 // Emits already-complete text as delta chunks (clarify questions, revised
 // answers) so the client renders it through the same streaming path.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} text
+ */
 function emitChunked(ctx, text) {
   for (let i = 0; i < text.length; i += 80) {
     ctx.emitDelta(text.slice(i, i + 80));

@@ -1,3 +1,9 @@
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
+// Covers pipeline.js's pure exports: normalizeTriage (the triage-failure
+// fallback incl. decomposition/quiz fields), collectConflicts, and
+// isTransientConnectStatus.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { collectConflicts, isTransientConnectStatus, normalizeTriage } from "./pipeline.js";
