@@ -766,7 +766,18 @@ async function buildChatPayload(opts) {
  */
 async function maybeRunShellLoop(turn) {
   try {
-    if (!bashLiteOn() || !sandboxSupported()) return [];
+    if (!bashLiteOn()) return []; // knob off — feature disabled, nothing to do
+    // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
+    // cannot boot. app.js self-heals by reloading once; if we still land here,
+    // tell the user plainly instead of silently answering "I can't run code".
+    if (!sandboxSupported()) {
+      startGenericStep(turn, "sandbox", "Starting sandbox…");
+      finishGenericStep(turn, {
+        id: "sandbox",
+        label: "Sandbox is enabled but this page isn't isolated yet — reload the page to start it.",
+      });
+      return [];
+    }
 
     let booted = false;
     let ran = 0;

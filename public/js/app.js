@@ -103,6 +103,19 @@ loadSettings()
     // Feedback mode (account panel knob): reveal the per-reply Feedback
     // buttons — turns.js keeps them in the DOM, the body class shows them.
     applyFeedbackMode(s?.feedback_mode === true);
+    // Experimental execution sandbox self-heal: the sandbox needs the page to
+    // be cross-origin isolated (COEP), which the server only sends when the
+    // bash_lite knob is on. If the knob is on but THIS page loaded without
+    // isolation (a tab open from before the knob was flipped, or a stale
+    // cache), the sandbox silently can't boot. Reload ONCE to fetch the
+    // now-isolated shell — guarded by sessionStorage so a server that never
+    // sends COEP can't cause a reload loop.
+    if (s?.bash_lite_mcp === true && !window.crossOriginIsolated && !sessionStorage.getItem("dr_coep_reload")) {
+      sessionStorage.setItem("dr_coep_reload", "1");
+      location.reload();
+      return;
+    }
+    if (window.crossOriginIsolated) sessionStorage.removeItem("dr_coep_reload");
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});

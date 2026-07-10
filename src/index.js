@@ -204,17 +204,46 @@ const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
  * @returns {Promise<Response>}
  */
 async function serveAsset(request, env, overrideUrl = null, opts = {}) {
-  const res = await env.ASSETS.fetch(overrideUrl ? new Request(overrideUrl, request) : request);
+  // The COEP (cross-origin-isolated) shell must be served as a FRESH 200 that
+  // is never cached: the COEP header is added dynamically per the bash_lite
+  // knob, but the HTML content is identical whether the knob is on or off, so
+  // a normal `no-cache` revalidation returns a 304 and the browser reuses its
+  // stored NON-isolated response WITHOUT the COEP header — `crossOriginIsolated`
+  // never turns on and the sandbox silently can't boot (the production defect
+  // this fixes). So for the isolated shell we strip the request's conditional
+  // headers (forcing a full 200, not a 304) and mark it `no-store`.
+  const upstream = buildAssetRequest(request, overrideUrl, opts.coep);
+  const res = await env.ASSETS.fetch(upstream);
   const pathname = new URL(overrideUrl || request.url).pathname;
   const headers = new Headers(res.headers);
-  // Extensionless paths are HTML routes (/, /welcome/, /admin) — revalidate.
-  if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
+  if (opts.coep) {
+    headers.set("cross-origin-embedder-policy", "credentialless");
+    headers.set("cache-control", "no-store");
+  } else if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
+    // Extensionless paths are HTML routes (/, /welcome/, /admin) — revalidate.
     headers.set("cache-control", "no-cache");
   } else {
     headers.set("cache-control", "public, max-age=3600");
   }
-  if (opts.coep) headers.set("cross-origin-embedder-policy", "credentialless");
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/**
+ * Builds the request handed to env.ASSETS. Normally the original request (or an
+ * override URL). For the isolated (coep) shell, conditional headers are
+ * stripped so ASSETS returns a full 200 (never a 304 that would drop the
+ * dynamic COEP header — see serveAsset).
+ * @param {Request} request
+ * @param {string | null} overrideUrl
+ * @param {boolean | undefined} coep
+ * @returns {Request}
+ */
+function buildAssetRequest(request, overrideUrl, coep) {
+  if (!coep) return overrideUrl ? new Request(overrideUrl, request) : request;
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(overrideUrl || request.url, { method: request.method, headers });
 }
 
 /**
