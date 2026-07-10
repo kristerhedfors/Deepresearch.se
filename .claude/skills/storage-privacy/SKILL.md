@@ -95,9 +95,19 @@ client hides the History button entirely (`historyAvailable()` in
 `history-store.js`) rather than silently storing conversations
 unencrypted. A plaintext fallback would defeat the point of the feature.
 
-**Incognito (the ghost toggle)**: a ghost button in the upper right,
-directly LEFT of the account button (`#ghostbtn`, wired in `app.js`,
-state in `stream.js`). Pressed BEFORE the first message of a fresh
+**Incognito — and the ghost's NEW meaning (2026-07-10)**: the ghost
+button (`#ghostbtn`, upper right, wired in `app.js`) is now THE DOOR TO
+DRC — clicking it navigates to /cure, ghost territory by construction
+(the server is in no data path there). It no longer toggles the
+per-conversation incognito flag; the paragraphs below describe the
+API-level contract that REMAINS honored (`incognito: true` on /api/chat
+suppresses the chat-log row; stream.js still implements
+setIncognito/persistConversation-no-op for any future or API caller) and
+the historical UI behavior. In DRC the ghost renders LIT ("you are
+here") with an explainer.
+The original toggle design, kept for the API contract's context: a
+ghost button in the upper right, directly LEFT of the account button
+(state in `stream.js`). Pressed BEFORE the first message of a fresh
 conversation, that conversation is never written to chat history at
 all — `persistConversation` is a no-op for it, so neither the encrypted
 local store nor the cloud copy ever sees it — AND every send carries

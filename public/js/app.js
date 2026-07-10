@@ -34,11 +34,9 @@ import {
   conversationAsText,
   conversationStarted,
   initStream,
-  isIncognito,
   isStreaming,
   resumePendingAnswer,
   sendMessage,
-  setIncognito,
   stopGeneration,
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
@@ -175,46 +173,29 @@ document.addEventListener("click", (e) => {
   if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
 });
 
-// ---- Incognito (ghost) toggle ---------------------------------------------
-// Upper right, directly left of the account button: pressed BEFORE the first
-// message, the conversation is never written to chat history — not the
-// encrypted local store, not the cloud copy (stream.js's persistConversation
-// is a no-op for it) — and never to the SERVER'S interaction log either
-// (stream.js sends `incognito: true`; src/chatlog.js skips the row). The
-// choice is per-conversation and made up front: once an ORDINARY
-// conversation has started the button is removed from the header (the
-// choice can no longer be made, so the affordance goes away); an INCOGNITO
-// conversation keeps it visible but locked — it doubles as the "nothing is
-// being saved" indicator for the rest of the chat. Always shown for a fresh
-// conversation (it used to hide with unavailable encrypted history, but the
-// server-log opt-out is meaningful regardless of local storage).
+// ---- The ghost: the door to DRC (2026-07-10 directive) ----------------------
+// Upper right, directly left of the account button. The ghost symbol's NEW
+// MEANING: it TAKES YOU to ghost territory — DRC, "deep research secure",
+// the khaki client-side twin at /cure where this server is not in any data
+// path at all (your own API keys, browser-local storage, model calls
+// straight from the browser). That is a structurally stronger anonymity
+// than the old per-conversation incognito toggle ever was: there is
+// nothing for the server to log in DRC, ever. The server keeps honoring
+// `incognito: true` on /api/chat (the anonymous-chat API promise stands —
+// src/chatlog.js), but the ghost UI now points at the real thing. Always
+// visible, never locked.
 
 const ghostBtn = document.getElementById("ghostbtn");
 
 function syncGhostState() {
-  const locked = conversationStarted();
-  const on = isIncognito();
-  ghostBtn.hidden = locked && !on;
-  ghostBtn.disabled = locked;
-  ghostBtn.classList.toggle("on", on);
-  ghostBtn.setAttribute("aria-pressed", on ? "true" : "false");
-  ghostBtn.title = on
-    ? "Incognito — this conversation won't be saved to chat history or logged on the server"
-    : "Incognito chat — keep this conversation out of chat history and the server's log";
+  ghostBtn.hidden = false;
+  ghostBtn.disabled = false;
+  ghostBtn.title =
+    "Ghost mode — DRC at /cure: the khaki client-side twin where this server never sees your chats (your own API keys, browser-local storage)";
 }
 
 ghostBtn.addEventListener("click", () => {
-  if (conversationStarted()) return;
-  setIncognito(!isIncognito());
-  // The empty-state notice doubles as the on/off confirmation (a title
-  // attribute alone is invisible on touch devices).
-  const empty = chat.querySelector(".empty");
-  if (empty) {
-    empty.textContent = isIncognito()
-      ? "Incognito chat — this conversation won't be saved to chat history or logged on the server. Ask a research question to get started."
-      : EMPTY_TEXT;
-  }
-  syncGhostState();
+  location.assign("/cure");
 });
 syncGhostState();
 
@@ -270,9 +251,8 @@ syncCopyState();
 // conversation adopts the project it was started from.
 function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
-  clearHistory(); // also resets incognito — the ghost choice is per conversation
+  clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
-  syncGhostState();
   syncCopyState();
   input.focus();
 }
@@ -292,7 +272,6 @@ function applyRecordSettings(record) {
   webSearchBox.checked = record.webSearch !== false;
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
   syncSearchToggle();
-  syncGhostState(); // loaded conversation → started, not incognito → ghost goes away
   syncCopyState(); // …and the loaded conversation is copyable
 }
 
@@ -382,12 +361,6 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   autogrow();
   setSendMode(true);
-  // The first message is going out — lock the incognito choice right away
-  // (conversationStarted() only flips once sendMessage pushes the message).
-  // An ordinary send removes the ghost immediately; an incognito one keeps
-  // it as the locked "nothing is being saved" indicator.
-  ghostBtn.disabled = true;
-  if (!isIncognito()) ghostBtn.hidden = true;
   const { images, docs } = takeAttachments();
   await sendMessage(text, {
     images,
@@ -397,9 +370,6 @@ form.addEventListener("submit", async (e) => {
     webSearch: webSearchBox.checked,
   });
   setSendMode(false);
-  // Re-sync rather than assume locked: a send that failed outright pops
-  // itself back out of the history, making the ghost available again.
-  syncGhostState();
   syncCopyState();
   input.focus();
 });

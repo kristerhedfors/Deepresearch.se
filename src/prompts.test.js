@@ -318,12 +318,13 @@ describe("directPrompt / searchOffPrompt", () => {
 
     test("states where each toggleable feature is turned on or off", () => {
       // web search knob, time slider, Shodan setting, cloud-storage setting,
-      // incognito ghost toggle — the five user-facing switches.
+      // plus the ghost — since 2026-07-10 the DOOR TO DRC (ghost mode = the
+      // client-side tier at /cure), not an in-app toggle.
       assert.match(p, /spiderweb knob in the composer/);
       assert.match(p, /slider in the composer/);
       assert.match(p, /"Shodan host intelligence", OFF by default/);
       assert.match(p, /"Store history in the cloud", ON by default/);
-      assert.match(p, /ghost\/incognito toggle/);
+      assert.match(p, /ghost button \(upper right\) opens GHOST MODE — DRC at \/cure/);
     });
 
     test("searchOffPrompt inherits the capabilities note via directPrompt", () => {

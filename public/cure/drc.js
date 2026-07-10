@@ -145,8 +145,8 @@ function closeDrawer() {
 
 const DRS_FEATURES = {
   ghost: {
-    title: "Incognito chats",
-    text: "The ghost toggle keeps a conversation out of chat history and the server's logs — a DRS feature. In DRC there is nothing to opt out of: this site's server never receives your messages in the first place.",
+    title: "Ghost mode — you are here",
+    text: "The ghost in the signed-in app brings you HERE: DRC is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In DRS the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
   account: {
     title: "Account & usage",
@@ -169,7 +169,7 @@ const DRS_FEATURES = {
 function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
-  $("drspop-title").textContent = f.title + " — a DRS feature";
+  $("drspop-title").textContent = feature === "ghost" ? f.title : f.title + " — a DRS feature";
   $("drspop-text").textContent = f.text;
   $("drspop").hidden = false;
 }
@@ -391,6 +391,15 @@ async function refreshModels() {
         "</optgroup>"
       );
     }),
+  );
+  // The tier's provider limit, made visible: only CORS-capable providers
+  // can serve DRC (direct browser calls); the hosted ones stay listed,
+  // disabled, pointing at DRS.
+  groups.push(
+    '<optgroup label="DRS only (hosted at /rver)">' +
+      '<option disabled>Berget — EU-hosted models</option>' +
+      '<option disabled>Anthropic Claude</option>' +
+      "</optgroup>",
   );
   pick.innerHTML = groups.join("");
   const remembered = state.providerId && state.model ? state.providerId + "::" + state.model : null;

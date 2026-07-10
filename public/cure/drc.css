@@ -103,6 +103,9 @@ header {
    tappable — the tap opens the explainer pointing to /rver. */
 .drs { opacity: .45; }
 .drs:hover { opacity: .65; }
+/* The ghost is LIT here — the app's ghost brings you to DRC, so on this
+   side it reads "you are in ghost mode". Tapping it explains. */
+#ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .drs-wrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; cursor: pointer; }
 .drs-wrap input { pointer-events: none; }
 

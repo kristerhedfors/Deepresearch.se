@@ -66,9 +66,11 @@
     <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
     lives in your browser, encrypted (see "Chat history" below). To improve
     the service, the server keeps a log of completed research interactions —
-    the question, the answer, and the research steps — <b>unless you start
-    the conversation with the ghost (incognito) toggle</b>, which keeps it
-    out of chat history and the server's log alike.</div>
+    the question, the answer, and the research steps. For chats that should
+    leave <b>no trace on this server at all</b>, the <b>ghost button</b>
+    (upper right) opens ghost mode — DRC at <code>/cure</code>, the
+    client-side twin of this app where the server is never in the data
+    path (your own API key, browser-local storage).</div>
   </section>
 
   <section>
@@ -151,8 +153,9 @@
     themselves, in this browser and (when cloud storage is on) in the cloud
     copy. Chats outside projects are not indexed and stay encrypted exactly
     as described above. If a conversation shouldn't be readable at rest —
-    or retrievable from your other chats — keep it outside projects, or use
-    the incognito ghost toggle.</p>
+    or retrievable from your other chats — keep it outside projects, or
+    take it to ghost mode (the ghost button → DRC at <code>/cure</code>,
+    where nothing reaches this server at all).</p>
     <h3>Backing up or moving a project with a secret</h3>
     <p>A project — even one kept out of the cloud — can be stored as
     <b>one encrypted archive</b> keyed by a secret: open the project and
@@ -367,11 +370,12 @@
         above).</li>
       <li><b>The interaction log</b>: to improve the service, the server
         logs each completed exchange — your question, the answer, the
-        searches run and sources found, timings, and any error. Start the
-        conversation with the <b>ghost (incognito) toggle</b> and nothing
-        content-derived is logged for it (usage numbers for quotas are still
-        counted). The choice is made before the first message and locks for
-        that conversation.</li>
+        searches run and sources found, timings, and any error. For
+        conversations that should never touch this server, the <b>ghost
+        button</b> takes you to ghost mode — DRC at <code>/cure</code>,
+        where the server never receives your messages in the first place.
+        (API clients can still send <code>incognito: true</code> per
+        conversation to suppress the log row.)</li>
       <li><b>Project vault copies</b>: made only when you press <b>Store</b>
         on a project's "Encrypted copy, keyed by a secret". The archive is
         encrypted in your browser under a secret only you hold — the server
@@ -396,8 +400,8 @@
         question or anything identifying you.</li>
       <li><b>What our server keeps</b>: your account (Google email, name),
         per-request usage numbers — token counts, search counts, durations —
-        used for the quota bars, and the interaction log above (which the
-        ghost toggle opts a conversation out of).</li>
+        used for the quota bars, and the interaction log above (chats in
+        ghost mode — DRC — never reach the server to begin with).</li>
       <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
         <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
       <li><b>In your browser only</b>: model choice, time target, and the

@@ -57,9 +57,12 @@ git push origin main
    (explicit product decision) the server ALSO keeps a full-visibility
    interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
    exchange's complete question, answer, and research metadata — UNLESS the
-   conversation was started with the ghost (incognito) toggle, the
-   anonymous-chat promise that must keep suppressing the log row
-   (`incognito: true` on `/api/chat`). DRC — "deep research secure", the
+   conversation carries `incognito: true` on `/api/chat`, the
+   anonymous-chat API promise that must keep suppressing the log row.
+   Since 2026-07-10 the ghost BUTTON no longer toggles that flag — its new
+   meaning is THE DOOR TO DRC (clicking it navigates to /cure, the
+   structurally stronger anonymity); the API contract stays honored for
+   any client that sends the flag. DRC — "deep research secure", the
    public CLIENT-side tier at `/cure` — extends the strict tier to a whole
    surface, structurally: no accounts, and the server is in NO data path
    at all — the browser calls the user's own CORS-capable providers
