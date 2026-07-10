@@ -70,7 +70,7 @@ collisions first.
    trick: **adapt at the wire, don't fork the pipeline.** berget.js's
    `consumeChatStream` (and with it the idle/total guards, the
    finish_reason dropped-connection check, STREAM_MAX_CHARS, the
-   empty-completion retry, and pipeline.js's model failover) then works
+   empty-completion retry, and answer-stream.js's model failover) then works
    unchanged.
    - Foreign wire (Anthropic): the adapter is `openAiStreamFromAnthropic`
      + `oaiChunksFromEvent` — map the provider's stream events to deltas,

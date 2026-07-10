@@ -68,12 +68,15 @@ power/acc/PP. Don't hand-tune numbers.
 ## Code layout
 
 - `src/tokemon.js` — the PURE core (no I/O, fully Node-tested in
-  `src/tokemon.test.js`): catalogs (`SPECIES`, `MOVES`, `BALLS`,
-  `HEAL_ITEMS`), formulas, seeded RNG (`hashSeed`/`seededRng` — everything
-  random takes an injected rng), spawn generation
+  `src/tokemon.test.js`): formulas, seeded RNG (`hashSeed`/`seededRng` —
+  everything random takes an injected rng), spawn generation
   (`cellSpawns`/`spawnsAround`/`spawnById`), the battle engine
   (`applyBattleAction` returns an ordered event list), save shape
   (`newSave`/`normalizeSave`).
+- `src/tokemon-data.js` — the static DATA catalogs (`SPECIES`, `MOVES`,
+  `BALLS`, `HEAL_ITEMS`, the renamed type chart, spawn/item-drop tables),
+  re-exported through `tokemon.js` so consumers see one surface; the
+  Gen-1 provenance rule above applies to every value here.
 - `src/tokemon-api.js` — `/api/games/tokemon/*` (dispatched by the registry,
   which passes the stripped `subpath`): persistence (D1 `tokemon_saves`,
   one JSON row per user, table in `src/db.js`) + validation. Server-

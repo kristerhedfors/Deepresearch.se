@@ -1,8 +1,8 @@
 ---
 name: pipeline-architecture
 description: >-
-  Load when working on src/pipeline.js, src/budget.js, src/model-profiles.js, or
-  src/berget.js — the deep-research pipeline phases (triage→search→gap→synth→validate),
+  Load when working on src/pipeline.js, src/triage.js, src/answer-stream.js,
+  src/budget.js, src/model-profiles.js, or src/berget.js — the deep-research pipeline phases (triage→search→gap→synth→validate),
   split model routing (JSON phases on a fixed reliable model), time-budget planning
   (EWMA), per-model profiles, or the CPU/timeout incident history (round-2 hung-fetch
   timeouts, round-3 finish_reason, round-4 exceededCpu / Workers Paid, STREAM_MAX_CHARS).

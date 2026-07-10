@@ -41,7 +41,7 @@ appropriate ledger. The tuning pass below is therefore mostly
 ## The codified use cases and their evaluations
 
 1. **Synthesis & direct answers** (the user's chosen model —
-   pipeline.js `streamCompletion`). Measured by all three benches:
+   answer-stream.js `streamCompletion`). Measured by all three benches:
    - `npm run eval:models` (tests/model-eval.mjs) — qualitative traces,
      failure-mode discovery. Ledger: `tests/MODEL-EVAL-FINDINGS.md`.
    - `npm run eval:bench` (tests/eval-bench.mjs) — LLM-judged scores on

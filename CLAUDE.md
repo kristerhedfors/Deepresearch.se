@@ -112,6 +112,8 @@ Server (`src/`):
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
+| `triage.js` | The pipeline's JSON-hardening layer: the declared schemas for every JSON planning phase + `hardenJson`, and `normalizeTriage` (the triage-failure fallback) — pure, no I/O |
+| `answer-stream.js` | The answer-streaming internals behind synthesis/direct/search-off replies: `streamCompletion` (reliable-model failover), the per-model attempt loop (connect retries, idle guard, finish_reason detection), `emitChunked` |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
 | `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-origin diversity cap (per-domain; per-OWNER for huggingface.co) + overflow backfill, the numbered digest |
 | `enrichment.js` | Opt-in pre-pipeline context enrichments: the ENRICHMENTS registry (run once via `runEnrichments`, blocks appended before any model call) + the Shodan runner; the Google Maps runners live in `maps-enrichment.js` |
@@ -120,6 +122,7 @@ Server (`src/`):
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
 | `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine — see the **tokemon-game** skill |
+| `tokemon-data.js` | The game core's static DATA tables (Gen-1 provenance): the renamed type chart, moves, species, starters, balls/heal items, spawn/item-drop tables — re-exported through `tokemon.js`, so consumers see one surface |
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
 | `prompts.js` | All LLM prompt builders |
@@ -135,7 +138,8 @@ Server (`src/`):
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
-| `googlemaps.js` | Google Maps Platform clients (Places, Street View, Static Maps), the edge-cached lookup orchestration, and the labeled context-block builders (opt-in `google_maps` knob) |
+| `googlemaps.js` | Google Maps Platform clients (Places, Street View, Static Maps, Routes) and the edge-cached lookup orchestration (opt-in `google_maps` knob) |
+| `googlemaps-blocks.js` | The Maps integration's pure labeled context-block builders (POV/jump/cross-barrier/nearby/map-view/lookup/journey blocks + the keyless `mapLink`/`panoLink` helpers and `compassDir`) — Node-tested; the API key never appears here |
 | `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, every intent gate (street-view, moves, here-asks, nearby/relocation, barriers, journey), locality corrections, the conversation-state recovery (`pendingRelocation`, `extractJourneyPoints`), and `pickLookup` — the ORDERED LOOKUP_MATCHERS registry (one small matcher per ask shape; the order is the spec) — all Node-tested |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
@@ -145,6 +149,12 @@ Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
 search knob, composer), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn),
+`embeds.js` (the conversation embeds registry stream.js wires via
+`initEmbeds`: record/prune/size-cap of pipeline-embedded elements, quiz
+interaction hooks, the persisted `embeds` list — strict-checked),
+`recovery.js` (the answer-recovery polling client for server-parked
+answers — `recoverAnswer`'s rolling-deadline poll loop + `ackAnswer`;
+delivery of a recovered answer stays in `stream.js`),
 `sse.js` (the pure SSE line-buffer parser `stream.js`'s read loop feeds —
 Node-tested), `message-content.js` (pure builders for the outgoing
 message: labeled document / image-metadata / RAG-excerpt blocks, title
@@ -155,8 +165,13 @@ pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
-downscaling), `account.js` (account & usage panel: the Feedback-mode
-knob directly on the summary + the Feedback dialogue-threads view),
+downscaling), `account.js` (the account panel SHELL: `initAccountPanel`,
+the shared `PanelCtx`, and the `showView` dispatcher — the views live in
+`account-views.js` (summary incl. the Feedback-mode knob, full usage,
+games shelf + the shared building blocks: setting rows, info popovers,
+notification badge), `account-messages.js` (the message center),
+`account-settings.js` (the cloud-storage/Shodan/Maps knobs),
+`account-feedback.js` (the Feedback dialogue-threads view)),
 `turns.js`
 (bubbles/content/tools — incl. the per-reply Feedback button + inline
 form, present on every turn and shown via the body's `feedback-mode`
@@ -240,7 +255,7 @@ key-gated catalog, stop-reason mapping), `openai.js` (the GPT wire params —
 through the real `consumeChatStream`, key-gated catalog, plus an in-suite
 mock-HTTP smoke over `node:http`), `providers.js` (the registry routing
 predicates + the catalog merge/degrade path),
-`pipeline.js`'s `normalizeTriage` (the triage-failure fallback),
+`triage.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),

@@ -289,7 +289,8 @@ Phase details:
    questions (`applyComplexityToPlan`), optional `subquestions` that the
    gap check and synthesis are held to, and a fail-soft `quiz:true` backup
    flag for quiz phrasings the deterministic gate missed. If triage fails
-   or returns junk, `normalizeTriage` falls back: substantial question →
+   or returns junk, `normalizeTriage` (`src/triage.js`, the pipeline's
+JSON-hardening layer) falls back: substantial question →
    research with the raw question as the single query; otherwise answer
    directly. (Model JSON is hardened by the tiny in-repo validator
    `src/schema.js` — lenient, never throws, always leaves the existing
@@ -437,7 +438,7 @@ A round 3 battery found two more universal (not per-model) gaps:
   streaming had already started — a signature the connect-timeout fix
   above cannot catch. A properly completed OpenAI-style stream always
   sets `finish_reason` on its last chunk; Berget's mid-stream drops leave
-  it unset. `streamCompletion` now throws when `finishReason` is missing
+  it unset. `streamCompletion` (`src/answer-stream.js`) now throws when `finishReason` is missing
   after the stream ends, converting a silently-truncated `ok:true`
   response into a normal, catchable error — applying uniformly to every
   model (`tests/MODEL-EVAL-FINDINGS.md` tracks the underlying Berget-side
@@ -676,12 +677,12 @@ the architectural highlights:
 
 | Area | Modules | Notes |
 |---|---|---|
-| Send loop & streaming | `app.js`, `stream.js`, `sse.js`, `message-content.js` | Conversation history + `/api/chat` SSE loop; the pure SSE line-buffer parser and outgoing-message block builders are Node-tested |
+| Send loop & streaming | `app.js`, `stream.js`, `embeds.js`, `recovery.js`, `sse.js`, `message-content.js` | Conversation history + `/api/chat` SSE loop; the embeds registry and answer-recovery poll client are split-out collaborators; the pure SSE line-buffer parser and outgoing-message block builders are Node-tested |
 | Turn rendering | `turns.js`, `activity.js`, `markdown.js`, `quiz.js`, `imagedeck.js` | Bubbles, live step bars, sanitized Markdown (`<img>` forbidden), the interactive quiz card, the conversation-wide image deck for Street View/map frames |
 | History & storage | `history-store.js`, `history-ui.js`, `sync.js`, `settings.js`, `opfs.js` | **Encrypted local history** (IndexedDB + AES-256-GCM under the `/api/history-key` key), the history sidebar, cloud dual-write/sync when the `server_history` knob is on, original file bytes in OPFS |
 | RAG & projects | `rag.js`, `chat-rag.js`, `projects.js`, `project-context.js`, `projects-ui.js` | Client-side chunking/embedding (`POST /api/embed`), local or server vector index, project records and project-chat retrieval |
 | Attachments | `attachments.js`, `exif.js`, `docs.js`, `report.js` | Image downscaling, EXIF/GPS extraction, docx/pdf parsing, the PDF report export |
-| Account & misc | `account.js`, `models.js`, `notifications.js`, `timescale.js` | Account/usage panel with settings knobs, Feedback view and Games shelf; model dropdown; message center; the budget slider's quadratic scale |
+| Account & misc | `account.js` + `account-views.js`/`account-messages.js`/`account-settings.js`/`account-feedback.js`, `models.js`, `notifications.js`, `timescale.js` | The account panel shell + its split-out views (summary/usage/games, message center, settings knobs, Feedback threads); model dropdown; the budget slider's quadratic scale |
 
 Client-side behaviors that matter architecturally:
 
@@ -742,7 +743,8 @@ degrade to a clear error when their backing is missing.
 **Tokemon** is the first game: an open-world AR catch-and-battle game
 whose mechanics are Pokémon Gen-1 verbatim under an AI-themed skin
 (`src/tokemon.js`, pure and Node-tested: stat/damage/catch/escape
-formulas, the official type chart renamed 1:1). Spawning is deterministic
+formulas; the static data tables — the renamed official type chart,
+moves, species — live in `src/tokemon-data.js`). Spawning is deterministic
 (seeded RNG per geocell + 15-min bucket); battles resolve
 server-authoritatively (`src/tokemon-api.js`, D1 `tokemon_saves`); a
 street-view AR mode projects spawns into edge-cached Street View frames,
