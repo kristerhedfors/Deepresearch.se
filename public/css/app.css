@@ -1098,6 +1098,31 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border: 1px solid var(--border); border-radius: 10px;
   padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
 }
+/* The project vault (public/js/vault.js): the sidebar's load-from-secret
+   form mirrors the create form; the panel's secret reveal renders the
+   one-time secret in a tap-selectable monospace block. */
+#projectload { display: flex; gap: .4rem; }
+#projectload[hidden] { display: none; }
+#projectload input {
+  flex: 1; min-width: 0; font: inherit; font-size: .85rem; padding: .45rem .6rem;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
+}
+#projectload button, #pvaultstore, #pvaultcopy {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
+}
+#projectloadstatus { font-size: .78rem; }
+#projectloadstatus[hidden] { display: none; }
+.vault-secret-row { display: flex; align-items: center; gap: .4rem; margin: .25rem 0 .4rem; }
+.vault-secret {
+  flex: 1; min-width: 0; overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem;
+  padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(255,255,255,.6);
+  -webkit-user-select: all; user-select: all; /* one tap selects the whole secret */
+}
+.vault-warn { font-weight: 600; }
 .project-file .pf-thumb {
   width: 34px; height: 34px; object-fit: cover; border-radius: 8px; flex: none;
   box-shadow: 0 1px 3px rgba(4, 30, 60, .25);

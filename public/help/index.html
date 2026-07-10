@@ -153,6 +153,21 @@
     as described above. If a conversation shouldn't be readable at rest —
     or retrievable from your other chats — keep it outside projects, or use
     the incognito ghost toggle.</p>
+    <h3>Backing up or moving a project with a secret</h3>
+    <p>A project — even one kept out of the cloud — can be stored as
+    <b>one encrypted archive</b> keyed by a secret: open the project and
+    press <b>Store</b> next to "Encrypted copy, keyed by a secret". Your
+    browser packs the project's chats, files, and search index, encrypts
+    everything locally with a freshly generated secret
+    (<code>DR1-XXXX-…</code>, 160 random bits), and uploads only the
+    unreadable result. Unlike regular cloud storage, the server never holds
+    anything readable — not the project's name, not its files, not even a
+    key it could derive: the secret shown to you (once — copy it!) is the
+    only way to find and decrypt the copy. Use <b>🔑 Load project from
+    secret</b> in the History panel on any of your devices to bring the
+    project back. Storing again replaces the copy under a new secret, and
+    the old secret stops working; losing the secret loses the copy — there
+    is deliberately no recovery.</p>
   </section>
 
   <section>
@@ -357,6 +372,12 @@
         content-derived is logged for it (usage numbers for quotas are still
         counted). The choice is made before the first message and locks for
         that conversation.</li>
+      <li><b>Project vault copies</b>: made only when you press <b>Store</b>
+        on a project's "Encrypted copy, keyed by a secret". The archive is
+        encrypted in your browser under a secret only you hold — the server
+        stores unreadable bytes it has no key for (not even derivable), and
+        switching cloud storage off never touches these copies. Load one
+        back with 🔑 Load project from secret in the History panel.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an

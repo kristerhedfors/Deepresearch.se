@@ -298,24 +298,42 @@ async function putDocLocally(doc, chunks, vectors) {
 }
 
 /**
+ * One locally-indexed document in its portable form — the same
+ * chunks-plus-b64-vectors shape the server index stores in R2 and
+ * importDoc below accepts, so moving a doc never re-embeds. Used by the
+ * server push right below and by the project vault archive
+ * (public/js/vault.js).
+ * @param {string} docId
+ * @returns {Promise<?{docId: string, name: string, chunks: Chunk[],
+ *   vectors: string[], createdAt: number}>} null when the doc isn't in the
+ *   local index
+ */
+export async function exportDoc(docId) {
+  const doc = await reqToPromise((await store("docs", "readonly")).get(docId));
+  if (!doc) return null;
+  const chunks = (await chunksForDoc(docId)).sort((a, b) => a.seq - b.seq);
+  return {
+    docId,
+    name: doc.name,
+    chunks: chunks.map((c) => ({ seq: c.seq, text: c.text })),
+    vectors: chunks.map((c) => f32ToB64(c.vector)),
+    createdAt: doc.addedAt || Date.now(),
+  };
+}
+
+/**
  * Push one locally-indexed document to the server index (vectors included,
  * so the server never re-embeds). Used at index time when the knob is on,
  * and by sync.js when it's switched on later.
  * @param {string} docId
  */
 export async function pushDocToServer(docId) {
-  const doc = await reqToPromise((await store("docs", "readonly")).get(docId));
-  if (!doc) throw new Error("Document not in the local index.");
-  const chunks = (await chunksForDoc(docId)).sort((a, b) => a.seq - b.seq);
+  const data = await exportDoc(docId);
+  if (!data) throw new Error("Document not in the local index.");
   const res = await fetch("/api/rag/index", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      docId,
-      name: doc.name,
-      chunks: chunks.map((c) => ({ seq: c.seq, text: c.text })),
-      vectors: chunks.map((c) => f32ToB64(c.vector)),
-    }),
+    body: JSON.stringify(data),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

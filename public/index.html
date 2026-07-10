@@ -101,6 +101,12 @@
         <input id="projectcreatename" type="text" placeholder="Project name" maxlength="80">
         <button id="projectcreatego" type="button">Create</button>
       </div>
+      <button id="projectloadbtn" type="button" class="history-new">🔑 Load project from secret</button>
+      <div id="projectload" hidden>
+        <input id="projectloadsecret" type="text" placeholder="Secret (DR1-XXXX-…)" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="projectloadgo" type="button">Load</button>
+      </div>
+      <p id="projectloadstatus" class="muted" hidden></p>
       <div id="projectslist"></div>
       <div id="historylist" class="history-list"><p class="muted">Loading…</p></div>
     </aside>

@@ -1,12 +1,13 @@
 ---
 name: storage-privacy
 description: >-
-  Load when touching src/storage.js, src/settings.js, src/rag.js,
-  public/js/history-store.js, sync.js, projects.js, or anything about
-  chat-history encryption, the per-account server_history cloud-storage knob,
-  RAG document indexing, projects, or the privacy/encryption model
-  (encrypted-at-rest except RAG-indexed and project chats; keys never at rest
-  beside ciphertext).
+  Load when touching src/storage.js, src/vault.js, src/settings.js,
+  src/rag.js, public/js/history-store.js, sync.js, projects.js,
+  public/js/vault.js, or anything about chat-history encryption, the
+  per-account server_history cloud-storage knob, RAG document indexing,
+  projects, the secret-keyed project vault (store/load a project with a
+  DR1-… secret), or the privacy/encryption model (encrypted-at-rest except
+  RAG-indexed and project chats; keys never at rest beside ciphertext).
 ---
 
 # Storage, encryption & privacy model
@@ -310,3 +311,54 @@ nothing project-specific was invented storage-side:
   included), conversations and record from BOTH rests; the per-project
   drain (`drainProjectScope`) likewise pulls down and deletes the
   project's chat docs alongside its files and records.
+
+## The project vault — store/load a whole project under a user-held secret
+
+The strictest storage tier (added 2026-07-10): any project — INCLUDING a
+local-only one (its knob off, or the whole account knob off) — can be
+parked server-side as ONE client-encrypted archive and loaded back on any
+of the account's devices, without the server ever holding anything
+readable or any key material. `src/vault.js` (endpoints) +
+`public/js/vault.js` (everything cryptographic + the pack/load
+orchestration); UI in `projects-ui.js` (the panel's "Encrypted copy,
+keyed by a secret" store section, the sidebar's "🔑 Load project from
+secret" form).
+
+- **The secret is the whole key hierarchy**: 160 CSPRNG bits, shown once
+  as `DR1-` + 8×4 Crockford base32 chars (no I/L/O/U — copy-safe;
+  normalization forgives case, separators, and O→0 / I,l→1 misreads,
+  including in a mangled prefix). HKDF-SHA-256 derives BOTH the storage
+  id (`info="…vault id v1"`) and the AES-256-GCM key
+  (`info="…vault key v1"`) — the secret locates AND decrypts; the server
+  stores an unlabeled opaque blob at `vault/{uid}/{id}` it can never
+  read. This is deliberately stronger than the history-key model: there
+  the server could re-derive the key; here it holds nothing derivable.
+  The secret is NEVER persisted anywhere — losing it loses the copy, by
+  design (no recovery path; say so in UI copy, don't soften it).
+- **The archive is self-contained under the secret alone**: project
+  record, its conversations, file ORIGINALS (decrypted from their
+  history-key storage form first, so the archive doesn't depend on that
+  key), and its RAG docs with vectors (nothing re-embeds on load). On
+  load everything returns to its normal storage form: files re-encrypted
+  under the history key (RAG-indexed docs readable, as always; no key →
+  file skipped, never stored readable), records via the normal
+  save paths, LWW by updatedAt, gap-filling.
+- **Import honors the archived project's own cloud posture** — a
+  local-only project loads as local-only (`cloud` follows the record's
+  `serverStorage`), so loading never silently uploads anything readable.
+- **NOT `server_history`-gated** (unlike every `src/storage.js` write):
+  each store is its own explicit consent act, and the whole point is
+  serving knob-off projects. Gated only on `storageAvailability` (R2
+  binding + user row). Per-user namespacing means a vault blob is only
+  reachable from the account that stored it — the secret alone is not
+  enough from another account.
+- **Excluded from the drain-wipe**: `DELETE /api/storage` (account knob
+  off) deliberately does NOT touch `vault/{uid}/` — those copies are
+  often made precisely because the knob is going off. Keep it that way.
+- **Re-storing rotates**: the record remembers its `vaultId` (inside the
+  encrypted record); a new store uploads under the NEW secret's id,
+  updates `vaultId`, deletes the old blob — the old secret stops
+  working. Caps: 100 MB/archive, 50 objects/user (`MAX_VAULT_OBJECTS`).
+- Disclosed at `/help/` ("Backing up or moving a project with a secret" +
+  a "Privacy, in full" bullet) — keep those consistent with any change
+  here.

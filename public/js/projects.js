@@ -180,6 +180,17 @@ export async function setProjectCloud(id, on) {
   return persistProject(p);
 }
 
+// The project's current vault id (public/js/vault.js): remembered INSIDE
+// the encrypted record so re-storing can rotate — upload under the new
+// secret's id, delete the old blob. The id reveals nothing (it's an HKDF
+// output; the secret itself is never stored anywhere).
+export async function setProjectVaultId(id, vaultId) {
+  const p = getProject(id);
+  if (!p) return null;
+  p.vaultId = vaultId || null;
+  return persistProject(p);
+}
+
 // ---- files & notes -------------------------------------------------------------
 
 // One added file → one inventory entry. Documents and notes are ALWAYS

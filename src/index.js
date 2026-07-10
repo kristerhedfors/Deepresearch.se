@@ -55,6 +55,7 @@ import {
 import { handleFeedbackApi } from "./feedback.js";
 import { handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleStorage } from "./storage.js";
+import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
@@ -414,6 +415,13 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
     url.pathname === "/api/storage"
   ) {
     return handleStorage(request, env, url, log, identity);
+  }
+  // The secret-keyed project vault (src/vault.js): client-encrypted project
+  // archives under a user-held secret the server never sees. Deliberately
+  // NOT knob-gated — each store is its own explicit consent, and the blob
+  // is ciphertext only.
+  if (url.pathname.startsWith("/api/vault/")) {
+    return handleVault(request, env, url, log, identity);
   }
   // The games subsystem (src/games.js): GET /api/games lists the shelf the
   // account panel renders; /api/games/<id>/* dispatches to the registered

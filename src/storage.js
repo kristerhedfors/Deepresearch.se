@@ -306,6 +306,10 @@ async function deleteObject(env, key) {
  * @param {number | string} uid
  */
 async function wipeAll(env, log, identity, uid) {
+  // vault/{uid}/ (src/vault.js) is deliberately NOT in this list: vault
+  // objects are secret-encrypted archives stored by explicit user action —
+  // often made precisely BECAUSE the knob is going off — so the knob-driven
+  // drain must never destroy them.
   const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
   for (const prefix of prefixes) {

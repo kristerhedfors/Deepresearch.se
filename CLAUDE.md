@@ -50,7 +50,10 @@ git push origin main
    ciphertext in BOTH the browser and (if the cloud knob is on) R2 — the ONLY
    readable exceptions are RAG-indexed material and project chats, because
    retrieval needs plaintext. The encryption key is derived server-side and
-   held only in memory, never at rest beside the ciphertext. Since 2026-07-08
+   held only in memory, never at rest beside the ciphertext. The
+   secret-keyed project vault (`src/vault.js` + `public/js/vault.js`) is
+   the strictest tier: archives rest server-side as ciphertext under a
+   user-held secret the server never sees and cannot derive. Since 2026-07-08
    (explicit product decision) the server ALSO keeps a full-visibility
    interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
    exchange's complete question, answer, and research metadata — UNLESS the
@@ -104,7 +107,8 @@ Server (`src/`):
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
-| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage`) |
+| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
+| `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -213,7 +217,15 @@ flips, either direction, + `pullNewer` reconciliation + the per-project
 file/note ingestion + indexing, the per-project knob, scope helpers),
 `project-context.js` (pure builders: the project-materials block,
 `projectDocIds` — Node-testable), `projects-ui.js` (the project panel:
-knob at top, dropzone, add-text form, file/chat lists, header chip).
+knob at top, the vault store-with-secret section, dropzone, add-text
+form, file/chat lists, header chip; plus the sidebar's
+load-project-from-secret form), `vault.js` (the project vault: the
+copy-safe 160-bit Crockford-base32 secret — generation, forgiving
+normalization — HKDF id+key derivation, AES-256-GCM archive
+encrypt/decrypt, and the store/load orchestration packing a whole
+project — record, chats, decrypted file originals, RAG index with
+vectors — into ONE blob the server only ever sees encrypted; pure
+core Node-tested).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
@@ -260,6 +272,9 @@ predicates + the catalog merge/degrade path),
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
+`vault.js` (the project-vault endpoints against a mocked R2 bucket:
+id validation, PUT/GET/DELETE round-trip, size/count caps, per-user
+namespacing, and the works-with-the-knob-OFF guarantee),
 `edge-cache.js` (the fail-soft Workers Cache get/put helpers, against a
 mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and
@@ -303,7 +318,11 @@ waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
 malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
 scoring incl. ungraded free-text handling, the completed-quiz summary
-block), and `activity.js`'s
+block), `vault.js`'s pure core (secret format/entropy/uniqueness, the
+forgiving normalization incl. misread mapping and prefix stripping, the
+Crockford codec round-trip, HKDF id/key derivation determinism,
+archive encrypt/decrypt incl. tamper detection, archive-shape
+validation, the chunked base64 helpers), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
 `answer`, the `errored` flag + `errors` list, and the ordered timeline).
@@ -420,9 +439,10 @@ what docs claim); and update the skill list below plus the skill's
   ledger, deciding evidence-driven `model-profiles.js` entries, and
   don't-commit-mid-battery.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
-  `server_history` cloud knob, RAG documents, projects, and the
-  encryption-asymmetry rule (`storage.js`, `settings.js`, `rag.js`,
-  `history-store.js`, `sync.js`, `projects.js`).
+  `server_history` cloud knob, RAG documents, projects, the secret-keyed
+  project vault, and the encryption-asymmetry rule (`storage.js`,
+  `vault.js`, `settings.js`, `rag.js`, `history-store.js`, `sync.js`,
+  `projects.js`, `public/js/vault.js`).
 - **integrations** — external providers and the enrichment pattern: Berget,
   Anthropic, OpenAI, Exa, OpenStreetMap Nominatim geocoding, Shodan, Google
   Maps / Street View, Hugging Face Hub search (`berget.js`, `anthropic.js`,

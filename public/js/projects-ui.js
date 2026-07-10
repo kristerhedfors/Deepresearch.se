@@ -27,6 +27,7 @@ import {
 import { storageAvailable } from "./settings.js";
 import { applyLoadedConversation } from "./stream.js";
 import { drainProjectScope, pushProjectScope } from "./sync.js";
+import { loadProjectFromVault, storeProjectToVault, vaultSecretValid } from "./vault.js";
 
 let onLoad = () => {};
 let onNew = () => {};
@@ -59,6 +60,8 @@ export function initProjectsUi(opts = {}) {
     renderProjectsList();
     openProjectPanel(p.id);
   });
+
+  wireVaultLoad();
 
   const overlay = document.getElementById("projectpanel");
   document.getElementById("projectclose").addEventListener("click", closePanel);
@@ -133,6 +136,55 @@ function wireTitleRename() {
     } else {
       lastTap = now;
     }
+  });
+}
+
+// The sidebar's "Load project from secret" flow (public/js/vault.js): the
+// button reveals a one-line secret form; a valid secret fetches the
+// encrypted archive, decrypts it in this browser, and imports the project —
+// a local-only project loads as local-only.
+function wireVaultLoad() {
+  const btn = document.getElementById("projectloadbtn");
+  const box = document.getElementById("projectload");
+  const input = document.getElementById("projectloadsecret");
+  const status = document.getElementById("projectloadstatus");
+  const setStatus = (msg) => {
+    status.hidden = !msg;
+    status.textContent = msg || "";
+  };
+  btn.addEventListener("click", () => {
+    box.hidden = !box.hidden;
+    setStatus("");
+    if (!box.hidden) input.focus();
+  });
+  async function go() {
+    const secret = input.value;
+    if (!vaultSecretValid(secret)) {
+      setStatus("That doesn't look like a vault secret — expected DR1- followed by 32 characters.");
+      return;
+    }
+    if (!storageAvailable()) {
+      setStatus("Cloud storage isn't available on this account.");
+      return;
+    }
+    const goBtn = document.getElementById("projectloadgo");
+    goBtn.disabled = true;
+    try {
+      const r = await loadProjectFromVault(secret, setStatus);
+      input.value = "";
+      box.hidden = true;
+      setStatus("");
+      await renderProjectsList();
+      openProjectPanel(r.projectId);
+    } catch (err) {
+      setStatus(err?.message || "Loading the project failed.");
+    } finally {
+      goBtn.disabled = false;
+    }
+  }
+  document.getElementById("projectloadgo").addEventListener("click", go);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") go();
   });
 }
 
@@ -276,6 +328,24 @@ async function renderPanel() {
       </div>
       <p id="projectsyncstatus" class="muted setting-desc"${cloudUsable ? " hidden" : ""}>${cloudUsable ? "" : "Cloud storage isn't available on this account, so this project stays in this browser."}</p>
     </div>
+    <div class="settings-item project-vault"${cloudUsable ? "" : " hidden"}>
+      <div class="settings-row">
+        <span class="settings-label">Encrypted copy, keyed by a secret</span>
+        <button type="button" id="pvaultstore">${p.vaultId ? "Store again" : "Store"}</button>
+      </div>
+      <p class="muted setting-desc">Packs this project — chats, files, and its search index — and encrypts
+        everything in this browser with a new one-time secret before storing the unreadable archive in the
+        cloud. Works even while this project (or the whole account) keeps cloud storage off.${p.vaultId ? " Storing again replaces the copy — the previous secret stops working." : ""}</p>
+      <div id="pvaultsecret" hidden>
+        <p class="muted setting-desc vault-warn">Copy the secret now — it is shown only this once and is the
+          ONLY way to load this copy. Anyone holding it (on this account) can load the project.</p>
+        <div class="vault-secret-row">
+          <code id="pvaultsecrettext" class="vault-secret"></code>
+          <button type="button" id="pvaultcopy">Copy</button>
+        </div>
+      </div>
+      <p id="pvaultstatus" class="muted setting-desc" hidden></p>
+    </div>
     <div class="project-actions">
       <button type="button" id="pchat" class="icon-btn" title="New chat in project" aria-label="New chat in project">${CHAT_PLUS_ICON}</button>
       <span class="flex-spacer"></span>
@@ -351,6 +421,55 @@ function wirePanel(p) {
       kstatus.textContent = err?.message || "Could not update the project setting.";
     } finally {
       knob.disabled = false;
+    }
+  });
+
+  // ---- the encrypted vault copy (public/js/vault.js) --------------------
+  const vaultBtn = document.getElementById("pvaultstore");
+  const vaultStatus = document.getElementById("pvaultstatus");
+  const setVaultStatus = (msg) => {
+    vaultStatus.hidden = !msg;
+    vaultStatus.textContent = msg || "";
+  };
+  vaultBtn?.addEventListener("click", async () => {
+    vaultBtn.disabled = true;
+    document.getElementById("pvaultsecret").hidden = true;
+    try {
+      const r = await storeProjectToVault(p.id, setVaultStatus);
+      const summary = `Stored: ${r.counts.conversations} chat(s), ${r.counts.files} file(s), ${r.counts.docs} index document(s).`;
+      setVaultStatus(
+        r.missingFiles.length
+          ? `${summary} ${r.missingFiles.length} file(s) had no local original and were left out: ${r.missingFiles.join(", ")}.`
+          : summary,
+      );
+      // The one and only display of the secret — it is never persisted.
+      document.getElementById("pvaultsecrettext").textContent = r.secret;
+      document.getElementById("pvaultsecret").hidden = false;
+      vaultBtn.textContent = "Store again";
+    } catch (err) {
+      setVaultStatus(err?.message || "Storing the encrypted copy failed.");
+    } finally {
+      vaultBtn.disabled = false;
+    }
+  });
+  document.getElementById("pvaultcopy")?.addEventListener("click", async () => {
+    const text = document.getElementById("pvaultsecrettext").textContent;
+    const btn = document.getElementById("pvaultcopy");
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "Copied ✓";
+      setTimeout(() => {
+        btn.textContent = "Copy";
+      }, 2000);
+    } catch {
+      // Clipboard API denied (some in-app browsers): select the secret so a
+      // manual copy is one keystroke away.
+      const range = document.createRange();
+      range.selectNodeContents(document.getElementById("pvaultsecrettext"));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      btn.textContent = "Select + copy manually";
     }
   });
 
