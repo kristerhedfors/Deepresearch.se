@@ -145,9 +145,14 @@ function isPublicAsset(url, method) {
     url.pathname.startsWith("/story/") ||
     // Free mode (src/free.js): a no-account surface by design — the page,
     // its modules, and the vault/SSE primitives it reuses. /cure/ is the
-    // published-replays viewer (src/pub.js), public the same way.
-    url.pathname.startsWith("/free/") ||
-    url.pathname.startsWith("/cure/") ||
+    // published-replays viewer (src/pub.js), public the same way. Only
+    // FILES (with an extension) match here: extensionless paths under
+    // these prefixes are page routes (/free/project-…, /cure/<slug>) and
+    // must fall through to the wordplay routing below — without the
+    // extension check they'd 404 as missing assets (found live 2026-07-10:
+    // /cure/<slug> served the sign-in 401, then 404, until this).
+    (url.pathname.startsWith("/free/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
+    (url.pathname.startsWith("/cure/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
     url.pathname === "/js/vault.js" ||
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/free-core.js" ||
@@ -248,6 +253,7 @@ async function route(request, env, url, log, ctx, requestId) {
       url.pathname === "/my/" ||
       url.pathname.startsWith("/my/project-") ||
       url.pathname === "/free" ||
+      url.pathname === "/free/" ||
       url.pathname.startsWith("/free/project-"))
   ) {
     return { response: await serveAsset(request, env, url.origin + "/free/") };
