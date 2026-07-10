@@ -1,8 +1,15 @@
+// @ts-check
 // POST /api/chat — thin handler: validate the request, resolve the model,
 // enforce the caller's research quota, build the per-request state (budget
 // plan, counters, source registry), and stream the research pipeline
 // (src/pipeline.js) as SSE. Ends every stream with a `done` stats event and
-// `[DONE]`, then records the usage event for quota accounting.
+// `[DONE]`, then records the usage event for quota accounting and (unless
+// incognito) the full chat-log row.
+//
+// Handler flow: handleChat → resolveChatModels → enforceQuotaGate →
+// resolveEnrichmentOptions → the SSE stream (runChatStream, an inner
+// function because it shares the disconnect/keepalive lifecycle with the
+// stream's cancel() callback).
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
@@ -25,6 +32,75 @@ import {
 import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
 import { shodanEnabled, googleMapsEnabled } from "./settings.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./types.js').ModelCatalog} ModelCatalog */
+/** @typedef {import('./auth.js').Identity} Identity */
+/** @typedef {import('./config.js').SiteConfig} SiteConfig */
+
+/**
+ * The parsed POST /api/chat body — untrusted client input; every field is
+ * validated before use (src/validation.js).
+ * @typedef {Object} ChatRequestBody
+ * @property {import('./types.js').Conversation} messages
+ * @property {string} [model] answer-model override (validated vs the catalog)
+ * @property {boolean} [incognito] ghost toggle: suppresses the chat-log row
+ * @property {number} [time_budget_s] UI slider value (clamped server-side)
+ * @property {boolean} [web_search] knob, default on (only `false` disables)
+ * @property {any} [imageLocations] attached-photo GPS EXIF coords
+ * @property {any} [street_view_pov] the user's current panorama view
+ * @property {any} [map_view] the user's current interactive-map view
+ * @property {any} [user_location] browser geolocation for "here" asks
+ */
+
+/**
+ * The full per-request pipeline state: the shared shape (src/types.d.ts
+ * RequestState) plus the fields this channel adds in newRequestState and the
+ * ones the pipeline writes back for the chat log.
+ * @typedef {import('./types.js').RequestState & {
+ *   mapView: any,
+ *   userLocation: any,
+ *   quizzes: boolean,
+ *   quiz: any,
+ *   complexity: string | null,
+ *   subquestions: any[],
+ *   conflicts: any[],
+ *   aux: Record<string, { count: number, ran: Set<string> }>,
+ *   notes: any[],
+ *   notesCursor: number,
+ *   fetchedUrls: Set<string>,
+ *   mapsIntent?: string,
+ *   failoverModel?: string,
+ * }} ChatRequestState
+ */
+
+/**
+ * The opt-in enrichment context resolved per request (see
+ * resolveEnrichmentOptions).
+ * @typedef {Object} EnrichmentOptions
+ * @property {boolean} shodanOn
+ * @property {boolean} googleMapsOn
+ * @property {boolean} modelIsVision
+ * @property {string | null} visionModel
+ * @property {string[]} visionModels
+ * @property {import('./types.js').ImageLocation[]} imageLocations
+ * @property {import('./types.js').StreetViewPov | null} streetViewPov
+ * @property {any} mapView
+ * @property {any} userLocation
+ */
+
+/**
+ * Streams one research request as SSE. Never rejects after the stream
+ * starts: pipeline failures are emitted as `{error}` events and the finally
+ * block still records usage, the chat log, and the recovery answer.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext | undefined} ctx
+ * @param {string} requestId
+ * @returns {Promise<Response>}
+ */
 export async function handleChat(request, env, log, identity, ctx, requestId) {
   if (!env.BERGET_API_TOKEN) {
     log.error("chat.misconfigured", { missing: "BERGET_API_TOKEN" });
@@ -34,9 +110,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     );
   }
 
+  /** @type {ChatRequestBody} */
   let body;
   try {
-    body = await request.json();
+    body = /** @type {ChatRequestBody} */ (await request.json());
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
@@ -47,53 +124,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     return jsonResponse({ error: invalid }, 400);
   }
 
-  // Model resolution needs the catalog; if it's unreachable we degrade to
-  // the default model rather than blocking chat.
-  let catalog = null;
-  try {
-    catalog = await listChatModels(env);
-  } catch (err) {
-    log.warn("chat.model_catalog_unavailable", { error: err?.message || String(err) });
-  }
-  const config = await getConfig(env);
-  // The admin can set a site default model; it only applies when valid & up.
-  if (!body.model && adminDefaultModelValid(config, catalog)) {
-    body.model = config.default_model;
-  }
-  const resolved = resolveModel(body, catalog, env, log);
-  if (resolved.error) return jsonResponse({ error: resolved.error }, resolved.status);
+  const { catalog, config, resolved } = await resolveChatModels(env, log, body);
+  if ("error" in resolved) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
-  // The JSON planning phases (triage / gap check / validation) always run on
-  // a fixed, JSON-reliable model regardless of which model the user picked to
-  // reason/answer — some capable answer models (notably reasoning models like
-  // GLM) produce unreliable JSON, which was corrupting triage into echoing
-  // the raw user message as the search query. Mistral Small is fast, cheap
-  // and reliable at JSON mode. Falls back to the user's model only if Mistral
-  // is explicitly down in the catalog (never route JSON to a model that isn't
-  // up); when the catalog is unreachable we stay optimistic (fail-soft covers
-  // a genuinely-down JSON model).
   const jsonModel = resolveJsonModel(catalog, model);
 
-  // ---- research quota (Berget budget + Exa searches per 5h/day/week/month)
-  // ADMINS ARE NEVER BLOCKED: their usage is recorded and their bars keep
-  // counting (past 100%), but the 429 gate applies to regular users only.
-  const usage = await getUsage(env, identity.id);
-  const quota =
-    identity.isSecretAdmin || identity.role === "admin"
-      ? null
-      : effectiveQuota(config, identity.user);
-  if (quota) {
-    const blocked = quotaExceeded(usage, quota);
-    if (blocked) {
-      log.info("chat.quota_blocked", {
-        user_id: identity.id,
-        period: blocked.period,
-        kind: blocked.kind,
-      });
-      await addUserMessage(env, identity.id, "quota_exceeded", { period: blocked.period, kind: blocked.kind });
-      return jsonResponse(quotaBlockedResponse(blocked), 429);
-    }
-  }
+  const quotaBlocked = await enforceQuotaGate(env, log, config, identity);
+  if (quotaBlocked) return quotaBlocked;
 
   const conversation = body.messages;
   // The ghost (incognito) toggle, forwarded by the client: an incognito
@@ -104,45 +141,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
-  // Shodan host-intelligence enrichment is an opt-in per-user setting, not a
-  // per-request body flag (src/settings.js) — gated here so the pipeline
-  // only ever attempts it when both the knob is on and the key is present.
-  const shodanOn = shodanEnabled(env, identity);
-  // Google Maps enrichment (Places + Street View + Static Maps) is another
-  // opt-in per-user knob (src/settings.js). Vision capability of the CHOSEN
-  // answer model decides whether the fetched imagery is attached for the model
-  // to describe (only vision models can receive it); the resolved photo GPS
-  // coordinates give a precise location to look up when a photo is attached.
-  const googleMapsOn = googleMapsEnabled(env, identity);
-  const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
-  // A vision helper for DESCRIBING Street View imagery when the chosen answer
-  // model can't see images (e.g. the default Mistral Small): the user's own
-  // model when it's already vision, else the first up + vision-capable catalog
-  // model, else null (no describe — the block then just points at the link).
-  // This is why "describe this street view" works regardless of model choice.
-  // Ranked failover list, not a single pick: the describe call was observed
-  // (2026-07-08, describe_failed "The operation was aborted") timing out on
-  // a loaded Mistral Medium while other vision models answered instantly —
-  // a one-model helper goes blind exactly when the backend is busiest.
-  const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
-  const visionModels = (modelIsVision
-    ? [model, ...visionCandidates.filter((id) => id !== model)]
-    : visionCandidates
-  ).slice(0, 3);
-  const visionModel = visionModels[0] || null;
-  const imageLocations = validateImageLocations(body.imageLocations);
-  // The user's CURRENT view in the inline Street View panorama (they may have
-  // panned/moved it) — lets a follow-up capture exactly what's on their
-  // screen instead of the four generic cardinal frames.
-  const streetViewPov = googleMapsOn ? validateStreetViewPov(body.street_view_pov) : null;
-  // The user's current view in the inline interactive MAP (the no-coverage
-  // stand-in for the panorama) — same follow-up idea, road-map flavored.
-  const mapView = googleMapsOn ? validateMapView(body.map_view) : null;
-  // The device's reported location (browser geolocation) — sent by the
-  // client ONLY for explicit "street view here / at my current location"
-  // asks with no live view on screen. Same shape as a map view (zoom is
-  // ignored), so the same validator applies.
-  const userLocation = googleMapsOn ? validateMapView(body.user_location) : null;
+  const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -151,6 +150,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // and the finished answer is parked in the recovery cache
   // (src/answers.js) for the client to poll — instead of asking the user
   // to resend and pay again.
+  /** @type {{ gone: boolean, state: ChatRequestState | null }} */
   const disconnect = { gone: false, state: null };
 
   const stream = new ReadableStream({
@@ -176,17 +176,18 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     },
   });
 
+  /** @param {ReadableStreamDefaultController} controller */
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
-    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, shodanOn, {
-      googleMaps: googleMapsOn,
-      vision: modelIsVision,
-      visionModel,
-      visionModels,
-      imageLocations,
-      streetViewPov,
-      mapView,
-      userLocation,
+    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, enrich.shodanOn, {
+      googleMaps: enrich.googleMapsOn,
+      vision: enrich.modelIsVision,
+      visionModel: enrich.visionModel,
+      visionModels: enrich.visionModels,
+      imageLocations: enrich.imageLocations,
+      streetViewPov: enrich.streetViewPov,
+      mapView: enrich.mapView,
+      userLocation: enrich.userLocation,
     });
     disconnect.state = state;
 
@@ -220,8 +221,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     const answer = { text: "" };
     // Errors for the chat log (chatlog.js): a thrown stream failure, or the
     // last fail-soft `{error}` event the pipeline emitted instead of throwing.
+    /** @type {string | null} */
     let streamError = null;
+    /** @type {string | null} */
     let emittedError = null;
+    // `any` (not the SseEvent union) so the callback stays assignable to the
+    // wider emit signatures pipeline.js/geocode.js declare; the wire
+    // vocabulary is documented as SseEvent in src/types.d.ts.
+    /** @param {any} obj one SSE event object */
     const emit = (obj) => {
       const chunk = obj.choices?.[0]?.delta?.content;
       if (chunk) answer.text += chunk;
@@ -247,7 +254,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       );
       await runPipeline(env, log, emit, conversationWithContext, model, state);
     } catch (err) {
-      const errMessage = err?.message || String(err);
+      const errMessage = /** @type {any} */ (err)?.message || String(err);
       streamError = errMessage;
       log.error("chat.stream_failed", {
         user_id: identity.id,
@@ -279,18 +286,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       });
       // Usage accounting for quotas (fails soft; never breaks the stream).
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
-      // The admin-configured per-search price is priced for Exa's
-      // standard tier; a request whose time budget bought a costlier
-      // tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its
-      // recorded cost scaled by that tier's real price ratio, so a long
-      // budget's genuinely higher Exa spend doesn't go under-counted
-      // against the user's opaque budget bar or the admin's cost totals.
-      // Live searches at their depth-tier price, PLUS the budget-gated
-      // full-content fetch (Exa /contents) priced per URL at the cheaper
-      // contents rate — so the top-tier full-read spend is counted too.
-      const exa_cost =
-        billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
-        (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER;
+      const exa_cost = exaCost(state, config, billedSearches);
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
@@ -350,6 +346,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
           },
         });
       }
+      /** @type {import('./types.js').StatusDone} */
       const stats = {
         type: "done",
         model,
@@ -376,19 +373,162 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   return sseResponse(stream);
 }
 
-// Builds the 429 payload for a blocked quota window: a plain-language
-// message (period + reset time — budget amounts are EUR, admin-only
-// information, never sent to users) and the public quota object the
-// client renders.
+// ---- pre-stream setup helpers ----------------------------------------------
+
+/**
+ * Fetches the model catalog (degrading to null rather than blocking chat),
+ * applies the admin's site default model when valid & up, and resolves the
+ * request's answer model.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {ChatRequestBody} body mutated: body.model may receive the site default
+ * @returns {Promise<{ catalog: ModelCatalog | null, config: SiteConfig,
+ *   resolved: ReturnType<typeof resolveModel> }>}
+ */
+async function resolveChatModels(env, log, body) {
+  /** @type {ModelCatalog | null} */
+  let catalog = null;
+  try {
+    catalog = await listChatModels(env);
+  } catch (err) {
+    log.warn("chat.model_catalog_unavailable", { error: /** @type {any} */ (err)?.message || String(err) });
+  }
+  const config = await getConfig(env);
+  // The admin can set a site default model; it only applies when valid & up.
+  if (!body.model && adminDefaultModelValid(config, catalog)) {
+    body.model = config.default_model;
+  }
+  return { catalog, config, resolved: resolveModel(body, catalog, env, log) };
+}
+
+/**
+ * The research-quota gate (Berget budget + Exa searches per 5h/day/week/
+ * month windows). ADMINS ARE NEVER BLOCKED: their usage is recorded and
+ * their bars keep counting (past 100%), but the 429 applies to regular
+ * users only.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {SiteConfig} config
+ * @param {Identity} identity
+ * @returns {Promise<Response | null>} the 429 response, or null to proceed
+ */
+async function enforceQuotaGate(env, log, config, identity) {
+  const usage = await getUsage(env, identity.id);
+  const quota =
+    identity.isSecretAdmin || identity.role === "admin"
+      ? null
+      : effectiveQuota(config, identity.user);
+  if (!quota) return null;
+  const blocked = quotaExceeded(usage, quota);
+  if (!blocked) return null;
+  log.info("chat.quota_blocked", {
+    user_id: identity.id,
+    period: blocked.period,
+    kind: blocked.kind,
+  });
+  // Cast: addUserMessage's option defaults are null, so its inferred option
+  // type is null-only; the real accepted values are these enums.
+  await addUserMessage(env, identity.id, "quota_exceeded", /** @type {any} */ ({ period: blocked.period, kind: blocked.kind }));
+  return jsonResponse(quotaBlockedResponse(blocked), 429);
+}
+
+/**
+ * Resolves the opt-in enrichment context for one request:
+ *
+ * - Shodan host intelligence and Google Maps (Places + Street View + Static
+ *   Maps) are per-user settings knobs (src/settings.js), not request flags —
+ *   gated here so the pipeline only ever attempts them when both the knob is
+ *   on and the key is present.
+ * - Vision capability of the CHOSEN answer model decides whether fetched
+ *   imagery is attached for the model to describe (only vision models can
+ *   receive it). For a non-vision answer model, a RANKED list of vision
+ *   helper models describes Street View instead — a list, not a single pick,
+ *   because the describe call was observed (2026-07-08, describe_failed "The
+ *   operation was aborted") timing out on a loaded Mistral Medium while
+ *   other vision models answered instantly; a one-model helper goes blind
+ *   exactly when the backend is busiest. This is why "describe this street
+ *   view" works regardless of model choice.
+ * - The client's view/location fields (all validated, all maps-knob-gated):
+ *   street_view_pov = the user's CURRENT inline-panorama view (they may have
+ *   panned/moved it), so a follow-up captures exactly what's on screen
+ *   instead of four generic cardinal frames; map_view = the same idea for
+ *   the interactive map (the no-coverage stand-in); user_location = browser
+ *   geolocation, sent ONLY for explicit "street view here" asks with no live
+ *   view on screen (same shape as a map view — zoom is ignored — so the same
+ *   validator applies).
+ * @param {ChatRequestBody} body
+ * @param {Env} env
+ * @param {Identity} identity
+ * @param {ModelCatalog | null} catalog
+ * @param {string} model the resolved answer model
+ * @returns {EnrichmentOptions}
+ */
+function resolveEnrichmentOptions(body, env, identity, catalog, model) {
+  const shodanOn = shodanEnabled(env, identity);
+  const googleMapsOn = googleMapsEnabled(env, identity);
+  const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
+  const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
+  const visionModels = (modelIsVision
+    ? [model, ...visionCandidates.filter((id) => id !== model)]
+    : visionCandidates
+  ).slice(0, 3);
+  return {
+    shodanOn,
+    googleMapsOn,
+    modelIsVision,
+    visionModels,
+    visionModel: visionModels[0] || null,
+    imageLocations: validateImageLocations(body.imageLocations),
+    streetViewPov: googleMapsOn ? validateStreetViewPov(body.street_view_pov) : null,
+    mapView: googleMapsOn ? validateMapView(body.map_view) : null,
+    userLocation: googleMapsOn ? validateMapView(body.user_location) : null,
+  };
+}
+
+/**
+ * The request's Exa cost. The admin-configured per-search price is priced
+ * for Exa's standard tier; a request whose time budget bought a costlier
+ * tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its recorded
+ * cost scaled by that tier's real price ratio, so a long budget's genuinely
+ * higher Exa spend doesn't go under-counted against the user's opaque
+ * budget bar or the admin's cost totals. Live searches at their depth-tier
+ * price, PLUS the budget-gated full-content fetch (Exa /contents) priced
+ * per URL at the cheaper contents rate — so the top-tier full-read spend is
+ * counted too.
+ * @param {ChatRequestState} state
+ * @param {SiteConfig} config
+ * @param {number} billedSearches live (non-cached) searches
+ * @returns {number} EUR
+ */
+function exaCost(state, config, billedSearches) {
+  return (
+    billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
+    (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER
+  );
+}
+
+// ---- exported pure helpers (unit-tested in chat.test.js) --------------------
+
+/** @type {Record<string, string>} */
+const PERIOD_NAMES = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" };
+
+/**
+ * Builds the 429 payload for a blocked quota window: a plain-language
+ * message (period + reset time — budget amounts are EUR, admin-only
+ * information, never sent to users) and the public quota object the
+ * client renders.
+ * @param {{ period: string, kind: string, limit?: number, reset_at: number }} blocked
+ * @returns {{ error: string, quota: object }}
+ */
 export function quotaBlockedResponse(blocked) {
-  const periodName = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" }[blocked.period];
+  const periodName = PERIOD_NAMES[blocked.period];
   const verb = blocked.period === "h5" ? "frees up around" : "resets";
   const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
   const error =
     blocked.kind === "budget"
       ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
       : `You've used your ${periodName} search budget ` +
-        `(${blocked.limit.toLocaleString("en-US")} searches). It ${verb} ${when}.`;
+        `(${Number(blocked.limit).toLocaleString("en-US")} searches). It ${verb} ${when}.`;
   const publicQuota =
     blocked.kind === "budget"
       ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
@@ -396,13 +536,19 @@ export function quotaBlockedResponse(blocked) {
   return { error, quota: publicQuota };
 }
 
-// Sums the request's token totals and Berget cost across the up-to-three
-// models that ran: synthesis/direct on the user's model, the JSON planning
-// phases on jsonModel (Mistral), and the Street View vision-describe helper
-// on its own model — the split-billing design, each bucket priced at its own
-// catalog rate (tokens alone can't cap spend when models price differently).
-// Pure (state + catalog in, totals out), unit-tested in chat.test.js.
+/**
+ * Sums the request's token totals and Berget cost across the up-to-three
+ * models that ran: synthesis/direct on the user's model, the JSON planning
+ * phases on jsonModel (Mistral), and the Street View vision-describe helper
+ * on its own model — the split-billing design, each bucket priced at its own
+ * catalog rate (tokens alone can't cap spend when models price differently).
+ * Pure (state + catalog in, totals out).
+ * @param {Pick<ChatRequestState, "model" | "jsonModel" | "visionModel" | "totals" | "jsonTotals" | "visionTotals">} state
+ * @param {ModelCatalog | null | undefined} catalog
+ * @returns {{ prompt_tokens: number, completion_tokens: number, berget_cost: number }}
+ */
 export function summarizeSpend(state, catalog) {
+  /** @type {Array<[string | null, import('./types.js').TokenTotals]>} */
   const buckets = [
     [state.model, state.totals],
     [state.jsonModel, state.jsonTotals],
@@ -420,10 +566,19 @@ export function summarizeSpend(state, catalog) {
   return { prompt_tokens, completion_tokens, berget_cost };
 }
 
-// Which model runs the JSON planning phases (triage/gap/validate): the fixed
-// reliable DEFAULT_MODEL (Mistral Small) unless it's explicitly down in the
-// catalog, in which case fall back to the user's model rather than route JSON
-// to a model that isn't up. Catalog unreachable → optimistic (fail-soft).
+/**
+ * Which model runs the JSON planning phases (triage/gap/validate): the fixed
+ * reliable DEFAULT_MODEL (Mistral Small) unless it's explicitly down in the
+ * catalog, in which case fall back to the user's model rather than route JSON
+ * to a model that isn't up. Catalog unreachable → optimistic (fail-soft).
+ * Rationale: some capable answer models (notably reasoning models like GLM)
+ * produce unreliable JSON, which was corrupting triage into echoing the raw
+ * user message as the search query; Mistral Small is fast, cheap and reliable
+ * at JSON mode.
+ * @param {ModelCatalog | null | undefined} catalog
+ * @param {string} userModel the resolved answer model
+ * @returns {string}
+ */
 export function resolveJsonModel(catalog, userModel) {
   if (userModel === DEFAULT_MODEL) return DEFAULT_MODEL; // already the reliable JSON model
   if (!Array.isArray(catalog)) return DEFAULT_MODEL;
@@ -432,7 +587,18 @@ export function resolveJsonModel(catalog, userModel) {
   return entry.up === false ? userModel : DEFAULT_MODEL;
 }
 
-// Mutable per-request state threaded through the pipeline.
+// ---- per-request state -------------------------------------------------------
+
+/**
+ * Mutable per-request state threaded through the pipeline.
+ * @param {string} model
+ * @param {string} jsonModel
+ * @param {boolean} webSearch
+ * @param {number} budgetS
+ * @param {boolean} shodan
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean }} [extras]
+ * @returns {ChatRequestState}
+ */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
   return {
     startedAt: Date.now(),

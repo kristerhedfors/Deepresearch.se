@@ -1,3 +1,4 @@
+// @ts-check
 // User accounts (D1-backed), provisioned exclusively by Google sign-in
 // (src/google.js). No passwords are stored: Google proves the email, our
 // signed session cookie carries the identity afterwards. Roles are
@@ -7,25 +8,68 @@
 
 import { getDb } from "./db.js";
 
+/** @typedef {import('./types.js').Env} Env */
+
+/**
+ * One `users` row (see src/db.js SCHEMA — settings_json/google_sub/
+ * terms_accepted_at arrive via additive ALTERs, so they may be absent on
+ * rows read before a migration ran).
+ * @typedef {Object} User
+ * @property {number} id
+ * @property {string} email normalized (trimmed, lowercased)
+ * @property {string | null} name
+ * @property {string} role "user" | "admin"
+ * @property {string} status "active" | "pending" | "disabled"
+ * @property {string | null} [google_sub] Google's stable subject id
+ * @property {string | null} [quota_json] per-user quota overrides (JSON)
+ * @property {number | null} [terms_accepted_at] ms epoch of terms acceptance
+ * @property {string | null} [settings_json] per-user settings (src/settings.js)
+ * @property {number} created_at ms epoch
+ */
+
+/**
+ * Trims, lowercases, and shape-checks an email. Pragmatic check only —
+ * Google's email_verified is the real gate.
+ * @param {any} email
+ * @returns {string | null} the normalized email, or null when malformed
+ */
 export function normalizeEmail(email) {
   const e = String(email || "").trim().toLowerCase();
-  // Pragmatic shape check — Google's email_verified is the real gate.
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 254 ? e : null;
 }
 
+/**
+ * @param {Env} env
+ * @param {number} id
+ * @returns {Promise<User | null>} null when unknown or no database
+ */
 export async function getUserById(env, id) {
   const db = await getDb(env);
   if (!db) return null;
-  return db.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
+  return /** @type {Promise<User | null>} */ (
+    db.prepare("SELECT * FROM users WHERE id = ?").bind(id).first()
+  );
 }
 
+/**
+ * @param {Env} env
+ * @param {any} email normalized before lookup
+ * @returns {Promise<User | null>} null when unknown, malformed, or no database
+ */
 export async function getUserByEmail(env, email) {
   const db = await getDb(env);
   const e = normalizeEmail(email);
   if (!db || !e) return null;
-  return db.prepare("SELECT * FROM users WHERE email = ?").bind(e).first();
+  return /** @type {Promise<User | null>} */ (
+    db.prepare("SELECT * FROM users WHERE email = ?").bind(e).first()
+  );
 }
 
+/**
+ * Every user row (minus settings_json), newest first — the /admin user list.
+ * @param {Env} env
+ * @returns {Promise<Record<string, unknown>[]>}
+ */
 export async function listUsers(env) {
   const db = await getDb(env);
   if (!db) return [];
@@ -35,19 +79,30 @@ export async function listUsers(env) {
   return results || [];
 }
 
-// Count only — feeds the admin notification badge without pulling every
-// user row (that's what /api/admin/overview's full list is for).
+/**
+ * Count only — feeds the admin notification badge without pulling every
+ * user row (that's what /api/admin/overview's full list is for).
+ * @param {Env} env
+ * @returns {Promise<number>}
+ */
 export async function countPendingUsers(env) {
   const db = await getDb(env);
   if (!db) return 0;
-  const row = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'pending'").first();
+  const row = /** @type {{ n: number } | null} */ (
+    await db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'pending'").first()
+  );
   return row?.n || 0;
 }
 
-// First Google sign-in for an email creates the account. `sub` is Google's
-// stable subject id — stored so the account stays pinned to that Google
-// identity even if email ownership ever changes hands. `status` is
-// "pending" when the approval gate is on (src/google.js decides).
+/**
+ * First Google sign-in for an email creates the account. `sub` is Google's
+ * stable subject id — stored so the account stays pinned to that Google
+ * identity even if email ownership ever changes hands. `status` is
+ * "pending" when the approval gate is on (src/google.js decides).
+ * @param {Env} env
+ * @param {{ email: string, name?: string, sub?: string, role?: string, status?: string }} fields
+ * @returns {Promise<User>} the freshly inserted row
+ */
 export async function createUserFromGoogle(env, { email, name, sub, role, status }) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -64,9 +119,18 @@ export async function createUserFromGoogle(env, { email, name, sub, role, status
       Date.now(),
     )
     .run();
-  return getUserByEmail(env, email);
+  // The INSERT above succeeded (or threw), so the row exists.
+  return /** @type {Promise<User>} */ (getUserByEmail(env, email));
 }
 
+/**
+ * Applies an allowlisted patch (role/status/quota_json/name — unknown keys
+ * and invalid values are ignored, never written) and returns the fresh row.
+ * @param {Env} env
+ * @param {number} id
+ * @param {any} patch untrusted admin request body
+ * @returns {Promise<User | null>} null when the id doesn't exist
+ */
 export async function updateUser(env, id, patch) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -94,8 +158,14 @@ export async function updateUser(env, id, patch) {
   return getUserById(env, id);
 }
 
-// One-time acceptance of the terms of use (the /terms page shown on first
-// sign-in). Recorded as a timestamp so it doubles as an audit trail.
+/**
+ * One-time acceptance of the terms of use (the /terms page shown on first
+ * sign-in). Recorded as a timestamp so it doubles as an audit trail; the
+ * IS NULL guard keeps the first timestamp authoritative.
+ * @param {Env} env
+ * @param {number} id
+ * @returns {Promise<void>}
+ */
 export async function acceptTerms(env, id) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -105,6 +175,13 @@ export async function acceptTerms(env, id) {
     .run();
 }
 
+/**
+ * Deletes the account and its usage history (usage_events keys user_id as
+ * TEXT, hence the String()).
+ * @param {Env} env
+ * @param {number} id
+ * @returns {Promise<void>}
+ */
 export async function deleteUser(env, id) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");

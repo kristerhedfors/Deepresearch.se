@@ -1,3 +1,4 @@
+// @ts-check
 // Google sign-in (OIDC authorization-code flow, server side — no SDK).
 //
 // This is the ONLY user-facing sign-in. Any Google account with a verified
@@ -25,24 +26,43 @@ import { createSessionCookie, signState, verifyState } from "./auth.js";
 import { getDb } from "./db.js";
 import { getConfig } from "./config.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./accounts.js').User} User */
+
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const STATE_COOKIE = "dr_oauth";
 const STATE_TTL_S = 600;
 
+/** @param {Env} env @returns {boolean} both OAuth secrets are set */
 export function googleConfigured(env) {
   return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
+/**
+ * The one email address granted the admin role (the ADMIN_EMAIL dashboard
+ * var), normalized — or null when unset/malformed.
+ * @param {Env} env
+ * @returns {string | null}
+ */
 export function adminEmail(env) {
   return normalizeEmail(env.ADMIN_EMAIL || "");
 }
 
+/** @param {URL} url @returns {string} */
 function redirectUri(url) {
   return `${url.origin}/auth/google/callback`;
 }
 
-// GET /auth/google
+/**
+ * GET /auth/google — mints the signed single-use CSRF state cookie and
+ * redirects to Google's consent screen.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @returns {Promise<Response>}
+ */
 export async function handleGoogleStart(request, env, url) {
   if (!googleConfigured(env)) {
     return new Response("Google sign-in is not configured.", { status: 503 });
@@ -51,7 +71,8 @@ export async function handleGoogleStart(request, env, url) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
   const params = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
+    // googleConfigured() above guarantees the secret is set.
+    client_id: String(env.GOOGLE_CLIENT_ID),
     redirect_uri: redirectUri(url),
     response_type: "code",
     scope: "openid email profile",
@@ -68,8 +89,22 @@ export async function handleGoogleStart(request, env, url) {
   });
 }
 
-// GET /auth/google/callback
+/**
+ * GET /auth/google/callback — verifies the CSRF state, exchanges the code
+ * server-to-server, validates the ID-token claims, provisions/loads the
+ * user, and sets the long-lived session cookie. Every failure path bounces
+ * to /login with a flash code (never a bare error page).
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
 export async function handleGoogleCallback(request, env, url, log) {
+  /**
+   * @param {string} flash login-page flash code (src/login.js loginPage)
+   * @param {string} [detail] logged, never shown to the user
+   */
   const fail = (flash, detail) => {
     log.warn("google.auth_failed", { reason: flash, detail: detail || undefined });
     return new Response(null, {
@@ -103,8 +138,9 @@ export async function handleGoogleCallback(request, env, url, log) {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         code,
-        client_id: env.GOOGLE_CLIENT_ID,
-        client_secret: env.GOOGLE_CLIENT_SECRET,
+        // googleConfigured() above guarantees both secrets are set.
+        client_id: String(env.GOOGLE_CLIENT_ID),
+        client_secret: String(env.GOOGLE_CLIENT_SECRET),
         redirect_uri: redirectUri(url),
         grant_type: "authorization_code",
       }),
@@ -112,7 +148,7 @@ export async function handleGoogleCallback(request, env, url, log) {
     if (!resp.ok) return fail("google-failed", `token exchange ${resp.status}`);
     tokenData = await resp.json();
   } catch (err) {
-    return fail("google-failed", err?.message || String(err));
+    return fail("google-failed", /** @type {any} */ (err)?.message || String(err));
   }
 
   const claims = decodeJwtPayload(tokenData.id_token);
@@ -145,7 +181,8 @@ export async function handleGoogleCallback(request, env, url, log) {
   } else {
     if (user.status === "disabled") return fail("disabled");
     if (isAdminEmail && user.role !== "admin") {
-      user = await updateUser(env, user.id, { role: "admin" });
+      // The row exists (we just loaded it), so the update returns it.
+      user = /** @type {User} */ (await updateUser(env, user.id, { role: "admin" }));
     }
   }
 
@@ -156,10 +193,19 @@ export async function handleGoogleCallback(request, env, url, log) {
   return new Response(null, { status: 303, headers });
 }
 
+/** @returns {string} a Set-Cookie value that expires the state cookie */
 function clearStateCookie() {
   return `${STATE_COOKIE}=; Max-Age=0; Path=/auth/google; Secure; HttpOnly; SameSite=Lax`;
 }
 
+/**
+ * Decodes (does NOT verify) a JWT's payload segment. Signature verification
+ * is deliberately skipped — the token arrives directly from Google's token
+ * endpoint over TLS (see the module header); the CLAIMS are validated by the
+ * caller.
+ * @param {unknown} jwt
+ * @returns {any} the claims object, or null when malformed
+ */
 function decodeJwtPayload(jwt) {
   if (typeof jwt !== "string") return null;
   const parts = jwt.split(".");

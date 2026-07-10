@@ -1,3 +1,5 @@
+// Unit tests for chat.js's pure exports: summarizeSpend (split billing),
+// resolveJsonModel (JSON-phase routing), quotaBlockedResponse (429 payload).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { quotaBlockedResponse, resolveJsonModel, summarizeSpend } from "./chat.js";

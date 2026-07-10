@@ -1,7 +1,12 @@
-// Server-rendered sign-in page. Google is the only user-facing sign-in;
-// this page is what unauthenticated browsers/PWAs get instead of a bare
-// 401 challenge (which an installed PWA cannot answer — black screen).
-// Styled to match the app's sky-blue theme.
+// @ts-check
+// Server-rendered auth-flow pages, all styled to match the app's sky-blue
+// theme: the sign-in page (what unauthenticated browsers/PWAs get instead of
+// a bare 401 challenge, which an installed PWA cannot answer — black screen),
+// the one-time terms gate, the awaiting-approval waiting room, and the
+// missing-secret configuration-error page. src/index.js decides which one a
+// request sees.
+
+/** @typedef {import('./auth.js').Identity} Identity */
 
 const PAGE_CSS = `
     * { box-sizing: border-box; }
@@ -38,9 +43,13 @@ const G_SVG =
   '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
   "</svg>";
 
-// Waiting room for the approval gate: shown to signed-in users whose
-// account is still status "pending". Auto-refreshes so approval kicks in
-// without any user action; signing out is the only available act.
+/**
+ * Waiting room for the approval gate: shown to signed-in users whose
+ * account is still status "pending". Auto-refreshes so approval kicks in
+ * without any user action; signing out is the only available act.
+ * @param {Identity} identity
+ * @returns {string} full HTML document
+ */
 export function pendingPage(identity) {
   return `<!doctype html>
 <html lang="en">
@@ -74,11 +83,15 @@ export function pendingPage(identity) {
 </html>`;
 }
 
-// One-time terms gate, shown after first sign-in until accepted (index.js
-// enforces; acceptance is recorded on the user row). This is the condensed
-// version of the /build/ "About this project" page — what the site is and
-// what it must not be used for — kept to a single page with a single
-// Accept button so consent stays meaningful without ceremony.
+/**
+ * One-time terms gate, shown after first sign-in until accepted (index.js
+ * enforces; acceptance is recorded on the user row). This is the condensed
+ * version of the /build/ "About this project" page — what the site is and
+ * what it must not be used for — kept to a single page with a single
+ * Accept button so consent stays meaningful without ceremony.
+ * @param {Identity} identity
+ * @returns {string} full HTML document
+ */
 export function termsPage(identity) {
   return `<!doctype html>
 <html lang="en">
@@ -168,18 +181,27 @@ export function termsPage(identity) {
 </html>`;
 }
 
+/** @type {Record<string, string>} */
+const HTML_ESCAPES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** @param {unknown} s @returns {string} */
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[c]);
+  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
-// flash: "" | "google-failed" | "google-unverified" | "disabled" | "nodb"
+/**
+ * The sign-in page. Unknown flash codes render no message.
+ * @param {string} flash "" | "google-failed" | "google-unverified" | "disabled" | "nodb"
+ * @returns {string} full HTML document
+ */
 export function loginPage(flash) {
+  /** @type {Record<string, string>} */
   const messages = {
     "google-failed": '<p class="err">Google sign-in didn’t complete. Please try again.</p>',
     "google-unverified":
@@ -211,11 +233,14 @@ export function loginPage(flash) {
 </html>`;
 }
 
-// Shown site-wide when a REQUIRED server secret is missing (currently
-// SESSION_SECRET — the sole session/OAuth-state signing key, with no fallback).
-// Rather than run in a broken or insecure state, the site presents this
-// misconfiguration message so the operator knows exactly what to set. No user
-// input is reflected; the copy is static.
+/**
+ * Shown site-wide when a REQUIRED server secret is missing (currently
+ * SESSION_SECRET — the sole session/OAuth-state signing key, with no fallback).
+ * Rather than run in a broken or insecure state, the site presents this
+ * misconfiguration message so the operator knows exactly what to set. No user
+ * input is reflected; the copy is static.
+ * @returns {string} full HTML document
+ */
 export function configErrorPage() {
   return `<!doctype html>
 <html lang="en">
