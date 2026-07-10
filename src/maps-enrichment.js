@@ -622,11 +622,15 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       question,
     );
   }
-  // The deck frames, in travel order: the along-the-way waypoints (travel
-  // mode; consecutive samples that snapped to the SAME panorama collapse),
-  // the destination, then the waypoint route map (search/travel).
+  // The deck frames, chronological (explicit request 2026-07-10): the
+  // route MAP leads the strip — the overview first — then the journey
+  // unfolds in order: start → the along-the-way waypoints (consecutive
+  // samples that snapped to the SAME panorama collapse) → the destination.
   /** @type {DeckFrame[]} */
   const frames = [];
+  if (routeImg) {
+    frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: dest.lat, lng: dest.lng, url: routeImg });
+  }
   let lastPano = "";
   travelPoints.forEach((w, i) => {
     const c = travelCaptures[i];
@@ -636,9 +640,6 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   });
   if (found?.image) {
     frames.push({ dir: "", label: top.name || "best match", lat: found.lat, lng: found.lng, heading: found.heading, url: found.image });
-  }
-  if (routeImg) {
-    frames.push({ dir: "", label: `you → ${top.name || "destination"}`, kind: "map", lat: dest.lat, lng: dest.lng, url: routeImg });
   }
   if (frames.length) {
     emit({ status: { type: "streetview_frames", query: top.name || nearby.query, frames } });
@@ -745,7 +746,8 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
       .filter((f) => f.url)
   );
   if (routeImg) {
-    frames.push({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });
+    // The map leads the strip (chronological-order request, 2026-07-10).
+    frames.unshift({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });
   }
 
   let description = "";

@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h20;
+  --css-version: h21;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -319,14 +319,26 @@ header {
    the vision helper reasoned about, captioned by looking direction. */
 .streetview-frames { margin: .6rem 0 .2rem; }
 .streetview-frames-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  /* Chronological, not a square: one left-to-right scrollable row — the
+     route map leads, then the journey unfolds image by image (explicit
+     request 2026-07-10; was a wrapping auto-fit grid). */
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   gap: .5rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: .25rem;
+}
+.streetview-frames-strip figure.deck-openable {
+  flex: 0 0 auto;
+  width: 172px;
+  scroll-snap-align: start;
 }
 .streetview-frames-strip figure { margin: 0; }
 .streetview-frames-strip img {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: 10px;
   display: block;
