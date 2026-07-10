@@ -30,13 +30,14 @@
 // This module owns the phase FLOW only. The pieces with lives of their
 // own are split out: the source registry (dedup, domain-diversity cap,
 // digest) in sources.js, the auxiliary search-source registry (HF Hub &
-// co, iterated by runAuxSearches below) in search-sources.js, and the
+// co, iterated by runAuxSearches below) in search-sources.js, the
 // opt-in pre-pipeline context enrichments (Shodan, Google Maps) in
-// enrichment.js.
+// enrichment.js, the JSON-phase schemas + triage normalization/fallback
+// in triage.js, and the answer-streaming internals (retry loop, model
+// failover, chunked emit) in answer-stream.js.
 
-import { classifyChatError, raiseAlert } from "./alerts.js";
-import { consumeChatStream } from "./berget.js";
-import { chatCompletion, completeJson, providerName } from "./providers.js";
+import { emitChunked, streamCompletion } from "./answer-stream.js";
+import { completeJson } from "./providers.js";
 import {
   applyComplexityToPlan,
   fitsDeadline,
@@ -60,7 +61,15 @@ import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
 import { extractNotes, mergeNotes, notesDigest, notesEntities } from "./notes.js";
-import { arrayOf, boolean, object, oneOf, string, stringEnum, validate } from "./schema.js";
+import {
+  CLAIM_VERIFY_SCHEMA,
+  GAP_SCHEMA,
+  REVISE_SCHEMA,
+  TRIAGE_SCHEMA,
+  VALIDATE_SCHEMA,
+  hardenJson,
+  normalizeTriage,
+} from "./triage.js";
 import {
   claimExtractionPrompt,
   claimVerifyPrompt,
@@ -142,97 +151,10 @@ import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } 
  */
 
 /**
- * normalizeTriage's hardened verdict: exactly one of the three actions,
- * with the optional decomposition/quiz fields riding on research/direct.
- * @typedef {{ action: "direct", quiz?: boolean }
- *   | { action: "clarify", question: string, quiz?: boolean }
- *   | ResearchDecision} TriageDecision
+ * The triage verdict shape (normalizeTriage's output) — declared alongside
+ * the JSON-phase schemas and the normalization/fallback logic in triage.js.
+ * @typedef {import('./triage.js').TriageDecision} TriageDecision
  */
-/**
- * @typedef {{
- *   action: "research",
- *   queries: string[],
- *   complexity?: string,
- *   subquestions?: string[],
- *   quiz?: boolean,
- * }} ResearchDecision
- */
-
-// ---- JSON-phase schemas --------------------------------------------------
-
-// Declared shapes for the three JSON planning phases — a hardening layer over
-// the raw model JSON (src/schema.js), applied BEHIND the existing fail-soft
-// fallbacks (normalizeTriage etc. stay the last-ditch net). On a clean match
-// hardenJson() returns the normalized object; on ANY miss it returns the raw
-// value untouched, so a malformed shape degrades exactly as it did before the
-// schema existed (single search / accept draft) and never throws.
-const TRIAGE_SCHEMA = oneOf([
-  // `quiz` (optional on direct AND research): triage's fail-soft backup for
-  // the deterministic quizIntent gate — the first production quiz request
-  // arrived with a typo ("wuiz") the regexes missed; a model reads through
-  // typos and paraphrases that no pattern list can enumerate. Never the
-  // primary gate: quizIntent still decides when it matches, and a stray
-  // false `quiz:true` on a non-request costs one fail-soft generation
-  // attempt at worst (schema.js's object() strips unknown fields, so the
-  // flag must be declared here to survive hardening).
-  // The `optional` casts here and below: schema.js's `optional = []` default
-  // makes tsc infer never[] for the option in unannotated schema.js.
-  object({ action: stringEnum(["direct"]), quiz: boolean() }, /** @type {any} */ ({ optional: ["quiz"] })),
-  object({ action: stringEnum(["clarify"]), question: string({ allowEmpty: false }) }),
-  object(
-    {
-      action: stringEnum(["research"]),
-      queries: arrayOf(string({ allowEmpty: false })),
-      // Decomposition fields (prompts.js DECOMPOSITION_RULE) — both optional:
-      // a model that omits them (or an unknown complexity value falling
-      // through normalizeTriage's lenient extraction) degrades exactly to the
-      // pre-decomposition flow.
-      complexity: stringEnum(["simple", "multihop", "comparison", "survey"]),
-      subquestions: arrayOf(string({ allowEmpty: false })),
-      quiz: boolean(),
-    },
-    /** @type {any} */ ({ optional: ["queries", "complexity", "subquestions", "quiz"] }),
-  ),
-]);
-const GAP_SCHEMA = object(
-  {
-    complete: boolean(),
-    queries: arrayOf(string({ allowEmpty: false })),
-    // Source disagreements the audit noticed (display + synthesis hint) —
-    // optional, and independent of `complete`.
-    conflicts: arrayOf(string({ coerce: true })),
-  },
-  /** @type {any} */ ({ optional: ["complete", "queries", "conflicts"] }),
-);
-const VALIDATE_SCHEMA = object(
-  {
-    verdict: stringEnum(["pass", "revise"]),
-    // Display-only list; coerce leniently to match the pipeline's historical
-    // `.map(String)` treatment of a stray non-string issue.
-    issues: arrayOf(string({ coerce: true })),
-    revised_answer: string(),
-  },
-  /** @type {any} */ ({ optional: ["issues", "revised_answer"] }),
-);
-// Claim-level validation (high tiers): per-claim verdict and the revision.
-const CLAIM_VERIFY_SCHEMA = object(
-  { verdict: stringEnum(["supported", "unsupported"]), issue: string({ coerce: true }) },
-  /** @type {any} */ ({ optional: ["issue"] }),
-);
-const REVISE_SCHEMA = object({ revised_answer: string() });
-
-// Runs a JSON-phase value through its declared schema. ok → the normalized
-// object; miss → the raw value, so the caller's existing fallback path runs
-// unchanged. validate() never throws, so this is always safe.
-/**
- * @param {object} schema One of the schema declarations above.
- * @param {any} value Raw parsed model JSON (may be anything).
- * @returns {any}
- */
-function hardenJson(schema, value) {
-  const r = validate(schema, value);
-  return r.ok ? r.value : value;
-}
 
 /**
  * Entry point (called by chat.js and mcp.js): runs the whole research
@@ -999,70 +921,6 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
   }
 }
 
-/**
- * Hardens the raw triage JSON into a usable decision, with a model-free
- * fallback (see below) when the JSON is unusable.
- * @param {any} triage Raw triage JSON (may be anything).
- * @param {string} lastUser The latest user message's text.
- * @param {string} [priorUser] The previous user turn's text ("" when none).
- * @returns {TriageDecision}
- */
-export function normalizeTriage(triage, lastUser, priorUser = "") {
-  // The optional quiz flag (triage's fail-soft backup for quizIntent —
-  // see TRIAGE_SCHEMA) rides along on direct/research decisions; lenient
-  // strict-boolean extraction so it survives the raw (schema-miss) path.
-  const quiz = triage?.quiz === true ? { quiz: true } : {};
-  if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
-    return { action: "clarify", question: triage.question.trim() };
-  }
-  if (triage?.action === "research") {
-    const queries = (Array.isArray(triage.queries) ? triage.queries : [])
-      .filter((/** @type {any} */ q) => typeof q === "string" && q.trim());
-    if (queries.length > 0) {
-      /** @type {ResearchDecision} */
-      const out = { action: "research", queries, ...quiz };
-      // Optional decomposition fields (prompts.js DECOMPOSITION_RULE) —
-      // lenient extraction so they survive the raw (schema-miss) path too.
-      // Only attached when usable: their absence is the pre-decomposition
-      // behavior everywhere downstream.
-      if (["simple", "multihop", "comparison", "survey"].includes(triage.complexity)) {
-        out.complexity = triage.complexity;
-      }
-      const subs = (Array.isArray(triage.subquestions) ? triage.subquestions : [])
-        .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
-        .map((/** @type {string} */ s) => s.trim())
-        .slice(0, 5);
-      if (subs.length) out.subquestions = subs;
-      return out;
-    }
-  }
-  if (triage?.action === "direct") return { action: "direct", ...quiz };
-
-  // Triage failed to produce usable JSON — decide a fallback WITHOUT a model.
-  // A SHORT latest message in an ongoing conversation is almost always a
-  // pure back-reference ("undersök saken", "det då?") with no searchable
-  // content of its own, so seed the search from the prior question (the
-  // established, self-contained topic) rather than the referential phrase.
-  // A LONGER follow-up is deliberately left as-is: it carries its own
-  // content words (e.g. "…hur det ser ut för sd" — the entity "sd" is right
-  // there), which a fuzzy search can use, so replacing it with the prior
-  // topic would only DROP that focus. The real fix for an ugly unresolved
-  // query is triage itself producing a clean one (triagePrompt's
-  // FOLLOWUP_RESOLUTION_RULE + per-model JSON reliability, model-profiles.js)
-  // — this fallback only runs on the rare parse-failure path and just avoids
-  // the worst case (a bare pronoun going to the web). A short message with no
-  // prior context has nothing to resolve against, so answer directly.
-  const cur = lastUser.trim();
-  const prior = (priorUser || "").trim();
-  const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;
-  if (prior && looksLikeFollowup) {
-    return { action: "research", queries: [prior.slice(0, 300)] };
-  }
-  return cur.length >= 12
-    ? { action: "research", queries: [cur.slice(0, 300)] }
-    : { action: "direct" };
-}
-
 // ---- search execution ----------------------------------------------------
 
 // The round's runnable slice of the planned queries: trimmed, deduped
@@ -1248,209 +1106,3 @@ async function runAuxSearch(ctx, source, batch, round) {
   addSources(state, items);
 }
 
-// ---- answer streaming ------------------------------------------------------
-
-// The answer stream's inter-chunk inactivity bound. A production report
-// (2026-07-08, screenshot: "stuck after a few response tokens") exposed the
-// remaining unguarded hang: the round-2 fix bounds time-to-FIRST-response
-// only, so a Berget stream that goes silent MID-generation (socket open, no
-// chunks, no EOF) hung the pipeline forever — and because /api/chat's 15s
-// SSE keepalives kept flowing, the CLIENT's stall watchdog (which stamps
-// lastByteAt on keepalives too) never fired either: a truly infinite
-// spinner on both sides. 60s of inter-chunk silence is far beyond anything
-// a healthy stream does (slow models pause single-digit seconds between
-// tokens) and cheap insurance. The enrichment describe call has its own
-// bound already (src/enrichment.js).
-const STREAM_IDLE_TIMEOUT_MS = 60_000;
-
-// Whether a failed connect attempt looks provider-side and transient (worth
-// another attempt) rather than deterministic (our request is at fault — a
-// 400/401/413 will fail identically on every retry). Exported for tests.
-/**
- * @param {number} status HTTP status of the failed connect.
- * @returns {boolean}
- */
-export function isTransientConnectStatus(status) {
-  return status >= 500 || status === 429 || status === 408;
-}
-
-// Tags an error as eligible for the model failover in streamCompletion():
-// set only where the failing model never delivered a byte the user still
-// has on screen, so a different model's answer can't visibly diverge.
-/**
- * @param {string} message
- * @returns {Error & { failover: true }}
- */
-function failoverError(message) {
-  const e = /** @type {Error & { failover: true }} */ (new Error(message));
-  e.failover = true;
-  return e;
-}
-
-// Streams one chat completion to the client; returns the full text.
-//
-// The user's chosen model gets its full retry budget first (streamOnModel).
-// If it never delivered a visible byte — connect-phase exhaustion, an early
-// stall whose fragment was discarded, clean-but-empty completions — the
-// answer is retried ONCE on the pipeline's fixed reliable JSON model
-// instead of erroring the chat. Observed live (2026-07-08, refs 6b753392 /
-// 953b74e3): Berget's Mistral Medium refused to open a synthesis stream for
-// 20+ minutes straight while Mistral Small answered the SAME requests'
-// triage/gap calls in ~1-2s — retrying the dead model alone can't save
-// that, but the reliable default was provably up the whole time. The
-// failover is announced as a step so the user knows which model answered,
-// its usage is billed to the jsonTotals bucket (that's the model that ran),
-// and the provider issue still raises the admin alert an unrecovered
-// failure would have — users stop hurting, admins keep seeing it.
-/**
- * @param {PipelineCtx} ctx
- * @param {import('./conversation.js').Msg[]} messages
- * @returns {Promise<string>} The full streamed text.
- */
-async function streamCompletion(ctx, messages) {
-  try {
-    return await streamOnModel(ctx, messages, ctx.model, ctx.profile, ctx.state.totals);
-  } catch (/** @type {any} */ err) {
-    const fallback = ctx.jsonModel;
-    if (!err?.failover || !fallback || fallback === ctx.model) throw err;
-    ctx.log.warn("chat.model_failover", { from: ctx.model, to: fallback, error: err?.message || String(err) });
-    const alert = classifyChatError(err?.message);
-    await raiseAlert(ctx.env, alert.type, alert.severity, alert.message,
-      `model: ${ctx.model} — failed over to ${fallback} — ${err?.message}`);
-    const name = (/** @type {string} */ id) => String(id).split("/").pop();
-    ctx.step("failover", `${name(ctx.model)} isn't responding — switching to ${name(fallback)}…`);
-    try {
-      const text = await streamOnModel(ctx, messages, fallback, ctx.jsonProfile, ctx.state.jsonTotals);
-      ctx.state.failoverModel = fallback;
-      ctx.stepDone("failover", `Answered by ${name(fallback)} — ${name(ctx.model)} was unavailable`);
-      return text;
-    } catch (err2) {
-      ctx.stepDone("failover", `${name(fallback)} couldn't answer either`);
-      throw err2;
-    }
-  }
-}
-
-// One model's full attempt loop; usage lands in the caller's totals bucket
-// (split billing — each bucket priced at its own model's catalog rate).
-/**
- * @param {PipelineCtx} ctx
- * @param {import('./conversation.js').Msg[]} messages
- * @param {string} model
- * @param {ModelProfile} profile This model's profile (retry budget).
- * @param {import('./types.js').TokenTotals} totals Billing bucket for this model's usage.
- * @returns {Promise<string>}
- */
-async function streamOnModel(ctx, messages, model, profile, totals) {
-  const maxAttempts = profile.maxCompletionAttempts;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Connect-phase failures get the same retry budget as the stall/empty
-    // cases below — they're the CHEAPEST kind to retry (nothing has streamed
-    // yet, so a second attempt can't visibly diverge from text already on
-    // screen). Observed live (2026-07-08, ref 6b753392): a loaded Mistral
-    // Medium sat on the synthesis request past berget.js's 30s connect
-    // timeout and the abort ("The operation was aborted") threw straight
-    // out of the pipeline as a fatal chat error — a provider blip the user
-    // paid for with a dead research run, all searches already done.
-    let upstream;
-    try {
-      // Cast: conversation.js's helpers hand back its looser Msg shape; the
-      // messages here are the well-formed arrays the phase builders wrote.
-      upstream = await chatCompletion(ctx.env, /** @type {Conversation} */ (messages), { model });
-    } catch (/** @type {any} */ err) {
-      // fetch() itself rejected: the connect-timeout abort or a network
-      // reset. Always transient by nature.
-      ctx.log.warn("chat.connect_failed", { model, attempt, error: err?.message || String(err) });
-      if (attempt < maxAttempts) continue;
-      throw failoverError(err?.message || String(err));
-    }
-    if (!upstream.ok || !upstream.body) {
-      const detail = (await upstream.text().catch(() => "")).slice(0, 300);
-      const transient = !upstream.body || isTransientConnectStatus(upstream.status);
-      ctx.log.warn("chat.connect_failed", { model, attempt, status: upstream.status, error: detail });
-      if (transient && attempt < maxAttempts) continue;
-      const message = `${providerName(model)} API error (${upstream.status}): ${detail}`;
-      // A deterministic 4xx is OUR request's fault — the fallback model
-      // would just fail the same way, so it isn't failover-eligible.
-      throw transient ? failoverError(message) : new Error(message);
-    }
-    let streamed;
-    let received = 0;
-    try {
-      streamed = await consumeChatStream(
-        upstream.body,
-        (/** @type {string} */ t) => {
-          received += t.length;
-          ctx.emitDelta(t);
-        },
-        { idleMs: STREAM_IDLE_TIMEOUT_MS },
-      );
-    } catch (/** @type {any} */ err) {
-      // A hang caught by the idle guard right at the START of the answer
-      // (the reported case: a handful of tokens, then silence) is worth one
-      // cheap retry — the same transient-blip reasoning as the empty-
-      // completion retry below, and the user has barely seen any text. A
-      // hang deep into a long answer is NOT retried (regenerated text would
-      // visibly diverge from what is already on screen) — it surfaces as an
-      // honest error with a (ref …) instead of an infinite spinner. The
-      // client is told to discard the few rendered tokens (discard_text —
-      // the same event the validation revise path uses) so the retried
-      // answer doesn't append after them.
-      ctx.log.warn("chat.stream_stalled", { model, attempt, received, error: err?.message || String(err) });
-      if (received < 400) {
-        if (received) ctx.emit({ status: { type: "discard_text" } });
-        if (attempt < maxAttempts) continue;
-        // Early stall, fragment already discarded — safe to hand to the
-        // failover model, nothing of this model's answer remains on screen.
-        throw failoverError(err?.message || String(err));
-      }
-      throw err;
-    }
-    const { text, usage, finishReason } = streamed;
-    addUsage(totals, usage);
-    if (!finishReason) {
-      // A round 3 model-eval battery found Berget's connection can drop
-      // mid-stream for some models with no error frame at all — the reader
-      // just sees a clean EOF, so nothing throws and the caller would
-      // otherwise silently return truncated (sometimes empty) text as if it
-      // were a complete, successful answer. A normal completion always sets
-      // finish_reason on its last chunk (standard OpenAI Chat Completions
-      // behavior); its absence is the tell. Throwing here routes this
-      // through chat.js's existing error handling — the user sees an honest
-      // error instead of a confusing blank/truncated answer, and it's
-      // finally visible in logs (chat.stream_failed) instead of invisible.
-      throw new Error(`${providerName(model)} stream ended without a finish_reason (${text.length} chars received) — likely a dropped connection`);
-    }
-    if (text) return text;
-    // A round 4 model-eval battery found a distinct failure mode from the
-    // one above: a stream that completes CLEANLY (finish_reason set,
-    // pipeline reaches "done") but with zero content — no dropped
-    // connection, no thrown error, just an empty answer silently delivered
-    // to the user. Retrying is cheap insurance against what looks like a
-    // transient backend blip rather than a per-query determinism issue
-    // (the same query succeeds cleanly on some runs); only after
-    // exhausting maxCompletionAttempts (model-profiles.js — 2 by default,
-    // higher for models evidenced to need it) do we give up and surface it.
-    ctx.log.warn("chat.empty_completion", { model, attempt, maxAttempts });
-    if (attempt === maxAttempts) {
-      // Nothing was ever shown (the completions were empty) — eligible for
-      // the failover model rather than surfacing an error.
-      throw failoverError(`${providerName(model)} returned an empty response ${maxAttempts} times in a row for this model`);
-    }
-  }
-  // Unreachable when maxCompletionAttempts >= 1 (model-profiles.js
-  // guarantees it): the final attempt always returns or throws above.
-  throw failoverError(`${providerName(model)} completion made no attempts`);
-}
-
-// Emits already-complete text as delta chunks (clarify questions, revised
-// answers) so the client renders it through the same streaming path.
-/**
- * @param {PipelineCtx} ctx
- * @param {string} text
- */
-function emitChunked(ctx, text) {
-  for (let i = 0; i < text.length; i += 80) {
-    ctx.emitDelta(text.slice(i, i + 80));
-  }
-}
