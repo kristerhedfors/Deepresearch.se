@@ -3,8 +3,9 @@
 // registry (src/enrichment.js), split out 2026-07-09 when the maps
 // subsystem was refactored for modularity: src/googlemaps-text.js decides
 // WHAT the user is asking (the pure lookup-intent registry feeding
-// pickLookup), src/googlemaps.js talks to Google (REST clients + the pure
-// context-block builders), and THIS module orchestrates one resolved
+// pickLookup), src/googlemaps.js talks to Google (REST clients + lookup
+// orchestration), src/googlemaps-blocks.js builds the pure labeled
+// context blocks, and THIS module orchestrates one resolved
 // target into a reply: the lookups, the vision describe, the SSE events
 // (frames/embeds), and the appended block. One runner per target shape —
 // address/place lookup, POV capture, map-view capture, jumps, nearby/
@@ -26,6 +27,9 @@ import {
   buildNearbyPlacesBlock,
   buildPovBlock,
   compassDir,
+  unresolvedMapsBlock,
+} from "./googlemaps-blocks.js";
+import {
   computeWalkingRoute,
   googleMapsEmbedKey,
   placesNearbySearch,
@@ -35,7 +39,6 @@ import {
   runMapViewCapture,
   runStreetViewJumpLookup,
   runStreetViewPovCapture,
-  unresolvedMapsBlock,
 } from "./googlemaps.js";
 import {
   bearingDeg,

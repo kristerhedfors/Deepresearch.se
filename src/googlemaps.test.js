@@ -1,7 +1,8 @@
 // Unit suite for the Google Maps integration's pure logic: the deterministic
 // text side (src/googlemaps-text.js — address/place extraction, every intent
-// gate, the pickLookup matcher registry) and googlemaps.js's pure exports
-// (link/block builders, compassDir, jumpSearchRadius, key gating). The REST
+// gate, the pickLookup matcher registry), the pure link/block builders
+// (src/googlemaps-blocks.js), and googlemaps.js's remaining pure exports
+// (jumpSearchRadius, key gating). The REST
 // clients and the enrichment runners need live Google/Berget and are covered
 // by live verification instead (see the live-verify skill).
 //
@@ -28,12 +29,14 @@ import {
   buildNearbyPlacesBlock,
   buildPovBlock,
   compassDir,
-  googleMapsAvailable,
-  googleMapsEmbedKey,
-  jumpSearchRadius,
   mapLink,
   panoLink,
   unresolvedMapsBlock,
+} from "./googlemaps-blocks.js";
+import {
+  googleMapsAvailable,
+  googleMapsEmbedKey,
+  jumpSearchRadius,
 } from "./googlemaps.js";
 import {
   bearingDeg,
