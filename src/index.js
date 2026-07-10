@@ -154,6 +154,15 @@ function isPublicAsset(url, method) {
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/drc-core.js" ||
     url.pathname === "/js/drc-providers.js" ||
+    url.pathname === "/js/drc-rag.js" ||
+    // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
+    // helpers) each import settings.js — all three must be public or the
+    // /cure module graph fails to link (the same class of breakage the
+    // extension check above fixed; found live 2026-07-10 when d6 shipped
+    // with drc-rag.js absent from this list).
+    url.pathname === "/js/rag.js" ||
+    url.pathname === "/js/chat-rag.js" ||
+    url.pathname === "/js/settings.js" ||
     url.pathname === "/js/drc-research.js" ||
     url.pathname === "/js/drc-store.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
