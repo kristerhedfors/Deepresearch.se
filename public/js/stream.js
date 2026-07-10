@@ -58,6 +58,45 @@ import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { createSseParser } from "./sse.js";
 
+/**
+ * Per-send options, captured from the composer (app.js) and threaded into
+ * persistence so a stored conversation reopens with the settings it was
+ * sent with.
+ * @typedef {object} SendOpts
+ * @property {object[]} [images]  pending image attachments ({name, dataUrl, gps, …})
+ * @property {object[]} [docs]    pending document attachments ({name, text?, rag?, docId?, …})
+ * @property {string} [model]     model id ("" = server default)
+ * @property {?number} [budgetS]  research time budget in seconds
+ * @property {boolean} [webSearch]
+ */
+
+/**
+ * The stored conversation record (history-store.js encrypts and persists
+ * it; history-ui.js/projects-ui.js reopen it via applyLoadedConversation).
+ * @typedef {object} ConversationRecord
+ * @property {string} title
+ * @property {Array<{role: string, content: string|object[]}>} messages
+ * @property {string} model
+ * @property {?number} budgetS
+ * @property {boolean} webSearch
+ * @property {Array<{id: string, name: string}>} ragDocs
+ * @property {EmbedEntry[]} embeds
+ * @property {?string} projectId
+ * @property {number} createdAt
+ * @property {number} updatedAt
+ */
+
+/**
+ * One pipeline-embedded element recorded for a turn (see the embeds
+ * registry below).
+ * @typedef {object} EmbedEntry
+ * @property {number} id        stable per-conversation number (copy-text references)
+ * @property {string} kind      "streetview_embed" | "map_embed" | "streetview_frames" | "quiz"
+ * @property {number} msgIndex  index of the assistant message it renders beside
+ */
+
+// ---- Conversation state -------------------------------------------------
+
 const history = []; // {role, content} pairs sent to the API
 
 // Large documents attached to this conversation (RAG-indexed — see
@@ -66,6 +105,7 @@ const history = []; // {role, content} pairs sent to the API
 // record (`ragDocs`) and restored on load.
 let convRagDocs = []; // [{id, name}]
 
+// ---- Embeds registry ----------------------------------------------------
 // Elements the pipeline embedded into a turn's body this conversation —
 // the Street View panorama (`streetview_embed`) and vision-frame strip
 // (`streetview_frames`). Recorded so the copy-to-clipboard export can
@@ -144,6 +184,8 @@ function capEmbedBytes() {
   }
 }
 
+// ---- Conversation identity & persistence ---------------------------------
+
 // The project this conversation belongs to (null = none): adopted from the
 // active project on the FIRST send of a fresh conversation, persisted in
 // the encrypted record, restored on load. Project scope means: retrieval
@@ -199,6 +241,11 @@ export function conversationStarted() {
   return history.length > 0 || currentId !== null;
 }
 
+/**
+ * One-time wiring from app.js.
+ * @param {(force?: boolean) => void} scrollFn  auto-follow scroll callback
+ * @param {{onHistoryChange?: (id: string) => void}} [opts]  fires after every persist/delete
+ */
 export function initStream(scrollFn, opts = {}) {
   scrollDown = scrollFn;
   onHistoryChange = opts.onHistoryChange || onHistoryChange;
@@ -247,8 +294,11 @@ function openConversationRecord(id, record) {
   return generation;
 }
 
-// Sidebar "load": replace the on-screen conversation with a previously
-// saved one.
+/**
+ * Sidebar "load": replace the on-screen conversation with a previously
+ * saved one.
+ * @param {ConversationRecord & {id: string}} record
+ */
 export function applyLoadedConversation(record) {
   openConversationRecord(record.id, record);
   resetStreetViewPov(); // any on-screen panorama belongs to the conversation being left
@@ -494,12 +544,6 @@ async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = null, s
   return { data: null, reason };
 }
 
-// Arm resume-across-relaunch for the in-flight send: persist the question to
-// encrypted history NOW (so a cold boot after a PWA discard can show it) and
-// drop a metadata-only pointer (pending-answer.js) the next boot polls the
-// server-parked answer from. Incognito persists nothing anywhere, so it opts
-// out entirely (no encrypted record to reopen, no pointer written). Both
-// writes are fire-and-forget so the stream is never delayed.
 // A send that produced NO answer at all (empty completion, or a drop we
 // couldn't recover): revert the unanswered question so a retry starts clean,
 // and keep the encrypted record consistent with that. armPendingRecovery may
@@ -521,6 +565,12 @@ async function abandonUnanswered(opts) {
   }
 }
 
+// Arm resume-across-relaunch for the in-flight send: persist the question to
+// encrypted history NOW (so a cold boot after a PWA discard can show it) and
+// drop a metadata-only pointer (pending-answer.js) the next boot polls the
+// server-parked answer from. Incognito persists nothing anywhere, so it opts
+// out entirely (no encrypted record to reopen, no pointer written). Both
+// writes are fire-and-forget so the stream is never delayed.
 function armPendingRecovery(requestId, opts) {
   if (convIncognito || !requestId) return;
   if (!currentId) currentId = crypto.randomUUID();
@@ -614,8 +664,11 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   return false;
 }
 
+// ---- SSE event dispatch ---------------------------------------------------
+
 // Dispatch one SSE event to the turn/activity renderers. Returns the updated
-// text accumulator.
+// text accumulator. Unknown status types fall through untouched — the
+// protocol's forward-compatibility rule (see the sse-protocol skill).
 function handleEvent(turn, evt, acc) {
   if (evt.error) {
     setError(turn, evt.error); // setError records it into researchLog
@@ -691,6 +744,8 @@ function recordResearchEvent(turn, entry) {
   turn.researchLog.push({ t: Date.now() - (turn.startedAt || Date.now()), ...sanitizeResearchEvent(entry) });
 }
 
+// ---- Send path ------------------------------------------------------------
+
 // Builds the labeled excerpt blocks for every RAG-indexed document in this
 // conversation: semantic retrieval against the question, a positional
 // fallback for a newly attached doc retrieval missed entirely (a doc the
@@ -740,21 +795,22 @@ async function buildRagBlocks(questionText, newRagDocs) {
   return ragExcerptBlocks(matches, names, metaByDoc, undefined, new Set(chatDocs.map((d) => d.id)));
 }
 
-// One send: text plus attachments already collected by the composer.
-// opts: {images, docs, model, budgetS, webSearch}
-export async function sendMessage(text, opts) {
-  // Build message content. Documents become labeled text blocks in the
-  // API message (never shown in the bubble); images become OpenAI-style
-  // multimodal parts. Extracted metadata (EXIF for images, docProps/
-  // tracked-changes/comments for docx, Info dict for pdf — see exif.js /
-  // docs.js) rides along as its own labeled block so it's research
-  // material, not silently dropped or silently blended into the main text.
-  //
-  // Large documents don't ride inline: they were RAG-indexed at attach
-  // time (attachments.js / rag.js) and contribute retrieved excerpts here
-  // instead — on this turn and on every follow-up in this conversation.
-  // A fresh conversation adopts the project that's active when its first
-  // message is sent; after that the conversation's own projectId rules.
+// Build one outgoing user message's content (string, or multimodal parts
+// when images ride along). Documents become labeled text blocks in the
+// API message (never shown in the bubble); images become OpenAI-style
+// multimodal parts. Extracted metadata (EXIF for images, docProps/
+// tracked-changes/comments for docx, Info dict for pdf — see exif.js /
+// docs.js) rides along as its own labeled block so it's research
+// material, not silently dropped or silently blended into the main text.
+//
+// Large documents don't ride inline: they were RAG-indexed at attach
+// time (attachments.js / rag.js) and contribute retrieved excerpts here
+// instead — on this turn and on every follow-up in this conversation.
+// A fresh conversation adopts the project that's active when its first
+// message is sent; after that the conversation's own projectId rules —
+// this is also where that adoption (convProjectId) and the conversation's
+// RAG-doc roster (convRagDocs) are updated.
+async function buildOutgoingUserContent(text, opts) {
   if (!currentId && !convProjectId) convProjectId = activeProjectId();
   const project = convProjectId ? getProject(convProjectId) : null;
 
@@ -789,6 +845,108 @@ export async function sendMessage(text, opts) {
       content.push({ type: "image_url", image_url: { url: a.dataUrl } });
     }
   }
+  return content;
+}
+
+// The typed text of every user turn, oldest first (string or multimodal
+// parts) — the device-location prefilter needs the EARLIER turns too: a
+// short "My location" only reads as a here-ask because an earlier turn
+// said "street view" (see asksDeviceLocation in message-content.js).
+const userTexts = (msgs) =>
+  msgs
+    .filter((m) => m?.role === "user")
+    .map((m) => {
+      const c = m.content;
+      if (typeof c === "string") return c;
+      if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
+      return "";
+    });
+
+// One-shot device geolocation for "street view here" asks: resolves null
+// on any failure (no API, permission denied, timeout) — never throws, so
+// the send path is never blocked by it. Coordinates rounded (~1m), the
+// same cache-friendly precision the map view uses.
+const deviceLocation = () =>
+  new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) =>
+          resolve({
+            lat: Math.round(pos.coords.latitude * 1e5) / 1e5,
+            lng: Math.round(pos.coords.longitude * 1e5) / 1e5,
+          }),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 },
+      );
+    } catch {
+      resolve(null);
+    }
+  });
+
+// Assemble the /api/chat request body from the module's conversation state
+// (history, incognito) plus this send's options and the live view anchors.
+// May await the device's geolocation — only for the exact ask shapes
+// documented inline, so the permission prompt never fires gratuitously.
+async function buildChatPayload(opts) {
+  const payload = {
+    messages: stripOldImages(history),
+    time_budget_s: opts.budgetS,
+    web_search: opts.webSearch,
+  };
+  if (opts.model) payload.model = opts.model;
+  // Ghost toggle: tells the server to keep this exchange out of the
+  // server-side interaction log too (src/chatlog.js) — the same choice
+  // that keeps it out of local/cloud chat history.
+  if (convIncognito) payload.incognito = true;
+  // Raw GPS coordinates ride separately from the message text — the
+  // Worker resolves them to a place name (src/geocode.js) and appends
+  // that as its own context block, rather than the client guessing.
+  const imageLocations = opts.images
+    .filter((a) => a.gps)
+    .map((a) => ({ name: a.name, lat: a.gps.lat, lon: a.gps.lon }));
+  if (imageLocations.length) payload.imageLocations = imageLocations;
+  // The user's CURRENT view in the inline Street View panorama (they may
+  // have panned/moved it) — the server captures exactly that frame when a
+  // follow-up refers back to the imagery (src/enrichment.js). Null when no
+  // live panorama exists this session.
+  const streetViewPov = getStreetViewPov();
+  if (streetViewPov) payload.street_view_pov = streetViewPov;
+  // The map sibling: the center/zoom of the live interactive MAP (shown
+  // when a location has no Street View coverage) — the server captures a
+  // road-map image of exactly that area on a map-referencing follow-up.
+  const mapView = getMapView();
+  if (mapView) payload.map_view = mapView;
+  // A here-ask ("street view here", a plain "where am I?", or a short
+  // "my location" answer to an earlier street-view turn) with NO live
+  // view on screen to anchor to: ask the browser for the device's
+  // location (the permission prompt fires for exactly these asks,
+  // nothing else) and send it as the jump anchor. EXCEPTION: an explicit
+  // PHYSICAL-location ask ("my actual location", "min faktiska plats")
+  // sends it even while a live view exists — the user has navigated the
+  // view elsewhere and means their real position, and the server flips
+  // the anchor precedence accordingly (pickLookup). Fail-soft:
+  // denied/unavailable/timeout sends nothing and the server honestly
+  // asks for location access instead.
+  const texts = userTexts(history);
+  const latestText = texts[texts.length - 1] || "";
+  if (asksPhysicalLocation(latestText) || (!streetViewPov && !mapView && asksDeviceLocation(texts))) {
+    const loc = await deviceLocation();
+    if (loc) payload.user_location = loc;
+  }
+  return payload;
+}
+
+/**
+ * One send: text plus attachments already collected by the composer.
+ * Pushes the user turn, streams /api/chat into a fresh assistant turn, and
+ * settles every outcome (done / stopped / dropped-and-recovered / failed).
+ * @param {string} text  the typed message
+ * @param {SendOpts} opts
+ * @returns {Promise<void>} resolves when the exchange has fully settled
+ */
+export async function sendMessage(text, opts) {
+  const content = await buildOutgoingUserContent(text, opts);
   history.push({ role: "user", content });
   // Captured for out-of-band persistence (a quiz finished after this stream
   // ends re-persists with the same metadata — see quizHooks).
@@ -801,41 +959,6 @@ export async function sendMessage(text, opts) {
   const gen = generation;
   controller = new AbortController();
   const signal = controller.signal;
-
-  // The typed text of every user turn, oldest first (string or multimodal
-  // parts) — the device-location prefilter needs the EARLIER turns too: a
-  // short "My location" only reads as a here-ask because an earlier turn
-  // said "street view" (see asksDeviceLocation in message-content.js).
-  const userTexts = (msgs) =>
-    msgs
-      .filter((m) => m?.role === "user")
-      .map((m) => {
-        const c = m.content;
-        if (typeof c === "string") return c;
-        if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
-        return "";
-      });
-  // One-shot device geolocation for "street view here" asks: resolves null
-  // on any failure (no API, permission denied, timeout) — never throws, so
-  // the send path is never blocked by it. Coordinates rounded (~1m), the
-  // same cache-friendly precision the map view uses.
-  const deviceLocation = () =>
-    new Promise((resolve) => {
-      if (!navigator.geolocation) return resolve(null);
-      try {
-        navigator.geolocation.getCurrentPosition(
-          (pos) =>
-            resolve({
-              lat: Math.round(pos.coords.latitude * 1e5) / 1e5,
-              lng: Math.round(pos.coords.longitude * 1e5) / 1e5,
-            }),
-          () => resolve(null),
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 },
-        );
-      } catch {
-        resolve(null);
-      }
-    });
 
   // iOS suspends network for backgrounded apps/PWAs — the most common cause
   // of mid-stream drops. On return the torn-down socket frequently makes the
@@ -865,51 +988,7 @@ export async function sendMessage(text, opts) {
 
   let requestId = "";
   try {
-    const payload = {
-      messages: stripOldImages(history),
-      time_budget_s: opts.budgetS,
-      web_search: opts.webSearch,
-    };
-    if (opts.model) payload.model = opts.model;
-    // Ghost toggle: tells the server to keep this exchange out of the
-    // server-side interaction log too (src/chatlog.js) — the same choice
-    // that keeps it out of local/cloud chat history.
-    if (convIncognito) payload.incognito = true;
-    // Raw GPS coordinates ride separately from the message text — the
-    // Worker resolves them to a place name (src/geocode.js) and appends
-    // that as its own context block, rather than the client guessing.
-    const imageLocations = opts.images
-      .filter((a) => a.gps)
-      .map((a) => ({ name: a.name, lat: a.gps.lat, lon: a.gps.lon }));
-    if (imageLocations.length) payload.imageLocations = imageLocations;
-    // The user's CURRENT view in the inline Street View panorama (they may
-    // have panned/moved it) — the server captures exactly that frame when a
-    // follow-up refers back to the imagery (src/enrichment.js). Null when no
-    // live panorama exists this session.
-    const streetViewPov = getStreetViewPov();
-    if (streetViewPov) payload.street_view_pov = streetViewPov;
-    // The map sibling: the center/zoom of the live interactive MAP (shown
-    // when a location has no Street View coverage) — the server captures a
-    // road-map image of exactly that area on a map-referencing follow-up.
-    const mapView = getMapView();
-    if (mapView) payload.map_view = mapView;
-    // A here-ask ("street view here", a plain "where am I?", or a short
-    // "my location" answer to an earlier street-view turn) with NO live
-    // view on screen to anchor to: ask the browser for the device's
-    // location (the permission prompt fires for exactly these asks,
-    // nothing else) and send it as the jump anchor. EXCEPTION: an explicit
-    // PHYSICAL-location ask ("my actual location", "min faktiska plats")
-    // sends it even while a live view exists — the user has navigated the
-    // view elsewhere and means their real position, and the server flips
-    // the anchor precedence accordingly (pickLookup). Fail-soft:
-    // denied/unavailable/timeout sends nothing and the server honestly
-    // asks for location access instead.
-    const texts = userTexts(history);
-    const latestText = texts[texts.length - 1] || "";
-    if (asksPhysicalLocation(latestText) || (!streetViewPov && !mapView && asksDeviceLocation(texts))) {
-      const loc = await deviceLocation();
-      if (loc) payload.user_location = loc;
-    }
+    const payload = await buildChatPayload(opts);
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

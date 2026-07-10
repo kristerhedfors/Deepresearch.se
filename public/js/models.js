@@ -17,22 +17,36 @@ export function initModels(selectEl, opts = {}) {
   loadModels();
 }
 
-// The catalog entry for the current selection (undefined until loaded).
+/**
+ * The catalog entry for the current selection (undefined until loaded).
+ * @returns {object|undefined} /api/models entry ({id, name, vision, up, pricing})
+ */
 export function currentModel() {
   return knownModels.find((m) => m.id === sel.value);
 }
 
-// The id to send with /api/chat — empty while the dropdown is hidden
-// (catalog unavailable), letting the server default apply.
+/**
+ * The id to send with /api/chat — empty while the dropdown is hidden
+ * (catalog unavailable), letting the server default apply.
+ * @returns {string}
+ */
 export function selectedModelId() {
   return !sel.hidden && sel.value ? sel.value : "";
 }
 
-// A usable vision-capable model, for the "switch to attach images?" offer.
+/**
+ * A usable vision-capable model, for the "switch to attach images?" offer.
+ * @returns {object|undefined}
+ */
 export function visionFallback() {
   return knownModels.find((m) => m.vision && m.up !== false);
 }
 
+/**
+ * Programmatic selection (loading a saved conversation, the vision-switch
+ * offer) — persists and fires onChange like a user pick.
+ * @param {string} id
+ */
 export function selectModel(id) {
   sel.value = id;
   localStorage.setItem("model", id);

@@ -42,6 +42,14 @@ const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i
 const images = () => attachments.filter((a) => a.kind === "image");
 const docs = () => attachments.filter((a) => a.kind === "doc");
 
+/**
+ * One-time wiring from app.js.
+ * @param {HTMLElement} attachBtnEl   the paperclip button
+ * @param {HTMLInputElement} fileInputEl  hidden file input (any supported type)
+ * @param {HTMLElement} pendingBoxEl  the pending-card row container
+ * @param {?HTMLElement} cameraBtnEl  the camera button (optional)
+ * @param {?HTMLInputElement} cameraInputEl  hidden image-only capture input (optional)
+ */
 export function initAttachments(attachBtnEl, fileInputEl, pendingBoxEl, cameraBtnEl, cameraInputEl) {
   attachBtn = attachBtnEl;
   cameraBtn = cameraBtnEl;
@@ -98,7 +106,11 @@ function archiveOriginal(fileId, file, { plaintext = false } = {}) {
   return archiveFile(fileId, file, { plaintext, cloud: activeProjectCloudOn() });
 }
 
-// Hand over everything pending for a send and clear the row.
+/**
+ * Hand over everything pending for a send and clear the row.
+ * @returns {{images: object[], docs: object[]}} the pending attachment
+ *   objects (shapes documented at the `attachments` declaration above)
+ */
 export function takeAttachments() {
   const taken = { images: images(), docs: docs() };
   attachments = [];

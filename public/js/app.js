@@ -1,14 +1,19 @@
 // Deepresearch.se chat client — bootstrap and wiring.
 //
-// Module map:
-//   timescale.js   — slider position <-> seconds mapping (pure)
-//   markdown.js    — sanitized markdown rendering (vendored marked+DOMPurify)
-//   turns.js       — user bubbles + assistant turns (content, tools, typing)
-//   activity.js    — live research step bars, stats footer, collapse
-//   models.js      — model dropdown (catalog, persistence, vision lookup)
-//   attachments.js — pending images/documents, downscaling, card row
-//   account.js     — account & usage panel (/api/me)
-//   stream.js      — conversation history + /api/chat SSE send loop
+// Module map (what this file wires):
+//   timescale.js      — slider position <-> seconds mapping (pure)
+//   turns.js          — user bubbles + assistant turns (content, tools, typing)
+//   activity.js       — live research step bars, stats footer, embeds, collapse
+//   models.js         — model dropdown (catalog, persistence, vision lookup)
+//   attachments.js    — pending images/documents, downscaling, card row
+//   account.js        — account & usage panel (/api/me)
+//   stream.js         — conversation history + /api/chat SSE send loop
+//   history-ui.js     — the encrypted local-history drawer
+//   projects.js/-ui   — project records, panel, header chip
+//   settings.js       — cached /api/settings (cloud/feedback knob state)
+//   sync.js           — boot-time cloud reconcile (push diff + pullNewer)
+//   imagedeck.js      — the conversation-wide image deck (onDeckAsk hook)
+//   pending-answer.js — the resume-across-relaunch pointer
 //
 // This file wires the page: scrolling, composer controls (slider, search
 // knob, autogrow, submit), and the module initializers.

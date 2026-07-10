@@ -61,8 +61,15 @@ const putRecord = (family, rec) =>
 
 // ---- knob ON: local → server -------------------------------------------------
 
-// `scopeProjectId` restricts the push to one project (the per-project knob
-// flipping ON); without it, everything except cloud-off projects goes.
+/**
+ * Bulk local → server push (the account knob flipping ON, and boot's
+ * background reconcile).
+ * @param {(msg: string) => void} [onProgress]  status-line narration
+ * @param {?string} [scopeProjectId]  restricts the push to one project (the
+ *   per-project knob flipping ON); without it, everything except cloud-off
+ *   projects goes
+ * @returns {Promise<{pushed: number, errors: string[]}>}
+ */
 export async function syncToServer(onProgress = () => {}, scopeProjectId = null) {
   const errors = [];
   let pushed = 0;
@@ -201,12 +208,17 @@ export function pushProjectScope(projectId, onProgress = () => {}) {
 
 // ---- knob OFF: server → local, then wipe --------------------------------------
 
-// Returns {checked, pulled, errors, wiped}: `checked` counts every cloud
-// item examined, `pulled` only those that actually had to come down —
-// items the browser already held (the normal case for the device that
-// wrote them) are verified present, not re-downloaded. The distinction
-// matters for the status line: "0 downloaded" out of 12 checked means
-// "everything was already here", not "nothing was preserved".
+/**
+ * Bulk server → local pull, then wipe the cloud (the account knob flipping
+ * OFF). `checked` counts every cloud item examined, `pulled` only those
+ * that actually had to come down — items the browser already held (the
+ * normal case for the device that wrote them) are verified present, not
+ * re-downloaded. The distinction matters for the status line: "0
+ * downloaded" out of 12 checked means "everything was already here", not
+ * "nothing was preserved".
+ * @param {(msg: string) => void} [onProgress]
+ * @returns {Promise<{checked: number, pulled: number, errors: string[], wiped: boolean}>}
+ */
 export async function syncToClient(onProgress = () => {}) {
   const errors = [];
   let pulled = 0;
@@ -296,12 +308,17 @@ export async function syncToClient(onProgress = () => {}) {
   return { checked, pulled, errors, wiped: !errors.length };
 }
 
-// Project knob OFF: the scoped version of the drain above. Pull anything
-// of this project's the browser is missing (a record written from another
-// device, a file uploaded elsewhere), then delete ONLY this project's
-// cloud objects — conversations, files, index entries, and the project
-// record — leaving the rest of the account's cloud storage untouched.
-// Same safety rule: nothing is deleted unless its local copy is confirmed.
+/**
+ * Project knob OFF: the scoped version of the drain above. Pull anything
+ * of this project's the browser is missing (a record written from another
+ * device, a file uploaded elsewhere), then delete ONLY this project's
+ * cloud objects — conversations, files, index entries, and the project
+ * record — leaving the rest of the account's cloud storage untouched.
+ * Same safety rule: nothing is deleted unless its local copy is confirmed.
+ * @param {string} projectId
+ * @param {(msg: string) => void} [onProgress]
+ * @returns {Promise<{removed: number, errors: string[], drained: boolean}>}
+ */
 export async function drainProjectScope(projectId, onProgress = () => {}) {
   const errors = [];
   let removed = 0;
@@ -408,13 +425,14 @@ export async function drainProjectScope(projectId, onProgress = () => {}) {
 // device (or a recovered session) wrote — project records included. This
 // is what makes cloud history sync across devices without a heavyweight
 // sync loop.
-// Returns {ran, checked, pulled, failed} — `checked` counts the cloud's
-// conversation records, `pulled` those actually brought down (projects
-// included), `failed` conversations that SHOULD have come down but didn't
-// (fetch error, import error). The result stays truthy-compatible with the
-// old count-only return via `pulled`. Callers that only care whether
-// anything changed keep reading `.pulled`; the history sidebar reads the
-// rest to explain an empty pane instead of leaving it silent.
+// `checked` counts the cloud's conversation records, `pulled` those
+// actually brought down (projects included), `failed` conversations that
+// SHOULD have come down but didn't (fetch error, import error). The result
+// stays truthy-compatible with the old count-only return via `pulled`.
+// Callers that only care whether anything changed keep reading `.pulled`;
+// the history sidebar reads the rest to explain an empty pane instead of
+// leaving it silent.
+/** @returns {Promise<{ran: boolean, checked: number, pulled: number, failed: number}>} */
 export async function pullNewer() {
   if (!serverHistoryOn()) return { ran: false, checked: 0, pulled: 0, failed: 0 };
   let pulled = 0;

@@ -14,6 +14,12 @@ let chat;
 let scrollDown;
 let isBusy = () => false;
 
+/**
+ * One-time wiring from app.js.
+ * @param {HTMLElement} chatEl  the scrolling chat container
+ * @param {(force?: boolean) => void} scrollFn  auto-follow scroll callback
+ * @param {{isBusy?: () => boolean}} [opts]  gates the PDF download while streaming
+ */
 export function initTurns(chatEl, scrollFn, opts = {}) {
   chat = chatEl;
   scrollDown = scrollFn;
@@ -33,6 +39,8 @@ const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 // Document attachments aren't reconstructed as chips here — their text was
 // already embedded inline in the message when it was sent (see stream.js's
 // sendMessage), so it simply shows as part of the message text on reload.
+// (message-content.js exports a hardened twin used on the send path; this
+// local copy only ever sees records this app itself wrote.)
 function splitUserContent(content) {
   if (typeof content === "string") return { text: content, imageUrls: [] };
   const text = content
@@ -55,6 +63,11 @@ function splitUserContent(content) {
 // Quizzes re-render from their embed record too — resuming an unfinished one
 // or showing the finished recap; `opts.quizHooks(embed)` (stream.js) wires
 // their answers/completion back into the registry and history.
+/**
+ * @param {Array<{role: string, content: string|object[]}>} messages  the stored conversation
+ * @param {object[]} [embeds]  the record's embeds registry (stream.js EmbedEntry[])
+ * @param {{quizHooks?: (embed: object) => object}} [opts]
+ */
 export function renderStoredConversation(messages, embeds = [], opts = {}) {
   clearChatDom();
   let lastUser = { text: "", imageUrls: [] };
@@ -83,6 +96,12 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
   });
 }
 
+/**
+ * Appends a user bubble: message text, image thumbnails, document chips.
+ * @param {string} text
+ * @param {string[]} [imageUrls]  data URLs of attached images
+ * @param {string[]} [docNames]   attached document names (chips)
+ */
 export function addUserBubble(text, imageUrls = [], docNames = []) {
   clearEmpty();
   const el = document.createElement("div");
@@ -113,10 +132,37 @@ export function addUserBubble(text, imageUrls = [], docNames = []) {
   scrollDown(true); // sending re-attaches auto-follow
 }
 
-// An assistant turn = collapsible activity panel + streamed content (typing
-// icon until the first token) + Raw/Copy/PDF tools + stats footer.
-// `question` (the user's prompt) becomes the PDF report's title; `images`
-// (the data URLs sent with it) are embedded in the PDF report.
+/**
+ * The per-reply handle every renderer works on — created here, mutated by
+ * activity.js (steps/stats/embeds), stream.js (text, research log), and
+ * report.js (PDF export).
+ * @typedef {object} Turn
+ * @property {HTMLElement} el            the .msg.assistant container
+ * @property {HTMLElement} activityWrap  the <details class="activity"> wrapper
+ * @property {HTMLElement} activity      the step-bar container
+ * @property {HTMLElement} activityLabel the collapsed-summary label
+ * @property {HTMLElement} content       the streamed-answer body
+ * @property {HTMLElement} stats         the stats footer
+ * @property {string} question           the user prompt (PDF report title)
+ * @property {string[]} images           data URLs sent with it (embedded in the PDF)
+ * @property {string} model              set from the `done` event
+ * @property {Object<string, object>} steps  live generic steps by id
+ * @property {string} text               the full answer text so far
+ * @property {boolean} rawMode           Raw-button toggle state
+ * @property {boolean} errored           setError was called
+ * @property {number} searchCount        from the `done` event (collapse label)
+ * @property {number} startedAt          anchors researchLog's relative timestamps
+ * @property {object[]} researchLog      ordered research events (activity.js ResearchLogEntry)
+ * @property {?object} doneStats         the final `done` event payload
+ */
+
+/**
+ * An assistant turn = collapsible activity panel + streamed content (typing
+ * icon until the first token) + Raw/Copy/PDF tools + stats footer.
+ * @param {string} [question]  the user's prompt — becomes the PDF report's title
+ * @param {string[]} [images]  the data URLs sent with it — embedded in the PDF report
+ * @returns {Turn}
+ */
 export function addAssistantTurn(question = "", images = []) {
   clearEmpty();
   const el = document.createElement("div");
@@ -375,10 +421,21 @@ function showTyping(content) {
   content.appendChild(icon);
 }
 
+/**
+ * True while the turn still shows the typing indicator (no text yet).
+ * @param {Turn} turn
+ * @returns {boolean}
+ */
 export function isTyping(turn) {
   return turn.content.classList.contains("typing");
 }
 
+/**
+ * Replaces the turn's full text (the stream re-sets the whole accumulator
+ * on every delta) and re-renders it in the current Raw/markdown mode.
+ * @param {Turn} turn
+ * @param {string} text
+ */
 export function setText(turn, text) {
   if (isTyping(turn)) {
     turn.content.classList.remove("typing");
@@ -390,6 +447,12 @@ export function setText(turn, text) {
   scrollDown();
 }
 
+/**
+ * Appends an error message to the turn (kept beneath any partial answer)
+ * and switches it to the error style.
+ * @param {Turn} turn
+ * @param {string} message
+ */
 export function setError(turn, message) {
   // setError is the single sink for EVERY error a turn can hit — server
   // errors (via stream.js's handleEvent), and the client-only ones that

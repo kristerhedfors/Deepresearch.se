@@ -42,8 +42,13 @@ function mdToBlocks(md) {
   return blocks;
 }
 
-// Generates and downloads the report. `turn` carries .text (the answer,
-// markdown) and .question (what was asked); `meta` adds model/duration.
+/**
+ * Generates and downloads the report.
+ * @param {object} turn  the turn object (turns.js Turn) — .text is the
+ *   markdown answer, .question the title, .images the embedded figures
+ * @param {{model?: string}} [meta]  extra metadata printed under the title
+ * @returns {Promise<void>} resolves once the share sheet / download started
+ */
 export async function downloadReport(turn, meta = {}) {
   await loadJsPdf();
   const { jsPDF } = window.jspdf;

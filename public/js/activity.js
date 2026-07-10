@@ -151,6 +151,33 @@ function zoomToFov(zoom) {
   return Math.round(Math.min(120, Math.max(10, 180 / Math.pow(2, z))));
 }
 
+// Shared shell of both persistent embeds (Street View panorama and
+// interactive map): the labeled wrapper and the container box the SDK (or
+// the iframe fallback) renders into.
+function makeEmbedShell(labelText) {
+  const wrap = document.createElement("div");
+  wrap.className = "streetview-embed";
+  const label = document.createElement("div");
+  label.className = "streetview-embed-label";
+  label.textContent = labelText;
+  const box = document.createElement("div");
+  box.className = "streetview-pano";
+  wrap.append(label, box);
+  return { wrap, label, box };
+}
+
+// The keyless <iframe> both embeds fall back to when the SDK can't run —
+// see the renderIframeFallback comments in each renderer for why the
+// fallback must be keyless.
+function keylessIframe(title, src) {
+  const iframe = document.createElement("iframe");
+  iframe.loading = "lazy";
+  iframe.allow = "fullscreen";
+  iframe.title = title;
+  iframe.src = src;
+  return iframe;
+}
+
 // Interactive Street View, from a `streetview_embed` status event. Unlike the
 // activity steps (which collapse when the run finishes), this is inserted
 // into the turn body so it PERSISTS beside the answer. Uses the browser key
@@ -165,14 +192,7 @@ export function renderStreetViewEmbed(turn, s) {
   const lng = Number(s.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-  const wrap = document.createElement("div");
-  wrap.className = "streetview-embed";
-  const label = document.createElement("div");
-  label.className = "streetview-embed-label";
-  label.textContent = "Street View — drag to look around";
-  const box = document.createElement("div");
-  box.className = "streetview-pano";
-  wrap.append(label, box);
+  const { wrap, label, box } = makeEmbedShell("Street View — drag to look around");
   turn.el.insertBefore(wrap, turn.stats);
   turn._svEmbed = wrap;
 
@@ -199,12 +219,9 @@ export function renderStreetViewEmbed(turn, s) {
   // render embed/v1 as a white rejection page — a fallback that can itself
   // fail invisibly is no fallback (chat_logs #170/#171; see imagedeck.js).
   const renderIframeFallback = () => {
-    const iframe = document.createElement("iframe");
-    iframe.loading = "lazy";
-    iframe.allow = "fullscreen";
-    iframe.title = "Google Street View";
-    iframe.src = keylessStreetViewEmbedUrl(lat, lng, Number(s.heading) || 0, Number(s.pitch) || 0);
-    box.replaceChildren(iframe);
+    box.replaceChildren(
+      keylessIframe("Google Street View", keylessStreetViewEmbedUrl(lat, lng, Number(s.heading) || 0, Number(s.pitch) || 0)),
+    );
     label.textContent = "Street View — drag to look around";
   };
 
@@ -285,15 +302,8 @@ export function renderMapEmbed(turn, s) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
   const zoom = Number.isFinite(Number(s.zoom)) ? Math.round(Number(s.zoom)) : 17;
 
-  const wrap = document.createElement("div");
-  wrap.className = "streetview-embed";
-  const label = document.createElement("div");
-  label.className = "streetview-embed-label";
   const baseLabel = s.q ? `Map — ${s.q}` : "Map — drag and zoom to explore";
-  label.textContent = baseLabel;
-  const box = document.createElement("div");
-  box.className = "streetview-pano";
-  wrap.append(label, box);
+  const { wrap, label, box } = makeEmbedShell(baseLabel);
   turn.el.insertBefore(wrap, turn.stats);
   turn._mapEmbed = wrap;
 
@@ -312,17 +322,12 @@ export function renderMapEmbed(turn, s) {
   };
 
   const renderIframeFallback = () => {
-    const iframe = document.createElement("iframe");
-    iframe.loading = "lazy";
-    iframe.allow = "fullscreen";
-    iframe.title = "Google Maps";
     // KEYLESS embed, deliberately: the key-based embed/v1 renders a white
     // rejection page when the key lacks the Maps Embed API service, and a
     // fallback that can itself fail invisibly is no fallback (same class as
     // the image deck's white mini-map, chat_logs #170/#171 — see
     // imagedeck.js keylessMapEmbedUrl). q=lat,lng drops a marker either way.
-    iframe.src = keylessMapEmbedUrl(lat, lng, zoom);
-    box.replaceChildren(iframe);
+    box.replaceChildren(keylessIframe("Google Maps", keylessMapEmbedUrl(lat, lng, zoom)));
     label.textContent = baseLabel;
   };
 
@@ -492,22 +497,37 @@ export function sanitizeResearchEvent(s) {
   return s;
 }
 
-// Generic pipeline steps (plan / gap check / synthesis / validation).
-export function startGenericStep(turn, id, label) {
+// Shared by startGenericStep/startSearchStep: one in-progress step bar — a
+// <details class="step"> with a spinner + label summary. Toggling stays
+// blocked until `toggleGateClass` appears on the element (generic steps
+// unlock via "expandable", search steps via "finished") — before that there
+// is nothing inside to show.
+function makeStepDom(labelText, toggleGateClass) {
   const details = document.createElement("details");
   details.className = "step";
   const summary = document.createElement("summary");
   const spin = document.createElement("span");
   spin.className = "spin";
-  const lab = document.createElement("span");
-  lab.textContent = label;
-  summary.append(spin, lab);
+  const label = document.createElement("span");
+  label.textContent = labelText;
+  summary.append(spin, label);
   details.appendChild(summary);
   details.addEventListener("click", (e) => {
-    if (!details.classList.contains("expandable")) e.preventDefault();
+    if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });
-  turn.activity.appendChild(details);
-  turn.steps[id] = { details, summary, label: lab };
+  return { details, summary, label };
+}
+
+/**
+ * Generic pipeline steps (plan / gap check / synthesis / validation).
+ * @param {object} turn  the turn object (turns.js addAssistantTurn)
+ * @param {string} id    step id — step_done events resolve it by this key
+ * @param {string} label initial label text (spinner shown beside it)
+ */
+export function startGenericStep(turn, id, label) {
+  const step = makeStepDom(label, "expandable");
+  turn.activity.appendChild(step.details);
+  turn.steps[id] = step;
 }
 
 // Updates an in-progress step's label in place (spinner kept) — e.g. the
@@ -560,30 +580,19 @@ export function finishGenericStep(turn, s) {
 // report showed Hugging Face Hub and web searches rendering identically as
 // "Searched ..."): the events carry `source` (slug) + `service` (display
 // name) since 2026-07-08; absent fields (older stored events) fall back to
-// the web wording. Pure helper, exported for tests.
+// the web wording. Pure helper.
 export function searchServiceName(info) {
   return (info && info.service) || "Web search";
 }
 
 export function startSearchStep(turn, info) {
   const query = info.query || "";
-  const details = document.createElement("details");
-  details.className = "step";
-  const summary = document.createElement("summary");
-  const spin = document.createElement("span");
-  spin.className = "spin";
-  const label = document.createElement("span");
-  label.textContent = searchServiceName(info) + ": “" + query + "”";
-  summary.append(spin, label);
-  details.appendChild(summary);
-  // Block toggling while running (no sources to show yet).
-  details.addEventListener("click", (e) => {
-    if (!details.classList.contains("finished")) e.preventDefault();
-  });
-  turn.activity.appendChild(details);
+  // Toggle gate "finished": blocked while running (no sources to show yet).
+  const step = makeStepDom(searchServiceName(info) + ": “" + query + "”", "finished");
+  turn.activity.appendChild(step.details);
   // Keyed by provider + query: the same query text may legitimately run on
   // both the web and an auxiliary source in one round.
-  (turn.pendingSearchSteps ||= new Map()).set((info.source || "web") + "|" + query, { details, summary, label });
+  (turn.pendingSearchSteps ||= new Map()).set((info.source || "web") + "|" + query, step);
 }
 
 // Resolve the step: checkmark, counts, timing, expandable source list.
@@ -675,10 +684,27 @@ export function collapseActivity(turn) {
   turn.activityWrap.open = false;
 }
 
-// Structured, JSON-serializable record of a turn's whole research process —
-// the source for the copy button below. Pure (reads only plain turn fields,
-// no DOM), so it's unit-testable. `timeline` is the raw ordered event log;
-// `steps`/`searches`/`sources` are convenience projections of it.
+/**
+ * One entry in a turn's researchLog: a sanitized SSE status event, or a
+ * client-recorded marker ({event: "error"|"stopped"|"stream_dropped", …}),
+ * stamped with `t` = ms since the turn started. Written by stream.js's
+ * recordResearchEvent and turns.js's setError; read only here.
+ * @typedef {object} ResearchLogEntry
+ * @property {number} t        ms since the turn started
+ * @property {string} [type]   SSE status type (search_done, step_done, done, …)
+ * @property {string} [event]  client-side marker (error, stopped, stream_dropped)
+ */
+
+/**
+ * Structured, JSON-serializable record of a turn's whole research process —
+ * the source for the copy button below. Pure (reads only plain turn fields,
+ * no DOM), so it's unit-testable. `timeline` is the raw ordered event log
+ * (ResearchLogEntry[]); `steps`/`searches`/`sources` are convenience
+ * projections of it.
+ * @param {object} turn  the turn object (turns.js addAssistantTurn)
+ * @returns {object} the debug record ({question, model, stats, steps,
+ *   searches, sources, answer, answerChars, errored, errors, timeline})
+ */
 export function buildResearchDebugJson(turn) {
   const log = Array.isArray(turn.researchLog) ? turn.researchLog : [];
   const searches = log

@@ -1,7 +1,9 @@
-// Admin UI: usage totals, user management (role/status/quota/delete), and
-// site configuration. All data comes from /api/admin/* (role-gated
-// server-side); this page is just rendering and actions. Accounts are
-// provisioned by Google sign-in — there is nothing to create here.
+// Admin UI: the notification center (pending approvals + operational
+// alerts), usage totals (overall and by model), user management
+// (role/status/quota/delete), and site configuration. All data comes from
+// /api/admin/* (role-gated server-side); this page is just rendering and
+// actions. Accounts are provisioned by Google sign-in — there is nothing
+// to create here.
 
 import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
 

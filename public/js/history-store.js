@@ -165,6 +165,11 @@ async function readRecordData(r) {
 // clear). Fine at the scale a single person's chat history reaches; a
 // record that fails to decrypt (corrupted, or encrypted under a
 // since-rotated secret) is skipped rather than crashing the whole list.
+/**
+ * @returns {Promise<Array<{id: string, title: string, updatedAt: number,
+ *   projectId: ?string}>>} newest first; undecryptable rows are skipped
+ *   (counted by undecryptableConversations)
+ */
 export async function listConversations() {
   const db = await openDb();
   const records = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
@@ -195,6 +200,11 @@ export function undecryptableConversations() {
   return lastUndecryptable;
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<?object>} the decrypted conversation data (stream.js
+ *   ConversationRecord), or null when no row exists
+ */
 export async function loadConversation(id) {
   const db = await openDb();
   const r = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
@@ -212,6 +222,11 @@ export async function loadConversation(id) {
 // readable ({data}) instead of encrypted (the header explains the rule).
 // opts.cloud=false skips the cloud mirror even when the account knob is
 // on — that's the per-project opt-out (public/js/projects.js decides).
+/**
+ * @param {string} id
+ * @param {object} data  the conversation record (stream.js ConversationRecord)
+ * @param {{cloud?: boolean}} [opts]
+ */
 export async function saveConversation(id, data, { cloud = true } = {}) {
   const db = await openDb();
   let stored;
@@ -277,6 +292,11 @@ export async function exportEncryptedRecords() {
 // incoming blob (this device has the key) — the cloud copy deliberately
 // doesn't carry it in the clear; a readable project-chat record carries it
 // in its data.
+/**
+ * @param {string} id
+ * @param {object} record  server-side stored form ({iv, ciphertext} or {data})
+ * @returns {Promise<boolean>} true when the local store actually changed
+ */
 export async function importEncryptedRecord(id, record) {
   const isPlain = record?.data && typeof record.data === "object";
   if (!isPlain && (!record?.iv || !record?.ciphertext)) return false;

@@ -19,8 +19,16 @@ import { loadSettings, serverHistoryOn, settingsLoaded, storageAvailable } from 
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
 
-// opts: {onNew, onLoad(record)} — both provided by app.js, which owns the
-// composer state (model/budget/search-toggle) this module has no access to.
+/**
+ * Wires the history drawer once at boot. Both callbacks come from app.js,
+ * which owns the composer state (model/budget/search-toggle) this module
+ * has no access to.
+ * @param {{onNew?: () => void, onLoad?: (record: object) => void}} [opts]
+ *   onLoad receives the opened conversation record (stream.js
+ *   ConversationRecord) so app.js can restore its send settings
+ * @returns {{onSaved: (id?: string) => void}} hook stream.js calls after
+ *   every autosaved turn
+ */
 export function initHistorySidebar(opts = {}) {
   const btn = document.getElementById("historybtn");
   const overlay = document.getElementById("historysidebar");
@@ -332,13 +340,11 @@ export function initHistorySidebar(opts = {}) {
         const strip = item.querySelector(".history-actions");
         if (strip && !(HAS_HOVER && item.matches(":hover"))) strip.remove();
       }
-      let moveCount = 0;
       item.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         tracking = true;
         axis = null;
         lastDx = 0;
-        moveCount = 0;
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         mountActions(item);
@@ -371,11 +377,10 @@ export function initHistorySidebar(opts = {}) {
         }
         if (axis !== "x") return;
         if (e.cancelable) e.preventDefault();
-        moveCount++;
         lastDx = dx;
         drag(dx);
       }, { passive: false });
-      const end = (e) => {
+      const end = () => {
         if (!tracking) return;
         tracking = false;
         if (axis === "x") finish(lastDx, false);
