@@ -549,6 +549,12 @@ what docs claim); and update the skill list below plus the skill's
   (unit tests → live probes → bench A/B → ledger).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
+- **cache-helper** — every cache layer (browser no-cache policy, the
+  CSS↔JS handshake, build stamps, Cloudflare edge propagation, the
+  /api/pub 60s TTL, the Workers result cache, PWA staleness) and the
+  stale-site playbook — FIRST remedy: remind the user to turn on
+  Cloudflare **Development Mode** in the dashboard (the API token can't;
+  3-hour zone-wide edge bypass), plus the verify-what's-live-first rule.
 - **live-verify** — logging & observability, Workers Logs / `wrangler tail`,
   `x-request-id` / `(ref …)` correlation, and the
   disconnect/answer-recovery/heartbeat/stall-watchdog machinery that only
