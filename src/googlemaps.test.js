@@ -1247,6 +1247,54 @@ describe("nearby-place asks — the verbatim 'Gas station near e18 there' report
     assert.equal(bare.intent, "PovScene");
   });
 
+  test("the verbatim Enköping→Stockholm journey (chat_logs #192–#193, 2026-07-10): 'go on to X' travels, 'street view go there' resumes", () => {
+    const pov2 = { panoId: "p", lat: 59.6448, lng: 17.0882, heading: 0, pitch: 0, fov: 90 };
+    // #192: the continuation particle broke TRAVEL_TO_RE — "Go on to
+    // stockholm central station" matched nothing (maps_intent "none") and
+    // the research pipeline answered with train timetables.
+    assert.deepEqual(extractRelocationQuery("Go on to stockholm central station"), { query: "stockholm central station", mode: "travel" });
+    const convo = [
+      { role: "user", content: "Go from here to enköping central train station" },
+      { role: "assistant", content: "I've moved the view to Enköping (Central Station)…" },
+      { role: "user", content: "Go on to stockholm central station" },
+    ];
+    const goOn = pickLookup(convo, [], pov2);
+    assert.deepEqual(goOn.nearby, { query: "stockholm central station", lat: 59.6448, lng: 17.0882, mode: "travel" });
+    // #193: the leading street-view phrase missed the ^-anchored go-there
+    // gate, the message fell through to the place-query path, and Places
+    // resolved the LITERAL text "go there" to "Girls Go There Salon" in
+    // Anderson, SC. It must resume the pending relocation instead…
+    const followUp = [...convo, { role: "assistant", content: "Which one do you mean?" }, { role: "user", content: "Street view go there" }];
+    const resume = pickLookup(followUp, [], pov2);
+    assert.equal(resume.intent, "GoThereResume");
+    assert.deepEqual(resume.nearby, { query: "stockholm central station", lat: 59.6448, lng: 17.0882, mode: "travel" });
+    // …and a deictic-only remainder must NEVER become a Places query.
+    assert.equal(extractPlaceQuery("Street view go there"), "");
+    assert.equal(extractPlaceQuery("street view take me there"), "");
+    // Swedish parity (invariant 6): the vidare particle, the fortsätt verb,
+    // and the gatuvy-prefixed resume.
+    assert.deepEqual(extractRelocationQuery("Gå vidare till Stockholms centralstation"), { query: "Stockholms centralstation", mode: "travel" });
+    assert.deepEqual(extractRelocationQuery("fortsätt till Stockholm central"), { query: "Stockholm central", mode: "travel" });
+    assert.equal(extractPlaceQuery("gatuvyn gå dit"), "");
+    const svResume = pickLookup(
+      [
+        { role: "user", content: "Gå vidare till Stockholms centralstation" },
+        { role: "assistant", content: "Vilken menar du?" },
+        { role: "user", content: "Gatuvyn gå dit" },
+      ],
+      [],
+      pov2,
+    );
+    assert.equal(svResume.intent, "GoThereResume");
+    assert.equal(svResume.nearby.query, "Stockholms centralstation");
+    // "continue on to X" carries the particle, so it IS a relocation…
+    assert.deepEqual(extractRelocationQuery("continue on to Bålsta"), { query: "Bålsta", mode: "travel" });
+    // …but near-misses must NOT fire: the bare English infinitive and prose.
+    assert.equal(extractRelocationQuery("continue to improve"), null);
+    assert.equal(extractRelocationQuery("when we go on to the next topic keep it short"), null);
+    assert.equal(extractNearbyPlaceQuery("later we go on to Stockholm"), "");
+  });
+
   test("pickLookup tags the winning matcher (non-enumerable) — the routing trace the logs surface", () => {
     const pov2 = { panoId: "p", lat: 59.4566, lng: 17.801, heading: 0, pitch: 0, fov: 90 };
     assert.equal(pickLookup([{ role: "user", content: "nearest gas station" }], [], pov2).intent, "NearbyPlace");

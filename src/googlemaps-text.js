@@ -281,6 +281,12 @@ export function streetViewIntent(text) {
   return STREETVIEW_INTENT_RE.test(typeof text === "string" ? text : "");
 }
 
+// Relocation-verb/deictic filler (English and Swedish alike) that can be
+// left over once the street-view intent words are stripped — see the
+// guard in extractPlaceQuery below.
+const DEICTIC_FILLER_RE =
+  /^(?:(?:go|co|gå|ga|continue|carry|fortsätt|fortsatt|take|ta|me|us|mig|oss|onwards|on|vidare|there|dit|here|här|har)(?![\p{L}\p{M}])[\s,]*)+[?!.]*$/iu;
+
 // A named-place street-view request ("Street view of LEGO offices in
 // Copenhagen", "gatuvy Turning Torso i Malmö") carries no street address for
 // extractPlace — but Places Text Search resolves free-text place names fine
@@ -312,6 +318,12 @@ export function extractPlaceQuery(text) {
   // ("…1, København").
   q = q.replace(/,\s+\p{Ll}[\s\S]*$/u, "").trim();
   if (!q) return "";
+  // A remainder that is ONLY relocation filler and deictics is no place
+  // name — verbatim chat_logs #193 (2026-07-10): "Street view go there"
+  // left q = "go there", which Places text search resolved to "Girls Go
+  // There Salon" in Anderson, SC. The deictic resume belongs to the
+  // go-there gate; this shape must fall through, never bill a lookup.
+  if (DEICTIC_FILLER_RE.test(q)) return "";
   // Don't query bare filler ("street view of the area"): a single word must
   // at least look like a proper name.
   if (q.split(/\s+/).length < 2 && !/\p{Lu}/u.test(q)) return "";
@@ -558,8 +570,14 @@ export function bearingDeg(lat1, lng1, lat2, lng2) {
 // model lecturing a panorama user to "never cross the tracks directly".
 const TELEPORT_VERB_RE =
   /(?<![\p{L}\p{M}])(?:jump|teleport|beam(?:\s+(?:me|us))?|hoppa|teleportera)(?![\p{L}\p{M}])/iu;
+// The continuation particle ("go ON to Stockholm", "gå VIDARE till …",
+// "fortsätt till …") rides along — verbatim chat_logs #192 (2026-07-10):
+// mid-journey "Go on to stockholm central station" matched nothing and fell
+// into web research (train timetables). "continue"/"carry" REQUIRE the
+// particle: bare "continue to <verb>" is the English infinitive
+// ("continue to improve"), not a relocation.
 const TRAVEL_TO_RE =
-  /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss|iss|mej)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss|iss|mej))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss|iss|mej)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss|iss|mej))?(?:\s+(?:on|onwards?|vidare))?|(?:continue|carry)\s+(?:on|onwards?|vidare)|fortsätt(?:\s+vidare)?|fortsatt(?:\s+vidare)?)\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
 // Strips the relocation verb phrase off a nearby-place query, so "teleport
 // to the nearest gas station" searches for "nearest gas station". The
 // word-boundary lookaheads matter: without them the diacritic-less Swedish
@@ -568,7 +586,7 @@ const TRAVEL_TO_RE =
 // typo "legs" — verbatim 2026-07-09: "Legs go to coop" got a clarify) and a
 // bare "ok" ("Ok nearest gas station").
 const TELEPORT_LEAD_RE =
-  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss|iss|mej)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
+  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta|continue|carry|fortsätt|fortsatt)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss|iss|mej)(?![\p{L}\p{M}]))?(?:\s+(?:on|onwards?|vidare)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
 
 // "The other side of the railway" — a barrier the user wants the panorama
 // relocated across (reported verbatim 2026-07-09: "Get to the other side
@@ -1491,8 +1509,15 @@ function matchRelocationToName(ctx) {
 // conversation's PENDING relocation — verbatim 2026-07-09: "Go there"
 // after failed "go to coop" asks got "What specific information are you
 // seeking about 'Go there'?". Always travel mode: the user said go.
-const GO_THERE_RE =
-  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:go|co|gå|ga|take\s+(?:me|us)|ta\s+(?:mig|oss))\s+(?:there|dit)\s*[?!.]*$/iu;
+// A leading street-view phrase rides along — verbatim chat_logs #193
+// (2026-07-10): "Street view go there" missed this ^-anchored gate, fell
+// through to the place-query path, and Places resolved the literal text
+// "go there" to a salon named "Girls Go There" in Anderson, SC.
+const GO_THERE_RE = new RegExp(
+  `^(?:(?:please|ok|okay|let'?s|lets|legs)\\s+)?(?:(?:${SV_WORDS})[\\s,:]+)?` +
+    `(?:go|co|gå|ga|continue|fortsätt|fortsatt|take\\s+(?:me|us)|ta\\s+(?:mig|oss))(?:\\s+(?:on|onwards?|vidare))?\\s+(?:there|dit)\\s*[?!.]*$`,
+  "iu",
+);
 /** @param {LookupCtx} ctx
  * @returns {LookupTarget | null} */
 function matchGoThereResume(ctx) {
