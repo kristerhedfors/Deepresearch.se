@@ -29,6 +29,20 @@ git commit -m "…"
 git push origin main
 ```
 
+## Serving transparency (site == repo, checkable)
+
+Because there is no build step, `public/**` in git IS the served bytes, so
+"does the site serve this repo?" is answerable byte-for-byte: every deploy
+stamps `public/version.json` (self-reported commit+branch; public route;
+gitignored — written by `scripts/stamp-version.mjs` via wrangler's `[build]`
+hook, which must NEVER exit non-zero), `scripts/verify-site.mjs` fetches
+every asset from the live site and hash-compares it against a commit, and
+`.github/workflows/attest.yml` signs `scripts/build-manifest.mjs`'s
+deterministic asset manifest into Sigstore's transparency log on every push
+to `main` (`gh attestation verify`). /build/ documents this for users. The
+Worker (`src/`) is NOT externally provable — never claim it is. Details,
+trust model, and how to read a verify FAIL: the **site-integrity** skill.
+
 ## Load-bearing invariants
 
 1. **Deterministic orchestration — NO function calling.** Every pipeline phase
@@ -279,7 +293,10 @@ spawn determinism + bucket scoping, battle flow incl. catching, fleeing,
 villain rewards, XP/level-up/evolution, save normalization), and
 `tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
 incl. the Swedish-parity suite, geodesy round-trips, spawn projection
-geometry).
+geometry), and `scripts/verify-lib.mjs` (the serving-transparency pure
+logic: asset-path→URL mapping incl. the auto-trailing-slash index.html
+rule, gate-aware verdict classification, the deterministic signed-manifest
+serialization — `scripts/verify-lib.test.js`).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -312,7 +329,7 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js scripts/*.test.js
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
@@ -411,6 +428,11 @@ what docs claim); and update the skill list below plus the skill's
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
   don't-deploy-mid-battery interaction with the eval harnesses.
+- **site-integrity** — serving transparency: proving the live site serves
+  the open-source repo byte-for-byte — the `/version.json` deploy stamp,
+  `scripts/verify-site.mjs`, the signed Sigstore asset-manifest attestation,
+  the client-provable/server-unprovable trust split, and how to read a
+  verify FAIL (branch ping-pong first, tampering last).
 
 - **pipeline-architecture** — the research pipeline engine (`src/pipeline.js`,
   `budget.js`, `model-profiles.js`, `berget.js`): the 5 phases, split model

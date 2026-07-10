@@ -1,0 +1,39 @@
+# Serving transparency: on every push to main, compute the deterministic
+# manifest of all served assets (public/** — this project has no build step,
+# so these are the exact bytes production serves) and sign it into Sigstore's
+# public transparency log via GitHub artifact attestations. This makes the
+# repo→site claim third-party checkable and the history non-rewritable:
+#
+#   node scripts/build-manifest.mjs > manifest.json     # at the same commit
+#   gh attestation verify manifest.json --repo kristerhedfors/Deepresearch.se
+#
+# proves the manifest for that commit came from this repository's own CI,
+# and scripts/verify-site.mjs proves the live site serves those same bytes.
+# See .claude/skills/site-integrity/SKILL.md.
+name: attest-served-assets
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the served-assets manifest
+        run: node scripts/build-manifest.mjs > manifest.json && cat manifest.json
+      - name: Sign the manifest into the transparency log
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: manifest.json
+      - name: Keep the manifest as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-manifest-${{ github.sha }}
+          path: manifest.json

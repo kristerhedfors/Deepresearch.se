@@ -125,6 +125,13 @@ export default {
 // story pages plus everything they need to render — the promo video, the
 // markdown renderer, and the vendored libs (all public on GitHub anyway).
 // The app itself and every /api/* stay gated.
+//
+// The deploy version stamp (/version.json, written by
+// scripts/stamp-version.mjs at deploy time): the self-reported commit that
+// /build/'s "Verify what this site serves" section displays and
+// scripts/verify-site.mjs compares the served bytes against. Public so
+// anyone can verify without an account — it only names a commit of an
+// already-public repo.
 /**
  * @param {URL} url
  * @param {string} method
@@ -135,6 +142,7 @@ function isPublicAsset(url, method) {
   return (
     url.pathname === "/favicon.ico" ||
     url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/version.json" ||
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/welcome/") ||
     url.pathname.startsWith("/help/") ||

@@ -177,6 +177,43 @@
   </section>
 
   <section>
+    <h2>Verify what this site serves</h2>
+    <p>The source is public, and this site ships it <b>without any build
+    step</b>: the files in the repository are, byte for byte, the files
+    your browser runs. That turns "is the site really running the
+    published code?" from a promise into a checkable claim.</p>
+    <p>Currently serving: <span id="served-commit" class="muted">checking…</span>.
+    Every deploy stamps its git commit into
+    <a href="/version.json"><code>/version.json</code></a> — but that stamp
+    is self-reported, so don't take the server's word for it:</p>
+    <ul>
+      <li><b>Byte-for-byte check.</b> Clone the repo and run
+        <code>node scripts/verify-site.mjs</code>. It fetches every file
+        this site serves and compares it against the repository at the
+        stamped commit. Without credentials it verifies the public pages
+        (including this one); signed-in users can pass their session
+        cookie to verify the whole app. Anyone can run it, from anywhere,
+        at any time — and the more independent checks, the stronger the
+        guarantee.</li>
+      <li><b>Signed transparency log.</b> Every push to <code>main</code>
+        runs a GitHub Action that computes a manifest of all served files
+        and signs it into Sigstore's public transparency log (GitHub
+        artifact attestations). <code>gh attestation verify manifest.json
+        --repo kristerhedfors/Deepresearch.se</code> proves a commit's
+        manifest came from this repository's own CI — the history can't be
+        quietly rewritten after the fact.</li>
+    </ul>
+    <div class="callout warn"><b>Honest limits:</b> this proves the
+    <i>client</i> — everything delivered to your browser. The server-side
+    Worker (<code>src/</code>) runs out of sight on Cloudflare and cannot
+    be remotely attested; that part remains "trust the operator and
+    Cloudflare", made transparent by the same public repository and deploy
+    log rather than provable. And any single check is point-in-time — it
+    proves what was served when and where it ran, which is exactly why the
+    verify script is public.</div>
+  </section>
+
+  <section>
     <h2>The build story</h2>
     <p>Every prompt, verbatim, from the first "Deploy hello world" to
     right now — what was asked, what broke, what was discovered, and the
@@ -185,5 +222,6 @@
     account panel).</p>
   </section>
 </main>
+<script type="module" src="/build/verify.js"></script>
 </body>
 </html>

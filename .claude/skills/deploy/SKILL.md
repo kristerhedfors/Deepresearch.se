@@ -78,7 +78,18 @@ them non-production previews) for other branches.
 
 ## Verify a deploy is actually live (don't trust the upload message)
 
-There is no version endpoint on the site. Verify behaviorally: probe
+**First stop (since 2026-07-10): `curl -s https://deepresearch.se/version.json`**
+— public, no auth. Every deploy stamps the commit + branch it was built
+from (`scripts/stamp-version.mjs`, run by wrangler's `[build]` hook on
+both deploy paths). Compare the stamped commit against what you pushed;
+the stamped `branch` also answers "which session's branch owns prod right
+now" during the ping-pong situation above. For a byte-level answer run
+`node scripts/verify-site.mjs` (see the **site-integrity** skill). The
+stamp is self-reported by the deploy — for verifying *your own* deploy
+landed that's exactly what you want; it is not a tamper-proof claim.
+
+When the change is behavioral (the stamp only proves the commit, not that
+the new code path runs), verify behaviorally as before: probe
 `/api/chat` (break-glass Basic Auth env creds `BASIC_AUTH_USER`/`PASS` —
 sent as an `Authorization: Basic` header, the Worker never challenges) with
 a request whose SSE trace can only show the new behavior, and read the

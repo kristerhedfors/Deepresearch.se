@@ -37,6 +37,17 @@ LOG_LEVEL = "info" # debug | info | warn | error
 # user) is configured directly as a Cloudflare dashboard variable, not
 # declared here, so it isn't public in this file.
 
+# Deploy-time version stamp (serving transparency): writes public/version.json
+# with the commit being deployed, before the assets upload. Runs on BOTH
+# deploy paths (the git-connected Workers Build and a direct `npx wrangler
+# deploy`) because wrangler itself invokes it. The script can never exit
+# non-zero (a broken stamp must not break a deploy — worst case is a stale or
+# absent stamp, which scripts/verify-site.mjs treats as "fall back to HEAD").
+# This is a version stamp, not a build step — the assets still deploy as the
+# exact bytes in git; see the site-integrity skill.
+[build]
+command = "node scripts/stamp-version.mjs"
+
 # run_worker_first + binding: the Worker sees every request (so Basic Auth
 # gates the static UI too) and serves assets via env.ASSETS.fetch().
 [assets]

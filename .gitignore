@@ -230,3 +230,6 @@ tests/playwright-report/
 tests/model-eval-results/
 tests/eval-bench-results/
 tests/hf-bench-results/
+
+# Deploy-time version stamp (scripts/stamp-version.mjs writes it; never committed)
+public/version.json
