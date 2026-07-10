@@ -1,3 +1,4 @@
+// Node tests for quiz.js's pure core: verdicts, scoring, the completed-quiz summary block.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { answerVerdict, quizDone, quizScore, quizSummaryText } from "./quiz.js";

@@ -1,14 +1,19 @@
 // Deepresearch.se chat client — bootstrap and wiring.
 //
-// Module map:
-//   timescale.js   — slider position <-> seconds mapping (pure)
-//   markdown.js    — sanitized markdown rendering (vendored marked+DOMPurify)
-//   turns.js       — user bubbles + assistant turns (content, tools, typing)
-//   activity.js    — live research step bars, stats footer, collapse
-//   models.js      — model dropdown (catalog, persistence, vision lookup)
-//   attachments.js — pending images/documents, downscaling, card row
-//   account.js     — account & usage panel (/api/me)
-//   stream.js      — conversation history + /api/chat SSE send loop
+// Module map (what this file wires):
+//   timescale.js      — slider position <-> seconds mapping (pure)
+//   turns.js          — user bubbles + assistant turns (content, tools, typing)
+//   activity.js       — live research step bars, stats footer, embeds, collapse
+//   models.js         — model dropdown (catalog, persistence, vision lookup)
+//   attachments.js    — pending images/documents, downscaling, card row
+//   account.js        — account & usage panel (/api/me)
+//   stream.js         — conversation history + /api/chat SSE send loop
+//   history-ui.js     — the encrypted local-history drawer
+//   projects.js/-ui   — project records, panel, header chip
+//   settings.js       — cached /api/settings (cloud/feedback knob state)
+//   sync.js           — boot-time cloud reconcile (push diff + pullNewer)
+//   imagedeck.js      — the conversation-wide image deck (onDeckAsk hook)
+//   pending-answer.js — the resume-across-relaunch pointer
 //
 // This file wires the page: scrolling, composer controls (slider, search
 // knob, autogrow, submit), and the module initializers.
@@ -17,9 +22,9 @@ import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { loadSettings, mapsEmbedKey } from "./settings.js";
+import { loadSettings } from "./settings.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
-import { onDeckAsk, setDeckEmbedKey } from "./imagedeck.js";
+import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
@@ -351,9 +356,8 @@ function setSendMode(streaming) {
 // anchors the next message at that image's position (the map_view anchor —
 // activity.js setMapViewAnchor) and then goes through the ordinary composer
 // path, so quotas, attachments state, streaming controls and history all
-// behave exactly like a typed message. The mini-map uses the same
-// browser-exposed, referrer-locked embed key the interactive views use.
-setDeckEmbedKey(mapsEmbedKey);
+// behave exactly like a typed message. (The deck's mini-map needs no key —
+// it uses the keyless maps embed; see imagedeck.js keylessMapEmbedUrl.)
 onDeckAsk((text, point) => {
   // A PHOTO image anchors as a POV (position + heading — the server's POV
   // path reproduces exactly that frame and renders a fresh Street View
@@ -411,7 +415,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h19";
+const CSS_VERSION = "h20";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

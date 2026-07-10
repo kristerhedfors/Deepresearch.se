@@ -1,3 +1,4 @@
+// Unit tests for exa.js's pure logic: the normalized search cache key.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { searchCacheKey } from "./exa.js";

@@ -1,3 +1,4 @@
+// @ts-check
 // Shodan host-intelligence integration ("Shodan MCP" in the UI) — an
 // opt-in per-user knob (src/settings.js's `shodan_mcp`, default OFF).
 //
@@ -39,9 +40,31 @@ const MAX_PRODUCTS = 10;
 const MAX_VULNS = 15;
 const MAX_HOSTNAMES_PER_HOST = 6;
 
+/** @param {import('./types.js').Env} env */
 export function shodanAvailable(env) {
   return !!env.SHODAN_API_KEY;
 }
+
+/**
+ * The publicly-routable IPv4s and hostnames extracted from one message.
+ * @typedef {{ ips: string[], hostnames: string[] }} ShodanTargets
+ */
+/**
+ * One host normalized down to the fields a research summary uses.
+ * @typedef {object} ShodanHost
+ * @property {string} ip
+ * @property {string | null} resolvedFrom hostname the IP came from, if any
+ * @property {string} org
+ * @property {string} isp
+ * @property {string} asn
+ * @property {string} os
+ * @property {string} location
+ * @property {string} lastUpdate ISO date (YYYY-MM-DD), or ""
+ * @property {number[]} ports
+ * @property {string[]} hostnames
+ * @property {string[]} products
+ * @property {string[]} vulns known CVE ids
+ */
 
 // ---- target extraction (pure — exported for unit tests) --------------------
 
@@ -65,6 +88,10 @@ const HOST_RE = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,23}
 // True for an IPv4 that is private, loopback, link-local, multicast, or
 // otherwise not a publicly routable address worth (or possible) to query on
 // Shodan. Wasting a query credit on 192.168.x.x also leaks nothing useful.
+/**
+ * @param {number} a first octet
+ * @param {number} b second octet
+ */
 function isPublicIpv4(a, b) {
   if (a === 0 || a === 10 || a === 127 || a >= 224) return false; // this-net, private, loopback, multicast/reserved
   if (a === 169 && b === 254) return false; // link-local
@@ -78,6 +105,10 @@ function isPublicIpv4(a, b) {
 // Deduped, capped, and de-noised (private IPs, file names, email addresses,
 // and any hostname that is really just an IP are all excluded). Returns
 // { ips, hostnames }.
+/**
+ * @param {unknown} text free text to scan
+ * @returns {ShodanTargets}
+ */
 export function extractTargets(text) {
   const raw = typeof text === "string" ? text : "";
   const ips = [];
@@ -111,8 +142,15 @@ export function extractTargets(text) {
 
 // ---- Shodan REST calls -----------------------------------------------------
 
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {string} path REST path under SHODAN_BASE
+ * @param {Record<string, string>} params query params (the API key is added here)
+ * @returns {Promise<any | null>} parsed JSON, or null on 404/error
+ */
 async function shodanGet(env, log, path, params) {
-  const qs = new URLSearchParams({ ...params, key: env.SHODAN_API_KEY });
+  const qs = new URLSearchParams({ ...params, key: String(env.SHODAN_API_KEY || "") });
   const url = `${SHODAN_BASE}${path}?${qs}`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!resp.ok) {
@@ -131,6 +169,12 @@ async function shodanGet(env, log, path, params) {
 
 // Batch-resolves hostnames to IPs (Shodan's DNS resolve endpoint costs no
 // query credits). Returns a Map hostname -> ip (only successful resolves).
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {string[]} hostnames
+ * @returns {Promise<Map<string, string>>}
+ */
 async function resolveHostnames(env, log, hostnames) {
   const out = new Map();
   if (!hostnames.length) return out;
@@ -147,19 +191,24 @@ async function resolveHostnames(env, log, hostnames) {
 // Normalizes Shodan's /shodan/host/{ip} payload into the fields a research
 // summary actually uses, all bounded. Shodan's `vulns` can be an array or an
 // object keyed by CVE; both are handled.
+/**
+ * @param {any} data raw /shodan/host/{ip} payload
+ * @param {string | null} resolvedFrom hostname the IP came from, if any
+ * @returns {ShodanHost}
+ */
 function summarizeHost(data, resolvedFrom) {
   const ports = Array.isArray(data.ports)
-    ? [...new Set(data.ports.filter((p) => Number.isFinite(p)))].sort((a, b) => a - b).slice(0, MAX_PORTS)
+    ? [...new Set(data.ports.filter((/** @type {unknown} */ p) => Number.isFinite(p)))].sort((/** @type {number} */ a, /** @type {number} */ b) => a - b).slice(0, MAX_PORTS)
     : [];
   const hostnames = Array.isArray(data.hostnames)
-    ? data.hostnames.filter((h) => typeof h === "string").slice(0, MAX_HOSTNAMES_PER_HOST)
+    ? data.hostnames.filter((/** @type {unknown} */ h) => typeof h === "string").slice(0, MAX_HOSTNAMES_PER_HOST)
     : [];
   const vulnsRaw = Array.isArray(data.vulns)
     ? data.vulns
     : data.vulns && typeof data.vulns === "object"
       ? Object.keys(data.vulns)
       : [];
-  const vulns = vulnsRaw.filter((v) => typeof v === "string").slice(0, MAX_VULNS);
+  const vulns = vulnsRaw.filter((/** @type {unknown} */ v) => typeof v === "string").slice(0, MAX_VULNS);
   // Distinct product names from the banner list (minify=false keeps `data`).
   const products = [];
   const seenProd = new Set();
@@ -189,6 +238,7 @@ function summarizeHost(data, resolvedFrom) {
 // Renders one summarized host as compact, readable lines for the context
 // block. Deliberately plain text — the same convention as geocode.js's and
 // the client's own metadata blocks.
+/** @param {ShodanHost} h */
 function renderHost(h) {
   const header = h.resolvedFrom ? `${h.resolvedFrom} → ${h.ip}` : h.ip;
   const lines = [`Host ${header} (https://www.shodan.io/host/${h.ip}):`];
@@ -205,6 +255,7 @@ function renderHost(h) {
 }
 
 // A one-line summary of a host for the UI activity step's expandable list.
+/** @param {ShodanHost} h */
 function hostDetailLine(h) {
   const bits = [];
   if (h.ports.length) bits.push(`${h.ports.length} port${h.ports.length === 1 ? "" : "s"}`);
@@ -219,6 +270,12 @@ function hostDetailLine(h) {
 //   { block, details, count, ips, durationMs }
 // where `block` is the labeled context text to append to the conversation
 // and `details` are the per-host one-liners for the UI step.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {import('./types.js').Conversation} conversation
+ * @returns {Promise<{ block: string, details: string[], count: number, ips: string[], durationMs: number } | null>}
+ */
 export async function runShodanLookup(env, log, conversation) {
   const startedAt = Date.now();
   if (!shodanAvailable(env)) return null;
@@ -249,7 +306,7 @@ export async function runShodanLookup(env, log, conversation) {
       return data ? summarizeHost(data, resolvedFrom) : null;
     }),
   );
-  const hosts = results.filter((h) => h && h.ip);
+  const hosts = /** @type {ShodanHost[]} */ (results.filter((h) => h && h.ip));
 
   const durationMs = Date.now() - startedAt;
   log.info("shodan.lookup", {

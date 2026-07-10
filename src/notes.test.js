@@ -1,3 +1,5 @@
+// Unit tests for the research-notes representation (src/notes.js): note
+// normalization/extraction, cross-wave merging, and the bounded digest.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeNote, extractNotes, mergeNotes, notesEntities, notesDigest } from "./notes.js";

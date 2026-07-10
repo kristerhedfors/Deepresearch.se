@@ -1,3 +1,4 @@
+// @ts-check
 // Project-chat RAG: conversations INSIDE a project are indexed into the
 // same retrieval store as the project's documents and notes (rag.js), so
 // an answer worked out in one project chat is retrievable context in every
@@ -25,6 +26,12 @@ import { serverHistoryOn } from "./settings.js";
 
 const CHAT_DOC_PREFIX = "chat-";
 
+/**
+ * One conversation message as history-store.js persists it. Multimodal
+ * user turns carry an array of parts; only the text parts are indexable.
+ * @typedef {{role?: string, content?: string | Array<{type?: string, text?: string}>}} ChatMessage
+ */
+
 // Retrieval scope cap: the server's /api/rag/query accepts at most 20
 // docIds, and project docs + this conversation's own attachments come
 // first — sibling chats fill what's left, newest first.
@@ -32,11 +39,19 @@ export const MAX_SIBLING_CHATS = 10;
 
 // ---- pure helpers (unit-tested) ---------------------------------------------
 
+/**
+ * @param {string} convId
+ * @returns {string}
+ */
 export function chatDocId(convId) {
   return CHAT_DOC_PREFIX + convId;
 }
 
-// The conversation id behind a chat doc id, or null for any other doc.
+/**
+ * The conversation id behind a chat doc id, or null for any other doc.
+ * @param {unknown} docId
+ * @returns {string | null}
+ */
 export function chatConvId(docId) {
   return typeof docId === "string" && docId.startsWith(CHAT_DOC_PREFIX)
     ? docId.slice(CHAT_DOC_PREFIX.length)
@@ -51,9 +66,13 @@ export function chatConvId(docId) {
 // as duplicate, second-hand chunks.
 const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project chat:|Image metadata:)/;
 
-// The indexable text of one message: the text itself for assistant turns,
-// the user's actual question (appended context blocks stripped, text parts
-// of multimodal content joined) for user turns.
+/**
+ * The indexable text of one message: the text itself for assistant turns,
+ * the user's actual question (appended context blocks stripped, text parts
+ * of multimodal content joined) for user turns.
+ * @param {ChatMessage | null | undefined} message
+ * @returns {string}
+ */
 export function messageIndexText(message) {
   const c = message?.content;
   let text =
@@ -68,10 +87,16 @@ export function messageIndexText(message) {
   return text.trim();
 }
 
-// The indexable text of messages[fromMsg..]: labeled turns, empty ones
-// skipped. The title leads the very first increment (fromMsg 0) so
-// retrieval can match on it — the same convention as project notes
-// (project-context.js's noteToText).
+/**
+ * The indexable text of messages[fromMsg..]: labeled turns, empty ones
+ * skipped. The title leads the very first increment (fromMsg 0) so
+ * retrieval can match on it — the same convention as project notes
+ * (project-context.js's noteToText).
+ * @param {ChatMessage[] | null | undefined} messages
+ * @param {number} [fromMsg]
+ * @param {string} [title]
+ * @returns {string}
+ */
 export function chatIndexText(messages, fromMsg = 0, title = "") {
   const parts = [];
   for (const m of (messages || []).slice(fromMsg)) {
@@ -84,10 +109,16 @@ export function chatIndexText(messages, fromMsg = 0, title = "") {
   return head + parts.join("\n\n");
 }
 
-// The sibling chats a project conversation retrieves across: every OTHER
-// conversation of the same project (the current one is already in context),
-// newest first, capped. `conversations` is listConversations' output
-// ({id, title, projectId, updatedAt}, already newest-first).
+/**
+ * The sibling chats a project conversation retrieves across: every OTHER
+ * conversation of the same project (the current one is already in context),
+ * newest first, capped. `conversations` is listConversations' output
+ * (already newest-first).
+ * @param {Array<{id: string, title?: string, projectId?: string, updatedAt?: number}> | null | undefined} conversations
+ * @param {string | null | undefined} projectId
+ * @param {string | null | undefined} currentConvId
+ * @returns {Array<{id: string, name: string}>}
+ */
 export function siblingChatDocs(conversations, projectId, currentConvId) {
   if (!projectId) return [];
   return (conversations || [])
@@ -98,10 +129,14 @@ export function siblingChatDocs(conversations, projectId, currentConvId) {
 
 // ---- index maintenance (stream.js / projects.js) -----------------------------
 
-// Index whatever this conversation has that isn't indexed yet. Called after
-// every persisted exchange; fail-soft by contract of the caller (a thrown
-// error just means the same turns are retried on the next persist, because
-// srcMsgs only advances on success).
+/**
+ * Index whatever this conversation has that isn't indexed yet. Called after
+ * every persisted exchange; fail-soft by contract of the caller (a thrown
+ * error just means the same turns are retried on the next persist, because
+ * srcMsgs only advances on success).
+ * @param {{convId?: string, title?: string, messages?: ChatMessage[], cloud?: boolean}} args
+ * @returns {Promise<{chunkCount: number, appended: number} | null>} null when there was nothing new to index
+ */
 export async function indexChatTurns({ convId, title, messages, cloud = true }) {
   if (!convId || !messages?.length) return null;
   const docId = chatDocId(convId);
@@ -116,9 +151,12 @@ export async function indexChatTurns({ convId, title, messages, cloud = true }) 
   });
 }
 
-// Remove a conversation's slice of the index, both rests — the chat-doc
-// counterpart of projects.js's removeFileFromProject cleanup. Harmless for
-// a conversation that was never indexed.
+/**
+ * Remove a conversation's slice of the index, both rests — the chat-doc
+ * counterpart of projects.js's removeFileFromProject cleanup. Harmless for
+ * a conversation that was never indexed.
+ * @param {string} convId
+ */
 export async function deleteChatIndex(convId) {
   const docId = chatDocId(convId);
   await deleteDoc(docId).catch(() => {});

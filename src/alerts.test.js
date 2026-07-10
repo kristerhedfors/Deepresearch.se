@@ -1,3 +1,5 @@
+// Unit tests for operational-alert classification (src/alerts.js): each known
+// error pattern maps to its stable type/severity; unmatched to the catch-all.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { classifyChatError } from "./alerts.js";

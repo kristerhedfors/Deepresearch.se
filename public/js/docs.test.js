@@ -1,3 +1,4 @@
+// Node tests for docs.js: the docx ZIP reader, property/tracked-change/comment extraction, PDF metadata formatting.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";

@@ -1,3 +1,4 @@
+// @ts-check
 // Exa web search — backs the model's `web_search` tool.
 //
 // REST call to POST https://api.exa.ai/search with the EXA_API_KEY secret in
@@ -36,6 +37,12 @@ const CACHE_TTL_S = 600; // 10 min: long enough to absorb a follow-up
 // part of the key so a deeper re-run isn't served a shallower cached result.
 // Exported for unit testing; the .internal host is a synthetic key namespace
 // that never leaves the isolate.
+/**
+ * @param {string} query
+ * @param {string} type Exa search mode ("auto" | "deep" | …)
+ * @param {number} numResults
+ * @returns {string} a synthetic `.internal` cache-key URL
+ */
 export function searchCacheKey(query, type, numResults) {
   const q = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
   const params = new URLSearchParams({ q, t: String(type), n: String(numResults) });
@@ -54,10 +61,33 @@ export function searchCacheKey(query, type, numResults) {
 // depth (src/budget.js's plan.searchDepth): { numResults, type } — scales
 // with the time budget instead of a fixed 5-result "auto" search
 // regardless of how much depth the user actually asked for.
+/**
+ * One structured result carried to the pipeline's source registry.
+ * @typedef {{ title: string, url: string, highlights: string[] }} SearchItem
+ */
+/**
+ * The bundle webSearch resolves to (errors come back as `content` strings,
+ * never thrown, so the pipeline can carry on).
+ * @typedef {object} SearchResult
+ * @property {string} content compact LLM-friendly numbered digest
+ * @property {SearchItem[]} items structured results for the source registry
+ * @property {import('./types.js').SseSource[]} sources title/url pairs for the UI
+ * @property {number} resultCount
+ * @property {number} durationMs
+ * @property {boolean} [cached] true when served from the edge cache
+ */
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {string} query
+ * @param {{ numResults?: number, type?: string }} [depth] the budget's search-depth tier
+ * @returns {Promise<SearchResult>}
+ */
 export async function webSearch(env, log, query, depth = {}) {
   const numResults = depth.numResults || 5;
   const type = depth.type || "auto";
   const startedAt = Date.now();
+  /** @param {string} content */
   const failure = (content) => ({
     content,
     items: [],
@@ -109,11 +139,9 @@ export async function webSearch(env, log, query, depth = {}) {
       }),
     });
   } catch (err) {
-    log.error("exa.request_failed", {
-      error: err?.message || String(err),
-      duration_ms: Date.now() - startedAt,
-    });
-    return failure(`Search request failed: ${err?.message || String(err)}`);
+    const msg = /** @type {any} */ (err)?.message || String(err);
+    log.error("exa.request_failed", { error: msg, duration_ms: Date.now() - startedAt });
+    return failure(`Search request failed: ${msg}`);
   }
 
   if (!resp.ok) {
@@ -127,7 +155,7 @@ export async function webSearch(env, log, query, depth = {}) {
   }
 
   const data = await resp.json().catch(() => ({}));
-  const results = Array.isArray(data.results) ? data.results : [];
+  const results = /** @type {any[]} */ (Array.isArray(data.results) ? data.results : []);
   const durationMs = Date.now() - startedAt;
   log.info("exa.search", {
     duration_ms: durationMs,
@@ -169,6 +197,10 @@ export async function webSearch(env, log, query, depth = {}) {
 }
 
 // Stable cache key for a full-content fetch: the sorted, normalized URL set.
+/**
+ * @param {string[]} urls
+ * @returns {string} a synthetic `.internal` cache-key URL
+ */
 export function contentsCacheKey(urls) {
   const norm = [...new Set((urls || []).map((u) => String(u || "").trim()).filter(Boolean))].sort();
   const params = new URLSearchParams({ u: norm.join("|") });
@@ -182,6 +214,12 @@ export function contentsCacheKey(urls) {
 // than throwing, so the pipeline proceeds on the highlights it already has.
 //
 // Returns { results: [{ url, title, text }], durationMs, cached }.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {string[]} urls
+ * @param {import('./types.js').Logger} log
+ * @returns {Promise<{ results: Array<{ url: string, title: string, text: string }>, durationMs: number, cached: boolean }>}
+ */
 export async function fetchContents(env, urls, log) {
   const startedAt = Date.now();
   const empty = (cached = false) => ({ results: [], durationMs: Date.now() - startedAt, cached });
@@ -208,7 +246,7 @@ export async function fetchContents(env, urls, log) {
       signal: AbortSignal.timeout(CONTENTS_TIMEOUT_MS),
     });
   } catch (err) {
-    log.warn("exa.contents_request_failed", { error: err?.message || String(err), duration_ms: Date.now() - startedAt });
+    log.warn("exa.contents_request_failed", { error: /** @type {any} */ (err)?.message || String(err), duration_ms: Date.now() - startedAt });
     return empty();
   }
   if (!resp.ok) {
@@ -218,7 +256,7 @@ export async function fetchContents(env, urls, log) {
   }
 
   const data = await resp.json().catch(() => ({}));
-  const rows = Array.isArray(data.results) ? data.results : [];
+  const rows = /** @type {any[]} */ (Array.isArray(data.results) ? data.results : []);
   const results = rows
     .map((r) => ({
       url: r.url || "",

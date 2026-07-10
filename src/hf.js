@@ -1,3 +1,4 @@
+// @ts-check
 // Hugging Face Hub search — a search-phase source for the research pipeline.
 //
 // When a research question explicitly targets Hugging Face (hfIntent), each
@@ -35,6 +36,26 @@
 // Exa/Shodan/Maps: only the AI-derived search terms cross the wire — never
 // the conversation, filenames, or any account identity.
 
+// ---- shared shapes ----------------------------------------------------------
+/**
+ * The full deterministic query plan (hfQueryPlan output).
+ * @typedef {object} HfPlan
+ * @property {string[]} terms domain terms left after filters are consumed out
+ * @property {string | null} task a pipeline_tag/task_category, if one was read
+ * @property {string | null} lang an ISO language code, if one was read
+ * @property {string} sort primary sort ("downloads" | "trendingScore" | "likes")
+ * @property {boolean} freshFirst lead with the lastModified slice
+ */
+/**
+ * One endpoint attempt (hfBuildAttempts output): a filtered browse or a
+ * name-substring search, with a stable cross-wave dedup `key`.
+ * @typedef {{ q: string, filters: string[], key: string }} HfAttempt
+ */
+/**
+ * One source-registry item (same shape Exa results carry).
+ * @typedef {{ url: string, title: string, highlights: string[] }} HfItem
+ */
+
 const HF_TIMEOUT_MS = 6000;
 const SLICE = 3; // per-sort fetch size (popular slice + fresh slice)
 const MAX_PER_ENDPOINT = 5; // merged cap per endpoint (models / datasets)
@@ -50,6 +71,7 @@ const MAX_PAPERS = 3;
 // synthesis's source-grounding absorb. A bare org/name path remains NOT
 // enough — no reliable way to distinguish it from a file path or package
 // name without a lookup.
+/** @param {unknown} text */
 export function hfIntent(text) {
   return /hugging\s*face|huggingface|hf\.co\b|\bhf\b/i.test(String(text || ""));
 }
@@ -90,6 +112,10 @@ const NOISE = new Set([
   "challenges", "challenge", "developments", "development",
 ]);
 
+/**
+ * @param {unknown} query
+ * @returns {string[]} up to 6 domain-bearing terms
+ */
 export function hfTerms(query) {
   return String(query || "")
     .toLowerCase()
@@ -124,8 +150,14 @@ const GENERIC = new Set([
 // ("swedish" → KBLab's 2.5M-download Swedish ASR model at rank 1). So: the
 // full join first (cheap, occasionally exact), then the top two single
 // terms ranked non-generic-first / longer-first. Deduped, ≤3 attempts.
+/**
+ * @param {string[]} terms
+ * @returns {string[]} the ordered search-string attempts
+ */
 export function hfAttempts(terms) {
+  /** @type {string[]} */
   const list = [];
+  /** @param {string} s */
   const push = (s) => {
     const v = s.trim();
     if (v && !list.includes(v)) list.push(v);
@@ -153,6 +185,10 @@ export function hfAttempts(terms) {
 // identifier-looking terms (digits/dots/hyphens/slashes, excluding bare
 // years) weigh 3, other non-generic content terms 1, generic terms 0;
 // earliest query wins ties.
+/**
+ * @param {string[]} batch the wave's candidate queries
+ * @returns {string} the most identifier-bearing query
+ */
 export function hfPickQuery(batch) {
   let best = batch[0];
   let bestScore = -1;
@@ -226,6 +262,7 @@ const DATASET_TASKS = new Set([
 
 // Language words → ISO codes (English + Swedish word forms — triage writes
 // queries in the conversation's language). Curated; extend on evidence.
+/** @type {Record<string, string>} */
 const LANG_MAP = {
   swedish: "sv", svensk: "sv", svenska: "sv",
   english: "en", engelsk: "en", engelska: "en",
@@ -253,6 +290,10 @@ const LANG_MAP = {
 // term list (a fully-consumed query becomes a pure filtered browse — the
 // strongest case), sort intent read from the RAW phrasing (hfTerms strips
 // "latest"/"trending"/... as noise before terms exist). Pure, unit-tested.
+/**
+ * @param {unknown} query
+ * @returns {HfPlan}
+ */
 export function hfQueryPlan(query) {
   const raw = String(query || "").toLowerCase();
   let sort = "downloads";
@@ -289,6 +330,11 @@ export function hfQueryPlan(query) {
 // remaining terms as the search string, possibly none at all), then the
 // name-substring ladder as fallback. Each carries a stable `key` for the
 // cross-wave dedup. Pure, unit-tested.
+/**
+ * @param {HfPlan} plan
+ * @param {"models" | "datasets"} kind
+ * @returns {HfAttempt[]}
+ */
 export function hfBuildAttempts(plan, kind) {
   const out = [];
   const filters = [];
@@ -315,6 +361,7 @@ export function hfBuildAttempts(plan, kind) {
 // follow-ups often reduce to the same terms after noise-stripping; a live
 // run A trace showed waves 2-3 re-running near-identical hub searches for
 // zero new sources).
+/** @param {unknown} query */
 export function hfTermKey(query) {
   return hfTerms(query).join(" ");
 }
@@ -340,6 +387,7 @@ export const hfPromptNote =
 // owners count as the different origins they are. Papers share one
 // `huggingface.co/papers` bucket (editorially independent arXiv mirrors,
 // but capping the paper firehose at 3 is the conservative choice).
+/** @param {string} url */
 export function hfDiversityKey(url) {
   const host = "huggingface.co";
   try {
@@ -357,9 +405,15 @@ export function hfDiversityKey(url) {
 
 // ---- pure mappers: one Hub API item -> one source-registry item ------------
 
+/** @param {unknown} n */
 const fmtCount = (n) => (typeof n === "number" ? n.toLocaleString("en-US") : null);
+/** @param {unknown} d */
 const fmtDate = (d) => (typeof d === "string" ? d.slice(0, 10) : null);
 
+/**
+ * @param {any} m one Hub API model item
+ * @returns {HfItem | null}
+ */
 export function toModelItem(m) {
   if (!m?.id) return null;
   const bits = [
@@ -377,6 +431,10 @@ export function toModelItem(m) {
   };
 }
 
+/**
+ * @param {any} d one Hub API dataset item
+ * @returns {HfItem | null}
+ */
 export function toDatasetItem(d) {
   if (!d?.id) return null;
   const bits = [
@@ -393,6 +451,10 @@ export function toDatasetItem(d) {
   };
 }
 
+/**
+ * @param {any} p one Hub API paper item (or `{ paper: … }` wrapper)
+ * @returns {HfItem | null}
+ */
 export function toPaperItem(p) {
   const paper = p?.paper || p;
   if (!paper?.id || !paper?.title) return null;
@@ -411,7 +473,13 @@ export function toPaperItem(p) {
 
 // ---- the search itself ------------------------------------------------------
 
+/**
+ * @param {import('./types.js').Env} env
+ * @param {string} url
+ * @returns {Promise<any>} parsed JSON (throws on non-2xx)
+ */
 async function hfGet(env, url) {
+  /** @type {Record<string, string>} */
   const headers = { accept: "application/json" };
   if (env.HUGGINGFACE_API_TOKEN) headers.authorization = `Bearer ${env.HUGGINGFACE_API_TOKEN}`;
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(HF_TIMEOUT_MS) });
@@ -425,6 +493,13 @@ async function hfGet(env, url) {
 // above the download floor (brand-new 0-download uploads dominate the
 // lastModified sort and are noise, not "the latest and greatest"). Pure,
 // exported for tests.
+/**
+ * @param {any[]} popular sort=downloads slice
+ * @param {any[]} fresh sort=lastModified slice
+ * @param {number} [cap]
+ * @param {number} [minFreshDownloads] download floor for the fresh slice
+ * @returns {any[]}
+ */
 export function mergeSlices(popular, fresh, cap = MAX_PER_ENDPOINT, minFreshDownloads = MIN_FRESH_DOWNLOADS) {
   const out = [];
   const seen = new Set();
@@ -450,6 +525,14 @@ export function mergeSlices(popular, fresh, cap = MAX_PER_ENDPOINT, minFreshDown
 // recording consumed attempts lets the orchestrator skip them next wave.
 // Attempts are sequential by design — the whole point is to only fall back
 // when the previous attempt found nothing.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {string} base endpoint URL (…/api/models or …/api/datasets)
+ * @param {HfAttempt[]} attempts
+ * @param {string[]} expandFields expand[] params to force onto every sort
+ * @param {HfPlan} plan
+ * @returns {Promise<{ list: any[], tried: string[] }>}
+ */
 async function ladderSearch(env, base, attempts, expandFields, plan) {
   const expand = expandFields.map((f) => `expand%5B%5D=${f}`).join("&");
   const tried = [];
@@ -457,6 +540,7 @@ async function ladderSearch(env, base, attempts, expandFields, plan) {
     tried.push(a.key);
     const parts = [...a.filters];
     if (a.q) parts.push(`search=${encodeURIComponent(a.q)}`);
+    /** @param {string} sort */
     const url = (sort) => `${base}?${parts.join("&")}&limit=${SLICE}&sort=${sort}&${expand}`;
     const [popular, fresh] = await Promise.all([
       hfGet(env, url(plan.sort)).catch(() => []),
@@ -486,6 +570,13 @@ async function ladderSearch(env, base, attempts, expandFields, plan) {
 // for every distinct query (each wave's papers results kept contributing
 // new items in the trace that motivated this). Returns `usedKeys` — the
 // attempts consumed this call — for the orchestrator to record.
+/**
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger | undefined} log
+ * @param {unknown} query
+ * @param {{ skipKeys?: Set<string> }} [opts]
+ * @returns {Promise<{ items: HfItem[], durationMs: number, usedKeys: string[] }>}
+ */
 export async function hfSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
   const plan = hfQueryPlan(query);
@@ -497,11 +588,13 @@ export async function hfSearch(env, log, query, { skipKeys } = {}) {
     datasetAttempts.length ? ladderSearch(env, "https://huggingface.co/api/datasets", datasetAttempts, ["downloads", "likes", "lastModified", "gated"], plan).catch(() => empty) : empty,
     hfGet(env, `https://huggingface.co/api/papers/search?q=${encodeURIComponent(String(query || "").slice(0, 200))}`).catch(() => []),
   ]);
-  const items = [
-    ...modelsR.list.slice(0, MAX_PER_ENDPOINT).map(toModelItem),
-    ...datasetsR.list.slice(0, MAX_PER_ENDPOINT).map(toDatasetItem),
-    ...(Array.isArray(papers) ? papers.slice(0, MAX_PAPERS).map(toPaperItem) : []),
-  ].filter(Boolean);
+  const items = /** @type {HfItem[]} */ (
+    [
+      ...modelsR.list.slice(0, MAX_PER_ENDPOINT).map(toModelItem),
+      ...datasetsR.list.slice(0, MAX_PER_ENDPOINT).map(toDatasetItem),
+      ...(Array.isArray(papers) ? papers.slice(0, MAX_PAPERS).map(toPaperItem) : []),
+    ].filter(Boolean)
+  );
   const usedKeys = [...new Set([...modelsR.tried, ...datasetsR.tried])];
   const durationMs = Date.now() - startedAt;
   log?.info?.("hf.search", {

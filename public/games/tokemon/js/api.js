@@ -3,6 +3,12 @@
 // throws an Error carrying the server's message so the UI can toast it
 // verbatim.
 
+/**
+ * @param {string} path  Route under /api/games/tokemon/.
+ * @param {RequestInit} [opts]
+ * @returns {Promise<any>} The parsed body; non-2xx throws an Error with
+ *   `.status` and `.body` attached.
+ */
 async function call(path, opts) {
   const res = await fetch(`/api/games/tokemon/${path}`, opts);
   let body = null;
@@ -35,3 +41,6 @@ export const collect = (spawnId, lat, lng) => post("collect", { spawnId, lat, ln
 export const battleAction = (action) => post("battle", { action });
 export const heal = () => post("heal");
 export const party = (payload) => post("party", payload);
+export const scene = (lat, lng, heading) =>
+  call(`scene?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}&heading=${Math.round(heading)}`);
+export const go = (command, lat, lng, heading) => post("go", { command, lat, lng, heading });

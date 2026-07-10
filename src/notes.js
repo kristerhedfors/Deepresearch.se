@@ -1,3 +1,4 @@
+// @ts-check
 // Structured research notes — the pure representation/merge logic behind the
 // budget-gated "notes digest" phase (see src/pipeline.js's maybeDigest and
 // src/prompts.js's notesPrompt).
@@ -12,6 +13,13 @@
 // highlight. Everything here is pure and never throws — a bad note is dropped,
 // never fatal, matching the fail-soft posture of the whole pipeline.
 
+/**
+ * A canonical note (normalizeNote output). `source_ids` are 1-based numbers
+ * into the source registry; `contradicts` only rides when non-empty.
+ * @typedef {{ claim: string, source_ids: number[], entities: string[], contradicts?: string[] }} Note
+ */
+
+/** @param {unknown} v @returns {number[]} */
 function toNumberIds(v) {
   const arr = Array.isArray(v) ? v : v == null ? [] : [v];
   const out = [];
@@ -28,6 +36,7 @@ function toNumberIds(v) {
   return out;
 }
 
+/** @param {unknown} v @returns {string[]} */
 function toStringList(v) {
   const arr = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
   const out = [];
@@ -46,10 +55,15 @@ function toStringList(v) {
 
 // Normalizes one raw note object into the canonical shape, or null if it has
 // no usable claim. `contradicts` is only carried when present.
+/**
+ * @param {any} raw
+ * @returns {Note | null}
+ */
 export function normalizeNote(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const claim = typeof raw.claim === "string" ? raw.claim.trim() : "";
   if (!claim) return null;
+  /** @type {Note} */
   const note = {
     claim,
     source_ids: toNumberIds(raw.source_ids),
@@ -62,6 +76,10 @@ export function normalizeNote(raw) {
 
 // Extracts an array of canonical notes from a digest phase's JSON value
 // (accepts either `{notes:[...]}` or a bare array). Pure, never throws.
+/**
+ * @param {any} value
+ * @returns {Note[]}
+ */
 export function extractNotes(value) {
   const rawList = Array.isArray(value)
     ? value
@@ -77,10 +95,12 @@ export function extractNotes(value) {
 }
 
 // Dedup key: a claim's normalized text (lowercased, whitespace-collapsed).
+/** @param {Note} note */
 function noteKey(note) {
   return note.claim.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** @param {number[]} a @param {number[]} b */
 function unionNums(a, b) {
   const out = [...a];
   const seen = new Set(a);
@@ -88,6 +108,7 @@ function unionNums(a, b) {
   return out;
 }
 
+/** @param {string[]} a @param {string[]} b */
 function unionStrs(a, b) {
   const out = [...a];
   const seen = new Set(a.map((s) => s.toLowerCase()));
@@ -102,8 +123,15 @@ function unionStrs(a, b) {
 // source ids / entities / contradicts of duplicates. Both inputs may be raw or
 // already-normalized; the result is always a fresh array of canonical notes
 // (never shares references with the inputs).
+/**
+ * @param {any[] | null | undefined} existing
+ * @param {any[] | null | undefined} incoming
+ * @returns {Note[]}
+ */
 export function mergeNotes(existing, incoming) {
+  /** @type {Map<string, Note>} */
   const byKey = new Map();
+  /** @type {Note[]} */
   const out = [];
   for (const raw of [...(existing || []), ...(incoming || [])]) {
     const note = normalizeNote(raw);
@@ -115,6 +143,7 @@ export function mergeNotes(existing, incoming) {
       prev.entities = unionStrs(prev.entities, note.entities);
       if (note.contradicts) prev.contradicts = unionStrs(prev.contradicts || [], note.contradicts);
     } else {
+      /** @type {Note} */
       const copy = { claim: note.claim, source_ids: [...note.source_ids], entities: [...note.entities] };
       if (note.contradicts) copy.contradicts = [...note.contradicts];
       byKey.set(key, copy);
@@ -126,7 +155,12 @@ export function mergeNotes(existing, incoming) {
 
 // Unique entity list across all notes (for seeding the next digest so it can
 // keep entity names consistent).
+/**
+ * @param {Array<Partial<Note>> | null | undefined} notes
+ * @returns {string[]}
+ */
 export function notesEntities(notes) {
+  /** @type {string[]} */
   let acc = [];
   for (const n of notes || []) acc = unionStrs(acc, Array.isArray(n?.entities) ? n.entities : []);
   return acc;
@@ -135,6 +169,11 @@ export function notesEntities(notes) {
 // Renders notes as a compact text block for gap-check / synthesis, bounded to
 // `capChars`. Each note: the claim, its cited source numbers, named entities,
 // and any contradiction flag. Empty when there are no notes.
+/**
+ * @param {Array<Partial<Note>> | null | undefined} notes
+ * @param {number} [capChars]
+ * @returns {string}
+ */
 export function notesDigest(notes, capChars = 6000) {
   const lines = [];
   let used = 0;

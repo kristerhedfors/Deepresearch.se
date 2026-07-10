@@ -1,3 +1,4 @@
+// Node tests for sse.js: line buffering, keepalive/[DONE] filtering, malformed-JSON tolerance.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createSseParser } from "./sse.js";

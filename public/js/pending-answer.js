@@ -1,3 +1,4 @@
+// @ts-check
 // Resume-across-relaunch pointer for an in-flight research answer.
 //
 // The server finishes every research run even after the client vanishes
@@ -24,11 +25,24 @@
 const KEY = "dr_pending_answer";
 export const PENDING_TTL_MS = 15 * 60 * 1000; // matches src/answers.js ANSWER_TTL_MS
 
-// Pure: validate + freshness-check a raw stored string. Returns the pointer
-// object, or null if it's absent, malformed, the wrong shape, or older than
-// the TTL — past which src/answers.js has already purged the parked answer,
-// so resuming it could only 404. Kept pure (storage/clock injected by the
-// wrappers below) so it's unit-tested in Node.
+/**
+ * The stored pointer: conversation id, the answer-recovery request id, the
+ * send-time settings a resumed turn needs, and when the send started.
+ * Metadata only — never message text (see the privacy note above).
+ * @typedef {{convId: string, requestId: string, startedAt: number, [extra: string]: unknown}} PendingPointer
+ */
+
+/**
+ * Pure: validate + freshness-check a raw stored string. Returns the pointer
+ * object, or null if it's absent, malformed, the wrong shape, or older than
+ * the TTL — past which src/answers.js has already purged the parked answer,
+ * so resuming it could only 404. Kept pure (storage/clock injected by the
+ * wrappers below) so it's unit-tested in Node.
+ * @param {string | null | undefined} raw
+ * @param {number} now epoch ms
+ * @param {number} [ttlMs]
+ * @returns {PendingPointer | null}
+ */
 export function parsePending(raw, now, ttlMs = PENDING_TTL_MS) {
   if (!raw) return null;
   let p;
@@ -48,6 +62,8 @@ export function parsePending(raw, now, ttlMs = PENDING_TTL_MS) {
 // Browser wrappers (not unit-tested — localStorage/Date). All fail-soft:
 // storage access can throw (private mode, disabled storage, quota) and must
 // never break a send or a boot.
+
+/** @param {PendingPointer} p */
 export function writePending(p) {
   try {
     localStorage.setItem(KEY, JSON.stringify(p));
@@ -56,6 +72,10 @@ export function writePending(p) {
   }
 }
 
+/**
+ * @param {number} [now] epoch ms
+ * @returns {PendingPointer | null}
+ */
 export function readPending(now = Date.now()) {
   try {
     return parsePending(localStorage.getItem(KEY), now);

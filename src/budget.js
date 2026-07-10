@@ -1,3 +1,4 @@
+// @ts-check
 // Time-budget planning for the research pipeline.
 //
 // The UI slider sends `time_budget_s`; this module decides how to spend it.
@@ -29,6 +30,28 @@
 
 import { getModelProfile } from "./model-profiles.js";
 
+/** @typedef {import('./types.js').SearchDepth} SearchDepth */
+
+/**
+ * The static allocation planResearch returns. Same shape as
+ * import('./types.js').BudgetPlan, except `estimates` also carries the
+ * budget-gated phases (digest/fetch/claim — the PRIORS_MS keys), which the
+ * five-phase PhaseName record there predates.
+ * @typedef {Object} BudgetPlan
+ * @property {number} budgetMs
+ * @property {number} budgetS
+ * @property {number} queries Initial search angles to run.
+ * @property {number} gapIterations Gap-check rounds the budget affords.
+ * @property {number} followups Follow-up queries per gap round.
+ * @property {boolean} validate Whether the post-validation quality gate is reserved.
+ * @property {number} maxSearches Hard cap on total searches across all rounds.
+ * @property {number} maxSources Cap on the numbered source registry.
+ * @property {number} digestCap Char cap on the synthesis digest.
+ * @property {Record<string, number>} estimates Per-phase duration estimates (ms) the plan was built from.
+ * @property {SearchDepth} searchDepth
+ */
+
+/** @type {Record<string, number>} */
 const PRIORS_MS = {
   triage: 6000,
   search: 1300,
@@ -49,8 +72,18 @@ export const MIN_BUDGET_S = 15;
 export const MAX_BUDGET_S = 600; // slider tops out at 10 minutes
 export const DEFAULT_BUDGET_S = 60;
 
+// ---- rolling per-model phase stats (mechanism 1) ---------------------------
+
+/** @type {Map<string, Record<string, number>>} */
 const stats = new Map(); // model -> { phase: ewma_ms }
 
+/**
+ * Feeds one completed phase's duration into the model's EWMA. Phases not in
+ * PRIORS_MS and non-positive durations are ignored.
+ * @param {string} model
+ * @param {string} phase
+ * @param {number} ms
+ */
 export function recordPhase(model, phase, ms) {
   if (!(phase in PRIORS_MS) || !(ms > 0)) return;
   const m = stats.get(model) || {};
@@ -58,24 +91,43 @@ export function recordPhase(model, phase, ms) {
   stats.set(model, m);
 }
 
+/**
+ * Per-phase duration estimates for a model: its own EWMA where warmed up,
+ * else its model-profile prior override, else the global prior.
+ * @param {string} model
+ * @returns {Record<string, number>}
+ */
 export function phaseEstimates(model) {
   const m = stats.get(model) || {};
-  const profilePriors = getModelProfile(model).priorsMs;
+  const profilePriors = /** @type {Record<string, number> | null} */ (getModelProfile(model).priorsMs);
+  /** @type {Record<string, number>} */
   const out = {};
   for (const k of Object.keys(PRIORS_MS)) out[k] = m[k] ?? profilePriors?.[k] ?? PRIORS_MS[k];
   return out;
 }
 
+/**
+ * @param {unknown} value The raw `time_budget_s` from the request body.
+ * @returns {number} Whole seconds within [MIN_BUDGET_S, MAX_BUDGET_S].
+ */
 export function clampBudget(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_BUDGET_S;
   return Math.min(MAX_BUDGET_S, Math.max(MIN_BUDGET_S, Math.round(n)));
 }
 
+// ---- static allocation (mechanism 2) ---------------------------------------
+
 // Large budgets buy proportionally MORE work, not just headroom: more
 // initial angles (up to 6), more follow-ups per gap round (up to 5), more
 // gap rounds (up to 4), a bigger search cap, and a larger source registry
 // and digest for synthesis.
+/**
+ * @param {string} model The user's chosen answer/synthesis model.
+ * @param {number} budgetS Clamped time budget in seconds.
+ * @param {string} [jsonModel] The fixed model the JSON phases run on (defaults to `model`).
+ * @returns {BudgetPlan}
+ */
 export function planResearch(model, budgetS, jsonModel = model) {
   // The JSON planning phases (triage/gap/validate) run on jsonModel (a fixed
   // reliable model — see pipeline.js), while synthesis runs on the user's
@@ -102,6 +154,7 @@ export function planResearch(model, budgetS, jsonModel = model) {
     claim: j.claim,
   };
   const budgetMs = budgetS * 1000;
+  /** @type {BudgetPlan} */
   const plan = {
     budgetMs,
     budgetS,
@@ -161,6 +214,11 @@ export function planResearch(model, budgetS, jsonModel = model) {
 // and an absent/unknown complexity (schema miss, older model output) leaves
 // the plan untouched, so the pre-decomposition behavior is the exact
 // fallback. Mutates and returns `plan` (it's the per-request state's plan).
+/**
+ * @param {BudgetPlan | null | undefined} plan
+ * @param {unknown} complexity Triage's classification — only "simple" acts.
+ * @returns {BudgetPlan | null | undefined} The same `plan` object.
+ */
 export function applyComplexityToPlan(plan, complexity) {
   if (!plan || complexity !== "simple") return plan;
   plan.gapIterations = Math.min(plan.gapIterations, 1);
@@ -184,6 +242,10 @@ export function applyComplexityToPlan(plan, complexity) {
 // ~1.7x the cost of a standard search, latency is unproven at scale (not
 // yet run through a real eval battery — see CLAUDE.md's model-eval
 // section), and a short/default request has no business paying for it.
+/**
+ * @param {number} budgetS
+ * @returns {SearchDepth}
+ */
 function searchDepthFor(budgetS) {
   if (budgetS >= 420) return { numResults: 10, type: "deep", costMultiplier: 12 / 7 };
   if (budgetS >= 240) return { numResults: 10, type: "auto", costMultiplier: 1 };
@@ -198,7 +260,15 @@ function searchDepthFor(budgetS) {
 // approach searchDepth.costMultiplier takes for deeper search tiers.
 export const CONTENTS_COST_MULTIPLIER = 1 / 7;
 
+// ---- runtime deadline checks (mechanism 3) ----------------------------------
+
 // True if `upcomingMs` more work still fits within budget (+15% grace).
+/**
+ * @param {number} startedAt Request start (epoch ms).
+ * @param {number} budgetMs
+ * @param {number} upcomingMs
+ * @returns {boolean}
+ */
 export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
   return Date.now() - startedAt + upcomingMs <= budgetMs * 1.15;
 }
@@ -228,18 +298,30 @@ export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
 const DEEP_TIER_FEATURES_ENABLED = false;
 
 // Per-wave notes digest: mid tier and up (never at the ≤60s default).
+/**
+ * @param {BudgetPlan | null | undefined} plan
+ * @returns {boolean}
+ */
 export function wantsNotes(plan) {
   return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 120;
 }
 
 // Full-content fetch of the top sources: only the long tiers (≥240s), where
 // there is budget to read whole pages, matching searchDepth's 240s boundary.
+/**
+ * @param {BudgetPlan | null | undefined} plan
+ * @returns {boolean}
+ */
 export function wantsFullContent(plan) {
   return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
 }
 
 // Claim-level (per-claim) validation instead of the single whole-draft pass:
 // long tiers only. A tight budget still runs the cheap single-pass validate.
+/**
+ * @param {BudgetPlan | null | undefined} plan
+ * @returns {boolean}
+ */
 export function wantsClaimValidation(plan) {
   return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
 }

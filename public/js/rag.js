@@ -1,3 +1,4 @@
+// @ts-check
 // Client-side document RAG: lets a conversation carry documents far past
 // the 32K inline-message cap (hundreds or thousands of pages). A large
 // attachment is chunked here, embedded through POST /api/embed (Berget's
@@ -36,12 +37,46 @@ const MAX_CHUNKS = 6000; // matches the server's per-doc cap
 export const CHUNK_TARGET_CHARS = 1400;
 export const CHUNK_OVERLAP_CHARS = 200;
 
+/**
+ * One piece of a chunked document, in document order.
+ * @typedef {{seq: number, text: string}} Chunk
+ */
+
+/**
+ * The `docs` store row: per-document bookkeeping (the chunk text/vectors
+ * live in the `chunks` store). Extra fields ride along via appendToDoc's
+ * `meta` (chat-rag.js keeps its srcMsgs counter here).
+ * @typedef {object} DocRow
+ * @property {string} id
+ * @property {string} name
+ * @property {number} chunkCount
+ * @property {number} dims embedding dimensions
+ * @property {number} chars total source characters indexed
+ * @property {number} addedAt epoch ms
+ * @property {number} [srcMsgs]
+ */
+
+/**
+ * The `chunks` store row: one embedded chunk, keyed `<docId>:<seq>`.
+ * @typedef {{key: string, docId: string, seq: number, text: string, vector: Float32Array}} ChunkRow
+ */
+
+/**
+ * One retrieval hit, best-first.
+ * @typedef {{docId: string, seq: number, text: string, score: number}} Match
+ */
+
 // ---- pure helpers (unit-tested) ---------------------------------------------
 
-// Sliding chunker: ~targetChars pieces, preferring paragraph/sentence/line
-// breaks in the back half of the window, with overlapChars of continuity
-// between consecutive chunks so a fact straddling a boundary is still
-// retrievable. Returns [{seq, text}].
+/**
+ * Sliding chunker: ~targetChars pieces, preferring paragraph/sentence/line
+ * breaks in the back half of the window, with overlapChars of continuity
+ * between consecutive chunks so a fact straddling a boundary is still
+ * retrievable.
+ * @param {string | null | undefined} text
+ * @param {{targetChars?: number, overlapChars?: number}} [opts]
+ * @returns {Chunk[]}
+ */
 export function chunkText(text, { targetChars = CHUNK_TARGET_CHARS, overlapChars = CHUNK_OVERLAP_CHARS } = {}) {
   const clean = String(text || "")
     .replace(/\r\n/g, "\n")
@@ -49,6 +84,7 @@ export function chunkText(text, { targetChars = CHUNK_TARGET_CHARS, overlapChars
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   if (!clean) return [];
+  /** @type {string[]} */
   const chunks = [];
   let start = 0;
   while (start < clean.length && chunks.length < MAX_CHUNKS) {
@@ -70,6 +106,11 @@ export function chunkText(text, { targetChars = CHUNK_TARGET_CHARS, overlapChars
   return chunks.map((t, seq) => ({ seq, text: t }));
 }
 
+/**
+ * @param {ArrayLike<number>} a
+ * @param {ArrayLike<number>} b
+ * @returns {number} cosine similarity over the shared prefix (0 when a norm is 0)
+ */
 export function cosineSim(a, b) {
   let dot = 0;
   let na = 0;
@@ -84,8 +125,13 @@ export function cosineSim(a, b) {
   return denom ? dot / denom : 0;
 }
 
-// chunks: [{docId, seq, text, vector}] → the k best as
-// [{docId, seq, text, score}], best first.
+/**
+ * The k most query-similar chunks, best first.
+ * @param {Array<{docId: string, seq: number, text: string, vector: ArrayLike<number>}>} chunks
+ * @param {ArrayLike<number>} queryVector
+ * @param {number} k
+ * @returns {Match[]}
+ */
 export function topKChunks(chunks, queryVector, k) {
   return chunks
     .map((c) => ({ docId: c.docId, seq: c.seq, text: c.text, score: cosineSim(queryVector, c.vector) }))
@@ -93,6 +139,10 @@ export function topKChunks(chunks, queryVector, k) {
     .slice(0, k);
 }
 
+/**
+ * @param {ArrayLike<number>} arr embedding vector
+ * @returns {string} base64 of the little-endian float32 bytes
+ */
 export function f32ToB64(arr) {
   const bytes = new Uint8Array(Float32Array.from(arr).buffer);
   let binary = "";
@@ -103,6 +153,10 @@ export function f32ToB64(arr) {
   return btoa(binary);
 }
 
+/**
+ * @param {string} b64
+ * @returns {Float32Array}
+ */
 export function b64ToF32(b64) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -112,8 +166,10 @@ export function b64ToF32(b64) {
 
 // ---- IndexedDB --------------------------------------------------------------
 
+/** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
 
+/** @returns {Promise<IDBDatabase>} */
 function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
@@ -134,12 +190,22 @@ function openDb() {
   return dbPromise;
 }
 
+/**
+ * @template T
+ * @param {IDBRequest<T>} req
+ * @returns {Promise<T>}
+ */
 const reqToPromise = (req) =>
   new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 
+/**
+ * @param {string} name object store name
+ * @param {IDBTransactionMode} mode
+ * @returns {Promise<IDBObjectStore>} the store on a fresh single-store transaction
+ */
 async function store(name, mode) {
   const db = await openDb();
   return db.transaction(name, mode).objectStore(name);
@@ -148,13 +214,20 @@ async function store(name, mode) {
 // Small facade opfs.js uses for its metadata rows, so the OPFS module never
 // has to know this database's layout.
 export const filesMetaStore = {
+  /** @param {{id: string, [k: string]: unknown}} rec */
   put: async (rec) => reqToPromise((await store("files", "readwrite")).put(rec)),
+  /** @param {string} id */
   delete: async (id) => reqToPromise((await store("files", "readwrite")).delete(id)),
   getAll: async () => reqToPromise((await store("files", "readonly")).getAll()),
 };
 
 // ---- embedding via the server proxy -----------------------------------------
 
+/**
+ * @param {string[]} texts
+ * @param {"passage" | "query"} kind embedding prefix the server applies
+ * @returns {Promise<{vectors: Float32Array[], dims: number, model: string}>}
+ */
 async function embedBatch(texts, kind) {
   const res = await fetch("/api/embed", {
     method: "POST",
@@ -168,18 +241,25 @@ async function embedBatch(texts, kind) {
 
 // ---- the index --------------------------------------------------------------
 
+/** @param {string} docId */
 export async function hasDoc(docId) {
   return !!(await reqToPromise((await store("docs", "readonly")).get(docId)));
 }
 
+/**
+ * @param {string} docId
+ * @returns {Promise<DocRow | null>}
+ */
 export async function getDoc(docId) {
   return (await reqToPromise((await store("docs", "readonly")).get(docId))) || null;
 }
 
+/** @returns {Promise<DocRow[]>} */
 export async function listDocs() {
   return reqToPromise((await store("docs", "readonly")).getAll());
 }
 
+/** @param {string} docId */
 export async function deleteDoc(docId) {
   const chunks = await chunksForDoc(docId);
   const s = await store("chunks", "readwrite");
@@ -187,11 +267,22 @@ export async function deleteDoc(docId) {
   await reqToPromise((await store("docs", "readwrite")).delete(docId));
 }
 
+/**
+ * @param {string} docId
+ * @returns {Promise<ChunkRow[]>}
+ */
 async function chunksForDoc(docId) {
   const s = await store("chunks", "readonly");
   return reqToPromise(s.index("docId").getAll(docId));
 }
 
+/**
+ * Doc row + all its chunk rows in ONE transaction, so a failure can't leave
+ * a doc row pointing at half-written chunks.
+ * @param {DocRow} doc
+ * @param {Chunk[]} chunks
+ * @param {Float32Array[]} vectors parallel to `chunks`
+ */
 async function putDocLocally(doc, chunks, vectors) {
   const db = await openDb();
   await new Promise((resolve, reject) => {
@@ -206,9 +297,12 @@ async function putDocLocally(doc, chunks, vectors) {
   });
 }
 
-// Push one locally-indexed document to the server index (vectors included,
-// so the server never re-embeds). Used at index time when the knob is on,
-// and by sync.js when it's switched on later.
+/**
+ * Push one locally-indexed document to the server index (vectors included,
+ * so the server never re-embeds). Used at index time when the knob is on,
+ * and by sync.js when it's switched on later.
+ * @param {string} docId
+ */
 export async function pushDocToServer(docId) {
   const doc = await reqToPromise((await store("docs", "readonly")).get(docId));
   if (!doc) throw new Error("Document not in the local index.");
@@ -229,10 +323,17 @@ export async function pushDocToServer(docId) {
   }
 }
 
-// Chunk + embed + store one document. onProgress(done, total) drives the
-// attachment card's indexing badge. Returns {chunkCount, truncated}.
-// opts.cloud=false skips the server mirror even when the account knob is
-// on — the per-project storage opt-out (public/js/projects.js decides).
+/**
+ * Chunk + embed + store one document. opts.cloud=false skips the server
+ * mirror even when the account knob is on — the per-project storage opt-out
+ * (public/js/projects.js decides).
+ * @param {string} docId
+ * @param {string} name display name
+ * @param {string} fullText
+ * @param {{onProgress?: (done: number, total: number) => void, cloud?: boolean}} [opts]
+ *   onProgress drives the attachment card's indexing badge
+ * @returns {Promise<{chunkCount: number, truncated: boolean}>}
+ */
 export async function indexDocument(docId, name, fullText, { onProgress, cloud = true } = {}) {
   const chunks = chunkText(fullText);
   if (!chunks.length) throw new Error("No indexable text.");
@@ -265,13 +366,20 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
   return { chunkCount: chunks.length, truncated };
 }
 
-// Incrementally extend an indexed doc (creating it on first call) — the
-// growing-source case (project chats, chat-rag.js): only the NEW text is
-// chunked and embedded, appended after the existing chunks. `meta` fields
-// ride on the doc row (chat-rag.js keeps its srcMsgs progress counter
-// there). The server mirror re-pushes the WHOLE doc — /api/rag/index
-// replaces per docId and vectors travel along, so nothing is re-embedded;
-// for turn-sized increments that's bandwidth, not spend.
+/**
+ * Incrementally extend an indexed doc (creating it on first call) — the
+ * growing-source case (project chats, chat-rag.js): only the NEW text is
+ * chunked and embedded, appended after the existing chunks. `meta` fields
+ * ride on the doc row (chat-rag.js keeps its srcMsgs progress counter
+ * there). The server mirror re-pushes the WHOLE doc — /api/rag/index
+ * replaces per docId and vectors travel along, so nothing is re-embedded;
+ * for turn-sized increments that's bandwidth, not spend.
+ * @param {string} docId
+ * @param {string} name display name
+ * @param {string} text the NEW text only
+ * @param {{meta?: object, cloud?: boolean}} [opts]
+ * @returns {Promise<{chunkCount: number, appended: number}>}
+ */
 export async function appendToDoc(docId, name, text, { meta = {}, cloud = true } = {}) {
   const existing = await getDoc(docId);
   const startSeq = existing?.chunkCount || 0;
@@ -307,13 +415,26 @@ export async function appendToDoc(docId, name, text, { meta = {}, cloud = true }
 
 // ---- retrieval --------------------------------------------------------------
 
+/**
+ * @param {string[]} docIds
+ * @param {string} queryText
+ * @param {number} topK
+ * @returns {Promise<Match[]>}
+ */
 async function retrieveLocal(docIds, queryText, topK) {
   const { vectors } = await embedBatch([queryText.slice(0, 2000)], "query");
+  /** @type {ChunkRow[]} */
   const all = [];
   for (const docId of docIds) all.push(...(await chunksForDoc(docId)));
   return topKChunks(all, vectors[0], topK);
 }
 
+/**
+ * @param {string[]} docIds
+ * @param {string} queryText
+ * @param {number} topK
+ * @returns {Promise<Match[]>}
+ */
 async function retrieveServer(docIds, queryText, topK) {
   const res = await fetch("/api/rag/query", {
     method: "POST",
@@ -325,10 +446,16 @@ async function retrieveServer(docIds, queryText, topK) {
   return data.matches || [];
 }
 
-// The most relevant chunks for this question across the given documents.
-// Prefers the server index when cloud storage is on (it may hold documents
-// indexed on ANOTHER device); falls back to — and merges nothing from —
-// the local index when the server comes up empty or errors.
+/**
+ * The most relevant chunks for this question across the given documents.
+ * Prefers the server index when cloud storage is on (it may hold documents
+ * indexed on ANOTHER device); falls back to — and merges nothing from —
+ * the local index when the server comes up empty or errors.
+ * @param {string[]} docIds
+ * @param {string} queryText
+ * @param {number} [topK]
+ * @returns {Promise<Match[]>}
+ */
 export async function retrieve(docIds, queryText, topK = 8) {
   if (!docIds.length || !queryText.trim()) return [];
   if (serverHistoryOn() && serverRagAvailable()) {
@@ -347,32 +474,28 @@ export async function retrieve(docIds, queryText, topK = 8) {
   }
 }
 
-// Positional fallback when semantic retrieval is unavailable (embedding
-// endpoint down mid-conversation): the opening chunks still give the model
-// the document's framing rather than nothing at all.
+/**
+ * Positional fallback when semantic retrieval is unavailable (embedding
+ * endpoint down mid-conversation): the opening chunks still give the model
+ * the document's framing rather than nothing at all.
+ * @param {string} docId
+ * @param {number} [n]
+ * @returns {Promise<Match[]>}
+ */
 export async function firstChunks(docId, n = 4) {
   const chunks = (await chunksForDoc(docId)).sort((a, b) => a.seq - b.seq).slice(0, n);
   return chunks.map((c) => ({ docId: c.docId, seq: c.seq, text: c.text, score: 0 }));
 }
 
-// ---- import/export (sync.js) -------------------------------------------------
+// ---- import (sync.js) ---------------------------------------------------------
 
-// The same shape the server stores in R2 (src/rag.js) — chunks + b64
-// vectors — so drain/push round-trips without re-embedding.
-export async function exportDoc(docId) {
-  const doc = await reqToPromise((await store("docs", "readonly")).get(docId));
-  if (!doc) return null;
-  const chunks = (await chunksForDoc(docId)).sort((a, b) => a.seq - b.seq);
-  return {
-    docId,
-    name: doc.name,
-    dims: doc.dims,
-    chunkCount: chunks.length,
-    chunks: chunks.map((c) => ({ seq: c.seq, text: c.text })),
-    vectors: chunks.map((c) => f32ToB64(c.vector)),
-  };
-}
-
+/**
+ * Import a document in the shape the server stores in R2 (src/rag.js) —
+ * chunks + b64 vectors — so a cloud→local pull never re-embeds. sync.js's
+ * push direction goes through pushDocToServer above.
+ * @param {{docId?: string, name?: string, chunks?: Chunk[], vectors?: string[], createdAt?: number} | null | undefined} data
+ * @returns {Promise<boolean>} false when the payload isn't importable
+ */
 export async function importDoc(data) {
   if (!data?.docId || !Array.isArray(data.chunks) || !Array.isArray(data.vectors)) return false;
   const vectors = data.vectors.map(b64ToF32);

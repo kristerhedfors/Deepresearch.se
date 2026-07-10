@@ -39,7 +39,7 @@ a { color: #7fb4ff; }
 #tk-hud {
   position: fixed; top: 10px; left: 10px; right: 10px; z-index: 10;
   display: flex; align-items: center; gap: 12px;
-  background: rgba(16,20,24,.85); backdrop-filter: blur(8px);
+  background: rgba(16,20,24,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 8px 14px;
 }
 #tk-back { text-decoration: none; font-size: 20px; }
@@ -49,7 +49,7 @@ a { color: #7fb4ff; }
 #tk-bar {
   position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10;
   display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
-  background: rgba(16,20,24,.85); backdrop-filter: blur(8px);
+  background: rgba(16,20,24,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 8px;
   max-width: calc(100vw - 16px);
 }
@@ -108,8 +108,14 @@ a { color: #7fb4ff; }
 /* ---- Battle ---- */
 #tk-battle {
   position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-  background: rgba(6,8,10,.82); backdrop-filter: blur(4px); padding: 10px;
+  background: rgba(6,8,10,.82); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); padding: 10px;
 }
+/* The explicit display:flex above beats the `hidden` attribute's UA-level
+   display:none — without this override the (empty) overlay permanently
+   covers the whole game as a dark glass panel (reported on iPhone,
+   2026-07-09). Keep this rule next to any hidden-toggled element that
+   also sets its own display. */
+#tk-battle[hidden] { display: none; }
 .tk-battle-box {
   width: 100%; max-width: 560px; max-height: 96vh; overflow-y: auto;
   background: #131a21; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 14px;
@@ -150,7 +156,8 @@ a { color: #7fb4ff; }
 }
 .tk-run { align-self: flex-end; background: #40262a; }
 
-/* Type accents on move buttons */
+/* Type accents on move buttons — one class per TYPES entry in
+   src/tokemon.js (the renamed Gen 1 types); battle.js emits tk-type-<id>. */
 .tk-type-compute { border-left: 3px solid #e0653a; }
 .tk-type-data { border-left: 3px solid #3a8fe0; }
 .tk-type-code { border-left: 3px solid #4fae53; }
@@ -159,3 +166,67 @@ a { color: #7fb4ff; }
 .tk-type-adversarial { border-left: 3px solid #b3452f; }
 .tk-type-phantom { border-left: 3px solid #6a5bb8; }
 .tk-type-neural { border-left: 3px solid #9aa5ad; }
+
+/* ---- Street mode (the real-world AR view) ---- */
+#tk-street {
+  position: fixed; inset: 0; z-index: 6; /* over the map, under HUD/bar */
+  display: flex; align-items: center; justify-content: center;
+  background: #0b0f13;
+}
+#tk-street[hidden] { display: none; } /* display:flex beats the hidden attr — see #tk-battle */
+.tk-sv-stage {
+  position: relative; width: min(100vw, 78vh); max-width: 640px;
+  aspect-ratio: 1 / 1;
+}
+.tk-sv-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.tk-sv-img.empty { visibility: hidden; }
+.tk-sv-overlays { position: absolute; inset: 0; pointer-events: none; }
+.tk-sv-spawn {
+  position: absolute; transform: translate(-50%, -90%); pointer-events: auto;
+  background: none; border: none; line-height: 1; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,.7));
+}
+.tk-sv-spawn i {
+  font-style: normal; font-size: 11px; color: #fff;
+  background: rgba(10,14,18,.75); border-radius: 8px; padding: 1px 6px; margin-top: 2px;
+  white-space: nowrap;
+}
+.tk-sv-spawn.near { filter: drop-shadow(0 0 8px #7fe08a); }
+.tk-sv-note {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 24px; font-size: 14px; color: #c7d0d9;
+}
+.tk-sv-note[hidden] { display: none; } /* same hidden-vs-display gotcha */
+.tk-sv-compass {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; background: rgba(10,14,18,.75); border-radius: 8px; padding: 2px 10px;
+}
+.tk-sv-turn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 42px; height: 42px; border-radius: 50%; font-size: 20px;
+  background: rgba(16,20,24,.8); color: #e8ecf1; border: 1px solid rgba(255,255,255,.15);
+}
+.tk-sv-left { left: 8px; }
+.tk-sv-right { right: 8px; }
+
+/* ---- Command bar ---- */
+#tk-cmdbar {
+  position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 11;
+  display: flex; gap: 6px; width: min(94vw, 560px);
+}
+#tk-cmdbar input {
+  flex: 1; font: inherit; font-size: 14px; color: #e8ecf1;
+  background: rgba(16,20,24,.9); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 9px 12px;
+}
+#tk-cmdbar input::placeholder { color: #7d8893; }
+#tk-cmdbar button {
+  background: #223041; color: #e8ecf1; border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px; padding: 0 14px; font-size: 15px;
+}
+
+/* The button bar moves up a notch so the command bar sits at thumb level
+   beneath it; the toast clears both. */
+#tk-bar { bottom: 62px; }
+#tk-toast { bottom: 120px; }

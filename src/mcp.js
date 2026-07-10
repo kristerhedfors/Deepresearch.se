@@ -1,3 +1,4 @@
+// @ts-check
 // POST /mcp — exposes the deep-research pipeline AS an MCP server so other
 // agents (Claude, Cursor, any MCP client) can call it as a single tool.
 //
@@ -18,6 +19,21 @@
 // test does) never pulls in pipeline.js/berget.js/etc.
 
 import { jsonResponse } from "./http.js";
+
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+/**
+ * A parsed JSON-RPC message (parseJsonRpc's success shape).
+ * @typedef {{ valid: true, id: unknown, method: string, params: any, isNotification: boolean }} ParsedRpc
+ */
+/**
+ * The per-request pipeline state THIS module builds (newRequestState below):
+ * the same shape the pipeline consumes and extends as phases run. A JSDoc
+ * import is type-only, so referencing pipeline.js here does NOT defeat this
+ * module's keep-imports-light rule.
+ * @typedef {import('./pipeline.js').PipelineState} McpRequestState
+ */
 
 // ---------------------------------------------------------------------------
 // PURE protocol helpers (no heavy imports) — unit-tested in src/mcp.test.js
@@ -97,18 +113,33 @@ export function toolsListResult() {
 }
 
 // Build an MCP tools/call result envelope (text content + isError flag).
+/**
+ * @param {unknown} text
+ * @param {boolean} [isError]
+ */
 export function toolResult(text, isError = false) {
   return { content: [{ type: "text", text: String(text) }], isError: !!isError };
 }
 
 // JSON-RPC 2.0 success envelope. `id` of undefined normalizes to null
 // (should not happen for a request, but keeps the envelope well-formed).
+/**
+ * @param {unknown} id
+ * @param {unknown} result
+ */
 export function jsonRpcResult(id, result) {
   return { jsonrpc: "2.0", id: id === undefined ? null : id, result };
 }
 
 // JSON-RPC 2.0 error envelope.
+/**
+ * @param {unknown} id
+ * @param {number} code
+ * @param {string} message
+ * @param {unknown} [data]
+ */
 export function jsonRpcError(id, code, message, data) {
+  /** @type {{ code: number, message: string, data?: unknown }} */
   const error = { code, message };
   if (data !== undefined) error.data = data;
   return { jsonrpc: "2.0", id: id === undefined ? null : id, error };
@@ -117,6 +148,10 @@ export function jsonRpcError(id, code, message, data) {
 // Validate + shape a parsed JSON-RPC message. Returns
 // { valid, id, method, params, isNotification } or { valid:false, id, error }.
 // A message WITHOUT an `id` is a notification (no response is expected).
+/**
+ * @param {any} body
+ * @returns {ParsedRpc | { valid: false, id: unknown, error: string }}
+ */
 export function parseJsonRpc(body) {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return { valid: false, id: null, error: "Request must be a JSON-RPC 2.0 object." };
@@ -143,6 +178,15 @@ export function parseJsonRpc(body) {
 // Route handler
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ * @returns {Promise<Response>}
+ */
 export async function handleMcp(request, env, log, identity, ctx, requestId) {
   let body;
   try {
@@ -180,6 +224,14 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
 // invalid-params error. The tool itself fails soft: any pipeline error comes
 // back as an MCP result with isError:true (a protocol-level success carrying
 // a tool-level failure), never a transport error.
+/**
+ * @param {ParsedRpc} parsed
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ */
 async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
   const { id, params } = parsed;
   const name = params?.name;
@@ -200,7 +252,7 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
     const text = await runDeepResearch(env, log, identity, requestId, args, question);
     return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
   } catch (err) {
-    const message = err?.message || String(err);
+    const message = (/** @type {any} */ (err))?.message || String(err);
     log.error("mcp.tool_failed", { tool: name, user_id: identity?.id, error: message });
     // Failed interactions land in the full-visibility chat log too (the
     // success path records inside runDeepResearch, where the pipeline state
@@ -227,6 +279,15 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
 // Every heavy dependency is dynamically imported HERE so the pure helpers
 // above stay import-safe for the unit test.
 // ---------------------------------------------------------------------------
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {string} requestId
+ * @param {any} args the tool-call arguments (already shape-checked upstream)
+ * @param {string} question
+ * @returns {Promise<string>} the answer text (with a Sources list appended)
+ */
 async function runDeepResearch(env, log, identity, requestId, args, question) {
   if (!env.BERGET_API_TOKEN) {
     throw new Error("Server not configured: BERGET_API_TOKEN secret is missing.");
@@ -252,24 +313,26 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
   // validates and forwards.
+  /** @type {import('./types.js').Conversation} */
   const conversation = [{ role: "user", content: question }];
   const invalid = validateMessages(conversation);
   if (invalid) throw new Error(invalid);
 
   // Model resolution against the catalog (fail-soft: degrade to default if
   // unreachable) — mirrors chat.js.
+  /** @type {import('./types.js').ModelCatalog | null} */
   let catalog = null;
   try {
     catalog = await listChatModels(env);
   } catch (err) {
-    log.warn("mcp.model_catalog_unavailable", { error: err?.message || String(err) });
+    log.warn("mcp.model_catalog_unavailable", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
   const config = await getConfig(env);
 
   const body = { messages: conversation, model: typeof args.model === "string" ? args.model : undefined };
   if (!body.model && adminDefaultModelValid(config, catalog)) body.model = config.default_model;
   const resolved = resolveModel(body, catalog, env, log);
-  if (resolved.error) throw new Error(resolved.error);
+  if ("error" in resolved) throw new Error(resolved.error);
   const model = resolved.model;
   const jsonModel = resolveJsonModel(catalog, model, DEFAULT_MODEL);
 
@@ -304,7 +367,9 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
   // post-validation reset) into one string — the MCP result is non-streaming.
   const answer = { text: "" };
+  /** @type {string | null} */
   let emittedError = null;
+  /** @param {any} obj an SSE-event object (see types.d.ts's SseEvent) */
   const emit = (obj) => {
     const chunk = obj.choices?.[0]?.delta?.content;
     if (chunk) answer.text += chunk;
@@ -325,11 +390,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       let prompt_tokens = 0;
       let completion_tokens = 0;
       let berget_cost = 0;
-      for (const [modelId, totals] of [
+      /** @type {Array<[string | null, import('./types.js').TokenTotals]>} */
+      const spendBuckets = [
         [state.model, state.totals],
         [state.jsonModel, state.jsonTotals],
         [state.visionModel, state.visionTotals],
-      ]) {
+      ];
+      for (const [modelId, totals] of spendBuckets) {
         prompt_tokens += totals.prompt_tokens;
         completion_tokens += totals.completion_tokens;
         berget_cost += bergetCost(catalog?.find((m) => m.id === modelId), totals.prompt_tokens, totals.completion_tokens);
@@ -349,7 +416,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
         duration_ms: Date.now() - state.startedAt,
       });
     } catch (err) {
-      log.warn("mcp.usage_record_failed", { error: err?.message || String(err) });
+      log.warn("mcp.usage_record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
     }
   }
 
@@ -410,6 +477,12 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
 // which would pull the whole handler graph in). The reliable DEFAULT_MODEL
 // unless it's explicitly down in the catalog, in which case fall back to the
 // user's model. Catalog unreachable → optimistic (fail-soft).
+/**
+ * @param {import('./types.js').ModelCatalog | null} catalog
+ * @param {string} userModel
+ * @param {string} DEFAULT_MODEL
+ * @returns {string}
+ */
 function resolveJsonModel(catalog, userModel, DEFAULT_MODEL) {
   if (userModel === DEFAULT_MODEL) return DEFAULT_MODEL;
   if (!Array.isArray(catalog)) return DEFAULT_MODEL;
@@ -421,6 +494,11 @@ function resolveJsonModel(catalog, userModel, DEFAULT_MODEL) {
 // The synthesis prompt already appends its own "Sources:" list, so only add a
 // structured one when the answer text doesn't already carry it — guarantees
 // an MCP consumer always gets the source list without double-printing it.
+/**
+ * @param {string} text
+ * @param {import('./types.js').SourceEntry[]} sources
+ * @returns {string}
+ */
 function withSources(text, sources) {
   if (!sources?.length) return text;
   if (/(^|\n)\s*sources\s*:/i.test(text)) return text;
@@ -432,6 +510,14 @@ function withSources(text, sources) {
 // builds. The opt-in enrichments (Shodan / Google Maps / vision) are left off
 // for this v1 MCP surface (no per-user knobs are applied), which the pipeline
 // treats exactly as a request with those knobs disabled.
+/**
+ * @param {string} model
+ * @param {string} jsonModel
+ * @param {boolean} webSearch
+ * @param {number} budgetS
+ * @param {import('./budget.js').BudgetPlan} plan
+ * @returns {McpRequestState}
+ */
 function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
   return {
     startedAt: Date.now(),
@@ -448,7 +534,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: [],
     streetViewPov: null,
-    plan,
+    // types.d.ts's RequestState documents `plan` against its own BudgetPlan
+    // sketch; the live object is budget.js's richer one (see PipelineState).
+    plan: /** @type {any} */ (plan),
     searchCount: 0,
     cachedSearchCount: 0,
     iterations: 1,

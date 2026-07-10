@@ -1,3 +1,4 @@
+// Node tests for exif.js: GPS/camera/timestamp extraction, byte-order handling, malformed-input safety.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { extractExif, formatExifSummary } from "./exif.js";

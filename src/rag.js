@@ -1,3 +1,4 @@
+// @ts-check
 // Document RAG, server side.
 //
 // Large attached documents (hundreds/thousands of pages) can't ride inline
@@ -35,6 +36,16 @@ import { jsonResponse } from "./http.js";
 import { effectiveQuota, getUsage, quotaExceeded, recordUsage } from "./quota.js";
 import { serverHistoryEnabled, storageAvailability } from "./settings.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+/** @typedef {{ seq: number, text: string }} RagChunk */
+/**
+ * validateRagIndexPayload's success shape (`error` absent) — the hardened
+ * document ready for Vectorize upsert + the R2 export copy.
+ * @typedef {{ error?: undefined, docId: string, name: string, chunks: RagChunk[], vectors: Float32Array[], dims: number }} RagIndexPayload
+ */
+
 // e5-family input convention: documents are "passage: …", questions are
 // "query: …". Applied here at embed time (never stored), so client and
 // server can't drift apart on it.
@@ -50,13 +61,27 @@ const MAX_QUERY_CHARS = 2000;
 const MAX_TOP_K = 12;
 const METADATA_TEXT_CHARS = 1800; // Vectorize caps metadata at 10 KiB/vector
 
+/** @param {unknown} s */
 const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
+/** @param {number | string} uid @param {string} docId */
 const ragKey = (uid, docId) => `rag/${uid}/${docId}`;
+/** @param {number | string} uid @param {string} docId @param {number} seq */
 const vectorId = (uid, docId, seq) => `${uid}:${docId}:${seq}`;
+
+// The storageAvailability/`available.rag` gates in handleRag guarantee the
+// bindings exist on every path below them.
+/** @param {Env} env @returns {R2Bucket} */
+const bucket = (env) => /** @type {R2Bucket} */ (env.STORAGE);
+/** @param {Env} env @returns {VectorizeIndex} */
+const vectorIndex = (env) => /** @type {VectorizeIndex} */ (env.RAG_INDEX);
 
 // ---- base64 <-> Float32Array (vectors travel as base64 in JSON: ~3x
 // smaller than digit arrays and losslessly round-trippable) ----------------
 
+/**
+ * @param {Float32Array | number[]} arr
+ * @returns {string}
+ */
 export function f32ToB64(arr) {
   const bytes = new Uint8Array(Float32Array.from(arr).buffer);
   let binary = "";
@@ -67,6 +92,10 @@ export function f32ToB64(arr) {
   return btoa(binary);
 }
 
+/**
+ * @param {string} b64
+ * @returns {Float32Array}
+ */
 export function b64ToF32(b64) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -81,6 +110,10 @@ export function b64ToF32(b64) {
 // docs already have them), so the server never re-embeds a whole document
 // inside one request. Chunk seqs must be exactly 0..n-1: the wipe path
 // reconstructs vector ids from a stored chunk count alone.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | RagIndexPayload}
+ */
 export function validateRagIndexPayload(body) {
   if (!body || typeof body !== "object") return { error: "Expected a JSON body." };
   if (!idOk(body.docId)) return { error: "Invalid docId." };
@@ -126,6 +159,11 @@ export function validateRagIndexPayload(body) {
 // the accounting discipline here is all-spend-is-visible), so the same
 // quota gate as /api/chat applies, and every embed call records a usage
 // event priced from the raw catalog entry.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {Promise<ReturnType<typeof quotaExceeded>>} the breach, or null
+ */
 async function quotaGate(env, identity) {
   const config = await getConfig(env);
   const usage = await getUsage(env, identity.id);
@@ -136,6 +174,14 @@ async function quotaGate(env, identity) {
   return quota ? quotaExceeded(usage, quota) : null;
 }
 
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {{ prompt_tokens?: number } | null | undefined} usage the provider's token report
+ * @param {string} model
+ * @param {number} durationMs
+ */
 async function recordEmbedUsage(env, log, identity, usage, model, durationMs) {
   const promptTokens = usage?.prompt_tokens || 0;
   const entry = await rawModelEntry(env, model);
@@ -157,10 +203,18 @@ async function recordEmbedUsage(env, log, identity, usage, model, durationMs) {
 // The embedding proxy the client-side RAG uses in BOTH storage modes.
 // body: {texts: string[], kind: "passage"|"query"} — the e5 prefix is
 // applied here so the convention can't drift between client and server.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleEmbed(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
   }
+  /** @type {any} */
   let body;
   try {
     body = await request.json();
@@ -196,16 +250,24 @@ export async function handleEmbed(request, env, log, identity) {
       model,
     });
   } catch (err) {
-    log.error("rag.embed_failed", { user_id: identity.id, error: err?.message || String(err) });
+    log.error("rag.embed_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Embedding service unavailable." }, 502);
   }
 }
 
 // ---- /api/rag/* router ------------------------------------------------------
 
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleRag(request, env, url, log, identity) {
   const available = storageAvailability(env, identity);
-  if (!available.storage) {
+  if (!available.storage || !identity.user) {
     return jsonResponse({ error: "Cloud storage is not configured on this server." }, 503);
   }
   const uid = identity.user.id;
@@ -230,6 +292,14 @@ export async function handleRag(request, env, url, log, identity) {
 // re-indexed on another device can chunk on different boundaries —
 // public/js/chat-rag.js) also deletes the now-orphaned tail vectors, so
 // stale text can't keep matching queries.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ * @param {{ storage: boolean, rag: boolean }} available
+ */
 async function ragIndex(request, env, log, identity, uid, available) {
   if (!available.rag) {
     return jsonResponse({ error: "Server-side RAG is not configured (Vectorize binding missing)." }, 503);
@@ -245,7 +315,7 @@ async function ragIndex(request, env, log, identity, uid, available) {
   }
   const parsed = validateRagIndexPayload(body);
   if (parsed.error) return jsonResponse({ error: parsed.error }, 400);
-  const { docId, name, chunks, vectors, dims } = parsed;
+  const { docId, name, chunks, vectors, dims } = /** @type {RagIndexPayload} */ (parsed);
 
   const rows = chunks.map((c, i) => ({
     id: vectorId(uid, docId, c.seq),
@@ -258,21 +328,21 @@ async function ragIndex(request, env, log, identity, uid, available) {
     },
   }));
   for (let i = 0; i < rows.length; i += 500) {
-    await env.RAG_INDEX.upsert(rows.slice(i, i + 500));
+    await vectorIndex(env).upsert(rows.slice(i, i + 500));
   }
 
   // Shrinking replace: drop the previous copy's tail vectors.
-  const prev = await env.STORAGE.head(ragKey(uid, docId));
+  const prev = await bucket(env).head(ragKey(uid, docId));
   const prevCount = Number(prev?.customMetadata?.chunkCount) || 0;
   if (prevCount > chunks.length) {
     const stale = [];
     for (let seq = chunks.length; seq < prevCount; seq++) stale.push(vectorId(uid, docId, seq));
     for (let i = 0; i < stale.length; i += 900) {
-      await env.RAG_INDEX.deleteByIds(stale.slice(i, i + 900));
+      await vectorIndex(env).deleteByIds(stale.slice(i, i + 900));
     }
   }
 
-  await env.STORAGE.put(
+  await bucket(env).put(
     ragKey(uid, docId),
     JSON.stringify({
       docId,
@@ -297,6 +367,14 @@ async function ragIndex(request, env, log, identity, uid, available) {
 // across this user's server-indexed documents. Embeds the query (quota-
 // gated + usage-recorded like /api/embed), queries Vectorize filtered to
 // this user, then narrows to the requested docIds Worker-side.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ * @param {{ storage: boolean, rag: boolean }} available
+ */
 async function ragQuery(request, env, log, identity, uid, available) {
   if (!available.rag) {
     return jsonResponse({ error: "Server-side RAG is not configured (Vectorize binding missing)." }, 503);
@@ -304,6 +382,7 @@ async function ragQuery(request, env, log, identity, uid, available) {
   if (!serverHistoryEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
   }
+  /** @type {any} */
   let body;
   try {
     body = await request.json();
@@ -325,13 +404,13 @@ async function ragQuery(request, env, log, identity, uid, available) {
     qvec = vectors[0];
     await recordEmbedUsage(env, log, identity, usage, model, Date.now() - startedAt);
   } catch (err) {
-    log.error("rag.query_embed_failed", { user_id: identity.id, error: err?.message || String(err) });
+    log.error("rag.query_embed_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Embedding service unavailable." }, 502);
   }
 
   // returnMetadata "all" caps topK at 20 in Vectorize — stay inside it while
   // over-fetching a little so the docId narrowing below still fills topK.
-  const res = await env.RAG_INDEX.query(qvec, {
+  const res = await vectorIndex(env).query(qvec, {
     topK: Math.min(20, topK + 8),
     filter: { u: String(uid) },
     returnMetadata: "all",
@@ -351,11 +430,12 @@ async function ragQuery(request, env, log, identity, uid, available) {
 
 // GET /api/rag/docs — list this user's server-indexed documents (metadata
 // only, from the R2 listing — no bodies read).
+/** @param {Env} env @param {number | string} uid */
 async function ragList(env, uid) {
   const out = [];
   let cursor;
   do {
-    const page = await env.STORAGE.list({ prefix: `rag/${uid}/`, cursor, include: ["customMetadata"] });
+    const page = await bucket(env).list({ prefix: `rag/${uid}/`, cursor, include: ["customMetadata"] });
     for (const o of page.objects) {
       out.push({
         id: o.key.split("/").pop(),
@@ -372,21 +452,35 @@ async function ragList(env, uid) {
 // GET /api/rag/docs/:id — the full exportable copy (chunks + vectors), used
 // by the knob-off drain so the client can rebuild its local index without
 // re-embedding. Allowed while the knob is off — that IS the drain.
+/** @param {Env} env @param {number | string} uid @param {string} docId */
 async function ragExport(env, uid, docId) {
-  const obj = await env.STORAGE.get(ragKey(uid, docId));
+  const obj = await bucket(env).get(ragKey(uid, docId));
   if (!obj) return jsonResponse({ error: "Not found." }, 404);
   return new Response(obj.body, { headers: { "content-type": "application/json; charset=utf-8" } });
 }
 
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ * @param {string} docId
+ */
 async function ragDelete(env, log, identity, uid, docId) {
-  const head = await env.STORAGE.head(ragKey(uid, docId));
+  const head = await bucket(env).head(ragKey(uid, docId));
   const chunkCount = Number(head?.customMetadata?.chunkCount) || 0;
   await deleteVectors(env, uid, docId, chunkCount);
-  await env.STORAGE.delete(ragKey(uid, docId));
+  await bucket(env).delete(ragKey(uid, docId));
   log.info("rag.deleted", { user_id: identity.id, chunks: chunkCount });
   return new Response(null, { status: 204 });
 }
 
+/**
+ * @param {Env} env
+ * @param {number | string} uid
+ * @param {string} docId
+ * @param {number} chunkCount
+ */
 async function deleteVectors(env, uid, docId, chunkCount) {
   if (!env.RAG_INDEX || !chunkCount) return;
   const ids = [];
@@ -398,6 +492,11 @@ async function deleteVectors(env, uid, docId, chunkCount) {
 
 // Full-wipe helper for src/storage.js's DELETE /api/storage: removes every
 // rag export AND its vectors for one user. Returns the object count removed.
+/**
+ * @param {Env} env
+ * @param {number | string} uid
+ * @returns {Promise<number>}
+ */
 export async function wipeRagForUser(env, uid) {
   if (!env.STORAGE) return 0;
   let deleted = 0;
@@ -405,7 +504,7 @@ export async function wipeRagForUser(env, uid) {
   do {
     const page = await env.STORAGE.list({ prefix: `rag/${uid}/`, cursor, include: ["customMetadata"] });
     for (const o of page.objects) {
-      const docId = o.key.split("/").pop();
+      const docId = o.key.split("/").pop() || "";
       await deleteVectors(env, uid, docId, Number(o.customMetadata?.chunkCount) || 0);
       await env.STORAGE.delete(o.key);
       deleted++;

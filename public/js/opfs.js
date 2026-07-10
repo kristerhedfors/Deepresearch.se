@@ -67,6 +67,11 @@ export async function saveOriginal(id, blob, meta) {
   });
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<?File>} the stored bytes (whatever form they rest in —
+ *   check the meta row's `enc` flag), or null when absent/unavailable
+ */
 export async function loadOriginal(id) {
   try {
     const d = await dir(false);
@@ -87,6 +92,11 @@ export async function deleteOriginal(id) {
   await filesMetaStore.delete(id);
 }
 
+/**
+ * @returns {Promise<Array<{id: string, name: string, type: string,
+ *   enc: boolean, size: number, addedAt: number}>>} the metadata rows —
+ *   listing never has to walk OPFS itself
+ */
 export async function listOriginals() {
   return filesMetaStore.getAll();
 }

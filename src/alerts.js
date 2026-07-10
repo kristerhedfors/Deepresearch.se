@@ -1,3 +1,4 @@
+// @ts-check
 // Operational alerts: surfaces production issues (Berget errors, wallet
 // depletion, etc.) in the admin panel and as a notification badge, instead
 // of only living in Workers Logs where nobody's looking. Rows are
@@ -9,10 +10,24 @@
 
 import { getDb } from "./db.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/**
+ * A classified alert: the stable type key plus what the admin panel shows.
+ * @typedef {{ type: string, severity: "critical" | "warning", message: string }} AlertClassification
+ */
+/**
+ * A D1 `alerts` row (one per type — recurrences bump count/last_seen_at).
+ * @typedef {{ id: number, type: string, severity: string, message: string, detail?: string | null, count: number, first_seen_at: number, last_seen_at: number, acknowledged_at?: number | null }} AlertRow
+ */
+
 // Classifies a caught pipeline error into a stable alert type + severity +
 // human message. Keep this list small and meaningful — it's read by admins,
 // not a log dump. Unmatched errors fall into a generic bucket rather than
 // each becoming their own type.
+/**
+ * @param {unknown} message the caught error's message
+ * @returns {AlertClassification}
+ */
 export function classifyChatError(message) {
   const msg = String(message || "");
   if (/INSUFFICIENT_WALLET_BALANCE|insufficient_quota/i.test(msg)) {
@@ -60,6 +75,7 @@ export function classifyChatError(message) {
 // types classifyChatError() produces; unmatched/custom types (a future
 // raiseAlert() call this file doesn't know about yet) fall back to a
 // generic "check Workers Logs" pointer rather than showing nothing.
+/** @type {Record<string, string>} */
 const REMEDIATIONS = {
   berget_insufficient_balance:
     "Top up the Berget.ai account balance in their dashboard (billing/wallet section) — every research request fails until it's funded again. Confirm it's resolved by sending any chat message; a 402 error means it's still empty.",
@@ -74,10 +90,19 @@ const REMEDIATIONS = {
 };
 const DEFAULT_REMEDIATION = "Check Workers Logs for this alert's timeframe to see the underlying error in full.";
 
+/** @param {AlertRow} row */
 function withRemediation(row) {
   return { ...row, remediation: REMEDIATIONS[row.type] || DEFAULT_REMEDIATION };
 }
 
+/**
+ * Upserts one alert by type (recurrence bumps count and re-surfaces it).
+ * @param {Env} env
+ * @param {string} type
+ * @param {string} severity
+ * @param {string} message
+ * @param {unknown} [detail] truncated to 500 chars on the row
+ */
 export async function raiseAlert(env, type, severity, message, detail) {
   const db = await getDb(env);
   if (!db) return;
@@ -99,22 +124,36 @@ export async function raiseAlert(env, type, severity, message, detail) {
     .catch(() => {}); // best-effort — an alerting bug must never break the chat
 }
 
+/**
+ * All alerts, unacknowledged first, each with its remediation text attached.
+ * @param {Env} env
+ * @returns {Promise<Array<AlertRow & { remediation: string }>>}
+ */
 export async function listAlerts(env) {
   const db = await getDb(env);
   if (!db) return [];
   const { results } = await db
     .prepare(`SELECT * FROM alerts ORDER BY (acknowledged_at IS NOT NULL), last_seen_at DESC`)
     .all();
-  return (results || []).map(withRemediation);
+  return /** @type {AlertRow[]} */ (results || []).map(withRemediation);
 }
 
+/**
+ * Unacknowledged-alert count for the admin notification badge.
+ * @param {Env} env
+ * @returns {Promise<number>}
+ */
 export async function countOpenAlerts(env) {
   const db = await getDb(env);
   if (!db) return 0;
   const row = await db.prepare(`SELECT COUNT(*) AS n FROM alerts WHERE acknowledged_at IS NULL`).first();
-  return row?.n || 0;
+  return /** @type {number} */ (row?.n) || 0;
 }
 
+/**
+ * @param {Env} env
+ * @param {number} id
+ */
 export async function acknowledgeAlert(env, id) {
   const db = await getDb(env);
   if (!db) return;

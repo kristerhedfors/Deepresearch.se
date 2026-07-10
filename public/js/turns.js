@@ -14,6 +14,12 @@ let chat;
 let scrollDown;
 let isBusy = () => false;
 
+/**
+ * One-time wiring from app.js.
+ * @param {HTMLElement} chatEl  the scrolling chat container
+ * @param {(force?: boolean) => void} scrollFn  auto-follow scroll callback
+ * @param {{isBusy?: () => boolean}} [opts]  gates the PDF download while streaming
+ */
 export function initTurns(chatEl, scrollFn, opts = {}) {
   chat = chatEl;
   scrollDown = scrollFn;
@@ -33,6 +39,8 @@ const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
 // Document attachments aren't reconstructed as chips here — their text was
 // already embedded inline in the message when it was sent (see stream.js's
 // sendMessage), so it simply shows as part of the message text on reload.
+// (message-content.js exports a hardened twin used on the send path; this
+// local copy only ever sees records this app itself wrote.)
 function splitUserContent(content) {
   if (typeof content === "string") return { text: content, imageUrls: [] };
   const text = content
@@ -55,6 +63,11 @@ function splitUserContent(content) {
 // Quizzes re-render from their embed record too — resuming an unfinished one
 // or showing the finished recap; `opts.quizHooks(embed)` (stream.js) wires
 // their answers/completion back into the registry and history.
+/**
+ * @param {Array<{role: string, content: string|object[]}>} messages  the stored conversation
+ * @param {object[]} [embeds]  the record's embeds registry (stream.js EmbedEntry[])
+ * @param {{quizHooks?: (embed: object) => object}} [opts]
+ */
 export function renderStoredConversation(messages, embeds = [], opts = {}) {
   clearChatDom();
   let lastUser = { text: "", imageUrls: [] };
@@ -83,6 +96,12 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
   });
 }
 
+/**
+ * Appends a user bubble: message text, image thumbnails, document chips.
+ * @param {string} text
+ * @param {string[]} [imageUrls]  data URLs of attached images
+ * @param {string[]} [docNames]   attached document names (chips)
+ */
 export function addUserBubble(text, imageUrls = [], docNames = []) {
   clearEmpty();
   const el = document.createElement("div");
@@ -113,10 +132,37 @@ export function addUserBubble(text, imageUrls = [], docNames = []) {
   scrollDown(true); // sending re-attaches auto-follow
 }
 
-// An assistant turn = collapsible activity panel + streamed content (typing
-// icon until the first token) + Raw/Copy/PDF tools + stats footer.
-// `question` (the user's prompt) becomes the PDF report's title; `images`
-// (the data URLs sent with it) are embedded in the PDF report.
+/**
+ * The per-reply handle every renderer works on — created here, mutated by
+ * activity.js (steps/stats/embeds), stream.js (text, research log), and
+ * report.js (PDF export).
+ * @typedef {object} Turn
+ * @property {HTMLElement} el            the .msg.assistant container
+ * @property {HTMLElement} activityWrap  the <details class="activity"> wrapper
+ * @property {HTMLElement} activity      the step-bar container
+ * @property {HTMLElement} activityLabel the collapsed-summary label
+ * @property {HTMLElement} content       the streamed-answer body
+ * @property {HTMLElement} stats         the stats footer
+ * @property {string} question           the user prompt (PDF report title)
+ * @property {string[]} images           data URLs sent with it (embedded in the PDF)
+ * @property {string} model              set from the `done` event
+ * @property {Object<string, object>} steps  live generic steps by id
+ * @property {string} text               the full answer text so far
+ * @property {boolean} rawMode           Raw-button toggle state
+ * @property {boolean} errored           setError was called
+ * @property {number} searchCount        from the `done` event (collapse label)
+ * @property {number} startedAt          anchors researchLog's relative timestamps
+ * @property {object[]} researchLog      ordered research events (activity.js ResearchLogEntry)
+ * @property {?object} doneStats         the final `done` event payload
+ */
+
+/**
+ * An assistant turn = collapsible activity panel + streamed content (typing
+ * icon until the first token) + Raw/Copy/PDF tools + stats footer.
+ * @param {string} [question]  the user's prompt — becomes the PDF report's title
+ * @param {string[]} [images]  the data URLs sent with it — embedded in the PDF report
+ * @returns {Turn}
+ */
 export function addAssistantTurn(question = "", images = []) {
   clearEmpty();
   const el = document.createElement("div");
@@ -170,75 +216,124 @@ export function applyFeedbackMode(on) {
   document.body.classList.toggle("feedback-mode", on);
 }
 
-// The Feedback button + its inline form: a textarea under the reply, sent to
-// POST /api/feedback together with the reply it's about (question, answer
-// excerpt, model), where it becomes a dialogue thread with the development
-// agent (account panel → Feedback).
+// The Feedback button opens a MODAL dialog (same overlay pattern as the
+// account panel) — deliberately NOT an inline form: an inline textarea in
+// the chat column competes with the ever-present composer, and on a phone
+// the typing predictably lands in the composer and goes to the LLM instead
+// of the feedback pipeline (observed live 2026-07-09: two feedback attempts
+// arrived as chat questions #170/#171 while the feedback table stayed
+// empty). A dimmed full-screen dialog is the unambiguous answer: while it's
+// open, the composer isn't reachable at all.
 function makeFeedbackButton(turn) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "tool-btn feedback-btn";
   btn.textContent = "Feedback";
   btn.title = "Tell the developers about this reply";
-  btn.addEventListener("click", () => {
-    const existing = turn.el.querySelector(".fb-form");
-    if (existing) {
-      existing.remove();
+  btn.addEventListener("click", () => openFeedbackDialog(turn));
+  return btn;
+}
+
+function openFeedbackDialog(turn) {
+  document.querySelector(".fb-overlay")?.remove(); // one dialog at a time
+  const overlay = document.createElement("div");
+  overlay.className = "fb-overlay";
+  const card = document.createElement("div");
+  card.className = "fb-card";
+
+  const head = document.createElement("div");
+  head.className = "fb-card-head";
+  const title = document.createElement("strong");
+  title.textContent = "Feedback to the developers";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.textContent = "✕";
+  close.addEventListener("click", () => overlay.remove());
+  head.append(title, close);
+
+  const about = document.createElement("p");
+  about.className = "muted fb-about";
+  const q = (turn.question || "").trim();
+  about.textContent = q
+    ? `About the reply to: “${q.length > 110 ? q.slice(0, 110) + "…" : q}”`
+    : "About this reply";
+
+  const ta = document.createElement("textarea");
+  ta.rows = 4;
+  ta.placeholder = "What was good or bad about this reply? What should change?";
+
+  const note = document.createElement("p");
+  note.className = "muted fb-note";
+  note.textContent =
+    "This goes to the site's developers — not to the AI. It's sent together with the question and reply above; answers show up under Feedback in your account panel.";
+
+  const actions = document.createElement("div");
+  actions.className = "fb-actions";
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "fb-send";
+  send.textContent = "Send feedback";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => overlay.remove());
+  const status = document.createElement("span");
+  status.className = "muted fb-note";
+  actions.append(send, cancel, status);
+
+  send.addEventListener("click", async () => {
+    const comment = ta.value.trim();
+    if (!comment) {
+      ta.focus();
       return;
     }
-    const form = document.createElement("div");
-    form.className = "fb-form";
-    const ta = document.createElement("textarea");
-    ta.rows = 3;
-    ta.placeholder = "What was good or bad about this reply? What should change?";
-    const actions = document.createElement("div");
-    actions.className = "fb-actions";
-    const send = document.createElement("button");
-    send.type = "button";
-    send.textContent = "Send feedback";
-    const note = document.createElement("span");
-    note.className = "muted fb-note";
-    note.textContent = "Sent with this question & reply. Answers arrive under Feedback in your account panel.";
-    send.addEventListener("click", async () => {
-      const comment = ta.value.trim();
-      if (!comment) return;
-      send.disabled = true;
-      send.textContent = "Sending…";
-      try {
-        const res = await fetch("/api/feedback", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            comment,
-            question: turn.question || undefined,
-            answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
-            model: turn.model || undefined,
-            page: location.pathname,
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.error || "HTTP " + res.status);
-        }
-        form.replaceChildren();
-        const done = document.createElement("p");
-        done.className = "muted";
-        done.textContent = "Feedback sent ✓ — replies show up under Feedback in your account panel.";
-        form.appendChild(done);
-        setTimeout(() => form.remove(), 6000);
-      } catch (err) {
-        send.disabled = false;
-        send.textContent = "Send feedback";
-        note.textContent = (err?.message || "Could not send feedback.") + " Try again.";
+    send.disabled = true;
+    send.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          comment,
+          question: turn.question || undefined,
+          answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
+          model: turn.model || undefined,
+          page: location.pathname,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "HTTP " + res.status);
       }
-    });
-    actions.append(send, note);
-    form.append(ta, actions);
-    turn.el.insertBefore(form, turn.stats);
-    ta.focus();
-    scrollDown();
+      card.replaceChildren();
+      const done = document.createElement("p");
+      done.className = "fb-done";
+      done.textContent = "Feedback sent ✓";
+      const hint = document.createElement("p");
+      hint.className = "muted";
+      hint.textContent =
+        "The developers read every submission — replies show up under Feedback in your account panel.";
+      card.append(done, hint);
+      setTimeout(() => overlay.remove(), 2500);
+    } catch (err) {
+      send.disabled = false;
+      send.textContent = "Send feedback";
+      status.textContent = (err?.message || "Could not send feedback.") + " Try again.";
+    }
   });
-  return btn;
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") overlay.remove();
+  });
+
+  card.append(head, about, ta, note, actions);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  ta.focus();
 }
 
 function makeRawButton(turn) {
@@ -326,10 +421,21 @@ function showTyping(content) {
   content.appendChild(icon);
 }
 
+/**
+ * True while the turn still shows the typing indicator (no text yet).
+ * @param {Turn} turn
+ * @returns {boolean}
+ */
 export function isTyping(turn) {
   return turn.content.classList.contains("typing");
 }
 
+/**
+ * Replaces the turn's full text (the stream re-sets the whole accumulator
+ * on every delta) and re-renders it in the current Raw/markdown mode.
+ * @param {Turn} turn
+ * @param {string} text
+ */
 export function setText(turn, text) {
   if (isTyping(turn)) {
     turn.content.classList.remove("typing");
@@ -341,6 +447,12 @@ export function setText(turn, text) {
   scrollDown();
 }
 
+/**
+ * Appends an error message to the turn (kept beneath any partial answer)
+ * and switches it to the error style.
+ * @param {Turn} turn
+ * @param {string} message
+ */
 export function setError(turn, message) {
   // setError is the single sink for EVERY error a turn can hit — server
   // errors (via stream.js's handleEvent), and the client-only ones that

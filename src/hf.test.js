@@ -1,3 +1,5 @@
+// Unit tests for hf.js's pure logic: intent detection, term/attempt planning,
+// the query plan, slice merging, dedup keys, and the item mappers.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

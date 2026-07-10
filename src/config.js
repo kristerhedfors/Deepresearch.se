@@ -1,3 +1,4 @@
+// @ts-check
 // Global site configuration: default quotas, Exa pricing, the time-budget
 // cap, the site default model, and the approval gate. Stored as one JSON
 // row in the D1 `config` table (admin-editable via PUT /api/admin/config),
@@ -10,6 +11,21 @@
 import { getDb } from "./db.js";
 import { PERIODS } from "./quota.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./quota.js').QuotaMap} QuotaMap */
+
+/**
+ * The effective site configuration `getConfig` resolves (defaults merged
+ * with the admin-edited D1 row).
+ * @typedef {Object} SiteConfig
+ * @property {QuotaMap} quotas default per-window quotas (h5/day/week/month)
+ * @property {number} exa_cost_per_search_eur
+ * @property {number} max_time_budget_s cap for the UI slider value accepted server-side
+ * @property {string} default_model empty = Worker default (BERGET_MODEL var / built-in)
+ * @property {boolean} require_approval new sign-ins land as "pending" until approved
+ */
+
+/** @type {SiteConfig} */
 export const DEFAULT_CONFIG = {
   quotas: {
     h5: { budget_eur: 0.25, searches: 30 },
@@ -25,9 +41,16 @@ export const DEFAULT_CONFIG = {
   require_approval: true,
 };
 
+/** @type {{ at: number, value: SiteConfig | null }} */
 let configCache = { at: 0, value: null };
 const CONFIG_TTL_MS = 30_000;
 
+/**
+ * The current site config: the cached D1 row merged over the defaults, or a
+ * fresh clone of the defaults when no database is configured.
+ * @param {Env} env
+ * @returns {Promise<SiteConfig>}
+ */
 export async function getConfig(env) {
   const db = await getDb(env);
   if (!db) return structuredClone(DEFAULT_CONFIG);
@@ -37,7 +60,7 @@ export async function getConfig(env) {
   const row = await db.prepare("SELECT value FROM config WHERE key='app'").first();
   let stored = {};
   try {
-    stored = row ? JSON.parse(row.value) : {};
+    stored = row ? JSON.parse(String(row.value)) : {};
   } catch {
     stored = {};
   }
@@ -46,6 +69,13 @@ export async function getConfig(env) {
   return merged;
 }
 
+/**
+ * Merges a sanitized admin patch into the stored config and refreshes the
+ * cache. Throws without a database (the admin API surfaces the error).
+ * @param {Env} env
+ * @param {any} patch untrusted admin request body
+ * @returns {Promise<SiteConfig>} the new effective config
+ */
 export async function saveConfig(env, patch) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -59,6 +89,13 @@ export async function saveConfig(env, patch) {
   return next;
 }
 
+/**
+ * Overlays `patch` on `base` field by field, coercing/clamping each value so
+ * a malformed or hostile patch can only ever produce a valid config.
+ * @param {SiteConfig} base
+ * @param {any} patch
+ * @returns {SiteConfig}
+ */
 function mergeConfig(base, patch) {
   const out = structuredClone(base);
   if (!patch || typeof patch !== "object") return out;
@@ -80,8 +117,11 @@ function mergeConfig(base, patch) {
   return out;
 }
 
-// Only known keys survive into storage (an admin API caller can't stuff
-// arbitrary JSON into config).
+/**
+ * Only known keys survive into storage (an admin API caller can't stuff
+ * arbitrary JSON into config).
+ * @param {any} patch
+ */
 function sanitizeConfigPatch(patch) {
   return {
     quotas: patch?.quotas,
@@ -91,4 +131,5 @@ function sanitizeConfigPatch(patch) {
     require_approval: patch?.require_approval,
   };
 }
+/** @param {any} v @returns {number | undefined} */
 const numOr = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : undefined);

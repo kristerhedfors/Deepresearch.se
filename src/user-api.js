@@ -1,6 +1,8 @@
+// @ts-check
 // Signed-in user JSON APIs (non-chat): the model dropdown catalog, the
-// account/usage panel, and the client-error beacon. Routed from
-// src/index.js; admin endpoints live in src/admin-api.js.
+// account/usage panel, the history-key fetch, the message center, and the
+// client-error beacon. Routed from src/index.js; admin endpoints live in
+// src/admin-api.js.
 
 import { countOpenAlerts } from "./alerts.js";
 import { countPendingUsers } from "./accounts.js";
@@ -14,9 +16,18 @@ import { effectiveQuota, getUsage, PERIODS, quotaExceeded, windowReset } from ".
 import { countUnreadFeedbackReplies } from "./feedback.js";
 import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-messages.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+
 // GET /api/models — model catalog for the UI dropdown (filtered + cached in
 // src/berget.js), plus the effective default (admin-configured when valid
 // and up, else the Worker default).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
 export async function handleModels(env, log) {
   try {
     const models = await listChatModels(env);
@@ -25,7 +36,7 @@ export async function handleModels(env, log) {
     log.debug("models.list", { count: models.length });
     return jsonResponse({ models, default: configured ? config.default_model : defaultModel(env) });
   } catch (err) {
-    log.error("models.error", { error: err?.message || String(err) });
+    log.error("models.error", { error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Could not load the model catalog." }, 502);
   }
 }
@@ -36,7 +47,14 @@ export async function handleModels(env, log) {
 // a clean disconnect). Whitelisted metadata only, hard-capped; the browser
 // error string is not user content. Correlate via chat_request_id (the
 // x-request-id the client read off the /api/chat response).
+/**
+ * @param {Request} request
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleClientError(request, log, identity) {
+  /** @type {any} */
   let body = {};
   try {
     const raw = await request.text();
@@ -44,6 +62,7 @@ export async function handleClientError(request, log, identity) {
   } catch {
     body = {};
   }
+  /** @param {unknown} v @param {number} max */
   const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : undefined);
   log.warn("chat.client_error", {
     user_id: identity.id,
@@ -60,6 +79,11 @@ export async function handleClientError(request, log, identity) {
 // (public/js/history-store.js). Fails closed (503) when
 // HISTORY_KEY_SECRET isn't configured — there is deliberately no
 // plaintext fallback, since that would defeat the point of the feature.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleHistoryKey(env, identity) {
   if (!historyKeyConfigured(env)) {
     return jsonResponse({ error: "Encrypted chat history is not configured on this server." }, 503);
@@ -71,10 +95,16 @@ export async function handleHistoryKey(env, identity) {
 // GET /api/me — identity + usage vs quota for the user dashboard.
 // The Berget budget is cost-based but OPAQUE to users: only a percentage
 // leaves the server (never the EUR amounts). Searches are plain counts.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleMe(env, identity) {
   const config = await getConfig(env);
   const usage = await getUsage(env, identity.id);
   const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
+  /** @type {Record<string, { budget_pct: number | null, searches: number, searches_limit: number, reset: number }>} */
   const windows = {};
   for (const p of PERIODS) {
     const budget = quota?.[p]?.budget_eur || 0;
@@ -98,16 +128,16 @@ export async function handleMe(env, identity) {
     countUnreadUserMessages(env, identity.id),
     countUnreadFeedbackReplies(env, identity.id),
   ]);
+  /** @type {{ unread_messages: number, unread_feedback: number, total: number, pending_users?: number, open_alerts?: number }} */
   let notifications = {
     unread_messages: unreadMessages,
     unread_feedback: unreadFeedback,
     total: unreadMessages + unreadFeedback,
   };
   if (isAdmin) {
-    const [pendingUsers, openAlerts] = await Promise.all([
-      countPendingUsers(env),
-      countOpenAlerts(env),
-    ]);
+    const [pendingUsers, openAlerts] = /** @type {[number, number]} */ (
+      await Promise.all([countPendingUsers(env), countOpenAlerts(env)])
+    );
     notifications = {
       unread_messages: unreadMessages,
       unread_feedback: unreadFeedback,
@@ -137,6 +167,11 @@ export async function handleMe(env, identity) {
 // since lifted reads as good news without a second write. Opening this
 // list marks everything read (same one-shot pattern as the account panel
 // already uses for /api/me).
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleMessages(env, identity) {
   const messages = await listUserMessages(env, identity.id, { limit: 50 });
   let currentBlock = null;

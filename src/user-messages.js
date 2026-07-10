@@ -1,3 +1,4 @@
+// @ts-check
 // Per-user message center: account-level notices (quota exhausted/restored,
 // sign-in approved, quota changed by an admin) — NOT a chat feature. Only
 // structured enums (type/period/kind) and timestamps are ever stored, never
@@ -13,11 +14,24 @@
 
 import { getDb } from "./db.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/**
+ * A D1 `user_messages` row — structured enums and timestamps ONLY (see the
+ * header: there is deliberately no content column).
+ * @typedef {{ id: number, user_id: string, type: string, period?: string | null, kind?: string | null, created_at: number, read_at?: number | null }} UserMessageRow
+ */
+
 const DEDUP_WINDOW_MS = 60 * 60 * 1000; // 1h: don't log a new row per blocked request
 
 // type: "quota_exceeded" | "account_approved" | "quota_changed"
 // period/kind: only meaningful for quota_exceeded (see src/quota.js's PERIODS
 // and quotaExceeded()'s "budget"|"searches" kinds); null otherwise.
+/**
+ * @param {Env} env
+ * @param {number | string} userId
+ * @param {string} type
+ * @param {{ period?: string | null, kind?: string | null }} [details]
+ */
 export async function addUserMessage(env, userId, type, { period = null, kind = null } = {}) {
   const db = await getDb(env);
   if (!db) return;
@@ -37,6 +51,13 @@ export async function addUserMessage(env, userId, type, { period = null, kind = 
     .catch(() => {});
 }
 
+/**
+ * Newest-first messages for one user.
+ * @param {Env} env
+ * @param {number | string} userId
+ * @param {{ limit?: number }} [options]
+ * @returns {Promise<UserMessageRow[]>}
+ */
 export async function listUserMessages(env, userId, { limit = 50 } = {}) {
   const db = await getDb(env);
   if (!db) return [];
@@ -44,9 +65,15 @@ export async function listUserMessages(env, userId, { limit = 50 } = {}) {
     .prepare(`SELECT * FROM user_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`)
     .bind(String(userId), limit)
     .all();
-  return results || [];
+  return /** @type {UserMessageRow[]} */ (results || []);
 }
 
+/**
+ * Unread-count for the notification badge (/api/me).
+ * @param {Env} env
+ * @param {number | string} userId
+ * @returns {Promise<number>}
+ */
 export async function countUnreadUserMessages(env, userId) {
   const db = await getDb(env);
   if (!db) return 0;
@@ -54,9 +81,13 @@ export async function countUnreadUserMessages(env, userId) {
     .prepare(`SELECT COUNT(*) AS n FROM user_messages WHERE user_id = ? AND read_at IS NULL`)
     .bind(String(userId))
     .first();
-  return row?.n || 0;
+  return /** @type {number} */ (row?.n) || 0;
 }
 
+/**
+ * @param {Env} env
+ * @param {number | string} userId
+ */
 export async function markAllRead(env, userId) {
   const db = await getDb(env);
   if (!db) return;

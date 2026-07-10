@@ -86,11 +86,48 @@ power/acc/PP. Don't hand-tune numbers.
   dependency-free slippy map over OSM raster tiles — attribution rendered,
   light usage), `js/game.js` (movement, spawn polling every 30 s or 90 m,
   panels), `js/battle.js` (renders the server's event list), `js/api.js`.
+- `src/tokemon-nav.js` — the street-view mode's PURE side: the bilingual
+  text-command grammar (`parseGoCommand` — EN+SV with the invariant-6
+  parity suite in its test file; the `sv` reply-language flag derives from
+  the SAME token sets the grammar matches on, so it can't drift), geodesy,
+  and `projectSpawns` (bearing→x, distance→y/scale placement of spawns
+  inside a Street View frame).
+- Street-view AR mode: `GET …/scene` (free `streetViewMetadata` coverage
+  probe → snap the camera to the pano's true position → billed-but-
+  edge-cached `runStreetViewPovCapture` frame → overlays projected from the
+  PANO position, `near` measured from the PLAYER position — the same 80 m
+  the encounter check enforces) and `POST …/go` (text navigation; move/look
+  are pure math and work with Maps off, "go to <place>" resolves via
+  `placesTextSearch` and rides the per-user `google_maps` knob, replies
+  follow the command's language). Client: `js/street.js` renders, the
+  command bar in `js/game.js` drives.
 - Entry point: the Games view in `public/js/account.js` (shelf from
   `GET /api/games`).
 
 ## Facts that cost time to establish
 
+- **The `hidden` attribute loses to any explicit `display`.** `#tk-battle`
+  sets `display:flex`, which beats the UA's `[hidden]{display:none}` — on
+  first ship the EMPTY battle overlay (dark glass + backdrop blur)
+  permanently covered the whole game (reported from an iPhone screenshot,
+  2026-07-09). Every hidden-toggled element that also sets its own
+  `display` needs an explicit `#el[hidden]{display:none}` companion rule.
+  iOS Safari also needs `-webkit-backdrop-filter` for the glass blur.
+- **WebKit drops content positioned past ~2^24 px (16.7M).** World-pixel
+  coordinates at zoom 17 reach 18.4M px at Stockholm's longitude — iOS
+  Safari silently dropped every tile <img> positioned there while emoji
+  markers survived on composited layers ("blank map, floating markers",
+  reported 2026-07-09; OSM itself served 200s). map.js therefore uses a
+  FLOATING ORIGIN — everything is positioned relative to an integer tile
+  origin near the viewport, re-anchored when the center drifts 30 tiles —
+  so no offset ever exceeds a few thousand px. Don't reintroduce absolute
+  world-pixel positioning. Verified headless via the scratchpad
+  map-check harness (real Chromium: 28/28 tiles, marker mid-screen).
+- Scene frames are billed per (pano, heading) but edge-cached in
+  googlemaps.js; the client only refetches on deliberate changes (mode
+  open, turns, commands, walk arrival — never GPS jitter). Street mode is
+  knob-gated (`googleMapsEnabled`) and returns a structured
+  `{available:false, reason}` the pane explains — never an error.
 - `Permissions-Policy` in `src/index.js` had `geolocation=()` — it now
   carries `geolocation=(self)` FOR the game. Don't "clean it up" back.
 - Spawn ids encode their derivation (`c:cx:cy:bucket:i`) — consuming a spawn

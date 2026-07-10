@@ -109,7 +109,7 @@ Server (`src/`):
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
-| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config, chatlogs, feedback |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
@@ -120,7 +120,8 @@ Server (`src/`):
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
 | `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine — see the **tokemon-game** skill |
-| `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1 |
+| `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
+| `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
@@ -207,10 +208,14 @@ server-side registry in `src/games.js` — a new game appears on the shelf by
 registering it, with no client shelf change). Tokemon
 (`public/games/tokemon/`) is the first game: a standalone authed page —
 `js/map.js` (a dependency-free slippy map over OSM raster tiles,
-attribution included), `js/game.js` (GPS/tap-to-walk movement, spawn
-polling, party/bag/dex panels), `js/battle.js` (plays back the server's
-battle event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game
-RULES live server-side (`src/tokemon.js`); the page only presents. The
+attribution included), `js/game.js` (movement — GPS follow, tap-to-walk,
+and the TEXT-COMMAND bar posting to `…/go` — spawn polling, mode toggle,
+party/bag/dex panels), `js/street.js` (street mode: renders `…/scene`'s
+Street View frame with the server-projected spawn overlays inside the
+imagery, turn buttons), `js/battle.js` (plays back the server's battle
+event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game RULES
+live server-side (`src/tokemon.js`, `src/tokemon-nav.js`); the page only
+presents. The
 site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
 
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`)
@@ -256,7 +261,10 @@ dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
 game core: type-chart parity vs the official matchups, Gen-1
 stat/damage/catch/escape formula checks against hand-computed values,
 spawn determinism + bucket scoping, battle flow incl. catching, fleeing,
-villain rewards, XP/level-up/evolution, save normalization).
+villain rewards, XP/level-up/evolution, save normalization), and
+`tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
+incl. the Swedish-parity suite, geodesy round-trips, spawn projection
+geometry).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -289,7 +297,10 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test   # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
+                    # + public/ (tsconfig.public.json, DOM lib) — strict,
+                    # opt-in per file via // @ts-check; both must stay clean
 ```
 
 This is additive to, not a replacement for, the live-verification
@@ -297,9 +308,10 @@ convention: anything touching an external provider or D1 (or, on
 the client side, the DOM/`<canvas>`/pdf.js) is still verified live,
 since that's where this project's actual bugs have come from
 historically (see the **live-verify** skill). The root `package.json`
-exists solely to run this suite — it carries no build step or
-dependencies of its own; deploy still reads `src/` and `public/` as
-plain JS/static assets via `npx wrangler deploy`.
+exists solely to run this suite and the type-checker — no build step,
+dev-only dependencies (`typescript`, `@cloudflare/workers-types`);
+deploy still reads `src/` and `public/` as plain JS/static assets via
+`npx wrangler deploy`.
 
 ## End-to-end tests (`tests/`)
 

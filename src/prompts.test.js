@@ -1,3 +1,9 @@
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
+// Structural assertions on every prompt builder in prompts.js — the exact
+// wording is load-bearing (anti-injection, independent-source, follow-up
+// resolution, decomposition, the JSON-only reinforcement toggle).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

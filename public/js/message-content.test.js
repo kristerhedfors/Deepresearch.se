@@ -1,3 +1,4 @@
+// Node tests for message-content.js: block builders, copy-conversation export, intent-gate prefilters, stall math.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

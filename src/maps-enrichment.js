@@ -1,3 +1,4 @@
+// @ts-check
 // The Google Maps enrichment runners — the MAPS side of the enrichment
 // registry (src/enrichment.js), split out 2026-07-09 when the maps
 // subsystem was refactored for modularity: src/googlemaps-text.js decides
@@ -5,8 +6,10 @@
 // pickLookup), src/googlemaps.js talks to Google (REST clients + the pure
 // context-block builders), and THIS module orchestrates one resolved
 // target into a reply: the lookups, the vision describe, the SSE events
-// (frames/embeds), and the appended block. One runner per target shape,
-// dispatched by runGoogleMapsEnrichment (exported); every runner keeps the standing
+// (frames/embeds), and the appended block. One runner per target shape —
+// address/place lookup, POV capture, map-view capture, jumps, nearby/
+// relocation searches, barrier crossings, the journey view — dispatched by
+// runGoogleMapsEnrichment (the only export); every runner keeps the standing
 // enrichment contract — silent when there is nothing to look up, a visible
 // step naming the service when there is, fail-soft in every branch.
 
@@ -46,6 +49,39 @@ import {
 import { reverseGeocode } from "./geocode.js";
 import { addUsage } from "./quota.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./types.js').Conversation} Conversation */
+/** The loose message shape conversation.js's helpers return. */
+/** @typedef {import('./conversation.js').Msg} Msg */
+/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** @typedef {import('./googlemaps-text.js').LookupTarget} LookupTarget */
+/** @typedef {import('./googlemaps-text.js').MapView} MapView */
+/** @typedef {import('./googlemaps-text.js').JumpTarget} JumpTarget */
+/** @typedef {import('./googlemaps-text.js').NearbyTarget} NearbyTarget */
+/** @typedef {import('./googlemaps-text.js').CrossBarrierTarget} CrossBarrierTarget */
+/** @typedef {import('./googlemaps-text.js').JourneyTarget} JourneyTarget */
+/** @typedef {import('./googlemaps-text.js').LatLng} LatLng */
+/**
+ * The per-request state the runners read/write: the shared RequestState
+ * plus the live-view inputs and the routing diagnostic this module owns.
+ * @typedef {import('./types.js').RequestState & {
+ *   mapView: MapView | null,
+ *   userLocation: LatLng | null,
+ *   mapsIntent?: string,
+ * }} MapsState
+ */
+/**
+ * One SSE writer (chat.js's emit). Typed as an open record — the Maps
+ * events carry forward-compatible extra fields (heading/pitch/kind/path…)
+ * beyond the base SseEvent union (see the sse-protocol skill).
+ * @typedef {(event: Record<string, any>) => void} EmitFn
+ */
+/** @typedef {(id: string, label: string) => void} StepFn */
+/** @typedef {(id: string, label: string, details?: string[]) => void} StepDoneFn */
+/** A frame entry for a streetview_frames strip (kind "map" = a road map). */
+/** @typedef {{ dir: string, label?: string, kind?: string, lat?: number, lng?: number, heading?: number, url: string }} DeckFrame */
+
 // The most images to hand the vision-describe helper in one request — the
 // client's own per-message image cap, which Berget vision models accept
 // reliably (a report of 5 attached frames drew a Berget 400).
@@ -53,16 +89,30 @@ const MAX_MAPS_IMAGES = 4;
 
 // Cardinal frame direction → degrees, for the per-frame `heading` the
 // image deck uses to reproduce a frame's exact view as a POV anchor.
+/** @type {Record<string, number>} */
 const DIR_HEADINGS = { north: 0, east: 90, south: 180, west: 270 };
+
+// ---- dispatch ---------------------------------------------------------------
 
 // Google Maps enrichment: resolve a location the message is about (a street
 // address parsed from it, or an attached photo's GPS coordinates) into Google
 // Maps data — Places (canonical place details + coordinates), Street View
 // (coverage + capture date), and a road map — and append it as one labeled
 // context block. Street View imagery is described by a vision helper model
-// (never attached to the answer model — see below). Stays silent when the
-// message names no address and carries no photo location; beyond one free
-// Street View metadata check an ordinary question costs nothing.
+// (never attached to the answer model — see runPlaceLookupEnrichment). Stays
+// silent when the message names no address and carries no photo location;
+// beyond one free Street View metadata check an ordinary question costs
+// nothing.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @returns {Promise<Msg[]>} the conversation, possibly with one appended block
+ */
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
   const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
   // How routing went, made visible (requested 2026-07-09 after a run of
@@ -137,6 +187,31 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
     return runJourneyEnrichment(env, log, emit, step, stepDone, conversation, state, target.journey);
   }
 
+  // The remaining shape: an address/place lookup (a typed address, a named
+  // place, an attached photo's coordinates, or the follow-up walk-back).
+  return runPlaceLookupEnrichment(env, log, emit, step, stepDone, conversation, state, target, question);
+}
+
+// ---- the runners (one per lookup-target shape) --------------------------------
+
+// The address/place-lookup path — the original enrichment shape: resolve the
+// target through Places + Street View metadata (runGoogleMapsLookup, edge-
+// cached), fetch the four cardinal frames + road map when a vision helper
+// can describe them, and append the assembled block. An empty lookup
+// degrades to an honest "Google returned no usable data" note.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {LookupTarget} target
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
+async function runPlaceLookupEnrichment(env, log, emit, step, stepDone, conversation, state, target, question) {
   // Fetch imagery when we have a vision helper to DESCRIBE it (and the message
   // isn't already carrying user images). We deliberately do NOT attach the
   // Street View frames to the ANSWER model — a report showed attaching several
@@ -152,7 +227,7 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   let result = null;
   try {
     result = await runGoogleMapsLookup(env, log, { ...target, fetchImages });
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.phase_failed", { error: err?.message || String(err) });
   }
   if (!result) {
@@ -181,8 +256,15 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
   // 400s on >2 images; that 400 blinded every describe until probed).
   // Street View frames first, road map last.
   const frames = Array.isArray(result.streetViewFrames) ? result.streetViewFrames : [];
-  const imageCap = Math.min(MAX_MAPS_IMAGES, getModelProfile(state.visionModel).maxImages || MAX_MAPS_IMAGES);
-  const images = [...frames.map((f) => f.url), result.staticMapImage].filter(Boolean).slice(0, imageCap);
+  // visionModel may be null here (getModelProfile then returns the default
+  // profile, exactly as for any unknown id) — the cast only quiets tsc.
+  const imageCap = Math.min(
+    MAX_MAPS_IMAGES,
+    getModelProfile(/** @type {string} */ (state.visionModel)).maxImages || MAX_MAPS_IMAGES,
+  );
+  const images = /** @type {string[]} */ (
+    [...frames.map((f) => f.url), result.staticMapImage].filter(Boolean)
+  ).slice(0, imageCap);
 
   // Describe the imagery with the vision helper so the answer model (vision or
   // not) gets a factual look-around as TEXT — this is what makes "describe this
@@ -284,12 +366,24 @@ export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, co
 // continue navigating from where they are (the static capture is only shown
 // when no embed key exists). No Places call. Fail-soft like every branch: a
 // failed capture degrades to an honest note, never a blocked chat.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {StreetViewPov} pov
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
 async function runPovEnrichment(env, log, emit, step, stepDone, conversation, state, pov, question) {
   step("maps", "Capturing your current Street View view…");
   let capture = null;
   try {
     capture = await runStreetViewPovCapture(env, log, pov);
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.pov_failed", { error: err?.message || String(err) });
   }
   const where = `${pov.lat}, ${pov.lng}, facing ${pov.heading}° (${compassDir(pov.heading)})`;
@@ -359,6 +453,18 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
 // vision helper, and renders a fresh interactive panorama there (locking
 // superseded embeds client-side). No panorama near the destination degrades
 // to an interactive MAP of it plus an honest block — never an invented view.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {JumpTarget} jump
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
 async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, state, jump, question) {
   step("maps", "Opening Street View at the requested position…");
   // The panorama search and the reverse geocode (Nominatim — free,
@@ -445,6 +551,18 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
 // (interactive map when no Street View covers it). Fail-soft in every
 // branch — a Places error or zero hits degrades to an honest block, never
 // a blocked chat.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {NearbyTarget} nearby
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
 async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversation, state, nearby, question) {
   step("maps", "Searching Google Places near the current position…");
   const anchor = { lat: nearby.lat, lng: nearby.lng };
@@ -472,22 +590,8 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   // route. No route (API off/unreachable) degrades to straight-line
   // samples; the block then reports straight-line figures only.
   const route = mode === "travel" ? await computeWalkingRoute(env, log, [anchor, dest]) : null;
-  let travelPoints = [];
-  if (mode === "travel") {
-    const spacing = Math.max(300, Math.round((route?.distanceMeters || straightM) / 5));
-    const samples =
-      route?.polyline?.length >= 2
-        ? samplePolyline(route.polyline, spacing, 4)
-        : straightM > 400
-          ? [{ lat: (anchor.lat + dest.lat) / 2, lng: (anchor.lng + dest.lng) / 2 }]
-          : [];
-    const fmt = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
-    travelPoints = [
-      { label: "start", lat: anchor.lat, lng: anchor.lng },
-      ...samples.map((p) => ({ label: `on the way — ≈${fmt(distanceMeters(anchor.lat, anchor.lng, p.lat, p.lng))} in`, ...p })),
-    ];
-  }
-  const headingAt = (i) => {
+  const travelPoints = mode === "travel" ? travelWaypoints(anchor, dest, route, straightM) : [];
+  const headingAt = (/** @type {number} */ i) => {
     const next = travelPoints[i + 1] || dest;
     return bearingDeg(travelPoints[i].lat, travelPoints[i].lng, next.lat, next.lng);
   };
@@ -521,6 +625,7 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   // The deck frames, in travel order: the along-the-way waypoints (travel
   // mode; consecutive samples that snapped to the SAME panorama collapse),
   // the destination, then the waypoint route map (search/travel).
+  /** @type {DeckFrame[]} */
   const frames = [];
   let lastPano = "";
   travelPoints.forEach((w, i) => {
@@ -571,7 +676,6 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       routeMapShown: !!routeImg,
       mode,
       route,
-      seriesShown: frames.filter((f) => f.kind !== "map").length,
     }),
   );
 }
@@ -587,6 +691,18 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
 // usual treatment: reverse-geocoded place name, vision describe, fresh
 // interactive embed. Fail-soft in every branch — no crossing found degrades
 // to an honest block plus a map of the current area, never an invented view.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {CrossBarrierTarget} ask
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
 async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, conversation, state, ask, question) {
   step("maps", `Looking for Street View on the other side of the ${ask.barrier}…`);
   const crossing = await runBarrierCrossing(env, log, ask);
@@ -623,9 +739,11 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
     // photo → where-it-all-is.
     routeMapImage(env, log, waypoints).catch(() => null),
   ]);
-  const frames = waypoints
-    .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, heading: bearing, url: captures[i]?.image || null }))
-    .filter((f) => f.url);
+  const frames = /** @type {DeckFrame[]} */ (
+    waypoints
+      .map((w, i) => ({ dir: "", label: w.label, lat: w.lat, lng: w.lng, heading: bearing, url: captures[i]?.image || null }))
+      .filter((f) => f.url)
+  );
   if (routeImg) {
     frames.push({ dir: "", label: "the crossing on the map", kind: "map", lat: after.lat, lng: after.lng, url: routeImg });
   }
@@ -679,6 +797,17 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
 // draws markers + polyline; older clients ignore the extra field — the
 // sse-protocol forward-compat rule), plus Google Routes walking distance/
 // time (fail-soft null → the block reports straight-line only, honestly).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {JourneyTarget} journey
+ * @returns {Promise<Msg[]>}
+ */
 async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation, state, journey) {
   step("maps", "Mapping the journey so far…");
   const points = journey.points;
@@ -712,7 +841,7 @@ async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation
   for (let i = 1; i < points.length; i++) {
     straight += distanceMeters(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
   }
-  const fmt = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  const fmt = (/** @type {number} */ m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
   stepDone(
     "maps",
     `Journey mapped — ${points.length} stops`,
@@ -734,12 +863,24 @@ async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation
 // exploring from where they are (the client locks the superseded map, same
 // as panoramas). Fail-soft like every branch: a failed capture degrades to
 // an honest note, never a blocked chat.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {EmitFn} emit
+ * @param {StepFn} step
+ * @param {StepDoneFn} stepDone
+ * @param {Conversation} conversation
+ * @param {MapsState} state
+ * @param {MapView} view
+ * @param {string} question
+ * @returns {Promise<Msg[]>}
+ */
 async function runMapViewEnrichment(env, log, emit, step, stepDone, conversation, state, view, question) {
   step("maps", "Capturing your current map view…");
   let capture = null;
   try {
     capture = await runMapViewCapture(env, log, view);
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.mapview_failed", { error: err?.message || String(err) });
   }
   const where = `${view.lat}, ${view.lng} (zoom ${view.zoom})`;
@@ -785,6 +926,37 @@ async function runMapViewEnrichment(env, log, emit, step, stepDone, conversation
   return withAppendedText(conversation, buildMapViewBlock(view, { description, mapShown }));
 }
 
+// Travel mode's photo waypoints: the start plus samples along the walking
+// route's road polyline (one every ~fifth of the trip, up to 4), each
+// labeled with its straight-line distance from the start. No route (Routes
+// API off/unreachable) degrades to a single straight-line midpoint for
+// trips over 400 m, or no intermediate stops at all — the caller's block
+// then reports straight-line figures only.
+/**
+ * @param {LatLng} anchor
+ * @param {LatLng} dest
+ * @param {import('./googlemaps.js').WalkingRoute | null} route
+ * @param {number} straightM straight-line anchor→destination distance in meters
+ * @returns {{ label: string, lat: number, lng: number }[]}
+ */
+function travelWaypoints(anchor, dest, route, straightM) {
+  const routePolyline = route?.polyline || [];
+  const spacing = Math.max(300, Math.round((route?.distanceMeters || straightM) / 5));
+  const samples =
+    routePolyline.length >= 2
+      ? samplePolyline(routePolyline, spacing, 4)
+      : straightM > 400
+        ? [{ lat: (anchor.lat + dest.lat) / 2, lng: (anchor.lng + dest.lng) / 2 }]
+        : [];
+  const fmt = (/** @type {number} */ m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  return [
+    { label: "start", lat: anchor.lat, lng: anchor.lng },
+    ...samples.map((p) => ({ label: `on the way — ≈${fmt(distanceMeters(anchor.lat, anchor.lng, p.lat, p.lng))} in`, ...p })),
+  ];
+}
+
+// ---- the vision-describe helper ------------------------------------------------
+
 // Runs Street View / map images through a vision-capable helper model to
 // produce a short factual description, so a NON-vision answer model (e.g. the
 // default Mistral Small) can still tell the user what the location looks like.
@@ -796,6 +968,16 @@ async function runMapViewEnrichment(env, log, emit, step, stepDone, conversation
 // state.visionTotals so chat.js bills them at that model's rate. Fully
 // fail-soft: any error yields "" and the block falls back to the keyless
 // Street View link.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {MapsState} state
+ * @param {string} intro
+ * @param {string[]} images data/HTTP image URLs, capped by the caller
+ * @param {string} [question]
+ * @param {{ mapOnly?: boolean }} [opts]
+ * @returns {Promise<string>} the description, or "" on any failure
+ */
 async function describeStreetView(env, log, state, intro, images, question = "", { mapOnly = false } = {}) {
   const ask = question
     ? `The user's current question about this place is: "${question}". First answer that question strictly from what is actually visible in ${mapOnly ? "this map image" : "these photos"} — if ${mapOnly ? "the map" : "the photos"} cannot answer it, say so plainly. Then briefly describe`
@@ -808,19 +990,22 @@ async function describeStreetView(env, log, state, intro, images, question = "",
     : "the building and its immediate surroundings factually in 2-4 sentences: architecture/materials, " +
       "apparent use (residential, commercial, industrial), approximate number of floors, notable features, and the " +
       "street setting. Only state what is visible; do not guess an address, names, or anything not shown.";
+  /** @type {import('./types.js').ContentPart[]} */
   const content = [
     {
       type: "text",
       text: `${intro} ${ask} ${detail}`,
     },
-    ...images.map((url) => ({ type: "image_url", image_url: { url } })),
+    ...images.map((url) => ({ type: /** @type {const} */ ("image_url"), image_url: { url } })),
   ];
 
   // Failover, not a single shot: production trace 2026-07-08 (describe_failed
   // "The operation was aborted") showed a loaded Mistral Medium missing the
   // 30s connect timeout while other vision models answered instantly — one
   // flaky model must not blind every answer about the imagery.
-  const candidates = state.visionModels?.length ? state.visionModels : [state.visionModel].filter(Boolean);
+  const candidates = state.visionModels?.length
+    ? state.visionModels
+    : [state.visionModel].filter((m) => typeof m === "string");
   for (const model of candidates) {
     try {
       const upstream = await chatCompletion(env, [{ role: "user", content }], { model });
@@ -854,7 +1039,7 @@ async function describeStreetView(env, log, state, intro, images, question = "",
         return out;
       }
       log.warn("googlemaps.describe_failed", { model, images: images.length, error: "empty completion" });
-    } catch (err) {
+    } catch (/** @type {any} */ err) {
       log.warn("googlemaps.describe_failed", { model, error: err?.message || String(err) });
     }
   }

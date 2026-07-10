@@ -1,3 +1,4 @@
+// @ts-check
 // The games subsystem's REGISTRY and dispatch seam — the games counterpart
 // of src/providers.js (LLM providers) and src/search-sources.js (research
 // sources): one declarative entry per game, and everything outside this
@@ -26,6 +27,28 @@
 import { jsonResponse } from "./http.js";
 import { handleTokemon } from "./tokemon-api.js";
 
+/**
+ * The authenticated caller, as resolved by the identity gate in index.js
+ * (src/auth.js) — game handlers key persistence on `id`.
+ * @typedef {import('./settings.js').Identity} GameIdentity
+ */
+
+/**
+ * One registry entry — the full contract a game implements (each field is
+ * described in the header above).
+ * @typedef {Object} GameEntry
+ * @property {string} id
+ * @property {string} name
+ * @property {string} emoji
+ * @property {string} tagline
+ * @property {string} description
+ * @property {string} path
+ * @property {(env: import('./types.js').Env) => boolean} available
+ * @property {string} requires
+ * @property {(request: Request, env: import('./types.js').Env, url: URL, log: import('./types.js').Logger, identity: GameIdentity, subpath: string) => Response | Promise<Response>} handle
+ */
+
+/** @type {GameEntry[]} */
 export const GAMES = [
   {
     id: "tokemon",
@@ -43,8 +66,12 @@ export const GAMES = [
   },
 ];
 
-// The shelf payload for one game — everything the client needs to render a
-// row, never the handler.
+/**
+ * The shelf payload for one game — everything the client needs to render a
+ * row, never the handler.
+ * @param {GameEntry} game
+ * @param {import('./types.js').Env} env
+ */
 function gameInfo(game, env) {
   return {
     id: game.id,
@@ -58,16 +85,23 @@ function gameInfo(game, env) {
   };
 }
 
-// GET /api/games            → {games:[...]} (the shelf)
-// *   /api/games/<id>/<sub> → the game's own API
+/**
+ * GET /api/games            → {games:[...]} (the shelf)
+ * *   /api/games/<id>/<sub> → the game's own API
+ * @param {Request} request
+ * @param {import('./types.js').Env} env
+ * @param {URL} url
+ * @param {import('./types.js').Logger} log
+ * @param {GameIdentity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleGames(request, env, url, log, identity) {
   const m = /^\/api\/games\/?([^/]*)\/?(.*)$/.exec(url.pathname);
-  const gameId = m?.[1] || "";
-  if (!gameId) {
+  if (!m || !m[1]) {
     if (request.method !== "GET") return jsonResponse({ error: "Method not allowed." }, 405);
     return jsonResponse({ games: GAMES.map((g) => gameInfo(g, env)) });
   }
-  const game = GAMES.find((g) => g.id === gameId);
+  const game = GAMES.find((g) => g.id === m[1]);
   if (!game) return jsonResponse({ error: "No such game." }, 404);
   return game.handle(request, env, url, log, identity, m[2]);
 }

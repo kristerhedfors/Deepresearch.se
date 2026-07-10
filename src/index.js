@@ -1,3 +1,4 @@
+// @ts-check
 // Cloudflare Worker for Deepresearch.se — entrypoint.
 //
 // Responsibilities: assign a request id, resolve the caller's identity
@@ -6,6 +7,9 @@
 // session cookie, and emit structured request logs. wrangler.toml sets
 // run_worker_first = true so auth also covers the assets, which are served
 // via env.ASSETS.
+//
+// Gate ordering (load-bearing, enforced in route/routeAuthed):
+//   identity → terms acceptance → approval → handlers.
 //
 // Module map:
 //   src/auth.js      — identity: session cookie + admin break-glass
@@ -55,7 +59,22 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./auth.js').Identity} Identity */
+/**
+ * What `route` hands back to `fetch`: the response, plus the resolved
+ * identity (when there is one) so the session cookie can slide.
+ * @typedef {{ response: Response, identity?: Identity }} RouteResult
+ */
+
 export default {
+  /**
+   * @param {Request} request
+   * @param {Env} env
+   * @param {ExecutionContext} ctx
+   * @returns {Promise<Response>}
+   */
   async fetch(request, env, ctx) {
     const startedAt = Date.now();
     const url = new URL(request.url);
@@ -83,8 +102,8 @@ export default {
       return out;
     } catch (err) {
       log.error("request.failed", {
-        error: err?.message || String(err),
-        stack: err?.stack,
+        error: /** @type {any} */ (err)?.message || String(err),
+        stack: /** @type {any} */ (err)?.stack,
         duration_ms: Date.now() - startedAt,
       });
       return withRequestId(
@@ -106,6 +125,11 @@ export default {
 // story pages plus everything they need to render — the promo video, the
 // markdown renderer, and the vendored libs (all public on GitHub anyway).
 // The app itself and every /api/* stay gated.
+/**
+ * @param {URL} url
+ * @param {string} method
+ * @returns {boolean}
+ */
 function isPublicAsset(url, method) {
   if (method !== "GET" && method !== "HEAD") return false;
   return (
@@ -138,6 +162,12 @@ function isPublicAsset(url, method) {
 // changed) keep a short real TTL. The Cloudflare EDGE cache is unaffected
 // and safe — it is content-addressed per deploy.
 const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {string | null} [overrideUrl] serve this path instead of the request's
+ * @returns {Promise<Response>}
+ */
 async function serveAsset(request, env, overrideUrl = null) {
   const res = await env.ASSETS.fetch(overrideUrl ? new Request(overrideUrl, request) : request);
   const pathname = new URL(overrideUrl || request.url).pathname;
@@ -151,8 +181,18 @@ async function serveAsset(request, env, overrideUrl = null) {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
-// Returns {response, identity} — identity only when resolved, so the
-// caller can slide the session cookie.
+/**
+ * Top-level routing: config sanity, the public (unauthenticated) surface,
+ * then the identity gate ahead of everything else. Returns the identity
+ * only when resolved, so the caller can slide the session cookie.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ * @returns {Promise<RouteResult>}
+ */
 async function route(request, env, url, log, ctx, requestId) {
   // Hard configuration requirement: SESSION_SECRET must be set. It is the sole
   // key that signs/verifies session and OAuth-state cookies — the legacy
@@ -208,6 +248,18 @@ async function route(request, env, url, log, ctx, requestId) {
   return { response, identity };
 }
 
+/**
+ * Routing behind the identity gate: logout, then the terms and approval
+ * gates (in that order), then the API/admin/asset handlers.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ * @returns {Promise<Response>}
+ */
 async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/logout" && request.method === "POST") {
     return new Response(null, {
@@ -216,30 +268,9 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     });
   }
 
-  // Terms gate: every account must accept the terms of use once, right
-  // after first sign-in — before the approval wait, the app, or any API.
-  // The break-glass identity has no user row to record acceptance on and
-  // is exempt (it's the operator). /build/ (About) and /story/ (build
-  // history) stay readable pre-acceptance so the full text the terms
-  // summarize is one tap away, and /logout is handled above. Static
-  // assets (js/css/vendor/markdown files, matched by file extension)
-  // always pass through — they're inert code, not gated content, and
-  // /build/ + /story/ need their own scripts and history.md to render.
-  if (identity.user && !identity.user.terms_accepted_at) {
-    if (url.pathname === "/terms/accept" && request.method === "POST") {
-      await acceptTerms(env, identity.user.id);
-      return new Response(null, { status: 303, headers: { Location: "/" } });
-    }
-    if (url.pathname.startsWith("/api/")) {
-      return jsonResponse({ error: "The terms of use must be accepted first.", terms: true }, 403);
-    }
-    const isStaticAsset = request.method === "GET" && /\.[a-z0-9]+$/i.test(url.pathname);
-    const isAllowedPage = request.method === "GET" && /^\/(build|story)(\/|$)/.test(url.pathname);
-    if (isStaticAsset || isAllowedPage) {
-      return serveAsset(request, env);
-    }
-    return htmlResponse(termsPage(identity), 200);
-  }
+  // ---- terms gate, then approval gate (order is load-bearing) ------------
+  const termsResponse = await termsGate(request, env, url, identity);
+  if (termsResponse) return termsResponse;
 
   // Approval gate: pending users are parked on the waiting page — no APIs,
   // no app, no admin — until the admin flips them to active. The page
@@ -250,6 +281,73 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     }
     return htmlResponse(pendingPage(identity), 200);
   }
+
+  const apiResponse = await routeApi(request, env, url, log, identity, ctx, requestId);
+  if (apiResponse) return apiResponse;
+
+  // ---- admin-only: the JSON API and the admin UI assets ------------------
+  if (url.pathname.startsWith("/api/admin/")) {
+    if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
+    return handleAdminApi(request, env, url, log, identity);
+  }
+  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
+    if (identity.role !== "admin") {
+      return new Response(null, { status: 302, headers: { Location: "/" } });
+    }
+    return serveAsset(request, env);
+  }
+
+  return serveAsset(request, env);
+}
+
+/**
+ * Terms gate: every account must accept the terms of use once, right
+ * after first sign-in — before the approval wait, the app, or any API.
+ * The break-glass identity has no user row to record acceptance on and
+ * is exempt (it's the operator). /build/ (About) and /story/ (build
+ * history) stay readable pre-acceptance so the full text the terms
+ * summarize is one tap away, and /logout is handled before this gate.
+ * Static assets (js/css/vendor/markdown files, matched by file extension)
+ * always pass through — they're inert code, not gated content, and
+ * /build/ + /story/ need their own scripts and history.md to render.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Identity} identity
+ * @returns {Promise<Response | null>} null when the gate lets the request through
+ */
+async function termsGate(request, env, url, identity) {
+  if (!identity.user || identity.user.terms_accepted_at) return null;
+
+  if (url.pathname === "/terms/accept" && request.method === "POST") {
+    await acceptTerms(env, identity.user.id);
+    return new Response(null, { status: 303, headers: { Location: "/" } });
+  }
+  if (url.pathname.startsWith("/api/")) {
+    return jsonResponse({ error: "The terms of use must be accepted first.", terms: true }, 403);
+  }
+  const isStaticAsset = request.method === "GET" && /\.[a-z0-9]+$/i.test(url.pathname);
+  const isAllowedPage = request.method === "GET" && /^\/(build|story)(\/|$)/.test(url.pathname);
+  if (isStaticAsset || isAllowedPage) {
+    return serveAsset(request, env);
+  }
+  return htmlResponse(termsPage(identity), 200);
+}
+
+/**
+ * The signed-in (non-admin-gated) API surface, one route per handler
+ * module. Returns null when nothing matched, so routeAuthed can continue
+ * to the admin routes and the asset fallback.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ * @returns {Promise<Response | null>}
+ */
+async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/chat" && request.method === "POST") {
     return handleChat(request, env, log, identity, ctx, requestId);
   }
@@ -326,22 +424,14 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);
   }
-
-  // Admin-only: the JSON API and the admin UI assets.
-  if (url.pathname.startsWith("/api/admin/")) {
-    if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
-    return handleAdminApi(request, env, url, log, identity);
-  }
-  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
-    if (identity.role !== "admin") {
-      return new Response(null, { status: 302, headers: { Location: "/" } });
-    }
-    return serveAsset(request, env);
-  }
-
-  return serveAsset(request, env);
+  return null;
 }
 
+/**
+ * @param {string} html
+ * @param {number} status
+ * @returns {Response}
+ */
 function htmlResponse(html, status) {
   return new Response(html, {
     status,
@@ -418,6 +508,11 @@ const SECURITY_HEADERS = {
 // Every response carries x-request-id so a user report can be correlated
 // with the matching log entries, plus the site-wide security headers. Clone
 // first: asset responses are immutable.
+/**
+ * @param {Response} response
+ * @param {string} requestId
+ * @returns {Response}
+ */
 function withRequestId(response, requestId) {
   const out = new Response(response.body, response);
   out.headers.set("x-request-id", requestId);

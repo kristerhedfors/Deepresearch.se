@@ -32,6 +32,13 @@ let onLoad = () => {};
 let onNew = () => {};
 let openPanelId = null;
 
+/**
+ * One-time wiring from app.js: the create form, the panel overlay, the
+ * header chip, and the title-rename gesture.
+ * @param {{onNew?: (keepProject?: boolean) => void,
+ *   onLoad?: (record: object) => void}} [opts]  same callbacks the history
+ *   sidebar gets — onNew(true) keeps the active project for the fresh chat
+ */
 export function initProjectsUi(opts = {}) {
   onLoad = opts.onLoad || onLoad;
   onNew = opts.onNew || onNew;

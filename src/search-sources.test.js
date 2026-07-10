@@ -1,3 +1,8 @@
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
+// Covers search-sources.js: the SEARCH_SOURCES entry contract, the
+// concatenated planner prompt notes, and platform diversity keying.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { SEARCH_SOURCES, platformDiversityKey, sourcePromptNotes } from "./search-sources.js";

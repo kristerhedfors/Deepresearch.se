@@ -1,3 +1,4 @@
+// Node tests for rag.js's pure core: chunking coverage/overlap properties, cosine top-k, the f32⇄b64 vector codec.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

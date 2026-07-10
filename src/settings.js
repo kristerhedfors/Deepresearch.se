@@ -1,7 +1,8 @@
-// Per-user settings (users.settings_json, additive D1 column) — currently a
-// single knob: `server_history`, default ON (a product decision made as the
-// feature shipped: cloud history is the normal mode, switching it OFF is
-// the explicit per-account opt-out).
+// @ts-check
+// Per-user settings (users.settings_json, additive D1 column) — four knobs
+// today (see DEFAULTS below). The founding knob is `server_history`, default
+// ON (a product decision made as the feature shipped: cloud history is the
+// normal mode, switching it OFF is the explicit per-account opt-out).
 //
 // OFF is the original local-only posture: conversations live only in the
 // browser's encrypted IndexedDB, attached files in its OPFS, the RAG index
@@ -29,6 +30,29 @@ import { jsonResponse } from "./http.js";
 import { shodanAvailable } from "./shodan.js";
 import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+
+/**
+ * A D1 `users` row as it rides on the identity (src/accounts.js). Loose by
+ * design: columns are additive and several are nullable.
+ * @typedef {{ id: number | string, email?: string | null, name?: string | null, role?: string, status?: string, quota_json?: string | null, settings_json?: string | null }} UserRow
+ */
+/**
+ * The resolved request identity (src/auth.js `identify`): either a D1-backed
+ * account (`user` set) or the break-glass admin (`isSecretAdmin: true`, no
+ * user row — which is why per-user settings don't apply to it).
+ * @typedef {{ id: string, role: "admin" | "user", email: string | null, name: string | null, pending?: boolean, isSecretAdmin?: boolean, user?: UserRow | null }} Identity
+ */
+/**
+ * The effective per-account knob state parseSettings coerces to.
+ * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean }} Settings
+ */
+/**
+ * What the server can offer this identity right now (see featureAvailability).
+ * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean }} FeatureAvailability
+ */
+
 // Four knobs today:
 //  - server_history: default ON  (only an explicit stored `false` opts out).
 //  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
@@ -51,7 +75,12 @@ const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, 
 // otherwise; shodan_mcp and google_maps are off unless an explicit stored
 // `true` enables them (their opposite defaults are why each tests against its
 // own literal). Exported for unit tests.
+/**
+ * @param {unknown} json the stored settings_json string (or a pre-parsed object)
+ * @returns {Settings}
+ */
 export function parseSettings(json) {
+  /** @type {any} */
   let raw = {};
   try {
     const parsed = typeof json === "string" ? JSON.parse(json) : json;
@@ -71,6 +100,11 @@ export function parseSettings(json) {
 // needs the R2 binding plus a D1 user row to hang the setting on (the
 // break-glass identity has neither a row nor a personal history to sync);
 // `rag` additionally needs the Vectorize binding for server-side retrieval.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {{ storage: boolean, rag: boolean }}
+ */
 export function storageAvailability(env, identity) {
   const storage = !!(env.STORAGE && identity.user);
   return { storage, rag: !!(storage && env.RAG_INDEX) };
@@ -82,6 +116,11 @@ export function storageAvailability(env, identity) {
 // a D1 user row to persist the knob against (break-glass has none). Kept
 // separate from storageAvailability so that function's tested shape stays
 // stable.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {FeatureAvailability}
+ */
 export function featureAvailability(env, identity) {
   return {
     ...storageAvailability(env, identity),
@@ -93,6 +132,11 @@ export function featureAvailability(env, identity) {
   };
 }
 
+/**
+ * The identity's stored settings (defaults when there is no user row).
+ * @param {Identity | null | undefined} identity
+ * @returns {Settings}
+ */
 export function getSettings(identity) {
   if (!identity?.user) return { ...DEFAULTS };
   return parseSettings(identity.user.settings_json);
@@ -101,6 +145,11 @@ export function getSettings(identity) {
 // Convenience for gating the storage/RAG endpoints: the caller's current
 // server_history state, availability included (a knob left on in D1 after
 // the R2 binding was removed must read as off).
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
 export function serverHistoryEnabled(env, identity) {
   return storageAvailability(env, identity).storage && getSettings(identity).server_history;
 }
@@ -109,6 +158,11 @@ export function serverHistoryEnabled(env, identity) {
 // server must actually be able to run it (SHODAN_API_KEY set, real user
 // row). A knob left on in D1 after the secret was removed reads as off, so
 // the pipeline never attempts a lookup it can't perform.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
 export function shodanEnabled(env, identity) {
   return featureAvailability(env, identity).shodan && getSettings(identity).shodan_mcp;
 }
@@ -116,6 +170,11 @@ export function shodanEnabled(env, identity) {
 // The effective Google Maps state for a request: the knob on AND the server
 // able to run it (GOOGLE_MAPS_API_KEY set, real user row). A knob left on in
 // D1 after the secret was removed reads as off.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
 export function googleMapsEnabled(env, identity) {
   return featureAvailability(env, identity).google_maps && getSettings(identity).google_maps;
 }
@@ -124,10 +183,20 @@ export function googleMapsEnabled(env, identity) {
 // behind it. Gates creating new entries (src/feedback.js) — replying on an
 // existing thread deliberately does NOT check this, so a dialogue survives
 // the knob being switched off mid-conversation.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
 export function feedbackEnabled(env, identity) {
   return featureAvailability(env, identity).feedback && getSettings(identity).feedback_mode;
 }
 
+/**
+ * @param {Env} env
+ * @param {number | string} userId
+ * @param {Settings} settings
+ */
 async function saveSettings(env, userId, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
@@ -144,6 +213,11 @@ async function saveSettings(env, userId, settings) {
 // 503s. shodan_mcp is likewise forced off when the feature is unavailable
 // (no SHODAN_API_KEY / break-glass), so the UI never shows a knob that
 // would do nothing.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @param {Settings} settings
+ */
 function settingsPayload(env, identity, settings) {
   const available = featureAvailability(env, identity);
   return {
@@ -162,6 +236,11 @@ function settingsPayload(env, identity, settings) {
 }
 
 // GET /api/settings
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
@@ -172,10 +251,18 @@ export async function handleSettingsGet(env, identity) {
 // R2 binding, Shodan needs the SHODAN_API_KEY secret, feedback needs D1 —
 // so a knob can't be switched on with nothing behind it (which would
 // silently lose data or do nothing).
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
   }
+  /** @type {any} */
   let body;
   try {
     body = await request.json();

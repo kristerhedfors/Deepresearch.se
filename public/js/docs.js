@@ -1,3 +1,4 @@
+// @ts-check
 // Client-side document parsing for attachments: pdf, docx, md, txt.
 // Everything runs in the browser — file contents never touch our server
 // except as the extracted text (and, since metadata extraction below, a
@@ -22,21 +23,36 @@
 
 const EXT_RE = /\.(pdf|docx|md|txt)$/i;
 
+/**
+ * One tracked change or reviewer comment pulled out of a docx.
+ * @typedef {{author: string, date: string, text: string}} DocxRevision
+ */
+
+/** @param {File} file */
 export function isParsableDoc(file) {
   return EXT_RE.test(file.name);
 }
 
+/**
+ * @param {File} file
+ * @returns {string} lowercased extension, "" when not parsable
+ */
 export function docExt(file) {
   return (file.name.match(EXT_RE)?.[1] || "").toLowerCase();
 }
 
-// Returns {text, truncated, metadata, hasTrackedDeletions}. metadata is a
-// formatted summary string or null (txt/md never have any; pdf/docx do
-// when the file actually carries some). hasTrackedDeletions flags the one
-// docx case worth calling out as sensitive on its own — unaccepted
-// deletions are content someone tried to remove, physically still present
-// in the file (see docs.js's header comment) — as opposed to routine
-// author/date properties. Throws with a user-presentable message.
+/**
+ * Parse one attachment. metadata is a formatted summary string or null
+ * (txt/md never have any; pdf/docx do when the file actually carries some).
+ * hasTrackedDeletions flags the one docx case worth calling out as
+ * sensitive on its own — unaccepted deletions are content someone tried to
+ * remove, physically still present in the file (see the header comment) —
+ * as opposed to routine author/date properties. Throws with a
+ * user-presentable message.
+ * @param {File} file
+ * @param {number} maxChars inline cap; longer text is cut and flagged truncated
+ * @returns {Promise<{text: string, truncated: boolean, metadata: string | null, hasTrackedDeletions: boolean}>}
+ */
 export async function parseDocFile(file, maxChars) {
   const ext = docExt(file);
   let text, metadata = null, hasTrackedDeletions = false;
@@ -57,9 +73,12 @@ export async function parseDocFile(file, maxChars) {
 
 // ---- PDF (lazy pdf.js) -----------------------------------------------------
 
+/** @type {Promise<any> | null} */
 let pdfjsPromise = null;
 function loadPdfjs() {
   if (!pdfjsPromise) {
+    // Served URL, not a package specifier — the typechecker can't resolve it.
+    // @ts-ignore
     pdfjsPromise = import("/vendor/pdfjs/pdf.min.mjs").then((m) => {
       m.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
       return m;
@@ -68,10 +87,16 @@ function loadPdfjs() {
   return pdfjsPromise;
 }
 
+/**
+ * @param {File} file
+ * @param {number} maxChars
+ * @returns {Promise<{text: string, metadata: string | null}>}
+ */
 async function parsePdf(file, maxChars) {
   const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
   let out = "";
+  /** @type {string | null} */
   let metadata = null;
   try {
     const meta = await doc.getMetadata().catch(() => null);
@@ -79,7 +104,7 @@ async function parsePdf(file, maxChars) {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
       const tc = await page.getTextContent();
-      out += tc.items.map((it) => it.str).join(" ") + "\n\n";
+      out += tc.items.map((/** @type {{str: string}} */ it) => it.str).join(" ") + "\n\n";
       // A little slack past the cap so the caller can mark truncation.
       if (out.length > maxChars + 2000) break;
     }
@@ -89,8 +114,12 @@ async function parsePdf(file, maxChars) {
   return { text: out, metadata };
 }
 
-// PDF's Info dictionary — Title/Author/Subject/Keywords/Creator/Producer
-// plus CreationDate/ModDate in PDF's own "D:YYYYMMDDHHmmSS" date format.
+/**
+ * PDF's Info dictionary — Title/Author/Subject/Keywords/Creator/Producer
+ * plus CreationDate/ModDate in PDF's own "D:YYYYMMDDHHmmSS" date format.
+ * @param {Record<string, any> | null | undefined} info pdf.js getMetadata().info
+ * @returns {string | null}
+ */
 export function formatPdfMetadata(info) {
   if (!info) return null;
   const lines = [];
@@ -107,6 +136,10 @@ export function formatPdfMetadata(info) {
   return lines.length ? lines.join("\n") : null;
 }
 
+/**
+ * @param {unknown} s
+ * @returns {string | null}
+ */
 function parsePdfDate(s) {
   if (typeof s !== "string") return null;
   const m = s.match(/^D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?/);
@@ -117,14 +150,20 @@ function parsePdfDate(s) {
 
 // ---- DOCX (minimal ZIP + document.xml + docProps + comments) --------------
 
+/** @param {Uint8Array<ArrayBuffer>} bytes */
 async function inflateRaw(bytes) {
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-// Reads whichever of `wanted` (a Set of zip entry names) are actually
-// present, returning Map<name, Uint8Array>. Entries not in the archive are
-// simply absent — most docx files have no comments.xml, for instance.
+/**
+ * Reads whichever of `wanted` zip entry names are actually present.
+ * Entries not in the archive are simply absent from the result — most docx
+ * files have no comments.xml, for instance.
+ * @param {File} file
+ * @param {Set<string>} wanted
+ * @returns {Promise<Map<string, Uint8Array>>} entry name → decompressed bytes
+ */
 async function readZipEntries(file, wanted) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const dv = new DataView(buf.buffer);
@@ -138,6 +177,7 @@ async function readZipEntries(file, wanted) {
   let off = dv.getUint32(eocd + 16, true); // central directory offset
   const count = dv.getUint16(eocd + 10, true);
 
+  /** @type {Map<string, Uint8Array>} */
   const out = new Map();
   for (let n = 0; n < count && out.size < wanted.size; n++) {
     if (dv.getUint32(off, true) !== 0x02014b50) break;
@@ -168,6 +208,10 @@ const WANTED_PARTS = new Set([
   "word/comments.xml",
 ]);
 
+/**
+ * @param {File} file
+ * @returns {Promise<{text: string, metadata: string | null, hasTrackedDeletions: boolean}>}
+ */
 async function parseDocx(file) {
   const entries = await readZipEntries(file, WANTED_PARTS);
   const documentBytes = entries.get("word/document.xml");
@@ -188,14 +232,20 @@ async function parseDocx(file) {
   };
 }
 
-// Removes <w:del>...</w:del> blocks (deleted-but-still-present text) from
-// the main flow entirely, collecting their content separately; unwraps
-// <w:ins>...</w:ins> blocks (keeping their content in the main flow, same
-// as Word's own rendering of an unaccepted insertion) while also recording
-// who inserted what. Must run on the RAW xml (tags intact) before
-// docxXmlToText's generic tag-stripping.
+/**
+ * Removes <w:del>...</w:del> blocks (deleted-but-still-present text) from
+ * the main flow entirely, collecting their content separately; unwraps
+ * <w:ins>...</w:ins> blocks (keeping their content in the main flow, same
+ * as Word's own rendering of an unaccepted insertion) while also recording
+ * who inserted what. Must run on the RAW xml (tags intact) before
+ * docxXmlToText's generic tag-stripping.
+ * @param {string} xml word/document.xml
+ * @returns {{mainXml: string, insertions: DocxRevision[], deletions: DocxRevision[]}}
+ */
 function extractTrackedChanges(xml) {
+  /** @type {DocxRevision[]} */
   const deletions = [];
+  /** @type {DocxRevision[]} */
   const insertions = [];
 
   let mainXml = xml.replace(/<w:del\b([^>]*)>([\s\S]*?)<\/w:del>/g, (_, attrs, inner) => {
@@ -213,7 +263,12 @@ function extractTrackedChanges(xml) {
   return { mainXml, insertions, deletions };
 }
 
+/**
+ * @param {string} xml word/comments.xml
+ * @returns {DocxRevision[]}
+ */
 function extractComments(xml) {
+  /** @type {DocxRevision[]} */
   const comments = [];
   for (const m of xml.matchAll(/<w:comment\b([^>]*)>([\s\S]*?)<\/w:comment>/g)) {
     const text = [...m[2].matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((mm) => mm[1]).join("");
@@ -222,17 +277,27 @@ function extractComments(xml) {
   return comments;
 }
 
+/**
+ * @param {string} attrs a tag's raw attribute string
+ * @param {string} name w:-namespaced attribute local name
+ */
 function xmlAttr(attrs, name) {
   return attrs.match(new RegExp(`w:${name}="([^"]*)"`))?.[1] || "";
 }
 
-// Matches both namespace-prefixed tags (core.xml: <dc:creator>) and
-// unprefixed ones (app.xml: <Company>).
+/**
+ * Matches both namespace-prefixed tags (core.xml: <dc:creator>) and
+ * unprefixed ones (app.xml: <Company>).
+ * @param {string} xml
+ * @param {string} localName
+ * @returns {string | null}
+ */
 function extractTagText(xml, localName) {
   const m = xml.match(new RegExp(`<(?:[\\w]+:)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w]+:)?${localName}>`));
   return m ? decodeXmlEntities(m[1].trim()) || null : null;
 }
 
+/** @param {string} xml docProps/core.xml */
 function extractCoreProps(xml) {
   return {
     creator: extractTagText(xml, "creator"),
@@ -246,6 +311,7 @@ function extractCoreProps(xml) {
   };
 }
 
+/** @param {string} xml docProps/app.xml */
 function extractAppProps(xml) {
   return {
     company: extractTagText(xml, "Company"),
@@ -258,7 +324,18 @@ function extractAppProps(xml) {
 // pathological review history shouldn't blow the per-doc character budget.
 const MAX_LISTED = 20;
 
+/**
+ * @param {{
+ *   coreProps: Partial<ReturnType<typeof extractCoreProps>>,
+ *   appProps: Partial<ReturnType<typeof extractAppProps>>,
+ *   insertions: DocxRevision[],
+ *   deletions: DocxRevision[],
+ *   comments: DocxRevision[],
+ * }} parts
+ * @returns {string | null}
+ */
 function formatDocxMetadata({ coreProps, appProps, insertions, deletions, comments }) {
+  /** @type {string[]} */
   const lines = [];
   if (coreProps.creator) lines.push(`Author: ${coreProps.creator}`);
   if (coreProps.lastModifiedBy && coreProps.lastModifiedBy !== coreProps.creator) {
@@ -274,7 +351,7 @@ function formatDocxMetadata({ coreProps, appProps, insertions, deletions, commen
   if (appProps.manager) lines.push(`Manager: ${appProps.manager}`);
   if (appProps.application) lines.push(`Created with: ${appProps.application}`);
 
-  const listBlock = (label, items) => {
+  const listBlock = (/** @type {string} */ label, /** @type {DocxRevision[]} */ items) => {
     lines.push("", `${label} (${items.length}):`);
     for (const it of items.slice(0, MAX_LISTED)) {
       const who = it.author || "Unknown";
@@ -290,6 +367,7 @@ function formatDocxMetadata({ coreProps, appProps, insertions, deletions, commen
   return lines.length ? lines.join("\n") : null;
 }
 
+/** @param {string} s */
 function decodeXmlEntities(s) {
   return s
     .replace(/&amp;/g, "&")
@@ -300,6 +378,7 @@ function decodeXmlEntities(s) {
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)));
 }
 
+/** @param {string} xml tracked-changes-stripped word/document.xml */
 function docxXmlToText(xml) {
   return decodeXmlEntities(
     xml

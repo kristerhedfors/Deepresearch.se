@@ -1,3 +1,4 @@
+// @ts-check
 // D1 database access. The binding is optional: until the database exists
 // (npx wrangler d1 create deepresearch-se + uncomment the block in
 // wrangler.toml) `getDb` returns null and every account/quota feature
@@ -132,20 +133,25 @@ const ALTERS = [
 
 let migrated = false; // per isolate
 
-// Returns the D1 binding with schema applied, or null when the database is
-// not configured. Callers must handle null (feature off, not an error).
+/**
+ * Returns the D1 binding with schema applied, or null when the database is
+ * not configured. Callers must handle null (feature off, not an error).
+ * @param {import('./types.js').Env} env
+ * @returns {Promise<D1Database | null>}
+ */
 export async function getDb(env) {
-  if (!env.DB) return null;
+  const db = env.DB;
+  if (!db) return null;
   if (!migrated) {
     const statements = SCHEMA.split(";")
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => env.DB.prepare(s));
-    await env.DB.batch(statements);
+      .map((s) => db.prepare(s));
+    await db.batch(statements);
     for (const alter of ALTERS) {
-      await env.DB.prepare(alter).run().catch(() => {});
+      await db.prepare(alter).run().catch(() => {});
     }
     migrated = true;
   }
-  return env.DB;
+  return db;
 }

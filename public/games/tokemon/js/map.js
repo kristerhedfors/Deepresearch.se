@@ -6,6 +6,7 @@
 
 const TILE = 256;
 
+// Web Mercator world-pixel projections at zoom z (and their inverses).
 export const lngToX = (lng, z) => ((lng + 180) / 360) * TILE * 2 ** z;
 export const latToY = (lat, z) => {
   const r = (lat * Math.PI) / 180;
@@ -17,8 +18,17 @@ export const yToLat = (y, z) => {
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 };
 
-// createMap(container, {zoom, onTap}) → {setCenter, getCenter, setMarkers, destroy}
-// Markers: [{id, lat, lng, html, cls, onClick}] — diffed by id.
+/**
+ * @param {HTMLElement} container  Fills this element; pointer events are
+ *   claimed for drag-to-pan and tap-to-walk.
+ * @param {{zoom?: number, onTap?: (ll: {lat: number, lng: number}) => void}} [opts]
+ * @returns {{
+ *   setCenter: (lat: number, lng: number) => void,
+ *   getCenter: () => {lat: number, lng: number},
+ *   setMarkers: (list: Array<{id: string, lat: number, lng: number, html: string, cls?: string, onClick?: (m: object) => void}>) => void,
+ *   destroy: () => void,
+ * }} Markers are diffed by id, so callers re-send the full list each render.
+ */
 export function createMap(container, { zoom = 17, onTap } = {}) {
   const world = document.createElement("div"); // shared coordinate space
   world.className = "tk-world";
@@ -29,20 +39,49 @@ export function createMap(container, { zoom = 17, onTap } = {}) {
   container.appendChild(world);
 
   let center = { lat: 59.3326, lng: 18.0649 };
-  const tiles = new Map(); // "x:y" → img
+  const tiles = new Map(); // "x:y" (world tile indices) → img
   const markers = new Map(); // id → {el, lat, lng}
+
+  // FLOATING ORIGIN — the load-bearing detail of this map. World-pixel
+  // coordinates at zoom 17 reach ~18 million px (x = 18.4M at Stockholm's
+  // longitude), which is past WebKit's ~2^24 (16.7M) rasterization limit:
+  // iOS Safari silently dropped every tile <img> positioned there while the
+  // emoji markers survived on their own composited layers ("map is blank,
+  // markers float in the void", reported 2026-07-09). So nothing is ever
+  // positioned at world coordinates: everything is placed RELATIVE to an
+  // integer tile origin near the viewport, and the origin re-anchors when
+  // the center drifts, keeping every offset within a few thousand px.
+  let origin = null; // {tx, ty}
+
+  const originPx = () => ({ x: origin.tx * TILE, y: origin.ty * TILE });
+
+  function ensureOrigin() {
+    const tx = Math.floor(lngToX(center.lng, zoom) / TILE);
+    const ty = Math.floor(latToY(center.lat, zoom) / TILE);
+    if (origin && Math.abs(tx - origin.tx) < 30 && Math.abs(ty - origin.ty) < 30) return;
+    origin = { tx, ty };
+    // Re-anchor everything already in the DOM to the new origin.
+    for (const [key, img] of tiles) {
+      const [wtx, wty] = key.split(":").map(Number);
+      img.style.left = `${(wtx - origin.tx) * TILE}px`;
+      img.style.top = `${(wty - origin.ty) * TILE}px`;
+    }
+    for (const m of markers.values()) place(m.el, m.lat, m.lng);
+  }
 
   function render() {
     const w = container.clientWidth;
     const h = container.clientHeight;
-    const cx = lngToX(center.lng, zoom);
-    const cy = latToY(center.lat, zoom);
+    ensureOrigin();
+    const o = originPx();
+    const cx = lngToX(center.lng, zoom) - o.x; // origin-relative center
+    const cy = latToY(center.lat, zoom) - o.y;
     world.style.transform = `translate(${Math.round(w / 2 - cx)}px, ${Math.round(h / 2 - cy)}px)`;
-    // Tiles covering the viewport plus a one-tile skirt.
-    const x0 = Math.floor((cx - w / 2) / TILE) - 1;
-    const x1 = Math.floor((cx + w / 2) / TILE) + 1;
-    const y0 = Math.floor((cy - h / 2) / TILE) - 1;
-    const y1 = Math.floor((cy + h / 2) / TILE) + 1;
+    // Tiles covering the viewport plus a one-tile skirt (world indices).
+    const x0 = origin.tx + Math.floor((cx - w / 2) / TILE) - 1;
+    const x1 = origin.tx + Math.floor((cx + w / 2) / TILE) + 1;
+    const y0 = origin.ty + Math.floor((cy - h / 2) / TILE) - 1;
+    const y1 = origin.ty + Math.floor((cy + h / 2) / TILE) + 1;
     const max = 2 ** zoom;
     const wanted = new Set();
     for (let tx = x0; tx <= x1; tx++) {
@@ -55,10 +94,15 @@ export function createMap(container, { zoom = 17, onTap } = {}) {
           const img = document.createElement("img");
           img.className = "tk-tile";
           img.src = `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png`;
-          img.style.left = `${tx * TILE}px`;
-          img.style.top = `${ty * TILE}px`;
+          img.style.left = `${(tx - origin.tx) * TILE}px`;
+          img.style.top = `${(ty - origin.ty) * TILE}px`;
           img.draggable = false;
           img.alt = "";
+          // A failed tile is forgotten so the next render retries it.
+          img.addEventListener("error", () => {
+            tiles.delete(key);
+            img.remove();
+          });
           tileLayer.appendChild(img);
           tiles.set(key, img);
         }
@@ -73,8 +117,9 @@ export function createMap(container, { zoom = 17, onTap } = {}) {
   }
 
   function place(el, lat, lng) {
-    el.style.left = `${lngToX(lng, zoom)}px`;
-    el.style.top = `${latToY(lat, zoom)}px`;
+    const o = originPx();
+    el.style.left = `${Math.round(lngToX(lng, zoom) - o.x)}px`;
+    el.style.top = `${Math.round(latToY(lat, zoom) - o.y)}px`;
   }
 
   function setMarkers(list) {
@@ -98,6 +143,8 @@ export function createMap(container, { zoom = 17, onTap } = {}) {
         cur = { el };
         markers.set(m.id, cur);
       }
+      cur.lat = m.lat; // kept so a re-anchor can re-place every marker
+      cur.lng = m.lng;
       cur.el.className = `tk-marker ${m.cls || ""}`;
       if (cur.el.innerHTML !== m.html) cur.el.innerHTML = m.html;
       place(cur.el, m.lat, m.lng);

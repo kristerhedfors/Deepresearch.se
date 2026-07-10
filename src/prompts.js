@@ -1,8 +1,18 @@
+// @ts-check
 // All LLM prompts for the research pipeline, in one place. Builders take the
 // dynamic values (dates, planned counts) as arguments so the pipeline never
-// string-munges prompt text.
+// string-munges prompt text. Prompt TEXT is load-bearing: prompts.test.js
+// asserts on the exact wording, and the eval ledgers' before/after
+// comparisons assume it only changes deliberately.
 
 import { sourcePromptNotes } from "./search-sources.js";
+
+/**
+ * The per-call options every JSON-mode prompt builder accepts:
+ * `reinforceJsonOnly` appends JSON_ONLY_REINFORCEMENT for models profiled
+ * as needing it (src/model-profiles.js).
+ * @typedef {{ reinforceJsonOnly?: boolean }} JsonPromptOpts
+ */
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -100,6 +110,11 @@ const BROAD_FIRST_RULE =
 // or mis-routes a request that a source exists to serve.
 
 // Phase 1 — triage: direct | clarify | research plan with multi-angle queries.
+/**
+ * @param {number} maxQueries
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const triagePrompt = (maxQueries, { reinforceJsonOnly = false } = {}) =>
   `You are the research planner for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
   "Decide how to handle the user's LATEST message given the conversation. Respond ONLY with a JSON object:\n" +
@@ -120,6 +135,12 @@ export const triagePrompt = (maxQueries, { reinforceJsonOnly = false } = {}) =>
 // counterpart: the gap round is the FIRST point in the pipeline where a
 // bridging fact (a name/date found only in the collected sources) is
 // available to write the next hop's query with — triage couldn't know it.
+/**
+ * @param {string[]} pastQueries
+ * @param {number} maxFollowups
+ * @param {JsonPromptOpts & { subquestions?: string[] }} [opts]
+ * @returns {string}
+ */
 export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinforceJsonOnly = false } = {}) =>
   `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
   "Given the research question, the conversation it came from, and the sources collected so far, respond ONLY with JSON:\n" +
@@ -142,6 +163,11 @@ export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinfo
 // the cheap JSON model, same as the other planning phases. `priorEntities`
 // seeds the model with entity names already noted so naming stays consistent
 // across waves. Shape parsed by src/notes.js's extractNotes.
+/**
+ * @param {string[]} [priorEntities]
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const notesPrompt = (priorEntities = [], { reinforceJsonOnly = false } = {}) =>
   `You distil research notes for Deepresearch.se. Today's date: ${today()}.\n` +
   "You are given NEW numbered web sources. Extract the concrete, checkable factual claims they support and respond ONLY with JSON:\n" +
@@ -156,6 +182,7 @@ export const notesPrompt = (priorEntities = [], { reinforceJsonOnly = false } = 
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 4 — synthesis from the numbered source registry (Markdown output).
+/** @returns {string} */
 export const synthPrompt = () =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
@@ -170,6 +197,10 @@ export const synthPrompt = () =>
   ANTI_INJECTION_NOTE;
 
 // Phase 5 — post-validation fact-check of the draft.
+/**
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
   "You are a strict fact-checker for Deepresearch.se. You receive a research question, numbered sources, and a draft answer.\n" +
   "Check: (1) every factual claim in the draft is supported by the cited source; (2) every [n] citation and URL in the draft matches the provided source list; (3) no invented URLs, numbers, or quotes; (4) important caveats from the sources are not dropped.\n" +
@@ -181,6 +212,10 @@ export const validatePrompt = ({ reinforceJsonOnly = false } = {}) =>
 // Phase 5 (claim-level, budget-gated) — extract the check-worthy claims from
 // the draft so each can be verified against its own cited sources in parallel,
 // instead of one whole-draft pass. Shape: {"claims":[{claim, source_ids}]}.
+/**
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const claimExtractionPrompt = ({ reinforceJsonOnly = false } = {}) =>
   "You prepare a research draft for fact-checking at Deepresearch.se.\n" +
   "From the draft answer, extract the specific, checkable factual claims — statistics, dates, named facts, attributions — each with the [n] source numbers the draft cites for it. Skip hedged opinions and the conclusion's framing. Respond ONLY with JSON:\n" +
@@ -190,6 +225,10 @@ export const claimExtractionPrompt = ({ reinforceJsonOnly = false } = {}) =>
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
 // Phase 5 (claim-level) — verify ONE claim against only the sources it cites.
+/**
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const claimVerifyPrompt = ({ reinforceJsonOnly = false } = {}) =>
   "You are a strict fact-checker for Deepresearch.se. You receive ONE claim and the numbered sources it cites.\n" +
   "Decide whether those cited sources actually support the claim. Respond ONLY with JSON:\n" +
@@ -201,6 +240,10 @@ export const claimVerifyPrompt = ({ reinforceJsonOnly = false } = {}) =>
 // Phase 5 (claim-level) — rewrite the draft to fix ONLY the flagged issues,
 // once claim verification has found unsupported claims. Shape:
 // {"revised_answer":"..."}.
+/**
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
   "You are the research assistant for Deepresearch.se. You receive a research question, the numbered sources, a draft answer, and a list of fact-check issues found in that draft.\n" +
   "Rewrite the draft to fix ONLY those issues — remove or correct each unsupported claim, fix wrong citations, restore any dropped caveat — while keeping everything else and the same Markdown format ending with a \"Sources:\" list. Respond ONLY with JSON:\n" +
@@ -223,6 +266,11 @@ export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
 // subject, the answer is circular (it just points back at where the knowledge
 // lives), and it doesn't survive outside that exact edition. The quiz must
 // test what the material teaches, not where the material keeps it.
+/**
+ * @param {number} numQuestions
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
 export const quizPrompt = (numQuestions, { reinforceJsonOnly = false } = {}) =>
   `You create an interactive quiz for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
   "From the provided material (the conversation — including any attached documents and project materials — and the numbered web sources when present), write a quiz that tests the user's understanding of the subject they asked to be quizzed on. Respond ONLY with a JSON object:\n" +
@@ -239,6 +287,7 @@ export const quizPrompt = (numQuestions, { reinforceJsonOnly = false } = {}) =>
 // Free-text quiz-answer grading (src/quiz-api.js, POST /api/quiz/grade):
 // each item is a question, the quiz's correct alternative (the reference),
 // and the user's own written answer. Meaning over wording.
+/** @returns {string} */
 export const quizGradePrompt = () =>
   "You grade free-text quiz answers for Deepresearch.se. You receive numbered items, each with a question, the reference (correct) answer, and the user's own written answer.\n" +
   "For each item decide whether the user's answer is SUBSTANTIVELY correct compared to the reference: meaning matters, not wording — accept synonyms, paraphrases, a different language than the reference, and extra detail, as long as the core fact the question asks for is right. An answer that contradicts the reference, names the wrong thing, or is too vague to show the user knows the answer is incorrect.\n" +
@@ -278,11 +327,13 @@ const CAPABILITIES_NOTE =
   "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
 
 // Non-research replies (small talk, image analysis, search knob off).
+/** @returns {string} */
 export const directPrompt = () =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   CAPABILITIES_NOTE +
   ANTI_INJECTION_NOTE;
 
+/** @returns {string} */
 export const searchOffPrompt = () =>
   directPrompt() +
   " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed.";

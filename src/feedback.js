@@ -1,3 +1,4 @@
+// @ts-check
 // User feedback pipeline (D1 `feedback` + `feedback_messages`) — the back
 // end of the account panel's "Feedback mode" knob. With the knob on, every
 // assistant reply grows a Feedback button; a submission lands here as an
@@ -31,6 +32,18 @@ import { jsonResponse } from "./http.js";
 import { likePattern, truncateForLog } from "./chatlog.js";
 import { feedbackEnabled } from "./settings.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+/**
+ * A D1 `feedback` row.
+ * @typedef {{ id: number, user_id: string, created_at: number, updated_at: number, status: string, comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} FeedbackRow
+ */
+/**
+ * A D1 `feedback_messages` row (one turn of an entry's dialogue thread).
+ * @typedef {{ id: number, feedback_id: number, author: "user" | "agent", body: string, created_at: number, read_at?: number | null }} FeedbackMessageRow
+ */
+
 // ---------------------------------------------------------------------------
 // Pure helpers — unit-tested in src/feedback.test.js
 // ---------------------------------------------------------------------------
@@ -50,20 +63,33 @@ export const FEEDBACK_CAPS = {
 export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "declined"];
 
 // Open = still on the loop's work queue.
+/**
+ * @param {string} status
+ * @returns {boolean}
+ */
 export function isOpenStatus(status) {
   return status !== "resolved" && status !== "declined";
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string | null} the status when valid, else null
+ */
 export function normalizeStatus(value) {
-  return FEEDBACK_STATUSES.includes(value) ? value : null;
+  return typeof value === "string" && FEEDBACK_STATUSES.includes(value) ? value : null;
 }
 
+/** @param {unknown} v @param {number} max */
 const cleanStr = (v, max) =>
   typeof v === "string" && v.trim() ? truncateForLog(v.trim(), max) : null;
 
 // POST /api/feedback body → row fields, or {error}. Only `comment` is
 // required — the reply context (question/answer/model) rides along when the
 // client has it, but a submission must never fail for lacking it.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, entry: { comment: string, question: string | null, answer_excerpt: string | null, model: string | null, page: string | null } }}
+ */
 export function validateFeedbackCreate(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
   const comment = cleanStr(body.comment, FEEDBACK_CAPS.comment);
@@ -80,6 +106,10 @@ export function validateFeedbackCreate(body) {
 }
 
 // POST …/messages body → message text, or {error}.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, body: string }}
+ */
 export function validateFeedbackReply(body) {
   const text = cleanStr(body?.body, FEEDBACK_CAPS.message);
   if (!text) return { error: "A reply needs a non-empty body." };
@@ -89,6 +119,11 @@ export function validateFeedbackReply(body) {
 // DB rows → API object. Messages ride inline: a thread is small (prose), and
 // both the account panel and the agent loop want the whole dialogue in one
 // fetch.
+/**
+ * @param {FeedbackRow} row
+ * @param {FeedbackMessageRow[]} [messages]
+ * @returns {any} the API projection
+ */
 export function projectFeedback(row, messages = []) {
   return {
     id: row.id,
@@ -116,6 +151,10 @@ export function projectFeedback(row, messages = []) {
 
 // Plain-text rendering (?format=text): newest first, one bordered block per
 // entry with its full thread — made to be READ by the agent loop, not parsed.
+/**
+ * @param {any[]} entries projected entries (projectFeedback output)
+ * @returns {string}
+ */
 export function formatFeedbackText(entries) {
   if (!entries.length) return "(no feedback entries match)\n";
   return entries
@@ -140,6 +179,11 @@ export function formatFeedbackText(entries) {
 // Shared queries
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {D1Database} db
+ * @param {number[]} feedbackIds
+ * @returns {Promise<Map<number, FeedbackMessageRow[]>>} feedback_id -> thread
+ */
 async function loadMessages(db, feedbackIds) {
   if (!feedbackIds.length) return new Map();
   const placeholders = feedbackIds.map(() => "?").join(",");
@@ -157,10 +201,36 @@ async function loadMessages(db, feedbackIds) {
   return byId;
 }
 
+/**
+ * @param {D1Database} db
+ * @param {number} id
+ * @returns {Promise<FeedbackRow | null>}
+ */
 async function getEntry(db, id) {
-  return db.prepare("SELECT * FROM feedback WHERE id = ?").bind(id).first();
+  return /** @type {Promise<FeedbackRow | null>} */ (
+    db.prepare("SELECT * FROM feedback WHERE id = ?").bind(id).first()
+  );
 }
 
+// Re-reads an entry after a write and projects it with its full thread —
+// the response body every mutating endpoint returns. The row is known to
+// exist (the caller just loaded or wrote it).
+/**
+ * @param {D1Database} db
+ * @param {number} id
+ */
+async function projectedEntry(db, id) {
+  const row = await getEntry(db, id);
+  const messages = await loadMessages(db, [id]);
+  return projectFeedback(/** @type {FeedbackRow} */ (row), messages.get(id) || []);
+}
+
+/**
+ * @param {D1Database} db
+ * @param {number} feedbackId
+ * @param {"user" | "agent"} author
+ * @param {string} body
+ */
 async function addMessage(db, feedbackId, author, body) {
   const now = Date.now();
   await db
@@ -175,6 +245,11 @@ async function addMessage(db, feedbackId, author, body) {
 // Unread agent replies across a user's entries — feeds the /api/me
 // notification badge so a user learns the agent wrote back without opening
 // the panel.
+/**
+ * @param {Env} env
+ * @param {number | string} userId
+ * @returns {Promise<number>}
+ */
 export async function countUnreadFeedbackReplies(env, userId) {
   const db = await getDb(env);
   if (!db) return 0;
@@ -187,13 +262,21 @@ export async function countUnreadFeedbackReplies(env, userId) {
     .bind(String(userId))
     .first()
     .catch(() => null);
-  return row?.n || 0;
+  return /** @type {number} */ (row?.n) || 0;
 }
 
 // ---------------------------------------------------------------------------
 // User surface — /api/feedback* (identity gate in index.js; own rows only)
 // ---------------------------------------------------------------------------
 
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleFeedbackApi(request, env, url, log, identity) {
   const db = await getDb(env);
   if (!db) return jsonResponse({ error: "Database not configured." }, 503);
@@ -213,7 +296,7 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
     }
     const body = await request.json().catch(() => null);
     const v = validateFeedbackCreate(body);
-    if (v.error) return jsonResponse({ error: v.error }, 400);
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
     const now = Date.now();
     const res = await db
       .prepare(
@@ -225,10 +308,10 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
         v.entry.comment, v.entry.question, v.entry.answer_excerpt, v.entry.model, v.entry.page,
       )
       .run();
-    const id = res.meta?.last_row_id;
+    const id = /** @type {number} */ (res.meta?.last_row_id);
     log.info("feedback.created", { user_id: userId, feedback_id: id });
     const row = await getEntry(db, id);
-    return jsonResponse({ feedback: projectFeedback(row) }, 201);
+    return jsonResponse({ feedback: projectFeedback(/** @type {FeedbackRow} */ (row)) }, 201);
   }
 
   // GET /api/feedback — the user's own entries, newest first, threads
@@ -239,7 +322,7 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
       .prepare("SELECT * FROM feedback WHERE user_id = ? ORDER BY id DESC LIMIT 100")
       .bind(userId)
       .all();
-    const rows = results || [];
+    const rows = /** @type {FeedbackRow[]} */ (results || []);
     const messages = await loadMessages(db, rows.map((r) => r.id));
     const entries = rows.map((r) => projectFeedback(r, messages.get(r.id) || []));
     await db
@@ -266,15 +349,13 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
   // reopens a closed entry so it lands back on the loop's queue.
   if (idMatch[2] && method === "POST") {
     const v = validateFeedbackReply(await request.json().catch(() => null));
-    if (v.error) return jsonResponse({ error: v.error }, 400);
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
     await addMessage(db, entry.id, "user", v.body);
     if (!isOpenStatus(entry.status)) {
       await db.prepare("UPDATE feedback SET status = 'new' WHERE id = ?").bind(entry.id).run();
     }
     log.info("feedback.user_reply", { user_id: userId, feedback_id: entry.id });
-    const row = await getEntry(db, entry.id);
-    const messages = await loadMessages(db, [entry.id]);
-    return jsonResponse({ feedback: projectFeedback(row, messages.get(entry.id) || []) }, 201);
+    return jsonResponse({ feedback: await projectedEntry(db, entry.id) }, 201);
   }
 
   // DELETE /api/feedback/:id — the user withdraws an entry (thread included).
@@ -300,6 +381,13 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
 // PATCH  /api/admin/feedback/:id    {status: new|seen|in_progress|resolved|declined}
 // POST   /api/admin/feedback/:id/messages  {body} — the agent's reply
 // DELETE /api/admin/feedback/:id
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
 export async function handleAdminFeedback(request, env, url, log) {
   const db = await getDb(env);
   if (!db) return jsonResponse({ error: "Database not configured." }, 503);
@@ -326,7 +414,7 @@ export async function handleAdminFeedback(request, env, url, log) {
       (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
       " ORDER BY id DESC LIMIT ?";
     const { results } = await db.prepare(sql).bind(...binds, limit).all();
-    const rows = results || [];
+    const rows = /** @type {FeedbackRow[]} */ (results || []);
     const messages = await loadMessages(db, rows.map((r) => r.id));
     const entries = rows.map((r) => projectFeedback(r, messages.get(r.id) || []));
     if (p.get("format") === "text") return textResponse(formatFeedbackText(entries));
@@ -358,19 +446,15 @@ export async function handleAdminFeedback(request, env, url, log) {
       .bind(status, Date.now(), entry.id)
       .run();
     log.info("feedback.status", { feedback_id: entry.id, status });
-    const row = await getEntry(db, entry.id);
-    const messages = await loadMessages(db, [entry.id]);
-    return jsonResponse({ feedback: projectFeedback(row, messages.get(entry.id) || []) });
+    return jsonResponse({ feedback: await projectedEntry(db, entry.id) });
   }
 
   if (idMatch[2] && method === "POST") {
     const v = validateFeedbackReply(await request.json().catch(() => null));
-    if (v.error) return jsonResponse({ error: v.error }, 400);
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
     await addMessage(db, entry.id, "agent", v.body);
     log.info("feedback.agent_reply", { feedback_id: entry.id });
-    const row = await getEntry(db, entry.id);
-    const messages = await loadMessages(db, [entry.id]);
-    return jsonResponse({ feedback: projectFeedback(row, messages.get(entry.id) || []) }, 201);
+    return jsonResponse({ feedback: await projectedEntry(db, entry.id) }, 201);
   }
 
   if (!idMatch[2] && method === "DELETE") {
@@ -383,6 +467,7 @@ export async function handleAdminFeedback(request, env, url, log) {
   return jsonResponse({ error: "Not found." }, 404);
 }
 
+/** @param {string} text */
 function textResponse(text) {
   return new Response(text, {
     status: 200,

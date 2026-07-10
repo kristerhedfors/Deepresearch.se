@@ -1,3 +1,5 @@
+// Unit tests for the inline-quiz pure logic (src/quiz.js): the deterministic
+// intent gate (EN+SV), quiz-JSON hardening, and grade validation/normalization.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

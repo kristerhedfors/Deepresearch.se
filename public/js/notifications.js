@@ -4,6 +4,10 @@
 // verbosity differ deliberately, per CLAUDE.md's admin-has-more-features
 // design, so only the truly shared fragments live here).
 
+/**
+ * @param {*} s  coerced to string
+ * @returns {string} with &<>"' HTML-entity-escaped
+ */
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",

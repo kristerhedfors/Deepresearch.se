@@ -1,31 +1,49 @@
-// Tokemon bootstrap: player state, movement (GPS follow or tap-to-walk),
-// spawn polling + markers, encounters, and the party/bag/dex panels. Game
-// rules all live server-side (src/tokemon.js) — this is presentation and
-// movement only.
+// Tokemon bootstrap: player state, movement (GPS follow, tap-to-walk, or
+// TEXT COMMANDS — "go north 200 m", "gå till Kungsgatan 1"), spawn polling +
+// markers, the street-view AR mode (creatures overlaid on real imagery),
+// encounters, and the party/bag/dex panels. Game rules all live server-side
+// (src/tokemon.js, src/tokemon-nav.js) — this is presentation and movement.
 
 import * as api from "./api.js";
 import { createBattleUI } from "./battle.js";
 import { createMap } from "./map.js";
+import { createStreetView } from "./street.js";
 
 const WALK_SPEED = 4; // m/s — brisk tap-to-walk so desktop play isn't a slog
 const SPAWN_POLL_MS = 30_000;
 const DEFAULT_POS = { lat: 59.3326, lng: 18.0649 }; // Sergels torg, Stockholm
 
+/** Escape text for interpolation into innerHTML. @type {(s: unknown) => string} */
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-let save = null;
-let pos = { ...DEFAULT_POS };
-let walkTarget = null;
-let gpsWatch = null;
-let spawns = [];
-let encounterRadius = 80;
+// ---- Game state (server-owned save + local presentation state) ----
+let save = null; // the server's publicSave payload — refreshed by every mutating call
+let pos = { ...DEFAULT_POS }; // the player's position (GPS, tap-walk, or text command)
+let walkTarget = null; // {lat, lng} the tap-to-walk animation is heading for
+let gpsWatch = null; // geolocation watch id while GPS follow is on
+let spawns = []; // last /spawns payload, minus locally consumed ones
+let encounterRadius = 80; // server-confirmed tappable radius (m)
 let lastSpawnFetch = { t: 0, lat: 0, lng: 0 };
 let map = null;
 let battleUI = null;
 let follow = true; // keep the camera on the player
 
+// Street mode: current camera heading, the pane module, and where/which-way
+// the last frame was captured. Frames are billed server-side (edge-cached
+// per pano+heading), so a new one is fetched only on deliberate changes —
+// mode open, turns, commands, walk arrival — never on GPS jitter.
+let mode = "map"; // "map" | "street"
+let heading = 0;
+let street = null;
+let lastScene = null; // {lat, lng, heading}
+
 const $ = (id) => document.getElementById(id);
 
+/**
+ * Transient status line at the bottom of the screen.
+ * @param {string} msg
+ * @param {number} [ms]
+ */
 function toast(msg, ms = 2600) {
   const t = $("tk-toast");
   t.textContent = msg;
@@ -34,6 +52,7 @@ function toast(msg, ms = 2600) {
   toast._h = setTimeout(() => (t.hidden = true), ms);
 }
 
+/** Great-circle distance in meters (mirrors src/tokemon.js haversineM). */
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -46,6 +65,7 @@ function haversineM(lat1, lng1, lat2, lng2) {
 // ---------------------------------------------------------------------------
 // Movement
 
+/** Move the player: recenter (when following), redraw, maybe re-poll spawns. */
 function setPos(lat, lng) {
   pos = { lat, lng };
   if (follow) map.setCenter(lat, lng);
@@ -53,6 +73,7 @@ function setPos(lat, lng) {
   maybeFetchSpawns();
 }
 
+/** rAF loop: advance the tap-to-walk animation at WALK_SPEED. */
 function tick(last) {
   const now = performance.now();
   const dt = Math.min(1, (now - (last || now)) / 1000);
@@ -60,6 +81,7 @@ function tick(last) {
     const d = haversineM(pos.lat, pos.lng, walkTarget.lat, walkTarget.lng);
     if (d < 1.5) {
       walkTarget = null;
+      refreshScene(); // arrived — show the street from here
     } else {
       const step = Math.min(1, (WALK_SPEED * dt) / d);
       setPos(pos.lat + (walkTarget.lat - pos.lat) * step, pos.lng + (walkTarget.lng - pos.lng) * step);
@@ -68,6 +90,7 @@ function tick(last) {
   requestAnimationFrame(() => tick(now));
 }
 
+/** Toggle GPS follow; every failure degrades to tap-to-walk with a toast. */
 function toggleGps() {
   if (gpsWatch != null) {
     navigator.geolocation.clearWatch(gpsWatch);
@@ -99,6 +122,10 @@ function toggleGps() {
 // ---------------------------------------------------------------------------
 // Spawns & markers
 
+/**
+ * Re-poll /spawns when stale (SPAWN_POLL_MS) or the player moved 90 m+;
+ * `force` skips both checks (after battles, collects, and commands).
+ */
 async function maybeFetchSpawns(force = false) {
   const now = Date.now();
   const moved = haversineM(pos.lat, pos.lng, lastSpawnFetch.lat, lastSpawnFetch.lng);
@@ -114,6 +141,7 @@ async function maybeFetchSpawns(force = false) {
   }
 }
 
+/** Redraw all spawn markers + the player marker (diffed by id in map.js). */
 function renderMarkers() {
   if (!map) return;
   const markers = spawns.map((s) => ({
@@ -128,6 +156,11 @@ function renderMarkers() {
   map.setMarkers(markers);
 }
 
+/**
+ * Tap on a spawn (map marker or street overlay): within reach → collect the
+ * item or start the battle; out of reach → walk toward it.
+ * @param {{id: string, kind: string, lat: number, lng: number}} s
+ */
 async function tapSpawn(s) {
   const d = haversineM(pos.lat, pos.lng, s.lat, s.lng);
   if (d > encounterRadius) {
@@ -143,6 +176,7 @@ async function tapSpawn(s) {
       spawns = spawns.filter((x) => x.id !== s.id);
       renderMarkers();
       renderHud();
+      refreshScene(true);
     } else {
       const r = await api.encounter(s.id, pos.lat, pos.lng);
       save = r.save;
@@ -154,6 +188,67 @@ async function tapSpawn(s) {
       spawns = spawns.filter((x) => x.id !== s.id);
       renderMarkers();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Street mode & text commands
+
+/** Switch between the map and the street-view AR pane. @param {"map"|"street"} next */
+function setMode(next) {
+  mode = next;
+  $("tk-street").hidden = mode !== "street";
+  $("tk-mode").textContent = mode === "street" ? "🗺 Map" : "🛰 Street";
+  if (mode === "street") refreshScene(true);
+}
+
+// Fetch a new frame when in street mode and the view meaningfully changed
+// (>15 m moved or any heading change); `force` skips the movement check.
+async function refreshScene(force = false) {
+  if (mode !== "street" || !street) return;
+  const changed =
+    !lastScene ||
+    lastScene.heading !== Math.round(heading) ||
+    haversineM(pos.lat, pos.lng, lastScene.lat, lastScene.lng) > 15;
+  if (!force && !changed) return;
+  lastScene = { lat: pos.lat, lng: pos.lng, heading: Math.round(heading) };
+  street.showLoading();
+  try {
+    const s = await api.scene(pos.lat, pos.lng, heading);
+    street.render(s);
+  } catch (err) {
+    street.showMessage(err.message || "Couldn't fetch the street view.");
+  }
+}
+
+// A tap on an overlaid spawn: near → interact (same endpoints as the map
+// markers); far → walk toward it, the scene refreshes on arrival. The
+// overlay carries lat/lng so this works even when the spawn has dropped
+// out of the local `spawns` list.
+function tapStreetSpawn(o) {
+  const s = spawns.find((x) => x.id === o.id) || { id: o.id, kind: o.kind, lat: o.lat, lng: o.lng };
+  tapSpawn(s);
+}
+
+/** Send the command bar's text to POST …/go and apply the returned move/turn. */
+async function submitCommand() {
+  const input = $("tk-cmd");
+  const command = input.value.trim();
+  if (!command) return;
+  input.value = "";
+  try {
+    const r = await api.go(command, pos.lat, pos.lng, heading);
+    heading = r.heading ?? heading;
+    if (r.pos) {
+      walkTarget = null;
+      follow = true;
+      setPos(r.pos.lat, r.pos.lng);
+    }
+    toast(r.say || "Done.");
+    maybeFetchSpawns(true);
+    refreshScene(true);
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -179,6 +274,11 @@ function openPanel(html) {
   $("tk-panel-close").addEventListener("click", closePanels);
 }
 
+/**
+ * One party/box row with its actions (lead/box/to-party + usable heals).
+ * @param {any} c  A publicSave creature.
+ * @param {"party"|"box"} where
+ */
 function creatureRow(c, where) {
   const pct = Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100));
   const actions =
@@ -302,23 +402,12 @@ function showFatal(msg) {
 // ---------------------------------------------------------------------------
 // Boot
 
-async function boot() {
-  map = createMap($("tk-map"), {
-    zoom: 17,
-    onTap: (ll) => {
-      walkTarget = ll;
-      follow = true;
-    },
-  });
-  battleUI = createBattleUI(document.body, {
-    onAction: (action) => api.battleAction(action),
-    onEnd: (result, s) => {
-      save = s || save;
-      renderHud();
-      maybeFetchSpawns(true);
-      if (result === "caught") toast("Registered to the Tokedex!");
-      if (result === "lost") toast("Your team fainted — Recharge or use Reboots.");
-    },
+/** Wire the static chrome (HUD buttons, mode toggle, command bar) — once. */
+function wireControls() {
+  $("tk-mode").addEventListener("click", () => setMode(mode === "street" ? "map" : "street"));
+  $("tk-cmdbar").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitCommand();
   });
 
   $("tk-gps").addEventListener("click", toggleGps);
@@ -334,6 +423,36 @@ async function boot() {
   $("tk-map").addEventListener("pointermove", (e) => {
     if (e.buttons) follow = false;
   });
+}
+
+async function boot() {
+  map = createMap($("tk-map"), {
+    zoom: 17,
+    onTap: (ll) => {
+      walkTarget = ll;
+      follow = true;
+    },
+  });
+  battleUI = createBattleUI(document.body, {
+    onAction: (action) => api.battleAction(action),
+    onEnd: (result, s) => {
+      save = s || save;
+      renderHud();
+      maybeFetchSpawns(true);
+      refreshScene(true); // a consumed spawn must leave the imagery too
+      if (result === "caught") toast("Registered to the Tokedex!");
+      if (result === "lost") toast("Your team fainted — Recharge or use Reboots.");
+    },
+  });
+
+  street = createStreetView($("tk-street"), {
+    onTapSpawn: tapStreetSpawn,
+    onTurn: (delta) => {
+      heading = (((heading + delta) % 360) + 360) % 360;
+      refreshScene(true);
+    },
+  });
+  wireControls();
 
   try {
     const r = await api.getState();

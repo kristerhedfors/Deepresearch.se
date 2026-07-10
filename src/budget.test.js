@@ -1,3 +1,9 @@
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
+// Covers budget.js: clampBudget, planResearch's tier scaling (incl. the
+// split json-model estimates), the deep-tier gates, fitsDeadline's grace
+// math, and applyComplexityToPlan's scale-down-only rule.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

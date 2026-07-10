@@ -5,10 +5,16 @@
 > **Google-only** auth:
 > - Google is the ONLY user-facing sign-in; password login, invitations,
 >   and access requests were removed entirely.
-> - Any Google account with a verified email is **auto-provisioned** as a
->   regular user on first sign-in (quota-capped); the `ADMIN_EMAIL`
->   wrangler var gets the admin role. There is no invite gate anymore —
->   quotas are the cost boundary, and the admin can disable users.
+> - Any Google account with a verified email is **auto-provisioned** on
+>   first sign-in; the `ADMIN_EMAIL` wrangler var gets (and keeps) the
+>   admin role. There is no invite gate — instead there is an **approval
+>   gate** (config `require_approval`, default on): non-admin sign-ins
+>   land as `pending` on an auto-refreshing waiting page (APIs 403,
+>   nothing spends) until approved in `/admin`. Quotas are the cost
+>   boundary after that, and the admin can disable users at any time.
+> - Every account must also accept the **terms of use** once, right after
+>   first sign-in (`POST /terms/accept`, `users.terms_accepted_at`) —
+>   before the approval wait, the app, or any API.
 > - Sessions are 365-day sliding cookies so PWA users never re-log-in.
 > - `ADMIN_USER`/`ADMIN_PASS` remain as break-glass Basic Auth (scripts,
 >   emergencies). The session/state HMAC is now keyed by a dedicated
@@ -16,8 +22,11 @@
 >   password — see the note in §2 — with a legacy fallback to the admin
 >   key when `SESSION_SECRET` is unset.
 >
-> §1 (console setup), §2 (secrets), §3 (flow), and the pitfalls checklist
-> below remain accurate and are the operational reference.
+> §1 (console setup), §2 (secrets), §3 (flow — except step 4's "not
+> found" branch, see the inline note), and the pitfalls checklist below
+> remain accurate and are the operational reference. §4–§7 describe the
+> pre-Google-only design (password fallbacks, invitations) and are kept
+> as history only.
 
 How to add "Sign in with Google" to Deepresearch.se. The account layer was
 built for this: **accounts are keyed by email**, and sessions are already
@@ -119,10 +128,11 @@ code=<code>&client_id=…&client_secret=…
      Google login and require it to match thereafter — pins the account to
      one Google identity even if email ownership ever changes.)
    - **Found & disabled** → back to `/login` with an error flash.
-   - **Not found** → do NOT create an account (invite-only stays intact).
-     Redirect to `/login?flash=no-account`, showing "No account for
-     <email> — request access below", ideally with the email pre-filled in
-     the request-access form.
+   - **Not found** → *(superseded — see the status header)* the plan said
+     "do NOT create an account (invite-only stays intact)"; the
+     implemented behavior **auto-provisions** the user row instead:
+     `ADMIN_EMAIL` → admin + active, everyone else → `pending` when the
+     approval gate is on, `active` otherwise.
 
 That's the whole thing — roughly 120–150 lines in a new `src/google.js`
 plus two route lines and a button.
@@ -139,7 +149,7 @@ plus two route lines and a button.
   Auth for scripts then requires setting one (a future "set password"
   button in the panel, or keep it Google-only).
 
-## 5. Accepting invitations via Google (recommended)
+## 5. Accepting invitations via Google (recommended) *(obsolete — invitations were removed entirely; kept as history)*
 
 Passwordless onboarding, one tap on a phone that scanned the QR:
 
@@ -168,7 +178,7 @@ Passwordless onboarding, one tap on a phone that scanned the QR:
   users have no password until they set one.
 - Invite-only access — Google sign-in never auto-provisions accounts.
 
-## 7. Schema tweak (optional but recommended)
+## 7. Schema tweak (optional but recommended) *(shipped — `google_sub` is in `src/db.js`'s lazy schema)*
 
 ```sql
 ALTER TABLE users ADD COLUMN google_sub TEXT;

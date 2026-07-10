@@ -104,8 +104,12 @@ export function activeProject() {
   return activeId ? getProject(activeId) : null;
 }
 
-// The knob answer every storage-touching module asks. Unknown/absent
-// project (or none active) means "follow the account setting" — true.
+/**
+ * The knob answer every storage-touching module asks. Unknown/absent
+ * project (or none active) means "follow the account setting" — true.
+ * @param {?string} projectId
+ * @returns {boolean}
+ */
 export function projectCloudOn(projectId) {
   if (!projectId) return true;
   const p = getProject(projectId);
@@ -246,6 +250,15 @@ async function addOneFile(project, file, onProgress = () => {}) {
   return entry;
 }
 
+/**
+ * Adds files to a project one by one, persisting after each so a failure
+ * mid-batch loses nothing already ingested.
+ * @param {string} id  project id
+ * @param {File[]} files
+ * @param {(msg: string) => void} [onProgress]  status-line narration
+ * @returns {Promise<{project: object, errors: string[]}>} per-file failures
+ *   are collected, never thrown
+ */
 export async function addFilesToProject(id, files, onProgress = () => {}) {
   const p = getProject(id);
   if (!p) throw new Error("Project not found.");

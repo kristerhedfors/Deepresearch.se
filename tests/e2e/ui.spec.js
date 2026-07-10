@@ -37,7 +37,9 @@ test("a search step resolves to a checkmark and an expandable source list", asyn
   await send(page, "search something");
   const turn = await waitForDone(page);
   await turn.locator(".activity > summary").click(); // collapseActivity() folds it closed on completion
-  const searchStep = turn.locator(".step.finished.expandable", { hasText: "Searched" });
+  // Wording since 2026-07-08: "<service> “query” · N results · X ms" (the
+  // service falls back to "Web search" when the event carries no `service`).
+  const searchStep = turn.locator(".step.finished.expandable", { hasText: "Web search" });
   await expect(searchStep).toBeVisible();
   await expect(searchStep.locator(".check")).toHaveText("✓");
   await searchStep.locator("summary").click();
