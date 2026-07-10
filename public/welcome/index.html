@@ -46,10 +46,17 @@
       width: 84px; height: 84px; border-radius: 50%;
       box-shadow: 0 6px 24px rgba(4, 30, 60, .25);
     }
+    /* The wordmark pairing (see app.css's .brand note): rounded light
+       sans; URL tails elsewhere on the page take the heavy mono. */
     h1 {
+      font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
       font-size: 1.7rem; font-weight: 300; letter-spacing: .04em;
       margin: .6rem 0 .2rem; color: #fff;
       text-shadow: 0 1px 10px rgba(255, 255, 255, .55), 0 1px 2px rgba(10, 46, 92, .25);
+    }
+    .links a span b {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800; color: var(--accent);
     }
     .tagline { font-size: 1rem; color: var(--text); margin: 0 auto; max-width: 34rem; }
     .card {

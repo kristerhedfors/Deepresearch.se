@@ -75,14 +75,31 @@ header {
   gap: .35rem;
   background: transparent;
 }
+/* The URL wordmark's two-font pairing, matched to the logotype (the
+   Swedish-flag vortex — see app.css's .brand note): light ROUNDED sans
+   for "deepresearch.", heavy MONOSPACE for the bold tail. On this khaki
+   tier the tail takes the logo's flag BLUE (the blue DRS tier carries
+   the golden swirl). System stacks only. */
 .brand {
   align-self: center;
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
   font-weight: 300;
   font-size: .8rem;
   letter-spacing: .03em;
   text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
   pointer-events: auto; /* unlike the app: tapping the brand reopens the intro */
   cursor: pointer;
+}
+.brand b, .intro-card h1 > b {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #1a56b0; /* the logotype's flag-blue field */
+}
+.brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
+.intro-card h1 {
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
+  font-weight: 300;
 }
 .brand-tier { color: var(--accent); font-weight: 500; }
 .header-right, #composer { pointer-events: auto; }

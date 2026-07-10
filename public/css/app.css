@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h21;
+  --css-version: h22;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -81,14 +81,29 @@ header {
   background: transparent;
 }
 /* Just the characters — thin, small, centered; a soft glow keeps them
-   legible over scrolling content. Never captures clicks. */
+   legible over scrolling content. Never captures clicks.
+   The URL wordmark is a TWO-FONT pairing matched to the logotype (the
+   Swedish-flag vortex): "deepresearch." in a light ROUNDED sans — the
+   swirl's soft curves — and the bold wordplay tail (<b>se/rver</b>) in a
+   heavy MONOSPACE, the terminal/URL half, tinted the logo's flag
+   YELLOW on this blue tier (the khaki DRC tier carries the flag BLUE —
+   public/cure/drc.css). System stacks only: no external font hosts. */
 .brand {
   align-self: center;
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
   font-weight: 300;
   font-size: .8rem;
   letter-spacing: .03em;
   text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
   pointer-events: none;
+}
+.brand b {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-weight: 800;
+  font-size: 1.05em;
+  letter-spacing: 0;
+  color: #f5c518; /* the logotype's golden swirl */
+  text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
 }
 .header-right, #composer { pointer-events: auto; }
 #chat {
