@@ -1,3 +1,4 @@
+// @ts-check
 // The pure text side of the Google Maps integration — extracted from
 // googlemaps.js so the deterministic language analysis (address/place
 // extraction, street-view intent gates, locality corrections, and the
@@ -11,6 +12,67 @@
 // same minimal-request posture shodan.js/geocode.js keep.
 
 import { textOf } from "./conversation.js";
+
+// ---- shared shapes (consumed by googlemaps.js and maps-enrichment.js) -------
+/** @typedef {import('./types.js').Conversation} Conversation */
+/** @typedef {import('./types.js').Message} Message */
+/** @typedef {import('./types.js').ImageLocation} ImageLocation */
+/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** A plain coordinate pair (extra fields ride along structurally). */
+/** @typedef {{ lat: number, lng: number }} LatLng */
+/** The user's live interactive-map view (validated body.map_view). */
+/** @typedef {{ lat: number, lng: number, zoom: number }} MapView */
+/**
+ * A Street View JUMP destination ("street view here", "100 m north"):
+ * computed deterministically from the anchor and the phrase. `dir` is the
+ * normalized direction word for block phrasing ("here", "north", "forward").
+ * @typedef {{ lat: number, lng: number, heading: number, meters: number, dir: string }} JumpTarget
+ */
+/** How a nearby/relocation ask wants to be answered — see nearbyAskMode. */
+/** @typedef {"instant" | "travel" | "search"} NearbyMode */
+/** A nearby-place / relocation-to-name search around the anchor. */
+/** @typedef {{ query: string, lat: number, lng: number, mode: NearbyMode }} NearbyTarget */
+/** A cross-barrier relocation ask anchored at the current position. */
+/** @typedef {{ barrier: string, lat: number, lng: number, heading: number, hasHeading: boolean }} CrossBarrierTarget */
+/** The journey view's waypoints (from the assistant turns' mandated links). */
+/** @typedef {{ points: LatLng[] }} JourneyTarget */
+/**
+ * What pickLookup resolves a conversation turn into — the contract between
+ * the matcher registry here and the runners in maps-enrichment.js. Exactly
+ * one of the optional shape fields is set (or none: a plain address/coords
+ * lookup); `followUp` marks a target recovered from earlier turns/state.
+ * `intent` is the deciding matcher's name, attached non-enumerably by
+ * pickLookup for diagnostics only.
+ * @typedef {{
+ *   coords: string,
+ *   address: string,
+ *   followUp?: boolean,
+ *   pov?: StreetViewPov,
+ *   mapView?: MapView,
+ *   jump?: JumpTarget,
+ *   nearby?: NearbyTarget,
+ *   crossBarrier?: CrossBarrierTarget,
+ *   journey?: JourneyTarget,
+ *   intent?: string,
+ * }} LookupTarget
+ */
+/** The resolved current position a relocation-family matcher anchors to. */
+/** @typedef {{ lat: number, lng: number, heading: number, hasHeading: boolean }} LookupAnchor */
+/** The shared context every LOOKUP_MATCHERS entry receives — see buildLookupCtx. */
+/**
+ * @typedef {{
+ *   conversation: Conversation,
+ *   users: Message[],
+ *   latest: string,
+ *   trimmed: string,
+ *   imageLocations: ImageLocation[] | null | undefined,
+ *   pov: StreetViewPov | null,
+ *   mapView: MapView | null,
+ *   userLocation: LatLng | null,
+ *   anchor: LookupAnchor | null,
+ *   latestFix: string,
+ * }} LookupCtx
+ */
 
 const MAX_LOCATION_CHARS = 200;
 
@@ -74,6 +136,7 @@ const STOPWORDS = new Set([
   "nu", "idag", "imorgon", "tack", "menade", "menar", "istället", "snarare",
 ]);
 
+/** @param {string} w */
 const normWord = (w) => (w || "").toLowerCase().replace(/[^\p{L}]/gu, "");
 
 // A trailing locality after the street span. Case-INSENSITIVE (users type
@@ -93,6 +156,11 @@ const BARE_LOCALITY_RE =
 // Given a matched street span and the text right after it, append a trailing
 // locality when one is present, so "Maskinistvägen 11 in järfälla" resolves as
 // "Maskinistvägen 11, järfälla" rather than a bare, ambiguous street name.
+/**
+ * @param {string} street
+ * @param {string} rest
+ * @returns {string}
+ */
 function withTrailingLocality(street, rest) {
   const m = rest.match(CONNECTOR_LOCALITY_RE) || rest.match(BARE_LOCALITY_RE);
   if (!m || !m[1]) return street;
@@ -109,6 +177,7 @@ function withTrailingLocality(street, rest) {
 // Preceding place-name words right before a street token ("kallhäll
 // maskinistvägen"), walking back over non-stopwords (case-insensitive) up to
 // two words. Returns "" when the words before the street are all filler.
+/** @param {string} before */
 function leadingLocality(before) {
   const words = before.trim().split(/\s+/).filter(Boolean);
   const kept = [];
@@ -127,6 +196,10 @@ function leadingLocality(before) {
 // non-filler words — a locality like "kallhäll" or "Main" rides along (even
 // lowercase) while intent filler ("of", "view") stops the walk. Shared by
 // extractPlace (user messages) and addressesInText (assistant answers).
+/**
+ * @param {string} matchText
+ * @returns {string}
+ */
 function streetSpanOf(matchText) {
   const words = matchText.trim().replace(/\s+/g, " ").split(" ");
   if (words.length < 2) return "";
@@ -148,6 +221,10 @@ function streetSpanOf(matchText) {
 // Deliberately conservative so ordinary "<noun> <number>" phrases ("iPhone 15",
 // "Article 5", "on May 5") and plain prose don't get mistaken for addresses.
 // Only this candidate ever crosses the wire, never the whole message.
+/**
+ * @param {string} text
+ * @returns {string} the address candidate, or "" when none is named
+ */
 export function extractPlace(text) {
   const raw = typeof text === "string" ? text : "";
 
@@ -173,6 +250,10 @@ export function extractPlace(text) {
   return "";
 }
 
+/**
+ * @param {string} raw
+ * @param {RegExp} re
+ */
 function firstMatch(raw, re) {
   re.lastIndex = 0;
   return re.exec(raw);
@@ -192,6 +273,10 @@ const SV_WORDS =
   "(?:street|streer|stret|streat|steet|sreet|stere)\\s*(?:view|veiw|vew|wiev)|streetview|gatu?vy(?:n)?|gatubild(?:en)?";
 const STREETVIEW_INTENT_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "iu");
 const STREETVIEW_INTENT_ALL_RE = new RegExp(`\\b(?:${SV_WORDS})\\b`, "giu");
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function streetViewIntent(text) {
   return STREETVIEW_INTENT_RE.test(typeof text === "string" ? text : "");
 }
@@ -206,6 +291,10 @@ export function streetViewIntent(text) {
 // there's no explicit ask, an actual address is present (extractPlace owns
 // it), or nothing usable remains — a bare "street view" follow-up must keep
 // walking back instead.
+/**
+ * @param {string} text
+ * @returns {string} the Places query, or "" when this shape doesn't apply
+ */
 export function extractPlaceQuery(text) {
   const raw = typeof text === "string" ? text : "";
   if (!streetViewIntent(raw) || extractPlace(raw)) return "";
@@ -291,6 +380,7 @@ const PLACE_LOCALITY_RE =
 // stops at intent/filler stopwords and at terminal punctuation (which ends a
 // name like `”Rosa Pantern”.` cleanly), strips surrounding quotes/punctuation
 // per word, keeps at most 4 words.
+/** @param {string} rest */
 function walkNameWords(rest) {
   const out = [];
   for (const w of rest.trim().split(/\s+/)) {
@@ -303,6 +393,7 @@ function walkNameWords(rest) {
   return /\p{L}/u.test(name) && name.length >= 2 ? name : "";
 }
 
+/** @param {string} raw */
 function quotedNameOf(raw) {
   for (const m of raw.matchAll(QUOTED_NAME_RE)) {
     const words = m[1].trim().split(/\s+/).filter(Boolean);
@@ -315,6 +406,10 @@ function quotedNameOf(raw) {
   return "";
 }
 
+/**
+ * @param {string} raw
+ * @param {RegExp} re
+ */
 function nameAfterMatch(raw, re) {
   re.lastIndex = 0;
   const m = re.exec(raw);
@@ -322,6 +417,10 @@ function nameAfterMatch(raw, re) {
   return walkNameWords(raw.slice(m.index + m[0].length));
 }
 
+/**
+ * @param {string} raw
+ * @param {string} name
+ */
 function placeLocalityOf(raw, name) {
   const n = (name || "").toLowerCase();
   for (const m of raw.matchAll(PLACE_LOCALITY_RE)) {
@@ -340,6 +439,10 @@ function placeLocalityOf(raw, name) {
 // place. Requires an anchor (place-type word or locality) alongside the name
 // so a quoted book/film title never reads as a place. The street-view/visual
 // gate is applied by the caller (pickLookup), not here.
+/**
+ * @param {string} text
+ * @returns {string} the Places query, or "" when the message names no place
+ */
 export function extractNamedPlaceQuery(text) {
   const raw = typeof text === "string" ? text : "";
   if (!raw || extractPlace(raw)) return "";
@@ -382,6 +485,10 @@ const NEARBY_TRAIL_RE =
 // convention.
 const NEAREST_LEAD_RE = /^(?:the\s+)?(?:near[e]?st|neares|neardst|closest|närmaste|närmsta|narmaste|narmsta)(?![\p{L}\p{M}])/iu;
 
+/**
+ * @param {string} text
+ * @returns {string} the Places query, or "" when this isn't a nearby ask
+ */
 export function extractNearbyPlaceQuery(text) {
   const raw = (typeof text === "string" ? text : "").trim();
   if (!raw || raw.length > 120) return "";
@@ -412,6 +519,10 @@ export function extractNearbyPlaceQuery(text) {
 //               narrative, photo waypoints along the way, the route map.
 //   "search"  — no relocation verb ("gas station near e18"): informational
 //               — results + destination view + route map.
+/**
+ * @param {string} text
+ * @returns {NearbyMode}
+ */
 export function nearbyAskMode(text) {
   const t = typeof text === "string" ? text : "";
   if (TELEPORT_VERB_RE.test(t)) return "instant";
@@ -422,6 +533,13 @@ export function nearbyAskMode(text) {
 // Initial bearing (degrees clockwise from north) from point 1 toward point
 // 2 — equirectangular like movePoint/distanceMeters, exact enough for the
 // ≤ a-few-km travel captures. Pure and exported for tests.
+/**
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number} whole degrees in [0, 360)
+ */
 export function bearingDeg(lat1, lng1, lat2, lng2) {
   const rad = Math.PI / 180;
   const x = (lng2 - lng1) * Math.cos(((lat1 + lat2) / 2) * rad);
@@ -479,6 +597,10 @@ const ACROSS_BARRIER_RE = new RegExp(
 // conversation deterministically.
 const JOURNEY_ASK_RE =
   /(?<![\p{L}\p{M}])(?:(?:show|draw|display|map|trace|plot|visa|rita|kartlägg|kartlagg)(?![\p{L}\p{M}])[\s\S]{0,40}?(?:how\s+(?:we|i)\s+(?:traveled|travelled|moved|went|got\s+here)|(?:our|my|the)\s+(?:route|path|journey|trail|trip|travels?|way\s+here)|hur\s+(?:vi|jag)\s+(?:åkte|akte|reste|rörde\s+(?:oss|mig)|rorde\s+(?:oss|mig)|tog\s+(?:oss|mig)|kom\s+hit|färdades|fardades)|(?:vår|var|min|hela)\s+(?:rutt(?:en)?|resa(?:n)?|färd(?:en)?|fard(?:en)?)|rutt(?:en)?|resan|färden|farden)|how\s+did\s+(?:we|i)\s+(?:travel|get\s+here)|hur\s+(?:åkte|akte|reste)\s+(?:vi|jag)|hur\s+kom\s+(?:vi|jag)\s+hit)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function journeyAsk(text) {
   return JOURNEY_ASK_RE.test(typeof text === "string" ? text : "");
 }
@@ -497,6 +619,10 @@ const JOURNEY_MAX_POINTS = 12;
 // Walks the ASSISTANT turns in order and returns the journey's waypoints
 // ([{lat,lng}...], oldest first, consecutive duplicates collapsed, capped
 // to the most recent JOURNEY_MAX_POINTS). Pure and exported for tests.
+/**
+ * @param {Conversation} conversation
+ * @returns {LatLng[]}
+ */
 export function extractJourneyPoints(conversation) {
   const points = [];
   for (const m of Array.isArray(conversation) ? conversation : []) {
@@ -519,6 +645,10 @@ export function extractJourneyPoints(conversation) {
 // relocation/travel verb makes any phrasing count; verb-less phrasings
 // must be short commands ("other side of the tracks"), so prose that
 // merely mentions a river's far side never fires.
+/**
+ * @param {string} text
+ * @returns {{ barrier: string } | null}
+ */
 export function extractCrossBarrierAsk(text) {
   const raw = (typeof text === "string" ? text : "").trim();
   if (!raw || raw.length > 120) return null;
@@ -532,6 +662,13 @@ export function extractCrossBarrierAsk(text) {
 // Meters between two coordinates — equirectangular, exact enough for the
 // "≈X m away" labels in the nearby-places block (same approximation as
 // movePoint). Pure and exported for tests + googlemaps.js.
+/**
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number} whole meters
+ */
 export function distanceMeters(lat1, lng1, lat2, lng2) {
   const rad = Math.PI / 180;
   const x = (lng2 - lng1) * rad * Math.cos(((lat1 + lat2) / 2) * rad);
@@ -547,6 +684,10 @@ export function distanceMeters(lat1, lng1, lat2, lng2) {
 // user: "Alstromer"). Numbered-only on purpose: assistant prose mentions
 // many bare street names; a street + house number is a high-precision
 // candidate.
+/**
+ * @param {string} text
+ * @returns {string[]}
+ */
 function addressesInText(text) {
   const raw = typeof text === "string" ? text : "";
   const out = [];
@@ -559,6 +700,7 @@ function addressesInText(text) {
 
 // Diacritics-insensitive normalization so a user's quick "Alstromer" matches
 // "Alströmergatan" (fragments are typed fast, without ö/ä/å).
+/** @param {string} s */
 const normForMatch = (s) =>
   (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
@@ -569,6 +711,11 @@ const normForMatch = (s) =>
 // three Accenture offices, user answered "Alstromer", and the model just
 // asked again). Returns the address only on a UNIQUE match; ambiguous or
 // unknown fragments return "" so the clarify loop can continue honestly.
+/**
+ * @param {Conversation} conversation
+ * @param {string} fragment
+ * @returns {string} the unique matched address, or ""
+ */
 export function matchAddressFragment(conversation, fragment) {
   const frag = normForMatch((fragment || "").trim());
   if (frag.length < 4) return "";
@@ -596,6 +743,7 @@ export function matchAddressFragment(conversation, fragment) {
 // True when this conversation is street-view flavored: some earlier USER
 // turn explicitly asked for it (typo-tolerant), so a bare fragment answer
 // like "Alstromer" can be read as picking a location.
+/** @param {Message[]} users */
 function conversationAsksStreetView(users) {
   return users.some((m) => streetViewIntent(textOf(m?.content)));
 }
@@ -621,6 +769,10 @@ const FIX_AFTER_CONNECTOR_RE =
 const FIX_BARE_MESSAGE_RE =
   /^\s*(?:in|i|på|pa)\s+([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)[\s!.?]*$/iu;
 
+/**
+ * @param {string} text
+ * @returns {string} the corrected locality, or "" when this isn't a correction
+ */
 export function extractLocalityFix(text) {
   const raw = typeof text === "string" ? text : "";
   // A message that names a full address needs no fix-merging — extractPlace
@@ -644,6 +796,11 @@ export function extractLocalityFix(text) {
 // Merges a locality correction onto a walked-back street: the fix REPLACES
 // any comma-appended locality the address already carried (it's a
 // correction), and is a no-op when the address already names it.
+/**
+ * @param {string} address
+ * @param {string} fix
+ * @returns {string}
+ */
 function withLocalityFix(address, fix) {
   if (!fix) return address;
   if (address.toLowerCase().includes(fix.toLowerCase())) return address;
@@ -691,6 +848,10 @@ const FOLLOWUP_REFERENCE_RE = new RegExp(
   "iu",
 );
 
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function referencesStreetView(text) {
   return FOLLOWUP_REFERENCE_RE.test(typeof text === "string" ? text : "");
 }
@@ -752,6 +913,10 @@ const SCENE_REFERENCE_RE = new RegExp(
   "iu",
 );
 
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function referencesStreetViewScene(text) {
   const t = typeof text === "string" ? text : "";
   return referencesStreetView(t) || SCENE_REFERENCE_RE.test(t);
@@ -771,6 +936,7 @@ export function referencesStreetViewScene(text) {
 // diacritics-insensitive address-fragment matching already handles. Bare
 // "vast"/"ost" (English words / cheese) are deliberately NOT included —
 // only the unambiguous -ut adverb and -er forms.
+/** @type {[string, number][]} */
 const COMPASS_WORDS = [
   ["north[- ]?east|nordost(?:ut)?|nordöst(?:ut)?", 45],
   ["south[- ]?east|sydost(?:ut)?|sydöst(?:ut)?", 135],
@@ -808,11 +974,18 @@ const BACK_RE =
 const MOVE_VERB_RE =
   /(?<![\p{L}\p{M}])(?:go|move|walk|continue|head|jump|take me|show|open|pop|gå|ga|fortsätt|fortsatt|hoppa|ta mig|visa|öppna|oppna|flytta|förflytta|forflytta|promenera)(?![\p{L}\p{M}])/iu;
 
+/** @param {number} n */
 const clampMeters = (n) => Math.max(5, Math.min(3000, Math.round(n)));
 
 // Parses a relative move out of the message: distance + direction. Returns
 // null, or { meters, mode: "bearing"|"forward"|"back", bearing?, dir } where
 // `dir` is the normalized word for block phrasing ("north", "forward"…).
+/**
+ * @param {string} text
+ * @returns {{ meters: number, mode: "bearing", bearing: number, dir: string }
+ *   | { meters: number, mode: "forward" | "back", dir: string }
+ *   | null}
+ */
 export function extractRelativeMove(text) {
   const t = typeof text === "string" ? text : "";
   if (!t) return null;
@@ -841,6 +1014,10 @@ export function extractRelativeMove(text) {
 // "gatuvy här", "öppna gatuvy där jag är") — no address, no place name.
 const HERE_RE =
   /(?<![\p{L}\p{M}])(?:here|right here|current (?:location|position|spot|view)|this (?:location|position|spot|point)|my (?:actual |real |physical |current |own )?(?:location|position)|där jag (?:faktiskt |egentligen )?är|var jag är|min (?:nuvarande |faktiska |riktiga |verkliga |fysiska )?(?:position|plats)|nuvarande (?:plats|läge)|denna plats|den här platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function streetViewHereIntent(text) {
   const t = typeof text === "string" ? text : "";
   return streetViewIntent(t) && HERE_RE.test(t);
@@ -858,6 +1035,10 @@ export function streetViewHereIntent(text) {
 // this" or "var är vi på väg" never fires.
 const WHERE_AM_I_RE =
   /(?<![\p{L}\p{M}])(?:(?:where|wher|were|whree?)\s+(?:exactly\s+)?(?:am\s+i|are\s+we)|va(?:r|rt)\s+(?:exakt\s+)?(?:är|e)\s+(?:jag|vi)|var\s+n[åa]gonstans\s+(?:är|e)\s+(?:jag|vi)|var\s+befinner\s+(?:jag\s+mig|vi\s+oss))(?=\s*(?:right\s+now|just\s+nu|now|exactly|currently|located|somewhere|nu|egentligen|n[åa]gonstans)?\s*(?:[?!.,]|$))/iu;
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function whereAmIIntent(text) {
   return WHERE_AM_I_RE.test(typeof text === "string" ? text : "");
 }
@@ -870,6 +1051,10 @@ export function whereAmIIntent(text) {
 // Deliberately tight — the fragment must be essentially nothing BUT a
 // here-phrase, so a longer sentence merely containing "here" can't
 // re-anchor the conversation to the device.
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function hereFragmentAnswer(text) {
   const t = (typeof text === "string" ? text : "").trim();
   if (!t || t.length > 48 || t.split(/\s+/).length > 4) return false;
@@ -887,6 +1072,10 @@ export function hereFragmentAnswer(text) {
 // mirrors it).
 const PHYSICAL_LOCATION_RE =
   /(?<![\p{L}\p{M}])(?:my (?:actual|real|physical|true|own) (?:location|position)|where i (?:actually|really) am|min (?:faktiska|riktiga|verkliga|fysiska|egna) (?:plats|position)|där jag (?:faktiskt|egentligen) är|var jag faktiskt är)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
 export function physicalLocationAsk(text) {
   return PHYSICAL_LOCATION_RE.test(typeof text === "string" ? text : "");
 }
@@ -898,6 +1087,10 @@ export function physicalLocationAsk(text) {
 // below — enrichment.js, which phrases the unresolved note as "allow
 // location access" instead of "which address?" when the device location
 // never arrived.
+/**
+ * @param {string} latest
+ * @param {Message[]} users
+ */
 function isHereAsk(latest, users) {
   return (
     streetViewHereIntent(latest) ||
@@ -907,7 +1100,11 @@ function isHereAsk(latest, users) {
   );
 }
 
-/** True when the conversation's latest user turn is a here-ask (see above). */
+/**
+ * True when the conversation's latest user turn is a here-ask (see above).
+ * @param {Conversation} conversation
+ * @returns {boolean}
+ */
 export function hereAskIntent(conversation) {
   const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
   return isHereAsk(textOf(users[users.length - 1]?.content), users);
@@ -921,6 +1118,10 @@ export function hereAskIntent(conversation) {
 // instead of leaving the model to freestyle a clarify (verbatim
 // 2026-07-09: "Lets go to hemköp stäket" with no location sent got
 // "I'm not sure what that refers to… did you mean Hammarby Sjöstad?").
+/**
+ * @param {Conversation} conversation
+ * @returns {boolean}
+ */
 export function needsAnchorAsk(conversation) {
   const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
   const latest = textOf(users[users.length - 1]?.content);
@@ -936,6 +1137,13 @@ export function needsAnchorAsk(conversation) {
 // Equirectangular approximation — exact enough for the ≤3km moves the
 // parser allows (centimeter error at this scale), rounded to ~10cm so
 // repeated identical asks hit the server's capture cache.
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} bearingDeg
+ * @param {number} meters
+ * @returns {LatLng}
+ */
 export function movePoint(lat, lng, bearingDeg, meters) {
   const rad = (bearingDeg * Math.PI) / 180;
   const dLat = (meters * Math.cos(rad)) / 111320;
@@ -947,41 +1155,6 @@ export function movePoint(lat, lng, bearingDeg, meters) {
   };
 }
 
-// ---- lookup-input derivation --------------------------------------------------
-
-// Used by the pipeline's Maps enrichment: derive the lookup inputs from a
-// conversation + any attached-photo coordinates + the client's live panorama
-// POV. Precedence, most specific first:
-//   1. an attached photo's GPS coordinates,
-//   2. an address the LATEST message names (a new location — the client's
-//      panorama, if any, still shows the old one),
-//   3. the user's CURRENT panorama view (body.street_view_pov) when the
-//      message refers back to the imagery/place — capture exactly what they
-//      panned/moved to,
-//   4. the user's CURRENT interactive-map view (body.map_view) under the
-//      same gate — the road-map sibling of 3, live when a location resolved
-//      WITHOUT Street View coverage and a map embed rendered instead (the
-//      client keeps exactly one of POV/map view live at a time, so 3 and 4
-//      never really compete),
-//   5. the walk-back: the most recent address an EARLIER user turn named
-//      (the embed-less fallback — embed key missing or the Maps JS SDK
-//      failed to load, where only the iframe rendered and no view exists).
-// 3-5 share the referencesStreetView gate: without a back-reference in
-// the message, an ordinary follow-up must not re-bill Google. The server is
-// stateless and the prior turn's Maps block was appended server-side only, so
-// the resent conversation text (and the client-held view) are the only durable
-// records. Returns null when nothing names (or refers back to) a location;
-// `followUp: true` / `pov` / `mapView` / `jump` / `nearby` / `crossBarrier`
-// mark the shape so the enrichment labels the block.
-// Between 2 and 3 sit the JUMPS (requested 2026-07-09): "street view here"
-// and relative moves ("100 meters along this road", "gå 200 m norrut"),
-// anchored to the live panorama (position + heading), else the live map
-// (center), else the device's reported location (`body.user_location`,
-// sent by the client only for here-asks — "street view here", a plain
-// "where am I?", or a short here-fragment answering an earlier street-view
-// turn; the client prefilter in message-content.js mirrors isHereAsk) —
-// checked BEFORE the free-text place query so "street view at my current
-// location" is never sent to Places as a literal place name.
 // ---- relocation-to-a-NAME asks + the pending-relocation memory ---------------
 
 // "Go to hemköp" / "teleport to willys": a relocation verb aimed at an
@@ -998,6 +1171,10 @@ const RELOCATION_JUNK = new Set([
   "sleep", "bed", "work", "hell", "heaven", "home", "town", "toilet", "bathroom",
   "sängs", "sangs", "jobbet", "hem", "helvetet", "stan", "toaletten", "badrummet",
 ]);
+/**
+ * @param {string} text
+ * @returns {{ query: string, mode: NearbyMode } | null}
+ */
 export function extractRelocationQuery(text) {
   const raw = (typeof text === "string" ? text : "").trim();
   if (!raw || raw.length > 80) return null;
@@ -1021,6 +1198,10 @@ export function extractRelocationQuery(text) {
 // the last few user turns: a relocation-to-name ask or a nearby-place ask.
 // Pure and exported for tests.
 const PENDING_RELOCATION_WINDOW = 6;
+/**
+ * @param {Message[]} users
+ * @returns {{ query: string, mode: NearbyMode } | null}
+ */
 export function pendingRelocation(users) {
   const list = Array.isArray(users) ? users : [];
   const stop = Math.max(0, list.length - 1 - PENDING_RELOCATION_WINDOW);
@@ -1043,6 +1224,10 @@ export function pendingRelocation(users) {
 // travel answers looked "just like teleport" — no waypoints in between).
 // Malformed input degrades to the points decoded so far. Pure — tested
 // against Google's reference example.
+/**
+ * @param {string} encoded
+ * @returns {LatLng[]}
+ */
 export function decodePolyline(encoded) {
   const s = typeof encoded === "string" ? encoded : "";
   const points = [];
@@ -1075,6 +1260,12 @@ export function decodePolyline(encoded) {
 // Intermediate sample points along a polyline, one every ~everyM meters
 // (endpoints excluded — the caller owns start and destination), capped.
 // The travel mode's step-by-step Street View waypoints come from this. Pure.
+/**
+ * @param {LatLng[]} points
+ * @param {number} [everyM]
+ * @param {number} [maxSamples]
+ * @returns {LatLng[]}
+ */
 export function samplePolyline(points, everyM = 400, maxSamples = 4) {
   const pts = Array.isArray(points) ? points : [];
   const out = [];
@@ -1094,8 +1285,43 @@ export function samplePolyline(points, everyM = 400, maxSamples = 4) {
 // been "a new ask shape fell through it". It is now an ORDERED REGISTRY of
 // small named matchers over one shared context — adding an ask shape is one
 // matcher function + one line in the list, and the precedence is readable
-// top to bottom. Each matcher returns a target (the shapes documented on
-// pickLookup) or null; the first match wins.
+// top to bottom. Each matcher returns a target (a LookupTarget shape) or
+// null; the first match wins.
+//
+// This is the pipeline's Maps-enrichment entry point: derive the lookup
+// inputs from a conversation + any attached-photo coordinates + the client's
+// live panorama POV. The core precedence, most specific first:
+//   1. an attached photo's GPS coordinates,
+//   2. an address the LATEST message names (a new location — the client's
+//      panorama, if any, still shows the old one),
+//   3. the user's CURRENT panorama view (body.street_view_pov) when the
+//      message refers back to the imagery/place — capture exactly what they
+//      panned/moved to,
+//   4. the user's CURRENT interactive-map view (body.map_view) under the
+//      same gate — the road-map sibling of 3, live when a location resolved
+//      WITHOUT Street View coverage and a map embed rendered instead (the
+//      client keeps exactly one of POV/map view live at a time, so 3 and 4
+//      never really compete),
+//   5. the walk-back: the most recent address an EARLIER user turn named
+//      (the embed-less fallback — embed key missing or the Maps JS SDK
+//      failed to load, where only the iframe rendered and no view exists).
+// 3-5 share the referencesStreetView gate: without a back-reference in
+// the message, an ordinary follow-up must not re-bill Google. The server is
+// stateless and the prior turn's Maps block was appended server-side only, so
+// the resent conversation text (and the client-held view) are the only durable
+// records. pickLookup returns null when nothing names (or refers back to) a
+// location; `followUp: true` / `pov` / `mapView` / `jump` / `nearby` /
+// `crossBarrier` mark the shape so the enrichment labels the block.
+// Between 2 and 3 sit the JUMPS and relocations (requested 2026-07-09):
+// "street view here" and relative moves ("100 meters along this road", "gå
+// 200 m norrut"), anchored to the live panorama (position + heading), else
+// the live map (center), else the device's reported location
+// (`body.user_location`, sent by the client only for here-asks — "street
+// view here", a plain "where am I?", or a short here-fragment answering an
+// earlier street-view turn; the client prefilter in message-content.js
+// mirrors isHereAsk) — checked BEFORE the free-text place query so "street
+// view at my current location" is never sent to Places as a literal place
+// name.
 //
 // The shared context:
 //   latest / trimmed — the newest user turn's text
@@ -1107,6 +1333,14 @@ export function samplePolyline(points, everyM = 400, maxSamples = 4) {
 //   latestFix — a locality correction in the latest turn, shared by the
 //            fragment/scene/walk-back matchers
 
+/**
+ * @param {Conversation} conversation
+ * @param {ImageLocation[] | null | undefined} imageLocations
+ * @param {StreetViewPov | null} pov
+ * @param {MapView | null} mapView
+ * @param {LatLng | null} userLocation
+ * @returns {LookupCtx}
+ */
 function buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation) {
   const users = Array.isArray(conversation) ? conversation.filter((m) => m?.role === "user") : [];
   const latest = textOf(users[users.length - 1]?.content);
@@ -1135,6 +1369,8 @@ function buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation
 }
 
 // An attached photo's GPS coordinates are the most specific input of all.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchPhotoCoords(ctx) {
   const c = Array.isArray(ctx.imageLocations) ? ctx.imageLocations[0] : null;
   if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
@@ -1145,6 +1381,8 @@ function matchPhotoCoords(ctx) {
 
 // An address the LATEST message names — a new location beats everything
 // the conversation was doing before.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchNewAddress(ctx) {
   const address = extractPlace(ctx.latest);
   return address ? { coords: "", address } : null;
@@ -1154,6 +1392,8 @@ function matchNewAddress(ctx) {
 // waypoints come from the mandated coordinate links in the ASSISTANT
 // turns, so this works even after the live view was closed. Fewer than
 // two distinct stops → nothing to draw, fall through.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchJourney(ctx) {
   if (!journeyAsk(ctx.latest)) return null;
   const points = extractJourneyPoints(ctx.conversation);
@@ -1164,6 +1404,8 @@ function matchJourney(ctx) {
 // A relative move ("100 meters along this road", "gå 200 m norrut").
 // Facing-relative moves ("along this road", "back") need a heading — only
 // the panorama has one; a map/device anchor takes compass moves.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchRelativeMove(ctx) {
   if (!ctx.anchor) return null;
   const move = extractRelativeMove(ctx.latest);
@@ -1184,6 +1426,8 @@ function matchRelativeMove(ctx) {
 // along the travel bearing for a coverage GAP (the barrier corridor)
 // followed by renewed coverage (the other side) and relocates there, with
 // a photo series of the virtual crossing.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchCrossBarrier(ctx) {
   if (!ctx.anchor) return null;
   const ask = extractCrossBarrierAsk(ctx.latest);
@@ -1206,6 +1450,8 @@ function matchCrossBarrier(ctx) {
 // Places around the anchor — BEFORE the here-ask so "gas station here"
 // searches rather than jumping, and before the POV scene gate so the
 // deictic "there" can't demote a search ask into a frame capture.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchNearbyPlace(ctx) {
   if (!ctx.anchor) return null;
   const query = extractNearbyPlaceQuery(ctx.latest);
@@ -1220,6 +1466,8 @@ function matchNearbyPlace(ctx) {
 
 // A relocation verb aimed at an arbitrary NAME ("Go to hemköp") — same
 // nearby target shape, so the whole Places/travel machinery serves it.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchRelocationToName(ctx) {
   if (!ctx.anchor) return null;
   const ask = extractRelocationQuery(ctx.latest);
@@ -1238,6 +1486,8 @@ function matchRelocationToName(ctx) {
 // seeking about 'Go there'?". Always travel mode: the user said go.
 const GO_THERE_RE =
   /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:go|co|gå|ga|take\s+(?:me|us)|ta\s+(?:mig|oss))\s+(?:there|dit)\s*[?!.]*$/iu;
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchGoThereResume(ctx) {
   if (!ctx.anchor || !GO_THERE_RE.test(ctx.trimmed)) return null;
   const pending = pendingRelocation(ctx.users);
@@ -1252,6 +1502,8 @@ function matchGoThereResume(ctx) {
 
 // A here-ask ("street view here", "where am I?", a here-fragment after a
 // street-view turn): pop the view at the anchor.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchHereAsk(ctx) {
   if (!ctx.anchor || !isHereAsk(ctx.latest, ctx.users)) return null;
   return {
@@ -1266,6 +1518,8 @@ function matchHereAsk(ctx) {
 // ("Street view of LEGO offices in Copenhagen") — Places resolves the
 // free-text name. A new named place outranks corrections/POV/walk-back,
 // exactly like a new address does.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchPlaceQuery(ctx) {
   const placeQuery = extractPlaceQuery(ctx.latest);
   return placeQuery ? { coords: "", address: placeQuery } : null;
@@ -1277,6 +1531,8 @@ function matchPlaceQuery(ctx) {
 // deterministic; the street-view flavor comes from the same strict gate the
 // walk-back uses (plus the explicit-intent one), so an ordinary research
 // question mentioning a restaurant never bills a lookup.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchNamedPlace(ctx) {
   const namedPlace = extractNamedPlaceQuery(ctx.latest);
   if (!namedPlace || !(streetViewIntent(ctx.latest) || referencesStreetView(ctx.latest))) return null;
@@ -1287,6 +1543,8 @@ function matchNamedPlace(ctx) {
 // ("Alstromer" after the assistant listed three Accenture addresses):
 // matched — diacritics-insensitively — against addresses the whole
 // conversation has surfaced, assistant research answers included.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchAddressFragmentAnswer(ctx) {
   if (!conversationAsksStreetView(ctx.users)) return null;
   const t = ctx.trimmed;
@@ -1300,6 +1558,8 @@ function matchAddressFragmentAnswer(ctx) {
 // and the fragment combine into one Places search ("hemköp Stäket"),
 // inheriting the pending mode — so the travel the user started two turns
 // ago completes instead of falling into web research.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchRelocationFragmentAnswer(ctx) {
   if (!ctx.anchor) return null;
   const t = ctx.trimmed;
@@ -1321,6 +1581,8 @@ function matchRelocationFragmentAnswer(ctx) {
 // imagery/building gate since it re-runs a full billed lookup. A locality
 // correction outranks the POV — the on-screen panorama shows the WRONG
 // place by definition.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchPovScene(ctx) {
   if (!ctx.pov || ctx.latestFix || !referencesStreetViewScene(ctx.latest)) return null;
   return { coords: "", address: "", pov: ctx.pov, followUp: true };
@@ -1329,6 +1591,8 @@ function matchPovScene(ctx) {
 // The live interactive MAP gets the same loose gate: "what's that big
 // building?", "vad är det där?", "and now" while panning the map must
 // capture the area on screen, not walk back to a stale address.
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchMapScene(ctx) {
   if (!ctx.mapView || ctx.latestFix || !referencesStreetViewScene(ctx.latest)) return null;
   return { coords: "", address: "", mapView: ctx.mapView, followUp: true };
@@ -1339,6 +1603,8 @@ function matchMapScene(ctx) {
 // user's own turns name nothing, the assistant's research answers, but
 // ONLY when they surfaced exactly one distinct address (several stay
 // silent so the model can honestly ask which one).
+/** @param {LookupCtx} ctx
+ * @returns {LookupTarget | null} */
 function matchWalkBack(ctx) {
   if (!ctx.latestFix && !referencesStreetView(ctx.latest)) return null;
   let fix = ctx.latestFix;
@@ -1368,6 +1634,7 @@ function matchWalkBack(ctx) {
 // named/fragment resolutions, then the scene captures, and the walk-back
 // last (it re-bills a full lookup, so everything cheaper gets a chance
 // first).
+/** @type {Array<(ctx: LookupCtx) => LookupTarget | null>} */
 const LOOKUP_MATCHERS = [
   matchPhotoCoords,
   matchNewAddress,
@@ -1387,6 +1654,14 @@ const LOOKUP_MATCHERS = [
   matchWalkBack,
 ];
 
+/**
+ * @param {Conversation} conversation
+ * @param {ImageLocation[] | null | undefined} imageLocations
+ * @param {StreetViewPov | null} [pov]
+ * @param {MapView | null} [mapView]
+ * @param {LatLng | null} [userLocation]
+ * @returns {LookupTarget | null}
+ */
 export function pickLookup(conversation, imageLocations, pov = null, mapView = null, userLocation = null) {
   const ctx = buildLookupCtx(conversation, imageLocations, pov, mapView, userLocation);
   for (const matcher of LOOKUP_MATCHERS) {

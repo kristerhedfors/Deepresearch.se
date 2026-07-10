@@ -1,3 +1,21 @@
+// Unit suite for the Google Maps integration's pure logic: the deterministic
+// text side (src/googlemaps-text.js — address/place extraction, every intent
+// gate, the pickLookup matcher registry) and googlemaps.js's pure exports
+// (link/block builders, compassDir, jumpSearchRadius, key gating). The REST
+// clients and the enrichment runners need live Google/Berget and are covered
+// by live verification instead (see the live-verify skill).
+//
+// Layout: per-function describes first (extraction, gates, block builders),
+// then the scenario suites replaying verbatim reported conversations
+// (Accenture fragments, "Gas station near e18 there", the railway crossing,
+// the journey view, "Where am i now"), and the "Swedish language parity"
+// suite enforcing CLAUDE.md invariant 6 — every deterministic gate must take
+// Swedish forms with the same breadth as English. When adding or extending a
+// gate, add its Swedish parity case there in the same change.
+//
+// Deliberately NOT `// @ts-check`: these tests exercise fail-soft behavior
+// by feeding malformed and partial shapes (empty envs, truncated targets,
+// bare object literals) that strict types would reject by design.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 

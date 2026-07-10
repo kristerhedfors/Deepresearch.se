@@ -1,9 +1,10 @@
+// @ts-check
 // Google Maps Platform integration ("Google Maps & Street View" in the UI) —
 // an opt-in per-user knob (src/settings.js's `google_maps`, default OFF).
 // When the knob is on and the GOOGLE_MAPS_API_KEY secret is set, the Worker
 // resolves a location the research question is about — either a street address
 // named in the message, or an attached photo's GPS EXIF coordinates — into
-// Google Maps data across three Maps Platform APIs that share the one key:
+// Google Maps data across four Maps Platform APIs that share the one key:
 //
 //   • Places API (places.googleapis.com) — resolve a named address into a
 //     canonical place: display name, formatted address, precise coordinates,
@@ -13,7 +14,11 @@
 //     confirm panorama coverage, its capture date, and fetch the actual
 //     street-level photo for a vision model to describe.
 //   • Maps Static API (static-maps-backend.googleapis.com) — a road-map image
-//     of the spot for spatial context.
+//     of the spot (or of a whole route with markers) for spatial context.
+//   • Routes API (routes.googleapis.com) — along-road walking distance/time
+//     and the road polyline the travel mode's photo waypoints follow;
+//     optional: when not enabled on the key, the blocks honestly report
+//     straight-line figures only.
 //
 // Wired the same deterministic, no-function-calling way as the reverse-
 // geocoder (src/geocode.js) and Shodan (src/shodan.js): the location is
@@ -39,6 +44,44 @@
 import { cacheGet, cachePut } from "./edge-cache.js";
 import { decodePolyline, distanceMeters, movePoint } from "./googlemaps-text.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** @typedef {import('./googlemaps-text.js').LatLng} LatLng */
+/** @typedef {import('./googlemaps-text.js').MapView} MapView */
+/** @typedef {import('./googlemaps-text.js').JumpTarget} JumpTarget */
+/** @typedef {import('./googlemaps-text.js').CrossBarrierTarget} CrossBarrierTarget */
+/**
+ * A canonical place parsed out of a Places API (New) Text Search response —
+ * see parsePlace. lat/lng are null when Google returned no usable location.
+ * @typedef {{ name: string, address: string, lat: number | null, lng: number | null,
+ *   type: string, rating: number | null, ratingCount: number, status: string }} Place
+ */
+/** A Place whose coordinates are known-present (placesNearbySearch filters). */
+/** @typedef {Place & { lat: number, lng: number }} PlaceWithCoords */
+/** A panorama found along a barrier-crossing probe ray — see runBarrierCrossing. */
+/** @typedef {{ lat: number, lng: number, panoId: string, distance: number }} PanoPoint */
+/** A Routes API walking route — see computeWalkingRoute. */
+/** @typedef {{ distanceMeters: number, durationS: number | null, polyline: LatLng[] }} WalkingRoute */
+/**
+ * What runGoogleMapsLookup resolves a target into (null on any failure):
+ * the display string, the canonical place (address lookups only), the
+ * coordinates, Street View metadata + optional fetched imagery, and the
+ * embed point for the client's interactive panorama.
+ * @typedef {{
+ *   displayQuery: string,
+ *   place: Place | null,
+ *   lat: number | null,
+ *   lng: number | null,
+ *   streetView: { date: string, lat: number | null, lng: number | null } | null,
+ *   streetViewFrames: Array<{ dir: string, url: string }>,
+ *   staticMapImage: string | null,
+ *   embed: LatLng | null,
+ *   details: string[],
+ *   count: number,
+ * }} MapsLookupResult
+ */
+
 const PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText";
 const STREETVIEW_META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
 const STREETVIEW_IMAGE_URL = "https://maps.googleapis.com/maps/api/streetview";
@@ -54,6 +97,17 @@ const TIMEOUT_MS = 6000;
 const STREETVIEW_SEARCH_RADIUS_M = 150;
 const STREETVIEW_SIZE = "512x512"; // per frame; 4 frames + a map must fit Berget's ~1MB body
 const STATICMAP_SIZE = "600x400"; // JPEG below — small enough to attach alongside Street View
+// Cross-request result-cache TTL (Workers Cache API via edge-cache.js), the
+// exact pattern src/exa.js uses for searches: a follow-up turn is a SEPARATE
+// /api/chat request, and the follow-up flow (pickLookup's walk-back)
+// re-looks-up the SAME location on every gated follow-up — without a cache
+// each one re-bills Places + five imagery fetches at Google. Shared by the
+// address lookup and the POV/map-view captures. Short TTL only — enough to
+// absorb a whole session of follow-ups about one address (raised from 10 to
+// 30 min after a user asking repeatedly about the same address in one
+// sitting), still comfortably inside Google's performance-caching allowance
+// (Street View imagery itself changes on a timescale of years).
+const LOOKUP_CACHE_TTL_S = 1800;
 // Four cardinal headings give the vision model a full look around the spot
 // (what's across the street, the façade, neighbours) — the "multi-angle
 // capture" that makes Street View actually queryable, not one fixed frame.
@@ -64,6 +118,19 @@ const STREETVIEW_HEADINGS = [
   { deg: 270, dir: "west" },
 ];
 
+// The server API key, typed non-null for the keyed URL/header builders:
+// every caller runs behind a googleMapsAvailable gate, so the key is
+// present whenever a billed request is actually built.
+/**
+ * @param {Env} env
+ * @returns {string}
+ */
+const mapsApiKey = (env) => /** @type {string} */ (env.GOOGLE_MAPS_API_KEY);
+
+/**
+ * @param {Env} env
+ * @returns {boolean}
+ */
 export function googleMapsAvailable(env) {
   return !!env.GOOGLE_MAPS_API_KEY;
 }
@@ -76,6 +143,10 @@ export function googleMapsAvailable(env) {
 // browser — without that referrer restriction, exposing the server key would
 // let anyone run its billed Places/Static APIs. Empty string when neither is
 // set — the client then shows only the keyless Street View link, no embed.
+/**
+ * @param {Env} env
+ * @returns {string}
+ */
 export function googleMapsEmbedKey(env) {
   const embed = typeof env.GOOGLE_MAPS_EMBED_KEY === "string" ? env.GOOGLE_MAPS_EMBED_KEY : "";
   if (embed) return embed;
@@ -90,6 +161,10 @@ export function googleMapsEmbedKey(env) {
 // or geolocation timed out) — say that, not a useless "which address?"
 // (live report 2026-07-09, ref 7a75daf2: the reply was "Where should I
 // look up Street View?" at a user pointing at their own position).
+/**
+ * @param {boolean} [hereAsk]
+ * @returns {string}
+ */
 export function unresolvedMapsBlock(hereAsk = false) {
   const middle = hereAsk
     ? "The user asked for something anchored at their CURRENT LOCATION (a street-view-here ask, \"where am I?\", a go-to/teleport/nearby ask that starts from their position, or an answer to such a clarify), but no device location was shared with this request — the browser has not (yet) granted this site location access, the location request timed out, or the app is running an older cached version (a full reload/relaunch fixes that). " +
@@ -117,11 +192,21 @@ const NO_FABRICATED_IMAGE_URLS =
 // Keyless Google Maps Street View link (built from the pano's own
 // coordinates) the model can cite and the user can open. NEVER embeds the API
 // key — the keyed image URL is used only for the internal fetch.
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {string}
+ */
 export function panoLink(lat, lng) {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
 }
 
 // Keyless Google Maps link that drops a pin at the coordinates.
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {string}
+ */
 export function mapLink(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
@@ -129,6 +214,10 @@ export function mapLink(lat, lng) {
 // A heading in degrees as a compass point ("143°" → "southeast"), so the
 // context block reads naturally for the model and the user.
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+/**
+ * @param {number} heading
+ * @returns {string}
+ */
 export function compassDir(heading) {
   const h = ((Number(heading) % 360) + 360) % 360;
   return COMPASS[Math.round(h / 45) % 8];
@@ -138,6 +227,11 @@ export function compassDir(heading) {
 // the user panned/moved the inline panorama and asked a follow-up, and the
 // exact frame on their screen was captured and (when possible) described.
 // Same plain-text convention as buildMapsBlock. Pure — exported for tests.
+/**
+ * @param {StreetViewPov} pov
+ * @param {{ date?: string, description?: string, framesShown?: number, panoramaShown?: boolean }} parts
+ * @returns {string}
+ */
 export function buildPovBlock(pov, parts) {
   const lines = [
     "The user is viewing an interactive Street View panorama beside this chat and may have panned or moved it.",
@@ -176,6 +270,7 @@ export function buildPovBlock(pov, parts) {
 }
 
 // Human phrasing of a jump ask, from the deterministic parse (pure).
+/** @param {JumpTarget} jump */
 function jumpAskText(jump) {
   if (jump.dir === "here") return "at their current position";
   const dir =
@@ -192,6 +287,12 @@ function jumpAskText(jump) {
 // computed one ("100 meters along this road") — the destination was derived
 // deterministically from their live view/location and phrasing. Pure —
 // exported for tests. `jump` carries the (possibly pano-snapped) destination.
+/**
+ * @param {JumpTarget} jump
+ * @param {{ found?: boolean, date?: string, place?: string | null, panoramaShown?: boolean,
+ *   framesShown?: number, description?: string, mapShown?: boolean }} parts
+ * @returns {string}
+ */
 export function buildJumpBlock(jump, parts) {
   const lines = [
     `The user asked to open Street View ${jumpAskText(jump)} — computed destination: ${jump.lat}, ${jump.lng}, facing ${jump.heading}° (${compassDir(jump.heading)}).`,
@@ -244,6 +345,14 @@ export function buildJumpBlock(jump, parts) {
 // the reported failure was the model answering a panorama relocation with
 // real-world safety guidance ("never cross the tracks directly") — twice.
 // Pure — exported for unit tests.
+/**
+ * @param {string} barrier
+ * @param {LatLng} anchor
+ * @param {{ found: true, bearing: number, distance: number, lat: number, lng: number,
+ *     place?: string | null, framesShown?: number, panoramaShown?: boolean, description?: string }
+ *   | { found?: false, mapShown?: boolean }} [parts]
+ * @returns {string}
+ */
 export function buildCrossBarrierBlock(barrier, anchor, parts = {}) {
   const lines = [
     `The user asked to get to the other side of the ${barrier}. This is VIRTUAL Street View panorama navigation — the user is NOT physically moving. ` +
@@ -295,6 +404,14 @@ export function buildCrossBarrierBlock(barrier, anchor, parts = {}) {
 // from the anchor and a keyless Map link. `parts` carries the imagery facts
 // (panorama/frame shown, vision description) for the TOP hit when Street
 // View covered it. Pure — exported for unit tests.
+/**
+ * @param {string} query
+ * @param {LatLng} anchor
+ * @param {PlaceWithCoords[]} places
+ * @param {{ mode?: string, anchorPlace?: string | null, panoramaShown?: boolean, mapShown?: boolean,
+ *   routeMapShown?: boolean, route?: WalkingRoute | null, description?: string }} [parts]
+ * @returns {string}
+ */
 export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
   const lines = [
     `The user asked for a nearby place ("${query}") and Google Places was searched around their CURRENT position (${anchor.lat}, ${anchor.lng}). ` +
@@ -375,6 +492,11 @@ export function buildNearbyPlacesBlock(query, anchor, places, parts = {}) {
 // inline interactive map and asked a follow-up, and a road-map image of
 // exactly the area on their screen was captured and (when possible)
 // described. Pure — exported for tests.
+/**
+ * @param {MapView} view
+ * @param {{ description?: string, mapShown?: boolean }} parts
+ * @returns {string}
+ */
 export function buildMapViewBlock(view, parts) {
   const lines = [
     "The user is viewing an interactive Google Map beside this chat and may have panned or zoomed it.",
@@ -413,6 +535,14 @@ export function buildMapViewBlock(view, parts) {
 // The labeled context block appended to the conversation, same plain-text
 // convention as geocode.js's resolved-location block and shodan.js's host
 // block. `parts` is the assembled lookup result (place / streetView / map).
+/**
+ * @param {string} query
+ * @param {{ place: Place | null, lat: number | null, lng: number | null,
+ *   streetView: { date: string, lat: number | null, lng: number | null } | null,
+ *   streetViewCount?: number, hasMap?: boolean, description?: string, describedMapOnly?: boolean,
+ *   followUp?: boolean, framesShown?: number, mapShown?: boolean, mapEmbedShown?: boolean }} parts
+ * @returns {string}
+ */
 export function buildMapsBlock(query, parts) {
   const lines = [`Location looked up: ${query}`];
   const p = parts.place;
@@ -429,7 +559,7 @@ export function buildMapsBlock(query, parts) {
   const lng = parts.lng;
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
     lines.push(`Coordinates: ${lat}, ${lng}`);
-    lines.push(`Map link: ${mapLink(lat, lng)}`);
+    lines.push(`Map link: ${mapLink(/** @type {number} */ (lat), /** @type {number} */ (lng))}`);
   }
   if (parts.streetView) {
     // Link the panorama's own position when the lookup reported one (it can
@@ -437,7 +567,9 @@ export function buildMapsBlock(query, parts) {
     // resolved coordinates.
     const svLat = Number.isFinite(parts.streetView.lat) ? parts.streetView.lat : lat;
     const svLng = Number.isFinite(parts.streetView.lng) ? parts.streetView.lng : lng;
-    if (Number.isFinite(svLat) && Number.isFinite(svLng)) lines.push(`Street View link: ${panoLink(svLat, svLng)}`);
+    if (Number.isFinite(svLat) && Number.isFinite(svLng)) {
+      lines.push(`Street View link: ${panoLink(/** @type {number} */ (svLat), /** @type {number} */ (svLng))}`);
+    }
     if (parts.streetView.date) lines.push(`Street View imagery captured: ${parts.streetView.date}`);
   } else {
     // The location resolved but Google has no panorama near it. Said
@@ -451,7 +583,7 @@ export function buildMapsBlock(query, parts) {
     // 2026-07-09: "include a google maps link with the maps view").
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       lines.push(
-        `ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(lat, lng)})) so the user can open the location on Google Maps.`,
+        `ALWAYS include the Map link above in your answer as a markdown link (e.g. [View on Google Maps](${mapLink(/** @type {number} */ (lat), /** @type {number} */ (lng))})) so the user can open the location on Google Maps.`,
       );
     }
   }
@@ -523,6 +655,7 @@ export function buildMapsBlock(query, parts) {
 
 // Base64-encode bytes in chunks so a large image doesn't blow the argument
 // limit of String.fromCharCode (Workers have btoa but not Buffer).
+/** @param {Uint8Array} bytes */
 function bytesToBase64(bytes) {
   let binary = "";
   const CHUNK = 0x8000;
@@ -532,6 +665,13 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} url
+ * @param {string} event the log event name for a failed fetch
+ * @returns {Promise<string | null>} a data: URL, or null on any failure
+ */
 async function fetchImageDataUrl(env, log, url, event) {
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -542,25 +682,53 @@ async function fetchImageDataUrl(env, log, url, event) {
     const buf = await resp.arrayBuffer();
     if (!buf || buf.byteLength === 0) return null;
     return `data:image/jpeg;base64,${bytesToBase64(new Uint8Array(buf))}`;
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn(event, { error: err?.message || String(err) });
     return null;
   }
 }
 
+// Field mask shared by both Places Text Search calls — keeps the response,
+// and the billing tier, minimal.
+const PLACES_FIELD_MASK =
+  "places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.userRatingCount,places.businessStatus";
+
+// One raw Places API place object → the Place shape the blocks consume.
+/**
+ * @param {any} place
+ * @returns {Place}
+ */
+function parsePlace(place) {
+  const lat = Number(place.location?.latitude);
+  const lng = Number(place.location?.longitude);
+  return {
+    name: place.displayName?.text || "",
+    address: place.formattedAddress || "",
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    type: typeof place.primaryType === "string" ? place.primaryType.replace(/_/g, " ") : "",
+    rating: Number.isFinite(place.rating) ? place.rating : null,
+    ratingCount: Number.isFinite(place.userRatingCount) ? place.userRatingCount : 0,
+    status: typeof place.businessStatus === "string" ? place.businessStatus : "",
+  };
+}
+
 // Places API (New) Text Search: resolve an address/place string into a single
-// canonical place. Field mask keeps the response — and the billing tier —
-// minimal. Returns { name, address, lat, lng, type, rating, ratingCount,
-// status } or null.
+// canonical place.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} query
+ * @returns {Promise<Place | null>}
+ */
 export async function placesTextSearch(env, log, query) {
   try {
     const resp = await fetch(PLACES_SEARCH_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
-        "X-Goog-FieldMask":
-          "places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.userRatingCount,places.businessStatus",
+        "X-Goog-Api-Key": mapsApiKey(env),
+        "X-Goog-FieldMask": PLACES_FIELD_MASK,
       },
       body: JSON.stringify({ textQuery: query, maxResultCount: 1 }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -569,26 +737,16 @@ export async function placesTextSearch(env, log, query) {
       log.warn("googlemaps.places_error", { status: resp.status });
       return null;
     }
+    /** @type {any} */
     const data = await resp.json().catch(() => null);
     const place = data?.places?.[0];
     if (!place) {
       log.info("googlemaps.places", { found: false });
       return null;
     }
-    const lat = Number(place.location?.latitude);
-    const lng = Number(place.location?.longitude);
     log.info("googlemaps.places", { found: true });
-    return {
-      name: place.displayName?.text || "",
-      address: place.formattedAddress || "",
-      lat: Number.isFinite(lat) ? lat : null,
-      lng: Number.isFinite(lng) ? lng : null,
-      type: typeof place.primaryType === "string" ? place.primaryType.replace(/_/g, " ") : "",
-      rating: Number.isFinite(place.rating) ? place.rating : null,
-      ratingCount: Number.isFinite(place.userRatingCount) ? place.userRatingCount : 0,
-      status: typeof place.businessStatus === "string" ? place.businessStatus : "",
-    };
-  } catch (err) {
+    return parsePlace(place);
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.places_error", { error: err?.message || String(err) });
     return null;
   }
@@ -601,15 +759,22 @@ export async function placesTextSearch(env, log, query) {
 // slightly outside) and up to 3 results so the answer can name
 // alternatives. Returns an array (possibly empty) or null on failure.
 const NEARBY_BIAS_RADIUS_M = 5000;
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} query
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<PlaceWithCoords[] | null>}
+ */
 export async function placesNearbySearch(env, log, query, lat, lng) {
   try {
     const resp = await fetch(PLACES_SEARCH_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
-        "X-Goog-FieldMask":
-          "places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.userRatingCount,places.businessStatus",
+        "X-Goog-Api-Key": mapsApiKey(env),
+        "X-Goog-FieldMask": PLACES_FIELD_MASK,
       },
       body: JSON.stringify({
         textQuery: query,
@@ -622,26 +787,15 @@ export async function placesNearbySearch(env, log, query, lat, lng) {
       log.warn("googlemaps.places_nearby_error", { status: resp.status });
       return null;
     }
+    /** @type {any} */
     const data = await resp.json().catch(() => null);
+    /** @type {any[]} */
     const places = Array.isArray(data?.places) ? data.places : [];
     log.info("googlemaps.places_nearby", { found: places.length });
-    return places
-      .map((place) => {
-        const plat = Number(place.location?.latitude);
-        const plng = Number(place.location?.longitude);
-        return {
-          name: place.displayName?.text || "",
-          address: place.formattedAddress || "",
-          lat: Number.isFinite(plat) ? plat : null,
-          lng: Number.isFinite(plng) ? plng : null,
-          type: typeof place.primaryType === "string" ? place.primaryType.replace(/_/g, " ") : "",
-          rating: Number.isFinite(place.rating) ? place.rating : null,
-          ratingCount: Number.isFinite(place.userRatingCount) ? place.userRatingCount : 0,
-          status: typeof place.businessStatus === "string" ? place.businessStatus : "",
-        };
-      })
-      .filter((p) => p.lat != null && p.lng != null);
-  } catch (err) {
+    return /** @type {PlaceWithCoords[]} */ (
+      places.map(parsePlace).filter((p) => p.lat != null && p.lng != null)
+    );
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.places_nearby_error", { error: err?.message || String(err) });
     return null;
   }
@@ -652,9 +806,17 @@ export async function placesNearbySearch(env, log, query, lat, lng) {
 // image. A pano id (from the client's live panorama) takes precedence over
 // the location string when given. Returns the parsed metadata (status "OK"
 // means imagery exists) or null.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} location "lat,lng" or a raw address (Google geocodes it)
+ * @param {string} [pano] a pano id, taking precedence over `location`
+ * @param {number} [radius] widened search radius in meters (0 = Google's default)
+ * @returns {Promise<any | null>} the raw metadata JSON (status "OK" = imagery exists)
+ */
 export async function streetViewMetadata(env, log, location, pano = "", radius = 0) {
   try {
-    const qs = new URLSearchParams({ key: env.GOOGLE_MAPS_API_KEY });
+    const qs = new URLSearchParams({ key: mapsApiKey(env) });
     if (pano) qs.set("pano", pano);
     else {
       qs.set("location", location);
@@ -674,18 +836,24 @@ export async function streetViewMetadata(env, log, location, pano = "", radius =
     const data = await resp.json().catch(() => null);
     log.info("googlemaps.streetview_meta", { status: data?.status || "unknown" });
     return data;
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.streetview_meta_error", { error: err?.message || String(err) });
     return null;
   }
 }
 
+/**
+ * @param {Env} env
+ * @param {string} location
+ * @param {number} heading
+ * @param {string} [pano]
+ */
 function streetViewImageUrl(env, location, heading, pano = "") {
   const qs = new URLSearchParams({
     size: STREETVIEW_SIZE,
     heading: String(heading),
     fov: "90",
-    key: env.GOOGLE_MAPS_API_KEY,
+    key: mapsApiKey(env),
     return_error_code: "true",
   });
   // Pin the very panorama the metadata check found: the image API's own
@@ -703,13 +871,17 @@ function streetViewImageUrl(env, location, heading, pano = "") {
 // The Street View Static URL for an exact point of view — the pano id (when
 // the client's live panorama reported one) pins the very panorama the user is
 // standing in, and heading/pitch/fov reproduce where they panned to.
+/**
+ * @param {Env} env
+ * @param {StreetViewPov} pov
+ */
 function streetViewPovImageUrl(env, pov) {
   const qs = new URLSearchParams({
     size: STREETVIEW_SIZE,
     heading: String(pov.heading),
     pitch: String(pov.pitch),
     fov: String(pov.fov),
-    key: env.GOOGLE_MAPS_API_KEY,
+    key: mapsApiKey(env),
     return_error_code: "true",
   });
   if (pov.panoId) qs.set("pano", pov.panoId);
@@ -723,6 +895,12 @@ function streetViewPovImageUrl(env, pov) {
 // capture date. Cached like the address lookup (the POV is integer-rounded
 // client-side, so re-asking about the same view is a free hit). Returns
 // { image, date } or null on any failure — fail-soft, the caller degrades.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {StreetViewPov} pov
+ * @returns {Promise<{ image: string, date: string } | null>}
+ */
 export async function runStreetViewPovCapture(env, log, pov) {
   if (!googleMapsAvailable(env)) return null;
 
@@ -755,6 +933,10 @@ export async function runStreetViewPovCapture(env, log, pov) {
 // zoom from the client's live interactive map) — the map-view sibling of
 // streetViewPovImageUrl. No marker: the user panned freely, there is no
 // resolved place to mark.
+/**
+ * @param {Env} env
+ * @param {MapView} view
+ */
 function staticMapViewUrl(env, view) {
   const qs = new URLSearchParams({
     center: `${view.lat},${view.lng}`,
@@ -763,7 +945,7 @@ function staticMapViewUrl(env, view) {
     scale: "1",
     format: "jpg",
     maptype: "roadmap",
-    key: env.GOOGLE_MAPS_API_KEY,
+    key: mapsApiKey(env),
   });
   return `${STATICMAP_URL}?${qs}`;
 }
@@ -775,6 +957,10 @@ function staticMapViewUrl(env, view) {
 // 1km" → ZERO_RESULTS at 150m while roads sat within a few hundred
 // meters). Half the jump distance keeps the snap meaningfully "about that
 // far in that direction"; short jumps and here-pops keep the 150m floor.
+/**
+ * @param {number} meters
+ * @returns {number}
+ */
 export function jumpSearchRadius(meters) {
   const m = Number.isFinite(meters) ? meters : 0;
   return Math.min(1000, Math.max(STREETVIEW_SEARCH_RADIUS_M, Math.round(m / 2)));
@@ -786,6 +972,13 @@ export function jumpSearchRadius(meters) {
 // metadata+frame fetch. Returns { lat, lng, panoId, heading, date, image }
 // (lat/lng snapped to the found panorama's own position) or null when
 // Google has no panorama within the search radius of the destination.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {{ lat: number, lng: number, heading: number, meters: number }} point
+ * @returns {Promise<{ lat: number, lng: number, panoId: string, heading: number,
+ *   date: string, image: string | null } | null>}
+ */
 export async function runStreetViewJumpLookup(env, log, point) {
   if (!googleMapsAvailable(env)) return null;
   const meta = await streetViewMetadata(env, log, `${point.lat},${point.lng}`, "", jumpSearchRadius(point.meters));
@@ -817,6 +1010,12 @@ export async function runStreetViewJumpLookup(env, log, point) {
 const CROSS_STEP_M = 40;
 const CROSS_MAX_M = 640;
 const CROSS_PROBE_RADIUS_M = 30;
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {CrossBarrierTarget} anchor
+ * @returns {Promise<{ bearing: number, before: PanoPoint, after: PanoPoint } | null>}
+ */
 export async function runBarrierCrossing(env, log, anchor) {
   if (!googleMapsAvailable(env)) return null;
   const bearings = anchor.hasHeading
@@ -831,6 +1030,7 @@ export async function runBarrierCrossing(env, log, anchor) {
         return streetViewMetadata(env, log, `${p.lat},${p.lng}`, "", CROSS_PROBE_RADIUS_M);
       }),
     );
+    /** @type {PanoPoint | null} */
     let before = null;
     let inGap = false;
     for (let i = 0; i < metas.length; i++) {
@@ -849,7 +1049,8 @@ export async function runBarrierCrossing(env, log, anchor) {
       };
       if (inGap && pano.panoId && pano.panoId !== before?.panoId) {
         log.info("googlemaps.barrier_crossing", { bearing, distance: pano.distance });
-        return { bearing, before, after: pano };
+        // `inGap` is only ever set with `before` present — the cast is safe.
+        return { bearing, before: /** @type {PanoPoint} */ (before), after: pano };
       }
       before = pano;
     }
@@ -863,6 +1064,12 @@ export async function runBarrierCrossing(env, log, anchor) {
 // their center/zoom. Cached like the POV capture (the view is rounded
 // client-side, so re-asking about the same area is a free hit). Returns
 // { image } or null on any failure — fail-soft, the caller degrades.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {MapView} view
+ * @returns {Promise<{ image: string } | null>}
+ */
 export async function runMapViewCapture(env, log, view) {
   if (!googleMapsAvailable(env)) return null;
 
@@ -885,6 +1092,10 @@ export async function runMapViewCapture(env, log, view) {
   return result;
 }
 
+/**
+ * @param {Env} env
+ * @param {string} location
+ */
 function staticMapUrl(env, location) {
   const qs = new URLSearchParams({
     center: location,
@@ -894,7 +1105,7 @@ function staticMapUrl(env, location) {
     format: "jpg",
     maptype: "roadmap",
     markers: `color:red|${location}`,
-    key: env.GOOGLE_MAPS_API_KEY,
+    key: mapsApiKey(env),
   });
   return `${STATICMAP_URL}?${qs}`;
 }
@@ -906,6 +1117,13 @@ function staticMapUrl(env, location) {
 // Routes API's road path, downsampled to keep the URL within limits) while
 // the numbered markers stay on the logical stops; without it the path
 // connects the stops straight-line.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {LatLng[]} points the logical stops (numbered markers)
+ * @param {LatLng[] | null} [pathPoints] a real route polyline for the path line
+ * @returns {Promise<string | null>}
+ */
 export async function routeMapImage(env, log, points, pathPoints = null) {
   const path = Array.isArray(pathPoints) && pathPoints.length >= 2 ? downsamplePath(pathPoints, 60) : points;
   const qs = new URLSearchParams({
@@ -914,7 +1132,7 @@ export async function routeMapImage(env, log, points, pathPoints = null) {
     format: "jpg",
     maptype: "roadmap",
     path: "color:0x2563ebff|weight:4|" + path.map((p) => `${p.lat},${p.lng}`).join("|"),
-    key: env.GOOGLE_MAPS_API_KEY,
+    key: mapsApiKey(env),
   });
   points.forEach((p, i) => qs.append("markers", `label:${(i + 1) % 10}|${p.lat},${p.lng}`));
   return fetchImageDataUrl(env, log, `${STATICMAP_URL}?${qs}`, "googlemaps.routemap_error");
@@ -922,6 +1140,10 @@ export async function routeMapImage(env, log, points, pathPoints = null) {
 
 // Keep every Nth point (endpoints always) so a long polyline fits the
 // Static Maps URL limit.
+/**
+ * @param {LatLng[]} points
+ * @param {number} max
+ */
 function downsamplePath(points, max) {
   if (points.length <= max) return points;
   const step = Math.ceil(points.length / max);
@@ -937,15 +1159,21 @@ function downsamplePath(points, max) {
 // straight-line numbers only — never a made-up walking time.
 const ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 const ROUTES_MAX_INTERMEDIATES = 8;
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {LatLng[]} points
+ * @returns {Promise<WalkingRoute | null>}
+ */
 export async function computeWalkingRoute(env, log, points) {
   if (!Array.isArray(points) || points.length < 2) return null;
   try {
-    const wp = (p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
+    const wp = (/** @type {LatLng} */ p) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
     const resp = await fetch(ROUTES_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": env.GOOGLE_MAPS_API_KEY,
+        "X-Goog-Api-Key": mapsApiKey(env),
         // The encoded polyline is the actual ROAD PATH — the travel mode
         // samples its Street View waypoints along it and the route map
         // draws it, so "go to X" follows roads instead of a straight line.
@@ -971,12 +1199,13 @@ export async function computeWalkingRoute(env, log, points) {
     const polyline = decodePolyline(route?.polyline?.encodedPolyline || "");
     log.info("googlemaps.routes", { distance_m: dist, polyline_points: polyline.length });
     return { distanceMeters: dist, durationS: Number.isFinite(dur) ? dur : null, polyline };
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     log.warn("googlemaps.routes_error", { error: err?.message || String(err) });
     return null;
   }
 }
 
+/** @param {number} m */
 const fmtMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
 
 // The labeled context block for the JOURNEY view ("show how we traveled"):
@@ -984,6 +1213,12 @@ const fmtMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.ro
 // block presents them as the journey confidently — the reported failure
 // was the model disclaiming that "no verified route" exists and refusing
 // to draw one. Pure — exported for unit tests.
+/**
+ * @param {LatLng[]} points
+ * @param {{ route?: WalkingRoute | null, startPlace?: string | null, endPlace?: string | null,
+ *   mapShown?: boolean, embedShown?: boolean }} [parts]
+ * @returns {string}
+ */
 export function buildJourneyBlock(points, parts = {}) {
   const total = points.length;
   let straight = 0;
@@ -1025,19 +1260,13 @@ export function buildJourneyBlock(points, parts = {}) {
   return "\n\n--- Google Maps ---\n" + lines.join("\n") + "\n--- End of Google Maps ---";
 }
 
-// Cross-request lookup cache, the exact pattern src/exa.js uses for searches:
-// a follow-up turn is a SEPARATE /api/chat request, and the follow-up flow
-// above (pickLookup's walk-back) re-looks-up the SAME location on every
-// gated follow-up — without a cache each one re-bills Places + five imagery
-// fetches at Google. Workers Cache API (caches.default): durable across
-// requests in a colo, no binding needed, fail-soft in every branch. Short TTL
-// only — enough to absorb a whole session of follow-ups about one address
-// (raised from 10 to 30 min after a user asking repeatedly about the same
-// address in one sitting), still comfortably inside Google's
-// performance-caching allowance (Street View imagery itself changes on a
-// timescale of years).
-const LOOKUP_CACHE_TTL_S = 1800;
-
+// The address lookup's edge-cache key (Workers Cache API, caches.default:
+// durable across requests in a colo, no binding needed, fail-soft in every
+// branch — see LOOKUP_CACHE_TTL_S above for the caching rationale).
+/**
+ * @param {string | undefined} target
+ * @param {boolean} fetchImages
+ */
 function lookupCacheKey(target, fetchImages) {
   const params = new URLSearchParams({
     t: (target || "").trim().toLowerCase().replace(/\s+/g, " "),
@@ -1054,6 +1283,12 @@ function lookupCacheKey(target, fetchImages) {
 // ({ displayQuery, place, lat, lng, streetView, streetViewFrames,
 // staticMapImage, embed, details, count }) or null when nothing resolved (or
 // any failure) — the caller stays silent / builds the block itself.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {{ coords?: string, address?: string, fetchImages?: boolean }} target
+ * @returns {Promise<MapsLookupResult | null>}
+ */
 export async function runGoogleMapsLookup(env, log, { coords, address, fetchImages }) {
   if (!googleMapsAvailable(env)) return null;
 
@@ -1070,8 +1305,11 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   // Resolve a place + coordinates. A photo's coords are used directly; an
   // address is first sent to Places to canonicalise it and get precise coords
   // (falling back to letting the imagery APIs geocode the raw string).
+  /** @type {Place | null} */
   let place = null;
+  /** @type {number | null} */
   let lat = null;
+  /** @type {number | null} */
   let lng = null;
   let displayQuery = coords || address || "";
   if (coords) {
@@ -1126,7 +1364,9 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
   // name directions. The CALLER decides whether to attach these to a vision
   // answer model or run them through the vision-describe helper — this just
   // fetches them.
+  /** @type {Array<{ dir: string, url: string }>} */
   let streetViewFrames = [];
+  /** @type {string | null} */
   let staticMapImage = null;
   if (fetchImages) {
     const svJobs = svOk
@@ -1138,16 +1378,20 @@ export async function runGoogleMapsLookup(env, log, { coords, address, fetchImag
       Promise.all(svJobs),
       fetchImageDataUrl(env, log, staticMapUrl(env, imageryLocation), "googlemaps.staticmap_error"),
     ]);
-    streetViewFrames = svResults
-      .map((url, i) => ({ dir: STREETVIEW_HEADINGS[i].dir, url }))
-      .filter((f) => f.url);
+    streetViewFrames = /** @type {Array<{ dir: string, url: string }>} */ (
+      svResults.map((url, i) => ({ dir: STREETVIEW_HEADINGS[i].dir, url })).filter((f) => f.url)
+    );
     staticMapImage = mapResult;
   }
 
   // Coordinates for the client's interactive Street View embed (only when
   // there's coverage and a real point to center on) — the panorama's own
   // position when the metadata reported one, so the embed can't re-miss it.
-  const embedPoint = svPoint || (Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null);
+  const embedPoint =
+    svPoint ||
+    (Number.isFinite(lat) && Number.isFinite(lng)
+      ? { lat: /** @type {number} */ (lat), lng: /** @type {number} */ (lng) }
+      : null);
   const embed = svOk && embedPoint ? embedPoint : null;
 
   // Prefer the formatted address (includes the city) so the activity detail
