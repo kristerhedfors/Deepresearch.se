@@ -20,7 +20,11 @@ import {
   settlePendingSteps,
   startGenericStep,
   startSearchStep,
+  updateGenericStep,
 } from "./activity.js";
+import { bashLiteOn } from "./settings.js";
+import { runShellLoop } from "./bash-agent.js";
+import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -745,6 +749,61 @@ async function buildChatPayload(opts) {
   return payload;
 }
 
+// The experimental bash-lite sandbox pre-pass (the `bash_lite_mcp` knob). When
+// the knob is on and the sandbox can run here (cross-origin isolated), the
+// MODEL — not a client-side keyword gate — decides whether this message needs a
+// shell: the agentic loop (public/js/bash-agent.js) asks it cold, and it
+// returns done immediately for anything that doesn't. So "list files", "run la
+// -la", or any phrasing the old regex missed now work, because the model makes
+// the call. The Linux VM boots LAZILY (bootOnce) — only once the model actually
+// proposes a command — so ordinary chat with the knob on pays one cheap model
+// call and never boots the VM. Returns the transcript for stream.js to attach
+// as `shell_transcript`; the pipeline folds it into the answer as ground truth.
+// Fully fail-soft: any problem returns [] and the answer proceeds normally.
+/**
+ * @param {object} turn the assistant turn (activity target)
+ * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
+ */
+async function maybeRunShellLoop(turn) {
+  try {
+    if (!bashLiteOn() || !sandboxSupported()) return [];
+
+    let booted = false;
+    let ran = 0;
+    // Boot the VM the first (and only the first) time the model asks to run
+    // something — surfaced as a turn step so the user sees the (slow) first
+    // boot. Returns whether the sandbox is usable.
+    const bootOnce = async () => {
+      startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
+      booted = await ensureSandboxBooted();
+      if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
+      return booted;
+    };
+    const transcript = await runShellLoop({
+      messages: stripOldImages(history),
+      exec: execInSandbox,
+      ensureReady: bootOnce,
+      onResult: () => {
+        ran++;
+        updateGenericStep(turn, "sandbox", `Running in sandbox — ${ran} command${ran === 1 ? "" : "s"}…`);
+      },
+    });
+    // Only report a finished step if we actually booted and ran (a message the
+    // model judged not to need a shell shows no sandbox activity at all).
+    if (booted && transcript.length) {
+      finishGenericStep(turn, {
+        id: "sandbox",
+        label: `Ran ${transcript.length} command${transcript.length === 1 ? "" : "s"} in the Linux sandbox`,
+        details: transcript.map((r) => `$ ${r.command}`),
+      });
+    }
+    return transcript;
+  } catch (err) {
+    try { finishGenericStep(turn, { id: "sandbox", label: "Sandbox error — answering normally" }); } catch {}
+    return [];
+  }
+}
+
 /**
  * One send: text plus attachments already collected by the composer.
  * Pushes the user turn, streams /api/chat into a fresh assistant turn, and
@@ -797,6 +856,12 @@ export async function sendMessage(text, opts) {
   let requestId = "";
   try {
     const payload = await buildChatPayload(opts);
+    // Experimental bash-lite sandbox: when the message wants a shell, run the
+    // in-browser Linux agent loop first and attach its transcript so the
+    // answer is written from the real command output. No-op (empty) unless the
+    // knob is on and the sandbox can run — see maybeRunShellLoop.
+    const shellTranscript = await maybeRunShellLoop(turn);
+    if (shellTranscript.length) payload.shell_transcript = shellTranscript;
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

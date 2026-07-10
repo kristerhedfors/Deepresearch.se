@@ -108,6 +108,10 @@ export function emptyDrcState() {
     providerId: null,
     model: null,
     research: true,
+    // Experimental in-browser Linux execution sandbox (the DRC counterpart of
+    // the server's bash_lite_mcp knob). Default OFF; an absent field (older
+    // blobs) reads as off. Purely client-side here, like everything in DRC.
+    bashLite: false,
     conversations: [],
     rag: { docs: [] },
   };

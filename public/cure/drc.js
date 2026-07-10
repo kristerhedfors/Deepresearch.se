@@ -68,6 +68,7 @@ const PHASE_LABELS = {
   synth: "Writing the answer…",
   validate: "Reviewing the draft…",
   answer: "Answering…",
+  sandbox: "Running in the Linux sandbox…",
 };
 
 // ---- status lines ----------------------------------------------------------------
@@ -308,6 +309,7 @@ async function unlock(ev) {
     projectOpened();
     await saveState(); // create, or persist the merge
     $("websearch").checked = state.research !== false;
+    $("bashlite").checked = state.bashLite === true;
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
@@ -597,6 +599,7 @@ async function send(ev) {
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
       retrieved,
+      bash: state.bashLite === true,
       onStatus: (s) => {
         if (s.type === "phase") {
           phaseLine(PHASE_LABELS[s.phase] || s.phase);
@@ -687,6 +690,18 @@ $("drawer").addEventListener("click", (e) => {
 });
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);
+// Experimental in-browser Linux sandbox knob (client-local, persisted in the
+// sealed project state). No reload needed here — the DRC page is always served
+// cross-origin isolated, so the sandbox can boot the moment a message needs it.
+$("bashlite").checked = state.bashLite === true;
+$("bashlite").addEventListener("change", () => {
+  state.bashLite = $("bashlite").checked;
+  const st = $("sandboxstatus");
+  st.textContent = state.bashLite
+    ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
+    : "Sandbox disabled.";
+  saveState().catch(() => {});
+});
 // Dimmed DRS-feature buttons: the tap explains and points to /rver.
 for (const el of document.querySelectorAll("[data-feature]")) {
   el.addEventListener("click", () => showDrs(el.dataset.feature));

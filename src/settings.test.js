@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  bashLiteEnabled,
   featureAvailability,
   feedbackEnabled,
   googleMapsEnabled,
@@ -13,7 +14,7 @@ import {
   storageAvailability,
 } from "./settings.js";
 
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false };
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false };
 
 test("parseSettings defaults: history on, shodan off, google_maps off, feedback off", () => {
   assert.deepEqual(parseSettings(null), DEFAULTS);
@@ -63,7 +64,7 @@ test("serverHistoryEnabled is the effective state: binding AND user AND setting"
 
 test("parseSettings drops unknown keys", () => {
   const s = parseSettings('{"server_history":true,"evil":"x"}');
-  assert.deepEqual(Object.keys(s).sort(), ["feedback_mode", "google_maps", "server_history", "shodan_mcp"]);
+  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "feedback_mode", "google_maps", "server_history", "shodan_mcp"]);
 });
 
 test("parseSettings: only an explicit stored true enables feedback_mode", () => {
@@ -72,6 +73,22 @@ test("parseSettings: only an explicit stored true enables feedback_mode", () => 
   // Non-boolean junk means the default (off), not on.
   assert.equal(parseSettings('{"feedback_mode":1}').feedback_mode, false);
   assert.equal(parseSettings('{"feedback_mode":"true"}').feedback_mode, false);
+});
+
+test("parseSettings: only an explicit stored true enables bash_lite_mcp", () => {
+  assert.equal(parseSettings('{"bash_lite_mcp":true}').bash_lite_mcp, true);
+  assert.equal(parseSettings('{"bash_lite_mcp":false}').bash_lite_mcp, false);
+  // Non-boolean junk means the default (off), not on.
+  assert.equal(parseSettings('{"bash_lite_mcp":1}').bash_lite_mcp, false);
+  assert.equal(parseSettings('{"bash_lite_mcp":"true"}').bash_lite_mcp, false);
+});
+
+test("bashLiteEnabled: needs a user row AND the knob on (no server secret)", () => {
+  const on = { user: { id: 1, settings_json: '{"bash_lite_mcp":true}' } };
+  const off = { user: { id: 2, settings_json: null } }; // default off
+  assert.equal(bashLiteEnabled({}, on), true); // no secret required
+  assert.equal(bashLiteEnabled({}, off), false); // default off
+  assert.equal(bashLiteEnabled({}, {}), false); // break-glass: no user row
 });
 
 test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
@@ -86,12 +103,15 @@ test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
 
 test("featureAvailability reports storage, rag, shodan, google_maps, and feedback independently", () => {
   const user = { id: 1 };
+  // bash_lite is a pure browser capability: available whenever there's a user
+  // row, regardless of any server secret.
   assert.deepEqual(featureAvailability({}, { user }), {
     storage: false,
     rag: false,
     shodan: false,
     google_maps: false,
     feedback: false,
+    bash_lite: true,
   });
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k" }, { user }), {
     storage: false,
@@ -99,6 +119,7 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     shodan: true,
     google_maps: false,
     feedback: false,
+    bash_lite: true,
   });
   // Feedback needs only D1 (+ a user row) — no external secret.
   assert.deepEqual(featureAvailability({ DB: {} }, { user }), {
@@ -107,6 +128,7 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     shodan: false,
     google_maps: false,
     feedback: true,
+    bash_lite: true,
   });
   assert.deepEqual(featureAvailability({ GOOGLE_MAPS_API_KEY: "k" }, { user }), {
     storage: false,
@@ -114,14 +136,16 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     shodan: false,
     google_maps: true,
     feedback: false,
+    bash_lite: true,
   });
-  // Each feature needs a user row too (break-glass has none).
+  // Each feature needs a user row too (break-glass has none) — bash_lite included.
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k", DB: {} }, {}), {
     storage: false,
     rag: false,
     shodan: false,
     google_maps: false,
     feedback: false,
+    bash_lite: false,
   });
 });
 

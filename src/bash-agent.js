@@ -1,0 +1,281 @@
+// @ts-check
+// The bash-lite agent: the PURE logic behind the experimental in-browser
+// Linux execution sandbox (the `bash_lite_mcp` knob — src/settings.js).
+//
+// The sandbox itself is a JavaScript x86 Linux emulator (CheerpX) that boots
+// IN THE BROWSER — the server never runs a shell. So the agentic loop is
+// client-orchestrated (public/js/bash-agent.js for DRS, drc-research.js for
+// DRC): the model proposes shell commands, the browser sandbox runs them,
+// their output feeds back, and it loops until the model is done — then the
+// collected transcript rides into synthesis as one more research-context
+// block, exactly like an enrichment (src/enrichment.js).
+//
+// This module owns the deterministic, I/O-free pieces both tiers share, so
+// they behave identically and are unit-tested once:
+//   - bashIntent:            does the latest user message WANT a shell? (EN+SV)
+//   - parseShellRequest:     read the model's fenced-block command proposal
+//   - normalizeExecResult:   clamp an untrusted {exitCode,stdout,stderr}
+//   - formatShellResult:     render one executed command back for the next turn
+//   - buildShellTranscript:  the labeled context block synthesis reads
+//
+// NO function calling (invariant 1): the model emits a fenced ```bash block —
+// a plain text convention — never a tool call, so this works on any model in
+// the catalog. The whole capability is fail-soft: a missed intent, an empty
+// proposal, or a sandbox that never boots all degrade to a normal answer.
+
+// Hard caps — the loop and every rendered chunk are bounded so a runaway
+// command (or a hostile model) cannot blow the context window or spin
+// forever. Shared by both tiers so DRS and DRC agree on the limits.
+export const MAX_SHELL_ROUNDS = 6; // agentic iterations before we synthesize regardless
+export const MAX_COMMANDS_PER_ROUND = 6; // commands accepted from one model turn
+export const MAX_OUTPUT_CHARS = 4000; // per-command stdout/stderr kept in the transcript
+export const MAX_COMMAND_CHARS = 2000; // a single command line is clamped to this
+
+// ---- intent gate ----------------------------------------------------------
+
+// Does the latest user message LOOK like it asks to run a shell / execute code
+// / compute something in the sandbox? A non-authoritative HEURISTIC — NOT the
+// execution gate. The MODEL decides whether a shell is actually needed (it is
+// asked cold each turn via bashAgentPrompt and returns SHELL_DONE for anything
+// that doesn't need one), because a regex misses obvious asks like "list
+// files" or "run la -la" (the production defect, chat_logs #200/#201). This is
+// kept as a cheap classifier for callers that want a quick signal without a
+// model call; deterministic and typo-tolerant with FULL Swedish parity.
+// Exported for unit tests.
+//
+// The gate matches when the message contains an execution VERB/NOUN that is
+// about running commands or code — not the many innocent senses of "run"
+// ("run a marathon", "in the long run"), which is why "run" alone never
+// matches; it needs a shell/command/code/script object or an explicit
+// sandbox/terminal reference.
+/**
+ * @param {string} text the latest user message
+ * @returns {boolean}
+ */
+export function bashIntent(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return false;
+  return SHELL_PATTERNS.some((re) => re.test(t));
+}
+
+// The intent patterns. English and Swedish are kept side by side, one pair
+// per concept, so parity is auditable at a glance (and enforced by the
+// parity unit test). Typos mirror the English typo sets per invariant 6.
+const SHELL_PATTERNS = [
+  // "shell" / "bash" / "command line" / "terminal" — the tool itself.
+  // EN: shell, bash, zsh, command line/prompt, terminal, console
+  /\b(shell|bash|zsh|command[- ]?line|command[- ]?prompt|terminal|console)\b/,
+  // SV: skal(et), skal-kommando, kommandorad(en), terminal(en), konsol(en)
+  /\b(skal(et)?|kommando ?rad(en)?|kommandotolk(en)?|terminal(en)?|konsol(en)?)\b/,
+
+  // run / execute + a command/code/script/computation object.
+  // EN: run/execute this command|code|script|program|snippet|calculation
+  /\b(run|execute|exec)\b[^.\n]{0,40}\b(command|commands|code|script|scripts|program|programs|snippet|snippets|binary|binaries|calculation|calculations|computation|computations)\b/,
+  // EN: run/execute the command|code|... (command first is covered above; the
+  // reverse "the code, run it" order):
+  /\b(command|code|script|program|snippet|calculation|computation)\b[^.\n]{0,20}\b(run|execute|exec)\b/,
+  // SV: kör/köra/exekvera det här kommandot|koden|skriptet|programmet|beräkningen
+  /\b(kör|köra|exekvera|exekvering)\b[^.\n]{0,40}\b(kommando(t|n)?|kod(en)?|skript(et|en)?|program(met)?|snutt(en)?|beräkning(en|ar|arna)?)\b/,
+  // SV: reverse order "koden, kör den"
+  /\b(kommando(t|n)?|kod(en)?|skript(et|en)?|program(met)?|beräkning(en)?)\b[^.\n]{0,20}\b(kör|köra|exekvera)\b/,
+
+  // explicit "in the sandbox / in a linux vm / on the emulator".
+  // EN: in the sandbox / in a VM / linux vm / emulator
+  /\bin (the |a |your )?(sandbox|linux(-| )?(vm|box)?|vm|emulator)\b/,
+  // SV: i sandlådan / i en linux-vm / i emulatorn
+  /\bi (en |din )?(sandlåd(a|an)|linux(-| )?(vm|burk)?|vm|emulator(n)?)\b/,
+
+  // compute / calculate + (this|the) — a request to actually work a number
+  // out rather than explain it. Kept explicit (needs a "this/the/for me"
+  // object) so "how do you calculate X" (a knowledge question) doesn't match.
+  // EN: compute/calculate this/the …, work this out, crunch the numbers
+  /\b(compute|calculate|crunch|evaluate)\b[^.\n]{0,30}\b(this|the|these|for me)\b/,
+  // SV: beräkna/räkna ut det här, kör beräkningen
+  /\b(beräkna|räkna ut|räkna ?ut|evaluera)\b[^.\n]{0,30}\b(det|den|det här|dessa|åt mig)\b/,
+
+  // pipe/grep/awk/sed and friends spelled out as a request ("pipe this
+  // through jq", "grep the file for …") — a strong shell signal in any
+  // language. Command names are language-neutral, so this one pattern serves
+  // both; the surrounding verb parity is covered by the rules above.
+  /\b(pipe (this|it|the)|grep (through|the|for)|use (jq|awk|sed|grep) (on|to|for))\b/,
+];
+
+// ---- the model's command proposal -----------------------------------------
+
+/**
+ * One executed command and what the sandbox returned.
+ * @typedef {{ command: string, exitCode: number, stdout: string, stderr: string }} ShellRun
+ */
+
+/**
+ * The model's parsed step: the commands to run this round, whether it has
+ * declared itself done, and its plain-language reasoning (the prose outside
+ * the code block — surfaced in the activity UI so the run is legible).
+ * @typedef {{ commands: string[], done: boolean, reasoning: string }} ShellProposal
+ */
+
+// Parse one agent turn. The convention (see prompts.js bashAgentPrompt): the
+// model writes brief reasoning, then EITHER a fenced ```bash (or ```sh /
+// ```shell / ```console) block whose non-comment lines are the commands to
+// run, OR — when it has everything it needs — the literal marker SHELL_DONE
+// and no block. Lenient and never throws: no block AND no explicit request
+// means done (there's nothing left to run), which is the natural terminator.
+//
+// Commands are split on newlines (one command per line; a multi-line command
+// can still use trailing `\` continuations, joined here), comments and blanks
+// dropped, each clamped to MAX_COMMAND_CHARS, and the batch capped at
+// MAX_COMMANDS_PER_ROUND. Exported for unit tests.
+/**
+ * @param {string} text the model's raw completion for this step
+ * @returns {ShellProposal}
+ */
+export function parseShellRequest(text) {
+  const raw = String(text || "");
+  const doneMarker = /(^|\s)(SHELL_DONE|\[done\]|<<done>>)(\s|$)/i.test(raw);
+
+  const block = extractFirstCodeBlock(raw);
+  const reasoning = reasoningText(raw, block);
+
+  if (!block) {
+    // No command block: the model is done (explicit marker or simply nothing
+    // more to run). Either way the loop terminates.
+    return { commands: [], done: true, reasoning };
+  }
+
+  const commands = splitCommands(block.body);
+  if (!commands.length) {
+    // A block with no runnable lines is treated as done rather than looping
+    // on an empty request.
+    return { commands: [], done: true, reasoning };
+  }
+  // A done marker alongside a block is contradictory; honor the block (run
+  // these, then the next turn decides) unless the block is empty.
+  return { commands, done: doneMarker && !commands.length, reasoning };
+}
+
+// Pull the first fenced code block whose info-string names a shell language
+// (bash/sh/shell/console/zsh) or is bare (```). Returns {lang, body} or null.
+/**
+ * @param {string} text
+ * @returns {{ lang: string, body: string } | null}
+ */
+function extractFirstCodeBlock(text) {
+  const fence = /```([^\n`]*)\n([\s\S]*?)```/g;
+  let m;
+  while ((m = fence.exec(text))) {
+    const lang = (m[1] || "").trim().toLowerCase();
+    if (lang === "" || SHELL_LANGS.has(lang)) {
+      return { lang, body: m[2] || "" };
+    }
+  }
+  return null;
+}
+
+const SHELL_LANGS = new Set(["bash", "sh", "shell", "console", "zsh", "shellsession"]);
+
+// The prose outside the (first) code block — the model's reasoning, trimmed
+// and collapsed to one line for the activity UI. Empty when there's nothing.
+/**
+ * @param {string} raw
+ * @param {{ body: string } | null} block
+ * @returns {string}
+ */
+function reasoningText(raw, block) {
+  let prose = raw;
+  if (block) prose = raw.replace(/```[^\n`]*\n[\s\S]*?```/g, " ");
+  return prose
+    .replace(/(^|\s)(SHELL_DONE|\[done\]|<<done>>)(\s|$)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 400);
+}
+
+// Split a shell block into individual command lines: join `\`-continuations,
+// drop comments (# …) and blank lines, clamp each, cap the batch.
+/**
+ * @param {string} body
+ * @returns {string[]}
+ */
+function splitCommands(body) {
+  const joined = String(body || "").replace(/\\\n/g, " ");
+  const out = [];
+  for (const line of joined.split("\n")) {
+    const cmd = line.trim();
+    if (!cmd) continue;
+    if (cmd.startsWith("#")) continue;
+    out.push(cmd.slice(0, MAX_COMMAND_CHARS));
+    if (out.length >= MAX_COMMANDS_PER_ROUND) break;
+  }
+  return out;
+}
+
+// ---- execution results ----------------------------------------------------
+
+// Coerce an untrusted exec result (it comes back from the browser sandbox
+// bridge, or — in DRS — round-trips through the client) into a clean ShellRun:
+// numeric exit code, string streams clamped to MAX_OUTPUT_CHARS with a
+// truncation marker. Never throws. Exported for unit tests.
+/**
+ * @param {string} command
+ * @param {any} result the raw {exitCode,stdout,stderr} from the sandbox
+ * @returns {ShellRun}
+ */
+export function normalizeExecResult(command, result) {
+  const r = result && typeof result === "object" ? result : {};
+  const exitCode = Number.isFinite(Number(r.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1;
+  return {
+    command: String(command || "").slice(0, MAX_COMMAND_CHARS),
+    exitCode,
+    stdout: clampOutput(r.stdout),
+    stderr: clampOutput(r.stderr),
+  };
+}
+
+/**
+ * @param {any} s
+ * @returns {string}
+ */
+function clampOutput(s) {
+  const str = typeof s === "string" ? s : s == null ? "" : String(s);
+  if (str.length <= MAX_OUTPUT_CHARS) return str;
+  return str.slice(0, MAX_OUTPUT_CHARS) + `\n…[truncated ${str.length - MAX_OUTPUT_CHARS} chars]`;
+}
+
+// Render one executed command + result back into the transcript the model
+// sees on the next agent turn (and that buildShellTranscript folds into the
+// synthesis context). Deterministic formatting so both tiers read identically.
+/**
+ * @param {ShellRun} run
+ * @returns {string}
+ */
+export function formatShellResult(run) {
+  const r = normalizeExecResult(run.command, run);
+  const parts = [`$ ${r.command}`, `exit: ${r.exitCode}`];
+  if (r.stdout.trim()) parts.push(`stdout:\n${r.stdout.replace(/\s+$/, "")}`);
+  if (r.stderr.trim()) parts.push(`stderr:\n${r.stderr.replace(/\s+$/, "")}`);
+  if (!r.stdout.trim() && !r.stderr.trim()) parts.push("(no output)");
+  return parts.join("\n");
+}
+
+// ---- the transcript block synthesis reads ---------------------------------
+
+// The labeled context block appended to the synthesis input (pipeline.js
+// shellSection / drc-research.js), mirroring the enrichment-block convention:
+// a titled block the answer prompt is told it may use and cite as "the
+// sandbox". Empty string when no command ran — so the synthesis input is
+// byte-identical to a run without the sandbox. Exported for unit tests.
+/**
+ * @param {ShellRun[]} runs
+ * @returns {string}
+ */
+export function buildShellTranscript(runs) {
+  const list = Array.isArray(runs) ? runs.filter((r) => r && r.command) : [];
+  if (!list.length) return "";
+  const body = list.map((r) => formatShellResult(r)).join("\n\n");
+  return (
+    "Linux sandbox session (commands the assistant ran in the in-browser " +
+    "execution sandbox and their real output — treat this as ground truth " +
+    "you produced, and refer to it as \"the sandbox\" when you use it):\n" +
+    body
+  );
+}

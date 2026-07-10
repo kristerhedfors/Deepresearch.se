@@ -46,11 +46,11 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
  */
 /**
  * The effective per-account knob state parseSettings coerces to.
- * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean }} Settings
+ * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean }} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability).
- * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean }} FeatureAvailability
+ * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean, bash_lite: boolean }} FeatureAvailability
  */
 
 // Four knobs today:
@@ -67,7 +67,14 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    comment PLUS that reply's question/answer readable server-side for the
 //    development loop (src/feedback.js), so it stays off until the user
 //    asks for it; only an explicit stored `true` enables it).
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false };
+//  - bash_lite_mcp:  default OFF (opt-in, EXPERIMENTAL — enables the
+//    in-browser Linux execution sandbox (CheerpX) and the agentic bash tool
+//    (src/bash-agent.js): when a task "wants a shell" the model proposes
+//    commands, the BROWSER runs them in a WASM x86 Linux VM (the server
+//    never runs a shell), and the transcript feeds synthesis. Purely a
+//    browser capability, so it needs no server secret — only a user row to
+//    persist the knob; only an explicit stored `true` enables it).
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
@@ -93,6 +100,7 @@ export function parseSettings(json) {
     shodan_mcp: raw.shodan_mcp === true,
     google_maps: raw.google_maps === true,
     feedback_mode: raw.feedback_mode === true,
+    bash_lite_mcp: raw.bash_lite_mcp === true,
   };
 }
 
@@ -129,6 +137,12 @@ export function featureAvailability(env, identity) {
     // Feedback needs D1 (the entries/threads live there) and a real user row
     // to attribute entries and route the agent's replies back to.
     feedback: !!(env.DB && identity.user),
+    // The bash-lite sandbox is a pure BROWSER capability (CheerpX runs
+    // client-side; the server only remembers the knob and, when it's on,
+    // serves the app shell cross-origin-isolated so SharedArrayBuffer works).
+    // No server secret to gate on — it needs only a user row to persist the
+    // knob against (break-glass has none).
+    bash_lite: !!identity.user,
   };
 }
 
@@ -192,6 +206,19 @@ export function feedbackEnabled(env, identity) {
   return featureAvailability(env, identity).feedback && getSettings(identity).feedback_mode;
 }
 
+// The effective bash-lite sandbox state: the knob on AND a real user row
+// behind it. Read by index.js to decide whether the DRS app shell is served
+// cross-origin-isolated (COEP) so CheerpX can boot, and by chat.js to accept
+// a shell transcript for this request. Break-glass (no user row) reads off.
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
+export function bashLiteEnabled(env, identity) {
+  return featureAvailability(env, identity).bash_lite && getSettings(identity).bash_lite_mcp;
+}
+
 /**
  * @param {Env} env
  * @param {number | string} userId
@@ -225,6 +252,7 @@ function settingsPayload(env, identity, settings) {
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
     feedback_mode: available.feedback && settings.feedback_mode,
+    bash_lite_mcp: available.bash_lite && settings.bash_lite_mcp,
     // Browser key for the interactive Street View embed — public by design,
     // safe because the key is HTTP-referrer-locked to the site. Prefers a
     // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY
@@ -273,11 +301,12 @@ export async function handleSettingsPut(request, env, log, identity) {
   const hasShodan = body?.shodan_mcp !== undefined;
   const hasGoogleMaps = body?.google_maps !== undefined;
   const hasFeedback = body?.feedback_mode !== undefined;
-  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback) {
+  const hasBashLite = body?.bash_lite_mcp !== undefined;
+  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite) {
     return jsonResponse(
       {
         error:
-          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean}.",
+          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean}.",
       },
       400,
     );
@@ -293,6 +322,9 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   if (hasFeedback && typeof body.feedback_mode !== "boolean") {
     return jsonResponse({ error: "feedback_mode must be a boolean." }, 400);
+  }
+  if (hasBashLite && typeof body.bash_lite_mcp !== "boolean") {
+    return jsonResponse({ error: "bash_lite_mcp must be a boolean." }, 400);
   }
   const available = featureAvailability(env, identity);
   if (hasHistory && body.server_history && !available.storage) {
@@ -319,11 +351,20 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
+  // bash_lite needs only a user row (it's a browser capability) — available
+  // is false only for break-glass, which can't reach this handler anyway.
+  if (hasBashLite && body.bash_lite_mcp && !available.bash_lite) {
+    return jsonResponse(
+      { error: "The execution sandbox needs a signed-in account." },
+      503,
+    );
+  }
   const settings = { ...getSettings(identity) };
   if (hasHistory) settings.server_history = body.server_history;
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   if (hasGoogleMaps) settings.google_maps = body.google_maps;
   if (hasFeedback) settings.feedback_mode = body.feedback_mode;
+  if (hasBashLite) settings.bash_lite_mcp = body.bash_lite_mcp;
   await saveSettings(env, identity.user.id, settings);
   log.info("settings.updated", {
     user_id: identity.id,
@@ -331,6 +372,7 @@ export async function handleSettingsPut(request, env, log, identity) {
     shodan_mcp: settings.shodan_mcp,
     google_maps: settings.google_maps,
     feedback_mode: settings.feedback_mode,
+    bash_lite_mcp: settings.bash_lite_mcp,
   });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

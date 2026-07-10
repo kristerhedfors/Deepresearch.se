@@ -37,6 +37,7 @@
 // failover, chunked emit) in answer-stream.js.
 
 import { emitChunked, streamCompletion } from "./answer-stream.js";
+import { buildShellTranscript } from "./bash-agent.js";
 import { completeJson } from "./providers.js";
 import {
   applyComplexityToPlan,
@@ -141,6 +142,7 @@ import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } 
  *   jsonProfile: ModelProfile,
  *   conversation: Conversation,
  *   reinforceJsonOnly: boolean,
+ *   shellBlock: string,
  *   lastUser: string,
  *   convText: string,
  *   imageParts: import('./types.js').ContentPart[],
@@ -194,6 +196,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   const ctx = {
     env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
     reinforceJsonOnly: jsonProfile.jsonReinforcement,
+    // The experimental bash-lite sandbox transcript (src/bash-agent.js): the
+    // commands the BROWSER already ran and their real output, gathered
+    // client-side before this request (chat.js `shell_transcript`). Empty
+    // string when the sandbox didn't run — so every answer path's input is
+    // byte-identical to a run without the feature. Fed into synthesis and the
+    // direct/search-off replies as ground truth the assistant produced.
+    shellBlock: buildShellTranscript(/** @type {any} */ (state).shellTranscript || []),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
     // Image parts of the latest user message ride along into synthesis so a
@@ -258,12 +267,33 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
 // ---- phases ------------------------------------------------------------
 
+// The extra system message carrying the bash-lite sandbox transcript into a
+// non-synthesis reply (direct / search-off), framed as ground truth. Null (and
+// thus omitted) when the sandbox didn't run, so the message array is
+// byte-identical to a run without the feature.
+/**
+ * @param {string} shellBlock
+ * @returns {import('./types.js').Message[]}
+ */
+function shellReplyMessages(shellBlock) {
+  if (!shellBlock) return [];
+  return [
+    {
+      role: "system",
+      content:
+        shellBlock +
+        "\n\nUse this real sandbox output directly in your reply — it is ground truth you produced by running commands (no citation needed).",
+    },
+  ];
+}
+
 /** @param {PipelineCtx} ctx */
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt() },
+    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock }) },
+    ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
 }
@@ -370,7 +400,8 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: directPrompt() },
+    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock }) },
+    ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
 }
@@ -642,10 +673,13 @@ async function runSynthesis(ctx) {
     // Notes preamble is present only when the digest phase ran (mid/high
     // tiers); byte-identical to before at the default budget.
     notesSection(state.notes) +
+    // The bash-lite sandbox transcript (empty and absent unless the
+    // experimental sandbox ran client-side for this request).
+    (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: synthPrompt() },
+    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

@@ -53,7 +53,8 @@ import {
   handleModels,
 } from "./user-api.js";
 import { handleFeedbackApi } from "./feedback.js";
-import { handleSettingsGet, handleSettingsPut } from "./settings.js";
+import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
+import { handleBashStep } from "./bash-api.js";
 import { handleStorage } from "./storage.js";
 import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
@@ -191,9 +192,18 @@ const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
  * @param {Request} request
  * @param {Env} env
  * @param {string | null} [overrideUrl] serve this path instead of the request's
+ * @param {{ coep?: boolean }} [opts] coep: add Cross-Origin-Embedder-Policy so
+ *   the served DOCUMENT becomes cross-origin isolated (with the site-wide
+ *   COOP: same-origin), which SharedArrayBuffer — and thus the CheerpX
+ *   execution sandbox (public/js/sandbox.js) — requires. `credentialless`
+ *   (not require-corp) keeps cross-origin subresources loading without CORP
+ *   headers, so Maps/Street View and CDN loads still work; only a rare
+ *   cross-origin iframe that sends no COEP (the keyless Street View Embed
+ *   fallback) is affected. Applied to the DRC page always and to the DRS app
+ *   shell only when the caller's bash_lite knob is on (see routeAuthed).
  * @returns {Promise<Response>}
  */
-async function serveAsset(request, env, overrideUrl = null) {
+async function serveAsset(request, env, overrideUrl = null, opts = {}) {
   const res = await env.ASSETS.fetch(overrideUrl ? new Request(overrideUrl, request) : request);
   const pathname = new URL(overrideUrl || request.url).pathname;
   const headers = new Headers(res.headers);
@@ -203,6 +213,7 @@ async function serveAsset(request, env, overrideUrl = null) {
   } else {
     headers.set("cache-control", "public, max-age=3600");
   }
+  if (opts.coep) headers.set("cross-origin-embedder-policy", "credentialless");
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
@@ -268,7 +279,12 @@ async function route(request, env, url, log, ctx, requestId) {
       url.pathname === "/free/" ||
       url.pathname.startsWith("/free/project-"))
   ) {
-    return { response: await serveAsset(request, env, url.origin + "/cure/") };
+    // The DRC page is served cross-origin isolated (COEP) so its client-side
+    // execution sandbox (the experimental bash-lite tier) can boot CheerpX.
+    // DRC's knob is browser-local (no server-side account to read here), and
+    // the khaki page is self-contained — no cross-origin iframe to break — so
+    // isolation is safe to apply unconditionally.
+    return { response: await serveAsset(request, env, url.origin + "/cure/", { coep: true }) };
   }
   if (request.method === "GET" && (url.pathname === "/api/pub" || url.pathname.startsWith("/api/pub/"))) {
     const slug = url.pathname === "/api/pub" ? null : decodeURIComponent(url.pathname.slice("/api/pub/".length));
@@ -370,14 +386,20 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   // The signed-in app — DRS, "deep research SERVER" — lives at /rver (the
   // URL wordplay above): serve the app shell there. A signed-in arrival at
   // the root is forwarded home (the landing is for visitors).
+  //
+  // When this account has the experimental bash-lite sandbox on, the app
+  // shell (and its assets) are served cross-origin isolated (COEP) so CheerpX
+  // can boot; off (the default) they are served exactly as before, so the
+  // Street View keyless-iframe fallback is untouched for everyone else.
+  const coep = bashLiteEnabled(env, identity);
   if ((url.pathname === "/rver" || url.pathname === "/rver/") && request.method === "GET") {
-    return serveAsset(request, env, url.origin + "/");
+    return serveAsset(request, env, url.origin + "/", { coep });
   }
   if (url.pathname === "/" && request.method === "GET") {
     return new Response(null, { status: 302, headers: { Location: "/rver" } });
   }
 
-  return serveAsset(request, env);
+  return serveAsset(request, env, null, { coep });
 }
 
 /**
@@ -474,6 +496,12 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // src/quiz-api.js; multiple-choice picks grade client-side).
   if (url.pathname === "/api/quiz/grade" && request.method === "POST") {
     return handleQuizGrade(request, env, log, identity);
+  }
+  // One turn of the experimental bash-lite agent loop (src/bash-api.js): the
+  // browser-orchestrated in-browser Linux sandbox asks what command to run
+  // next. Knob-gated inside the handler (bash_lite_mcp).
+  if (url.pathname === "/api/bash/step" && request.method === "POST") {
+    return handleBashStep(request, env, log, identity);
   }
   // Document-RAG embedding proxy (used in BOTH storage modes) + the
   // server-side index endpoints (knob-gated inside src/rag.js).
