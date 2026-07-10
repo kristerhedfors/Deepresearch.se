@@ -103,9 +103,15 @@ highlights after the JS was already gated.
   `env(safe-area-inset-*)` padding so the page's own khaki paints the
   bar region, plus a boot-time nudge in drc.js that re-asserts the
   theme-color meta with a changed-then-target value across two
-  animation frames to force WebKit to re-evaluate the tint. If a bar
-  tint is ever wrong again, suspect the navigation ORIGIN page's meta,
-  not the destination's.
+  animation frames to force WebKit to re-evaluate the tint. Iteration 2
+  (same day): the first "still blue" retest was AGAINST A STALE DEPLOY —
+  re-check what's actually live before theorizing (rule 1). Belt and
+  braces added: the DRC brand line carries a build stamp + display mode
+  ("d2 · pwa|browser"), and the app's ghost opens /cure in its OWN
+  browsing context when running standalone (window.open) since a
+  standalone webview's bar tint is pinned at launch. If a bar tint is
+  ever wrong again, suspect the navigation ORIGIN page's meta and the
+  standalone pinning, not the destination's meta.
 
 ## Status of the instruments (post-incident)
 

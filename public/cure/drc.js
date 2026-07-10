@@ -599,6 +599,16 @@ if (themeMeta) {
   });
 }
 
+// Build stamp (on-device-trace convention): the brand line shows the DRC
+// build marker + the display mode, so any screenshot answers "which build,
+// PWA or Safari" — bump the d-number on every DRC deploy.
+try {
+  const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  $("stamp").textContent = "d2 · " + (standalone ? "pwa" : "browser");
+} catch {
+  // the stamp is an instrument, never a breaker
+}
+
 const projectLinked = handleProjectLink();
 renderKeysPanel();
 renderConvPicker();

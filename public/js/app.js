@@ -195,7 +195,16 @@ function syncGhostState() {
 }
 
 ghostBtn.addEventListener("click", () => {
-  location.assign("/cure");
+  // In the installed PWA the webview's status-bar tint is pinned at
+  // launch — iOS ignores the destination page's theme-color on in-app
+  // navigation (on-device-trace skill, 2026-07-10: the khaki /cure under
+  // a still-blue bar). Ghost mode therefore opens in its OWN browsing
+  // context from a standalone app; plain navigation everywhere else.
+  const standalone =
+    /** @type {any} */ (navigator).standalone === true ||
+    matchMedia("(display-mode: standalone)").matches;
+  if (standalone) window.open("/cure", "_blank");
+  else location.assign("/cure");
 });
 syncGhostState();
 
