@@ -1,6 +1,9 @@
-// Free mode's pure core (the /free page, public/free/free.js, wires it to
-// the DOM): everything derivable and everything cryptographic, built on the
-// project-vault primitives (vault.js) so free mode invents no new crypto.
+// DRC's pure core (DRC = "deep research secure", C for CLIENT-side — the
+// public tier at /cure; its remote sibling DRS, "deep research server",
+// is the signed-in app at /rver). The page (public/cure/drc.js) wires
+// this to the DOM: everything derivable and everything cryptographic,
+// built on the project-vault primitives (vault.js) so DRC invents no new
+// crypto.
 //
 // ONE master secret (the vault's DR1-… format — generated with the same
 // 160-bit CSPRNG routine, saved in the user's password manager) is the
@@ -9,19 +12,24 @@
 // secret itself:
 //
 //   refHash — 80 bits, the PUBLIC project reference: the <hash> in
-//       /free/project-<hash> and the username field the password manager
+//       /my/project-<hash> and the username field the password manager
 //       files the secret under. A bookmark label, deliberately NOT a
 //       capability — knowing it grants nothing.
-//   blobId / blobKey — where the encrypted project state rests
-//       (/api/free/blob/:id) and the AES-256-GCM key it is sealed with.
-//       The key never leaves the browser in any form.
+//   blobId / blobKey — where the sealed project state rests (the
+//       BROWSER-LOCAL store, drc-store.js) and the AES-256-GCM key it is
+//       sealed with. Neither ever leaves the browser in any form.
 //
 // The provider API keys (OpenAI / Groq) live INSIDE the sealed state and
-// go straight from the browser to the provider (free-providers.js) — the
-// Deepresearch server never sees them in any form, encrypted or not, and
-// is never in the chat path at all. The state blob reuses the vault's
-// archive sealing verbatim (encryptVaultArchive/decryptVaultArchive —
-// 12-byte IV + AES-256-GCM).
+// go straight from the browser to the provider (drc-providers.js) — for
+// DRC the Deepresearch server serves static files and public replay JSONs
+// and is in NO other path: it never sees a key, a message, or the state.
+// The state blob reuses the vault's archive sealing verbatim
+// (encryptVaultArchive/decryptVaultArchive — 12-byte IV + AES-256-GCM).
+//
+// NOTE: the HKDF info strings and the state-kind constant below predate
+// the DRC name ("…free…") and are FROZEN — they are derivation/format
+// constants; changing them would silently break every existing secret
+// and sealed state.
 
 import {
   bytesToB64,
@@ -35,14 +43,14 @@ import {
 } from "./vault.js";
 
 export {
-  generateVaultSecret as generateFreeSecret,
+  generateVaultSecret as generateDrcSecret,
   normalizeVaultSecret,
-  vaultSecretValid as freeSecretValid,
+  vaultSecretValid as drcSecretValid,
   bytesToB64,
 };
 
-export const FREE_STATE_KIND = "deepresearch-free-project";
-export const FREE_STATE_V = 2; // v2 moved the provider keys into the sealed state
+export const DRC_STATE_KIND = "deepresearch-free-project";
+export const DRC_STATE_V = 2; // v2 moved the provider keys into the sealed state
 
 // ---- derivation ---------------------------------------------------------------
 
@@ -59,11 +67,11 @@ const HKDF = (info) => ({
 });
 
 /**
- * Everything the /free page needs, from the one secret.
+ * Everything the DRC page needs, from the one secret.
  * @param {string} secret
  * @returns {Promise<{refHash: string, blobId: string, blobKey: CryptoKey}>}
  */
-export async function deriveFreeProfile(secret) {
+export async function deriveDrcProfile(secret) {
   if (!vaultSecretValid(secret)) {
     throw new Error("That doesn't look like a valid secret (DR1-… with 32 characters).");
   }
@@ -88,10 +96,10 @@ export async function deriveFreeProfile(secret) {
 // — everything the page persists, the provider API keys included, sealed
 // as one blob under blobKey. Conversations are plain {role, content} text
 // turns.
-export function emptyFreeState() {
+export function emptyDrcState() {
   return {
-    v: FREE_STATE_V,
-    kind: FREE_STATE_KIND,
+    v: DRC_STATE_V,
+    kind: DRC_STATE_KIND,
     updatedAt: Date.now(),
     keys: {},
     providerId: null,
@@ -102,12 +110,12 @@ export function emptyFreeState() {
 }
 
 /** @param {any} s @returns {boolean} */
-export function validateFreeState(s) {
+export function validateDrcState(s) {
   const ok = !!(
     s &&
     typeof s === "object" &&
-    (s.v === 1 || s.v === FREE_STATE_V) && // v1 blobs (no keys field) still open
-    s.kind === FREE_STATE_KIND &&
+    (s.v === 1 || s.v === DRC_STATE_V) && // v1 blobs (no keys field) still open
+    s.kind === DRC_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
       (c) =>
@@ -121,8 +129,8 @@ export function validateFreeState(s) {
 }
 
 /** Upgrades any accepted stored shape to the current one, in place. */
-export function migrateFreeState(s) {
-  s.v = FREE_STATE_V;
+export function migrateDrcState(s) {
+  s.v = DRC_STATE_V;
   if (!s.keys || typeof s.keys !== "object") s.keys = {};
   if (s.research === undefined) s.research = true;
   if (s.providerId === undefined) s.providerId = null;
@@ -134,7 +142,7 @@ export function migrateFreeState(s) {
  * @param {CryptoKey} blobKey
  * @returns {Promise<Uint8Array>} the wire/stored form
  */
-export function sealFreeState(state, blobKey) {
+export function sealDrcState(state, blobKey) {
   return encryptVaultArchive(state, blobKey);
 }
 
@@ -143,13 +151,13 @@ export function sealFreeState(state, blobKey) {
  * @param {CryptoKey} blobKey
  * @returns {Promise<object>} throws on wrong key/tamper; caller validates shape
  */
-export function openFreeState(bytes, blobKey) {
+export function openDrcState(bytes, blobKey) {
   return decryptVaultArchive(bytes, blobKey);
 }
 
 // A conversation's display title: its first user line, like the main app.
 /** @param {{role: string, content: string}[]} messages */
-export function deriveFreeTitle(messages) {
+export function deriveDrcTitle(messages) {
   const first = messages.find((m) => m.role === "user")?.content || "New chat";
   const line = first.split("\n").find((l) => l.trim()) || "New chat";
   return line.trim().slice(0, 80);

@@ -59,14 +59,15 @@ git push origin main
    exchange's complete question, answer, and research metadata — UNLESS the
    conversation was started with the ghost (incognito) toggle, the
    anonymous-chat promise that must keep suppressing the log row
-   (`incognito: true` on `/api/chat`). Free mode (`/free`, `src/free.js`)
-   extends the strict tier to a whole surface, structurally: no accounts,
-   and the server is NOT IN THE CHAT PATH at all — the browser calls the
-   user's own CORS-capable providers (OpenAI, Groq) directly and runs the
-   research pipeline client-side; the server stores exactly one opaque
-   client-sealed blob (chats AND the user's API keys inside), so it could
-   not log content or keys even in principle. Secrets never appear in any
-   log.
+   (`incognito: true` on `/api/chat`). DRC — "deep research secure", the
+   public CLIENT-side tier at `/cure` — extends the strict tier to a whole
+   surface, structurally: no accounts, and the server is in NO data path
+   at all — the browser calls the user's own CORS-capable providers
+   (OpenAI, Groq) directly, runs the research pipeline client-side, and
+   stores the sealed project state (chats AND the user's API keys inside)
+   in the BROWSER's own storage; the server serves static files and public
+   replay JSONs, so it could not log content or keys even in principle.
+   Secrets never appear in any log.
    Outbound requests to third parties carry the minimum (a query, a
    coordinate, a host) — never the conversation, filename, or account
    identity.
@@ -116,8 +117,8 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| `free.js` | Free mode's ENTIRE server surface — and the site's DEFAULT face: `/` serves it for EVERYONE, saved projects live at `/my/project-<hash>` (`/free` is a legacy alias), all routed BEFORE the identity gate (the signed-in app lives at `/rver` — the "deep research server" wordplay; sign-in/terms redirects land there and the PWA manifest starts there); page in `public/free/`. The Worker contributes the static page plus ONE dumb capability-addressed ciphertext store (R2 `free/blob/{id}`, `/api/free/blob/:id`). Everything else runs in the BROWSER: model calls go directly (cross-origin) to the user's own CORS-capable providers — OpenAI and Groq (`public/js/free-providers.js`) — and the deep-research flow runs client-side (`public/js/free-research.js`). The server is never in the chat path, never sees a key or a message in any form — "no content logging" is structural, not policy. No accounts, no quota/usage recording |
-| `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public + the `public/cure/` viewer, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each with a "Continue with your own API keys" handoff (`/?continue=<slug>`) that seeds a free-mode conversation — see the **publish-research** skill |
+| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (the root `/` 302s there; saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
+| `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -234,41 +235,42 @@ normalization — HKDF id+key derivation, AES-256-GCM archive
 encrypt/decrypt, and the store/load orchestration packing a whole
 project — record, chats, decrypted file originals, RAG index with
 vectors — into ONE blob the server only ever sees encrypted; pure
-core Node-tested), `free-core.js` (free mode's pure core, built on
-`vault.js`: ONE master secret → HKDF-independent public reference + blob
-id + blob key; the sealed project-state archive — provider API keys
-live INSIDE it, so the server never sees them in any form —
-Node-tested), `free-providers.js` (the client-side provider registry:
-the CORS-capable providers ONLY — OpenAI and Groq, callable directly
-from the browser with the user's key; per-provider wire quirks, JSON
-mode, a fixed cheap `jsonModel` per provider, live `/models` with a
-static fallback — Node-tested over mock HTTP), `free-research.js` (the
-deep-research pipeline PORTED TO THE BROWSER: triage → parallel
-knowledge HARVEST (the search wave's offline counterpart — no web
-search, the model's knowledge is the source pool and the prompts force
-that honesty) → gap audit + one follow-up round → streamed synthesis on
-the chosen model → validation with a revise-and-replace verdict via the
-discard_text convention; deterministic, NO function calling, every
-helper phase fail-soft — the pipeline invariants hold client-side;
-whole flow Node-tested end to end against a mock provider).
-Free mode's page is `public/free/` (`index.html` + `free.js` wiring +
-`free.css`): the standalone no-auth page unauthenticated `/` serves —
-CHAT-FIRST (a visitor can type immediately; the first send without a
-key gets a helpful open-the-key-panel pointer, never an error wall),
-with the old promotional landing condensed into a first-visit glass
-pane (`#intro`; full landing still at `/welcome/`), an unsaved-session
-→ save-as-project flow (the Project panel's one submit opens OR
-creates, merging this tab's work in), and a project form that is a REAL
-username+password form (`autocomplete="username"`/`current-password`,
-switched to `new-password` on generate) so 1Password and Apple
-Passwords save/autofill the master secret; served for `/`,
-`/my/project-<hash>` deep links, and the `/free` legacy alias; a
-`/?continue=<slug>` query seeds a conversation from a published replay
-(`/api/pub/<slug>`) so visitors continue it on their own keys. The
-published-replay viewer is `public/cure/` (`index.html` + `cure.js` +
-`cure.css`, riding on free.css + `markdown.js`): renders one frozen
-session at `/cure/<slug>` or the publication index at `/cure`, with the
-Continue link into free mode — see the **publish-research** skill.
+core Node-tested). DRC's client modules — the whole public tier:
+`drc-core.js` (DRC's pure core, built on `vault.js`: ONE master secret →
+HKDF-independent public reference + blob id + blob key; the sealed
+project-state archive — provider API keys live INSIDE it; the HKDF info
+strings/state-kind constant are frozen pre-rename values — Node-tested),
+`drc-providers.js` (the client-side provider registry: the CORS-capable
+providers ONLY — OpenAI and Groq, callable directly from the browser
+with the user's key; per-provider wire quirks, JSON mode, a fixed cheap
+`jsonModel` per provider, live `/models` with a static fallback —
+Node-tested over mock HTTP), `drc-research.js` (the deep-research
+pipeline PORTED TO THE BROWSER: triage → parallel knowledge HARVEST
+(the search wave's offline counterpart — no web search, the model's
+knowledge is the source pool and the prompts force that honesty) → gap
+audit + one follow-up round → streamed synthesis on the chosen model →
+validation with a revise-and-replace verdict via the discard_text
+convention; deterministic, NO function calling, every helper phase
+fail-soft — the pipeline invariants hold client-side; whole flow
+Node-tested end to end against a mock provider), and `drc-store.js`
+(the BROWSER-LOCAL sealed-state storage adapter — localStorage rows of
+ciphertext keyed by blob id, injectable backend, deliberately the seam
+a future remote adapter would slot into — Node-tested).
+DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
+`drc.css`): the standalone no-auth page served for `/cure` (and the
+root redirect) — CHAT-FIRST (a visitor can type immediately; the first
+send without a key gets a helpful open-the-key-panel pointer, never an
+error wall), with the old promotional landing condensed into a
+first-visit glass pane (`#intro`, doubling as the publication shelf;
+full landing still at `/welcome/`), an unsaved-session →
+save-as-project flow (the Project panel's one submit opens OR creates a
+BROWSER-LOCAL project, merging this tab's work in), and a project form
+that is a REAL username+password form (`autocomplete="username"`/
+`current-password`, switched to `new-password` on generate) so
+1Password and Apple Passwords save/autofill the master secret; served
+for `/cure/<slug>` published replays (seeded as conversations, in
+place), `/my/project-<hash>` deep links, and the `/free*` legacy
+aliases (`/?continue=<slug>` is the legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 
@@ -318,9 +320,6 @@ predicates + the catalog merge/degrade path),
 `vault.js` (the project-vault endpoints against a mocked R2 bucket:
 id validation, PUT/GET/DELETE round-trip, size/count caps, per-user
 namespacing, and the works-with-the-knob-OFF guarantee),
-`free.js` (free mode's whole server surface — the capability-addressed
-ciphertext blob store: round-trip, size floor/ceiling, id validation,
-and 404s for the removed server-side chat/keys families),
 `pub.js` (published research replays: slug rules incl. the dot-free
 asset-collision guard, `validatePublication`, the publish → public read
 → index → unpublish round-trip against a mocked R2, storage-missing
@@ -368,19 +367,22 @@ waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
 malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
 scoring incl. ungraded free-text handling, the completed-quiz summary
-block), `free-core.js` (free mode's derivations: determinism,
+block), `drc-core.js` (DRC's derivations: determinism,
 format-insensitive input, independence of every derived value —
 including from the vault's derivation for the same secret —
 sealed-state round-trip with the API keys unreadable in the stored
-form, v1→v2 migration, state validation), `free-providers.js` (the
+form, v1→v2 migration, state validation), `drc-providers.js` (the
 CORS-capable registry: per-provider wire quirks, JSON-mode payloads,
 lenient JSON extraction, model filters, live-vs-fallback catalog over
-mock HTTP), `free-research.js` (the client-side pipeline: triage/notes
+mock HTTP), `drc-research.js` (the client-side pipeline: triage/notes
 normalizers, prompt-structure assertions incl. the offline-honesty
 rules, and the FULL flow end to end against a mock provider —
 phase order, parallel harvest count, client-side split model routing,
 the user's key on every wire call, discard-and-replace revision,
-clarify short-circuit, triage fail-soft), `vault.js`'s pure core (secret format/entropy/uniqueness, the
+clarify short-circuit, triage fail-soft), `drc-store.js` (the
+browser-local storage adapter: round-trip over an injected backend,
+ciphertext-only at rest, listing, quota/corruption fail-soft),
+`vault.js`'s pure core (secret format/entropy/uniqueness, the
 forgiving normalization incl. misread mapping and prefix stripping, the
 Crockford codec round-trip, HKDF id/key derivation determinism,
 archive encrypt/decrypt incl. tamper detection, archive-shape
@@ -543,7 +545,7 @@ what docs claim); and update the skill list below plus the skill's
   `deepresearch.se/cure/<slug>` ("deep research secure <slug>" — the slug
   must complete the phrase): sourcing a session, the frozen JSON shape,
   the admin-only `PUT /api/pub/:slug`, live verification, and the
-  continue-on-own-keys handoff into free mode (`src/pub.js`,
+  continue-on-own-keys handoff into the DRC app (`src/pub.js`,
   `public/cure/`).
 - **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
   D1 `chat_logs`): pulling the latest live questions/answers/errors for

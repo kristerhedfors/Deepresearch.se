@@ -59,7 +59,6 @@ import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
-import { handleFreeApi } from "./free.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -143,21 +142,20 @@ function isPublicAsset(url, method) {
     url.pathname.startsWith("/help/") ||
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
-    // Free mode (src/free.js): a no-account surface by design — the page,
-    // its modules, and the vault/SSE primitives it reuses. /cure/ is the
-    // published-replays viewer (src/pub.js), public the same way. Only
-    // FILES (with an extension) match here: extensionless paths under
-    // these prefixes are page routes (/free/project-…, /cure/<slug>) and
-    // must fall through to the wordplay routing below — without the
-    // extension check they'd 404 as missing assets (found live 2026-07-10:
-    // /cure/<slug> served the sign-in 401, then 404, until this).
-    (url.pathname.startsWith("/free/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
+    // DRC — the no-account client-side tier at /cure: the page, its
+    // modules, and the vault/SSE primitives it reuses. Only FILES (with
+    // an extension) match here: extensionless paths under /cure/ are page
+    // routes (/cure/<slug> replays) and must fall through to the wordplay
+    // routing below — without the extension check they'd 404 as missing
+    // assets (found live 2026-07-10: /cure/<slug> served the sign-in 401,
+    // then 404, until this).
     (url.pathname.startsWith("/cure/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
     url.pathname === "/js/vault.js" ||
     url.pathname === "/js/sse.js" ||
-    url.pathname === "/js/free-core.js" ||
-    url.pathname === "/js/free-providers.js" ||
-    url.pathname === "/js/free-research.js" ||
+    url.pathname === "/js/drc-core.js" ||
+    url.pathname === "/js/drc-providers.js" ||
+    url.pathname === "/js/drc-research.js" ||
+    url.pathname === "/js/drc-store.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||
@@ -233,40 +231,34 @@ async function route(request, env, url, log, ctx, requestId) {
   }
 
   // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
-  // The .se domain completes English words, and the site's surfaces publish
+  // The .se domain completes English words, and the two product tiers live
   // under them:
-  //   deepresearch.se/            — free mode, the default face (everyone)
-  //   deepresearch.se/my/project-<hash> — a free-mode saved project
-  //   deepresearch.se/cure/<slug> — "deep research SECURE <slug>": published
-  //       frozen research replays (src/pub.js + the publish-research skill)
-  //   deepresearch.se/rver        — "deep research SERVER": the signed-in app
-  //       (handled in routeAuthed; unauthenticated visitors get the login page)
-  //
-  // Free mode has no accounts — the user's master secret is the only
-  // credential, and it never reaches the server; the client reads the
-  // project reference off the URL. /free is kept as a legacy alias. The
-  // API is capability-addressed (unguessable HKDF-derived ids).
+  //   deepresearch.se/cure — DRC, "deep research SECURE" (C = CLIENT-side):
+  //       the public tier. Minimal server involvement by DESIGN: this
+  //       Worker serves the static page and the public replay JSONs, and
+  //       nothing else — model calls go browser→provider directly, storage
+  //       is browser-local (public/cure/, public/js/drc-*.js). The root /
+  //       redirects here; /my/project-<hash> reopens a browser-local saved
+  //       project; /cure/<slug> is a published frozen replay (src/pub.js +
+  //       the publish-research skill), continue-able in place.
+  //   deepresearch.se/rver — DRS, "deep research SERVER" (R = REMOTE, as in
+  //       a remote cloud-server): the signed-in tier with the hosted
+  //       pipeline, web search, accounts, and cloud storage (handled in
+  //       routeAuthed; unauthenticated visitors get the login page).
+  // /free and /free/project-… are legacy aliases from DRC's free-mode era.
+  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") {
+    return { response: new Response(null, { status: 302, headers: { Location: "/cure" } }) };
+  }
   if (
     (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/" ||
+    (url.pathname === "/cure" ||
+      /^\/cure\/[a-z0-9-]*$/.test(url.pathname) ||
       url.pathname === "/my" ||
       url.pathname === "/my/" ||
       url.pathname.startsWith("/my/project-") ||
       url.pathname === "/free" ||
       url.pathname === "/free/" ||
       url.pathname.startsWith("/free/project-"))
-  ) {
-    return { response: await serveAsset(request, env, url.origin + "/free/") };
-  }
-  if (url.pathname.startsWith("/api/free/")) {
-    return { response: await handleFreeApi(request, env, url, log) };
-  }
-  // Published research replays: the viewer page and the public JSON reads.
-  // Slugs are dot-free, so /cure/cure.js (the page's own assets) still
-  // resolves as a public asset above, never as a slug.
-  if (
-    (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/cure" || /^\/cure\/[a-z0-9-]*$/.test(url.pathname))
   ) {
     return { response: await serveAsset(request, env, url.origin + "/cure/") };
   }
@@ -359,9 +351,9 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     return handlePubWrite(request, env, log, decodeURIComponent(url.pathname.slice("/api/pub/".length)));
   }
 
-  // The signed-in app lives at /rver ("deep research SERVER" — the URL
-  // wordplay above): serve the app shell there; the root now belongs to
-  // free mode for everyone.
+  // The signed-in app — DRS, "deep research SERVER" — lives at /rver (the
+  // URL wordplay above): serve the app shell there; the root redirects to
+  // DRC at /cure for everyone.
   if ((url.pathname === "/rver" || url.pathname === "/rver/") && request.method === "GET") {
     return serveAsset(request, env, url.origin + "/");
   }

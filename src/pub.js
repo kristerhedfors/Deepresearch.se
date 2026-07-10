@@ -10,18 +10,18 @@
 // just the storage and the two API faces:
 //
 //   GET  /api/pub          — the public publication index (newest first)
-//   GET  /api/pub/:slug    — one frozen session as JSON (public; the
-//                            /cure viewer page and free mode's
-//                            "continue" seeding both read this)
+//   GET  /api/pub/:slug    — one frozen session as JSON (public; the DRC
+//                            app renders /cure/<slug> replays from this)
 //   PUT  /api/pub/:slug    — publish/replace (ADMIN only — routed behind
 //                            the identity gate in src/index.js)
 //   DELETE /api/pub/:slug  — unpublish (admin only)
 //
 // A publication is deliberately just {title, description?, model?,
 // createdAt, messages[]} — plain {role, content} text turns, the same
-// shape free mode chats in — so "Continue with your own API keys" is a
-// verbatim handoff: the /cure viewer links to /?continue=<slug> and the
-// free page seeds a conversation from these very messages.
+// shape DRC chats in — so a replay IS a DRC conversation: /cure/<slug>
+// opens right in the DRC app (public/cure/drc.js seeds a conversation
+// from these very messages) and "continuing" is just typing a follow-up
+// on the visitor's own key.
 
 import { jsonResponse } from "./http.js";
 

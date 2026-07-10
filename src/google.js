@@ -188,7 +188,7 @@ export async function handleGoogleCallback(request, env, url, log) {
 
   log.info("login.success", { role: user.role, via: "google" });
   // The signed-in app lives at /rver (the deepresearch.se/rver = "deep
-  // research server" wordplay; the root is free mode for everyone).
+  // research server" wordplay; the root redirects to DRC at /cure).
   const headers = new Headers({ Location: "/rver" });
   headers.append("Set-Cookie", clearStateCookie());
   headers.append("Set-Cookie", await createSessionCookie(env, String(user.id)));

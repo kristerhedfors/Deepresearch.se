@@ -6,11 +6,12 @@ description: >-
   public/js/vault.js, or anything about chat-history encryption, the
   per-account server_history cloud-storage knob, RAG document indexing,
   projects, the secret-keyed project vault (store/load a project with a
-  DR1-… secret), free mode (the DEFAULT site at / for signed-out visitors,
-  /my/project-<hash> — src/free.js, public/free/, public/js/free-core.js,
-  free-providers.js, free-research.js: no-account deep research with DIRECT
-  browser→provider calls on user keys — OpenAI + Groq, the CORS-capable
-  providers — server never in the chat path), or the
+  DR1-… secret), DRC — "deep research secure", the client-side public tier
+  at /cure (the root redirects there; /my/project-<hash>; public/cure/,
+  public/js/drc-core.js, drc-providers.js, drc-research.js, drc-store.js:
+  no-account deep research with DIRECT browser→provider calls on user keys
+  — OpenAI + Groq, the CORS-capable providers — and BROWSER-LOCAL sealed
+  storage; the server is in no DRC data path), or the
   privacy/encryption model (encrypted-at-rest except RAG-indexed and
   project chats; keys never at rest beside ciphertext).
 ---
@@ -369,65 +370,41 @@ secret" form).
   here.
 
 
-## Free mode — the site's default face: /, /my/project-<hash>, server out of the chat path
+## DRC — "deep research secure": the client-side public tier at /cure
 
-The no-account surface (added 2026-07-10, refactored same day to
-direct-from-browser provider calls, then promoted to the DEFAULT site):
-`/` serves it for EVERYONE (the signed-in app lives at `/rver` — the
-"deep research server" wordplay; sign-in and terms redirects land there,
-the PWA manifest starts there), saved projects live at
-`/my/project-<hash>` (`/free` is a legacy alias), published frozen
-replays at `/cure/<slug>` hand their conversation to free mode via
-`/?continue=<slug>` (see the **publish-research** skill), and the old promotional landing is a first-visit GLASS PANE on
-the page itself (`#intro`, dismissable, `dr_intro_seen` localStorage UI
-flag — carries nothing secret-derived; full landing still at /welcome/).
-`src/free.js` (the ENTIRE server surface — static page routing + one
-ciphertext blob store), the page `public/free/`, the pure modules
-`public/js/free-core.js`, `free-providers.js`, `free-research.js`. Users
-bring their OWN provider API keys; every model call goes DIRECTLY
-(cross-origin) from the browser to the provider; Deepresearch's server is
-never in the chat path.
+The two product tiers, named by the .se wordplay (2026-07-10 directive):
 
-The page is CHAT-FIRST: a visitor can type immediately with nothing set
-up — the first send without a key gets a helpful pointer that opens the
-key panel (their typed message stays in the composer), never an error
-wall. A session without a saved project lives in this tab's memory only
-(one post-answer hint says so); the Project panel's single submit opens
-OR creates: an existing blob is opened with this tab's unsaved
-conversations and keys merged in, a 404 seals the current session under
-the freshly generated secret.
+- **DRC** — deepresearch.se/**cure** = "deep research SECURE"; the **C**
+  also reads CLIENT-side. The public, no-account tier: minimal server
+  components BY DESIGN, direct browser→provider model calls, and
+  BROWSER-LOCAL storage only. The root `/` 302s to `/cure`.
+- **DRS** — deepresearch.se/**rver** = "deep research SERVER"; the **R**
+  reads REMOTE, as in a remote cloud-server. The signed-in tier: the
+  hosted pipeline, live web search, accounts, quotas, cloud storage —
+  everything else this skill documents. Sign-in/terms redirects land on
+  /rver; the PWA manifest starts there.
 
-- **Only CORS-capable providers qualify**: OpenAI and Groq (GroqCloud)
-  serve `Access-Control-Allow-Origin: *` on their OpenAI-compatible
-  APIs, so the browser can call them with the user's key. Berget and
-  Anthropic don't allow browser CORS → they cannot be free-mode
-  providers (that would need a proxy, which is what free mode exists to
-  avoid). The registry (`free-providers.js`) mirrors src/providers.js:
-  one declarative entry per provider (base URL, wire quirks, a fixed
-  cheap `jsonModel` for planning phases, fallback catalog).
-- **One master secret** (the vault's DR1-… format; saved by 1Password /
-  Apple Passwords via the page's REAL username+password form —
-  `current-password`, `new-password` on create; the username field
-  carries the public `project-<hash>` reference that is also the
-  bookmarkable URL). HKDF derives: `refHash` (public reference, not a
-  capability), `blobId` + `blobKey` (the sealed state). No unlock key,
-  no key bundle: the provider API keys live INSIDE the sealed state, so
-  the server never sees them in ANY form — encrypted or not.
-- **The deep-research pipeline runs in the browser**
-  (`free-research.js`), keeping the pipeline invariants: deterministic
-  flow, NO function calling, helper phases fail soft. Phases: triage
-  (JSON on the provider's fixed jsonModel — client-side split model
-  routing) → parallel knowledge HARVEST per sub-question (the search
-  wave's offline counterpart: no web search exists here, so the model's
-  own knowledge is the source pool and the prompts force that honesty —
-  never invent citations/URLs, carry uncertainty and cutoff caveats) →
-  gap audit + ONE follow-up harvest round → streamed synthesis on the
-  user's chosen model → validation whose "revise" verdict carries the
-  corrected answer, applied via the discard_text convention. Whole flow
-  Node-tested end to end against a mock provider.
-- **The server stores exactly one thing**: `free/blob/{id}` — the
-  client-sealed project state (conversations, settings, API keys),
-  capability-addressed (unguessable 160-bit HKDF id; no user
-  namespace). "No message-content logging" is structural here: the
-  server never receives content, keys, or anything derivable. Caps:
-  25 MB. Losing the secret loses the project — no recovery, by design.
+DRC's modularity is the design requirement: the page
+(`public/cure/index.html` + `drc.js` + `drc.css`) is wiring over four
+self-contained, Node-tested modules — `public/js/drc-core.js` (one
+master secret → HKDF-derived reference/blob id/blob key; the sealed
+state; NOTE: the HKDF info strings and state-kind constant are frozen
+pre-rename "free" values — changing them breaks existing secrets),
+`drc-providers.js` (the CORS-capable provider registry: OpenAI + Groq
+ONLY — providers without browser CORS can't join, that's the admission
+ticket), `drc-research.js` (the client-side pipeline: triage → parallel
+knowledge harvest → gap audit → streamed synthesis → validation, the
+pipeline invariants held client-side), and `drc-store.js` (the storage
+SEAM: sealed-state bytes in localStorage, injectable backend — a future
+remote adapter slots in here, it is not a rewrite).
+
+What the server does for DRC: serve static files and public replay
+JSONs (`/api/pub`, src/pub.js — replays open in place at /cure/<slug>
+and are continued by just typing, on the visitor's own key). Nothing
+else. No blob store, no proxying, no keys in any form — "no content
+logging" is structural: there is nothing to log. Projects are sealed
+under the user's DR1-… master secret (password-manager form: real
+username+password fields) and rest as ciphertext in THIS browser only;
+a /my/project-<hash> link reopens a project only on a device that holds
+it — the secret alone carries nothing across devices (that's DRS
+territory, and a deliberate product line).

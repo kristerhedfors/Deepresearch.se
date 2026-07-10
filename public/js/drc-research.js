@@ -1,6 +1,6 @@
 // Free mode's deep-research pipeline, ported to run ENTIRELY in the
 // browser: every phase is a direct cross-origin call from the user's
-// browser to the user's own provider (free-providers.js — OpenAI or Groq),
+// browser to the user's own provider (drc-providers.js — OpenAI or Groq),
 // with Deepresearch's server nowhere in the path. The phase FLOW mirrors
 // the server pipeline (src/pipeline.js) and keeps its two load-bearing
 // rules — deterministic orchestration with NO function calling (every
@@ -27,11 +27,11 @@
 //               discard_text convention the server SSE protocol uses
 //
 // Import-safe outside a browser (the whole flow is Node-tested end to end
-// against a mock provider). The page (public/free/free.js) supplies DOM
+// against a mock provider). The page (public/cure/drc.js) supplies DOM
 // rendering; this module only emits onStatus/onDelta events.
 
 import { createSseParser } from "./sse.js";
-import { freeChatStream, freeCompleteJson, freeProvider } from "./free-providers.js";
+import { drcChatStream, drcCompleteJson, drcProvider } from "./drc-providers.js";
 
 const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
@@ -46,8 +46,8 @@ const JSON_ONLY = " Respond ONLY with the JSON object — no prose, no code fenc
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export const freeTriagePrompt = () =>
-  `You are the research planner for Deepresearch.se's free mode. Today's date: ${today()}.\n` +
+export const drcTriagePrompt = () =>
+  `You are the research planner for DRC — Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   "There is NO web search available — research here means structured reasoning over the model's own knowledge. Decide how to handle the user's LATEST message given the conversation. Respond ONLY with a JSON object:\n" +
   '- {"action":"direct"} — small talk, thanks, simple questions, or anything best answered in one pass.\n' +
   '- {"action":"clarify","question":"..."} — a research request missing details (scope, timeframe, region, purpose) that would materially change the answer. Ask exactly ONE short question.\n' +
@@ -56,8 +56,8 @@ export const freeTriagePrompt = () =>
   ANTI_INJECTION +
   JSON_ONLY;
 
-export const freeHarvestPrompt = () =>
-  `You extract research notes for Deepresearch.se's free mode. Today's date: ${today()}.\n` +
+export const drcHarvestPrompt = () =>
+  `You extract research notes for DRC — Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   "You are given ONE research sub-question. From your own knowledge, extract the concrete facts that bear on it. Respond ONLY with JSON:\n" +
   '{"facts":["..."],"uncertain":["..."]}\n' +
   "- facts: specific, checkable statements (names, dates, figures, mechanisms) you are confident of — each one self-contained.\n" +
@@ -66,8 +66,8 @@ export const freeHarvestPrompt = () =>
   ANTI_INJECTION +
   JSON_ONLY;
 
-export const freeGapPrompt = (subquestions) =>
-  "You audit research coverage for Deepresearch.se's free mode.\n" +
+export const drcGapPrompt = (subquestions) =>
+  "You audit research coverage for DRC — Deepresearch.se's client-side mode.\n" +
   "Given the sub-questions and the notes harvested so far, respond ONLY with JSON:\n" +
   '- {"complete":true} if the notes cover every sub-question well enough for a grounded answer.\n' +
   `- {"complete":false,"missing":["..."]} otherwise, with 1-${MAX_GAP_FOLLOWUPS} NEW sub-questions targeting the most important gaps.\n` +
@@ -75,24 +75,24 @@ export const freeGapPrompt = (subquestions) =>
   ANTI_INJECTION +
   JSON_ONLY;
 
-export const freeSynthPrompt = () =>
-  `You are the research assistant for Deepresearch.se's free mode. Today's date: ${today()}.\n` +
+export const drcSynthPrompt = () =>
+  `You are the research assistant for DRC — Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using the conversation and the harvested notes provided (your own knowledge, structured by sub-question).\n" +
   "Format in Markdown: start with a 1-3 sentence conclusion in bold, then short sections or bullet lists — use the sub-questions as the skeleton and address EVERY one; where the notes leave one unanswered, say so explicitly rather than skipping it.\n" +
   "This answer rests on model knowledge, NOT live web sources: never invent citations, bracketed numbers, or URLs. State clearly when something is uncertain or may have changed after the training cutoff, and carry every 'uncertain' note's hedge into the text.\n" +
   "Be honest about gaps. A superlative claim (latest, fastest, biggest) without a concrete figure or date must be flagged as such, never presented bare." +
   ANTI_INJECTION;
 
-export const freeValidatePrompt = () =>
-  "You are a strict reviewer for Deepresearch.se's free mode. You receive a research question, the harvested notes, and a draft answer.\n" +
+export const drcValidatePrompt = () =>
+  "You are a strict reviewer for DRC — Deepresearch.se's client-side mode. You receive a research question, the harvested notes, and a draft answer.\n" +
   "Check: (1) the draft does not contradict the notes; (2) nothing presented as certain was only in the uncertain notes; (3) no invented citations, bracketed source numbers, or URLs (there are no web sources here); (4) every sub-question is addressed or its gap acknowledged.\n" +
   "Respond ONLY with JSON:\n" +
   '- {"verdict":"pass"} if the draft holds up.\n' +
   '- {"verdict":"revise","issues":["..."],"revised_answer":"..."} if you found problems. revised_answer must be the complete corrected answer in the same format, changing only what is needed.' +
   JSON_ONLY;
 
-export const freeDirectPrompt = () =>
-  `You are Deepresearch.se's free-mode assistant. Today's date: ${today()}.\n` +
+export const drcDirectPrompt = () =>
+  `You are Deepresearch.se's DRC assistant. Today's date: ${today()}.\n` +
   "Answer helpfully and concisely in Markdown. You have no web access: never invent citations or URLs, and say when something is uncertain or may have changed after your training cutoff." +
   ANTI_INJECTION;
 
@@ -102,7 +102,7 @@ export const freeDirectPrompt = () =>
  * Lenient triage hardening: returns a usable {action, subquestions[],
  * complexity} or null (callers degrade to a direct answer).
  */
-export function normalizeFreeTriage(value) {
+export function normalizeDrcTriage(value) {
   if (!value || typeof value !== "object") return null;
   if (value.action === "direct") return { action: "direct", subquestions: [] };
   if (value.action === "clarify" && typeof value.question === "string" && value.question.trim()) {
@@ -124,14 +124,14 @@ export function normalizeFreeTriage(value) {
 }
 
 /** Hardens one harvest result into {facts[], uncertain[]} (never null). */
-export function normalizeFreeNotes(value) {
+export function normalizeDrcNotes(value) {
   const strings = (v) =>
     (Array.isArray(v) ? v : []).filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim());
   return { facts: strings(value?.facts).slice(0, 12), uncertain: strings(value?.uncertain).slice(0, 8) };
 }
 
 // The compact text block synthesis/validation read the notes from.
-export function renderFreeNotes(harvest) {
+export function renderDrcNotes(harvest) {
   return harvest
     .map(
       (h, i) =>
@@ -143,7 +143,7 @@ export function renderFreeNotes(harvest) {
 }
 
 // Conversation context for the planning phases — the last turns, bounded.
-export function freeContext(messages) {
+export function drcContext(messages) {
   let out = "";
   for (let i = messages.length - 1; i >= 0; i--) {
     const line = messages[i].role.toUpperCase() + ": " + messages[i].content + "\n";
@@ -196,7 +196,7 @@ function emitChunked(text, onDelta) {
  * onStatus({type:"discard_text"}) + onDelta(chunk) events; resolves to
  * {answer, action, subquestions, validated}.
  */
-export async function runFreeResearch({
+export async function runDrcResearch({
   providerId,
   apiKey,
   model,
@@ -207,17 +207,17 @@ export async function runFreeResearch({
   signal,
   baseUrl,
 }) {
-  const provider = freeProvider(providerId);
+  const provider = drcProvider(providerId);
   if (!provider) throw new Error("Unknown provider.");
   if (!apiKey) throw new Error("No " + provider.label + " API key is stored.");
   const jsonModel = provider.jsonModel;
   const question = messages[messages.length - 1]?.content || "";
-  const context = freeContext(messages);
+  const context = drcContext(messages);
 
   const streamAnswer = async (system, extraUser = null) => {
     const convo = [{ role: "system", content: system }, ...messages];
     if (extraUser) convo.push({ role: "user", content: extraUser });
-    const res = await freeChatStream(provider, apiKey, model, convo, { signal, baseUrl });
+    const res = await drcChatStream(provider, apiKey, model, convo, { signal, baseUrl });
     if (!res.ok || !res.body) {
       const hint = res.status === 401 || res.status === 403 ? " Check your " + provider.label + " API key." : "";
       throw new Error(provider.label + " rejected the request (" + res.status + ")." + hint);
@@ -228,20 +228,20 @@ export async function runFreeResearch({
   // ---- direct mode (research toggle off) ---------------------------------
   if (!research) {
     onStatus({ type: "phase", phase: "answer" });
-    return { answer: await streamAnswer(freeDirectPrompt()), action: "direct", subquestions: [], validated: false };
+    return { answer: await streamAnswer(drcDirectPrompt()), action: "direct", subquestions: [], validated: false };
   }
 
   // ---- triage (fail-soft: unusable → direct) ------------------------------
   onStatus({ type: "phase", phase: "triage" });
   let triage = null;
   try {
-    triage = normalizeFreeTriage(
-      await freeCompleteJson(
+    triage = normalizeDrcTriage(
+      await drcCompleteJson(
         provider,
         apiKey,
         jsonModel,
         [
-          { role: "system", content: freeTriagePrompt() },
+          { role: "system", content: drcTriagePrompt() },
           { role: "user", content: "Conversation so far:\n" + context },
         ],
         { signal, baseUrl },
@@ -253,7 +253,7 @@ export async function runFreeResearch({
 
   if (!triage || triage.action === "direct") {
     onStatus({ type: "phase", phase: "answer" });
-    return { answer: await streamAnswer(freeDirectPrompt()), action: "direct", subquestions: [], validated: false };
+    return { answer: await streamAnswer(drcDirectPrompt()), action: "direct", subquestions: [], validated: false };
   }
   if (triage.action === "clarify") {
     onStatus({ type: "phase", phase: "clarify" });
@@ -264,17 +264,17 @@ export async function runFreeResearch({
   // ---- harvest: the search wave's offline counterpart, in parallel --------
   const harvestOne = async (subquestion) => {
     try {
-      const value = await freeCompleteJson(
+      const value = await drcCompleteJson(
         provider,
         apiKey,
         jsonModel,
         [
-          { role: "system", content: freeHarvestPrompt() },
+          { role: "system", content: drcHarvestPrompt() },
           { role: "user", content: "Research question: " + question + "\n\nSub-question: " + subquestion },
         ],
         { signal, baseUrl },
       );
-      return { subquestion, notes: normalizeFreeNotes(value) };
+      return { subquestion, notes: normalizeDrcNotes(value) };
     } catch {
       return { subquestion, notes: { facts: [], uncertain: [] } }; // fail-soft: a lost angle, not a lost answer
     }
@@ -285,13 +285,13 @@ export async function runFreeResearch({
   // ---- gap check: one follow-up harvest round (fail-soft: skip) ------------
   try {
     onStatus({ type: "phase", phase: "gap" });
-    const gap = await freeCompleteJson(
+    const gap = await drcCompleteJson(
       provider,
       apiKey,
       jsonModel,
       [
-        { role: "system", content: freeGapPrompt(triage.subquestions) },
-        { role: "user", content: "Question: " + question + "\n\nNotes so far:\n" + renderFreeNotes(harvest) },
+        { role: "system", content: drcGapPrompt(triage.subquestions) },
+        { role: "user", content: "Question: " + question + "\n\nNotes so far:\n" + renderDrcNotes(harvest) },
       ],
       { signal, baseUrl },
     );
@@ -309,19 +309,19 @@ export async function runFreeResearch({
   // ---- synthesis on the user's chosen model --------------------------------
   onStatus({ type: "phase", phase: "synth" });
   const notesBlock =
-    "Harvested notes (model knowledge, structured by sub-question):\n" + renderFreeNotes(harvest);
-  let answer = await streamAnswer(freeSynthPrompt(), notesBlock);
+    "Harvested notes (model knowledge, structured by sub-question):\n" + renderDrcNotes(harvest);
+  let answer = await streamAnswer(drcSynthPrompt(), notesBlock);
 
   // ---- validation (fail-soft: accept the draft) -----------------------------
   let validated = false;
   try {
     onStatus({ type: "phase", phase: "validate" });
-    const verdict = await freeCompleteJson(
+    const verdict = await drcCompleteJson(
       provider,
       apiKey,
       jsonModel,
       [
-        { role: "system", content: freeValidatePrompt() },
+        { role: "system", content: drcValidatePrompt() },
         {
           role: "user",
           content: "Question: " + question + "\n\n" + notesBlock + "\n\nDraft answer:\n" + answer,

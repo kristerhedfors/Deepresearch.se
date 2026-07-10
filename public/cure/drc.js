@@ -1,51 +1,60 @@
-// Free mode page wiring — the site's DEFAULT face: unauthenticated / serves
-// this page, chat-first, with /my/project-<hash> as the saved-project deep
-// link. All rules live in the pure modules: /js/free-core.js (secret →
-// derived ids/keys, the sealed state), /js/free-providers.js (the
-// CORS-capable provider registry — OpenAI + Groq), /js/free-research.js
-// (the client-side deep-research pipeline). This module only renders, and
-// the only server endpoint it ever touches is the dumb ciphertext store
-// (/api/free/blob/:id) — every model call goes straight from this browser
-// to the provider.
+// DRC page wiring — "deep research secure", C for CLIENT-side: the public
+// tier of the site, served at /cure (the root redirects here), with saved
+// projects at /my/project-<hash> and published replays at /cure/<slug>.
+// Its remote sibling is DRS, "deep research server" (R as in remote
+// cloud-server) — the signed-in app at /rver with the hosted pipeline,
+// live web search, accounts and cloud storage.
+//
+// DRC is modular by definition, and this page is just the wiring layer
+// over four self-contained, Node-tested modules:
+//   /js/drc-core.js      — secret → derived ids/keys, the sealed state
+//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Groq)
+//   /js/drc-research.js  — the client-side deep-research pipeline
+//   /js/drc-store.js     — BROWSER-LOCAL sealed-state storage (the seam)
+//
+// The server's entire involvement in DRC: static files and the public
+// replay JSONs (/api/pub). Model calls go straight from this browser to
+// the provider; the sealed project state never leaves this machine.
 //
 // The flow is deliberately chat-first: a visitor can type immediately with
-// nothing set up — the first send explains, helpfully, that free mode runs
-// on their own API key (and opens the key panel). A session without a
-// saved project lives in this tab's memory only; the Project panel seals
-// it (chats AND keys) under a freshly generated secret and gives it a
-// /my/project-<hash> home. The old promotional landing is a first-visit
-// glass pane over this page (the full version stays at /welcome/).
+// nothing set up — the first send explains, helpfully, that DRC runs on
+// their own API key (and opens the key panel). A session without a saved
+// project lives in this tab's memory only; the Project panel seals it
+// (chats AND keys) under a freshly generated secret into this browser's
+// local storage. The old promotional landing is a first-visit glass pane
+// over this page (the full version stays at /welcome/).
 //
 // Security posture recap (the page's whole point):
 //   - the master secret lives in the password field and this module's
-//     memory only — never in localStorage/IndexedDB, never sent anywhere;
+//     memory only — never stored anywhere, never sent anywhere;
 //   - the provider API keys live INSIDE the sealed state: encrypted at
-//     rest, and on the wire they go only to the provider itself;
-//   - the Deepresearch server sees exactly one thing: an opaque encrypted
-//     blob. It cannot log message content — it never receives any.
+//     rest in this browser, and on the wire they go only to the provider;
+//   - nothing project-derived reaches the Deepresearch server, in any
+//     form. "No logging" is not a policy here — there is nothing to log.
 //   - "Lock" just drops this tab's memory — a reload does the same.
-//   (The one localStorage item, dr_intro_seen, is a UI flag — it carries
-//   nothing derived from secrets, keys, or content.)
+//   (The one plain localStorage item, dr_intro_seen, is a UI flag — it
+//   carries nothing derived from secrets, keys, or content.)
 
 import {
-  deriveFreeProfile,
-  deriveFreeTitle,
-  emptyFreeState,
-  freeSecretValid,
-  generateFreeSecret,
-  migrateFreeState,
-  openFreeState,
-  sealFreeState,
-  validateFreeState,
-} from "/js/free-core.js";
-import { configuredFreeProviders, freeProvider, listFreeModels } from "/js/free-providers.js";
-import { runFreeResearch } from "/js/free-research.js";
+  deriveDrcProfile,
+  deriveDrcTitle,
+  emptyDrcState,
+  drcSecretValid,
+  generateDrcSecret,
+  migrateDrcState,
+  openDrcState,
+  sealDrcState,
+  validateDrcState,
+} from "/js/drc-core.js";
+import { configuredDrcProviders, drcProvider, listDrcModels } from "/js/drc-providers.js";
+import { runDrcResearch } from "/js/drc-research.js";
+import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
 const $ = (id) => document.getElementById(id);
 
 let profile = null; // {refHash, blobId, blobKey} — null while the session is unsaved
-let state = emptyFreeState(); // the working state (keys included), from the first keystroke
+let state = emptyDrcState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
 let sending = false;
 let unsavedHintShown = false;
@@ -90,6 +99,26 @@ function maybeShowIntro(deepLinked) {
     // storage blocked — show it this once
   }
   if (!seen && !deepLinked) $("intro").hidden = false;
+  loadIntroPublications();
+}
+
+// The pane doubles as the publication shelf: the latest /cure/<slug>
+// replays, fetched fail-soft (an empty list just hides the section).
+async function loadIntroPublications() {
+  try {
+    const res = await fetch("/api/pub");
+    const items = (await res.json())?.publications?.slice(0, 5) || [];
+    if (!items.length) return;
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    $("introlist").innerHTML =
+      "<p class='muted'>Published research to read — or continue yourself:</p>" +
+      items
+        .map((p) => `<a class="pub-item" href="/cure/${encodeURIComponent(p.slug)}">${esc(p.title)}</a>`)
+        .join("");
+    $("introlist").hidden = false;
+  } catch {
+    // the shelf is decoration — the pane works without it
+  }
 }
 
 function dismissIntro() {
@@ -102,12 +131,12 @@ function dismissIntro() {
   $("prompt").focus();
 }
 
-// ---- project panel ------------------------------------------------------------------
+// ---- deep links ---------------------------------------------------------------------
 
-// Deep link: /my/project-<hash> (or the legacy /free/project-…) prefills
-// the reference so the password manager (which files the secret under that
+// /my/project-<hash> (or the legacy /free/project-…) prefills the
+// reference so the password manager (which files the secret under that
 // username) matches the entry, and opens the panel ready for the secret.
-function handleDeepLink() {
+function handleProjectLink() {
   const m = location.pathname.match(/^\/(?:my|free)\/(project-[0-9a-z]+)/i);
   if (!m) return false;
   $("refname").value = m[1];
@@ -116,37 +145,42 @@ function handleDeepLink() {
   return true;
 }
 
-// /?continue=<slug>: the handoff from a published replay (/cure/<slug> —
-// the viewer's "Continue with your own API keys" link). The frozen
-// session's messages seed a normal free-mode conversation; follow-ups run
-// on the visitor's own key like any other chat here.
-async function handleContinueParam() {
-  const slug = new URLSearchParams(location.search).get("continue");
+// /cure/<slug> — a published replay (src/pub.js), opened right in the app:
+// the frozen session becomes a normal conversation, so "continue" is just
+// typing a follow-up (on the visitor's own key). /?continue=<slug> is the
+// legacy handoff form.
+async function handlePublicationLink() {
+  const m = location.pathname.match(/^\/cure\/([a-z0-9-]+)$/i);
+  const slug = m ? m[1] : new URLSearchParams(location.search).get("continue");
   if (!slug || !/^[a-z0-9-]{1,80}$/i.test(slug)) return false;
   try {
     const res = await fetch("/api/pub/" + encodeURIComponent(slug.toLowerCase()));
-    if (!res.ok) return false;
+    if (!res.ok) {
+      if (m) workStatus("No publication at /cure/" + slug + " — starting fresh.");
+      return false;
+    }
     const pub = await res.json();
     const messages = (pub?.messages || []).filter(
-      (m) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string",
+      (msg) => (msg?.role === "user" || msg?.role === "assistant") && typeof msg?.content === "string",
     );
     if (!messages.length) return false;
     const conv = {
       id: crypto.randomUUID(),
-      title: (pub.title || deriveFreeTitle(messages)).slice(0, 80),
+      title: (pub.title || deriveDrcTitle(messages)).slice(0, 80),
       messages,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     state.conversations.push(conv);
     convId = conv.id;
-    history.replaceState(null, "", "/");
+    if (pub.title) document.title = pub.title + " — Deepresearch";
     renderConvPicker();
     renderMessages();
     workStatus(
-      "You're continuing a published research session. Follow-up questions run on YOUR API key " +
-        "(OpenAI or Groq), straight from this browser — add one under 'Provider API keys' if you " +
-        "haven't yet.",
+      "This is a published research replay" +
+        (pub.description ? " — " + pub.description : "") +
+        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI or Groq), straight " +
+        "from this browser.",
     );
     return true;
   } catch {
@@ -154,13 +188,15 @@ async function handleContinueParam() {
   }
 }
 
+// ---- project open/create --------------------------------------------------------------
+
 async function generateNew() {
-  const secret = generateFreeSecret();
+  const secret = generateDrcSecret();
   $("secret").value = secret;
   // A NEW credential: switching the autocomplete hint makes Safari/iCloud
   // Keychain and 1Password treat the submit as "save this new password".
   $("secret").setAttribute("autocomplete", "new-password");
-  const { refHash } = await deriveFreeProfile(secret);
+  const { refHash } = await deriveDrcProfile(secret);
   $("refname").value = "project-" + refHash;
   $("newsecrettext").textContent = secret;
   $("newsecret").hidden = false;
@@ -178,29 +214,35 @@ function projectOpened() {
   history.replaceState(null, "", "/my/project-" + profile.refHash);
 }
 
-// Open OR create, one submit: the blob exists → open it (merging anything
-// already done in this tab); 404 → seal the current session under the new
-// secret. Either way the password manager sees a normal form submit.
+// Open OR create, one submit: a sealed state exists in THIS BROWSER under
+// the secret's id → open it (merging anything already done in this tab);
+// nothing there → seal the current session under the new secret. Either
+// way the password manager sees a normal form submit. Note what "open"
+// means for DRC: projects are browser-local, so a /my/… link opens only
+// on a device that already holds the project — the secret alone carries
+// nothing across devices (cross-device sync is DRS territory).
 async function unlock(ev) {
   ev.preventDefault();
   const secret = $("secret").value;
-  if (!freeSecretValid(secret)) {
+  if (!drcSecretValid(secret)) {
     gateStatus("That doesn't look like a valid secret (DR1-… with 32 characters).");
+    return;
+  }
+  if (!drcStoreAvailable()) {
+    gateStatus("This browser blocks local storage, so projects can't be saved here — chats stay in this tab.");
     return;
   }
   $("openbtn").disabled = true;
   gateStatus("Deriving keys…");
   try {
-    const derived = await deriveFreeProfile(secret);
-
-    gateStatus("Checking for a stored project…");
-    const res = await fetch("/api/free/blob/" + encodeURIComponent(derived.blobId));
-    if (res.ok) {
-      const opened = await openFreeState(new Uint8Array(await res.arrayBuffer()), derived.blobKey).catch(() => null);
-      if (!opened || !validateFreeState(opened)) {
-        throw new Error("That secret found a stored project, but it could not be decrypted — it may be corrupted.");
+    const derived = await deriveDrcProfile(secret);
+    const stored = getSealedProject(derived.blobId);
+    if (stored) {
+      const opened = await openDrcState(stored, derived.blobKey).catch(() => null);
+      if (!opened || !validateDrcState(opened)) {
+        throw new Error("A stored project was found, but it could not be decrypted — it may be corrupted.");
       }
-      const loaded = migrateFreeState(opened);
+      const loaded = migrateDrcState(opened);
       // Carry this tab's unsaved work INTO the opened project: conversations
       // with content, and any keys typed here that the project lacks.
       const known = new Set(loaded.conversations.map((c) => c.id));
@@ -211,12 +253,10 @@ async function unlock(ev) {
       profile = derived;
       state = loaded;
       gateStatus("");
-    } else if (res.status === 404) {
+    } else {
       profile = derived;
       gateStatus("");
-      workStatus("Project created — this session (chats and keys) is now sealed under your secret.");
-    } else {
-      throw new Error("Storage unavailable (" + res.status + ").");
+      workStatus("Project created — this session (chats and keys) is now sealed in this browser under your secret.");
     }
 
     projectOpened();
@@ -225,7 +265,7 @@ async function unlock(ev) {
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
-    if (configuredFreeProviders(state.keys).length) await refreshModels();
+    if (configuredDrcProviders(state.keys).length) await refreshModels();
   } catch (err) {
     gateStatus(err?.message || "Could not open the project.");
   } finally {
@@ -233,22 +273,19 @@ async function unlock(ev) {
   }
 }
 
-// ---- persistence ---------------------------------------------------------------------
+// ---- persistence (browser-local, via the drc-store seam) ---------------------------
 
 async function saveState() {
   if (!state) return;
   state.updatedAt = Date.now();
   if (!profile) return; // unsaved session — memory only, by design
   try {
-    const bytes = await sealFreeState(state, profile.blobKey);
-    const res = await fetch("/api/free/blob/" + encodeURIComponent(profile.blobId), {
-      method: "PUT",
-      headers: { "content-type": "application/octet-stream" },
-      body: bytes,
-    });
-    if (!res.ok) workStatus("Saving failed (" + res.status + ") — changes stay in this tab only.");
+    const bytes = await sealDrcState(state, profile.blobKey);
+    if (!putSealedProject(profile.blobId, bytes)) {
+      workStatus("Saving locally failed (storage full or blocked) — changes stay in this tab only.");
+    }
   } catch {
-    workStatus("Saving failed — changes stay in this tab only.");
+    workStatus("Saving locally failed — changes stay in this tab only.");
   }
 }
 
@@ -260,7 +297,7 @@ function renderKeysPanel() {
     const el = $("key-" + p);
     el.value = "";
     el.placeholder = state.keys?.[p] ? "•••••• (saved)" : "not set";
-    if (state.keys?.[p]) have.push(freeProvider(p).label);
+    if (state.keys?.[p]) have.push(drcProvider(p).label);
   }
   $("keysbadge").textContent = have.length ? "— " + have.join(", ") + " set" : "— none set yet";
 }
@@ -279,7 +316,7 @@ async function saveKeys() {
     await saveState();
     renderKeysPanel();
     $("keysstatus").textContent = profile
-      ? "Saved (encrypted in your project blob)."
+      ? "Saved (encrypted in this browser)."
       : "Kept in this tab — save a project (Project panel) to store them encrypted.";
     await refreshModels();
     workStatus("");
@@ -294,7 +331,7 @@ async function saveKeys() {
 // "provider::model" so the send knows where to route.
 async function refreshModels() {
   const pick = $("modelpick");
-  const providers = configuredFreeProviders(state.keys);
+  const providers = configuredDrcProviders(state.keys);
   if (!providers.length) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
     return;
@@ -302,7 +339,7 @@ async function refreshModels() {
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const groups = await Promise.all(
     providers.map(async (p) => {
-      const ids = await listFreeModels(p, state.keys[p.id]);
+      const ids = await listDrcModels(p, state.keys[p.id]);
       return (
         `<optgroup label="${esc(p.label)}">` +
         ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("") +
@@ -377,11 +414,11 @@ async function send(ev) {
 
   // The first-visit path: no key yet → a helpful pointer, never an error
   // wall. The message stays in the composer so nothing typed is lost.
-  if (!configuredFreeProviders(state.keys).length) {
+  if (!configuredDrcProviders(state.keys).length) {
     $("keyspanel").open = true;
     $("key-groq").focus();
     workStatus(
-      "One thing first: this chat runs on YOUR API key, sent straight from this browser to the " +
+      "One thing first: DRC runs on YOUR API key, sent straight from this browser to the " +
         "provider — this site's server never sees your key or your messages. Paste an OpenAI or " +
         "Groq key above (Groq has a free tier at console.groq.com), press Save keys, then send again.",
     );
@@ -408,7 +445,7 @@ async function send(ev) {
     convId = conv.id;
   }
   conv.messages.push({ role: "user", content: text });
-  conv.title = conv.title || deriveFreeTitle(conv.messages);
+  conv.title = conv.title || deriveDrcTitle(conv.messages);
   conv.updatedAt = Date.now();
   $("prompt").value = "";
   renderConvPicker();
@@ -425,7 +462,7 @@ async function send(ev) {
   let errMsg = null;
   let result = null;
   try {
-    result = await runFreeResearch({
+    result = await runDrcResearch({
       providerId,
       apiKey: state.keys[providerId],
       model,
@@ -435,7 +472,7 @@ async function send(ev) {
         if (s.type === "phase") {
           phaseLine(PHASE_LABELS[s.phase] || s.phase);
         } else if (s.type === "discard_text") {
-          shown = ""; // the validated revision replaces the draft, server-SSE style
+          shown = ""; // the validated revision replaces the draft
           live.textContent = "";
           phaseLine("Applying the reviewed revision…");
         }
@@ -457,12 +494,12 @@ async function send(ev) {
     renderMarkdownInto(live, answer);
     conv.messages.push({ role: "assistant", content: answer });
     conv.updatedAt = Date.now();
-    await saveState(); // sealed client-side; the server stores ciphertext
+    await saveState(); // sealed, browser-local
     if (!profile && !unsavedHintShown) {
       unsavedHintShown = true;
       workStatus(
         "This conversation lives only in this tab. Open the Project panel to seal it (chats and " +
-          "keys) under a secret and get a /my/project-… link that works on any device.",
+          "keys) under a secret, stored encrypted in this browser.",
       );
     }
   } else {
@@ -475,12 +512,12 @@ async function send(ev) {
 
 // ---- boot --------------------------------------------------------------------------
 
-const deepLinked = handleDeepLink();
+const projectLinked = handleProjectLink();
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
-// A replay continuation counts as a deep link — no intro pane over it.
-handleContinueParam().then((continued) => maybeShowIntro(deepLinked || continued));
+// A replay deep link counts like a project link — no intro pane over it.
+handlePublicationLink().then((opened) => maybeShowIntro(projectLinked || opened));
 
 $("introstart").addEventListener("click", dismissIntro);
 $("aboutbtn").addEventListener("click", () => {

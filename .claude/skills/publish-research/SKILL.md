@@ -19,16 +19,15 @@ wordplay URLs: the `.se` domain completes English words, so
 `deepresearch.se/cure/<slug>` reads as **"deep research secure <slug>"**.
 A publication is a frozen conversation (question + researched answer,
 possibly multi-turn) served by `src/pub.js` from R2 `pub/{slug}` and
-rendered by the viewer page `public/cure/` (markdown, same look as free
-mode). `GET /cure` (no slug) lists everything published.
-
-Every replay carries a **"Continue with your own API keys"** link →
-`/?continue=<slug>` — free mode (the default site at `/`) seeds a normal
-conversation from the frozen messages, and the visitor's follow-up
-questions run client-side on THEIR OpenAI/Groq key (see the
-storage-privacy skill's free-mode section). Publishing is therefore also
-an acquisition surface: a great answer becomes a starting point anyone
-can pick up without an account.
+opened IN PLACE by the DRC app (`public/cure/drc.js` — DRC, "deep
+research secure", the client-side tier that lives at /cure): the frozen
+messages seed a normal DRC conversation, so "continue with your own API
+keys" is just typing a follow-up, which runs client-side on the
+visitor's OpenAI/Groq key (see the storage-privacy skill's DRC
+section). The intro glass pane doubles as the publication shelf, and
+`/?continue=<slug>` is the legacy handoff form. Publishing is therefore
+also an acquisition surface: a great answer becomes a starting point
+anyone can pick up without an account.
 
 ## The slug naming rule (the whole point of the URL)
 
@@ -111,15 +110,13 @@ curl -sS https://deepresearch.se/api/pub | python3 -m json.tool  # index lists i
 ```
 
 Then open `/cure/<slug>` in a browser when possible: the title, the
-rendered markdown, and the Continue link (`/?continue=<slug>`) should all
-be right — and Continue should land on `/` with the conversation loaded
-and free mode's own-key notice shown.
+rendered markdown, and the replay notice should all be right — the
+conversation loads directly in the DRC app with the own-key notice shown.
 
 ## Gotchas learned while building it
 
-- The viewer page reuses `free.css` + `/js/markdown.js` (vendored
-  `marked`/`DOMPurify` globals) — publications are sanitized markdown,
-  never raw HTML.
+- Replays render through `/js/markdown.js` (vendored `marked`/`DOMPurify`
+  globals) — publications are sanitized markdown, never raw HTML.
 - `/cure`, `/cure/<slug>`, and `/api/pub` GETs are routed BEFORE the
   identity gate in src/index.js; the PUT/DELETE live in `routeAuthed`
   behind the admin check. Keep that split — a publication is public by

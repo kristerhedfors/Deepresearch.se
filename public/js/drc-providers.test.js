@@ -2,43 +2,43 @@ import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import {
-  FREE_PROVIDERS,
-  buildFreePayload,
-  configuredFreeProviders,
+  DRC_PROVIDERS,
+  buildDrcPayload,
+  configuredDrcProviders,
   extractJson,
-  freeChatStream,
-  freeCompleteJson,
-  freeProvider,
-  listFreeModels,
-} from "./free-providers.js";
+  drcChatStream,
+  drcCompleteJson,
+  drcProvider,
+  listDrcModels,
+} from "./drc-providers.js";
 
 test("the registry holds exactly the CORS-capable providers", () => {
-  assert.deepEqual(FREE_PROVIDERS.map((p) => p.id), ["openai", "groq"]);
-  assert.equal(freeProvider("openai").label, "OpenAI");
-  assert.equal(freeProvider("groq").label, "Groq");
-  assert.equal(freeProvider("anthropic"), null); // no browser CORS — not in this registry
-  for (const p of FREE_PROVIDERS) {
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq"]);
+  assert.equal(drcProvider("openai").label, "OpenAI");
+  assert.equal(drcProvider("groq").label, "Groq");
+  assert.equal(drcProvider("anthropic"), null); // no browser CORS — not in this registry
+  for (const p of DRC_PROVIDERS) {
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
 });
 
-test("configuredFreeProviders follows the stored keys", () => {
-  assert.deepEqual(configuredFreeProviders({}).map((p) => p.id), []);
-  assert.deepEqual(configuredFreeProviders({ groq: "gsk" }).map((p) => p.id), ["groq"]);
-  assert.deepEqual(configuredFreeProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
-  assert.deepEqual(configuredFreeProviders({ openai: "" }).map((p) => p.id), []);
+test("configuredDrcProviders follows the stored keys", () => {
+  assert.deepEqual(configuredDrcProviders({}).map((p) => p.id), []);
+  assert.deepEqual(configuredDrcProviders({ groq: "gsk" }).map((p) => p.id), ["groq"]);
+  assert.deepEqual(configuredDrcProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
 });
 
-test("buildFreePayload carries each provider's wire quirks", () => {
+test("buildDrcPayload carries each provider's wire quirks", () => {
   const msgs = [{ role: "user", content: "hi" }];
-  const openai = buildFreePayload(freeProvider("openai"), "gpt-5.6-terra", msgs, { json: true, maxTokens: 500 });
+  const openai = buildDrcPayload(drcProvider("openai"), "gpt-5.6-terra", msgs, { json: true, maxTokens: 500 });
   assert.equal(openai.max_completion_tokens, 500);
   assert.equal(openai.reasoning_effort, "none");
   assert.deepEqual(openai.response_format, { type: "json_object" });
   assert.equal(openai.stream, false);
 
-  const groq = buildFreePayload(freeProvider("groq"), "llama-3.3-70b-versatile", msgs, { stream: true });
+  const groq = buildDrcPayload(drcProvider("groq"), "llama-3.3-70b-versatile", msgs, { stream: true });
   assert.equal(groq.max_tokens, 4096);
   assert.equal(groq.max_completion_tokens, undefined);
   assert.equal(groq.response_format, undefined);
@@ -54,11 +54,11 @@ test("extractJson forgives fences and prose, rejects garbage", () => {
 });
 
 test("model filters keep chat models, drop the rest", () => {
-  const openai = freeProvider("openai");
+  const openai = drcProvider("openai");
   assert.equal(openai.modelFilter("gpt-5.6-terra"), true);
   assert.equal(openai.modelFilter("gpt-4o-audio-preview"), false);
   assert.equal(openai.modelFilter("text-embedding-3-large"), false);
-  const groq = freeProvider("groq");
+  const groq = drcProvider("groq");
   assert.equal(groq.modelFilter("llama-3.3-70b-versatile"), true);
   assert.equal(groq.modelFilter("whisper-large-v3"), false);
   assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
@@ -102,17 +102,17 @@ describe("provider calls over mock HTTP", () => {
   });
   after(() => server.close());
 
-  test("listFreeModels: live list filtered; fallback catalog on a rejected key", async () => {
-    const groq = freeProvider("groq");
-    const live = await listFreeModels(groq, "good-key", { baseUrl });
+  test("listDrcModels: live list filtered; fallback catalog on a rejected key", async () => {
+    const groq = drcProvider("groq");
+    const live = await listDrcModels(groq, "good-key", { baseUrl });
     assert.deepEqual(live, ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]); // whisper filtered, sorted
-    const fallback = await listFreeModels(groq, "bad-key", { baseUrl });
+    const fallback = await listDrcModels(groq, "bad-key", { baseUrl });
     assert.deepEqual(fallback, groq.fallbackModels);
   });
 
-  test("freeCompleteJson: bearer auth, JSON mode requested, fenced JSON parsed", async () => {
-    const groq = freeProvider("groq");
-    const value = await freeCompleteJson(groq, "good-key", "llama-3.1-8b-instant", [{ role: "user", content: "x" }], { baseUrl });
+  test("drcCompleteJson: bearer auth, JSON mode requested, fenced JSON parsed", async () => {
+    const groq = drcProvider("groq");
+    const value = await drcCompleteJson(groq, "good-key", "llama-3.1-8b-instant", [{ role: "user", content: "x" }], { baseUrl });
     assert.deepEqual(value, { ok: true });
     const req = requests.at(-1);
     assert.equal(req.headers.authorization, "Bearer good-key");
@@ -120,9 +120,9 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(req.body.model, "llama-3.1-8b-instant");
   });
 
-  test("freeChatStream: returns the provider's SSE response as-is", async () => {
-    const groq = freeProvider("groq");
-    const res = await freeChatStream(groq, "good-key", "llama-3.3-70b-versatile", [{ role: "user", content: "x" }], { baseUrl });
+  test("drcChatStream: returns the provider's SSE response as-is", async () => {
+    const groq = drcProvider("groq");
+    const res = await drcChatStream(groq, "good-key", "llama-3.3-70b-versatile", [{ role: "user", content: "x" }], { baseUrl });
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     assert.equal(requests.at(-1).body.stream, true);

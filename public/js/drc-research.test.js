@@ -2,50 +2,50 @@ import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import {
-  freeContext,
-  freeDirectPrompt,
-  freeGapPrompt,
-  freeHarvestPrompt,
-  freeSynthPrompt,
-  freeTriagePrompt,
-  freeValidatePrompt,
-  normalizeFreeNotes,
-  normalizeFreeTriage,
-  renderFreeNotes,
-  runFreeResearch,
-} from "./free-research.js";
+  drcContext,
+  drcDirectPrompt,
+  drcGapPrompt,
+  drcHarvestPrompt,
+  drcSynthPrompt,
+  drcTriagePrompt,
+  drcValidatePrompt,
+  normalizeDrcNotes,
+  normalizeDrcTriage,
+  renderDrcNotes,
+  runDrcResearch,
+} from "./drc-research.js";
 
 // ---- normalizers ------------------------------------------------------------------
 
-test("normalizeFreeTriage hardens every action and degrades garbage", () => {
-  assert.deepEqual(normalizeFreeTriage({ action: "direct" }), { action: "direct", subquestions: [] });
-  assert.deepEqual(normalizeFreeTriage({ action: "clarify", question: " Which year? " }), {
+test("normalizeDrcTriage hardens every action and degrades garbage", () => {
+  assert.deepEqual(normalizeDrcTriage({ action: "direct" }), { action: "direct", subquestions: [] });
+  assert.deepEqual(normalizeDrcTriage({ action: "clarify", question: " Which year? " }), {
     action: "clarify",
     question: "Which year?",
     subquestions: [],
   });
-  const r = normalizeFreeTriage({ action: "research", complexity: "comparison", subquestions: ["a", " b ", "", 7] });
+  const r = normalizeDrcTriage({ action: "research", complexity: "comparison", subquestions: ["a", " b ", "", 7] });
   assert.deepEqual(r, { action: "research", complexity: "comparison", subquestions: ["a", "b"] });
   // research with no usable subquestions degrades to direct
-  assert.equal(normalizeFreeTriage({ action: "research", subquestions: [] }).action, "direct");
-  assert.equal(normalizeFreeTriage({ action: "explode" }), null);
-  assert.equal(normalizeFreeTriage(null), null);
+  assert.equal(normalizeDrcTriage({ action: "research", subquestions: [] }).action, "direct");
+  assert.equal(normalizeDrcTriage({ action: "explode" }), null);
+  assert.equal(normalizeDrcTriage(null), null);
   // more than the cap is truncated
-  const many = normalizeFreeTriage({ action: "research", subquestions: ["1", "2", "3", "4", "5", "6"] });
+  const many = normalizeDrcTriage({ action: "research", subquestions: ["1", "2", "3", "4", "5", "6"] });
   assert.equal(many.subquestions.length, 4);
 });
 
-test("normalizeFreeNotes never returns null and caps the lists", () => {
-  assert.deepEqual(normalizeFreeNotes(null), { facts: [], uncertain: [] });
-  assert.deepEqual(normalizeFreeNotes({ facts: [" a ", 3, ""], uncertain: ["u"] }), {
+test("normalizeDrcNotes never returns null and caps the lists", () => {
+  assert.deepEqual(normalizeDrcNotes(null), { facts: [], uncertain: [] });
+  assert.deepEqual(normalizeDrcNotes({ facts: [" a ", 3, ""], uncertain: ["u"] }), {
     facts: ["a"],
     uncertain: ["u"],
   });
-  assert.equal(normalizeFreeNotes({ facts: Array(30).fill("f") }).facts.length, 12);
+  assert.equal(normalizeDrcNotes({ facts: Array(30).fill("f") }).facts.length, 12);
 });
 
-test("renderFreeNotes marks empty harvests honestly", () => {
-  const text = renderFreeNotes([
+test("renderDrcNotes marks empty harvests honestly", () => {
+  const text = renderDrcNotes([
     { subquestion: "Q1", notes: { facts: ["f1"], uncertain: ["u1"] } },
     { subquestion: "Q2", notes: { facts: [], uncertain: [] } },
   ]);
@@ -55,13 +55,13 @@ test("renderFreeNotes marks empty harvests honestly", () => {
   assert.match(text, /no confident facts harvested/);
 });
 
-test("freeContext keeps the last turns inside the budget", () => {
+test("drcContext keeps the last turns inside the budget", () => {
   const messages = [
     { role: "user", content: "x".repeat(20_000) },
     { role: "assistant", content: "middle" },
     { role: "user", content: "latest" },
   ];
-  const ctx = freeContext(messages);
+  const ctx = drcContext(messages);
   assert.match(ctx, /USER: latest/);
   assert.match(ctx, /ASSISTANT: middle/);
   assert.equal(ctx.includes("x".repeat(100)), false); // the oversized old turn dropped
@@ -70,18 +70,18 @@ test("freeContext keeps the last turns inside the budget", () => {
 // ---- prompt structure (the server's prompts.test.js discipline) ---------------------
 
 test("every prompt keeps the offline-mode honesty and JSON discipline", () => {
-  for (const p of [freeTriagePrompt(), freeHarvestPrompt(), freeGapPrompt(["a"]), freeValidatePrompt()]) {
+  for (const p of [drcTriagePrompt(), drcHarvestPrompt(), drcGapPrompt(["a"]), drcValidatePrompt()]) {
     assert.match(p, /JSON/);
   }
-  for (const p of [freeTriagePrompt(), freeHarvestPrompt(), freeSynthPrompt(), freeDirectPrompt()]) {
+  for (const p of [drcTriagePrompt(), drcHarvestPrompt(), drcSynthPrompt(), drcDirectPrompt()]) {
     assert.match(p, /never (follow|invent)/i);
   }
-  assert.match(freeTriagePrompt(), /NO web search/i);
-  assert.match(freeHarvestPrompt(), /Never invent sources, URLs/);
-  assert.match(freeSynthPrompt(), /never invent citations/i);
-  assert.match(freeSynthPrompt(), /training cutoff/);
-  assert.match(freeGapPrompt(["q1", "q2"]), /1\. q1[\s\S]*2\. q2/);
-  assert.match(freeValidatePrompt(), /"verdict":"revise"/);
+  assert.match(drcTriagePrompt(), /NO web search/i);
+  assert.match(drcHarvestPrompt(), /Never invent sources, URLs/);
+  assert.match(drcSynthPrompt(), /never invent citations/i);
+  assert.match(drcSynthPrompt(), /training cutoff/);
+  assert.match(drcGapPrompt(["q1", "q2"]), /1\. q1[\s\S]*2\. q2/);
+  assert.match(drcValidatePrompt(), /"verdict":"revise"/);
 });
 
 // ---- the full flow against a mock provider ------------------------------------------
@@ -94,7 +94,7 @@ function phaseOf(body) {
   if (system.includes("extract research notes")) return "harvest";
   if (system.includes("audit research coverage")) return "gap";
   if (system.includes("strict reviewer")) return "validate";
-  if (system.includes("free-mode assistant")) return "direct";
+  if (system.includes("DRC assistant")) return "direct";
   return "synth";
 }
 
@@ -102,7 +102,7 @@ const sse = (chunks) =>
   chunks.map((c) => `data: {"choices":[{"delta":{"content":${JSON.stringify(c)}}}]}`).join("\n\n") +
   "\n\ndata: [DONE]\n\n";
 
-describe("runFreeResearch end to end (mock provider)", () => {
+describe("runDrcResearch end to end (mock provider)", () => {
   const requests = [];
   let gapAlreadyAsked = false;
   const server = http.createServer((req, res) => {
@@ -147,7 +147,7 @@ describe("runFreeResearch end to end (mock provider)", () => {
     const phases = [];
     let discarded = false;
     let streamed = "";
-    const result = await runFreeResearch({
+    const result = await runDrcResearch({
       providerId: "groq",
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
@@ -192,7 +192,7 @@ describe("runFreeResearch end to end (mock provider)", () => {
   test("research toggle off goes straight to a direct streamed answer", async () => {
     const phases = [];
     let streamed = "";
-    const result = await runFreeResearch({
+    const result = await runDrcResearch({
       providerId: "groq",
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
@@ -225,7 +225,7 @@ describe("runFreeResearch end to end (mock provider)", () => {
     await new Promise((resolve) => server2.listen(0, "127.0.0.1", resolve));
     try {
       let streamed = "";
-      const result = await runFreeResearch({
+      const result = await runDrcResearch({
         providerId: "groq",
         apiKey: "k",
         model: "m",
@@ -257,7 +257,7 @@ describe("runFreeResearch end to end (mock provider)", () => {
     });
     await new Promise((resolve) => server3.listen(0, "127.0.0.1", resolve));
     try {
-      const result = await runFreeResearch({
+      const result = await runDrcResearch({
         providerId: "openai",
         apiKey: "k",
         model: "gpt-5.6-terra",

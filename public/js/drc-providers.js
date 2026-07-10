@@ -6,12 +6,12 @@
 // them with the user's own API key and Deepresearch's server is never in
 // the request path at all. Providers without browser CORS (Berget,
 // Anthropic) cannot join this registry — they'd need a proxy, which is
-// exactly what free mode exists to avoid.
+// exactly what DRC exists to avoid.
 //
 // Same registry discipline as the server seam: one declarative entry per
 // provider (id, label, base URL, wire-param quirks, a JSON-phase default
 // model, a static fallback catalog), and everything downstream —
-// free-research.js's pipeline phases and the /free page — is
+// drc-research.js's pipeline phases and the /cure page — is
 // provider-agnostic.
 //
 // Import-safe outside a browser (Node-tested); network calls take an
@@ -21,7 +21,7 @@
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
 // (src/openai.js); Groq speaks plain OpenAI chat completions.
-export const FREE_PROVIDERS = [
+export const DRC_PROVIDERS = [
   {
     id: "openai",
     label: "OpenAI",
@@ -54,19 +54,19 @@ export const FREE_PROVIDERS = [
   },
 ];
 
-export function freeProvider(id) {
-  return FREE_PROVIDERS.find((p) => p.id === id) || null;
+export function drcProvider(id) {
+  return DRC_PROVIDERS.find((p) => p.id === id) || null;
 }
 
 /** The providers the user has stored a key for. */
-export function configuredFreeProviders(keys) {
-  return FREE_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
+export function configuredDrcProviders(keys) {
+  return DRC_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
 }
 
 // One OpenAI-compatible chat-completions payload; `json` asks for JSON mode
 // (both providers support response_format json_object — the pipeline's
 // no-function-calling rule holds here too).
-export function buildFreePayload(provider, model, messages, { stream = false, json = false, maxTokens = 4096 } = {}) {
+export function buildDrcPayload(provider, model, messages, { stream = false, json = false, maxTokens = 4096 } = {}) {
   const payload = {
     model,
     messages,
@@ -81,14 +81,14 @@ export function buildFreePayload(provider, model, messages, { stream = false, js
  * Streaming chat completion, straight from the browser to the provider.
  * Returns the raw fetch Response (an OpenAI-style SSE body on success).
  */
-export function freeChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
+export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: "Bearer " + apiKey,
     },
-    body: JSON.stringify(buildFreePayload(provider, model, messages, { stream: true, maxTokens })),
+    body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: true, maxTokens })),
     signal,
   });
 }
@@ -117,7 +117,7 @@ export function extractJson(text) {
  * Non-streaming JSON completion for the planning phases. Returns the parsed
  * object or throws (callers are fail-soft, matching the server pipeline).
  */
-export async function freeCompleteJson(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 1500 } = {}) {
+export async function drcCompleteJson(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 1500 } = {}) {
   const timeout = signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(45_000) : undefined);
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
@@ -125,7 +125,7 @@ export async function freeCompleteJson(provider, apiKey, model, messages, { sign
       "content-type": "application/json",
       authorization: "Bearer " + apiKey,
     },
-    body: JSON.stringify(buildFreePayload(provider, model, messages, { json: true, maxTokens })),
+    body: JSON.stringify(buildDrcPayload(provider, model, messages, { json: true, maxTokens })),
     signal: timeout,
   });
   if (!res.ok) throw new Error(provider.label + " rejected the request (" + res.status + ").");
@@ -140,7 +140,7 @@ export async function freeCompleteJson(provider, apiKey, model, messages, { sign
  * static fallback when the fetch fails (wrong key still gets a dropdown to
  * try; the send will surface the real error).
  */
-export async function listFreeModels(provider, apiKey, { baseUrl } = {}) {
+export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
   try {
     const res = await fetch((baseUrl || provider.base) + "/models", {
       headers: { authorization: "Bearer " + apiKey },
