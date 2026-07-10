@@ -1,3 +1,4 @@
+// @ts-check
 // Opt-in server-side storage (R2 binding `STORAGE`) for the per-user
 // `server_history` knob (src/settings.js). Three key families, all
 // namespaced per user id:
@@ -48,33 +49,54 @@ import { jsonResponse } from "./http.js";
 import { serverHistoryEnabled, storageAvailability } from "./settings.js";
 import { wipeRagForUser } from "./rag.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+
 const CONVO_MAX_BYTES = 8 * 1024 * 1024; // encrypted record incl. inline images
 const FILE_MAX_BYTES = 30 * 1024 * 1024; // client caps raw files at 25 MB
 const MAX_OBJECTS_PER_USER = 1000; // per key family — sanity backstop, not a product limit
 
 // Conversation/file ids are client-generated UUIDs; anything else is
 // rejected before it can become a key path segment.
+/** @param {unknown} s */
 const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
 
 // Two families share the encrypted-record shape and handlers below:
 // "convos" (one conversation each) and "projects" (one project's metadata
 // record each — name, file inventory, notes, per-project knob — all inside
 // the ciphertext; the server can't tell them apart and doesn't need to).
-const ENC_FAMILIES = { convos: "conversations", projects: "projects" }; // family -> list key
+/** @type {Record<string, string>} family -> the list response's key */
+const ENC_FAMILIES = { convos: "conversations", projects: "projects" };
+/** @param {string} family @param {number | string} uid @param {string} id */
 const encKey = (family, uid, id) => `${family}/${uid}/${id}`;
+/** @param {number | string} uid @param {string} id */
 const fileKey = (uid, id) => `files/${uid}/${id}`;
 
-// Router for /api/convos*, /api/files*, DELETE /api/storage — called from
-// src/index.js once the identity is resolved.
+// The storageAvailability gate at the top of handleStorage guarantees both
+// the binding and the user row exist on every path below it.
+/** @param {Env} env @returns {R2Bucket} */
+const bucket = (env) => /** @type {R2Bucket} */ (env.STORAGE);
+
+// Router for /api/convos*, /api/projects*, /api/files*, DELETE /api/storage
+// — called from src/index.js once the identity is resolved.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleStorage(request, env, url, log, identity) {
   const available = storageAvailability(env, identity);
-  if (!available.storage) {
+  if (!available.storage || !identity.user) {
     return jsonResponse({ error: "Cloud storage is not configured on this server." }, 503);
   }
   const uid = identity.user.id;
   const method = request.method;
   const parts = url.pathname.split("/").filter(Boolean); // ["api", family, id?]
-  const family = parts[1];
+  const family = parts[1] || "";
   const id = parts[2] ? decodeURIComponent(parts[2]) : null;
 
   if (family === "storage" && method === "DELETE" && !id) {
@@ -99,23 +121,31 @@ export async function handleStorage(request, env, url, log, identity) {
 
 // Full list under a prefix (R2 pages at 1000 — loop the cursor so a long
 // history doesn't silently truncate).
+/**
+ * @param {Env} env
+ * @param {string} prefix
+ * @param {R2ListOptions["include"]} [include]
+ * @returns {Promise<R2Object[]>}
+ */
 async function listAll(env, prefix, include) {
   const out = [];
   let cursor;
   do {
-    const page = await env.STORAGE.list({ prefix, cursor, include });
+    const page = await bucket(env).list({ prefix, cursor, include });
     out.push(...page.objects);
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   return out;
 }
 
+/** @param {Env} env @param {string} prefix */
 async function countUnder(env, prefix) {
   return (await listAll(env, prefix)).length;
 }
 
 // ---- encrypted records (conversations + project records) -------------------
 
+/** @param {Env} env @param {number | string} uid @param {string} family */
 async function listEncRecords(env, uid, family) {
   const objects = await listAll(env, `${family}/${uid}/`, ["customMetadata"]);
   const items = objects.map((o) => ({
@@ -127,18 +157,29 @@ async function listEncRecords(env, uid, family) {
   return jsonResponse({ [ENC_FAMILIES[family]]: items });
 }
 
+/** @param {Env} env @param {number | string} uid @param {string} family @param {string} id */
 async function getEncRecord(env, uid, family, id) {
-  const obj = await env.STORAGE.get(encKey(family, uid, id));
+  const obj = await bucket(env).get(encKey(family, uid, id));
   if (!obj) return jsonResponse({ error: "Not found." }, 404);
   return new Response(obj.body, {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
 
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ * @param {string} family
+ * @param {string} id
+ */
 async function putEncRecord(request, env, log, identity, uid, family, id) {
   if (!serverHistoryEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
   }
+  /** @type {any} */
   let body;
   try {
     body = await request.json();
@@ -170,10 +211,10 @@ async function putEncRecord(request, env, log, identity, uid, family, id) {
     return jsonResponse({ error: "Record too large." }, 413);
   }
   const key = encKey(family, uid, id);
-  if (!(await env.STORAGE.head(key)) && (await countUnder(env, `${family}/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
+  if (!(await bucket(env).head(key)) && (await countUnder(env, `${family}/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
     return jsonResponse({ error: "Cloud record limit reached." }, 409);
   }
-  await env.STORAGE.put(key, json, {
+  await bucket(env).put(key, json, {
     httpMetadata: { contentType: "application/json" },
     customMetadata: { updatedAt: String(record.updatedAt) },
   });
@@ -183,6 +224,7 @@ async function putEncRecord(request, env, log, identity, uid, family, id) {
 
 // ---- files ------------------------------------------------------------------
 
+/** @param {Env} env @param {number | string} uid */
 async function listFiles(env, uid) {
   const objects = await listAll(env, `files/${uid}/`, ["customMetadata"]);
   const items = objects.map((o) => ({
@@ -195,8 +237,9 @@ async function listFiles(env, uid) {
   return jsonResponse({ files: items });
 }
 
+/** @param {Env} env @param {number | string} uid @param {string} id */
 async function getFile(env, uid, id) {
-  const obj = await env.STORAGE.get(fileKey(uid, id));
+  const obj = await bucket(env).get(fileKey(uid, id));
   if (!obj) return jsonResponse({ error: "Not found." }, 404);
   const enc = obj.customMetadata?.enc === "1";
   return new Response(obj.body, {
@@ -217,6 +260,14 @@ async function getFile(env, uid, id) {
 // the flag; it can't tell the difference and never needs to). The original
 // filename and MIME type ride in headers so the body stays a clean byte
 // stream.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ * @param {string} id
+ */
 async function putFile(request, env, log, identity, uid, id) {
   if (!serverHistoryEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
@@ -229,24 +280,31 @@ async function putFile(request, env, log, identity, uid, id) {
   const type = (request.headers.get("x-file-type") || "application/octet-stream").slice(0, 100);
   const enc = request.headers.get("x-file-enc") === "1" ? "1" : "0";
   const key = fileKey(uid, id);
-  if (!(await env.STORAGE.head(key)) && (await countUnder(env, `files/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
+  if (!(await bucket(env).head(key)) && (await countUnder(env, `files/${uid}/`)) >= MAX_OBJECTS_PER_USER) {
     return jsonResponse({ error: "Cloud file limit reached." }, 409);
   }
-  await env.STORAGE.put(key, bytes, { customMetadata: { name, type, enc } });
+  await bucket(env).put(key, bytes, { customMetadata: { name, type, enc } });
   log.debug("storage.file_put", { user_id: identity.id, size: bytes.byteLength, enc: enc === "1" });
   return jsonResponse({ ok: true, id, size: bytes.byteLength });
 }
 
 // ---- shared -----------------------------------------------------------------
 
+/** @param {Env} env @param {string} key */
 async function deleteObject(env, key) {
-  await env.STORAGE.delete(key);
+  await bucket(env).delete(key);
   return new Response(null, { status: 204 });
 }
 
 // DELETE /api/storage — the drain path's final step: after sync-to-client
 // completes, everything this user ever stored server-side (conversations,
 // files, RAG exports AND their Vectorize vectors) is removed in one call.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {number | string} uid
+ */
 async function wipeAll(env, log, identity, uid) {
   const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
@@ -254,7 +312,7 @@ async function wipeAll(env, log, identity, uid) {
     const objects = await listAll(env, prefix);
     for (let i = 0; i < objects.length; i += 900) {
       const keys = objects.slice(i, i + 900).map((o) => o.key);
-      if (keys.length) await env.STORAGE.delete(keys);
+      if (keys.length) await bucket(env).delete(keys);
       deleted += keys.length;
     }
   }

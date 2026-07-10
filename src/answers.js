@@ -1,3 +1,4 @@
+// @ts-check
 // Transient answer cache for connection recovery — a buffer, NOT storage.
 //
 // When a client loses its SSE stream mid-answer (backgrounded phone,
@@ -16,6 +17,14 @@
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+/**
+ * A D1 `answers` row as the read path selects it.
+ * @typedef {{ status: string, ts: number, text?: string | null, stats_json?: string | null }} AnswerRow
+ */
+
 export const ANSWER_TTL_MS = 15 * 60 * 1000;
 
 // How long a `running` row may go without a heartbeat before the poller
@@ -32,6 +41,12 @@ export const RUNNING_STALE_MS = 50 * 1000;
 // Pure projection of a stored answer row into the GET response shape, given
 // the current time. Split out so the running/lost/done decision is
 // unit-tested without D1. Returns null for a missing row (404 upstream).
+/**
+ * @param {AnswerRow | null | undefined} row
+ * @param {number} now
+ * @param {number} [staleMs]
+ * @returns {{ status: "running" | "lost" } | { status: "done", text: string, stats: any } | null}
+ */
 export function projectAnswer(row, now, staleMs = RUNNING_STALE_MS) {
   if (!row) return null;
   if (row.status !== "done") {
@@ -52,6 +67,12 @@ export function projectAnswer(row, now, staleMs = RUNNING_STALE_MS) {
 // Called at stream start (metadata only — no content yet): gives the
 // recovery poller something to distinguish "still researching" from
 // "nothing will ever come".
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} requestId
+ * @param {number | string} userId
+ */
 export async function markAnswerRunning(env, log, requestId, userId) {
   try {
     const db = await getDb(env);
@@ -62,7 +83,7 @@ export async function markAnswerRunning(env, log, requestId, userId) {
       .bind(requestId, String(userId), Date.now())
       .run();
   } catch (err) {
-    log.warn("answers.mark_failed", { error: err?.message || String(err) });
+    log.warn("answers.mark_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }
 
@@ -70,6 +91,12 @@ export async function markAnswerRunning(env, log, requestId, userId) {
 // client presence): refreshes `ts` so a poller can tell a still-alive run
 // from one the runtime killed (see RUNNING_STALE_MS). Guarded to `running`
 // rows so it can never resurrect or disturb a completed answer.
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} requestId
+ * @param {number | string} userId
+ */
 export async function heartbeatAnswer(env, log, requestId, userId) {
   try {
     const db = await getDb(env);
@@ -79,13 +106,21 @@ export async function heartbeatAnswer(env, log, requestId, userId) {
       .bind(Date.now(), requestId, String(userId))
       .run();
   } catch (err) {
-    log.warn("answers.heartbeat_failed", { error: err?.message || String(err) });
+    log.warn("answers.heartbeat_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }
 
 // Called when the pipeline finishes: park the final answer + stats. The
 // text overwrites the running marker; an empty text means the pipeline
 // produced nothing (the poller gives up rather than rendering a blank).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} requestId
+ * @param {number | string} userId
+ * @param {string} text
+ * @param {unknown} stats the done-event stats footer, stored as JSON
+ */
 export async function saveAnswer(env, log, requestId, userId, text, stats) {
   try {
     const db = await getDb(env);
@@ -97,11 +132,17 @@ export async function saveAnswer(env, log, requestId, userId, text, stats) {
       .bind(requestId, String(userId), Date.now(), text, JSON.stringify(stats))
       .run();
   } catch (err) {
-    log.warn("answers.save_failed", { error: err?.message || String(err) });
+    log.warn("answers.save_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }
 
 // GET /api/chat/answer?id=… — {status:"running"} | {status:"done",text,stats} | 404.
+/**
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleAnswerGet(env, url, identity) {
   const db = await getDb(env);
   const id = url.searchParams.get("id") || "";
@@ -111,13 +152,19 @@ export async function handleAnswerGet(env, url, identity) {
     .prepare("SELECT status, ts, text, stats_json FROM answers WHERE request_id = ? AND user_id = ?")
     .bind(id, String(identity.id))
     .first();
-  const projected = projectAnswer(row, Date.now());
+  const projected = projectAnswer(/** @type {AnswerRow | null} */ (row), Date.now());
   if (!projected) return jsonResponse({ error: "Not found." }, 404);
   return jsonResponse(projected);
 }
 
 // DELETE /api/chat/answer?id=… — the client acks a fully received answer so
 // its content is purged immediately (rather than waiting out the TTL).
+/**
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleAnswerAck(env, url, identity) {
   const db = await getDb(env);
   const id = url.searchParams.get("id") || "";
@@ -130,6 +177,7 @@ export async function handleAnswerAck(env, url, identity) {
   return new Response(null, { status: 204 });
 }
 
+/** @param {D1Database} db */
 async function purgeExpired(db) {
   await db.prepare("DELETE FROM answers WHERE ts < ?").bind(Date.now() - ANSWER_TTL_MS).run();
 }

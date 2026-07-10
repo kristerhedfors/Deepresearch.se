@@ -1,3 +1,5 @@
+// Unit tests for the per-user history-key derivation (src/history-key.js):
+// determinism, per-user/per-secret divergence, and the configured gate.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { deriveHistoryKey, historyKeyConfigured } from "./history-key.js";

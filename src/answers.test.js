@@ -1,3 +1,4 @@
+// Unit tests for the answer-recovery cache's pure projection (src/answers.js).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { projectAnswer, RUNNING_STALE_MS } from "./answers.js";

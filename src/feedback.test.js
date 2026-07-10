@@ -1,3 +1,5 @@
+// Unit tests for the feedback pipeline's pure logic (src/feedback.js):
+// create/reply validation, status lifecycle, projection, ?format=text.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

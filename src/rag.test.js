@@ -1,3 +1,5 @@
+// Unit tests for server-side RAG's pure parts (src/rag.js): index-payload
+// validation and the base64⇄Float32 codec — Vectorize/R2 paths live-verify.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

@@ -1,3 +1,5 @@
+// Unit tests for the per-user settings knobs (src/settings.js): parseSettings
+// coercion/defaults and the storage/feature availability gates.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

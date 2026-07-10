@@ -1,3 +1,4 @@
+// @ts-check
 // POST /api/quiz/grade — grades a quiz's FREE-TEXT answers (the "answer in
 // your own words" field public/js/quiz.js offers under the alternatives).
 // Multiple-choice picks never come here — the quiz payload carries the key
@@ -19,6 +20,17 @@ import { quizGradePrompt } from "./prompts.js";
 import { bergetCost, effectiveQuota, getUsage, quotaExceeded, recordUsage } from "./quota.js";
 import { normalizeGradeResults, validateGradeItems } from "./quiz.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
 export async function handleQuizGrade(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
@@ -30,7 +42,7 @@ export async function handleQuizGrade(request, env, log, identity) {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
   const { items, error } = validateGradeItems(body);
-  if (error) return jsonResponse({ error }, 400);
+  if (typeof error === "string" || !items) return jsonResponse({ error }, 400);
 
   // Same quota gate as /api/chat and /api/embed (admins never blocked).
   const config = await getConfig(env);
@@ -69,7 +81,7 @@ export async function handleQuizGrade(request, env, log, identity) {
     log.info("quiz.grade", { user_id: identity.id, items: items.length });
     return jsonResponse({ results });
   } catch (err) {
-    log.error("quiz.grade_failed", { user_id: identity.id, error: err?.message || String(err) });
+    log.error("quiz.grade_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Grading service unavailable." }, 502);
   }
 }
@@ -77,6 +89,13 @@ export async function handleQuizGrade(request, env, log, identity) {
 // Grading spends real (tiny) Berget money on DEFAULT_MODEL — record it like
 // every other spend, priced from the catalog (fail-soft: an unreachable
 // catalog records the tokens at zero cost rather than failing the grade).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {{ prompt_tokens?: number, completion_tokens?: number } | null | undefined} usage
+ * @param {number} durationMs
+ */
 async function recordGradeUsage(env, log, identity, usage, durationMs) {
   let entry = null;
   try {

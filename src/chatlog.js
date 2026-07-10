@@ -1,3 +1,4 @@
+// @ts-check
 // Server-side chat interaction log (D1 `chat_logs`) — FULL question/answer
 // visibility, by explicit product decision (2026-07-08): every completed
 // /api/chat and /mcp research interaction is logged with its complete
@@ -27,6 +28,37 @@ import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+
+/**
+ * What recordChatLog accepts. Only content-bearing fields are required in
+ * practice; everything else defaults inside buildChatLogEntry.
+ * @typedef {{
+ *   request_id?: string | null,
+ *   ts?: number,
+ *   user_id?: number | string,
+ *   channel?: string,
+ *   model?: string | null,
+ *   json_model?: string | null,
+ *   question?: string,
+ *   answer?: string,
+ *   conversation?: any[],
+ *   status?: string,
+ *   error?: string | null,
+ *   meta?: unknown,
+ *   web_search?: boolean,
+ *   budget_s?: number | null,
+ *   rounds?: number,
+ *   searches?: number,
+ *   sources?: number,
+ *   prompt_tokens?: number,
+ *   completion_tokens?: number,
+ *   duration_ms?: number,
+ *   client_gone?: boolean,
+ * }} ChatLogInput
+ */
+
 // ---------------------------------------------------------------------------
 // Pure helpers — unit-tested in src/chatlog.test.js
 // ---------------------------------------------------------------------------
@@ -44,6 +76,11 @@ export const LOG_CAPS = {
 
 // Truncates with an explicit marker so a trimmed log never silently
 // masquerades as the complete text.
+/**
+ * @param {unknown} text
+ * @param {number} max
+ * @returns {string}
+ */
 export function truncateForLog(text, max) {
   const s = typeof text === "string" ? text : text == null ? "" : String(text);
   if (s.length <= max) return s;
@@ -55,11 +92,15 @@ export function truncateForLog(text, max) {
 // size-stamped placeholder. Text parts (including appended document blocks)
 // are kept verbatim; http(s) image URLs are kept (they're references, not
 // payloads). Returns a NEW structure; never mutates the live conversation.
+/**
+ * @param {unknown} messages the conversation as sent (OpenAI-style array)
+ * @returns {Array<{ role?: string, content?: any }>}
+ */
 export function sanitizeConversationForLog(messages) {
   if (!Array.isArray(messages)) return [];
   return messages.map((m) => {
     if (!Array.isArray(m?.content)) return { role: m?.role, content: m?.content };
-    const content = m.content.map((p) => {
+    const content = m.content.map((/** @type {any} */ p) => {
       if (p?.type === "image_url") {
         const url = p.image_url?.url || "";
         if (/^data:/i.test(url)) {
@@ -76,6 +117,10 @@ export function sanitizeConversationForLog(messages) {
 // truncation/serialization behavior) is testable without D1. `conversation`
 // is the message array as sent; `meta` is the research metadata object
 // (queries, sources, complexity, costs…).
+/**
+ * @param {ChatLogInput} input
+ * @returns {Record<string, unknown>} the bind values, keyed by column name
+ */
 export function buildChatLogEntry(input) {
   const conversation = Array.isArray(input.conversation) ? input.conversation : [];
   const question = input.question ?? textOf(lastUserMessage(conversation)?.content);
@@ -118,7 +163,13 @@ export function buildChatLogEntry(input) {
 // DB row → API object. The list view carries the full question and answer
 // (the point of the log); the conversation JSON and meta ride along only
 // with `full` (the /:id view) to keep list responses scannable.
+/**
+ * @param {any} row a D1 chat_logs row
+ * @param {{ full?: boolean }} [options]
+ * @returns {any} the API projection (see the module header's read-API notes)
+ */
 export function projectChatLog(row, { full = false } = {}) {
+  /** @type {any} */
   const out = {
     id: row.id,
     ts: row.ts,
@@ -149,6 +200,7 @@ export function projectChatLog(row, { full = false } = {}) {
   return out;
 }
 
+/** @param {string | null | undefined} json */
 function safeParse(json) {
   if (!json) return null;
   try {
@@ -160,6 +212,10 @@ function safeParse(json) {
 
 // Plain-text rendering (?format=text): newest first, one bordered block per
 // interaction — made to be READ (by a developer or an agent), not parsed.
+/**
+ * @param {any[]} logs projected entries (projectChatLog output)
+ * @returns {string}
+ */
 export function formatChatLogsText(logs) {
   if (!logs.length) return "(no logged interactions match)\n";
   return logs
@@ -181,6 +237,10 @@ export function formatChatLogsText(logs) {
 }
 
 // Escapes LIKE wildcards so ?q= is a literal substring match.
+/**
+ * @param {unknown} q
+ * @returns {string}
+ */
 export function likePattern(q) {
   return "%" + String(q).replace(/([\\%_])/g, "\\$1") + "%";
 }
@@ -191,6 +251,13 @@ export function likePattern(q) {
 
 // Inserts one interaction row. Fail-soft: any failure is logged as metadata
 // and swallowed — chat delivery must never depend on the log.
+// NOTE: incognito suppression happens at the CALL SITES (src/chat.js checks
+// the ghost toggle before calling this) — a call here always writes.
+/**
+ * @param {Env} env
+ * @param {Logger | null | undefined} log
+ * @param {ChatLogInput} input
+ */
 export async function recordChatLog(env, log, input) {
   try {
     const db = await getDb(env);
@@ -213,7 +280,7 @@ export async function recordChatLog(env, log, input) {
       )
       .run();
   } catch (err) {
-    log?.warn?.("chatlog.write_failed", { error: err?.message || String(err) });
+    log?.warn?.("chatlog.write_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }
 
@@ -233,6 +300,13 @@ const LIST_COLUMNS =
 //   ?q=<substring> (matches question OR answer, literal)
 //   ?format=text (readable transcript instead of JSON)
 // GET /api/admin/chatlogs/<id>   — one row incl. conversation + meta
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
 export async function handleChatLogs(request, env, url, log) {
   const db = await getDb(env);
   if (!db) return jsonResponse({ error: "Database not configured." }, 503);
@@ -277,6 +351,7 @@ export async function handleChatLogs(request, env, url, log) {
   return jsonResponse({ logs, count: logs.length });
 }
 
+/** @param {string} text */
 function textResponse(text) {
   return new Response(text, {
     status: 200,

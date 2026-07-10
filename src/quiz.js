@@ -1,3 +1,4 @@
+// @ts-check
 // The inline-quiz capability's PURE logic: detecting that the user asked to
 // be quizzed, hardening the quiz-generation JSON into the shape the client
 // renders, and validating/normalizing the free-text grading exchange. All
@@ -16,6 +17,21 @@
 // whatever the pipeline already has in front of it: the conversation
 // (attached documents, project materials, RAG excerpts all ride inside it)
 // plus the web-search source registry when triage chose research.
+
+/**
+ * One hardened quiz question the client renders (`correct` is the 0-based
+ * index into `alternatives`).
+ * @typedef {{ question: string, alternatives: string[], correct: number, explanation: string }} QuizQuestion
+ */
+/**
+ * The full quiz payload the `quiz` SSE event carries.
+ * @typedef {{ title: string, intro: string, questions: QuizQuestion[] }} Quiz
+ */
+/**
+ * One free-text answer to grade: the quiz's correct alternative is the
+ * `reference` the model judges the `answer` against.
+ * @typedef {{ question: string, reference: string, answer: string }} GradeItem
+ */
 
 // How many questions when the request doesn't say ("quiz me on X").
 export const DEFAULT_QUIZ_QUESTIONS = 5;
@@ -56,6 +72,10 @@ const QUESTION_COUNT_RE = /(\d{1,2})\s*(?:[\p{L}-]+\s+){0,2}?(?:questions?|fråg
 // The requested question count parsed on its own (null when the message
 // names none) — quizIntent uses it, and pipeline.js reuses it when the
 // triage `quiz` flag (not this module's regexes) detected the request.
+/**
+ * @param {unknown} text
+ * @returns {number | null} the clamped requested count, or null when unnamed
+ */
 export function quizQuestionCount(text) {
   const m = String(text || "").match(QUESTION_COUNT_RE);
   if (!m) return null;
@@ -63,6 +83,10 @@ export function quizQuestionCount(text) {
   return n ? Math.min(MAX_QUIZ_QUESTIONS, Math.max(1, n)) : null;
 }
 
+/**
+ * @param {unknown} text the latest user message
+ * @returns {{ questions: number } | null} null when the message isn't a quiz ask
+ */
 export function quizIntent(text) {
   const s = String(text || "");
   if (!QUIZ_REQUEST_PATTERNS.some((re) => re.test(s))) return null;
@@ -71,6 +95,7 @@ export function quizIntent(text) {
 
 // ---- quiz JSON hardening -------------------------------------------------
 
+/** @param {unknown} v @param {number} max */
 const clip = (v, max) => String(v ?? "").trim().slice(0, max);
 
 // Hardens the raw quiz-generation JSON into exactly what the client renders,
@@ -79,6 +104,11 @@ const clip = (v, max) => String(v ?? "").trim().slice(0, max);
 // questions are dropped rather than failing the set; `correct` may be the
 // 0-based index OR the correct alternative's text (models mix these up);
 // alternatives are deduped and capped; every string is trimmed and clipped.
+/**
+ * @param {any} value the quiz-generation phase's raw JSON
+ * @param {number} [maxQuestions]
+ * @returns {Quiz | null}
+ */
 export function normalizeQuiz(value, maxQuestions = MAX_QUIZ_QUESTIONS) {
   const list = Array.isArray(value?.questions) ? value.questions : [];
   const cap = Math.min(MAX_QUIZ_QUESTIONS, Math.max(1, maxQuestions || MAX_QUIZ_QUESTIONS));
@@ -97,6 +127,10 @@ export function normalizeQuiz(value, maxQuestions = MAX_QUIZ_QUESTIONS) {
   return { title, intro, questions };
 }
 
+/**
+ * @param {any} raw
+ * @returns {QuizQuestion | null}
+ */
 function normalizeQuestion(raw) {
   if (!raw || typeof raw !== "object") return null;
   const question = clip(raw.question ?? raw.q, 500);
@@ -123,6 +157,11 @@ function normalizeQuestion(raw) {
 // an index — and only an unmatched all-digit string falls back to being an
 // index. Anything else → null (the question is dropped: a quiz question with
 // an unknown key is useless).
+/**
+ * @param {unknown} correct
+ * @param {string[]} alternatives
+ * @returns {number | null}
+ */
 function resolveCorrect(correct, alternatives) {
   if (typeof correct === "number") {
     return Number.isInteger(correct) && correct >= 0 && correct < alternatives.length ? correct : null;
@@ -148,6 +187,10 @@ const MAX_GRADE_ANSWER_CHARS = 1000;
 // Validates the grading request body. Returns { items } or { error } —
 // items are the trimmed/clipped {question, reference, answer} triples the
 // prompt is built from (reference = the quiz's correct alternative).
+/**
+ * @param {any} body
+ * @returns {{ error: string, items?: undefined } | { error?: undefined, items: GradeItem[] }}
+ */
 export function validateGradeItems(body) {
   const raw = body?.items;
   if (!Array.isArray(raw) || !raw.length || raw.length > MAX_QUIZ_QUESTIONS) {
@@ -171,6 +214,11 @@ export function validateGradeItems(body) {
 // answers as ungraded — fail-soft, never a fabricated verdict). A short or
 // junk-padded results array is padded with null entries per item so a
 // partial grade never misattributes verdicts across items.
+/**
+ * @param {any} value the grading model's raw JSON
+ * @param {number} count how many items were submitted
+ * @returns {Array<{ correct: boolean, comment: string } | null> | null}
+ */
 export function normalizeGradeResults(value, count) {
   const list = Array.isArray(value?.results) ? value.results : Array.isArray(value) ? value : null;
   if (!list) return null;

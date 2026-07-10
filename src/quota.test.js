@@ -1,3 +1,5 @@
+// Unit tests for quota window math, override merging, breach detection, and
+// cost calculation (src/quota.js) — the D1 aggregation paths are live-verified.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { addUsage, windowStart, windowReset, effectiveQuota, quotaExceeded, bergetCost, PERIODS } from "./quota.js";

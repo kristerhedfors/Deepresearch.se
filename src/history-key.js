@@ -1,3 +1,4 @@
+// @ts-check
 // Per-user "History Key": lets the browser encrypt/decrypt its own
 // locally-stored chat history (public/js/history-store.js) without the
 // server ever seeing conversation content.
@@ -25,10 +26,23 @@
 // configured, callers must not fall back to an unencrypted alternative —
 // that would defeat the entire point.
 
+/** @typedef {import('./types.js').Env} Env */
+
+/**
+ * @param {Env} env
+ * @returns {boolean}
+ */
 export function historyKeyConfigured(env) {
   return !!env.HISTORY_KEY_SECRET;
 }
 
+/**
+ * Deterministically derives one user's history key (base64 HMAC-SHA256).
+ * Callers must gate on historyKeyConfigured first (fail closed — see above).
+ * @param {Env} env
+ * @param {number | string} userId
+ * @returns {Promise<string>}
+ */
 export async function deriveHistoryKey(env, userId) {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -42,6 +56,7 @@ export async function deriveHistoryKey(env, userId) {
   return bufToBase64(sig);
 }
 
+/** @param {ArrayBuffer} buf */
 function bufToBase64(buf) {
   let binary = "";
   for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);

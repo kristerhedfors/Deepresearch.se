@@ -174,14 +174,17 @@ export async function getUsage(env, userId, now = Date.now()) {
   if (!db) return out;
   const { starts, minStart } = windowStarts(now);
   const cols = bucketCols(starts, { ...USAGE_EXPRS, requests: "1" });
-  const row = await db
-    .prepare(
-      `SELECT ${cols},
-         MIN(CASE WHEN ts >= ${starts.h5} THEN ts END) AS h5_oldest
-       FROM usage_events WHERE user_id = ?1 AND ts >= ?2`,
-    )
-    .bind(String(userId), minStart)
-    .first();
+  // Every selected column is a numeric aggregate (NULL on an empty scan).
+  const row = /** @type {Record<string, number | null> | null} */ (
+    await db
+      .prepare(
+        `SELECT ${cols},
+           MIN(CASE WHEN ts >= ${starts.h5} THEN ts END) AS h5_oldest
+         FROM usage_events WHERE user_id = ?1 AND ts >= ?2`,
+      )
+      .bind(String(userId), minStart)
+      .first()
+  );
   for (const p of PERIODS) {
     out[p].tokens = row?.[`${p}_tokens`] || 0;
     out[p].searches = row?.[`${p}_searches`] || 0;
