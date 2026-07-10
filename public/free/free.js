@@ -1,11 +1,20 @@
-// Free mode page wiring (/free, /free/project-<hash>). All rules live in
-// the pure modules: /js/free-core.js (secret → derived ids/keys, the
-// sealed state), /js/free-providers.js (the CORS-capable provider
-// registry — OpenAI + Groq), /js/free-research.js (the client-side
-// deep-research pipeline). This module only renders, and the only server
-// endpoint it ever touches is the dumb ciphertext store
+// Free mode page wiring — the site's DEFAULT face: unauthenticated / serves
+// this page, chat-first, with /my/project-<hash> as the saved-project deep
+// link. All rules live in the pure modules: /js/free-core.js (secret →
+// derived ids/keys, the sealed state), /js/free-providers.js (the
+// CORS-capable provider registry — OpenAI + Groq), /js/free-research.js
+// (the client-side deep-research pipeline). This module only renders, and
+// the only server endpoint it ever touches is the dumb ciphertext store
 // (/api/free/blob/:id) — every model call goes straight from this browser
 // to the provider.
+//
+// The flow is deliberately chat-first: a visitor can type immediately with
+// nothing set up — the first send explains, helpfully, that free mode runs
+// on their own API key (and opens the key panel). A session without a
+// saved project lives in this tab's memory only; the Project panel seals
+// it (chats AND keys) under a freshly generated secret and gives it a
+// /my/project-<hash> home. The old promotional landing is a first-visit
+// glass pane over this page (the full version stays at /welcome/).
 //
 // Security posture recap (the page's whole point):
 //   - the master secret lives in the password field and this module's
@@ -15,6 +24,8 @@
 //   - the Deepresearch server sees exactly one thing: an opaque encrypted
 //     blob. It cannot log message content — it never receives any.
 //   - "Lock" just drops this tab's memory — a reload does the same.
+//   (The one localStorage item, dr_intro_seen, is a UI flag — it carries
+//   nothing derived from secrets, keys, or content.)
 
 import {
   deriveFreeProfile,
@@ -33,10 +44,11 @@ import { renderMarkdownInto } from "/js/markdown.js";
 
 const $ = (id) => document.getElementById(id);
 
-let profile = null; // {refHash, blobId, blobKey}
-let state = null; // the decrypted project state (keys included)
+let profile = null; // {refHash, blobId, blobKey} — null while the session is unsaved
+let state = emptyFreeState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
 let sending = false;
+let unsavedHintShown = false;
 
 const PHASE_LABELS = {
   triage: "Analyzing the question…",
@@ -48,7 +60,7 @@ const PHASE_LABELS = {
   answer: "Answering…",
 };
 
-// ---- status lines ---------------------------------------------------------------
+// ---- status lines ----------------------------------------------------------------
 
 function gateStatus(msg) {
   const el = $("gatestatus");
@@ -68,16 +80,43 @@ function phaseLine(msg) {
   el.textContent = msg || "";
 }
 
-// ---- gate -------------------------------------------------------------------------
+// ---- the first-visit glass pane ----------------------------------------------------
 
-// Deep link: /free/project-<hash> prefills the reference so the password
-// manager (which files the secret under that username) matches the entry.
-function prefillFromUrl() {
-  const m = location.pathname.match(/^\/free\/(project-[0-9a-z]+)/i);
-  if (m) $("refname").value = m[1];
+function maybeShowIntro(deepLinked) {
+  let seen = false;
+  try {
+    seen = localStorage.getItem("dr_intro_seen") === "1";
+  } catch {
+    // storage blocked — show it this once
+  }
+  if (!seen && !deepLinked) $("intro").hidden = false;
 }
 
-async function createNew() {
+function dismissIntro() {
+  $("intro").hidden = true;
+  try {
+    localStorage.setItem("dr_intro_seen", "1");
+  } catch {
+    // fine — it'll show again next visit
+  }
+  $("prompt").focus();
+}
+
+// ---- project panel ------------------------------------------------------------------
+
+// Deep link: /my/project-<hash> (or the legacy /free/project-…) prefills
+// the reference so the password manager (which files the secret under that
+// username) matches the entry, and opens the panel ready for the secret.
+function handleDeepLink() {
+  const m = location.pathname.match(/^\/(?:my|free)\/(project-[0-9a-z]+)/i);
+  if (!m) return false;
+  $("refname").value = m[1];
+  $("projpanel").open = true;
+  gateStatus("Enter (or autofill) this project's secret to open it.");
+  return true;
+}
+
+async function generateNew() {
   const secret = generateFreeSecret();
   $("secret").value = secret;
   // A NEW credential: switching the autocomplete hint makes Safari/iCloud
@@ -90,6 +129,20 @@ async function createNew() {
   gateStatus("");
 }
 
+function projectOpened() {
+  $("projref").textContent = "project-" + profile.refHash;
+  $("projbadge").textContent = "— project-" + profile.refHash;
+  $("lockbtn").hidden = false;
+  $("secret").value = "";
+  $("secret").setAttribute("autocomplete", "current-password");
+  $("newsecret").hidden = true;
+  $("projpanel").open = false;
+  history.replaceState(null, "", "/my/project-" + profile.refHash);
+}
+
+// Open OR create, one submit: the blob exists → open it (merging anything
+// already done in this tab); 404 → seal the current session under the new
+// secret. Either way the password manager sees a normal form submit.
 async function unlock(ev) {
   ev.preventDefault();
   const secret = $("secret").value;
@@ -100,32 +153,41 @@ async function unlock(ev) {
   $("openbtn").disabled = true;
   gateStatus("Deriving keys…");
   try {
-    profile = await deriveFreeProfile(secret);
+    const derived = await deriveFreeProfile(secret);
 
-    gateStatus("Fetching your encrypted project…");
-    const res = await fetch("/api/free/blob/" + encodeURIComponent(profile.blobId));
+    gateStatus("Checking for a stored project…");
+    const res = await fetch("/api/free/blob/" + encodeURIComponent(derived.blobId));
     if (res.ok) {
-      const opened = await openFreeState(new Uint8Array(await res.arrayBuffer()), profile.blobKey).catch(() => null);
-      state = opened && validateFreeState(opened) ? migrateFreeState(opened) : emptyFreeState();
+      const opened = await openFreeState(new Uint8Array(await res.arrayBuffer()), derived.blobKey).catch(() => null);
+      if (!opened || !validateFreeState(opened)) {
+        throw new Error("That secret found a stored project, but it could not be decrypted — it may be corrupted.");
+      }
+      const loaded = migrateFreeState(opened);
+      // Carry this tab's unsaved work INTO the opened project: conversations
+      // with content, and any keys typed here that the project lacks.
+      const known = new Set(loaded.conversations.map((c) => c.id));
+      for (const c of state.conversations) {
+        if (c.messages.length && !known.has(c.id)) loaded.conversations.push(c);
+      }
+      loaded.keys = { ...state.keys, ...loaded.keys };
+      profile = derived;
+      state = loaded;
+      gateStatus("");
     } else if (res.status === 404) {
-      state = emptyFreeState(); // a fresh project
+      profile = derived;
+      gateStatus("");
+      workStatus("Project created — this session (chats and keys) is now sealed under your secret.");
     } else {
       throw new Error("Storage unavailable (" + res.status + ").");
     }
 
-    // The secret's job is done for this tab; keep the field from lingering.
-    $("secret").value = "";
-    history.replaceState(null, "", "/free/project-" + profile.refHash);
-    $("projref").textContent = "project-" + profile.refHash;
-    $("gate").hidden = true;
-    $("work").hidden = false;
+    projectOpened();
+    await saveState(); // create, or persist the merge
     $("researchmode").checked = state.research !== false;
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
     if (configuredFreeProviders(state.keys).length) await refreshModels();
-    else $("keyspanel").open = true; // first thing a new project needs
-    gateStatus("");
   } catch (err) {
     gateStatus(err?.message || "Could not open the project.");
   } finally {
@@ -133,11 +195,12 @@ async function unlock(ev) {
   }
 }
 
-// ---- persistence ---------------------------------------------------------------
+// ---- persistence ---------------------------------------------------------------------
 
 async function saveState() {
-  if (!profile || !state) return;
+  if (!state) return;
   state.updatedAt = Date.now();
+  if (!profile) return; // unsaved session — memory only, by design
   try {
     const bytes = await sealFreeState(state, profile.blobKey);
     const res = await fetch("/api/free/blob/" + encodeURIComponent(profile.blobId), {
@@ -151,7 +214,7 @@ async function saveState() {
   }
 }
 
-// ---- provider keys ----------------------------------------------------------------
+// ---- provider keys ---------------------------------------------------------------------
 
 function renderKeysPanel() {
   const have = [];
@@ -175,10 +238,13 @@ async function saveKeys() {
   $("savekeys").disabled = true;
   $("keysstatus").textContent = "Saving…";
   try {
-    await saveState(); // the keys ride inside the sealed blob — nothing else is stored
+    await saveState();
     renderKeysPanel();
-    $("keysstatus").textContent = "Saved (encrypted in your project blob).";
+    $("keysstatus").textContent = profile
+      ? "Saved (encrypted in your project blob)."
+      : "Kept in this tab — save a project (Project panel) to store them encrypted.";
     await refreshModels();
+    workStatus("");
   } catch (err) {
     $("keysstatus").textContent = err?.message || "Saving failed.";
   } finally {
@@ -217,7 +283,7 @@ async function refreshModels() {
   }
 }
 
-// ---- conversations -----------------------------------------------------------------
+// ---- conversations ------------------------------------------------------------------
 
 function activeConv() {
   return state?.conversations.find((c) => c.id === convId) || null;
@@ -263,19 +329,35 @@ function newChat() {
   renderMessages();
 }
 
-// ---- send: the client-side research pipeline ----------------------------------------
+// ---- send: the client-side research pipeline -----------------------------------------
 
 async function send(ev) {
   ev.preventDefault();
-  if (sending || !profile) return;
+  if (sending) return;
   const text = $("prompt").value.trim();
   if (!text) return;
-  const picked = $("modelpick").value;
-  if (!picked || !picked.includes("::")) {
-    workStatus("Pick a model first — add an API key under 'Provider API keys'.");
+
+  // The first-visit path: no key yet → a helpful pointer, never an error
+  // wall. The message stays in the composer so nothing typed is lost.
+  if (!configuredFreeProviders(state.keys).length) {
+    $("keyspanel").open = true;
+    $("key-groq").focus();
+    workStatus(
+      "One thing first: this chat runs on YOUR API key, sent straight from this browser to the " +
+        "provider — this site's server never sees your key or your messages. Paste an OpenAI or " +
+        "Groq key above (Groq has a free tier at console.groq.com), press Save keys, then send again.",
+    );
     return;
   }
-  const [providerId, ...rest] = picked.split("::");
+  const picked = $("modelpick").value;
+  if (!picked || !picked.includes("::")) {
+    await refreshModels();
+    if (!$("modelpick").value.includes("::")) {
+      workStatus("Pick a model in the dropdown, then send again.");
+      return;
+    }
+  }
+  const [providerId, ...rest] = $("modelpick").value.split("::");
   const model = rest.join("::");
   state.providerId = providerId;
   state.model = model;
@@ -338,6 +420,13 @@ async function send(ev) {
     conv.messages.push({ role: "assistant", content: answer });
     conv.updatedAt = Date.now();
     await saveState(); // sealed client-side; the server stores ciphertext
+    if (!profile && !unsavedHintShown) {
+      unsavedHintShown = true;
+      workStatus(
+        "This conversation lives only in this tab. Open the Project panel to seal it (chats and " +
+          "keys) under a secret and get a /my/project-… link that works on any device.",
+      );
+    }
   } else {
     live.remove();
   }
@@ -346,11 +435,23 @@ async function send(ev) {
   $("sendbtn").disabled = false;
 }
 
-// ---- boot ------------------------------------------------------------------------
+// ---- boot --------------------------------------------------------------------------
 
-prefillFromUrl();
+const deepLinked = handleDeepLink();
+maybeShowIntro(deepLinked);
+renderKeysPanel();
+renderConvPicker();
+renderMessages();
+
+$("introstart").addEventListener("click", dismissIntro);
+$("aboutbtn").addEventListener("click", () => {
+  $("intro").hidden = false;
+});
+$("intro").addEventListener("click", (e) => {
+  if (e.target === $("intro")) dismissIntro();
+});
 $("unlockform").addEventListener("submit", unlock);
-$("newbtn").addEventListener("click", () => createNew().catch((e) => gateStatus(e?.message || "Failed.")));
+$("newbtn").addEventListener("click", () => generateNew().catch((e) => gateStatus(e?.message || "Failed.")));
 $("copysecret").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("newsecrettext").textContent);
@@ -359,7 +460,7 @@ $("copysecret").addEventListener("click", async () => {
     $("copysecret").textContent = "Select and copy manually";
   }
 });
-$("lockbtn").addEventListener("click", () => location.assign("/free/project-" + (profile?.refHash || "")));
+$("lockbtn").addEventListener("click", () => location.assign("/my/project-" + (profile?.refHash || "")));
 $("savekeys").addEventListener("click", saveKeys);
 $("newchat").addEventListener("click", newChat);
 $("convpick").addEventListener("change", () => {
@@ -368,16 +469,14 @@ $("convpick").addEventListener("change", () => {
 });
 $("modelpick").addEventListener("change", () => {
   const [pid, ...rest] = $("modelpick").value.split("::");
-  if (state && pid && rest.length) {
+  if (pid && rest.length) {
     state.providerId = pid;
     state.model = rest.join("::");
     saveState();
   }
 });
 $("researchmode").addEventListener("change", () => {
-  if (state) {
-    state.research = $("researchmode").checked;
-    saveState();
-  }
+  state.research = $("researchmode").checked;
+  saveState();
 });
 $("composer").addEventListener("submit", send);

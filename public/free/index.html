@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="robots" content="noindex">
-  <title>Deepresearch — Free mode</title>
+  <title>Deepresearch — research in your browser, on your own keys</title>
   <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="/free/free.css">
   <!-- Vendored renderer globals (classic scripts, same as the main app) -->
@@ -12,70 +11,85 @@
   <script src="/vendor/purify.min.js"></script>
 </head>
 <body>
-  <main>
-    <!-- ---- the gate: one secret, saved by the password manager ---- -->
-    <section id="gate">
-      <h1>🔓 Free mode</h1>
-      <p class="lead">Deep research on <b>your own API keys</b>, straight from this
-        browser: every model call goes <b>directly to OpenAI or Groq</b> — this site's
-        server is never in the path, so it could not log your messages even if it
-        wanted to. One secret, kept in your password manager, encrypts everything
-        (your chats <i>and</i> your API keys) before anything is stored.</p>
-      <!-- A real form so 1Password / Apple Passwords capture the secret as a
-           site password: username = the project reference, password = the
-           secret. Submit is intercepted; nothing is ever posted. -->
-      <form id="unlockform" method="post" action="/free/">
-        <label for="refname">Project reference</label>
-        <input id="refname" name="username" type="text" autocomplete="username"
-               placeholder="project-…" spellcheck="false" autocapitalize="off">
-        <label for="secret">Secret</label>
-        <input id="secret" name="password" type="password" autocomplete="current-password"
-               placeholder="DR1-XXXX-…" required>
-        <div class="row">
-          <button type="submit" id="openbtn">Open</button>
-          <button type="button" id="newbtn">Create new project</button>
-        </div>
-      </form>
-      <div id="newsecret" hidden>
-        <p class="warn">This is your new secret — it is the ONLY way back into this
-          project. Press <b>Open</b> and your password manager will offer to save it;
-          you can also copy it now:</p>
-        <div class="secretrow">
-          <code id="newsecrettext"></code>
-          <button type="button" id="copysecret">Copy</button>
-        </div>
+  <!-- ---- first-visit glass pane: the landing, condensed ---- -->
+  <div id="intro" hidden>
+    <div class="intro-card">
+      <h1>Deepresearch</h1>
+      <p class="lead">Deep research that runs <b>in your browser</b>: bring your own
+        OpenAI or Groq API key and every model call goes straight from this page to
+        the provider — this site's server is never in the path, so it could not read
+        or log your messages even if it wanted to.</p>
+      <ul class="intro-points">
+        <li>🔑 <b>Your keys.</b> Stored only encrypted, sent only to the provider you chose.</li>
+        <li>🧭 <b>Real research flow.</b> Questions are triaged, decomposed, answered and reviewed in phases — not one bare completion.</li>
+        <li>🔒 <b>One secret.</b> Chats and keys are sealed in your browser; save the secret in your password manager and your project follows you to any device at <code>/my/project-…</code>.</li>
+      </ul>
+      <div class="row">
+        <button type="button" id="introstart">Start chatting</button>
+        <a class="btnlike" href="/welcome/">About the full site</a>
+        <a class="btnlike" href="/login">Sign in</a>
       </div>
-      <p id="gatestatus" class="muted" hidden></p>
-      <p class="fineprint">Only providers that allow direct browser calls (CORS) can
-        work this way — today that is <b>OpenAI</b> and <b>Groq</b>. Your keys and
-        chats are sealed in this browser with a key derived from your secret; the
-        server stores one unreadable blob so the project follows you across devices.
-        Losing the secret loses the project — there is no recovery.
-        <a href="/welcome/">About Deepresearch</a></p>
-    </section>
+      <p class="muted">A signed-in account adds the hosted research pipeline: live web
+        search with cited sources, documents and projects, on hosted EU models.</p>
+    </div>
+  </div>
 
-    <!-- ---- the workspace ---- -->
-    <section id="work" hidden>
+  <main>
+    <section id="work">
       <header>
-        <strong id="projref">project-…</strong>
+        <strong id="projref">Unsaved session</strong>
         <span class="flex"></span>
-        <button type="button" id="lockbtn" title="Lock (forget the secret in this tab)">Lock</button>
+        <button type="button" id="aboutbtn" title="What is this?">?</button>
+        <button type="button" id="lockbtn" title="Lock (forget the secret in this tab)" hidden>Lock</button>
       </header>
 
       <details id="keyspanel">
         <summary>Provider API keys <span id="keysbadge" class="muted"></span></summary>
         <p class="muted">Your keys travel from this browser straight to the provider —
-          never through this site's server. They're stored only inside your encrypted
-          project blob. Leave a field blank to keep what's stored; type
+          never through this site's server. With a saved project they're stored only
+          inside your encrypted blob. Leave a field blank to keep what's stored; type
           <code>clear</code> to remove one.</p>
         <label for="key-openai">OpenAI API key (platform.openai.com)</label>
         <input id="key-openai" type="password" autocomplete="off" placeholder="not set">
-        <label for="key-groq">Groq API key (console.groq.com)</label>
+        <label for="key-groq">Groq API key (console.groq.com — free tier available)</label>
         <input id="key-groq" type="password" autocomplete="off" placeholder="not set">
         <div class="row">
           <button type="button" id="savekeys">Save keys</button>
           <span id="keysstatus" class="muted"></span>
         </div>
+      </details>
+
+      <details id="projpanel">
+        <summary>Project — save &amp; sync with a secret <span id="projbadge" class="muted"></span></summary>
+        <p class="muted">One secret seals this session — chats and API keys — into an
+          encrypted blob only you can open, reachable from any device via your
+          <code>/my/project-…</code> link. Keep the secret in your password manager;
+          losing it loses the project.</p>
+        <!-- A real form so 1Password / Apple Passwords capture the secret as a
+             site password: username = the project reference, password = the
+             secret. Submit is intercepted; nothing is ever posted. -->
+        <form id="unlockform" method="post" action="/my/">
+          <label for="refname">Project reference</label>
+          <input id="refname" name="username" type="text" autocomplete="username"
+                 placeholder="project-…" spellcheck="false" autocapitalize="off">
+          <label for="secret">Secret</label>
+          <input id="secret" name="password" type="password" autocomplete="current-password"
+                 placeholder="DR1-XXXX-…" required>
+          <div class="row">
+            <button type="submit" id="openbtn">Open / save</button>
+            <button type="button" id="newbtn">Generate new secret</button>
+          </div>
+        </form>
+        <div id="newsecret" hidden>
+          <p class="warn">This is your new secret — it is the ONLY way back into this
+            project. Press <b>Open / save</b> and your password manager will offer to
+            save it; you can also copy it now:</p>
+          <div class="secretrow">
+            <code id="newsecrettext"></code>
+            <button type="button" id="copysecret">Copy</button>
+          </div>
+        </div>
+        <p id="gatestatus" class="muted" hidden></p>
       </details>
 
       <div class="row toolbar">
@@ -94,6 +108,12 @@
       </form>
       <p id="phaseline" class="muted" hidden></p>
       <p id="workstatus" class="muted" hidden></p>
+      <p class="fineprint">Direct-from-browser mode works with providers that allow
+        cross-origin calls — today <b>OpenAI</b> and <b>Groq</b>. Nothing you write
+        here reaches this site's server: chats live in this tab until you save a
+        project, and a saved project is one encrypted blob the server cannot read.
+        <a href="/welcome/">About</a> · <a href="/login">Sign in</a> for the full
+        hosted research pipeline with live web search.</p>
     </section>
   </main>
   <script type="module" src="/free/free.js"></script>

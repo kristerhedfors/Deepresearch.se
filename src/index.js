@@ -225,13 +225,21 @@ async function route(request, env, url, log, ctx, requestId) {
   }
 
   // ---- free mode (src/free.js): deliberately BEFORE the identity gate ----
-  // No accounts here — the user's master secret is the only credential, and
-  // it never reaches the server. /free and the project-reference deep links
-  // both serve the same static page; the client reads the reference off the
-  // URL. The API is capability-addressed (unguessable HKDF-derived ids).
+  // Free mode IS the site's default face: unauthenticated visitors get it
+  // at / (see the identity-gate fallthrough below), and /my/project-<hash>
+  // is the shareable/bookmarkable project reference — served pre-auth so
+  // the links work for everyone (a signed-in account still gets the full
+  // app at /). No accounts here — the user's master secret is the only
+  // credential, and it never reaches the server; the client reads the
+  // reference off the URL. /free is kept as a legacy alias. The API is
+  // capability-addressed (unguessable HKDF-derived ids).
   if (
     (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/free" || url.pathname.startsWith("/free/project-"))
+    (url.pathname === "/my" ||
+      url.pathname === "/my/" ||
+      url.pathname.startsWith("/my/project-") ||
+      url.pathname === "/free" ||
+      url.pathname.startsWith("/free/project-"))
   ) {
     return { response: await serveAsset(request, env, url.origin + "/free/") };
   }
@@ -253,11 +261,13 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- everything else requires an identity ------------------------------
   const identity = await identify(request, env);
   if (!identity) {
-    // Visitors hitting the root get the promotional landing page (video,
-    // docs, build story, sign-in) rather than a bare login form.
+    // Visitors hitting the root get FREE MODE — the site's default face:
+    // chat-first on their own API keys, with the old promotional landing
+    // reduced to a first-visit glass-pane overlay on that page (the full
+    // landing still lives at /welcome/, linked from the pane).
     if (url.pathname === "/" && request.method === "GET") {
       return {
-        response: await serveAsset(request, env, url.origin + "/welcome/"),
+        response: await serveAsset(request, env, url.origin + "/free/"),
       };
     }
     log.warn("auth.denied", { reason: "unauthenticated" });

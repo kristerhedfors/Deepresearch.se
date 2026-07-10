@@ -1,7 +1,10 @@
 // @ts-check
-// Free mode (/free, /free/project-<hash>): a no-account chat surface that
-// runs ENTIRELY outside authentication AND outside this server's request
-// path. The browser talks DIRECTLY (cross-origin) to LLM providers whose
+// Free mode — the site's DEFAULT face: unauthenticated visitors get it at
+// /, saved projects live at /my/project-<hash> (with /free as a legacy
+// alias), and the old promotional landing is a first-visit glass pane on
+// the page itself (the full landing stays at /welcome/). A no-account chat
+// surface that runs ENTIRELY outside authentication AND outside this
+// server's request path. The browser talks DIRECTLY (cross-origin) to LLM providers whose
 // APIs allow it — OpenAI and Groq, the two CORS-capable providers in the
 // client registry (public/js/free-providers.js) — using the user's own
 // API keys, and runs the whole deep-research flow client-side

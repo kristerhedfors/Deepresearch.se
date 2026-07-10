@@ -116,7 +116,7 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, and `feedback_mode` knobs — `GET/PUT /api/settings` |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| `free.js` | Free mode's ENTIRE server surface (`/free`, `/free/project-<hash>`, `/api/free/blob/:id` — routed BEFORE the identity gate; page in `public/free/`): the static page plus ONE dumb capability-addressed ciphertext store (R2 `free/blob/{id}`). Everything else runs in the BROWSER: model calls go directly (cross-origin) to the user's own CORS-capable providers — OpenAI and Groq (`public/js/free-providers.js`) — and the deep-research flow runs client-side (`public/js/free-research.js`). The server is never in the chat path, never sees a key or a message in any form — "no content logging" is structural, not policy. No accounts, no quota/usage recording |
+| `free.js` | Free mode's ENTIRE server surface — and the site's DEFAULT face: unauthenticated `/` serves it, saved projects live at `/my/project-<hash>` (`/free` is a legacy alias), all routed BEFORE the identity gate (a signed-in account still gets the full app at `/`); page in `public/free/`. The Worker contributes the static page plus ONE dumb capability-addressed ciphertext store (R2 `free/blob/{id}`, `/api/free/blob/:id`). Everything else runs in the BROWSER: model calls go directly (cross-origin) to the user's own CORS-capable providers — OpenAI and Groq (`public/js/free-providers.js`) — and the deep-research flow runs client-side (`public/js/free-research.js`). The server is never in the chat path, never sees a key or a message in any form — "no content logging" is structural, not policy. No accounts, no quota/usage recording |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -251,11 +251,17 @@ discard_text convention; deterministic, NO function calling, every
 helper phase fail-soft — the pipeline invariants hold client-side;
 whole flow Node-tested end to end against a mock provider).
 Free mode's page is `public/free/` (`index.html` + `free.js` wiring +
-`free.css`): a standalone no-auth page whose unlock form is a REAL
+`free.css`): the standalone no-auth page unauthenticated `/` serves —
+CHAT-FIRST (a visitor can type immediately; the first send without a
+key gets a helpful open-the-key-panel pointer, never an error wall),
+with the old promotional landing condensed into a first-visit glass
+pane (`#intro`; full landing still at `/welcome/`), an unsaved-session
+→ save-as-project flow (the Project panel's one submit opens OR
+creates, merging this tab's work in), and a project form that is a REAL
 username+password form (`autocomplete="username"`/`current-password`,
-switched to `new-password` on create) so 1Password and Apple Passwords
-save/autofill the master secret; served for `/free` and every
-`/free/project-<hash>` deep link.
+switched to `new-password` on generate) so 1Password and Apple
+Passwords save/autofill the master secret; served for `/`,
+`/my/project-<hash>` deep links, and the `/free` legacy alias.
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
 

@@ -6,10 +6,11 @@ description: >-
   public/js/vault.js, or anything about chat-history encryption, the
   per-account server_history cloud-storage knob, RAG document indexing,
   projects, the secret-keyed project vault (store/load a project with a
-  DR1-… secret), free mode (/free — src/free.js, public/free/,
-  public/js/free-core.js, free-providers.js, free-research.js: no-account
-  deep research with DIRECT browser→provider calls on user keys — OpenAI +
-  Groq, the CORS-capable providers — server never in the chat path), or the
+  DR1-… secret), free mode (the DEFAULT site at / for signed-out visitors,
+  /my/project-<hash> — src/free.js, public/free/, public/js/free-core.js,
+  free-providers.js, free-research.js: no-account deep research with DIRECT
+  browser→provider calls on user keys — OpenAI + Groq, the CORS-capable
+  providers — server never in the chat path), or the
   privacy/encryption model (encrypted-at-rest except RAG-indexed and
   project chats; keys never at rest beside ciphertext).
 ---
@@ -368,15 +369,30 @@ secret" form).
   here.
 
 
-## Free mode (/free) — no accounts, direct browser→provider calls, server out of the chat path
+## Free mode — the site's default face: /, /my/project-<hash>, server out of the chat path
 
 The no-account surface (added 2026-07-10, refactored same day to
-direct-from-browser provider calls): `src/free.js` (the ENTIRE server
-surface — static page routing + one ciphertext blob store), the page
-`public/free/`, the pure modules `public/js/free-core.js`,
-`free-providers.js`, `free-research.js`. Users bring their OWN provider
-API keys; every model call goes DIRECTLY (cross-origin) from the browser
-to the provider; Deepresearch's server is never in the chat path.
+direct-from-browser provider calls, then promoted to the DEFAULT site):
+unauthenticated `/` serves it (signed-in accounts still get the full app
+at `/`), saved projects live at `/my/project-<hash>` (`/free` is a legacy
+alias), and the old promotional landing is a first-visit GLASS PANE on
+the page itself (`#intro`, dismissable, `dr_intro_seen` localStorage UI
+flag — carries nothing secret-derived; full landing still at /welcome/).
+`src/free.js` (the ENTIRE server surface — static page routing + one
+ciphertext blob store), the page `public/free/`, the pure modules
+`public/js/free-core.js`, `free-providers.js`, `free-research.js`. Users
+bring their OWN provider API keys; every model call goes DIRECTLY
+(cross-origin) from the browser to the provider; Deepresearch's server is
+never in the chat path.
+
+The page is CHAT-FIRST: a visitor can type immediately with nothing set
+up — the first send without a key gets a helpful pointer that opens the
+key panel (their typed message stays in the composer), never an error
+wall. A session without a saved project lives in this tab's memory only
+(one post-answer hint says so); the Project panel's single submit opens
+OR creates: an existing blob is opened with this tab's unsaved
+conversations and keys merged in, a 404 seals the current session under
+the freshly generated secret.
 
 - **Only CORS-capable providers qualify**: OpenAI and Groq (GroqCloud)
   serve `Access-Control-Allow-Origin: *` on their OpenAI-compatible
