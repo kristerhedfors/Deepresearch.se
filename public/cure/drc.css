@@ -65,7 +65,10 @@ header {
   pointer-events: none;
 }
 .header-bar {
-  padding: .45rem 1rem .35rem;
+  /* viewport-fit=cover lets the page extend under the iPhone status bar;
+     the inset padding keeps the glass buttons below it while the khaki
+     background (html) shows through behind the clock/notch. */
+  padding: calc(.45rem + env(safe-area-inset-top, 0px)) 1rem .35rem;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -181,7 +184,7 @@ header {
   border-radius: 18px;
   max-width: 900px;
   width: calc(100% - 1.5rem);
-  margin: .35rem auto .85rem;
+  margin: .35rem auto calc(.85rem + env(safe-area-inset-bottom, 0px));
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }

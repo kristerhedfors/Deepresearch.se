@@ -586,6 +586,19 @@ async function send(ev) {
 
 // ---- boot --------------------------------------------------------------------------
 
+// iOS bar tint: arriving here by same-window navigation (the app's ghost
+// button), WebKit can keep the PREVIOUS page's theme-color — the DRS blue
+// over a khaki page (reported live 2026-07-10). Re-asserting the meta with
+// a changed-then-target value after load forces a re-evaluation of the
+// bar tint; harmless everywhere else.
+const themeMeta = document.querySelector('meta[name="theme-color"]');
+if (themeMeta) {
+  requestAnimationFrame(() => {
+    themeMeta.setAttribute("content", "#c3b092");
+    requestAnimationFrame(() => themeMeta.setAttribute("content", "#c3b091"));
+  });
+}
+
 const projectLinked = handleProjectLink();
 renderKeysPanel();
 renderConvPicker();

@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>DeepResearch.se /cure — client-side</title>
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <!-- The khaki bar tint. iOS keeps the PREVIOUS page's tint (the app's
+       blue) on same-window navigation in some modes — drc.js re-asserts
+       this meta after load to force WebKit to re-evaluate it. -->
   <meta name="theme-color" content="#c3b091">
   <link rel="stylesheet" href="/cure/drc.css">
   <!-- Vendored renderer globals (classic scripts, same as the main app) -->

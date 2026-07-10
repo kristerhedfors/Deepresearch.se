@@ -96,6 +96,17 @@ ALL hover logic behind `matchMedia("(hover: hover)")`: JS handlers,
 (`@media (hover: hover)`) — the CSS rules alone produced stuck
 highlights after the JS was already gated.
 
+- **iOS keeps the previous page's `theme-color` bar tint across
+  same-window navigation** (reported live 2026-07-10: pressing the app's
+  ghost button → /cure showed the khaki page under a still-BLUE status
+  bar). The DRC page's fix (public/cure/): `viewport-fit=cover` +
+  `env(safe-area-inset-*)` padding so the page's own khaki paints the
+  bar region, plus a boot-time nudge in drc.js that re-asserts the
+  theme-color meta with a changed-then-target value across two
+  animation frames to force WebKit to re-evaluate the tint. If a bar
+  tint is ever wrong again, suspect the navigation ORIGIN page's meta,
+  not the destination's.
+
 ## Status of the instruments (post-incident)
 
 The trace overlay itself was REMOVED once the device confirmed the fix
