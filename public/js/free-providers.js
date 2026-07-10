@@ -1,0 +1,159 @@
+// Free mode's client-side LLM provider registry — the browser counterpart
+// of src/providers.js, for providers whose APIs allow DIRECT cross-origin
+// calls from JavaScript (CORS). That property is the admission ticket:
+// OpenAI and Groq (GroqCloud) both serve `Access-Control-Allow-Origin: *`
+// on their OpenAI-compatible endpoints, so the user's browser can call
+// them with the user's own API key and Deepresearch's server is never in
+// the request path at all. Providers without browser CORS (Berget,
+// Anthropic) cannot join this registry — they'd need a proxy, which is
+// exactly what free mode exists to avoid.
+//
+// Same registry discipline as the server seam: one declarative entry per
+// provider (id, label, base URL, wire-param quirks, a JSON-phase default
+// model, a static fallback catalog), and everything downstream —
+// free-research.js's pipeline phases and the /free page — is
+// provider-agnostic.
+//
+// Import-safe outside a browser (Node-tested); network calls take an
+// optional baseUrl override so tests can point at a mock (the BERGET_URL
+// convention).
+
+// Per-provider wire quirks, mirroring what the server clients learned:
+// OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
+// (src/openai.js); Groq speaks plain OpenAI chat completions.
+export const FREE_PROVIDERS = [
+  {
+    id: "openai",
+    label: "OpenAI",
+    base: "https://api.openai.com/v1",
+    // The fixed cheap model for the JSON planning phases (the client-side
+    // mirror of the split-model-routing invariant — planning does not run
+    // on the user's chosen answer model).
+    jsonModel: "gpt-5.4-mini",
+    // Shown until (or in place of) a live /models fetch; ids from the
+    // server's static catalog (src/openai.js).
+    fallbackModels: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4-mini"],
+    // Keep the live list to chat-capable text models.
+    modelFilter: (id) =>
+      /^gpt-/.test(id) && !/(audio|realtime|image|tts|transcribe|embedding|moderation|search)/.test(id),
+    params: (maxTokens) => ({ max_completion_tokens: maxTokens, reasoning_effort: "none" }),
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    base: "https://api.groq.com/openai/v1",
+    jsonModel: "llama-3.1-8b-instant",
+    fallbackModels: [
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+    ],
+    modelFilter: (id) => !/(whisper|tts|guard|embedding|allam)/i.test(id),
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+  },
+];
+
+export function freeProvider(id) {
+  return FREE_PROVIDERS.find((p) => p.id === id) || null;
+}
+
+/** The providers the user has stored a key for. */
+export function configuredFreeProviders(keys) {
+  return FREE_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
+}
+
+// One OpenAI-compatible chat-completions payload; `json` asks for JSON mode
+// (both providers support response_format json_object — the pipeline's
+// no-function-calling rule holds here too).
+export function buildFreePayload(provider, model, messages, { stream = false, json = false, maxTokens = 4096 } = {}) {
+  const payload = {
+    model,
+    messages,
+    stream,
+    ...provider.params(maxTokens),
+  };
+  if (json) payload.response_format = { type: "json_object" };
+  return payload;
+}
+
+/**
+ * Streaming chat completion, straight from the browser to the provider.
+ * Returns the raw fetch Response (an OpenAI-style SSE body on success).
+ */
+export function freeChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
+  return fetch((baseUrl || provider.base) + "/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + apiKey,
+    },
+    body: JSON.stringify(buildFreePayload(provider, model, messages, { stream: true, maxTokens })),
+    signal,
+  });
+}
+
+// Lenient JSON extraction — models wrap JSON in code fences or prose often
+// enough that strict parsing alone loses good answers (the server's
+// hardenJson lesson, in miniature).
+export function extractJson(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const candidates = [text.trim()];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) candidates.unshift(fence[1].trim());
+  const brace = text.match(/\{[\s\S]*\}/);
+  if (brace) candidates.push(brace[0]);
+  for (const c of candidates) {
+    try {
+      return JSON.parse(c);
+    } catch {
+      // try the next shape
+    }
+  }
+  return null;
+}
+
+/**
+ * Non-streaming JSON completion for the planning phases. Returns the parsed
+ * object or throws (callers are fail-soft, matching the server pipeline).
+ */
+export async function freeCompleteJson(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 1500 } = {}) {
+  const timeout = signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(45_000) : undefined);
+  const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + apiKey,
+    },
+    body: JSON.stringify(buildFreePayload(provider, model, messages, { json: true, maxTokens })),
+    signal: timeout,
+  });
+  if (!res.ok) throw new Error(provider.label + " rejected the request (" + res.status + ").");
+  const data = await res.json();
+  const value = extractJson(data?.choices?.[0]?.message?.content || "");
+  if (!value) throw new Error(provider.label + " returned no usable JSON.");
+  return value;
+}
+
+/**
+ * The provider's chat-capable model list — live from the user's key, the
+ * static fallback when the fetch fails (wrong key still gets a dropdown to
+ * try; the send will surface the real error).
+ */
+export async function listFreeModels(provider, apiKey, { baseUrl } = {}) {
+  try {
+    const res = await fetch((baseUrl || provider.base) + "/models", {
+      headers: { authorization: "Bearer " + apiKey },
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const data = await res.json();
+    const ids = (Array.isArray(data?.data) ? data.data : [])
+      .map((m) => m?.id)
+      .filter((id) => typeof id === "string" && provider.modelFilter(id))
+      .sort();
+    if (ids.length) return ids;
+  } catch {
+    // fall through to the static list
+  }
+  return [...provider.fallbackModels];
+}

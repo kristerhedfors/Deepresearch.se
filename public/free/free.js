@@ -1,14 +1,19 @@
-// Free mode page wiring (/free, /free/project-<hash>). All rules and
-// crypto live in the pure core (/js/free-core.js, built on /js/vault.js);
-// this module only renders and talks to /api/free/* (src/free.js).
+// Free mode page wiring (/free, /free/project-<hash>). All rules live in
+// the pure modules: /js/free-core.js (secret → derived ids/keys, the
+// sealed state), /js/free-providers.js (the CORS-capable provider
+// registry — OpenAI + Groq), /js/free-research.js (the client-side
+// deep-research pipeline). This module only renders, and the only server
+// endpoint it ever touches is the dumb ciphertext store
+// (/api/free/blob/:id) — every model call goes straight from this browser
+// to the provider.
 //
 // Security posture recap (the page's whole point):
 //   - the master secret lives in the password field and this module's
 //     memory only — never in localStorage/IndexedDB, never sent anywhere;
-//   - the project state is sealed client-side before it is PUT anywhere;
-//   - provider API keys are sealed client-side; the derived unlock key
-//     rides on chat/models requests so the server can use the keys
-//     transiently in memory (never at rest, never logged);
+//   - the provider API keys live INSIDE the sealed state: encrypted at
+//     rest, and on the wire they go only to the provider itself;
+//   - the Deepresearch server sees exactly one thing: an opaque encrypted
+//     blob. It cannot log message content — it never receives any.
 //   - "Lock" just drops this tab's memory — a reload does the same.
 
 import {
@@ -17,24 +22,33 @@ import {
   emptyFreeState,
   freeSecretValid,
   generateFreeSecret,
+  migrateFreeState,
   openFreeState,
-  openKeyBundleLocal,
   sealFreeState,
-  sealKeyBundle,
   validateFreeState,
 } from "/js/free-core.js";
-import { createSseParser } from "/js/sse.js";
+import { configuredFreeProviders, freeProvider, listFreeModels } from "/js/free-providers.js";
+import { runFreeResearch } from "/js/free-research.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
 const $ = (id) => document.getElementById(id);
 
-let profile = null; // {refHash, blobId, blobKey, keysId, unlock}
-let state = null; // the decrypted project state
-let keys = null; // decrypted key bundle (local display/merge only)
+let profile = null; // {refHash, blobId, blobKey}
+let state = null; // the decrypted project state (keys included)
 let convId = null; // active conversation id
 let sending = false;
 
-// ---- gate ---------------------------------------------------------------------
+const PHASE_LABELS = {
+  triage: "Analyzing the question…",
+  clarify: "Asking for a detail…",
+  harvest: "Harvesting knowledge…",
+  gap: "Auditing coverage…",
+  synth: "Writing the answer…",
+  validate: "Reviewing the draft…",
+  answer: "Answering…",
+};
+
+// ---- status lines ---------------------------------------------------------------
 
 function gateStatus(msg) {
   const el = $("gatestatus");
@@ -47,6 +61,14 @@ function workStatus(msg) {
   el.hidden = !msg;
   el.textContent = msg || "";
 }
+
+function phaseLine(msg) {
+  const el = $("phaseline");
+  el.hidden = !msg;
+  el.textContent = msg || "";
+}
+
+// ---- gate -------------------------------------------------------------------------
 
 // Deep link: /free/project-<hash> prefills the reference so the password
 // manager (which files the secret under that username) matches the entry.
@@ -84,15 +106,12 @@ async function unlock(ev) {
     const res = await fetch("/api/free/blob/" + encodeURIComponent(profile.blobId));
     if (res.ok) {
       const opened = await openFreeState(new Uint8Array(await res.arrayBuffer()), profile.blobKey).catch(() => null);
-      state = opened && validateFreeState(opened) ? opened : emptyFreeState();
+      state = opened && validateFreeState(opened) ? migrateFreeState(opened) : emptyFreeState();
     } else if (res.status === 404) {
       state = emptyFreeState(); // a fresh project
     } else {
       throw new Error("Storage unavailable (" + res.status + ").");
     }
-
-    const kres = await fetch("/api/free/keys/" + encodeURIComponent(profile.keysId));
-    keys = kres.ok ? await openKeyBundleLocal(await kres.json().catch(() => null), profile.unlock) : null;
 
     // The secret's job is done for this tab; keep the field from lingering.
     $("secret").value = "";
@@ -100,10 +119,11 @@ async function unlock(ev) {
     $("projref").textContent = "project-" + profile.refHash;
     $("gate").hidden = true;
     $("work").hidden = false;
+    $("researchmode").checked = state.research !== false;
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
-    if (keys) await refreshModels();
+    if (configuredFreeProviders(state.keys).length) await refreshModels();
     else $("keyspanel").open = true; // first thing a new project needs
     gateStatus("");
   } catch (err) {
@@ -113,7 +133,7 @@ async function unlock(ev) {
   }
 }
 
-// ---- persistence ----------------------------------------------------------------
+// ---- persistence ---------------------------------------------------------------
 
 async function saveState() {
   if (!profile || !state) return;
@@ -125,85 +145,79 @@ async function saveState() {
       headers: { "content-type": "application/octet-stream" },
       body: bytes,
     });
-    if (!res.ok) workStatus("Saving failed (" + res.status + ") — your chats stay in this tab only.");
+    if (!res.ok) workStatus("Saving failed (" + res.status + ") — changes stay in this tab only.");
   } catch {
-    workStatus("Saving failed — your chats stay in this tab only.");
+    workStatus("Saving failed — changes stay in this tab only.");
   }
 }
 
-// ---- provider keys ---------------------------------------------------------------
+// ---- provider keys ----------------------------------------------------------------
 
 function renderKeysPanel() {
   const have = [];
-  for (const p of ["berget", "anthropic", "openai"]) {
+  for (const p of ["openai", "groq"]) {
     const el = $("key-" + p);
     el.value = "";
-    el.placeholder = keys?.[p] ? "•••••• (saved)" : "not set";
-    if (keys?.[p]) have.push(p);
+    el.placeholder = state.keys?.[p] ? "•••••• (saved)" : "not set";
+    if (state.keys?.[p]) have.push(freeProvider(p).label);
   }
   $("keysbadge").textContent = have.length ? "— " + have.join(", ") + " set" : "— none set yet";
 }
 
 async function saveKeys() {
-  if (!profile) return;
-  // Blank field = keep the stored key; typed field = replace; the word
-  // "clear" (or a single "-") removes it.
-  const next = { ...(keys || {}) };
-  for (const p of ["berget", "anthropic", "openai"]) {
+  // Blank field = keep the stored key; typed = replace; "clear" removes it.
+  for (const p of ["openai", "groq"]) {
     const v = $("key-" + p).value.trim();
     if (!v) continue;
-    if (v === "-" || v.toLowerCase() === "clear") delete next[p];
-    else next[p] = v;
+    if (v === "-" || v.toLowerCase() === "clear") delete state.keys[p];
+    else state.keys[p] = v;
   }
   $("savekeys").disabled = true;
   $("keysstatus").textContent = "Saving…";
   try {
-    const sealed = await sealKeyBundle(next, profile.unlock);
-    const res = await fetch("/api/free/keys/" + encodeURIComponent(profile.keysId), {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(sealed),
-    });
-    if (!res.ok) throw new Error("Storing the keys failed (" + res.status + ").");
-    keys = next;
+    await saveState(); // the keys ride inside the sealed blob — nothing else is stored
     renderKeysPanel();
-    $("keysstatus").textContent = "Saved (encrypted).";
+    $("keysstatus").textContent = "Saved (encrypted in your project blob).";
     await refreshModels();
   } catch (err) {
-    $("keysstatus").textContent = err?.message || "Storing the keys failed.";
+    $("keysstatus").textContent = err?.message || "Saving failed.";
   } finally {
     $("savekeys").disabled = false;
   }
 }
 
+// One grouped dropdown across the configured providers; option values are
+// "provider::model" so the send knows where to route.
 async function refreshModels() {
-  if (!profile) return;
   const pick = $("modelpick");
-  try {
-    const res = await fetch("/api/free/models", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ keysId: profile.keysId, unlock: profile.unlock }),
-    });
-    const data = await res.json().catch(() => null);
-    const models = data?.models || [];
-    pick.innerHTML = models.length
-      ? models
-          .map(
-            (m) =>
-              `<option value="${m.id.replace(/"/g, "&quot;")}"${m.up === false ? " disabled" : ""}>${(m.name || m.id).replace(/</g, "&lt;")}</option>`,
-          )
-          .join("")
-      : '<option value="">— add an API key first —</option>';
-    // Restore the project's remembered model when it's still available.
-    if (state?.model && models.some((m) => m.id === state.model)) pick.value = state.model;
-    else if (models.length) state.model = pick.value;
-  } catch {
-    pick.innerHTML = '<option value="">— models unavailable —</option>';
+  const providers = configuredFreeProviders(state.keys);
+  if (!providers.length) {
+    pick.innerHTML = '<option value="">— add an API key first —</option>';
+    return;
+  }
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const groups = await Promise.all(
+    providers.map(async (p) => {
+      const ids = await listFreeModels(p, state.keys[p.id]);
+      return (
+        `<optgroup label="${esc(p.label)}">` +
+        ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("") +
+        "</optgroup>"
+      );
+    }),
+  );
+  pick.innerHTML = groups.join("");
+  const remembered = state.providerId && state.model ? state.providerId + "::" + state.model : null;
+  if (remembered && [...pick.options].some((o) => o.value === remembered)) {
+    pick.value = remembered;
+  } else if (pick.options.length) {
+    const [pid, ...rest] = pick.value.split("::");
+    state.providerId = pid;
+    state.model = rest.join("::");
   }
 }
 
-// ---- conversations ----------------------------------------------------------------
+// ---- conversations -----------------------------------------------------------------
 
 function activeConv() {
   return state?.conversations.find((c) => c.id === convId) || null;
@@ -249,19 +263,23 @@ function newChat() {
   renderMessages();
 }
 
-// ---- send -----------------------------------------------------------------------
+// ---- send: the client-side research pipeline ----------------------------------------
 
 async function send(ev) {
   ev.preventDefault();
   if (sending || !profile) return;
   const text = $("prompt").value.trim();
   if (!text) return;
-  const model = $("modelpick").value;
-  if (!model) {
-    workStatus("Pick a model first — add an API key under 'Model API keys'.");
+  const picked = $("modelpick").value;
+  if (!picked || !picked.includes("::")) {
+    workStatus("Pick a model first — add an API key under 'Provider API keys'.");
     return;
   }
+  const [providerId, ...rest] = picked.split("::");
+  const model = rest.join("::");
+  state.providerId = providerId;
   state.model = model;
+  state.research = $("researchmode").checked;
 
   let conv = activeConv();
   if (!conv) {
@@ -283,43 +301,37 @@ async function send(ev) {
   live.className = "msg assistant streaming";
   $("msgs").appendChild(live);
 
-  let answer = "";
+  let shown = "";
   let errMsg = null;
+  let result = null;
   try {
-    const res = await fetch("/api/free/chat", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        keysId: profile.keysId,
-        unlock: profile.unlock,
-        model,
-        messages: conv.messages,
-      }),
-    });
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => null);
-      throw new Error(data?.error || "The request failed (" + res.status + ").");
-    }
-    const parser = createSseParser();
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const evt of parser.push(decoder.decode(value, { stream: true }))) {
-        if (typeof evt.delta === "string") {
-          answer += evt.delta;
-          live.textContent = answer;
-          $("msgs").scrollTop = $("msgs").scrollHeight;
-        } else if (evt.error) {
-          errMsg = String(evt.error);
+    result = await runFreeResearch({
+      providerId,
+      apiKey: state.keys[providerId],
+      model,
+      messages: conv.messages.slice(-40),
+      research: state.research,
+      onStatus: (s) => {
+        if (s.type === "phase") {
+          phaseLine(PHASE_LABELS[s.phase] || s.phase);
+        } else if (s.type === "discard_text") {
+          shown = ""; // the validated revision replaces the draft, server-SSE style
+          live.textContent = "";
+          phaseLine("Applying the reviewed revision…");
         }
-      }
-    }
+      },
+      onDelta: (chunk) => {
+        shown += chunk;
+        live.textContent = shown;
+        $("msgs").scrollTop = $("msgs").scrollHeight;
+      },
+    });
   } catch (err) {
     errMsg = err?.message || "The request failed.";
   }
+  phaseLine("");
 
+  const answer = result?.answer || shown;
   live.classList.remove("streaming");
   if (answer) {
     renderMarkdownInto(live, answer);
@@ -334,7 +346,7 @@ async function send(ev) {
   $("sendbtn").disabled = false;
 }
 
-// ---- boot -----------------------------------------------------------------------
+// ---- boot ------------------------------------------------------------------------
 
 prefillFromUrl();
 $("unlockform").addEventListener("submit", unlock);
@@ -355,8 +367,16 @@ $("convpick").addEventListener("change", () => {
   renderMessages();
 });
 $("modelpick").addEventListener("change", () => {
+  const [pid, ...rest] = $("modelpick").value.split("::");
+  if (state && pid && rest.length) {
+    state.providerId = pid;
+    state.model = rest.join("::");
+    saveState();
+  }
+});
+$("researchmode").addEventListener("change", () => {
   if (state) {
-    state.model = $("modelpick").value || null;
+    state.research = $("researchmode").checked;
     saveState();
   }
 });

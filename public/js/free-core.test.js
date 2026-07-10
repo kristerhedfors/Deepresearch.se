@@ -6,11 +6,12 @@ import {
   emptyFreeState,
   freeSecretValid,
   generateFreeSecret,
+  migrateFreeState,
   openFreeState,
-  openKeyBundleLocal,
   sealFreeState,
-  sealKeyBundle,
   validateFreeState,
+  FREE_STATE_KIND,
+  FREE_STATE_V,
 } from "./free-core.js";
 import { deriveVaultLocator } from "./vault.js";
 
@@ -19,26 +20,21 @@ test("one secret, deterministic derivation, format-insensitive input", async () 
   assert.equal(freeSecretValid(secret), true);
   const a = await deriveFreeProfile(secret);
   const b = await deriveFreeProfile(secret.toLowerCase().replace(/-/g, " "));
-  assert.deepEqual(
-    { refHash: a.refHash, blobId: a.blobId, keysId: a.keysId, unlock: a.unlock },
-    { refHash: b.refHash, blobId: b.blobId, keysId: b.keysId, unlock: b.unlock },
-  );
-  // Shapes: a short lowercase public reference; long server-acceptable ids.
+  assert.equal(a.refHash, b.refHash);
+  assert.equal(a.blobId, b.blobId);
+  // Shapes: a short lowercase public reference; a long server-acceptable id.
   assert.match(a.refHash, /^[0-9a-z]{16}$/);
   assert.match(a.blobId, /^[0-9A-Z]{32}$/);
-  assert.match(a.keysId, /^[0-9A-Z]{32}$/);
-  assert.equal(atob(a.unlock).length, 32);
 });
 
-test("every derived value is independent — and independent of the vault's", async () => {
+test("derived values are independent — and independent of the vault's", async () => {
   const secret = generateFreeSecret();
   const p = await deriveFreeProfile(secret);
-  const values = [p.refHash.toUpperCase(), p.blobId, p.keysId];
-  assert.equal(new Set(values).size, values.length);
+  assert.notEqual(p.refHash.toUpperCase(), p.blobId);
   // The SAME secret used as a project-vault secret derives a DIFFERENT id —
   // the info strings partition the derivation spaces.
   const vault = await deriveVaultLocator(secret);
-  assert.ok(!values.includes(vault.id));
+  assert.notEqual(vault.id, p.blobId);
 });
 
 test("different secrets never collide", async () => {
@@ -46,25 +42,14 @@ test("different secrets never collide", async () => {
   const b = await deriveFreeProfile(generateFreeSecret());
   assert.notEqual(a.blobId, b.blobId);
   assert.notEqual(a.refHash, b.refHash);
-  assert.notEqual(a.unlock, b.unlock);
 });
 
-test("key bundle seals and opens under the unlock key; wrong key opens nothing", async () => {
-  const { unlock } = await deriveFreeProfile(generateFreeSecret());
-  const sealed = await sealKeyBundle({ berget: "sk-b", openai: "sk-o" }, unlock);
-  assert.equal(typeof sealed.iv, "string");
-  assert.equal(typeof sealed.ciphertext, "string");
-  assert.equal(sealed.ciphertext.includes("sk-b"), false); // actually encrypted
-  assert.deepEqual(await openKeyBundleLocal(sealed, unlock), { berget: "sk-b", openai: "sk-o" });
-
-  const { unlock: other } = await deriveFreeProfile(generateFreeSecret());
-  assert.equal(await openKeyBundleLocal(sealed, other), null);
-  assert.equal(await openKeyBundleLocal(null, unlock), null);
-});
-
-test("project state round-trips sealed under the blob key", async () => {
+test("project state round-trips sealed under the blob key — API keys inside", async () => {
   const { blobKey } = await deriveFreeProfile(generateFreeSecret());
   const state = emptyFreeState();
+  state.keys = { openai: "sk-test-openai", groq: "gsk-test-groq" };
+  state.providerId = "groq";
+  state.model = "llama-3.3-70b-versatile";
   state.conversations.push({
     id: "c1",
     title: "Test",
@@ -76,6 +61,9 @@ test("project state round-trips sealed under the blob key", async () => {
     updatedAt: 2,
   });
   const bytes = await sealFreeState(state, blobKey);
+  // The keys are actually sealed — not readable in the stored form.
+  const stored = new TextDecoder().decode(bytes);
+  assert.equal(stored.includes("sk-test-openai"), false);
   const back = await openFreeState(bytes, blobKey);
   assert.equal(validateFreeState(back), true);
   assert.deepEqual(back, state);
@@ -84,16 +72,22 @@ test("project state round-trips sealed under the blob key", async () => {
   await assert.rejects(openFreeState(bytes, wrong));
 });
 
-test("validateFreeState rejects foreign shapes", () => {
+test("validateFreeState accepts v1 and v2, rejects foreign shapes", () => {
   assert.equal(validateFreeState(emptyFreeState()), true);
+  // A v1 blob (stored before keys moved into the state) still opens…
+  const v1 = { v: 1, kind: FREE_STATE_KIND, updatedAt: 1, conversations: [] };
+  assert.equal(validateFreeState(v1), true);
+  // …and migrates to the current shape.
+  const migrated = migrateFreeState({ ...v1 });
+  assert.equal(migrated.v, FREE_STATE_V);
+  assert.deepEqual(migrated.keys, {});
+  assert.equal(migrated.research, true);
+
   assert.equal(validateFreeState(null), false);
   assert.equal(validateFreeState({}), false);
   assert.equal(validateFreeState({ ...emptyFreeState(), kind: "other" }), false);
+  assert.equal(validateFreeState({ ...emptyFreeState(), keys: [] }), false);
   assert.equal(validateFreeState({ ...emptyFreeState(), conversations: [{ id: "c" }] }), false);
-  assert.equal(
-    validateFreeState({ ...emptyFreeState(), conversations: [{ id: "c", messages: [{ role: 1, content: "x" }] }] }),
-    false,
-  );
 });
 
 test("deriveFreeTitle uses the first non-empty user line", () => {

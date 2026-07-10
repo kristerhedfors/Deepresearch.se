@@ -15,16 +15,13 @@
 //   blobId / blobKey — where the encrypted project state rests
 //       (/api/free/blob/:id) and the AES-256-GCM key it is sealed with.
 //       The key never leaves the browser in any form.
-//   keysId / unlock — where the encrypted provider-key bundle rests
-//       (/api/free/keys/:id) and the 256-bit key it is sealed under. The
-//       unlock key IS sent to the server, once per chat/models request, so
-//       the server can decrypt the bundle transiently in memory and call
-//       the provider with the user's own API key (src/free.js) — that is
-//       the one deliberate exception to keys-stay-client-side, and it is
-//       per-request and never at rest server-side.
 //
-// The project state blob reuses the vault's archive sealing verbatim
-// (encryptVaultArchive/decryptVaultArchive — 12-byte IV + AES-256-GCM).
+// The provider API keys (OpenAI / Groq) live INSIDE the sealed state and
+// go straight from the browser to the provider (free-providers.js) — the
+// Deepresearch server never sees them in any form, encrypted or not, and
+// is never in the chat path at all. The state blob reuses the vault's
+// archive sealing verbatim (encryptVaultArchive/decryptVaultArchive —
+// 12-byte IV + AES-256-GCM).
 
 import {
   bytesToB64,
@@ -45,7 +42,7 @@ export {
 };
 
 export const FREE_STATE_KIND = "deepresearch-free-project";
-export const FREE_STATE_V = 1;
+export const FREE_STATE_V = 2; // v2 moved the provider keys into the sealed state
 
 // ---- derivation ---------------------------------------------------------------
 
@@ -64,8 +61,7 @@ const HKDF = (info) => ({
 /**
  * Everything the /free page needs, from the one secret.
  * @param {string} secret
- * @returns {Promise<{refHash: string, blobId: string, blobKey: CryptoKey,
- *   keysId: string, unlock: string}>}
+ * @returns {Promise<{refHash: string, blobId: string, blobKey: CryptoKey}>}
  */
 export async function deriveFreeProfile(secret) {
   if (!vaultSecretValid(secret)) {
@@ -75,7 +71,6 @@ export async function deriveFreeProfile(secret) {
   const bits = (info, n) => crypto.subtle.deriveBits(HKDF(info), master, n);
   const refHash = encodeCrockford(new Uint8Array(await bits("deepresearch.se free ref v1", 80))).toLowerCase();
   const blobId = encodeCrockford(new Uint8Array(await bits("deepresearch.se free blob id v1", 160)));
-  const keysId = encodeCrockford(new Uint8Array(await bits("deepresearch.se free keys id v1", 160)));
   const blobKey = await crypto.subtle.deriveKey(
     HKDF("deepresearch.se free blob key v1"),
     master,
@@ -83,80 +78,35 @@ export async function deriveFreeProfile(secret) {
     false,
     ["encrypt", "decrypt"],
   );
-  const unlock = bytesToB64(new Uint8Array(await bits("deepresearch.se free unlock key v1", 256)));
-  return { refHash, blobId, blobKey, keysId, unlock };
-}
-
-// ---- the provider-key bundle -----------------------------------------------------
-
-// Seals {berget?, anthropic?, openai?} under the unlock key, client-side —
-// the stored form PUT to /api/free/keys/:id. The server decrypts the same
-// shape transiently per request (src/free.js openKeyBundle).
-/**
- * @param {{berget?: string, anthropic?: string, openai?: string}} keys
- * @param {string} unlockB64
- * @returns {Promise<{iv: string, ciphertext: string}>}
- */
-export async function sealKeyBundle(keys, unlockB64) {
-  const key = await unlockKey(unlockB64, "encrypt");
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plain = new TextEncoder().encode(JSON.stringify(keys));
-  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
-  return { iv: bytesToB64(iv), ciphertext: bytesToB64(new Uint8Array(cipher)) };
-}
-
-// The client-side counterpart, so the page can show WHICH providers have a
-// key stored (never the keys themselves) after unlocking on a new device.
-/**
- * @param {{iv?: string, ciphertext?: string} | null | undefined} stored
- * @param {string} unlockB64
- * @returns {Promise<{berget?: string, anthropic?: string, openai?: string} | null>}
- */
-export async function openKeyBundleLocal(stored, unlockB64) {
-  if (typeof stored?.iv !== "string" || typeof stored?.ciphertext !== "string") return null;
-  try {
-    const key = await unlockKey(unlockB64, "decrypt");
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: b64ToBytes(stored.iv) },
-      key,
-      b64ToBytes(stored.ciphertext),
-    );
-    const keys = JSON.parse(new TextDecoder().decode(plain));
-    return keys && typeof keys === "object" ? keys : null;
-  } catch {
-    return null;
-  }
-}
-
-function unlockKey(unlockB64, usage) {
-  const bytes = b64ToBytes(unlockB64);
-  if (bytes.length !== 32) throw new Error("Bad unlock key.");
-  return crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, [usage]);
-}
-
-function b64ToBytes(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+  return { refHash, blobId, blobKey };
 }
 
 // ---- the project state --------------------------------------------------------
 
-// {v, kind, updatedAt, model?, conversations: [{id, title, messages,
-//  createdAt, updatedAt}]} — everything the page persists, sealed as one
-// blob under blobKey. Conversations here are plain {role, content} text
-// turns (free mode is a direct chat).
+// {v, kind, updatedAt, keys: {openai?, groq?}, providerId?, model?,
+//  research, conversations: [{id, title, messages, createdAt, updatedAt}]}
+// — everything the page persists, the provider API keys included, sealed
+// as one blob under blobKey. Conversations are plain {role, content} text
+// turns.
 export function emptyFreeState() {
-  return { v: FREE_STATE_V, kind: FREE_STATE_KIND, updatedAt: Date.now(), model: null, conversations: [] };
+  return {
+    v: FREE_STATE_V,
+    kind: FREE_STATE_KIND,
+    updatedAt: Date.now(),
+    keys: {},
+    providerId: null,
+    model: null,
+    research: true,
+    conversations: [],
+  };
 }
 
 /** @param {any} s @returns {boolean} */
 export function validateFreeState(s) {
-  return !!(
+  const ok = !!(
     s &&
     typeof s === "object" &&
-    s.v === FREE_STATE_V &&
+    (s.v === 1 || s.v === FREE_STATE_V) && // v1 blobs (no keys field) still open
     s.kind === FREE_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
@@ -167,6 +117,16 @@ export function validateFreeState(s) {
         c.messages.every((m) => m && typeof m.role === "string" && typeof m.content === "string"),
     )
   );
+  return ok && (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys)));
+}
+
+/** Upgrades any accepted stored shape to the current one, in place. */
+export function migrateFreeState(s) {
+  s.v = FREE_STATE_V;
+  if (!s.keys || typeof s.keys !== "object") s.keys = {};
+  if (s.research === undefined) s.research = true;
+  if (s.providerId === undefined) s.providerId = null;
+  return s;
 }
 
 /**

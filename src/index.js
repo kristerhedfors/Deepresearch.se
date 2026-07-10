@@ -148,6 +148,8 @@ function isPublicAsset(url, method) {
     url.pathname === "/js/vault.js" ||
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/free-core.js" ||
+    url.pathname === "/js/free-providers.js" ||
+    url.pathname === "/js/free-research.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||

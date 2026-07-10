@@ -16,10 +16,11 @@
     <!-- ---- the gate: one secret, saved by the password manager ---- -->
     <section id="gate">
       <h1>🔓 Free mode</h1>
-      <p class="lead">Chat on <b>your own model API keys</b> with <b>your own encrypted
-        storage</b> — no account, and the server logs <b>no message content, ever</b>.
-        One secret, kept in your password manager, derives everything: your project's
-        reference, its storage encryption, and the key that seals your API keys.</p>
+      <p class="lead">Deep research on <b>your own API keys</b>, straight from this
+        browser: every model call goes <b>directly to OpenAI or Groq</b> — this site's
+        server is never in the path, so it could not log your messages even if it
+        wanted to. One secret, kept in your password manager, encrypts everything
+        (your chats <i>and</i> your API keys) before anything is stored.</p>
       <!-- A real form so 1Password / Apple Passwords capture the secret as a
            site password: username = the project reference, password = the
            secret. Submit is intercepted; nothing is ever posted. -->
@@ -45,11 +46,12 @@
         </div>
       </div>
       <p id="gatestatus" class="muted" hidden></p>
-      <p class="fineprint">Everything is encrypted in this browser before it is stored:
-        your chats under a key that never leaves this page, your API keys under a
-        derived key the server only ever holds in memory for the moment it calls the
-        model provider on your behalf. Losing the secret loses the project — there is
-        no recovery. <a href="/welcome/">About Deepresearch</a></p>
+      <p class="fineprint">Only providers that allow direct browser calls (CORS) can
+        work this way — today that is <b>OpenAI</b> and <b>Groq</b>. Your keys and
+        chats are sealed in this browser with a key derived from your secret; the
+        server stores one unreadable blob so the project follows you across devices.
+        Losing the secret loses the project — there is no recovery.
+        <a href="/welcome/">About Deepresearch</a></p>
     </section>
 
     <!-- ---- the workspace ---- -->
@@ -61,16 +63,15 @@
       </header>
 
       <details id="keyspanel">
-        <summary>Model API keys <span id="keysbadge" class="muted"></span></summary>
-        <p class="muted">Stored encrypted under your secret; the server decrypts them
-          only in memory, per request, to call the provider. Leave a field blank to
-          keep what's already stored.</p>
-        <label for="key-berget">Berget API key</label>
-        <input id="key-berget" type="password" autocomplete="off" placeholder="not set">
-        <label for="key-anthropic">Anthropic API key (claude-…)</label>
-        <input id="key-anthropic" type="password" autocomplete="off" placeholder="not set">
-        <label for="key-openai">OpenAI API key (gpt-…)</label>
+        <summary>Provider API keys <span id="keysbadge" class="muted"></span></summary>
+        <p class="muted">Your keys travel from this browser straight to the provider —
+          never through this site's server. They're stored only inside your encrypted
+          project blob. Leave a field blank to keep what's stored; type
+          <code>clear</code> to remove one.</p>
+        <label for="key-openai">OpenAI API key (platform.openai.com)</label>
         <input id="key-openai" type="password" autocomplete="off" placeholder="not set">
+        <label for="key-groq">Groq API key (console.groq.com)</label>
+        <input id="key-groq" type="password" autocomplete="off" placeholder="not set">
         <div class="row">
           <button type="button" id="savekeys">Save keys</button>
           <span id="keysstatus" class="muted"></span>
@@ -81,6 +82,7 @@
         <select id="convpick" title="Conversation"></select>
         <button type="button" id="newchat">New chat</button>
         <span class="flex"></span>
+        <label class="inline"><input type="checkbox" id="researchmode" checked> research</label>
         <select id="modelpick" title="Model"><option value="">— model —</option></select>
       </div>
 
@@ -90,6 +92,7 @@
         <textarea id="prompt" rows="3" placeholder="Ask something…"></textarea>
         <button type="submit" id="sendbtn">Send</button>
       </form>
+      <p id="phaseline" class="muted" hidden></p>
       <p id="workstatus" class="muted" hidden></p>
     </section>
   </main>
