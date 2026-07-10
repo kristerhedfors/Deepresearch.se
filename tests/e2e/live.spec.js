@@ -101,7 +101,7 @@ test("@live web search ON with doc + image: Exa searches run and the answer arri
   expect(sent.content.filter((p) => p.type === "image_url")).toHaveLength(1);
 
   // At least one real Exa search step resolved in the activity panel.
-  await expect(turn.locator(".step", { hasText: /Searched “/ })).not.toHaveCount(0);
+  await expect(turn.locator(".step", { hasText: /Web search “/ })).not.toHaveCount(0);
   await expect(turn.locator(".content")).not.toHaveClass(/error-text/);
   await expect(turn.locator(".content.md")).not.toHaveText("");
   await expect(turn.locator(".stats")).toContainText("search");

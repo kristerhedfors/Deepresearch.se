@@ -109,7 +109,7 @@ Server (`src/`):
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
-| `admin-api.js` | `/api/admin/*`: overview, invites, requests, users, config, chatlogs, feedback |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
@@ -297,7 +297,10 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test   # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
+                    # + public/ (tsconfig.public.json, DOM lib) — strict,
+                    # opt-in per file via // @ts-check; both must stay clean
 ```
 
 This is additive to, not a replacement for, the live-verification
@@ -305,9 +308,10 @@ convention: anything touching an external provider or D1 (or, on
 the client side, the DOM/`<canvas>`/pdf.js) is still verified live,
 since that's where this project's actual bugs have come from
 historically (see the **live-verify** skill). The root `package.json`
-exists solely to run this suite — it carries no build step or
-dependencies of its own; deploy still reads `src/` and `public/` as
-plain JS/static assets via `npx wrangler deploy`.
+exists solely to run this suite and the type-checker — no build step,
+dev-only dependencies (`typescript`, `@cloudflare/workers-types`);
+deploy still reads `src/` and `public/` as plain JS/static assets via
+`npx wrangler deploy`.
 
 ## End-to-end tests (`tests/`)
 
