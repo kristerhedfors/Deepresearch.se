@@ -123,3 +123,17 @@ chat_logs id, so the user can confirm it matches the chat they meant.
   enable-instructions. Fixed with `extractNamedPlaceQuery`
   (quoted/cued/place-type-word names + locality, gated on visual flavor)
   in `googlemaps-text.js`; tests cite the verbatim message.
+- **#192–#193 (2026-07-10, Enköping→Stockholm journey)** — mid-journey
+  "Go on to stockholm central station" matched no gate (`maps_intent:
+  "none"`; the continuation particle "on" broke `TRAVEL_TO_RE`) and got a
+  train-timetable research answer; the follow-up "Street view go there"
+  missed the `^`-anchored `GO_THERE_RE` (leading street-view phrase), fell
+  through to `extractPlaceQuery`, and Places resolved the LITERAL text
+  "go there" to "Girls Go There Salon" in Anderson, SC. Fixed in
+  `googlemaps-text.js`: the on/onwards/vidare particle in `TRAVEL_TO_RE`/
+  `TELEPORT_LEAD_RE` (+ "fortsätt till", "continue/carry on to" — particle
+  REQUIRED for continue/carry, bare "continue to <verb>" is the English
+  infinitive), an optional street-view prefix in `GO_THERE_RE`, and a
+  deictic-only-remainder guard in `extractPlaceQuery` so relocation filler
+  never becomes a Places query. Lesson: a deictic that survives intent-word
+  stripping is a RESUME signal, not a place name.
