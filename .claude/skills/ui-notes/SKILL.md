@@ -313,12 +313,11 @@ conversation-wide, ordered IMAGE DECK with an enlarged slideshow.
   scene gate routes image-referential questions ("What do we have
   here" — English "here" gained parity with Swedish "här" the same
   day); non-visual questions go to ordinary research, by design.
-- **Waypoint miniatures on the interactive map**: `renderMapEmbed`'s
-  `path` branch asks `nearestDeckIndex(p, 30m)` per waypoint — a hit
-  renders that image as a 40×40 marker icon whose click opens the deck
-  at it (the LATEST image within the radius wins, not the closest — an
-  early exact-position frame must not shadow a revisit); waypoints
-  without imagery keep the numbered pin. Jump and nearby-place
+- **Waypoints on the interactive map**: plain NUMBERED pins (image
+  miniature markers were tried 2026-07-09 and removed by explicit
+  decision 2026-07-10 — they cluttered the map); clicking a pin still
+  opens the deck at that stop's image when `nearestDeckIndex(p, 30m)`
+  finds one (the LATEST image within the radius wins, not the closest). Jump and nearby-place
   destinations now ALWAYS emit their frame (previously only as the
   no-embed-key fallback) so every stop has a deck image.
 - **Scope**: the deck is conversation-scoped and live-session only —

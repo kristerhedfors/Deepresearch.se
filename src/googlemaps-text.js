@@ -364,7 +364,7 @@ export function extractNamedPlaceQuery(text) {
 // required — "street view here" (no type) keeps its here-jump, while "is
 // there a pharmacy?" resolves the idiomatic "there" into the search it is.
 const NEARBY_WORD_RE =
-  /(?<![\p{L}\p{M}])(?:near(?:by|est)?|closest|close by|around here|here|there|närmaste|närmsta|nära|i närheten|häromkring|i området|runt här|här|där)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:near(?:by|est)?|closest|close by|around here|here|there|närmaste|närmsta|nörmaste|nörmsta|nära|i närheten|häromkring|i området|runt här|här|där)(?![\p{L}\p{M}])/iu;
 // Leading question filler stripped off the Places query ("is there a",
 // "find me", "finns det någon", "var finns") — the remainder is what gets
 // searched, and Places' text search handles natural phrasing fine.
@@ -380,7 +380,8 @@ const NEARBY_TRAIL_RE =
 // 2026-07-09: "nearest coop"-shaped asks got clarifies because Coop is a
 // brand, not a type. Typo forms included, matching the move/street-view
 // convention.
-const NEAREST_LEAD_RE = /^(?:the\s+)?(?:near[e]?st|neares|neardst|closest|närmaste|närmsta|narmaste|narmsta)(?![\p{L}\p{M}])/iu;
+const NEAREST_LEAD_RE =
+  /^(?:the\s+)?(?:near[e]?st|neares|neardst|closest|närmaste|närmsta|narmaste|narmsta|nörmaste|nörmsta)(?![\p{L}\p{M}])/iu;
 
 export function extractNearbyPlaceQuery(text) {
   const raw = (typeof text === "string" ? text : "").trim();
@@ -440,7 +441,7 @@ export function bearingDeg(lat1, lng1, lat2, lng2) {
 const TELEPORT_VERB_RE =
   /(?<![\p{L}\p{M}])(?:jump|teleport|beam(?:\s+(?:me|us))?|hoppa|teleportera)(?![\p{L}\p{M}])/iu;
 const TRAVEL_TO_RE =
-  /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
+  /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss|iss|mej)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss|iss|mej))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
 // Strips the relocation verb phrase off a nearby-place query, so "teleport
 // to the nearest gas station" searches for "nearest gas station". The
 // word-boundary lookaheads matter: without them the diacritic-less Swedish
@@ -449,7 +450,7 @@ const TRAVEL_TO_RE =
 // typo "legs" — verbatim 2026-07-09: "Legs go to coop" got a clarify) and a
 // bare "ok" ("Ok nearest gas station").
 const TELEPORT_LEAD_RE =
-  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
+  /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?![\p{L}\p{M}])(?:\s+(?:me|us|mig|oss|iss|mej)(?![\p{L}\p{M}]))?(?:\s+(?:to|till|över|over|across)(?![\p{L}\p{M}]))?\s*(?:(?:the|a|an|den|det|en|ett)\s+)?/iu;
 
 // "The other side of the railway" — a barrier the user wants the panorama
 // relocated across (reported verbatim 2026-07-09: "Get to the other side
@@ -1144,8 +1145,14 @@ function matchPhotoCoords(ctx) {
 }
 
 // An address the LATEST message names — a new location beats everything
-// the conversation was doing before.
+// the conversation was doing before. EXCEPT a cross-barrier phrase:
+// "andra sidan järnvägen" reads as a standalone street name ("…vägen") to
+// the address extractor, and routing it as an address sent the user to an
+// unrelated resolved address entirely (verbatim 2026-07-10, chat_logs
+// #180: "Hoppa till andra sidan järnvägen" → intent NewAddress →
+// Berguddsvägen 104, Saltsjöbaden). A barrier phrase is never an address.
 function matchNewAddress(ctx) {
+  if (extractCrossBarrierAsk(ctx.latest)) return null;
   const address = extractPlace(ctx.latest);
   return address ? { coords: "", address } : null;
 }

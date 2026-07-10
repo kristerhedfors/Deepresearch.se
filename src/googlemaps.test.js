@@ -1355,6 +1355,29 @@ describe("cross-barrier relocations — the verbatim 'Get to the other side of t
     assert.equal(extractCrossBarrierAsk(undefined), null);
   });
 
+  test("a barrier phrase is never an address — the verbatim Saltsjöbaden misroute (chat_logs #180, 2026-07-10)", () => {
+    // "järnvägen" ends in "-vägen" and read as a standalone street name, so
+    // "Hoppa till andra sidan järnvägen" routed as NewAddress and resolved
+    // an unrelated address entirely.
+    const pov2 = { panoId: "p", lat: 59.28, lng: 18.3, heading: 90, pitch: 0, fov: 90 };
+    const out = pickLookup([{ role: "user", content: "Hoppa till andra sidan järnvägen" }], [], pov2);
+    assert.equal(out.intent, "CrossBarrier");
+    assert.equal(out.crossBarrier.barrier, "järnvägen");
+    // Without an anchor it resolves nothing (→ the allow-location note),
+    // never an address lookup on the barrier word.
+    assert.equal(pickLookup([{ role: "user", content: "Hoppa till andra sidan järnvägen" }], []), null);
+    assert.equal(needsAnchorAsk([{ role: "user", content: "Hoppa till andra sidan järnvägen" }]), true);
+    // Real street names still resolve as addresses.
+    assert.equal(pickLookup([{ role: "user", content: "Järnvägsgatan 5" }], []).address, "Järnvägsgatan 5");
+  });
+
+  test("'Ta iss till nörmsta mack' — the verbatim typo pair (chat_logs #181) routes as travel", () => {
+    const pov2 = { panoId: "p", lat: 59.28, lng: 18.3, heading: 90, pitch: 0, fov: 90 };
+    const out = pickLookup([{ role: "user", content: "Ta iss till nörmsta mack" }], [], pov2);
+    assert.equal(out?.nearby?.query, "nörmsta mack");
+    assert.equal(out?.nearby?.mode, "travel");
+  });
+
   test("with a live panorama the ask becomes a crossBarrier target carrying position + heading", () => {
     const convo = [{ role: "user", content: "Get to the other side of the railway" }];
     const out = pickLookup(convo, [], pov);

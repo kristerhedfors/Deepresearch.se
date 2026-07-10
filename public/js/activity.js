@@ -4,7 +4,7 @@
 // object created by turns.js; scrolling is the caller's concern.
 
 import { mapsEmbedKey } from "./settings.js";
-import { addDeckEntries, deckEntries, nearestDeckIndex, openDeck, resetDeck } from "./imagedeck.js";
+import { addDeckEntries, nearestDeckIndex, openDeck, resetDeck } from "./imagedeck.js";
 
 // ---- Street View SDK panorama + current-view (POV) capture ------------------
 //
@@ -350,23 +350,13 @@ export function renderMapEmbed(turn, s) {
         new maps.Polyline({ path, map, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeWeight: 4 });
         if (maps.Marker) {
           path.forEach((p, i) => {
-            // A waypoint that has a deck image nearby gets that image as a
-            // MINIATURE marker; clicking it opens the deck's slideshow at
-            // that image (requested 2026-07-09). Waypoints without imagery
-            // keep the plain numbered pin.
+            // Plain numbered pins. (Waypoints briefly rendered deck-image
+            // MINIATURES here — removed by explicit decision 2026-07-10:
+            // they cluttered the map. Clicking a pin still opens the deck
+            // at that stop's image when one exists.)
+            const m = new maps.Marker({ position: p, map, label: String((i + 1) % 10), title: `Stop ${i + 1}` });
             const deckIdx = nearestDeckIndex(p.lat, p.lng, 30);
-            const thumb = deckIdx >= 0 ? deckEntries()[deckIdx] : null;
-            if (thumb && maps.Size) {
-              const m = new maps.Marker({
-                position: p,
-                map,
-                title: `Stop ${i + 1} — click to view`,
-                icon: { url: thumb.url, scaledSize: new maps.Size(40, 40), anchor: maps.Point ? new maps.Point(20, 20) : undefined },
-              });
-              m.addListener("click", () => openDeck(deckIdx));
-            } else {
-              new maps.Marker({ position: p, map, label: String((i + 1) % 10) });
-            }
+            if (deckIdx >= 0) m.addListener("click", () => openDeck(deckIdx));
           });
         }
         if (maps.LatLngBounds) {

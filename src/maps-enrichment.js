@@ -543,6 +543,19 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
   } else if (embedKeyOk) {
     emit({ status: { type: "map_embed", lat: top.lat, lng: top.lng, zoom: 16 } });
   }
+  // Travel replies ALSO carry the interactive WEB MAP with the waypoints
+  // (requested 2026-07-10 — the static route image alone wasn't it).
+  // Emitted last, so the map is the LIVE view (the arrival panorama above
+  // locks but keeps showing); follow-ups then anchor at the map, which is
+  // centered on the route.
+  if (embedKeyOk && mode === "travel") {
+    const waypoints = [anchor, ...travelPoints.slice(1), dest];
+    const mid = {
+      lat: waypoints.reduce((s2, p) => s2 + p.lat, 0) / waypoints.length,
+      lng: waypoints.reduce((s2, p) => s2 + p.lng, 0) / waypoints.length,
+    };
+    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: waypoints.map((p) => ({ lat: p.lat, lng: p.lng })) } });
+  }
   stepDone(
     "maps",
     `Google Places: ${places.length} result${places.length === 1 ? "" : "s"} near the current position`,
