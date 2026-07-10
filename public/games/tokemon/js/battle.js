@@ -1,6 +1,7 @@
 // The battle overlay: renders the server's battle state, sends one intent
 // per turn, and plays the returned event list back as log lines + HP-bar
-// updates. All rules live server-side — this file only presents.
+// updates. All rules live server-side — this file only presents. The event
+// vocabulary it renders is the BattleEvent typedef in src/tokemon.js.
 
 const TYPE_LABEL = {
   neural: "Neural",
@@ -19,6 +20,15 @@ const HEAL_LABEL = { potion: "Patch (+20)", superpotion: "Hotfix (+50)", revive:
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * @param {HTMLElement} root  Where the overlay element is appended.
+ * @param {{
+ *   onAction: (action: object) => Promise<{events?: object[], battle?: object|null, save?: object}>,
+ *   onEnd?: (result: string, save: object) => void,
+ * }} hooks  onAction posts one battle intent; onEnd fires after the
+ *   overlay closes (won/lost/caught/fled).
+ * @returns {{open: (battle: object, save: object) => void, isOpen: () => boolean}}
+ */
 export function createBattleUI(root, { onAction, onEnd }) {
   let save = null;
   let battle = null;
@@ -182,6 +192,8 @@ export function createBattleUI(root, { onAction, onEnd }) {
     }
   }
 
+  // Send one intent, then play the returned events back sequentially (paced
+  // sleeps, live HP updates on hits) before adopting the new server state.
   async function act(action) {
     if (busy || !battle) return;
     busy = true;

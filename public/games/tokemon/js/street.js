@@ -7,6 +7,15 @@
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
+/**
+ * @param {HTMLElement} container  The #tk-street pane.
+ * @param {{
+ *   onTapSpawn?: (overlay: object) => void,
+ *   onTurn?: (deltaDeg: number) => void,
+ * }} hooks  onTapSpawn gets the tapped server overlay ({id, kind, lat, lng,
+ *   near, …}); onTurn gets ±45° from the turn buttons.
+ * @returns {{render: (scene: object) => void, showLoading: () => void, showMessage: (msg: string) => void}}
+ */
 export function createStreetView(container, { onTapSpawn, onTurn }) {
   container.innerHTML = `
     <div class="tk-sv-stage">
@@ -26,6 +35,7 @@ export function createStreetView(container, { onTapSpawn, onTurn }) {
 
   const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
+  // The pane's self-explaining empty state (loading, no coverage, knob off).
   function showMessage(msg) {
     img.removeAttribute("src");
     img.classList.add("empty");
@@ -35,6 +45,8 @@ export function createStreetView(container, { onTapSpawn, onTurn }) {
     note.hidden = false;
   }
 
+  // Draw one …/scene payload: the frame, the compass line, and the spawn
+  // overlays at the server-projected xPct/yPct/scale.
   function render(scene) {
     if (!scene?.available) {
       showMessage(scene?.message || "Street view is unavailable here.");

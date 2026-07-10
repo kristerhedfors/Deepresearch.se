@@ -1,3 +1,4 @@
+// @ts-check
 // Tokemon navigation — the PURE text-command + geometry side of the game's
 // street-view mode (no I/O, Node-tested):
 //
@@ -17,13 +18,38 @@
 
 import { haversineM } from "./tokemon.js";
 
+/**
+ * A parsed navigation command. `sv` marks Swedish vocabulary so replies can
+ * come back in the command's language. A "look" carries exactly one of
+ * `turn` (relative degrees) or `bearing` (absolute compass direction).
+ * @typedef {{kind: "move", bearing: number, distanceM: number, sv: boolean}} GoMove
+ * @typedef {{kind: "goto", query: string, sv: boolean}} GoGoto
+ * @typedef {{kind: "look", turn: number, bearing?: undefined, sv: boolean}} GoLookTurn
+ * @typedef {{kind: "look", bearing: number, turn?: undefined, sv: boolean}} GoLookBearing
+ * @typedef {GoMove | GoGoto | GoLookTurn | GoLookBearing} GoCommand
+ */
+
+/**
+ * One spawn placed inside a Street View frame (projectSpawns). xPct/yPct are
+ * percentages of the frame; scale multiplies the overlay's base size.
+ * @typedef {{id: string, kind: string, xPct: number, yPct: number, scale: number, distM: number, bearing: number}} SpawnOverlay
+ */
+
 const EARTH_R = 6371000;
+/** @type {(d: number) => number} */
 const toRad = (d) => (d * Math.PI) / 180;
+/** @type {(r: number) => number} */
 const toDeg = (r) => (r * 180) / Math.PI;
 
+/** Wrap any heading into [0, 360). @type {(h: number) => number} */
 export const normalizeHeading = (h) => ((h % 360) + 360) % 360;
 
-// Signed smallest difference a-b in degrees, -180..180.
+/**
+ * Signed smallest difference a-b in degrees, -180..180.
+ * @param {number} a
+ * @param {number} b
+ * @returns {number}
+ */
 export function angleDiff(a, b) {
   let d = (a - b) % 360;
   if (d > 180) d -= 360;
@@ -31,7 +57,14 @@ export function angleDiff(a, b) {
   return d;
 }
 
-// Great-circle destination from (lat,lng) along a bearing for `meters`.
+/**
+ * Great-circle destination from (lat,lng) along a bearing for `meters`.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} bearingDeg
+ * @param {number} meters
+ * @returns {{lat: number, lng: number}}
+ */
 export function destinationPoint(lat, lng, bearingDeg, meters) {
   const δ = meters / EARTH_R;
   const θ = toRad(bearingDeg);
@@ -42,9 +75,17 @@ export function destinationPoint(lat, lng, bearingDeg, meters) {
   return { lat: toDeg(φ2), lng: normalizeLng(toDeg(λ2)) };
 }
 
+/** Wrap any longitude into [-180, 180). @type {(l: number) => number} */
 const normalizeLng = (l) => ((l + 540) % 360) - 180;
 
-// Initial great-circle bearing from point 1 to point 2, 0..360.
+/**
+ * Initial great-circle bearing from point 1 to point 2, 0..360.
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number}
+ */
 export function bearingBetween(lat1, lng1, lat2, lng2) {
   const φ1 = toRad(lat1);
   const φ2 = toRad(lat2);
@@ -62,6 +103,7 @@ export function bearingBetween(lat1, lng1, lat2, lng2) {
 // realistic: torwards→towards-class typos don't change routing here).
 
 // Compass words → bearing. Swedish mirrors English incl. combined forms.
+/** @type {Record<string, number>} */
 const DIRECTIONS = {
   // English
   north: 0, n: 0, northeast: 45, ne: 45, east: 90, e: 90, southeast: 135, se: 135,
@@ -96,6 +138,7 @@ const GOTO_RES = [
 ];
 
 // Relative turns for look/turn commands.
+/** @type {Record<string, number>} */
 const TURNS = {
   // English
   left: -90, right: 90, back: 180, around: 180, behind: 180,
@@ -123,6 +166,7 @@ const SV_TOKENS = new Set([
   // turns & units
   "vänster", "vanster", "höger", "hoger", "bakåt", "bakat", "runt", "meter", "grader",
 ]);
+/** @type {(text: string) => boolean} */
 const isSwedish = (text) => text.split(/[\s,]+/).some((w) => SV_TOKENS.has(w));
 
 // "200 m", "0,5 km", "150 meter/meters/metres"
@@ -131,6 +175,11 @@ const DIST_RE = /(\d+(?:[.,]\d+)?)\s*(km|kilometer|kilometers|kilometre|kilometr
 export const DEFAULT_MOVE_M = 100;
 export const MAX_MOVE_M = 1000;
 
+/**
+ * @param {string} text
+ * @returns {number | null} Meters, clamped to 1..MAX_MOVE_M; null when no
+ *   distance appears in the text.
+ */
 function parseDistance(text) {
   const m = DIST_RE.exec(text);
   if (!m) return null;
@@ -140,6 +189,10 @@ function parseDistance(text) {
   return Math.max(1, Math.min(MAX_MOVE_M, Math.round(meters)));
 }
 
+/**
+ * @param {string} text
+ * @returns {number | null} The first compass word's bearing, or null.
+ */
 function findDirection(text) {
   for (const word of text.split(/[\s,]+/)) {
     if (word in DIRECTIONS) return DIRECTIONS[word];
@@ -147,11 +200,14 @@ function findDirection(text) {
   return null;
 }
 
-// parseGoCommand("gå norrut 200 m") →
-//   {kind:"move", bearing:0, distanceM:200, sv:true}
-//   {kind:"goto", query:"kungsgatan 1", sv:true}
-//   {kind:"look", turn:90}/{kind:"look", bearing:270}
-//   null when the text isn't a navigation command.
+/**
+ * Parse a player navigation command. Examples:
+ *   "gå norrut 200 m"      → {kind:"move", bearing:0, distanceM:200, sv:true}
+ *   "go to Kungsgatan 1"   → {kind:"goto", query:"kungsgatan 1", sv:false}
+ *   "turn right" / "look west" → {kind:"look", turn:90} / {kind:"look", bearing:270}
+ * @param {unknown} input  Raw client text (untrusted).
+ * @returns {GoCommand | null} null when the text isn't a navigation command.
+ */
 export function parseGoCommand(input) {
   const text = String(input || "").trim().toLowerCase().replace(/[!.?]+$/, "");
   if (!text || text.length > 200) return null;
@@ -207,7 +263,18 @@ export function parseGoCommand(input) {
 export const SCENE_FOV = 90;
 export const SCENE_VIEW_DIST_M = 130;
 
+/**
+ * Place spawns inside a Street View frame shot from (camLat,camLng) facing
+ * headingDeg. Off-frame and too-distant spawns are dropped.
+ * @param {number} camLat
+ * @param {number} camLng
+ * @param {number} headingDeg
+ * @param {Array<{id: string, kind: string, lat: number, lng: number}>} spawns
+ * @param {{fov?: number, maxDist?: number}} [opts]
+ * @returns {SpawnOverlay[]} Sorted far-to-near so near overlays paint on top.
+ */
 export function projectSpawns(camLat, camLng, headingDeg, spawns, { fov = SCENE_FOV, maxDist = SCENE_VIEW_DIST_M } = {}) {
+  /** @type {SpawnOverlay[]} */
   const out = [];
   for (const s of spawns) {
     const distM = haversineM(camLat, camLng, s.lat, s.lng);
@@ -231,4 +298,5 @@ export function projectSpawns(camLat, camLng, headingDeg, spawns, { fov = SCENE_
   return out;
 }
 
+/** @type {(v: number, lo: number, hi: number) => number} */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

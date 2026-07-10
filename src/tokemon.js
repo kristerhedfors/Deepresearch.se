@@ -1,3 +1,4 @@
+// @ts-check
 // Tokemon — the open-world AR game's PURE game core (no I/O, Node-tested).
 //
 // Design rule (explicit product decision): DON'T invent game logic. Every
@@ -31,10 +32,150 @@
 // storing spawn state.
 
 // ---------------------------------------------------------------------------
+// Shared shapes. These typedefs are the game's data contract — the API layer
+// (src/tokemon-api.js) imports them via JSDoc import types.
+
+/** A uniform random source, 0 ≤ rng() < 1 (always injected — see seededRng). @typedef {() => number} Rng */
+
+/**
+ * The five Gen 1 stat axes (single Special stat). Doubles as the base-stat
+ * block on a species and the DV/IV block on a creature (DVs are 0–15).
+ * @typedef {{hp: number, atk: number, def: number, spe: number, spc: number}} StatBlock
+ */
+
+/** Computed battle stats at a level (statsFor). @typedef {{maxHp: number, atk: number, def: number, spe: number, spc: number}} Stats */
+
+/**
+ * One move catalog entry — power/accuracy/PP copied from the named Gen 1
+ * original (see MOVES).
+ * @typedef {Object} Move
+ * @property {string} name
+ * @property {string} type    One of TYPES.
+ * @property {number} power
+ * @property {number} acc     Accuracy in percent (Gen 1's /100 form).
+ * @property {number} pp
+ * @property {boolean} [highCrit] Gen 1 high-critical-ratio flag (×8 chance).
+ * @property {number} [priority]  Strikes first regardless of speed (Quick Attack).
+ */
+
+/**
+ * One species catalog entry — stats/rates copied from the documented Gen 1
+ * species named in the entry's comment (see SPECIES).
+ * @typedef {Object} Species
+ * @property {string} name
+ * @property {string[]} types  1–2 of TYPES.
+ * @property {StatBlock} base
+ * @property {number} catchRate  Gen 1 capture-rate byte (3 = legendary, 255 = trivial).
+ * @property {number} baseExp    Gen 1 base-XP yield.
+ * @property {string} [evolvesTo]   Next species id, absent for final forms.
+ * @property {number} [evolveLevel] Level threshold for evolvesTo.
+ * @property {Array<[number, string]>} learnset  [level, moveId] in learn order.
+ * @property {number} spawnWeight  Wild-spawn table weight; 0 = evolution-only.
+ * @property {string} emoji  The map/scene marker.
+ */
+
+/** A known move on a creature with its remaining PP. @typedef {{id: string, pp: number}} MoveSlot */
+
+/**
+ * One owned or wild creature instance.
+ * @typedef {Object} Creature
+ * @property {string} uid      Unique within a save (battle switching, party ops).
+ * @property {string} species  SPECIES key.
+ * @property {number} level
+ * @property {number} xp       Lifetime XP (medium-fast: level³ at each level).
+ * @property {StatBlock} ivs   Gen 1 DVs, rolled once at creation.
+ * @property {number} hp       Current HP (max derives from statsFor).
+ * @property {MoveSlot[]} moves  Up to 4.
+ * @property {number} caughtAt   ms epoch; 0 for wild/foe creatures.
+ */
+
+/**
+ * A deterministic map spawn. The id encodes its own derivation
+ * (`<kind>:<cx>:<cy>:<bucket>:<i>`) so the server can re-derive and validate
+ * it without stored state (spawnById).
+ * @typedef {{id: string, kind: "creature", species: string, level: number, lat: number, lng: number, expiresAt: number, emoji: string, name: string}} CreatureSpawn
+ * @typedef {{id: string, kind: "item", item: string, count: number, lat: number, lng: number, expiresAt: number, emoji: string}} ItemSpawn
+ * @typedef {{id: string, kind: "villain", villain: string, tier: number, lat: number, lng: number, expiresAt: number, emoji: string}} VillainSpawn
+ * @typedef {CreatureSpawn | ItemSpawn | VillainSpawn} Spawn
+ */
+
+/** Per-species dex tally. @typedef {{seen: number, caught: number}} DexEntry */
+
+/**
+ * An in-progress battle, stored inside the save so a reload resumes it.
+ * @typedef {{kind: "wild", spawnId: string, foes: Creature[], foeIdx: number, activeUid: string | null, runAttempts: number, startedAt: number}} WildBattle
+ * @typedef {{kind: "villain", spawnId: string, villain: string, tier: number, foes: Creature[], foeIdx: number, activeUid: string | null, runAttempts: number, startedAt: number}} VillainBattle
+ * @typedef {WildBattle | VillainBattle} Battle
+ */
+
+/**
+ * The whole per-user save (one D1 JSON row — see src/tokemon-api.js).
+ * @typedef {Object} Save
+ * @property {number} v  Save-format version.
+ * @property {string | null} starter  Chosen starter species id, null until picked.
+ * @property {Record<string, number>} items  Ball/heal counts by item id.
+ * @property {Creature[]} party  Up to PARTY_MAX.
+ * @property {Creature[]} box    Overflow storage.
+ * @property {Record<string, DexEntry>} dex
+ * @property {Record<string, number>} usedSpawns  Spawn id → expiry ms (pruned on load).
+ * @property {Battle | null} battle
+ * @property {{caught: number, battlesWon: number, battlesLost: number, villainsBeaten: number, itemsCollected: number}} stats
+ * @property {number} lastHealAt
+ * @property {number} createdAt
+ * @property {number} updatedAt
+ */
+
+/** Which side acted. @typedef {"player" | "foe"} Actor */
+
+/** The client-visible foe view (publicFoe — no IVs/moves leaked). @typedef {{species: string, name: string, emoji: string, types: string[], level: number, hp: number, maxHp: number, idx: number, count: number}} PublicFoe */
+
+/**
+ * One entry of the ordered event list a battle turn returns — the wire
+ * vocabulary the client (public/games/tokemon/js/battle.js) plays back.
+ * @typedef {(
+ *   {t: "miss", who: Actor, move: string} |
+ *   {t: "immune", who: Actor, move: string} |
+ *   {t: "hit", who: Actor, move: string, dmg: number, mult: number, crit: boolean, defenderHp: number} |
+ *   {t: "faint", who: Actor} |
+ *   {t: "xp", uid: string, gained: number} |
+ *   {t: "levelup", uid: string, level: number} |
+ *   {t: "forgot", uid: string, move: string} |
+ *   {t: "learned", uid: string, move: string} |
+ *   {t: "evolved", uid: string, from: string, to: string} |
+ *   {t: "switched", uid: string, forced: boolean} |
+ *   {t: "foe_next", foe: PublicFoe | null} |
+ *   {t: "reward", reward: Record<string, number>} |
+ *   {t: "caught", species: string, level: number, where: "party" | "box", uid: string} |
+ *   {t: "broke_free", ball: string} |
+ *   {t: "escaped"} |
+ *   {t: "escape_failed"} |
+ *   {t: "item_used", item: string, uid: string, hp: number} |
+ *   {t: "end", result: BattleResult}
+ * )} BattleEvent
+ */
+
+/** How a battle ended. @typedef {"won" | "lost" | "caught" | "fled"} BattleResult */
+
+/**
+ * One player intent per turn (applyBattleAction).
+ * @typedef {(
+ *   {type: "move", move: string} |
+ *   {type: "switch", uid: string} |
+ *   {type: "item", item: string, uid?: string} |
+ *   {type: "catch", ball: string} |
+ *   {type: "run"}
+ * )} BattleAction
+ */
+
+// ---------------------------------------------------------------------------
 // Seeded RNG — everything randomized takes an rng() (0 ≤ r < 1) so battles
 // are replayable in tests and spawns are deterministic per cell/bucket.
 
-// FNV-1a 32-bit string hash → seed.
+/**
+ * FNV-1a 32-bit string hash → seed.
+ * @param {string} str
+ * @returns {number}
+ */
 export function hashSeed(str) {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
@@ -44,7 +185,11 @@ export function hashSeed(str) {
   return h >>> 0;
 }
 
-// mulberry32 — tiny, good-enough PRNG.
+/**
+ * mulberry32 — tiny, good-enough PRNG.
+ * @param {number} seed
+ * @returns {Rng}
+ */
 export function seededRng(seed) {
   let a = seed >>> 0;
   return function () {
@@ -55,6 +200,7 @@ export function seededRng(seed) {
   };
 }
 
+/** Uniform integer 0..maxInclusive. @type {(rng: Rng, maxInclusive: number) => number} */
 const randInt = (rng, maxInclusive) => Math.floor(rng() * (maxInclusive + 1));
 
 // ---------------------------------------------------------------------------
@@ -69,6 +215,7 @@ const PHYSICAL_TYPES = new Set(["neural", "adversarial"]);
 
 // CHART[attacking][defending] — only non-1 entries listed. Values are the
 // official ones (Gen 2+ chart, which fixes Ghost-vs-Psychic).
+/** @type {Record<string, Record<string, number>>} */
 const CHART = {
   neural: { phantom: 0 },
   compute: { compute: 0.5, data: 0.5, code: 2 },
@@ -80,6 +227,12 @@ const CHART = {
   phantom: { logic: 2, phantom: 2, neural: 0 },
 };
 
+/**
+ * Combined type effectiveness of a move against a defender's type(s).
+ * @param {string} moveType
+ * @param {string[]} defenderTypes
+ * @returns {number} 0 (immune) … 4 (double weakness).
+ */
 export function typeMultiplier(moveType, defenderTypes) {
   let m = 1;
   for (const t of defenderTypes) {
@@ -94,6 +247,7 @@ export function typeMultiplier(moveType, defenderTypes) {
 // `highCrit` = Gen 1's high-critical-ratio flag; `priority` = strikes first
 // regardless of speed (Quick Attack). Side effects of the originals
 // (paralysis chance, recoil, recharge/charge turns) are dropped.
+/** @type {Record<string, Move>} */
 export const MOVES = {
   bit_bump: { name: "Bit Bump", type: "neural", power: 35, acc: 95, pp: 35 }, // Tackle
   cache_hit: { name: "Cache Hit", type: "neural", power: 40, acc: 100, pp: 30, priority: 1 }, // Quick Attack
@@ -128,6 +282,7 @@ export const MOVES = {
 // are copied unchanged (the mapping is the comment). `learnset` is
 // [level, moveId] in learn order; `spawnWeight` drives the wild-spawn table
 // (0 = never spawns wild — reached by evolution); `emoji` is the map marker.
+/** @type {Record<string, Species>} */
 export const SPECIES = {
   // Starters (Bulbasaur / Charmander / Squirtle lines)
   promptle: { name: "Promptle", types: ["code"], base: { hp: 45, atk: 49, def: 49, spe: 45, spc: 65 }, catchRate: 45, baseExp: 64, evolvesTo: "promptoid", evolveLevel: 16, learnset: [[1, "bit_bump"], [7, "regex_whip"], [13, "razor_branch"], [30, "compile_beam"]], spawnWeight: 4, emoji: "🌱" },
@@ -168,12 +323,14 @@ export const SPECIES = {
 export const STARTERS = ["promptle", "cindron", "streamlet"];
 
 // Balls: Gen 1's capture parameters — [random ceiling, HP-factor divisor].
+/** @type {Record<string, {name: string, ceiling: number, factor: number}>} */
 export const BALLS = {
   tokeball: { name: "Tokeball", ceiling: 255, factor: 12 }, // Poké Ball
   megaball: { name: "Megaball", ceiling: 200, factor: 8 }, // Great Ball
   hyperball: { name: "Hyperball", ceiling: 150, factor: 12 }, // Ultra Ball
 };
 
+/** @type {Record<string, {name: string, heal?: number, revive?: boolean}>} */
 export const HEAL_ITEMS = {
   potion: { name: "Patch", heal: 20 }, // Potion
   superpotion: { name: "Hotfix", heal: 50 }, // Super Potion
@@ -183,8 +340,16 @@ export const HEAL_ITEMS = {
 // ---------------------------------------------------------------------------
 // Stats & XP — Gen 1 formulas, DVs 0–15, no EVs.
 
+/**
+ * Gen 1 stat formula at a level for a given DV set.
+ * @param {string} speciesId
+ * @param {number} level
+ * @param {StatBlock} ivs
+ * @returns {Stats}
+ */
 export function statsFor(speciesId, level, ivs) {
   const s = SPECIES[speciesId];
+  /** @type {(base: number, iv: number) => number} */
   const stat = (base, iv) => Math.floor(((base + iv) * 2 * level) / 100) + 5;
   return {
     maxHp: Math.floor(((s.base.hp + ivs.hp) * 2 * level) / 100) + level + 10,
@@ -196,7 +361,12 @@ export function statsFor(speciesId, level, ivs) {
 }
 
 // Medium-fast growth: total XP to BE level L is L³.
+/** @type {(level: number) => number} */
 export const xpForLevel = (level) => level ** 3;
+/**
+ * @param {number} xp
+ * @returns {number} The level this XP total puts a creature at (1–100).
+ */
 export function levelFromXp(xp) {
   let l = 1;
   while (xpForLevel(l + 1) <= xp && l < 100) l++;
@@ -204,11 +374,17 @@ export function levelFromXp(xp) {
 }
 
 // Gen 1 wild-battle XP yield (no trade/traded factor).
+/** @type {(speciesId: string, foeLevel: number) => number} */
 export const xpGain = (speciesId, foeLevel) => Math.max(1, Math.floor((SPECIES[speciesId].baseExp * foeLevel) / 7));
 
 // ---------------------------------------------------------------------------
 // Creatures
 
+/**
+ * Roll a fresh Gen 1 DV set (each stat uniform 0–15).
+ * @param {Rng} rng
+ * @returns {StatBlock}
+ */
 export function rollIvs(rng) {
   return {
     hp: randInt(rng, 15),
@@ -219,12 +395,26 @@ export function rollIvs(rng) {
   };
 }
 
-// The up-to-4 newest learnset moves at this level, oldest first.
+/**
+ * The up-to-4 newest learnset moves at this level, oldest first.
+ * @param {string} speciesId
+ * @param {number} level
+ * @returns {MoveSlot[]}
+ */
 export function movesAtLevel(speciesId, level) {
   const learned = SPECIES[speciesId].learnset.filter(([l]) => l <= level).map(([, id]) => id);
   return learned.slice(-4).map((id) => ({ id, pp: MOVES[id].pp }));
 }
 
+/**
+ * Build a fresh creature at a level: rolled DVs, full HP, level-appropriate
+ * moves.
+ * @param {string} speciesId
+ * @param {number} level
+ * @param {Rng} rng
+ * @param {string} [uid] Explicit uid; derived from the rng when omitted.
+ * @returns {Creature}
+ */
 export function makeCreature(speciesId, level, rng, uid) {
   const ivs = rollIvs(rng);
   const { maxHp } = statsFor(speciesId, level, ivs);
@@ -243,13 +433,27 @@ export function makeCreature(speciesId, level, rng, uid) {
 // ---------------------------------------------------------------------------
 // Damage — the Gen 1 formula with its truncation order.
 
+/**
+ * Gen 1 critical-hit chance: baseSpeed/512 (×8 for high-crit moves), as a
+ * 0–1 probability.
+ * @param {string} speciesId
+ * @param {boolean} highCrit
+ * @returns {number}
+ */
 export function critChance(speciesId, highCrit) {
   const base = SPECIES[speciesId].base.spe;
   return Math.min(255, Math.floor((base * (highCrit ? 8 : 1)) / 2)) / 256;
 }
 
-// Returns {dmg, mult, crit, stab}; dmg 0 means the move can't affect the
-// target (type immunity).
+/**
+ * The full Gen 1 damage pipeline for one move use. dmg 0 means the move
+ * can't affect the target (type immunity).
+ * @param {Creature} attacker
+ * @param {Creature} defender
+ * @param {string} moveId
+ * @param {Rng} rng
+ * @returns {{dmg: number, mult: number, crit: boolean, stab: boolean}}
+ */
 export function computeDamage(attacker, defender, moveId, rng) {
   const move = MOVES[moveId];
   const aSpec = SPECIES[attacker.species];
@@ -280,6 +484,15 @@ export function computeDamage(attacker, defender, moveId, rng) {
 // Catching — the Gen 1 capture algorithm (no status conditions here, so the
 // status term is 0).
 
+/**
+ * One Gen 1 capture attempt.
+ * @param {string} speciesId
+ * @param {number} curHp
+ * @param {number} maxHp
+ * @param {string} ballId  BALLS key.
+ * @param {Rng} rng
+ * @returns {boolean} True when the creature is caught.
+ */
 export function catchCheck(speciesId, curHp, maxHp, ballId, rng) {
   const ball = BALLS[ballId];
   const r1 = randInt(rng, ball.ceiling);
@@ -288,7 +501,14 @@ export function catchCheck(speciesId, curHp, maxHp, ballId, rng) {
   return randInt(rng, 255) <= f;
 }
 
-// Gen 1 escape formula. attempts starts at 1.
+/**
+ * Gen 1 escape formula. attempts starts at 1.
+ * @param {number} mySpe
+ * @param {number} foeSpe
+ * @param {number} attempts
+ * @param {Rng} rng
+ * @returns {boolean} True when the flee succeeds.
+ */
 export function escapeCheck(mySpe, foeSpe, attempts, rng) {
   const b = Math.floor(foeSpe / 4) % 256;
   if (b === 0) return true;
@@ -306,6 +526,8 @@ export const SPAWN_BUCKET_MS = 15 * 60 * 1000;
 export const VILLAIN_BUCKET_MS = 2 * 60 * 60 * 1000;
 export const ENCOUNTER_RADIUS_M = 80;
 
+// Item-cache table: [item id, count, weight].
+/** @type {Array<[string, number, number]>} */
 const ITEM_DROPS = [
   ["tokeball", 3, 40],
   ["tokeball", 5, 15],
@@ -318,7 +540,13 @@ const ITEM_DROPS = [
 
 export const VILLAINS = ["Bit Rot", "Sir Overfit", "Null Pointer", "The Hallucinator", "Captain Dropout", "Prompt Injector", "Baron von Bug", "Glitchlord"];
 
-function weightedPick(rng, entries /* [value, weight][] */) {
+/**
+ * @template T
+ * @param {Rng} rng
+ * @param {Array<[T, number]>} entries  [value, weight] pairs.
+ * @returns {T}
+ */
+function weightedPick(rng, entries) {
   const total = entries.reduce((s, [, w]) => s + w, 0);
   let r = rng() * total;
   for (const [v, w] of entries) {
@@ -328,35 +556,62 @@ function weightedPick(rng, entries /* [value, weight][] */) {
   return entries[entries.length - 1][0];
 }
 
+/** @type {Array<[string, number]>} */
 const SPAWN_TABLE = Object.entries(SPECIES)
   .filter(([, s]) => s.spawnWeight > 0)
   .map(([id, s]) => [id, s.spawnWeight]);
 
+/**
+ * The geocell a coordinate falls in (integer cell indices).
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {{cx: number, cy: number}}
+ */
 export function cellOf(lat, lng) {
   return { cx: Math.floor(lat / CELL_DEG), cy: Math.floor(lng / CELL_DEG) };
 }
 
 // Wild levels scale with the player's strongest creature (Pokémon GO's
 // trainer-level scaling, the existing precedent) via `levelCap`.
+/** @type {(roll: number, levelCap: number) => number} */
 function wildLevel(roll, levelCap) {
   return Math.max(2, 2 + Math.floor(roll * (levelCap - 2)));
 }
 
-// Promote a species along its evolution chain to match its level, so a
-// level-40 spawn is the evolved form, exactly as leveling would have made it.
+/**
+ * Promote a species along its evolution chain to match its level, so a
+ * level-40 spawn is the evolved form, exactly as leveling would have made it.
+ * @param {string} speciesId
+ * @param {number} level
+ * @returns {string}
+ */
 export function promoteForLevel(speciesId, level) {
   let id = speciesId;
-  while (SPECIES[id].evolvesTo && level >= SPECIES[id].evolveLevel) id = SPECIES[id].evolvesTo;
+  let s = SPECIES[id];
+  while (s.evolvesTo && s.evolveLevel !== undefined && level >= s.evolveLevel) {
+    id = s.evolvesTo;
+    s = SPECIES[id];
+  }
   return id;
 }
 
-// All spawns for one cell in one bucket — deterministic. Kinds: creature,
-// item, villain. Positions are uniform within the cell.
+/**
+ * All spawns for one cell in one bucket — deterministic (same inputs, same
+ * spawns, on every client and the server). Positions are uniform within the
+ * cell.
+ * @param {number} cx
+ * @param {number} cy
+ * @param {number} now  ms epoch (selects the time bucket).
+ * @param {number} levelCap  levelCapFor(save) — wild levels are per-player.
+ * @returns {Spawn[]}
+ */
 export function cellSpawns(cx, cy, now, levelCap) {
+  /** @type {Spawn[]} */
   const out = [];
   const bucket = Math.floor(now / SPAWN_BUCKET_MS);
   const rng = seededRng(hashSeed(`tokemon:${cx}:${cy}:${bucket}`));
   const expiresAt = (bucket + 1) * SPAWN_BUCKET_MS;
+  /** @type {(r1: number, r2: number) => {lat: number, lng: number}} */
   const pos = (r1, r2) => ({ lat: (cx + r1) * CELL_DEG, lng: (cy + r2) * CELL_DEG });
   // 0–2 creatures per cell per bucket (55% none, 35% one, 10% two).
   const roll = rng();
@@ -387,9 +642,18 @@ export function cellSpawns(cx, cy, now, levelCap) {
   return out;
 }
 
-// All spawns within `cells` cells of (lat,lng) — the client's visible set.
+/**
+ * All spawns within `cells` cells of (lat,lng) — the client's visible set.
+ * @param {number} lat
+ * @param {number} lng
+ * @param {number} now
+ * @param {number} levelCap
+ * @param {number} [cells]
+ * @returns {Spawn[]}
+ */
 export function spawnsAround(lat, lng, now, levelCap, cells = 2) {
   const { cx, cy } = cellOf(lat, lng);
+  /** @type {Spawn[]} */
   const out = [];
   for (let dx = -cells; dx <= cells; dx++) {
     for (let dy = -cells; dy <= cells; dy++) {
@@ -399,8 +663,14 @@ export function spawnsAround(lat, lng, now, levelCap, cells = 2) {
   return out;
 }
 
-// Re-derive one spawn from its id (server-side validation: the client can
-// only encounter what the deterministic generator actually placed there).
+/**
+ * Re-derive one spawn from its id (server-side validation: the client can
+ * only encounter what the deterministic generator actually placed there).
+ * @param {string | undefined} id
+ * @param {number} now
+ * @param {number} levelCap  Must be the SAME save's cap the spawn was listed with.
+ * @returns {Spawn | null}
+ */
 export function spawnById(id, now, levelCap) {
   const m = /^([civ]):(-?\d+):(-?\d+):(\d+):(\d+)$/.exec(id || "");
   if (!m) return null;
@@ -408,8 +678,17 @@ export function spawnById(id, now, levelCap) {
   return cellSpawns(Number(cxs), Number(cys), now, levelCap).find((s) => s.id === id) || null;
 }
 
+/**
+ * Great-circle distance in meters.
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns {number}
+ */
 export function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
+  /** @type {(d: number) => number} */
   const toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLng = toRad(lng2 - lng1);
@@ -423,6 +702,11 @@ export function haversineM(lat1, lng1, lat2, lng2) {
 export const PARTY_MAX = 6;
 export const HEAL_COOLDOWN_MS = 10 * 60 * 1000;
 
+/**
+ * A brand-new save with the starting item kit.
+ * @param {number} now
+ * @returns {Save}
+ */
 export function newSave(now) {
   return {
     v: 1,
@@ -440,8 +724,14 @@ export function newSave(now) {
   };
 }
 
-// Tolerant re-hydration of a stored save; anything unreadable → fresh save.
+/**
+ * Tolerant re-hydration of a stored save; anything unreadable → fresh save.
+ * @param {unknown} json  The stored JSON string (or already-parsed object).
+ * @param {number} now
+ * @returns {Save}
+ */
 export function normalizeSave(json, now) {
+  /** @type {any} */
   let raw = null;
   try {
     raw = typeof json === "string" ? JSON.parse(json) : json;
@@ -450,6 +740,7 @@ export function normalizeSave(json, now) {
   }
   if (!raw || typeof raw !== "object") return newSave(now);
   const fresh = newSave(now);
+  /** @type {Save} */
   const save = {
     ...fresh,
     ...raw,
@@ -468,29 +759,50 @@ export function normalizeSave(json, now) {
   return save;
 }
 
+/**
+ * @param {Save} save
+ * @returns {number} The strongest party member's level (0 with no party).
+ */
 export function maxPartyLevel(save) {
   return save.party.reduce((m, c) => Math.max(m, c.level), 0);
 }
 
-// The wild-level cap for this save: a bit above the strongest party member,
-// floored for new players, capped at 55 (legendaries excepted server-side).
+/**
+ * The wild-level cap for this save: a bit above the strongest party member,
+ * floored for new players, capped at 55 (legendaries excepted server-side).
+ * @param {Save} save
+ * @returns {number}
+ */
 export function levelCapFor(save) {
   return Math.max(6, Math.min(55, maxPartyLevel(save) + 3));
 }
 
+/**
+ * @param {Save} save
+ * @param {string} speciesId
+ */
 export function markDexSeen(save, speciesId) {
   const d = save.dex[speciesId] || { seen: 0, caught: 0 };
   d.seen++;
   save.dex[speciesId] = d;
 }
 
+/**
+ * @param {Save} save
+ * @param {string} speciesId
+ */
 export function markDexCaught(save, speciesId) {
   const d = save.dex[speciesId] || { seen: 0, caught: 0 };
   d.caught++;
   save.dex[speciesId] = d;
 }
 
-// Add to party if there's room, else box.
+/**
+ * Add to party if there's room, else box.
+ * @param {Save} save
+ * @param {Creature} creature
+ * @returns {"party" | "box"} Where it went.
+ */
 export function addCreature(save, creature) {
   if (save.party.length < PARTY_MAX) {
     save.party.push(creature);
@@ -505,6 +817,14 @@ export function addCreature(save, creature) {
 // each player action resolves one full turn and returns an ordered event
 // list the client renders.
 
+/**
+ * Start a wild battle from a creature spawn. Marks the species seen.
+ * @param {Save} save
+ * @param {CreatureSpawn} spawn
+ * @param {Rng} rng
+ * @param {number} now
+ * @returns {WildBattle}
+ */
 export function newWildBattle(save, spawn, rng, now) {
   const foe = makeCreature(spawn.species, spawn.level, rng);
   foe.hp = statsFor(foe.species, foe.level, foe.ivs).maxHp;
@@ -520,10 +840,19 @@ export function newWildBattle(save, spawn, rng, now) {
   };
 }
 
-// A villain's team is generated at encounter time, scaled to the player's
-// strongest creature (trainer battles scale — the Pokémon GO precedent).
+/**
+ * Start a villain battle. The villain's team is generated at encounter time,
+ * scaled to the player's strongest creature (trainer battles scale — the
+ * Pokémon GO precedent).
+ * @param {Save} save
+ * @param {VillainSpawn} spawn
+ * @param {Rng} rng
+ * @param {number} now
+ * @returns {VillainBattle}
+ */
 export function newVillainBattle(save, spawn, rng, now) {
   const base = Math.max(5, maxPartyLevel(save));
+  /** @type {Creature[]} */
   const foes = [];
   for (let i = 0; i < spawn.tier; i++) {
     const level = Math.max(3, base - 2 + randInt(rng, 4));
@@ -544,21 +873,37 @@ export function newVillainBattle(save, spawn, rng, now) {
   };
 }
 
+/**
+ * @param {Save} save
+ * @returns {string | null} The first party member able to battle.
+ */
 function firstAbleUid(save) {
   const c = save.party.find((p) => p.hp > 0);
   return c ? c.uid : null;
 }
 
+/**
+ * @param {Save} save
+ * @param {string | null | undefined} uid
+ * @returns {Creature | null}
+ */
 export function partyMember(save, uid) {
   return save.party.find((c) => c.uid === uid) || null;
 }
 
+/** @type {(battle: Battle) => Creature} */
 function currentFoe(battle) {
   return battle.foes[battle.foeIdx];
 }
 
-// Villain reward table by tier — balls and heals, richer per tier.
+/**
+ * Villain reward table by tier — balls and heals, richer per tier.
+ * @param {number} tier
+ * @param {Rng} rng
+ * @returns {Record<string, number>} Item id → count.
+ */
 export function villainReward(tier, rng) {
+  /** @type {Record<string, number>} */
   const reward = { tokeball: 2 + tier, potion: tier };
   if (tier >= 2) reward.megaball = tier - 1;
   if (tier >= 3) {
@@ -568,7 +913,16 @@ export function villainReward(tier, rng) {
   return reward;
 }
 
-// One attack: attacker uses moveId against defender. Emits events; mutates hp/pp.
+/**
+ * One attack: attacker uses moveId against defender. Emits events; mutates
+ * hp/pp.
+ * @param {Creature} attacker
+ * @param {Creature} defender
+ * @param {string} moveId
+ * @param {Actor} who
+ * @param {BattleEvent[]} events
+ * @param {Rng} rng
+ */
 function performMove(attacker, defender, moveId, who, events, rng) {
   const move = MOVES[moveId];
   const slot = attacker.moves.find((m) => m.id === moveId);
@@ -587,19 +941,31 @@ function performMove(attacker, defender, moveId, who, events, rng) {
   if (defender.hp === 0) events.push({ t: "faint", who: who === "player" ? "foe" : "player" });
 }
 
-// Gen 1 wild AI: uniform random move with PP left.
+/**
+ * Gen 1 wild AI: uniform random move with PP left.
+ * @param {Creature} foe
+ * @param {Rng} rng
+ * @returns {string}
+ */
 function foeMoveId(foe, rng) {
   const usable = foe.moves.filter((m) => m.pp > 0);
   const pool = usable.length ? usable : foe.moves; // Struggle stand-in: never truly stuck
   return pool[Math.floor(rng() * pool.length)].id;
 }
 
+/** @type {(creature: Creature) => number} */
 function effectiveSpe(creature) {
   return statsFor(creature.species, creature.level, creature.ivs).spe;
 }
 
-// Award XP to the player's active creature; handle level-ups, move learning,
-// evolution. Emits events.
+/**
+ * Award XP to the player's active creature; handle level-ups, move learning,
+ * evolution. Emits events.
+ * @param {Save} save
+ * @param {Creature} creature
+ * @param {Creature} foe
+ * @param {BattleEvent[]} events
+ */
 export function awardXp(save, creature, foe, events) {
   const gained = xpGain(foe.species, foe.level);
   creature.xp += gained;
@@ -618,7 +984,7 @@ export function awardXp(save, creature, foe, events) {
     for (const [lvl, moveId] of SPECIES[creature.species].learnset) {
       if (lvl === creature.level && !creature.moves.some((m) => m.id === moveId)) {
         if (creature.moves.length >= 4) {
-          const dropped = creature.moves.shift();
+          const dropped = /** @type {MoveSlot} */ (creature.moves.shift());
           events.push({ t: "forgot", uid: creature.uid, move: dropped.id });
         }
         creature.moves.push({ id: moveId, pp: MOVES[moveId].pp });
@@ -627,7 +993,7 @@ export function awardXp(save, creature, foe, events) {
     }
     // Evolution at threshold.
     const spec = SPECIES[creature.species];
-    if (spec.evolvesTo && creature.level >= spec.evolveLevel) {
+    if (spec.evolvesTo && spec.evolveLevel !== undefined && creature.level >= spec.evolveLevel) {
       const from = creature.species;
       const hpFrac = creature.hp / statsFor(creature.species, creature.level, creature.ivs).maxHp;
       creature.species = spec.evolvesTo;
@@ -639,13 +1005,25 @@ export function awardXp(save, creature, foe, events) {
   }
 }
 
+/**
+ * Close the battle: consume the spawn (24 h), clear save.battle, emit "end".
+ * @param {Save} save
+ * @param {BattleEvent[]} events
+ * @param {BattleResult} result
+ */
 function endBattle(save, events, result) {
   if (save.battle?.spawnId) save.usedSpawns[save.battle.spawnId] = (save.battle.startedAt || 0) + 24 * 60 * 60 * 1000;
   save.battle = null;
   events.push({ t: "end", result });
 }
 
-// Foe (and only the foe) acts — used after non-move player actions.
+/**
+ * Foe (and only the foe) acts — used after non-move player actions.
+ * @param {Save} save
+ * @param {Battle} battle
+ * @param {BattleEvent[]} events
+ * @param {Rng} rng
+ */
 function foeTurn(save, battle, events, rng) {
   const player = partyMember(save, battle.activeUid);
   const foe = currentFoe(battle);
@@ -654,6 +1032,12 @@ function foeTurn(save, battle, events, rng) {
   if (player.hp === 0) handlePlayerFaint(save, battle, events);
 }
 
+/**
+ * Force-switch to the next able creature, or lose the battle.
+ * @param {Save} save
+ * @param {Battle} battle
+ * @param {BattleEvent[]} events
+ */
 function handlePlayerFaint(save, battle, events) {
   const next = save.party.find((c) => c.hp > 0);
   if (next) {
@@ -665,6 +1049,13 @@ function handlePlayerFaint(save, battle, events) {
   }
 }
 
+/**
+ * XP for the KO, then the villain's next foe or victory (+ villain reward).
+ * @param {Save} save
+ * @param {Battle} battle
+ * @param {BattleEvent[]} events
+ * @param {Rng} rng
+ */
 function handleFoeFaint(save, battle, events, rng) {
   const player = partyMember(save, battle.activeUid);
   const foe = currentFoe(battle);
@@ -684,7 +1075,11 @@ function handleFoeFaint(save, battle, events, rng) {
   endBattle(save, events, "won");
 }
 
-// The client-visible view of the current foe (no IVs/moves leaked).
+/**
+ * The client-visible view of the current foe (no IVs/moves leaked).
+ * @param {Battle} battle
+ * @returns {PublicFoe | null}
+ */
 export function publicFoe(battle) {
   const foe = currentFoe(battle);
   if (!foe) return null;
@@ -702,11 +1097,19 @@ export function publicFoe(battle) {
   };
 }
 
-// Resolve ONE player action. Returns {events, error?}; mutates save.
-// Actions: {type:"move", move} | {type:"switch", uid} | {type:"item", item, uid?}
-//        | {type:"catch", ball} | {type:"run"}
+/**
+ * Resolve ONE player action (a full turn — the foe replies where the rules
+ * say so). Mutates save; the caller persists it.
+ * @param {Save} save
+ * @param {BattleAction | null | undefined} action  Client intent, not yet trusted.
+ * @param {Rng} rng
+ * @param {number} now
+ * @returns {{events: BattleEvent[], error?: string}} An ordered event list
+ *   for the client to play back; `error` means nothing happened.
+ */
 export function applyBattleAction(save, action, rng, now) {
   const battle = save.battle;
+  /** @type {BattleEvent[]} */
   const events = [];
   if (!battle) return { events, error: "No active battle." };
   const player = partyMember(save, battle.activeUid);
@@ -729,6 +1132,7 @@ export function applyBattleAction(save, action, rng, now) {
           : effectiveSpe(player) !== effectiveSpe(foe)
             ? effectiveSpe(player) > effectiveSpe(foe)
             : rng() < 0.5;
+      /** @type {Array<[Creature, Creature, string, Actor]>} */
       const order = playerFirst
         ? [[player, foe, action.move, "player"], [foe, player, foeMove, "foe"]]
         : [[foe, player, foeMove, "foe"], [player, foe, action.move, "player"]];
@@ -750,6 +1154,8 @@ export function applyBattleAction(save, action, rng, now) {
       return { events };
     }
     case "item": {
+      // Mirrored by useHealItemOutOfBattle in src/tokemon-api.js — the
+      // checks and messages must stay in sync.
       const item = HEAL_ITEMS[action.item];
       if (!item) return { events, error: "Unknown item." };
       if (!save.items[action.item]) return { events, error: "None left." };
@@ -762,7 +1168,7 @@ export function applyBattleAction(save, action, rng, now) {
       } else {
         if (target.hp <= 0) return { events, error: "It has fainted — use a Reboot." };
         if (target.hp >= maxHp) return { events, error: "Already at full health." };
-        target.hp = Math.min(maxHp, target.hp + item.heal);
+        target.hp = Math.min(maxHp, target.hp + (item.heal || 0));
       }
       save.items[action.item]--;
       events.push({ t: "item_used", item: action.item, uid: target.uid, hp: target.hp });

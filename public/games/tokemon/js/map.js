@@ -6,6 +6,7 @@
 
 const TILE = 256;
 
+// Web Mercator world-pixel projections at zoom z (and their inverses).
 export const lngToX = (lng, z) => ((lng + 180) / 360) * TILE * 2 ** z;
 export const latToY = (lat, z) => {
   const r = (lat * Math.PI) / 180;
@@ -17,8 +18,17 @@ export const yToLat = (y, z) => {
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 };
 
-// createMap(container, {zoom, onTap}) → {setCenter, getCenter, setMarkers, destroy}
-// Markers: [{id, lat, lng, html, cls, onClick}] — diffed by id.
+/**
+ * @param {HTMLElement} container  Fills this element; pointer events are
+ *   claimed for drag-to-pan and tap-to-walk.
+ * @param {{zoom?: number, onTap?: (ll: {lat: number, lng: number}) => void}} [opts]
+ * @returns {{
+ *   setCenter: (lat: number, lng: number) => void,
+ *   getCenter: () => {lat: number, lng: number},
+ *   setMarkers: (list: Array<{id: string, lat: number, lng: number, html: string, cls?: string, onClick?: (m: object) => void}>) => void,
+ *   destroy: () => void,
+ * }} Markers are diffed by id, so callers re-send the full list each render.
+ */
 export function createMap(container, { zoom = 17, onTap } = {}) {
   const world = document.createElement("div"); // shared coordinate space
   world.className = "tk-world";

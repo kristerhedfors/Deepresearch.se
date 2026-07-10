@@ -13,14 +13,16 @@ const WALK_SPEED = 4; // m/s — brisk tap-to-walk so desktop play isn't a slog
 const SPAWN_POLL_MS = 30_000;
 const DEFAULT_POS = { lat: 59.3326, lng: 18.0649 }; // Sergels torg, Stockholm
 
+/** Escape text for interpolation into innerHTML. @type {(s: unknown) => string} */
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-let save = null;
-let pos = { ...DEFAULT_POS };
-let walkTarget = null;
-let gpsWatch = null;
-let spawns = [];
-let encounterRadius = 80;
+// ---- Game state (server-owned save + local presentation state) ----
+let save = null; // the server's publicSave payload — refreshed by every mutating call
+let pos = { ...DEFAULT_POS }; // the player's position (GPS, tap-walk, or text command)
+let walkTarget = null; // {lat, lng} the tap-to-walk animation is heading for
+let gpsWatch = null; // geolocation watch id while GPS follow is on
+let spawns = []; // last /spawns payload, minus locally consumed ones
+let encounterRadius = 80; // server-confirmed tappable radius (m)
 let lastSpawnFetch = { t: 0, lat: 0, lng: 0 };
 let map = null;
 let battleUI = null;
@@ -37,6 +39,11 @@ let lastScene = null; // {lat, lng, heading}
 
 const $ = (id) => document.getElementById(id);
 
+/**
+ * Transient status line at the bottom of the screen.
+ * @param {string} msg
+ * @param {number} [ms]
+ */
 function toast(msg, ms = 2600) {
   const t = $("tk-toast");
   t.textContent = msg;
@@ -45,6 +52,7 @@ function toast(msg, ms = 2600) {
   toast._h = setTimeout(() => (t.hidden = true), ms);
 }
 
+/** Great-circle distance in meters (mirrors src/tokemon.js haversineM). */
 function haversineM(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -57,6 +65,7 @@ function haversineM(lat1, lng1, lat2, lng2) {
 // ---------------------------------------------------------------------------
 // Movement
 
+/** Move the player: recenter (when following), redraw, maybe re-poll spawns. */
 function setPos(lat, lng) {
   pos = { lat, lng };
   if (follow) map.setCenter(lat, lng);
@@ -64,6 +73,7 @@ function setPos(lat, lng) {
   maybeFetchSpawns();
 }
 
+/** rAF loop: advance the tap-to-walk animation at WALK_SPEED. */
 function tick(last) {
   const now = performance.now();
   const dt = Math.min(1, (now - (last || now)) / 1000);
@@ -80,6 +90,7 @@ function tick(last) {
   requestAnimationFrame(() => tick(now));
 }
 
+/** Toggle GPS follow; every failure degrades to tap-to-walk with a toast. */
 function toggleGps() {
   if (gpsWatch != null) {
     navigator.geolocation.clearWatch(gpsWatch);
@@ -111,6 +122,10 @@ function toggleGps() {
 // ---------------------------------------------------------------------------
 // Spawns & markers
 
+/**
+ * Re-poll /spawns when stale (SPAWN_POLL_MS) or the player moved 90 m+;
+ * `force` skips both checks (after battles, collects, and commands).
+ */
 async function maybeFetchSpawns(force = false) {
   const now = Date.now();
   const moved = haversineM(pos.lat, pos.lng, lastSpawnFetch.lat, lastSpawnFetch.lng);
@@ -126,6 +141,7 @@ async function maybeFetchSpawns(force = false) {
   }
 }
 
+/** Redraw all spawn markers + the player marker (diffed by id in map.js). */
 function renderMarkers() {
   if (!map) return;
   const markers = spawns.map((s) => ({
@@ -140,6 +156,11 @@ function renderMarkers() {
   map.setMarkers(markers);
 }
 
+/**
+ * Tap on a spawn (map marker or street overlay): within reach → collect the
+ * item or start the battle; out of reach → walk toward it.
+ * @param {{id: string, kind: string, lat: number, lng: number}} s
+ */
 async function tapSpawn(s) {
   const d = haversineM(pos.lat, pos.lng, s.lat, s.lng);
   if (d > encounterRadius) {
@@ -173,6 +194,7 @@ async function tapSpawn(s) {
 // ---------------------------------------------------------------------------
 // Street mode & text commands
 
+/** Switch between the map and the street-view AR pane. @param {"map"|"street"} next */
 function setMode(next) {
   mode = next;
   $("tk-street").hidden = mode !== "street";
@@ -200,12 +222,15 @@ async function refreshScene(force = false) {
 }
 
 // A tap on an overlaid spawn: near → interact (same endpoints as the map
-// markers); far → walk toward it, the scene refreshes on arrival.
+// markers); far → walk toward it, the scene refreshes on arrival. The
+// overlay carries lat/lng so this works even when the spawn has dropped
+// out of the local `spawns` list.
 function tapStreetSpawn(o) {
   const s = spawns.find((x) => x.id === o.id) || { id: o.id, kind: o.kind, lat: o.lat, lng: o.lng };
   tapSpawn(s);
 }
 
+/** Send the command bar's text to POST …/go and apply the returned move/turn. */
 async function submitCommand() {
   const input = $("tk-cmd");
   const command = input.value.trim();
@@ -249,6 +274,11 @@ function openPanel(html) {
   $("tk-panel-close").addEventListener("click", closePanels);
 }
 
+/**
+ * One party/box row with its actions (lead/box/to-party + usable heals).
+ * @param {any} c  A publicSave creature.
+ * @param {"party"|"box"} where
+ */
 function creatureRow(c, where) {
   const pct = Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100));
   const actions =
@@ -372,6 +402,29 @@ function showFatal(msg) {
 // ---------------------------------------------------------------------------
 // Boot
 
+/** Wire the static chrome (HUD buttons, mode toggle, command bar) — once. */
+function wireControls() {
+  $("tk-mode").addEventListener("click", () => setMode(mode === "street" ? "map" : "street"));
+  $("tk-cmdbar").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitCommand();
+  });
+
+  $("tk-gps").addEventListener("click", toggleGps);
+  $("tk-center").addEventListener("click", () => {
+    follow = true;
+    map.setCenter(pos.lat, pos.lng);
+  });
+  $("tk-party").addEventListener("click", openParty);
+  $("tk-bag").addEventListener("click", openBag);
+  $("tk-dex").addEventListener("click", openDex);
+  $("tk-heal").addEventListener("click", doHeal);
+  // Panning the map manually stops the camera-follow until recentered.
+  $("tk-map").addEventListener("pointermove", (e) => {
+    if (e.buttons) follow = false;
+  });
+}
+
 async function boot() {
   map = createMap($("tk-map"), {
     zoom: 17,
@@ -399,25 +452,7 @@ async function boot() {
       refreshScene(true);
     },
   });
-  $("tk-mode").addEventListener("click", () => setMode(mode === "street" ? "map" : "street"));
-  $("tk-cmdbar").addEventListener("submit", (e) => {
-    e.preventDefault();
-    submitCommand();
-  });
-
-  $("tk-gps").addEventListener("click", toggleGps);
-  $("tk-center").addEventListener("click", () => {
-    follow = true;
-    map.setCenter(pos.lat, pos.lng);
-  });
-  $("tk-party").addEventListener("click", openParty);
-  $("tk-bag").addEventListener("click", openBag);
-  $("tk-dex").addEventListener("click", openDex);
-  $("tk-heal").addEventListener("click", doHeal);
-  // Panning the map manually stops the camera-follow until recentered.
-  $("tk-map").addEventListener("pointermove", (e) => {
-    if (e.buttons) follow = false;
-  });
+  wireControls();
 
   try {
     const r = await api.getState();

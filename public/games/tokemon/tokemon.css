@@ -156,7 +156,8 @@ a { color: #7fb4ff; }
 }
 .tk-run { align-self: flex-end; background: #40262a; }
 
-/* Type accents on move buttons */
+/* Type accents on move buttons — one class per TYPES entry in
+   src/tokemon.js (the renamed Gen 1 types); battle.js emits tk-type-<id>. */
 .tk-type-compute { border-left: 3px solid #e0653a; }
 .tk-type-data { border-left: 3px solid #3a8fe0; }
 .tk-type-code { border-left: 3px solid #4fae53; }

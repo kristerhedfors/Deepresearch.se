@@ -3,6 +3,12 @@
 // throws an Error carrying the server's message so the UI can toast it
 // verbatim.
 
+/**
+ * @param {string} path  Route under /api/games/tokemon/.
+ * @param {RequestInit} [opts]
+ * @returns {Promise<any>} The parsed body; non-2xx throws an Error with
+ *   `.status` and `.body` attached.
+ */
 async function call(path, opts) {
   const res = await fetch(`/api/games/tokemon/${path}`, opts);
   let body = null;
