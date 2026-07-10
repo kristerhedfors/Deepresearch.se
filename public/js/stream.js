@@ -20,7 +20,6 @@ import {
   settlePendingSteps,
   startGenericStep,
   startSearchStep,
-  updateGenericStep,
 } from "./activity.js";
 import {
   addAssistantTurn,
@@ -57,6 +56,16 @@ import {
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { createSseParser } from "./sse.js";
+import {
+  capEmbedBytes,
+  getEmbeds,
+  initEmbeds,
+  pruneEmbeds,
+  quizHooks,
+  recordEmbed,
+  setEmbeds,
+} from "./embeds.js";
+import { ackAnswer, recoverAnswer } from "./recovery.js";
 
 /**
  * Per-send options, captured from the composer (app.js) and threaded into
@@ -80,19 +89,10 @@ import { createSseParser } from "./sse.js";
  * @property {?number} budgetS
  * @property {boolean} webSearch
  * @property {Array<{id: string, name: string}>} ragDocs
- * @property {EmbedEntry[]} embeds
+ * @property {import("./embeds.js").EmbedEntry[]} embeds
  * @property {?string} projectId
  * @property {number} createdAt
  * @property {number} updatedAt
- */
-
-/**
- * One pipeline-embedded element recorded for a turn (see the embeds
- * registry below).
- * @typedef {object} EmbedEntry
- * @property {number} id        stable per-conversation number (copy-text references)
- * @property {string} kind      "streetview_embed" | "map_embed" | "streetview_frames" | "quiz"
- * @property {number} msgIndex  index of the assistant message it renders beside
  */
 
 // ---- Conversation state -------------------------------------------------
@@ -106,83 +106,13 @@ const history = []; // {role, content} pairs sent to the API
 let convRagDocs = []; // [{id, name}]
 
 // ---- Embeds registry ----------------------------------------------------
-// Elements the pipeline embedded into a turn's body this conversation —
-// the Street View panorama (`streetview_embed`) and vision-frame strip
-// (`streetview_frames`). Recorded so the copy-to-clipboard export can
-// reference them with stable per-conversation id numbers ("[Embedded
-// element #N: …]" — message-content.js's embedRef); persisted in the
-// conversation record (`embeds`, additive) so a reloaded conversation's
-// export still references them even though the live panorama itself is
-// session-only. `msgIndex` is the index of the assistant message the
-// element renders beside — captured as history.length while the answer
-// streams, which is exactly where that answer lands on completion.
-let convEmbeds = []; // [{id, kind, msgIndex, …kind-specific metadata}]
-
-function recordEmbed(meta) {
-  const existing = convEmbeds.find((e) => e.msgIndex === history.length && e.kind === meta.kind);
-  if (existing) {
-    // Mirror the render behavior (activity.js/quiz.js): one panorama per
-    // turn (repeats ignored), one frame strip per turn (last event wins),
-    // one quiz per turn (repeats ignored).
-    if (meta.kind === "streetview_frames") Object.assign(existing, meta);
-    return existing;
-  }
-  const id = convEmbeds.reduce((m, e) => Math.max(m, e.id || 0), 0) + 1;
-  const entry = { id, msgIndex: history.length, ...meta };
-  convEmbeds.push(entry);
-  return entry;
-}
-
-// The interaction hooks one quiz card (public/js/quiz.js) gets for its
-// embeds-registry entry: answers persist into the entry as they're given,
-// and completion appends the result summary to the quiz's assistant message
-// in history — so follow-up questions (and the copy-conversation export)
-// know the score and what was missed — then persists. The `completed` guard
-// keeps a reloaded, already-finished quiz from appending the summary twice.
-function quizHooks(embed) {
-  return {
-    answers: Array.isArray(embed.answers) ? embed.answers : [],
-    onAnswer(answers) {
-      embed.answers = answers;
-    },
-    onComplete(summary) {
-      if (embed.completed) return;
-      embed.completed = true;
-      const msg = history[embed.msgIndex];
-      if (msg && msg.role === "assistant" && typeof msg.content === "string") {
-        msg.content += "\n\n" + summary;
-      }
-      persistConversation(lastSendOpts).catch(() => {});
-    },
-  };
-}
-
-// An exchange that reverted its user message (send failed, stopped before
-// any text) also drops the embeds recorded for the answer that never
-// landed — their msgIndex now points past the end of history.
-function pruneEmbeds() {
-  convEmbeds = convEmbeds.filter((e) => e.msgIndex < history.length);
-}
-
-// Frame images are the one bulky embed payload (~150 KB per data URL). Cap
-// the total stored across the conversation at ~4 MB by dropping the URLS
-// from the OLDEST frame embeds first — their metadata (query, directions)
-// stays for the copy-text export; only the reload-render of those old turns
-// degrades back to text.
-const MAX_EMBED_BYTES = 4_000_000;
-function capEmbedBytes() {
-  let total = 0;
-  for (const e of convEmbeds) {
-    for (const f of e.frames || []) total += (f.url || "").length;
-  }
-  for (const e of convEmbeds) {
-    if (total <= MAX_EMBED_BYTES) break;
-    for (const f of e.frames || []) {
-      total -= (f.url || "").length;
-      delete f.url;
-    }
-  }
-}
+// The pipeline-embedded elements' bookkeeping (recordEmbed / quizHooks /
+// pruneEmbeds / capEmbedBytes and the registry itself) lives in
+// public/js/embeds.js. Wired here with the live message array (`history` is
+// a stable reference — cleared in place, never reassigned) and the persist
+// hook a quiz completed after its stream ended needs; `lastSendOpts` is
+// read at call time, so it always carries the latest send's metadata.
+initEmbeds({ history, persist: () => persistConversation(lastSendOpts) });
 
 // ---- Conversation identity & persistence ---------------------------------
 
@@ -196,7 +126,7 @@ let convProjectId = null;
 
 // The most recent send's persistence options (model/budget/webSearch) — a
 // quiz answered AFTER its stream finished still needs to persist the
-// conversation with the right metadata (quizHooks above). Seeded from the
+// conversation with the right metadata (quizHooks, embeds.js). Seeded from the
 // record on load so a reload-then-finish doesn't clobber stored metadata.
 let lastSendOpts = {};
 
@@ -262,7 +192,7 @@ export function currentConversationId() {
 // context blocks reduced to references — message-content.js's pure
 // conversationCopyText over this tab's live history.
 export function conversationAsText() {
-  return conversationCopyText(history, convEmbeds);
+  return conversationCopyText(history, getEmbeds());
 }
 
 // Replaces the on-screen conversation with a stored record — the shared
@@ -281,7 +211,7 @@ function openConversationRecord(id, record) {
   convTitle = record.title || null;
   convCreatedAt = record.createdAt || null;
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
-  convEmbeds = Array.isArray(record.embeds) ? record.embeds : [];
+  setEmbeds(record.embeds); // normalized inside (any non-array means none)
   convIncognito = false; // a saved conversation is by definition not incognito
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
@@ -290,7 +220,7 @@ function openConversationRecord(id, record) {
   // Finishing a reloaded quiz re-persists the conversation — with the
   // record's own metadata, not a stale (or empty) previous send's.
   lastSendOpts = { model: record.model || "", budgetS: record.budgetS ?? null, webSearch: record.webSearch !== false };
-  renderStoredConversation(record.messages, convEmbeds, { quizHooks });
+  renderStoredConversation(record.messages, getEmbeds(), { quizHooks });
   return generation;
 }
 
@@ -329,7 +259,7 @@ async function persistConversation(opts) {
         budgetS: opts?.budgetS ?? null,
         webSearch: opts?.webSearch !== false,
         ragDocs: convRagDocs,
-        embeds: convEmbeds,
+        embeds: getEmbeds(),
         projectId: convProjectId,
         createdAt: convCreatedAt,
         updatedAt: now,
@@ -384,7 +314,7 @@ function resetConversationMeta() {
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
-  convEmbeds = [];
+  setEmbeds([]);
   convProjectId = null;
 }
 
@@ -401,24 +331,10 @@ export function stopGeneration() {
 // (src/answers.js) keyed by x-request-id: if our stream dies, we poll the
 // completed answer back instead of asking the user to resend; if it
 // arrives intact, we ack so the server purges its copy immediately.
-
-// Abort-aware sleep: a Stop press mid-wait resolves immediately instead of
-// letting the button appear dead for up to a poll interval.
-const sleep = (ms, signal) =>
-  new Promise((resolve) => {
-    const timer = setTimeout(done, ms);
-    function done() {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    }
-    if (signal) signal.addEventListener("abort", done, { once: true });
-  });
-
-function ackAnswer(requestId) {
-  if (!requestId) return;
-  fetch("/api/chat/answer?id=" + encodeURIComponent(requestId), { method: "DELETE" }).catch(() => {});
-}
+// The transport half — the poll loop (recoverAnswer) and the ack — lives in
+// public/js/recovery.js; this side owns what happens to a recovered answer,
+// because all of it reads and writes this module's conversation state
+// (history, identity, in-flight bookkeeping, persistence).
 
 // A recovered answer landing in the conversation (boot-time resume, or
 // in-session recovery after a dropped stream): render it — with its final
@@ -434,114 +350,6 @@ async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
   history.push({ role: "assistant", content: recovered.text });
   ackAnswer(requestId);
   await persistConversation(opts);
-}
-
-// The pipeline may still be researching when our connection dies (it runs
-// to completion server-side), so keep polling until well past the time
-// budget. Repeated 404s mean recovery isn't available (no DB, or expired).
-// `gen` ends the poll early if the user starts a new chat meanwhile.
-// Polls the server-parked answer. Returns { data, reason } where reason is:
-//   "done"    — data holds the recovered answer
-//   "lost"    — the server confirmed the run died (stale heartbeat)
-//   "gone"    — no recovery row (no DB, or already expired/purged)
-//   "empty"   — the run finished but produced nothing
-//   "timeout" — still running when the deadline passed
-//   "aborted" — a new chat/load ended the poll
-//   "stopped" — the user pressed Stop (signal aborted) — the wait ends NOW,
-//               the composer/buttons come back, and the server finishes (and
-//               parks) its answer unobserved
-// Once the server confirms the run is still going, the step shows a live
-// elapsed counter so a long research run reads as progress, not a frozen
-// app.
-//
-// Deadlines: the initial budget-derived deadline only governs the wait for a
-// FIRST sign of life. Every poll that confirms the run is STILL GOING (the
-// server heartbeats its recovery row every 15s precisely so this is
-// answerable) extends the deadline by a rolling window — a production run
-// (2026-07-08, ref 614e6f19: a 20s budget that legitimately took 251s after
-// synthesis stalls/retries on a loaded Mistral Medium) finished COMPLETE on
-// the server, but the fixed budget+120s deadline had abandoned the poll at
-// 140s, stranding the user with nothing while a finished answer sat in the
-// cache. A dead run can't string us along: its heartbeat goes stale and the
-// server answers "lost" within ~45s. The hard cap matches the server's
-// 15-minute answer TTL — past that there is nothing left to recover.
-const RECOVERY_RUNNING_EXTENSION_MS = 90_000;
-const RECOVERY_HARD_CAP_MS = 15 * 60 * 1000;
-//
-// `startLabel` null → SILENT recovery: poll WITHOUT adding any banner. This
-// was originally the DEFAULT for in-session drops ("keep the banners already
-// on screen — the honest view"), but that design failed in production
-// (2026-07-08, request a77001ac): the surviving banner was a single spinning
-// "Checking Google Maps…" step that never advances (step_done events aren't
-// replayed to a dead stream), so a 203s server run read as STUCK FOREVER.
-// In-session drops now settle the dead spinners and show this step's live
-// elapsed counter too — the counter is driven by its own 1-second ticker,
-// decoupled from the (slower, latency-variable) network poll so it ticks
-// evenly instead of lurching by the poll interval.
-async function recoverAnswer(turn, requestId, budgetS, gen, startLabel = null, signal = null) {
-  if (!requestId) return { data: null, reason: "gone" };
-  const showStep = !!startLabel;
-  if (showStep) startGenericStep(turn, "recover", startLabel);
-  const startedAt = Date.now();
-  const hardCap = startedAt + RECOVERY_HARD_CAP_MS;
-  let deadline = startedAt + ((budgetS || 60) + 120) * 1000;
-  let misses = 0;
-  let reason = "timeout";
-  let running = false; // flips true once the server confirms it's still researching
-
-  const ticker = showStep
-    ? setInterval(() => {
-        if (running) {
-          updateGenericStep(turn, "recover", `Still researching on the server… (${Math.round((Date.now() - startedAt) / 1000)}s)`);
-        }
-      }, 1000)
-    : null;
-
-  try {
-    // Poll immediately first: on a boot resume the server usually finished
-    // while we were away, so the answer is already parked and the very first
-    // poll returns it — no wait. Only if it's still running do we sleep/re-poll.
-    while (Date.now() < deadline && gen === generation && !signal?.aborted) {
-      try {
-        const res = await fetch("/api/chat/answer?id=" + encodeURIComponent(requestId));
-        if (res.status === 404) {
-          if (++misses >= 3) { reason = "gone"; break; }
-        } else if (res.ok) {
-          const data = await res.json();
-          if (data.status === "done") {
-            if (!data.text) { reason = "empty"; break; }
-            if (showStep) finishGenericStep(turn, { id: "recover", label: "Answer recovered after connection loss" });
-            return { data, reason: "done" };
-          }
-          if (data.status === "lost") { reason = "lost"; break; } // server run died
-          misses = 0; // still researching
-          running = true;
-          // Confirmed alive: keep waiting past the budget-derived deadline
-          // (rolling window, hard-capped) — see the constants above.
-          deadline = Math.min(hardCap, Math.max(deadline, Date.now() + RECOVERY_RUNNING_EXTENSION_MS));
-        }
-      } catch {
-        // still offline — keep trying until the deadline
-      }
-      await sleep(4000, signal);
-    }
-  } finally {
-    if (ticker) clearInterval(ticker);
-  }
-  if (gen !== generation) reason = "aborted";
-  else if (signal?.aborted) reason = "stopped";
-  if (showStep) {
-    finishGenericStep(turn, {
-      id: "recover",
-      label:
-        reason === "lost"
-          ? "Research was interrupted on the server"
-          : reason === "stopped"
-            ? "Stopped waiting — the research continues on the server"
-            : "Could not recover the answer",
-    });
-  }
-  return { data: null, reason };
 }
 
 // A send that produced NO answer at all (empty completion, or a drop we
@@ -634,7 +442,7 @@ export async function resumePendingAnswer({ onLoad } = {}) {
   let reason = "timeout";
   try {
     ({ data: recovered, reason } = await recoverAnswer(
-      turn, pending.requestId, pending.budgetS, gen, "Resuming your research…", controller.signal,
+      turn, pending.requestId, pending.budgetS, () => gen === generation, "Resuming your research…", controller.signal,
     ));
   } finally {
     inFlight = false;
@@ -1136,7 +944,7 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
   const recoveryController = new AbortController();
   if (gen === generation) controller = recoveryController;
   const { data: recovered, reason } = await recoverAnswer(
-    turn, requestId, opts.budgetS, gen,
+    turn, requestId, opts.budgetS, () => gen === generation,
     "Connection dropped — research continues on the server…",
     recoveryController.signal,
   );
