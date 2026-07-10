@@ -1,3 +1,4 @@
+// @ts-check
 // The inline-quiz turn element: an interactive card the pipeline's `quiz`
 // status event renders into the turn body (like the Street View embeds, it
 // persists beside the answer rather than collapsing with the activity
@@ -28,11 +29,37 @@
 
 // ---- pure core -------------------------------------------------------------
 
-// One answer entry is either {pick: <alternative index>} or
-// {free: <text>, correct: true|false|null, comment} — null means the grading
-// call failed and the answer counts as ungraded.
+/**
+ * One quiz question as normalizeQuiz (src/quiz.js) guarantees it: the
+ * alternatives, the index of the correct one, an optional explanation.
+ * @typedef {{question: string, alternatives: string[], correct: number, explanation?: string}} QuizQuestion
+ */
 
-// true | false | null (ungraded) for one answered question.
+/**
+ * @typedef {{title?: string, questions?: QuizQuestion[]}} Quiz
+ */
+
+/**
+ * One answer entry: either {pick: <alternative index>} or
+ * {free: <text>, correct: true|false|null, comment} — null `correct` means
+ * the grading call failed and the answer counts as ungraded.
+ * @typedef {{pick?: number, free?: string, correct?: boolean | null, comment?: string}} QuizAnswer
+ */
+
+/**
+ * renderQuiz's state/persistence contract (see the module header).
+ * @typedef {object} QuizHooks
+ * @property {QuizAnswer[]} [answers] previously given answers to resume from
+ * @property {(answers: QuizAnswer[]) => void} [onAnswer]
+ * @property {(summaryText: string) => void} [onComplete]
+ */
+
+/**
+ * true | false | null (ungraded) for one answered question.
+ * @param {QuizQuestion | undefined} question
+ * @param {QuizAnswer | undefined} answer
+ * @returns {boolean | null}
+ */
 export function answerVerdict(question, answer) {
   if (!question || !answer) return null;
   if (typeof answer.pick === "number") return answer.pick === question.correct;
@@ -40,9 +67,14 @@ export function answerVerdict(question, answer) {
   return null;
 }
 
-// Score across the answers given so far: `correct` out of `total` questions,
-// with `ungraded` free-text answers excluded from `correct` but counted so
-// the verdict can say so.
+/**
+ * Score across the answers given so far: `correct` out of `total` questions,
+ * with `ungraded` free-text answers excluded from `correct` but counted so
+ * the verdict can say so.
+ * @param {Quiz | null | undefined} quiz
+ * @param {QuizAnswer[] | null | undefined} answers
+ * @returns {{correct: number, total: number, ungraded: number}}
+ */
 export function quizScore(quiz, answers) {
   const qs = quiz?.questions || [];
   let correct = 0;
@@ -55,22 +87,36 @@ export function quizScore(quiz, answers) {
   return { correct, total: qs.length, ungraded };
 }
 
+/**
+ * @param {Quiz | null | undefined} quiz
+ * @param {QuizAnswer[] | null | undefined} answers
+ * @returns {boolean}
+ */
 export function quizDone(quiz, answers) {
   const total = quiz?.questions?.length || 0;
   return total > 0 && (answers || []).length >= total;
 }
 
+/**
+ * @param {unknown} s
+ * @param {number} max
+ */
 const clip = (s, max) => {
   const t = String(s ?? "").trim();
   return t.length > max ? t.slice(0, max - 1) + "…" : t;
 };
 
-// The plain-text result block stream.js appends to the assistant message in
-// history when the quiz completes — model-readable context for follow-ups
-// ("what did I get wrong?") that also rides the copy-conversation export
-// and the reloaded bubble. Deliberately NOT one of the "--- … ---" labeled
-// context blocks: those are stripped by the export/indexing paths, and this
-// one should stay visible everywhere.
+/**
+ * The plain-text result block stream.js appends to the assistant message in
+ * history when the quiz completes — model-readable context for follow-ups
+ * ("what did I get wrong?") that also rides the copy-conversation export
+ * and the reloaded bubble. Deliberately NOT one of the "--- … ---" labeled
+ * context blocks: those are stripped by the export/indexing paths, and this
+ * one should stay visible everywhere.
+ * @param {Quiz | null | undefined} quiz
+ * @param {QuizAnswer[] | null | undefined} answers
+ * @returns {string}
+ */
 export function quizSummaryText(quiz, answers) {
   const { correct, total, ungraded } = quizScore(quiz, answers);
   const lines = [
@@ -88,7 +134,7 @@ export function quizSummaryText(quiz, answers) {
       if (v === false) detail += `; correct: "${clip(q.alternatives[q.correct], 120)}"`;
       if (v === null) detail += " (ungraded)";
     } else if (v === false && a) {
-      detail = ` — answered "${clip(q.alternatives[a.pick] ?? "?", 120)}"; correct: "${clip(q.alternatives[q.correct], 120)}"`;
+      detail = ` — answered "${clip(q.alternatives[a.pick ?? -1] ?? "?", 120)}"; correct: "${clip(q.alternatives[q.correct], 120)}"`;
     }
     lines.push(`${i + 1}. ${mark} ${clip(q.question, 200)}${detail}`);
   });
@@ -97,9 +143,14 @@ export function quizSummaryText(quiz, answers) {
 
 // ---- grading call ------------------------------------------------------
 
-// Grades ONE free-text answer. Resolves to {correct, comment} or null
-// (service down / quota blocked / unparseable) — the caller renders null as
-// "ungraded", never an error.
+/**
+ * Grades ONE free-text answer. Resolves to {correct, comment} or null
+ * (service down / quota blocked / unparseable) — the caller renders null as
+ * "ungraded", never an error.
+ * @param {QuizQuestion} question
+ * @param {string} answer
+ * @returns {Promise<{correct: boolean, comment: string} | null>}
+ */
 async function gradeFreeText(question, answer) {
   try {
     const res = await fetch("/api/quiz/grade", {
@@ -128,13 +179,24 @@ async function gradeFreeText(question, answer) {
 
 const ALT_LETTERS = "ABCDEFGH";
 
-// Renders the interactive quiz card into the turn body (before the stats
-// footer). One quiz per turn — a repeat event for the same turn is ignored,
-// matching the panorama's behavior. `hooks`: see the module header.
+/**
+ * The slice of turns.js's turn object the quiz card uses. `_quizCard` is
+ * this module's own idempotence marker on it.
+ * @typedef {{el: HTMLElement, stats: HTMLElement, _quizCard?: HTMLElement}} QuizTurn
+ */
+
+/**
+ * Renders the interactive quiz card into the turn body (before the stats
+ * footer). One quiz per turn — a repeat event for the same turn is ignored,
+ * matching the panorama's behavior. `hooks`: see the module header.
+ * @param {QuizTurn | null | undefined} turn
+ * @param {Quiz | null | undefined} quiz
+ * @param {QuizHooks} [hooks]
+ */
 export function renderQuiz(turn, quiz, hooks = {}) {
   if (!turn?.el || turn._quizCard) return;
   const questions = Array.isArray(quiz?.questions) ? quiz.questions : [];
-  if (!questions.length) return;
+  if (!questions.length || !quiz) return;
 
   const wrap = document.createElement("div");
   wrap.className = "quiz-card";
@@ -144,13 +206,17 @@ export function renderQuiz(turn, quiz, hooks = {}) {
   // Answers given so far (seeded from a stored conversation's embed record).
   const answers = (Array.isArray(hooks.answers) ? hooks.answers : []).slice(0, questions.length);
 
+  // Guards double-answering while the current question's feedback is up (or
+  // a grading call is in flight); reset when Next re-renders.
+  let settled = false;
+
   const render = () => {
     wrap.replaceChildren();
     if (quizDone(quiz, answers)) renderVerdict();
     else renderQuestion(answers.length);
   };
 
-  const head = (label) => {
+  const head = (/** @type {string} */ label) => {
     const h = document.createElement("div");
     h.className = "quiz-head";
     const title = document.createElement("span");
@@ -163,6 +229,7 @@ export function renderQuiz(turn, quiz, hooks = {}) {
     return h;
   };
 
+  /** @param {number} idx */
   function renderQuestion(idx) {
     const q = questions[idx];
     wrap.appendChild(head(`Question ${idx + 1} of ${questions.length}`));
@@ -184,8 +251,8 @@ export function renderQuiz(turn, quiz, hooks = {}) {
       text.textContent = alt;
       btn.append(letter, text);
       btn.addEventListener("click", () => {
-        if (wrap._settled) return;
-        wrap._settled = true;
+        if (settled) return;
+        settled = true;
         settle(q, { pick: i }, { altBtns, freeArea, freeBtn });
       });
       alts.appendChild(btn);
@@ -209,8 +276,8 @@ export function renderQuiz(turn, quiz, hooks = {}) {
     freeBtn.textContent = "Submit answer";
     freeBtn.addEventListener("click", async () => {
       const text = freeArea.value.trim();
-      if (!text || wrap._settled) return;
-      wrap._settled = true;
+      if (!text || settled) return;
+      settled = true;
       freeBtn.disabled = true;
       freeArea.disabled = true;
       for (const b of altBtns) b.disabled = true;
@@ -232,9 +299,14 @@ export function renderQuiz(turn, quiz, hooks = {}) {
     wrap.appendChild(freeWrap);
   }
 
-  // Record the answer, then show feedback in place: reveal the correct
-  // alternative, the verdict for a free-text answer, the explanation, and
-  // the Next / See result button.
+  /**
+   * Record the answer, then show feedback in place: reveal the correct
+   * alternative, the verdict for a free-text answer, the explanation, and
+   * the Next / See result button.
+   * @param {QuizQuestion} q
+   * @param {QuizAnswer} answer
+   * @param {{altBtns: HTMLButtonElement[], freeArea: HTMLTextAreaElement, freeBtn: HTMLButtonElement}} els
+   */
   function settle(q, answer, els) {
     answers.push(answer);
     try {
@@ -277,7 +349,7 @@ export function renderQuiz(turn, quiz, hooks = {}) {
     next.className = "quiz-next";
     next.textContent = answers.length >= questions.length ? "See your result" : "Next question";
     next.addEventListener("click", () => {
-      wrap._settled = false;
+      settled = false;
       render();
     });
     fb.appendChild(next);

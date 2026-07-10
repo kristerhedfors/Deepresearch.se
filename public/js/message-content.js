@@ -1,3 +1,4 @@
+// @ts-check
 // Pure builders for the /api/chat message the composer sends — the labeled
 // text blocks (inline documents, image metadata, RAG retrieval excerpts)
 // and the message-array transforms (title derivation, history image
@@ -10,6 +11,34 @@
 // (src/conversation.js's withAppendedText) and the project-materials block
 // (project-context.js): each piece of research material is its own clearly
 // delimited block, never silently blended into the user's text.
+
+/**
+ * One part of a multimodal user message (OpenAI wire shape).
+ * @typedef {{type?: string, text?: string, image_url?: {url?: string}}} MessagePart
+ */
+
+/**
+ * One conversation message. `content` is a string except for multimodal
+ * user turns, which carry an array of parts.
+ * @typedef {{role?: string, content?: string | MessagePart[]}} ChatMessage
+ */
+
+/**
+ * One convEmbeds entry (stream.js's registry of elements the pipeline
+ * embedded into a turn's body). `kind` picks the reference format in
+ * embedRef; the rest is per-kind metadata.
+ * @typedef {object} ConvEmbed
+ * @property {number} [id] 1-based, conversation-wide
+ * @property {string} [kind] "streetview_embed" | "map_embed" | "streetview_frames" | "quiz" | future kinds
+ * @property {number} [msgIndex] index of the message the element belongs to
+ * @property {number} [lat]
+ * @property {number} [lng]
+ * @property {string} [q] map_embed's search query
+ * @property {string} [query] streetview_frames' place query
+ * @property {string[]} [directions]
+ * @property {{title?: string, questions?: unknown[]}} [quiz]
+ * @property {boolean} [completed]
+ */
 
 // How long a streaming /api/chat connection may go silent before stream.js
 // treats it as dead and switches to answer recovery. The server emits a
@@ -29,6 +58,13 @@ export const STREAM_STALL_MS = 30000;
 // itself count as a stall (the connection may resume fine on return). On
 // return to foreground stream.js resets the silence clock, granting a fresh
 // full window for the connection to prove it's alive before this trips.
+/**
+ * @param {number} lastByteAt epoch ms of the last received byte
+ * @param {number} now epoch ms
+ * @param {boolean} hidden document.hidden at the time of the check
+ * @param {number} [stallMs]
+ * @returns {boolean}
+ */
 export function isStreamStale(lastByteAt, now, hidden, stallMs = STREAM_STALL_MS) {
   if (hidden) return false;
   return now - lastByteAt > stallMs;
@@ -43,9 +79,13 @@ export const EXCERPT_TOTAL_CHARS = 12000;
 // others when several docs are relevant to the same question.
 const EXCERPT_CHUNK_CHARS = 1600;
 
-// Title for the encrypted local-history sidebar: the first user message's
-// text, trimmed to a sidebar-friendly length. Handles both string content
-// and multimodal arrays (uses the first text part).
+/**
+ * Title for the encrypted local-history sidebar: the first user message's
+ * text, trimmed to a sidebar-friendly length. Handles both string content
+ * and multimodal arrays (uses the first text part).
+ * @param {ChatMessage[]} history
+ * @returns {string}
+ */
 export function deriveTitle(history) {
   const first = history.find((m) => m.role === "user");
   const text =
@@ -55,13 +95,17 @@ export function deriveTitle(history) {
   return text.trim().slice(0, 60) || "New conversation";
 }
 
-// Keep images only on the latest message when sending: history is resent
-// every turn and would otherwise re-inflate each request past the provider's
-// ~1 MB body limit. Older user turns keep their text plus a marker; the
-// latest message and all non-user/string messages pass through untouched.
+/**
+ * Keep images only on the latest message when sending: history is resent
+ * every turn and would otherwise re-inflate each request past the provider's
+ * ~1 MB body limit. Older user turns keep their text plus a marker; the
+ * latest message and all non-user/string messages pass through untouched.
+ * @param {ChatMessage[]} history
+ * @returns {ChatMessage[]}
+ */
 export function stripOldImages(history) {
   return history.map((m, i) => {
-    if (i === history.length - 1 || m.role !== "user" || typeof m.content === "string") return m;
+    if (i === history.length - 1 || m.role !== "user" || !Array.isArray(m.content)) return m;
     const text = m.content
       .filter((p) => p.type === "text")
       .map((p) => p.text)
@@ -73,16 +117,23 @@ export function stripOldImages(history) {
   });
 }
 
-// A user message's content split into display text + image data URLs — for
-// re-hydrating the assistant turn on a boot resume (stream.js), so its PDF
-// report keeps the title/images a live turn would have had. Handles both
-// string content and multimodal arrays.
+/**
+ * A user message's content split into display text + image data URLs — for
+ * re-hydrating the assistant turn on a boot resume (stream.js), so its PDF
+ * report keeps the title/images a live turn would have had. Handles both
+ * string content and multimodal arrays.
+ * @param {ChatMessage["content"]} content
+ * @returns {{text: string, imageUrls: string[]}}
+ */
 export function splitUserContent(content) {
   if (typeof content === "string") return { text: content, imageUrls: [] };
   if (Array.isArray(content)) {
     return {
       text: content.filter((p) => p?.type === "text").map((p) => p.text).join("\n"),
-      imageUrls: content.filter((p) => p?.type === "image_url").map((p) => p.image_url?.url).filter(Boolean),
+      imageUrls: content
+        .filter((p) => p?.type === "image_url")
+        .map((p) => p.image_url?.url)
+        .filter(/** @returns {u is string} */ (u) => Boolean(u)),
     };
   }
   return { text: "", imageUrls: [] };
@@ -111,9 +162,12 @@ const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project cha
 // One appended block's opening line, capturing kind + display name.
 const BLOCK_OPENER = /^--- (Attached document|Related project chat|Project|Image metadata): (.*?) ---$/gm;
 
-// The block openers decorate the name with a parenthetical descriptor
-// ("(truncated)", "(large document, indexed for retrieval — …)", "(an
-// earlier conversation in this project, …)") — strip it for the reference.
+/**
+ * The block openers decorate the name with a parenthetical descriptor
+ * ("(truncated)", "(large document, indexed for retrieval — …)", "(an
+ * earlier conversation in this project, …)") — strip it for the reference.
+ * @param {string} name
+ */
 function blockRefName(name) {
   return name.replace(/ \((?:truncated|large document[^)]*|an earlier conversation[^)]*)\)$/, "").trim();
 }
@@ -128,6 +182,10 @@ function blockRefName(name) {
 const SV_WORD_RE = /(?:(?:street|streer|stret|steet|streat)\s*(?:view|veiw|veew)|streetview|gatu?vy(?:n)?|gatubild(?:en)?)/iu;
 const HERE_WORD_RE =
   /(?<![\p{L}\p{M}])(?:here|current\s+(?:location|position|spot)|my\s+(?:actual\s+|real\s+|physical\s+|current\s+|own\s+)?(?:location|position)|där\s+jag\s+(?:faktiskt\s+|egentligen\s+)?är|var\s+jag\s+är|min\s+(?:nuvarande\s+|faktiska\s+|riktiga\s+|verkliga\s+|fysiska\s+)?(?:position|plats)|nuvarande\s+(?:plats|läge)|denna\s+plats|den\s+här\s+platsen|härifrån|här)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {unknown} text
+ * @returns {boolean}
+ */
 export function asksStreetViewHere(text) {
   const t = typeof text === "string" ? text : "";
   return SV_WORD_RE.test(t) && HERE_WORD_RE.test(t);
@@ -146,7 +204,11 @@ const WHERE_AM_I_RE =
 // here-word in ONE message). True when the LATEST user turn asks
 // street-view-here outright, is a plain where-am-I ask, or is a short
 // here-fragment ("My location", "här", "min plats") answering an EARLIER
-// street-view turn. `userTexts` is every user turn's text, oldest first.
+// street-view turn.
+/**
+ * @param {unknown[]} userTexts every user turn's text, oldest first
+ * @returns {boolean}
+ */
 export function asksDeviceLocation(userTexts) {
   const texts = Array.isArray(userTexts) ? userTexts.map((t) => (typeof t === "string" ? t : "")) : [];
   const latest = texts[texts.length - 1] || "";
@@ -179,6 +241,10 @@ export function asksDeviceLocation(userTexts) {
 // report had the server matchers ready but anchor-less.
 const RELOCATION_START_RE =
   /^(?:(?:please|ok|okay|let'?s|lets|legs)\s+)?(?:jump|teleport|beam|hoppa|teleportera|get|go|move|travel|walk|head|take|ta|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)\s+\S/iu;
+/**
+ * @param {unknown} text
+ * @returns {boolean}
+ */
 export function asksRelocation(text) {
   const t = (typeof text === "string" ? text : "").trim();
   return !!t && t.length <= 80 && t.split(/\s+/).length <= 8 && RELOCATION_START_RE.test(t);
@@ -217,6 +283,10 @@ const TELEPORT_VERB_RE =
   /(?<![\p{L}\p{M}])(?:jump|teleport|beam(?:\s+(?:me|us))?|hoppa|teleportera)(?![\p{L}\p{M}])/iu;
 const TRAVEL_TO_RE =
   /(?<![\p{L}\p{M}])(?:get|go|move|travel|walk|head|take\s+(?:me|us)|ta\s+(?:mig|oss)|gå|ga|åk|förflytta|forflytta)(?:\s+(?:me|us|mig|oss))?\s+(?:to|till|över|over|across)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {unknown} text
+ * @returns {boolean}
+ */
 export function asksNearbyPlace(text) {
   const t = (typeof text === "string" ? text : "").trim();
   if (!t || t.length > 120 || !PLACE_TYPE_WORD_RE.test(t)) return false;
@@ -228,6 +298,10 @@ export function asksNearbyPlace(text) {
 // no live view, the crossing probe needs the device location as its anchor.
 const BARRIER_SIDE_RE =
   /(?:(?:other|far)\s+side\s+of|andra\s+sidan(?:\s+av)?|across|över|over)\s+(?:the\s+)?(?:railway|railroad|rail\s*way|train\s*tracks?|tracks?|rails|river|stream|canal|road|street|highway|motorway|freeway|bridge|järnväg(?:en)?|jarnvag(?:en)?|(?:tåg)?spår(?:et|en)?|(?:tag)?spar(?:et|en)|älven|alven|ån|floden|kanalen|vägen|vagen|gatan|motorvägen|motorvagen|bron)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {unknown} text
+ * @returns {boolean}
+ */
 export function asksCrossBarrier(text) {
   const t = (typeof text === "string" ? text : "").trim();
   if (!t || t.length > 120 || !BARRIER_SIDE_RE.test(t)) return false;
@@ -243,14 +317,22 @@ export function asksCrossBarrier(text) {
 // separately, outside the no-live-view guard).
 const PHYSICAL_LOCATION_RE =
   /(?<![\p{L}\p{M}])(?:my\s+(?:actual|real|physical|true|own)\s+(?:location|position)|where\s+i\s+(?:actually|really)\s+am|min\s+(?:faktiska|riktiga|verkliga|fysiska|egna)\s+(?:plats|position)|där\s+jag\s+(?:faktiskt|egentligen)\s+är|var\s+jag\s+faktiskt\s+är)(?![\p{L}\p{M}])/iu;
+/**
+ * @param {unknown} text
+ * @returns {boolean}
+ */
 export function asksPhysicalLocation(text) {
   return PHYSICAL_LOCATION_RE.test(typeof text === "string" ? text : "");
 }
 
-// One embedded element's reference line. `e` is a convEmbeds entry
-// ({id, kind, …metadata}); each kind formats its own metadata. Unknown
-// kinds still get an id-numbered line — a new source's embed must never
-// silently vanish from the export (see the add-research-source skill).
+/**
+ * One embedded element's reference line; each kind formats its own
+ * metadata. Unknown kinds still get an id-numbered line — a new source's
+ * embed must never silently vanish from the export (see the
+ * add-research-source skill).
+ * @param {ConvEmbed | null | undefined} e
+ * @returns {string}
+ */
 export function embedRef(e) {
   if (e?.kind === "streetview_embed") {
     return `[Embedded element #${e.id}: interactive Google Street View panorama at ${e.lat}, ${e.lng}]`;
@@ -283,22 +365,37 @@ export function embedRef(e) {
   return `[Embedded element #${e?.id}: ${e?.kind || "element"}]`;
 }
 
+/**
+ * Cut a message's text at its first appended block and collapse every
+ * block after the cut to a one-line reference (image-metadata blocks
+ * dropped — the image reference already stands for the image).
+ * @param {string} text
+ * @returns {{main: string, refs: string[]}}
+ */
+function collapseAppendedBlocks(text) {
+  const cut = text.search(APPENDED_BLOCK);
+  if (cut < 0) return { main: text, refs: [] };
+  /** @type {string[]} */
+  const refs = [];
+  for (const [, kind, name] of text.slice(cut).matchAll(BLOCK_OPENER)) {
+    if (kind === "Image metadata") continue;
+    refs.push(`[${kind === "Project" ? "Project materials" : kind}: ${blockRefName(name)}]`);
+  }
+  return { main: text.slice(0, cut), refs };
+}
+
+/**
+ * @param {ChatMessage[] | null | undefined} messages
+ * @param {ConvEmbed[]} [embeds] stream.js's convEmbeds registry
+ * @returns {string} the plain-text conversation export
+ */
 export function conversationCopyText(messages, embeds = []) {
   const out = [];
   const msgs = messages || [];
   for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i];
     const { text, imageUrls } = splitUserContent(m?.content);
-    const refs = [];
-    let main = text;
-    const cut = main.search(APPENDED_BLOCK);
-    if (cut >= 0) {
-      for (const [, kind, name] of main.slice(cut).matchAll(BLOCK_OPENER)) {
-        if (kind === "Image metadata") continue;
-        refs.push(`[${kind === "Project" ? "Project materials" : kind}: ${blockRefName(name)}]`);
-      }
-      main = main.slice(0, cut);
-    }
+    const { main, refs } = collapseAppendedBlocks(text);
     imageUrls.forEach((_, n) => {
       refs.push(imageUrls.length > 1 ? `[Image ${n + 1} attached]` : "[Image attached]");
     });
@@ -312,10 +409,14 @@ export function conversationCopyText(messages, embeds = []) {
   return out.join("\n\n");
 }
 
-// One inline (non-RAG) document as a labeled text block: the doc's parsed
-// text, its extracted metadata (docProps / tracked changes / PDF Info dict —
-// see docs.js) as its own sub-block, and a truncation marker when the parse
-// hit the inline char cap.
+/**
+ * One inline (non-RAG) document as a labeled text block: the doc's parsed
+ * text, its extracted metadata (docProps / tracked changes / PDF Info dict —
+ * see docs.js) as its own sub-block, and a truncation marker when the parse
+ * hit the inline char cap.
+ * @param {{name: string, text: string, truncated?: boolean, metadata?: string | null}} doc
+ * @returns {string}
+ */
 export function inlineDocBlock(doc) {
   return (
     `\n\n--- Attached document: ${doc.name}${doc.truncated ? " (truncated)" : ""} ---\n` +
@@ -325,25 +426,35 @@ export function inlineDocBlock(doc) {
   );
 }
 
-// An image's extracted metadata (EXIF — capture time/place/device, see
-// exif.js) as its own labeled block. Returns "" for an image that carried
-// none, so the caller can append unconditionally.
+/**
+ * An image's extracted metadata (EXIF — capture time/place/device, see
+ * exif.js) as its own labeled block. Returns "" for an image that carried
+ * none, so the caller can append unconditionally.
+ * @param {{name: string, metadata?: string | null}} image
+ * @returns {string}
+ */
 export function imageMetadataBlock(image) {
   if (!image.metadata) return "";
   return `\n\n--- Image metadata: ${image.name} ---\n${image.metadata}\n--- End of image metadata ---`;
 }
 
-// The RAG retrieval blocks: the pure assembly half of stream.js's
-// buildRagBlocks (retrieval itself stays there — it's async/network). Groups
-// the retrieved `matches` ({docId, seq, text}) back under their documents,
-// enforces a per-excerpt cap and a total char budget, and formats one
-// labeled block per document. `names` maps docId → display name and
-// `metaByDoc` maps docId → extracted metadata (both Maps). `chatDocIds`
-// (a Set) marks docs that are indexed PROJECT CHATS (chat-rag.js) — those
-// get a header saying what they actually are (an earlier conversation in
-// this project) instead of the attached-document one. Returns "" when
-// nothing survives the budget.
+/**
+ * The RAG retrieval blocks: the pure assembly half of stream.js's
+ * buildRagBlocks (retrieval itself stays there — it's async/network). Groups
+ * the retrieved matches back under their documents, enforces a per-excerpt
+ * cap and a total char budget, and formats one labeled block per document.
+ * Docs in `chatDocIds` are indexed PROJECT CHATS (chat-rag.js) — those get
+ * a header saying what they actually are (an earlier conversation in this
+ * project) instead of the attached-document one.
+ * @param {Array<{docId: string, seq: number, text: string}>} matches
+ * @param {Map<string, string>} names docId → display name
+ * @param {Map<string, string>} metaByDoc docId → extracted metadata
+ * @param {number} [totalBudget]
+ * @param {Set<string>} [chatDocIds]
+ * @returns {string} "" when nothing survives the budget
+ */
 export function ragExcerptBlocks(matches, names, metaByDoc, totalBudget = EXCERPT_TOTAL_CHARS, chatDocIds = new Set()) {
+  /** @type {Map<string, Array<{seq: number, text: string}>>} */
   const byDoc = new Map();
   let used = 0;
   for (const m of matches) {
@@ -351,8 +462,9 @@ export function ragExcerptBlocks(matches, names, metaByDoc, totalBudget = EXCERP
     const excerpt = m.text.slice(0, Math.min(EXCERPT_CHUNK_CHARS, totalBudget - used));
     if (!excerpt.trim()) continue;
     used += excerpt.length;
-    if (!byDoc.has(m.docId)) byDoc.set(m.docId, []);
-    byDoc.get(m.docId).push({ seq: m.seq, text: excerpt });
+    let docExcerpts = byDoc.get(m.docId);
+    if (!docExcerpts) byDoc.set(m.docId, (docExcerpts = []));
+    docExcerpts.push({ seq: m.seq, text: excerpt });
   }
 
   let out = "";

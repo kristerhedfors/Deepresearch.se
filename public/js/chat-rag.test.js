@@ -1,3 +1,4 @@
+// Node tests for chat-rag.js's pure helpers: chat doc ids, block-stripping index text, the sibling-chat scope picker.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

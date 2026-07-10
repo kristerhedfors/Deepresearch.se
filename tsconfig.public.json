@@ -1,0 +1,18 @@
+{
+  // Client-side typecheck (public/**). Separate from tsconfig.json (src/**,
+  // Workers types): the client runs in a browser (DOM lib, no Workers
+  // globals) AND in Node for the pure-module unit suite. checkJs stays off —
+  // files opt in with // @ts-check, so unannotated modules aren't flagged.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": []
+  },
+  "include": ["public/**/*.js"]
+}

@@ -1,3 +1,4 @@
+// @ts-check
 // Incremental SSE parser — the pure core of stream.js's read loop, extracted
 // so the line-buffering rules are testable in Node (no DOM needed). The
 // server's stream is `data: <json>` events separated by blank lines, with
@@ -7,6 +8,9 @@
 // `[DONE]` terminator, and drop malformed JSON rather than throw (a torn
 // keepalive or truncated frame must never kill the render loop).
 
+/**
+ * @returns {{ push(chunk: string): unknown[] }} stateful parser — one per stream
+ */
 export function createSseParser() {
   let buffer = "";
   return {
@@ -14,7 +18,7 @@ export function createSseParser() {
     push(chunk) {
       buffer += chunk;
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // partial trailing line waits for the next read
+      buffer = lines.pop() ?? ""; // partial trailing line waits for the next read
       const events = [];
       for (const line of lines) {
         if (!line.startsWith("data:")) continue;

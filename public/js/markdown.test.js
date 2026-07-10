@@ -1,3 +1,4 @@
+// Node tests for markdown.js's pure table repair (normalizeLlmMarkdown).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeLlmMarkdown } from "./markdown.js";

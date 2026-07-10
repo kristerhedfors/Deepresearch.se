@@ -1,3 +1,4 @@
+// Node tests for project-context.js: the project-materials block, doc-id scoping, name/note normalization.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

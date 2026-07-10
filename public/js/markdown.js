@@ -1,13 +1,18 @@
+// @ts-check
 // Sanitized markdown rendering, wrapping the vendored globals `marked` and
 // `DOMPurify` (loaded as classic scripts before the app module). Falls back
 // to plain text if either is missing.
 
-// Repairs a class of malformed markdown some answer models emit — GLM-4.7 in
-// particular streamed a whole GFM table with its rows JOINED by "||" and no
-// blank line before it, so CommonMark rendered it as literal "| … |" text
-// instead of a table (the reported bug). This normalizes ONLY tables and is
-// a no-op on well-formed markdown (and on text with no table at all), so it's
-// safe to run on every render. Pure (no DOM) — unit-tested in Node.
+/**
+ * Repairs a class of malformed markdown some answer models emit — GLM-4.7 in
+ * particular streamed a whole GFM table with its rows JOINED by "||" and no
+ * blank line before it, so CommonMark rendered it as literal "| … |" text
+ * instead of a table (the reported bug). This normalizes ONLY tables and is
+ * a no-op on well-formed markdown (and on text with no table at all), so it's
+ * safe to run on every render. Pure (no DOM) — unit-tested in Node.
+ * @param {string} text
+ * @returns {string}
+ */
 export function normalizeLlmMarkdown(text) {
   if (typeof text !== "string" || !text) return text;
   // Anchor on a GFM separator row (|---|---|): without one there's no table
@@ -17,14 +22,15 @@ export function normalizeLlmMarkdown(text) {
   // (a) A whole table emitted on one line, rows joined by "||": split each
   //     row onto its own line. "||" is not meaningful in prose, and we've
   //     already confirmed a table is present, so this is safe.
-  let out = text.replace(/\|\|/g, "|\n|");
+  const out = text.replace(/\|\|/g, "|\n|");
 
   // (b) Line pass: break a table header glued to the end of the preceding
   //     paragraph, and guarantee a blank line before the table — CommonMark
   //     only starts a table block when one precedes it.
-  const isSep = (l) => /^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/.test(l);
-  const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+  const isSep = (/** @type {string} */ l) => /^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/.test(l);
+  const isRow = (/** @type {string} */ l) => /^\s*\|.*\|\s*$/.test(l);
   const lines = out.split("\n");
+  /** @type {string[]} */
   const result = [];
   const pushBlankBefore = () => {
     if (result.length && result[result.length - 1].trim() !== "") result.push("");
@@ -46,8 +52,16 @@ export function normalizeLlmMarkdown(text) {
   return result.join("\n");
 }
 
+/**
+ * Render markdown into an element, sanitized; plain text when the vendored
+ * libs are missing.
+ * @param {HTMLElement} el
+ * @param {string} text
+ */
 export function renderMarkdownInto(el, text) {
-  if (!(window.marked && window.DOMPurify)) {
+  // The vendored classic-script globals aren't in lib.dom's Window type.
+  const { marked, DOMPurify } = /** @type {any} */ (window);
+  if (!(marked && DOMPurify)) {
     el.textContent = text;
     return;
   }

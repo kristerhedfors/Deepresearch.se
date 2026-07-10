@@ -1,3 +1,4 @@
+// @ts-check
 // Minimal JPEG/EXIF parser — no library, operates on the raw ArrayBuffer.
 // Must run on the ORIGINAL file bytes before attachments.js's canvas-based
 // downscale, since re-encoding through <canvas>.toDataURL() strips all
@@ -13,11 +14,33 @@ const APP1 = 0xffe1;
 const EXIF_IFD_POINTER = 0x8769;
 const GPS_IFD_POINTER = 0x8825;
 
+/** Bytes per unit for each TIFF field type this parser reads. @type {Record<number, number>} */
 const TYPE_SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
 
-// Returns null (no EXIF / not a JPEG / malformed) or:
-// { make, model, software, artist, copyright, description, dateTimeOriginal,
-//   gps: { lat, lon, altitude } | null }
+/**
+ * One decoded IFD field. `value` is an array of numbers (length `count`),
+ * except ASCII fields where readValue assembles the bytes into a single
+ * one-element string array.
+ * @typedef {{type: number, count: number, value: Array<number | string>}} IfdEntry
+ */
+
+/**
+ * The extracted metadata (every field may be null when absent).
+ * @typedef {object} ExifSummary
+ * @property {string | null} make
+ * @property {string | null} model
+ * @property {string | null} software
+ * @property {string | null} artist
+ * @property {string | null} copyright
+ * @property {string | null} description
+ * @property {string | null} dateTimeOriginal "YYYY-MM-DD HH:MM:SS"
+ * @property {{lat: number, lon: number, altitude: number | null} | null} gps signed decimal degrees
+ */
+
+/**
+ * @param {ArrayBuffer} arrayBuffer the ORIGINAL file bytes (pre-downscale)
+ * @returns {ExifSummary | null} null: no EXIF / not a JPEG / malformed
+ */
 export function extractExif(arrayBuffer) {
   try {
     return parseJpegExif(new DataView(arrayBuffer));
@@ -28,6 +51,10 @@ export function extractExif(arrayBuffer) {
   }
 }
 
+/**
+ * @param {DataView} dv
+ * @returns {ExifSummary | null}
+ */
 function parseJpegExif(dv) {
   if (dv.byteLength < 4 || dv.getUint16(0) !== 0xffd8) return null; // not a JPEG (SOI)
 
@@ -48,6 +75,10 @@ function parseJpegExif(dv) {
   return null;
 }
 
+/**
+ * @param {DataView} dv
+ * @param {number} at
+ */
 function hasExifHeader(dv, at) {
   if (at + 6 > dv.byteLength) return false;
   return (
@@ -56,6 +87,11 @@ function hasExifHeader(dv, at) {
   );
 }
 
+/**
+ * @param {DataView} dv
+ * @param {number} tiffStart byte offset of the TIFF header (after "Exif\0\0")
+ * @returns {ExifSummary | null}
+ */
 function parseTiff(dv, tiffStart) {
   const bom = dv.getUint16(tiffStart);
   let little;
@@ -67,6 +103,7 @@ function parseTiff(dv, tiffStart) {
   const ifd0Offset = dv.getUint32(tiffStart + 4, little);
   const ifd0 = readIfd(dv, tiffStart, tiffStart + ifd0Offset, little);
 
+  /** @type {ExifSummary} */
   const out = {
     make: asString(ifd0.get(0x010f)),
     model: asString(ifd0.get(0x0110)),
@@ -97,10 +134,16 @@ function parseTiff(dv, tiffStart) {
   return out;
 }
 
-// Reads one IFD into a Map<tag, {type, count, value}>. `value` is always an
-// array (length `count`) of numbers, or for ASCII/UNDEFINED a decoded string
-// already assembled by readValue.
+/**
+ * Reads one IFD into a Map keyed by tag.
+ * @param {DataView} dv
+ * @param {number} tiffStart all IFD value offsets are relative to this
+ * @param {number} ifdOffset absolute byte offset of the IFD
+ * @param {boolean} little byte order from the TIFF header
+ * @returns {Map<number, IfdEntry>}
+ */
 function readIfd(dv, tiffStart, ifdOffset, little) {
+  /** @type {Map<number, IfdEntry>} */
   const entries = new Map();
   if (ifdOffset <= 0 || ifdOffset + 2 > dv.byteLength) return entries;
   const count = dv.getUint16(ifdOffset, little);
@@ -118,7 +161,16 @@ function readIfd(dv, tiffStart, ifdOffset, little) {
   return entries;
 }
 
+/**
+ * @param {DataView} dv
+ * @param {number} at absolute byte offset of the value
+ * @param {number} type TIFF field type
+ * @param {number} count
+ * @param {boolean} little
+ * @returns {Array<number | string>} see IfdEntry's `value` shape
+ */
 function readValue(dv, at, type, count, little) {
+  /** @type {number[]} */
   const out = [];
   for (let i = 0; i < count; i++) {
     if (at + TYPE_SIZES[type] * (i + 1) > dv.byteLength) break;
@@ -145,6 +197,7 @@ function readValue(dv, at, type, count, little) {
   return out;
 }
 
+/** @param {number[]} bytes */
 function bytesToAscii(bytes) {
   let s = "";
   for (const b of bytes) {
@@ -154,13 +207,21 @@ function bytesToAscii(bytes) {
   return s;
 }
 
+/**
+ * @param {IfdEntry | undefined} entry
+ * @returns {string | null}
+ */
 function asString(entry) {
   const v = entry?.value?.[0];
   return typeof v === "string" && v ? v : null;
 }
 
-// EXIF DateTimeOriginal is "YYYY:MM:DD HH:MM:SS" — normalize the date
-// separators for readability without pulling in a date-parsing library.
+/**
+ * EXIF DateTimeOriginal is "YYYY:MM:DD HH:MM:SS" — normalize the date
+ * separators for readability without pulling in a date-parsing library.
+ * @param {IfdEntry | undefined} entry
+ * @returns {string | null}
+ */
 function asDateTime(entry) {
   const v = asString(entry);
   if (!v) return null;
@@ -168,12 +229,22 @@ function asDateTime(entry) {
   return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}` : v;
 }
 
+/**
+ * @param {Array<number | string> | undefined} values [degrees, minutes, seconds]
+ * @returns {number | null}
+ */
 function dmsToDecimal(values) {
   if (!Array.isArray(values) || values.length < 3) return null;
-  const [deg, min, sec] = values;
+  // ASCII fields collapse to a single-element array (readValue), so a
+  // 3+-element value is necessarily numeric.
+  const [deg, min, sec] = /** @type {number[]} */ (values);
   return deg + min / 60 + sec / 3600;
 }
 
+/**
+ * @param {Map<number, IfdEntry>} gpsIfd
+ * @returns {ExifSummary["gps"]}
+ */
 function readGps(gpsIfd) {
   const latRef = asString(gpsIfd.get(1));
   const lonRef = asString(gpsIfd.get(3));
@@ -190,11 +261,16 @@ function readGps(gpsIfd) {
   return { lat: round6(signedLat), lon: round6(signedLon), altitude };
 }
 
+/** @param {number} n */
 function round6(n) {
   return Math.round(n * 1e6) / 1e6;
 }
 
-// Human/LLM-readable summary block, or null if there's nothing to show.
+/**
+ * Human/LLM-readable summary block, or null if there's nothing to show.
+ * @param {ExifSummary | null | undefined} meta
+ * @returns {string | null}
+ */
 export function formatExifSummary(meta) {
   if (!meta) return null;
   const lines = [];

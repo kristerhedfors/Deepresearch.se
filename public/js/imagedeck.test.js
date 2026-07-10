@@ -1,3 +1,4 @@
+// Node tests for imagedeck.js's pure core: entry validation/order, keyless embed URLs, latest-within-radius lookup.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 

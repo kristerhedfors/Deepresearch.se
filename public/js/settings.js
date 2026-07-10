@@ -1,15 +1,35 @@
-// Per-account settings (GET/PUT /api/settings — src/settings.js). Two knobs
-// today: server_history (cloud storage) and shodan_mcp (Shodan host-intel
-// enrichment). The cached copy answers the hot-path question every
-// storage-touching module asks — "is cloud storage on?" — without a fetch
-// per call; the answer only ever changes through updateSetting below (this
-// tab) or on the next page load (another tab or device flipped it — an
-// accepted, self-healing staleness window: the server rejects writes that
-// its own copy of the knob forbids).
+// @ts-check
+// Per-account settings (GET/PUT /api/settings — src/settings.js): the
+// server_history (cloud storage), shodan_mcp (Shodan host-intel),
+// google_maps, and feedback_mode knobs. The cached copy answers the
+// hot-path question every storage-touching module asks — "is cloud storage
+// on?" — without a fetch per call; the answer only ever changes through
+// updateSetting below (this tab) or on the next page load (another tab or
+// device flipped it — an accepted, self-healing staleness window: the
+// server rejects writes that its own copy of the knob forbids).
 
-let settings = null; // {server_history, shodan_mcp, available:{storage, rag, shodan}}
+/**
+ * The server's effective-settings response: the per-user knobs plus which
+ * server-side capabilities exist at all (secrets/bindings present).
+ * @typedef {object} Settings
+ * @property {boolean} [server_history]
+ * @property {boolean} [shodan_mcp]
+ * @property {boolean} [google_maps]
+ * @property {boolean} [feedback_mode]
+ * @property {string} [maps_embed_key]
+ * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean}} [available]
+ */
+
+/** @type {Settings | null} */
+let settings = null;
+/** @type {Promise<Settings> | null} */
 let loadPromise = null;
 
+/**
+ * Fetch (or reuse the in-flight/cached fetch of) the account settings.
+ * @param {boolean} [force] drop the cache and refetch
+ * @returns {Promise<Settings>}
+ */
 export function loadSettings(force = false) {
   if (force) loadPromise = null;
   if (!loadPromise) {
@@ -80,8 +100,12 @@ export function mapsEmbedKey() {
   return settings?.maps_embed_key || "";
 }
 
-// Generic partial update: PUT one or both knobs, refresh the cache from the
-// server's authoritative (effective) response.
+/**
+ * Generic partial update: PUT one or more knobs, refresh the cache from the
+ * server's authoritative (effective) response.
+ * @param {Partial<Settings>} patch
+ * @returns {Promise<Settings>}
+ */
 async function updateSetting(patch) {
   const res = await fetch("/api/settings", {
     method: "PUT",
@@ -95,14 +119,17 @@ async function updateSetting(patch) {
   return data;
 }
 
+/** @param {boolean} on */
 export function setServerHistory(on) {
   return updateSetting({ server_history: on });
 }
 
+/** @param {boolean} on */
 export function setShodanMcp(on) {
   return updateSetting({ shodan_mcp: on });
 }
 
+/** @param {boolean} on */
 export function setGoogleMaps(on) {
   return updateSetting({ google_maps: on });
 }
@@ -119,6 +146,7 @@ export function feedbackAvailable() {
   return settings?.available?.feedback === true;
 }
 
+/** @param {boolean} on */
 export function setFeedbackMode(on) {
   return updateSetting({ feedback_mode: on });
 }

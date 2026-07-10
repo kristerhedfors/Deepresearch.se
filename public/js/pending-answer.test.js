@@ -1,3 +1,4 @@
+// Node tests for pending-answer.js's pure pointer validation (parsePending).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { parsePending, PENDING_TTL_MS } from "./pending-answer.js";
