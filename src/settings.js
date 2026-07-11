@@ -140,9 +140,12 @@ export function featureAvailability(env, identity) {
     // The bash-lite sandbox is a pure BROWSER capability (CheerpX runs
     // client-side; the server only remembers the knob and, when it's on,
     // serves the app shell cross-origin-isolated so SharedArrayBuffer works).
-    // No server secret to gate on — it needs only a user row to persist the
-    // knob against (break-glass has none).
-    bash_lite: !!identity.user,
+    // No server secret to gate on. A signed-in account persists the knob in
+    // its D1 row; the break-glass admin — an explicit operator identity with
+    // no row — also gets it (the sandbox is simply on for it, see
+    // bashLiteEnabled), which is what makes the feature reachable and
+    // end-to-end testable with the break-glass credentials.
+    bash_lite: !!(identity.user || identity.isSecretAdmin),
   };
 }
 
@@ -206,17 +209,20 @@ export function feedbackEnabled(env, identity) {
   return featureAvailability(env, identity).feedback && getSettings(identity).feedback_mode;
 }
 
-// The effective bash-lite sandbox state: the knob on AND a real user row
-// behind it. Read by index.js to decide whether the DRS app shell is served
-// cross-origin-isolated (COEP) so CheerpX can boot, and by chat.js to accept
-// a shell transcript for this request. Break-glass (no user row) reads off.
+// The effective bash-lite sandbox state. Read by index.js to decide whether
+// the DRS app shell is served cross-origin-isolated (COEP) so CheerpX can
+// boot, and by chat.js/bash-api.js to accept a shell transcript / run the
+// step. A signed-in account gates on its stored knob; the break-glass admin
+// has no D1 row to store one, so the sandbox is simply on for it (an explicit
+// operator identity — and the path that makes the feature testable).
 /**
  * @param {Env} env
  * @param {Identity} identity
  * @returns {boolean}
  */
 export function bashLiteEnabled(env, identity) {
-  return featureAvailability(env, identity).bash_lite && getSettings(identity).bash_lite_mcp;
+  if (!featureAvailability(env, identity).bash_lite) return false;
+  return identity?.user ? getSettings(identity).bash_lite_mcp : true;
 }
 
 /**
@@ -252,7 +258,7 @@ function settingsPayload(env, identity, settings) {
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
     feedback_mode: available.feedback && settings.feedback_mode,
-    bash_lite_mcp: available.bash_lite && settings.bash_lite_mcp,
+    bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
     // Browser key for the interactive Street View embed — public by design,
     // safe because the key is HTTP-referrer-locked to the site. Prefers a
     // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY

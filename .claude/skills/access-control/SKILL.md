@@ -48,6 +48,21 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   Google's stable `sub` stored on the user row) → session cookie → `/`.
   ID-token signature is not verified — it arrives directly from Google's
   token endpoint over TLS (per Google's own guidance for this flow).
+- **`redirect_uri` must match a canonical host — `www` broke it (fixed
+  2026-07-11).** The Worker is routed on BOTH `deepresearch.se` and
+  `www.deepresearch.se` (wrangler.toml), and `google.js` builds `redirect_uri`
+  as `${url.origin}/auth/google/callback` from the REQUEST host. Google's
+  authorized-redirect-URI list is EXACT-match (no wildcards — `…/*` never
+  matches), and only the apex callback was registered, so a `www` sign-in
+  (Firefox Focus) sent Google a `www` callback → "Error 400:
+  redirect_uri_mismatch". Fix: **canonicalize `www.* → apex` with a 301 at the
+  very top of `route()`** (before the identity gate), preserving path+query, so
+  the whole flow — state cookie, `redirect_uri`, callback, session — stays on
+  the one registered host. Pinning only the `redirect_uri` would have split the
+  CSRF state cookie across hosts, so canonicalize the host itself.
+  `/auth/google` sets a cookie (never edge-cached), so the fix takes effect
+  immediately. Debug the exact URI a request builds via the `google.start`
+  log line (host + `redirect_uri` + `client_id`) on a live `wrangler tail`.
 - **Sessions (PWA longevity)**: `dr_session` = `u.<uid>.<exp>.<hmac>`,
   **365 days, sliding** — any authenticated request past the half-life
   gets a fresh cookie appended, so an installed PWA opened at least twice

@@ -55,6 +55,8 @@ import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
  * @property {any} [shell_transcript] bash-lite sandbox runs gathered client-side
  *   before this request ({command,exitCode,stdout,stderr}[]); honored only when
  *   the caller's bash_lite_mcp knob is on, ignored otherwise
+ * @property {any} [client_diag] client sandbox-readiness diagnostic
+ *   ({coi,bl,sb,ran,css}) recorded to the chat log's meta
  */
 
 /**
@@ -153,6 +155,29 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // (defense: a client can't smuggle a transcript in with the feature off);
   // folded into the answer as ground truth by the pipeline (ctx.shellBlock).
   const shellTranscript = bashLiteEnabled(env, identity) ? resolveShellTranscript(body.shell_transcript) : [];
+
+  // Stale-client auto-heal. A knob-on account whose request carries NO
+  // client_diag (public/js/stream.js has attached it since the sandbox fixes)
+  // is running a pre-fix cached bundle — the sandbox can't work no matter what
+  // because the client code predates it, and a plain reload keeps serving the
+  // cached assets. Answer this request normally, but tell the browser to drop
+  // its HTTP cache (and, in Chromium, its back-forward cache) so the NEXT load
+  // fetches the fixed code. Scoped to "cache" only — never "cookies"/"storage"
+  // — so the encrypted local history is untouched; self-limiting, since once
+  // the fresh bundle loads it sends client_diag and this stops firing.
+  const staleSandboxClient = bashLiteEnabled(env, identity) && body.client_diag === undefined;
+  /** @type {Record<string, string>} */
+  const responseHeaders = staleSandboxClient ? { "clear-site-data": '"cache"' } : {};
+  // Full request-level visibility: the exact client_diag the browser sent (or
+  // null when absent = a pre-fix bundle), plus the effective server knob. Lets
+  // a live `wrangler tail` show precisely why the sandbox did or didn't engage.
+  log.info("chat.client_diag", {
+    user_id: identity.id,
+    request_id: requestId,
+    diag: body.client_diag ?? null,
+    knob_on: bashLiteEnabled(env, identity),
+    shell_transcript_len: shellTranscript.length,
+  });
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
@@ -355,6 +380,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             quiz: state.quiz || undefined,
             berget_cost,
             exa_cost,
+            // Diagnostic: the client's sandbox-readiness (public/js/stream.js
+            // client_diag) — crossOriginIsolated (coi), the knob (bl), whether
+            // the sandbox can run (sb), how many commands ran (ran), and the
+            // CSS build stamp. Lets a not-running sandbox be diagnosed from the
+            // log without device access.
+            client_diag: sanitizeClientDiag(body.client_diag),
           },
         });
       }
@@ -382,7 +413,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     }
   }
 
-  return sseResponse(stream);
+  return sseResponse(stream, responseHeaders);
 }
 
 // ---- pre-stream setup helpers ----------------------------------------------
@@ -520,6 +551,26 @@ function resolveShellTranscript(raw) {
     if (out.length >= MAX_SHELL_ROUNDS * 8) break;
   }
   return out;
+}
+
+/**
+ * Coerces the client's diagnostic block (public/js/stream.js client_diag) to a
+ * small, whitelisted shape for the chat log — untrusted, so every field is
+ * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
+ * @param {any} d
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string } | undefined}
+ */
+function sanitizeClientDiag(d) {
+  if (!d || typeof d !== "object") return undefined;
+  return {
+    coi: d.coi === true ? true : d.coi === false ? false : null,
+    bl: d.bl === true,
+    sb: d.sb === true,
+    ran: Number.isFinite(d.ran) ? Math.max(0, Math.min(50, Math.trunc(d.ran))) : 0,
+    css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
+    sab: d.sab === true,
+    ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
+  };
 }
 
 /**

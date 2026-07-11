@@ -83,12 +83,15 @@ test("parseSettings: only an explicit stored true enables bash_lite_mcp", () => 
   assert.equal(parseSettings('{"bash_lite_mcp":"true"}').bash_lite_mcp, false);
 });
 
-test("bashLiteEnabled: needs a user row AND the knob on (no server secret)", () => {
+test("bashLiteEnabled: a user row + the knob on, OR the break-glass admin", () => {
   const on = { user: { id: 1, settings_json: '{"bash_lite_mcp":true}' } };
   const off = { user: { id: 2, settings_json: null } }; // default off
   assert.equal(bashLiteEnabled({}, on), true); // no secret required
   assert.equal(bashLiteEnabled({}, off), false); // default off
-  assert.equal(bashLiteEnabled({}, {}), false); // break-glass: no user row
+  assert.equal(bashLiteEnabled({}, {}), false); // empty identity: nothing to gate on
+  // The break-glass admin (an explicit operator identity, no D1 row) gets the
+  // sandbox unconditionally — no stored knob to consult.
+  assert.equal(bashLiteEnabled({}, { isSecretAdmin: true }), true);
 });
 
 test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
@@ -138,7 +141,7 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     feedback: false,
     bash_lite: true,
   });
-  // Each feature needs a user row too (break-glass has none) — bash_lite included.
+  // An empty identity (no user row, not the admin) has nothing available.
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k", DB: {} }, {}), {
     storage: false,
     rag: false,
@@ -146,6 +149,16 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     google_maps: false,
     feedback: false,
     bash_lite: false,
+  });
+  // The break-glass admin (isSecretAdmin, no user row) gets bash_lite — the
+  // one feature with no D1/secret dependency — but not the row-backed ones.
+  assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k", DB: {} }, { isSecretAdmin: true }), {
+    storage: false,
+    rag: false,
+    shodan: false,
+    google_maps: false,
+    feedback: false,
+    bash_lite: true,
   });
 });
 

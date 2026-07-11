@@ -13,7 +13,7 @@
 //     the bash-lite agent loop (public/js/bash-agent.js) drives.
 //
 // CheerpX needs SharedArrayBuffer, which needs cross-origin isolation
-// (COOP+COEP). The Worker serves the DRS app shell with COEP: credentialless
+// (COOP+COEP). The Worker serves the DRS app shell with COEP: require-corp
 // only when this account's knob is on (src/index.js), so `crossOriginIsolated`
 // is the definitive "can this run here" check — sandboxSupported() below.
 //
@@ -156,7 +156,12 @@ async function bootVM() {
   setStatus("booting");
 
   await Promise.all([
-    loadCSS(XTERM_CDN + "/css/xterm.css"),
+    // The xterm stylesheet is purely cosmetic terminal styling — exec needs
+    // none of it, so a failed/blocked CSS load must NOT abort the boot (it did:
+    // a transient CDN miss on xterm.css took the whole sandbox down with
+    // "Sandbox unavailable"). The two SCRIPTS are load-bearing (they define the
+    // Terminal/FitAddon globals), so those stay fatal.
+    loadCSS(XTERM_CDN + "/css/xterm.css").catch((e) => console.warn("[sandbox] xterm css skipped:", e?.message || e)),
     loadScript(XTERM_CDN + "/lib/xterm.js"),
     loadScript(XTERM_FIT_CDN + "/lib/addon-fit.js"),
   ]);
@@ -238,10 +243,18 @@ export function execInSandbox(command) {
     if (vmState !== "ready" || !cx) return { exitCode: 1, stdout: "", stderr: "sandbox not ready" };
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const marker = "###EXEC" + id + ":";
+    const of = "/tmp/_o" + id;
     const ef = "/tmp/_e" + id;
+    // Redirect stdout AND stderr to files, capture $? IMMEDIATELY (before any
+    // pipe), THEN base64 the files. The prior form piped stdout into base64
+    // and read $? after the pipe, so RC was base64's exit (always 0) — the
+    // command's real exit code was lost. /bin/sh here is dash (no PIPESTATUS),
+    // so the temp-file form is the correct way to preserve it. The
+    // marker+base64 envelope is unchanged (base64 emits no ':' or '#').
     const wrapped =
-      "O=$( (" + command + ") 2>" + ef + " | base64 -w0 ); RC=$?; " +
-      "E=$(base64 -w0 " + ef + " 2>/dev/null); rm -f " + ef + "; " +
+      "( " + command + " ) >" + of + " 2>" + ef + "; RC=$?; " +
+      "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
+      "rm -f " + of + " " + ef + "; " +
       'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
     const env = {
       env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
