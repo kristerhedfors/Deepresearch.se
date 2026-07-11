@@ -2,11 +2,11 @@
 // Maps knobs, each disabled (with a note) when the server can't back it.
 // Built from account-views.js's shared settingRow/wireSettingPopovers
 // building blocks; the panel shell (showView) lives in account.js. The
-// summary's Feedback-mode knob is NOT here — it sits directly on the
-// summary (account-views.js).
+// summary's Feedback-mode and execution-sandbox knobs are NOT here — they sit
+// directly on the summary (account-views.js).
 
 import { settingRow, wireSettingPopovers } from "./account-views.js";
-import { loadSettings, setBashLiteMcp, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
+import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -51,22 +51,6 @@ const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
   runs only when your message names an address or you attach a located photo,
   and independently of the web-search switch.`;
 
-const BASHLITE_INFO = `<strong>Execution sandbox (bash) — Experimental</strong><br>
-  <b>On:</b> when a message asks to run a shell or execute code (e.g. “run
-  this command”, “compute this in the sandbox”), the site boots a real
-  <b>Linux computer inside your browser</b> — a JavaScript x86 emulator
-  (CheerpX) — and the assistant runs commands in it, reads their output, and
-  keeps going until it has what it needs, then writes the answer using the
-  results.<br>
-  <b>Off (default):</b> no sandbox; those requests are answered normally.<br>
-  <b>Where it runs:</b> entirely in <b>this browser</b>. The server never
-  runs a shell — it only relays which command the model wants next. Nothing
-  you compute leaves your device.<br>
-  <b>Note:</b> this is experimental. Turning it on takes full effect after the
-  page reloads (the app needs to load in a cross-origin-isolated mode so the
-  emulator can run), and the first boot downloads a Linux disk image, so it
-  takes a little while.`;
-
 /**
  * Fetches fresh settings and renders the Settings sub-view: the
  * cloud-storage, Shodan, and Google Maps knobs, each disabled (with a
@@ -91,7 +75,6 @@ export async function loadSettingsView(ctx) {
   const usable = !!s?.available?.storage;
   const shodanUsable = !!s?.available?.shodan;
   const googleMapsUsable = !!s?.available?.google_maps;
-  const bashLiteUsable = !!s?.available?.bash_lite;
   const note = !ctx.me?.email
     ? "Settings need a signed-in account (break-glass sessions have none)."
     : s === null
@@ -140,15 +123,6 @@ export async function loadSettingsView(ctx) {
     })}
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
-    ${settingRow({
-      id: "bashliteknob",
-      label: `Execution sandbox (bash) <span class="exp-badge">Experimental</span>`,
-      checked: bashLiteUsable && s?.bash_lite_mcp,
-      disabled: !bashLiteUsable,
-      popId: "bashlitepop",
-      info: BASHLITE_INFO,
-    })}
-    <p id="bashlitestatus" class="muted setting-note" hidden></p>
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
@@ -166,37 +140,6 @@ export async function loadSettingsView(ctx) {
       off: "Google Maps is off — nothing is sent to Google.",
     });
   }
-  if (bashLiteUsable) wireBashLiteKnob();
-}
-
-// The execution-sandbox knob. Unlike the other simple knobs, enabling it
-// changes how the PAGE must be served (cross-origin isolation for
-// SharedArrayBuffer), which only takes effect on the next load — so on enable
-// we save the setting and then reload so the app comes back isolated and the
-// sandbox can actually boot. Disabling just saves (no reload needed).
-function wireBashLiteKnob() {
-  const knob = document.getElementById("bashliteknob");
-  const status = document.getElementById("bashlitestatus");
-  knob.addEventListener("change", async () => {
-    const on = knob.checked;
-    knob.disabled = true;
-    status.hidden = false;
-    status.textContent = "Saving…";
-    try {
-      await setBashLiteMcp(on);
-      if (on) {
-        status.textContent = "Sandbox enabled — reloading so it can start…";
-        setTimeout(() => location.reload(), 900);
-      } else {
-        status.textContent = "Sandbox disabled.";
-        knob.disabled = false;
-      }
-    } catch (err) {
-      knob.checked = !on;
-      status.textContent = err?.message || "Could not update the setting.";
-      knob.disabled = false;
-    }
-  });
 }
 
 // The cloud knob is the one setting whose flip triggers a bulk move

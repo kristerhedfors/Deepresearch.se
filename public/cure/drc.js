@@ -143,16 +143,25 @@ function closeDrawer() {
   $("drawer").hidden = true;
 }
 
+// ---- the account view (right drawer): all-client-side explainer + keys + sandbox ----
+
+function openAccount() {
+  closeDrawer();
+  $("bashlite").checked = state.bashLite === true; // reflect current state
+  renderKeysPanel();
+  $("accountview").hidden = false;
+}
+
+function closeAccount() {
+  $("accountview").hidden = true;
+}
+
 // ---- the DRS explainer: dimmed buttons stand where DRS features live ---------------
 
 const DRS_FEATURES = {
   ghost: {
     title: "Ghost mode — you are here",
     text: "The ghost in the signed-in app brings you HERE: DRC is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In DRS the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
-  },
-  account: {
-    title: "Account & usage",
-    text: "Accounts, quotas, usage windows and the message center live in DRS — deep research server, the signed-in tier.",
   },
   attach: {
     title: "Attachments & documents",
@@ -663,7 +672,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d7 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d8 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }
@@ -682,11 +691,17 @@ $("brand").addEventListener("click", () => {
 $("intro").addEventListener("click", (e) => {
   if (e.target === $("intro")) dismissIntro();
 });
-// The drawer (chats, project, keys).
+// The drawer (chats + project only).
 $("historybtn").addEventListener("click", openDrawer);
 $("drawerclose").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("click", (e) => {
   if (e.target === $("drawer")) closeDrawer();
+});
+// The account view (client-side explainer + API keys + sandbox).
+$("accountbtn").addEventListener("click", openAccount);
+$("accountclose").addEventListener("click", closeAccount);
+$("accountview").addEventListener("click", (e) => {
+  if (e.target === $("accountview")) closeAccount();
 });
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);

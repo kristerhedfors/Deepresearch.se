@@ -454,16 +454,44 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   color: var(--accent);
   border: 1px solid rgba(124, 106, 36, .4);
 }
-#sandboxpanel { margin-top: .5rem; }
-#sandboxpanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
-.knob-row {
-  display: flex;
-  align-items: center;
-  gap: .6rem;
-  margin: .5rem 0 .3rem;
-  font-size: .88rem;
-  cursor: pointer;
+#keyspanel, #sandboxpanel { margin-top: .4rem; }
+#keyspanel summary, #sandboxpanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
+
+/* The account view: a RIGHT-side drawer (mirror of the left #drawer). */
+#accountview {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(61, 52, 24, .45);
+}
+#accountview[hidden] { display: none; }
+.account-panel {
+  left: auto; right: 0;
+  border-right: none;
+  border-left: 1px solid rgba(255, 255, 255, .55);
+  box-shadow: -4px 0 30px rgba(60, 50, 10, .3);
+  border-radius: 18px 0 0 18px;
+}
+#accountview label { display: block; font-size: .78rem; font-weight: 600; margin: .55rem 0 .2rem; }
+#accountview input[type="password"] {
+  width: 100%; box-sizing: border-box; padding: .5rem .6rem; font-size: .85rem;
+  border: 1px solid rgba(124, 106, 36, .4); border-radius: 10px; background: rgba(255, 255, 255, .6);
+}
+#accountview button { padding: .45rem .8rem; font-size: .82rem; }
+.acct-lead { font-size: .82rem; line-height: 1.5; margin: .1rem 0 .3rem; }
+
+/* A plain toggle (no spiderweb) for the sandbox knob. Scoped to #accountview
+   so it beats the `#accountview label` block rule above (ID+class > ID+type). */
+#accountview label.knob-row {
+  display: flex; align-items: center; gap: .6rem;
+  margin: .5rem 0 .3rem; font-size: .85rem; cursor: pointer; font-weight: 500;
 }
 .knob-row input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
-#bashlite:checked + .knob-track { background: var(--accent); }
-#bashlite:checked + .knob-track .knob { left: 22.5px; }
+.toggle-track {
+  flex: none; width: 40px; height: 24px; border-radius: 12px;
+  background: rgba(124, 106, 36, .3); position: relative; transition: background .15s ease;
+}
+.toggle-dot {
+  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(60, 50, 10, .35); transition: left .15s ease;
+}
+#bashlite:checked + .toggle-track { background: var(--accent); }
+#bashlite:checked + .toggle-track .toggle-dot { left: 18px; }
