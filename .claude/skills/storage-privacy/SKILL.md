@@ -10,7 +10,7 @@ description: >-
   at /cure (the root redirects there; /my/project-<hash>; public/cure/,
   public/js/drc-core.js, drc-providers.js, drc-rag.js, drc-research.js, drc-store.js:
   no-account deep research with DIRECT browser→provider calls on user keys
-  — OpenAI + Groq, the CORS-capable providers — and BROWSER-LOCAL sealed
+  — OpenAI + Groq + Berget, the CORS-capable providers — and BROWSER-LOCAL sealed
   storage; the server is in no DRC data path), or the
   privacy/encryption model (encrypted-at-rest except RAG-indexed and
   project chats; keys never at rest beside ciphertext).
@@ -405,7 +405,8 @@ master secret → HKDF-derived reference/blob id/blob key; the sealed
 state; NOTE: the HKDF info strings and state-kind constant are frozen
 pre-rename "free" values — changing them breaks existing secrets;
 state v3 added the `rag` section), `drc-providers.js` (the CORS-capable
-provider registry: OpenAI + Groq ONLY — providers without browser CORS
+provider registry: OpenAI + Groq + Berget (api.berget.ai grew browser
+CORS, confirmed by live preflight probe 2026-07-11) — providers without browser CORS
 can't join, that's the admission ticket; also the `embed` entry +
 `drcEmbed` — browser-direct embeddings on the user's OpenAI key,
 `text-embedding-3-small` dimension-reduced to 512, chosen for send-path

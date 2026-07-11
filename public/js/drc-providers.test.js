@@ -15,14 +15,22 @@ import {
 } from "./drc-providers.js";
 
 test("the registry holds exactly the CORS-capable providers", () => {
-  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq", "berget"]);
   assert.equal(drcProvider("openai").label, "OpenAI");
   assert.equal(drcProvider("groq").label, "Groq");
+  assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
   assert.equal(drcProvider("anthropic"), null); // no browser CORS — not in this registry
   for (const p of DRC_PROVIDERS) {
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
+});
+
+test("Berget's JSON-phase model mirrors the server's DEFAULT_MODEL choice", () => {
+  // The client-side split-model-routing mirror keeps planning on the one
+  // Berget model with an evidence trail (src/berget.js's DEFAULT_MODEL).
+  assert.equal(drcProvider("berget").jsonModel, "mistralai/Mistral-Small-3.2-24B-Instruct-2506");
+  assert.ok(drcProvider("berget").fallbackModels.includes("mistralai/Mistral-Small-3.2-24B-Instruct-2506"));
 });
 
 test("the embedding config is the SMALL, dimension-reduced choice", () => {
@@ -31,11 +39,15 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
   assert.equal(openai.embed.model, "text-embedding-3-small");
   assert.equal(openai.embed.dimensions, 512);
   assert.equal(drcProvider("groq").embed, undefined); // Groq serves no /embeddings
+  // Berget serves /embeddings (e5) but joining RAG needs the passage:/query:
+  // prefix convention + 1024-dim storage — deliberately not declared yet.
+  assert.equal(drcProvider("berget").embed, undefined);
 });
 
 test("drcEmbedProvider: the first embeddings-capable provider with a key", () => {
   assert.equal(drcEmbedProvider({}), null);
   assert.equal(drcEmbedProvider({ groq: "gsk" }), null); // a Groq-only session has no RAG
+  assert.equal(drcEmbedProvider({ berget: "bk" }), null); // a Berget-only session too (no embed entry yet)
   assert.equal(drcEmbedProvider({ openai: "sk" }).id, "openai");
   assert.equal(drcEmbedProvider({ openai: "sk", groq: "gsk" }).id, "openai");
   assert.equal(drcEmbedProvider({ openai: "" }), null);
@@ -45,6 +57,11 @@ test("configuredDrcProviders follows the stored keys", () => {
   assert.deepEqual(configuredDrcProviders({}).map((p) => p.id), []);
   assert.deepEqual(configuredDrcProviders({ groq: "gsk" }).map((p) => p.id), ["groq"]);
   assert.deepEqual(configuredDrcProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(
+    configuredDrcProviders({ openai: "sk", groq: "gsk", berget: "bk" }).map((p) => p.id),
+    ["openai", "groq", "berget"],
+  );
+  assert.deepEqual(configuredDrcProviders({ berget: "bk" }).map((p) => p.id), ["berget"]);
   assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
 });
 
@@ -61,6 +78,16 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.equal(groq.max_completion_tokens, undefined);
   assert.equal(groq.response_format, undefined);
   assert.equal(groq.stream, true);
+
+  // Berget: the plain OpenAI wire, same params src/berget.js sends.
+  const berget = buildDrcPayload(drcProvider("berget"), "mistralai/Mistral-Small-3.2-24B-Instruct-2506", msgs, {
+    json: true,
+    maxTokens: 1500,
+  });
+  assert.equal(berget.max_tokens, 1500);
+  assert.equal(berget.max_completion_tokens, undefined);
+  assert.equal(berget.reasoning_effort, undefined);
+  assert.deepEqual(berget.response_format, { type: "json_object" });
 });
 
 test("extractJson forgives fences and prose, rejects garbage", () => {
@@ -93,6 +120,20 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(groq.modelFilter("whisper-large-v3"), false);
   assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
   assert.equal(groq.modelFilter("gemma2-9b-it"), false);
+
+  // Berget's catalog is small and already curated — the filter's job is
+  // excluding its non-chat modalities (ids from the live catalog 2026-07-11).
+  const berget = drcProvider("berget");
+  assert.equal(berget.modelFilter("mistralai/Mistral-Small-3.2-24B-Instruct-2506"), true);
+  assert.equal(berget.modelFilter("moonshotai/Kimi-K2.6"), true);
+  assert.equal(berget.modelFilter("zai-org/GLM-4.7-FP8"), true);
+  assert.equal(berget.modelFilter("openai/gpt-oss-120b"), true);
+  assert.equal(berget.modelFilter("meta-llama/Llama-3.3-70B-Instruct"), true);
+  assert.equal(berget.modelFilter("KBLab/kb-whisper-large"), false);
+  assert.equal(berget.modelFilter("Systran/faster-whisper-large-v3"), false);
+  assert.equal(berget.modelFilter("BAAI/bge-reranker-v2-m3"), false);
+  assert.equal(berget.modelFilter("intfloat/multilingual-e5-large-instruct"), false);
+  assert.equal(berget.modelFilter("intfloat/multilingual-e5-large"), false);
 });
 
 describe("provider calls over mock HTTP", () => {
@@ -188,5 +229,26 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     assert.equal(requests.at(-1).body.stream, true);
+  });
+
+  test("Berget over mock HTTP: bearer auth + the plain OpenAI wire", async () => {
+    const berget = drcProvider("berget");
+    const res = await drcChatStream(
+      berget,
+      "good-key",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+      [{ role: "user", content: "x" }],
+      { baseUrl },
+    );
+    assert.equal(res.ok, true);
+    assert.match(await res.text(), /"content":"streamed"/);
+    const req = requests.at(-1);
+    assert.equal(req.headers.authorization, "Bearer good-key");
+    assert.equal(req.body.max_tokens, 4096);
+    assert.equal(req.body.max_completion_tokens, undefined);
+
+    const value = await drcCompleteJson(berget, "good-key", berget.jsonModel, [{ role: "user", content: "x" }], { baseUrl });
+    assert.deepEqual(value, { ok: true });
+    assert.deepEqual(requests.at(-1).body.response_format, { type: "json_object" });
   });
 });

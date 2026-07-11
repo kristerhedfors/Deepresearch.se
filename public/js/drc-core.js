@@ -19,7 +19,7 @@
 //       BROWSER-LOCAL store, drc-store.js) and the AES-256-GCM key it is
 //       sealed with. Neither ever leaves the browser in any form.
 //
-// The provider API keys (OpenAI / Groq) live INSIDE the sealed state and
+// The provider API keys (OpenAI / Groq / Berget) live INSIDE the sealed state and
 // go straight from the browser to the provider (drc-providers.js) — for
 // DRC the Deepresearch server serves static files and public replay JSONs
 // and is in NO other path: it never sees a key, a message, or the state.
@@ -93,7 +93,7 @@ export async function deriveDrcProfile(secret) {
 
 // ---- the project state --------------------------------------------------------
 
-// {v, kind, updatedAt, keys: {openai?, groq?}, providerId?, model?,
+// {v, kind, updatedAt, keys: {openai?, groq?, berget?}, providerId?, model?,
 //  research, conversations: [{id, title, messages, createdAt, updatedAt}],
 //  rag: {embedder?, docs: []}}
 // — everything the page persists, the provider API keys AND the RAG index

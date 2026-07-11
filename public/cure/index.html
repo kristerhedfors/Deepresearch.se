@@ -40,7 +40,7 @@
   </header>
 
   <div id="chat"><div class="empty">Ask a research question to get started — it runs right here
-    in your browser, on your own OpenAI or Groq API key. The first send helps you set one up.</div></div>
+    in your browser, on your own OpenAI, Groq or Berget API key. The first send helps you set one up.</div></div>
 
   <div id="footer">
     <div class="footer-slide">
@@ -147,7 +147,7 @@
       <p class="acct-lead">DRC has <b>no accounts</b> and no server-side data. Your chats,
         projects and API keys live <b>only in this browser</b>. The one thing that ever
         leaves your device is the model call itself — sent straight to your chosen
-        provider (OpenAI or Groq) on your own key. This site's server is never in the
+        provider (OpenAI, Groq or Berget) on your own key. This site's server is never in the
         path, so it cannot read or log any of it.</p>
 
       <details id="keyspanel" open>
@@ -160,6 +160,8 @@
         <input id="key-openai" type="password" autocomplete="off" placeholder="not set">
         <label for="key-groq">Groq API key (console.groq.com — free tier available)</label>
         <input id="key-groq" type="password" autocomplete="off" placeholder="not set">
+        <label for="key-berget">Berget API key (berget.ai — EU-hosted models)</label>
+        <input id="key-berget" type="password" autocomplete="off" placeholder="not set">
         <div class="row">
           <button type="button" id="savekeys">Save keys</button>
           <span id="keysstatus" class="muted"></span>
@@ -186,7 +188,7 @@
     <div class="intro-card">
       <h1>deepresearch.<b>se/cure</b> <span class="tier">DRC — deep research secure</span></h1>
       <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
-        your own OpenAI or Groq API key and every model call goes straight from this
+        your own OpenAI, Groq or Berget API key and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
         read or log your messages even if it wanted to.</p>
       <ul class="intro-points">
