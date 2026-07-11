@@ -21,14 +21,7 @@
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadSettingsView } from "./account-settings.js";
-import {
-  loadGamesView,
-  renderFullUsage,
-  renderNotifBadge,
-  renderSummary,
-  wireFeedbackKnob,
-  wireSandboxKnob,
-} from "./account-views.js";
+import { loadGamesView, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
 
 /**
  * The panel context shared by every view function in the account-* view
@@ -74,7 +67,10 @@ export function initAccountPanel() {
     })
     .catch(() => {});
 
-  document.getElementById("accountbtn").addEventListener("click", async () => {
+  // Two doors into the same panel: the account button opens the summary,
+  // the header's gear opens the Settings view directly (all configuration
+  // lives there — 2026-07-11 directive).
+  const openPanel = async (view) => {
     ctx.overlay.hidden = false;
     ctx.body.innerHTML = '<p class="muted">Loading…</p>';
     try {
@@ -82,11 +78,13 @@ export function initAccountPanel() {
       if (!res.ok) throw new Error("HTTP " + res.status);
       ctx.me = await res.json();
       renderNotifBadge(ctx);
-      ctx.show("summary");
+      ctx.show(view);
     } catch {
       ctx.body.innerHTML = '<p class="muted">Could not load account info.</p>';
     }
-  });
+  };
+  document.getElementById("accountbtn").addEventListener("click", () => openPanel("summary"));
+  document.getElementById("gearbtn")?.addEventListener("click", () => openPanel("settings"));
   document.getElementById("accountclose").addEventListener("click", () => {
     ctx.overlay.hidden = true;
   });
@@ -127,8 +125,6 @@ function showView(ctx, view) {
     document.getElementById("messagesbtn")?.addEventListener("click", () => ctx.show("messages"));
     document.getElementById("settingsbtn")?.addEventListener("click", () => ctx.show("settings"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
-    wireFeedbackKnob(ctx);
-    wireSandboxKnob(ctx);
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
     document.getElementById("logoutbtn").addEventListener("click", async () => {
       await fetch("/logout", { method: "POST" });

@@ -1,11 +1,12 @@
-// The account panel's "settings" view — the cloud-storage / Shodan / Google
-// Maps knobs, each disabled (with a note) when the server can't back it.
-// Built from account-views.js's shared settingRow/wireSettingPopovers
-// building blocks; the panel shell (showView) lives in account.js. The
-// summary's Feedback-mode and execution-sandbox knobs are NOT here — they sit
-// directly on the summary (account-views.js).
+// The account panel's "settings" view — ALL configuration in one place
+// (2026-07-11 directive; also opened straight from the header's gear
+// icon): the cloud-storage / Shodan / Google Maps knobs, each disabled
+// (with a note) when the server can't back it, plus the Feedback-mode and
+// execution-sandbox knobs (rows + wiring from account-views.js). Built
+// from account-views.js's shared settingRow/wireSettingPopovers building
+// blocks; the panel shell (showView) lives in account.js.
 
-import { settingRow, wireSettingPopovers } from "./account-views.js";
+import { renderConfigKnobs, settingRow, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
@@ -123,9 +124,12 @@ export async function loadSettingsView(ctx) {
     })}
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
+    ${renderConfigKnobs(ctx.me)}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
+  wireFeedbackKnob(ctx);
+  wireSandboxKnob(ctx);
 
   if (usable) wireCloudStorageKnob();
   if (shodanUsable) {

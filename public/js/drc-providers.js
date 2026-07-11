@@ -30,6 +30,10 @@ export const DRC_PROVIDERS = [
     id: "openai",
     label: "OpenAI",
     base: "https://api.openai.com/v1",
+    // Key auto-detection (the one-field key panel): OpenAI keys are
+    // sk-… (sk-proj-…, sk-svcacct-…) — hyphen, unlike Berget's sk_ber_
+    // underscore form, so the two never collide.
+    keyPattern: /^sk-/,
     // The fixed cheap model for the JSON planning phases (the client-side
     // mirror of the split-model-routing invariant — planning does not run
     // on the user's chosen answer model).
@@ -55,6 +59,7 @@ export const DRC_PROVIDERS = [
     id: "groq",
     label: "Groq",
     base: "https://api.groq.com/openai/v1",
+    keyPattern: /^gsk_/,
     jsonModel: "llama-3.1-8b-instant",
     fallbackModels: [
       "llama-3.3-70b-versatile",
@@ -77,6 +82,9 @@ export const DRC_PROVIDERS = [
     id: "berget",
     label: "Berget",
     base: "https://api.berget.ai/v1",
+    // sk_ber_… — the prefix Berget's own CLI redacts as its key shape
+    // (npm `berget`, src/utils/logger.ts: /sk_ber_\w+/).
+    keyPattern: /^sk_ber_/,
     // The same fixed reliable model the server pipeline uses as
     // DEFAULT_MODEL for its JSON planning phases (src/berget.js) — the
     // one Berget model with a long evidence trail behind it.
@@ -110,6 +118,21 @@ export const DRC_PROVIDERS = [
 
 export function drcProvider(id) {
   return DRC_PROVIDERS.find((p) => p.id === id) || null;
+}
+
+/**
+ * Identify the provider a pasted API key belongs to by its prefix
+ * (sk_ber_… → Berget, gsk_… → Groq, sk-… → OpenAI), or null for an
+ * unrecognized shape — the key panel's one-field UX: the provider
+ * dropdown follows the detected prefix automatically, and stays
+ * user-pickable for keys no pattern knows.
+ * @param {string} key
+ * @returns {?{id: string, label: string}}
+ */
+export function detectDrcProvider(key) {
+  const k = typeof key === "string" ? key.trim() : "";
+  if (!k) return null;
+  return DRC_PROVIDERS.find((p) => p.keyPattern && p.keyPattern.test(k)) || null;
 }
 
 /** The providers the user has stored a key for. */

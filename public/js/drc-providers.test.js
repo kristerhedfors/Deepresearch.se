@@ -5,6 +5,7 @@ import {
   DRC_PROVIDERS,
   buildDrcPayload,
   configuredDrcProviders,
+  detectDrcProvider,
   extractJson,
   drcChatStream,
   drcCompleteJson,
@@ -24,6 +25,24 @@ test("the registry holds exactly the CORS-capable providers", () => {
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
+});
+
+test("detectDrcProvider identifies a pasted key by its prefix", () => {
+  // OpenAI: sk-… in all its variants (hyphen).
+  assert.equal(detectDrcProvider("sk-abc123").id, "openai");
+  assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
+  assert.equal(detectDrcProvider("sk-svcacct-abc123").id, "openai");
+  // Groq: gsk_…
+  assert.equal(detectDrcProvider("gsk_abc123").id, "groq");
+  // Berget: sk_ber_… (underscore — never collides with OpenAI's sk-).
+  assert.equal(detectDrcProvider("sk_ber_abc123").id, "berget");
+  // Whitespace from a paste is forgiven.
+  assert.equal(detectDrcProvider("  sk_ber_abc123\n").id, "berget");
+  // Unknown shapes stay the user's call — no guess.
+  assert.equal(detectDrcProvider("sk_abc123"), null); // underscore but not Berget's
+  assert.equal(detectDrcProvider("hf_abc123"), null);
+  assert.equal(detectDrcProvider(""), null);
+  assert.equal(detectDrcProvider(null), null);
 });
 
 test("Berget's JSON-phase model mirrors the server's DEFAULT_MODEL choice", () => {
