@@ -268,6 +268,22 @@ function buildAssetRequest(request, overrideUrl, coep) {
  * @returns {Promise<RouteResult>}
  */
 async function route(request, env, url, log, ctx, requestId) {
+  // Canonical host. The Worker is routed on BOTH the apex and www
+  // (wrangler.toml: deepresearch.se + www.deepresearch.se), but the whole app
+  // must live on ONE host. Google OAuth's redirect_uri is registered only for
+  // the apex, so a request arriving on www builds a www redirect_uri Google
+  // rejects — "Error 400: redirect_uri_mismatch", hit signing in via
+  // www.deepresearch.se (Firefox Focus). Pinning only the redirect_uri would
+  // then split the CSRF state cookie across the two hosts, so instead
+  // canonicalize FIRST: 301 www.* → apex, preserving path + query, so the whole
+  // flow (state cookie, redirect_uri, callback, session) stays on the one
+  // registered host.
+  if (url.hostname.startsWith("www.")) {
+    const canonical = new URL(url.toString());
+    canonical.hostname = url.hostname.slice("www.".length);
+    return { response: new Response(null, { status: 301, headers: { Location: canonical.toString() } }) };
+  }
+
   // Hard configuration requirement: SESSION_SECRET must be set. It is the sole
   // key that signs/verifies session and OAuth-state cookies — the legacy
   // admin-credential-derived fallback was removed (it re-exposed the admin
