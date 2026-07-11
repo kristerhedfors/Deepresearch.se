@@ -31,6 +31,13 @@
 // constants; changing them would silently break every existing secret
 // and sealed state.
 
+// Imported from the vault's PURE core module — NOT vault.js: vault.js's
+// store/load orchestration statically imports the DRS storage stack
+// (history-store/opfs/projects), which is not publicly served, and a 401
+// anywhere in the /cure module graph kills the whole client tier (found
+// live 2026-07-11: /cure was dead with the static "d5" stamp because this
+// import pulled that chain in). vault-core.js is dependency-free and
+// allowlisted in src/index.js's isPublicAsset.
 import {
   bytesToB64,
   decodeCrockford,
@@ -40,7 +47,7 @@ import {
   generateVaultSecret,
   normalizeVaultSecret,
   vaultSecretValid,
-} from "./vault.js";
+} from "./vault-core.js";
 
 export {
   generateVaultSecret as generateDrcSecret,

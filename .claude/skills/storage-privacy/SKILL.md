@@ -3,7 +3,8 @@ name: storage-privacy
 description: >-
   Load when touching src/storage.js, src/vault.js, src/settings.js,
   src/rag.js, public/js/history-store.js, sync.js, projects.js,
-  public/js/vault.js, or anything about chat-history encryption, the
+  public/js/vault.js, public/js/vault-core.js (the vault's public pure
+  crypto core), or anything about chat-history encryption, the
   per-account server_history cloud-storage knob, RAG document indexing,
   projects, the secret-keyed project vault (store/load a project with a
   DR1-… secret), DRC — "deep research secure", the client-side public tier
@@ -335,8 +336,15 @@ local-only one (its knob off, or the whole account knob off) — can be
 parked server-side as ONE client-encrypted archive and loaded back on any
 of the account's devices, without the server ever holding anything
 readable or any key material. `src/vault.js` (endpoints) +
-`public/js/vault.js` (everything cryptographic + the pack/load
-orchestration); UI in `projects-ui.js` (the panel's "Encrypted copy,
+`public/js/vault-core.js` (the dependency-free PURE crypto core: secret
+generation/normalization, the Crockford codec, HKDF derivation, archive
+encrypt/decrypt/validation — split out 2026-07-11 because DRC's
+drc-core.js builds on these primitives and the public /cure module graph
+must not drag in vault.js's DRS storage imports; vault-core.js is the
+allowlisted public module, vault.js deliberately is NOT) +
+`public/js/vault.js` (re-exports the core and adds the pack/load
+orchestration over history-store/opfs/projects/rag); UI in
+`projects-ui.js` (the panel's "Encrypted copy,
 keyed by a secret" store section, the sidebar's "🔑 Load project from
 secret" form).
 

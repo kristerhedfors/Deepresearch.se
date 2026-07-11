@@ -253,14 +253,18 @@ file/note ingestion + indexing, the per-project knob, scope helpers),
 `projectDocIds` — Node-testable), `projects-ui.js` (the project panel:
 knob at top, the vault store-with-secret section, dropzone, add-text
 form, file/chat lists, header chip; plus the sidebar's
-load-project-from-secret form), `vault.js` (the project vault: the
-copy-safe 160-bit Crockford-base32 secret — generation, forgiving
-normalization — HKDF id+key derivation, AES-256-GCM archive
-encrypt/decrypt, and the store/load orchestration packing a whole
-project — record, chats, decrypted file originals, RAG index with
-vectors — into ONE blob the server only ever sees encrypted; pure
-core Node-tested). DRC's client modules — the whole public tier:
-`drc-core.js` (DRC's pure core, built on `vault.js`: ONE master secret →
+load-project-from-secret form), `vault-core.js` (the project vault's
+dependency-free PURE core: the copy-safe 160-bit Crockford-base32
+secret — generation, forgiving normalization — HKDF id+key derivation,
+AES-256-GCM archive encrypt/decrypt, archive validation, base64
+helpers; publicly served because DRC builds on it) + `vault.js` (the
+DRS store/load orchestration over it, re-exporting the core: packing a
+whole project — record, chats, decrypted file originals, RAG index
+with vectors — into ONE blob the server only ever sees encrypted; its
+static imports pull the DRS storage stack, so it must NEVER enter the
+/cure module graph — public modules import `vault-core.js` instead;
+pure core Node-tested). DRC's client modules — the whole public tier:
+`drc-core.js` (DRC's pure core, built on `vault-core.js`: ONE master secret →
 HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
 strings/state-kind constant are frozen pre-rename values — Node-tested),
@@ -443,11 +447,12 @@ clarify short-circuit, triage fail-soft, and the recall block threaded
 into triage/synthesis/validation but never harvest), `drc-store.js` (the
 browser-local storage adapter: round-trip over an injected backend,
 ciphertext-only at rest, listing, quota/corruption fail-soft),
-`vault.js`'s pure core (secret format/entropy/uniqueness, the
-forgiving normalization incl. misread mapping and prefix stripping, the
-Crockford codec round-trip, HKDF id/key derivation determinism,
-archive encrypt/decrypt incl. tamper detection, archive-shape
-validation, the chunked base64 helpers), and `activity.js`'s
+`vault-core.js` — via `vault.js`'s re-exports — (secret
+format/entropy/uniqueness, the forgiving normalization incl. misread
+mapping and prefix stripping, the Crockford codec round-trip, HKDF
+id/key derivation determinism, archive encrypt/decrypt incl. tamper
+detection, archive-shape validation, the chunked base64 helpers), and
+`activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
 `answer`, the `errored` flag + `errors` list, and the ordered timeline), and

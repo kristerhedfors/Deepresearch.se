@@ -152,7 +152,15 @@ function isPublicAsset(url, method) {
     // assets (found live 2026-07-10: /cure/<slug> served the sign-in 401,
     // then 404, until this).
     (url.pathname.startsWith("/cure/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
-    url.pathname === "/js/vault.js" ||
+    // The vault's PURE core only — NOT /js/vault.js: that module's store/load
+    // orchestration statically imports the DRS storage stack (history-store/
+    // opfs/projects), which is deliberately not public, and any 401 inside a
+    // public module graph kills the whole /cure tier (found live 2026-07-11:
+    // /cure was dead — static "d5" stamp — because drc-core.js imported
+    // vault.js and its DRS chain 401'd; fixed by splitting vault-core.js out
+    // and importing that). If a module here ever needs vault functionality,
+    // import vault-core.js, never vault.js.
+    url.pathname === "/js/vault-core.js" ||
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/drc-core.js" ||
     url.pathname === "/js/drc-providers.js" ||
