@@ -2,11 +2,14 @@
 // of src/providers.js, for providers whose APIs allow DIRECT cross-origin
 // calls from JavaScript (CORS). That property is the admission ticket:
 // OpenAI and Groq (GroqCloud) both serve `Access-Control-Allow-Origin: *`
-// on their OpenAI-compatible endpoints, so the user's browser can call
-// them with the user's own API key and Deepresearch's server is never in
-// the request path at all. Providers without browser CORS (Berget,
-// Anthropic) cannot join this registry — they'd need a proxy, which is
-// exactly what DRC exists to avoid.
+// on their OpenAI-compatible endpoints, and Berget (api.berget.ai) serves
+// origin-reflecting CORS with POST + Authorization allowed on
+// /chat/completions and /models (probed live 2026-07-11 — it used to have
+// no browser CORS, which is why it was originally excluded here). So the
+// user's browser can call all three with the user's own API key and
+// Deepresearch's server is never in the request path at all. Providers
+// without browser CORS (Anthropic) cannot join this registry — they'd
+// need a proxy, which is exactly what DRC exists to avoid.
 //
 // Same registry discipline as the server seam: one declarative entry per
 // provider (id, label, base URL, wire-param quirks, a JSON-phase default
@@ -20,7 +23,8 @@
 
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
-// (src/openai.js); Groq speaks plain OpenAI chat completions.
+// (src/openai.js); Groq and Berget speak plain OpenAI chat completions
+// (Berget: the same wire src/berget.js drives server-side).
 export const DRC_PROVIDERS = [
   {
     id: "openai",
@@ -68,6 +72,39 @@ export const DRC_PROVIDERS = [
     // No `embed`: Groq serves no /embeddings endpoint, so a Groq-only
     // session runs without client-side RAG (drc-rag.js degrades to the
     // plain recent-turns context — fail-soft, never an error).
+  },
+  {
+    id: "berget",
+    label: "Berget",
+    base: "https://api.berget.ai/v1",
+    // The same fixed reliable model the server pipeline uses as
+    // DEFAULT_MODEL for its JSON planning phases (src/berget.js) — the
+    // one Berget model with a long evidence trail behind it.
+    jsonModel: "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    // The text models from the live catalog (probed 2026-07-11),
+    // newest-ish first; Berget's catalog is small and curated already.
+    fallbackModels: [
+      "moonshotai/Kimi-K2.6",
+      "zai-org/GLM-4.7-FP8",
+      "mistralai/Mistral-Medium-3.5-128B",
+      "openai/gpt-oss-120b",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    ],
+    // Berget's ids are vendor paths (mistralai/…, zai-org/…). The catalog
+    // is chat-model-dominated; curation here means excluding the non-chat
+    // modalities it hosts (whisper speech-to-text, e5 embeddings, the bge
+    // reranker), not picking generations.
+    modelFilter: (id) => id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id),
+    // Plain OpenAI chat-completions wire — same params the server's
+    // Berget client sends (src/berget.js: max_tokens, response_format).
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed` yet: Berget DOES serve /embeddings with CORS
+    // (intfloat/multilingual-e5-large), but the e5 family needs the
+    // "passage: "/"query: " prefix convention (src/rag.js) threaded
+    // through drc-rag.js, its vectors are 1024-dim (double the sealed
+    // localStorage footprint of OpenAI's 512), and the wire is unverified
+    // without a live key — a deliberate later step, not an oversight.
+    // Until then a Berget-only session runs without RAG, like Groq.
   },
 ];
 
@@ -124,7 +161,8 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl } = {}
 }
 
 // One OpenAI-compatible chat-completions payload; `json` asks for JSON mode
-// (both providers support response_format json_object — the pipeline's
+// (all three providers support response_format json_object — Berget's
+// catalog reports json_mode on every text model — so the pipeline's
 // no-function-calling rule holds here too).
 export function buildDrcPayload(provider, model, messages, { stream = false, json = false, maxTokens = 4096 } = {}) {
   const payload = {

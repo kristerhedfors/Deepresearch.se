@@ -1,6 +1,6 @@
 // Free mode's deep-research pipeline, ported to run ENTIRELY in the
 // browser: every phase is a direct cross-origin call from the user's
-// browser to the user's own provider (drc-providers.js — OpenAI or Groq),
+// browser to the user's own provider (drc-providers.js — OpenAI, Groq or Berget),
 // with Deepresearch's server nowhere in the path. The phase FLOW mirrors
 // the server pipeline (src/pipeline.js) and keeps its two load-bearing
 // rules — deterministic orchestration with NO function calling (every

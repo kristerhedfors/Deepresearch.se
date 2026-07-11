@@ -81,7 +81,7 @@ git push origin main
    public CLIENT-side tier at `/cure` — extends the strict tier to a whole
    surface, structurally: no accounts, and the server is in NO data path
    at all — the browser calls the user's own CORS-capable providers
-   (OpenAI, Groq) directly, runs the research pipeline client-side, and
+   (OpenAI, Groq, Berget) directly, runs the research pipeline client-side, and
    stores the sealed project state (chats AND the user's API keys inside)
    in the BROWSER's own storage; the server serves static files and public
    replay JSONs, so it could not log content or keys even in principle.
@@ -137,7 +137,7 @@ Server (`src/`):
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
+| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
@@ -261,7 +261,8 @@ HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
 strings/state-kind constant are frozen pre-rename values — Node-tested),
 `drc-providers.js` (the client-side provider registry: the CORS-capable
-providers ONLY — OpenAI and Groq, callable directly from the browser
+providers ONLY — OpenAI, Groq and Berget (CORS confirmed live
+2026-07-11), callable directly from the browser
 with the user's key; per-provider wire quirks, JSON mode, a fixed cheap
 `jsonModel` per provider, live `/models` with a static fallback, plus
 the per-provider `embed` entry + `drcEmbed` — browser-direct embeddings

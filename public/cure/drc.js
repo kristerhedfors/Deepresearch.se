@@ -8,7 +8,7 @@
 // DRC is modular by definition, and this page is just the wiring layer
 // over four self-contained, Node-tested modules:
 //   /js/drc-core.js      — secret → derived ids/keys, the sealed state
-//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Groq)
+//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Groq, Berget)
 //   /js/drc-research.js  — the client-side deep-research pipeline
 //   /js/drc-store.js     — BROWSER-LOCAL sealed-state storage (the seam)
 //
@@ -46,7 +46,7 @@ import {
   sealDrcState,
   validateDrcState,
 } from "/js/drc-core.js";
-import { configuredDrcProviders, drcEmbed, drcEmbedProvider, drcProvider, listDrcModels } from "/js/drc-providers.js";
+import { DRC_PROVIDERS, configuredDrcProviders, drcEmbed, drcEmbedProvider, drcProvider, listDrcModels } from "/js/drc-providers.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
@@ -234,7 +234,7 @@ async function handlePublicationLink() {
     workStatus(
       "This is a published research replay" +
         (pub.description ? " — " + pub.description : "") +
-        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI or Groq), straight " +
+        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Groq or Berget), straight " +
         "from this browser.",
     );
     return true;
@@ -350,7 +350,7 @@ async function saveState() {
 
 function renderKeysPanel() {
   const have = [];
-  for (const p of ["openai", "groq"]) {
+  for (const p of DRC_PROVIDERS.map((x) => x.id)) {
     const el = $("key-" + p);
     el.value = "";
     el.placeholder = state.keys?.[p] ? "•••••• (saved)" : "not set";
@@ -361,7 +361,7 @@ function renderKeysPanel() {
 
 async function saveKeys() {
   // Blank field = keep the stored key; typed = replace; "clear" removes it.
-  for (const p of ["openai", "groq"]) {
+  for (const p of DRC_PROVIDERS.map((x) => x.id)) {
     const v = $("key-" + p).value.trim();
     if (!v) continue;
     if (v === "-" || v.toLowerCase() === "clear") delete state.keys[p];
@@ -406,10 +406,11 @@ async function refreshModels() {
   );
   // The tier's provider limit, made visible: only CORS-capable providers
   // can serve DRC (direct browser calls); the hosted ones stay listed,
-  // disabled, pointing at DRS.
+  // disabled, pointing at DRS. Berget graduated OFF this list 2026-07-11
+  // when api.berget.ai started serving browser CORS — it's a real
+  // provider above now.
   groups.push(
     '<optgroup label="DRS only — deepresearch.se/rver">' +
-      '<option disabled>Berget — EU-hosted models</option>' +
       '<option disabled>Anthropic Claude</option>' +
       "</optgroup>",
   );
@@ -463,7 +464,7 @@ function renderMessages() {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.textContent =
-      "Ask a research question to get started — it runs right here in your browser, on your own OpenAI or Groq API key.";
+      "Ask a research question to get started — it runs right here in your browser, on your own OpenAI, Groq or Berget API key.";
     box.appendChild(empty);
     return;
   }
@@ -555,8 +556,9 @@ async function send(ev) {
     $("key-groq").focus();
     workStatus(
       "One thing first: DRC runs on YOUR API key, sent straight from this browser to the " +
-        "provider — this site's server never sees your key or your messages. Paste an OpenAI or " +
-        "Groq key above (Groq has a free tier at console.groq.com), press Save keys, then send again.",
+        "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
+        "or Berget key above (Groq has a free tier at console.groq.com; Berget is EU-hosted), press " +
+        "Save keys, then send again.",
     );
     return;
   }
@@ -672,7 +674,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d8 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d9 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }
