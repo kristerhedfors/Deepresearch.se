@@ -25,12 +25,24 @@
 // import of the CheerpX ESM) — there is no Node-testable surface, so the pure,
 // testable logic lives in public/js/bash-core.js instead.
 
+import {
+  applySizeCap,
+  buildManifest,
+  buildSeedScript,
+  projHash,
+  sanitizeProjName,
+} from "./sandbox-files.js";
+
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
 const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";
 const CHEERPX_CDN = "https://cxrtnc.leaningtech.com/1.2.6/cx.esm.js";
 // The public WebVM Debian disk (streamed over WebSocket, cached in IndexedDB).
 const DISK_URL = "wss://disks.webvm.io/debian_large_20230522_5044875331_2.ext2";
 const IDB_CACHE_ID = "deepresearch-sandbox-vm";
+// The persistent session workspace volume (its own IndexedDB, independent of
+// the base-image block cache above) — mounted at /workspace. Per-project
+// volumes are dr-proj-<hash>, created on demand.
+const WORKSPACE_DB = "dr-sandbox-workspace";
 
 /** @type {'off'|'booting'|'ready'|'error'} */
 let vmState = "off";
@@ -43,6 +55,11 @@ let bootPromise = null;
 let execQueue = Promise.resolve();
 let panel = null;
 let statusEl = null;
+// Persistent IDBDevice handles kept so exportFile() can read guest-written
+// files back out (readFileAsBlob). Set during boot when a file provider is
+// supplied; null otherwise.
+let workspaceDev = null;
+let projectDev = null;
 
 /** Whether the sandbox CAN run here: cross-origin isolation is present. */
 export function sandboxSupported() {
@@ -134,11 +151,19 @@ function readData(str) {
  * Boot the sandbox once (idempotent). Resolves true when the VM is ready to
  * exec, false if it cannot run (no cross-origin isolation) or boot failed.
  * Shows the terminal panel so the user sees progress and the live shell.
+ *
+ * `fileProvider` (optional) supplies the user's files to mount: an async
+ * function resolving to `{ session: [{name,type,bytes}], project: {name, id,
+ * files: [{name,type,bytes}]} | null }`. When given, the persistent
+ * `/workspace` volume is mounted and the files are seeded into `/workspace` +
+ * `/mnt/<projname>-<hash>` before the VM is marked ready. Fully fail-soft — a
+ * provider that throws, or any mount/seed error, never blocks the boot.
+ * @param {(() => Promise<any>) | null} [fileProvider]
  * @returns {Promise<boolean>}
  */
-export function ensureSandboxBooted() {
+export function ensureSandboxBooted(fileProvider = null) {
   if (bootPromise) return bootPromise;
-  bootPromise = bootVM().catch((err) => {
+  bootPromise = bootVM(fileProvider).catch((err) => {
     console.error("[sandbox] boot failed", err);
     setStatus("error");
     return false;
@@ -146,7 +171,10 @@ export function ensureSandboxBooted() {
   return bootPromise;
 }
 
-async function bootVM() {
+/**
+ * @param {(() => Promise<any>) | null} [fileProvider]
+ */
+async function bootVM(fileProvider = null) {
   if (!sandboxSupported()) {
     setStatus("error");
     return false;
@@ -191,16 +219,64 @@ async function bootVM() {
   const blockCache = await CheerpX.IDBDevice.create(IDB_CACHE_ID);
   const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache);
 
+  const mounts = [
+    { type: "ext2", dev: overlayDevice, path: "/" },
+    { type: "devs", path: "/dev" },
+    { type: "devpts", path: "/dev/pts" },
+    { type: "proc", path: "/proc" },
+    { type: "sys", path: "/sys" },
+  ];
+
+  // File mounting (design part B). When a provider is supplied: mount the
+  // persistent /workspace volume, the two flat ingest DataDevices, and — if a
+  // project is active — its own persistent volume at /mnt/<projname>-<hash>.
+  // All fail-soft: any error here leaves the sandbox booting as a bare VM.
+  /** @type {{ plan: any, inSession: any, inProject: any, projMount: string } | null} */
+  let fileMount = null;
+  if (fileProvider) {
+    try {
+      setStatus("preparing files…");
+      const plan = await preparePlan(fileProvider);
+      // Build the extra mounts in a LOCAL array and only commit them to the
+      // real mounts once every device was created — a partial failure must not
+      // leave a half-formed mount in the config passed to Linux.create.
+      const extra = [];
+      const wsDev = await CheerpX.IDBDevice.create(WORKSPACE_DB);
+      extra.push({ type: "dir", dev: wsDev, path: "/workspace" });
+      const inSession = await CheerpX.DataDevice.create();
+      extra.push({ type: "dir", dev: inSession, path: "/mnt/in-s" });
+      let inProject = null;
+      let projMount = "";
+      let projDev = null;
+      if (plan && plan.project) {
+        projMount = `/mnt/${plan.project.name}-${plan.project.hash}`;
+        projDev = await CheerpX.IDBDevice.create("dr-proj-" + plan.project.hash);
+        extra.push({ type: "dir", dev: projDev, path: projMount });
+        inProject = await CheerpX.DataDevice.create();
+        extra.push({ type: "dir", dev: inProject, path: "/mnt/in-p" });
+      }
+      for (const m of extra) mounts.push(m);
+      workspaceDev = wsDev;
+      projectDev = projDev;
+      fileMount = { plan, inSession, inProject, projMount };
+    } catch (err) {
+      console.warn("[sandbox] file mount setup failed — booting without files", err);
+      fileMount = null;
+    }
+  }
+
   setStatus("starting Linux…");
-  cx = await CheerpX.Linux.create({
-    mounts: [
-      { type: "ext2", dev: overlayDevice, path: "/" },
-      { type: "devs", path: "/dev" },
-      { type: "devpts", path: "/dev/pts" },
-      { type: "proc", path: "/proc" },
-      { type: "sys", path: "/sys" },
-    ],
-  });
+  cx = await CheerpX.Linux.create({ mounts });
+
+  // Seed the persistent volumes from the ingest devices, then make the symlink.
+  if (fileMount) {
+    try {
+      setStatus("mounting files…");
+      await seedFiles(fileMount);
+    } catch (err) {
+      console.warn("[sandbox] file seed failed — continuing without files", err);
+    }
+  }
 
   cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
   setStatus("ready");
@@ -226,6 +302,98 @@ async function bootVM() {
   })();
 
   return true;
+}
+
+// ---- file mounting (design part B) -----------------------------------------
+
+// Call the provider and turn its raw {session, project} into a mount plan:
+// size-capped, sanitized, de-duped kept lists + a manifest + the project's
+// sanitized name/hash. Pure logic lives in sandbox-files.js. Never throws for
+// a bad provider payload — returns a session-only (or empty) plan.
+/**
+ * @param {() => Promise<any>} fileProvider
+ * @returns {Promise<{ session: any[], project: any, manifest: string, dropped: any[] }>}
+ */
+async function preparePlan(fileProvider) {
+  const raw = (await fileProvider()) || {};
+  const sessionCap = applySizeCap(Array.isArray(raw.session) ? raw.session : []);
+  let total = sessionCap.total;
+  const dropped = sessionCap.dropped.map((d) => ({ scope: "session", ...d }));
+  let project = null;
+  if (raw.project && Array.isArray(raw.project.files) && raw.project.files.length) {
+    const projCap = applySizeCap(raw.project.files, { startTotal: total });
+    total = projCap.total;
+    for (const d of projCap.dropped) dropped.push({ scope: "project", ...d });
+    project = {
+      name: sanitizeProjName(raw.project.name),
+      id: String(raw.project.id || ""),
+      hash: projHash(raw.project.id),
+      files: projCap.kept,
+    };
+  }
+  const manifest = buildManifest({
+    session: sessionCap.kept,
+    project: project ? { name: project.name, files: project.files } : null,
+    dropped,
+  });
+  return { session: sessionCap.kept, project, manifest, dropped };
+}
+
+// Write the kept bytes into the flat ingest DataDevices (files at the device
+// root — matches the documented DataDevice.writeFile pattern, no nested dirs),
+// then run the seed+symlink script to cp them into the persistent volumes.
+/**
+ * @param {{ plan: any, inSession: any, inProject: any, projMount: string }} fm
+ */
+async function seedFiles(fm) {
+  const { plan, inSession, inProject } = fm;
+  const enc = new TextEncoder();
+  // The manifest rides in as a session file so it lands at /workspace/INDEX.txt.
+  await inSession.writeFile("/INDEX.txt", enc.encode(plan.manifest));
+  for (const f of plan.session) {
+    await inSession.writeFile("/" + f.name, f.bytes);
+  }
+  if (plan.project && inProject) {
+    for (const f of plan.project.files) {
+      await inProject.writeFile("/" + f.name, f.bytes);
+    }
+  }
+  const script = buildSeedScript({
+    hasProject: !!plan.project,
+    projName: plan.project?.name,
+    projId: plan.project?.id,
+    hash: plan.project?.hash,
+  });
+  await cx.run("/bin/sh", ["-c", script], {
+    env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+    cwd: "/root",
+    uid: 0,
+    gid: 0,
+  });
+}
+
+// Read a guest-written file back out into JS (the round-trip export): files
+// under /workspace come from the session volume, files under a project mount
+// from the project volume. Returns the Blob, or null if unavailable.
+/**
+ * @param {string} path an absolute guest path under /workspace or /mnt/<proj>
+ * @returns {Promise<Blob | null>}
+ */
+export async function exportFile(path) {
+  try {
+    const p = String(path || "");
+    if (p.startsWith("/workspace/") && workspaceDev) {
+      return await workspaceDev.readFileAsBlob(p.slice("/workspace".length));
+    }
+    if (p.startsWith("/mnt/") && projectDev) {
+      // strip the mount prefix: /mnt/<name>-<hash>/rest → /rest
+      const rest = p.replace(/^\/mnt\/[^/]+/, "");
+      return await projectDev.readFileAsBlob(rest || "/");
+    }
+  } catch (err) {
+    console.warn("[sandbox] exportFile failed", err);
+  }
+  return null;
 }
 
 // ---- exec bridge (marker protocol) -----------------------------------------

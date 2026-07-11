@@ -187,6 +187,10 @@ function isPublicAsset(url, method) {
     url.pathname === "/js/bash-core.js" ||
     url.pathname === "/js/bash-agent.js" ||
     url.pathname === "/js/sandbox.js" ||
+    // sandbox.js imports sandbox-files.js (the file-mounting pure core) — both
+    // must be public or the /cure module graph (drc-research.js → sandbox.js)
+    // fails to link.
+    url.pathname === "/js/sandbox-files.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||

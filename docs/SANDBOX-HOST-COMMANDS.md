@@ -1,6 +1,10 @@
 # Fast host-JS commands inside the Linux sandbox — research + integration design
 
-*Research date: 2026-07-11. Status: DESIGN (nothing implemented yet).*
+*Research date: 2026-07-11. Status: part (A) host-commands = DESIGN;
+part (B) file-mounting = **Tier 1 + persistence IMPLEMENTED for DRS**
+(2026-07-11) — `sandbox-files.js` + `sandbox.js` mounts/seed +
+`stream.js` provider; Tier 2 (WebDevice+SW) and DRC wiring still pending.
+Live browser verification still owed (see the checklist).*
 
 *This doc covers two related capabilities that share one host→guest device:
 (A) **fast host-JS commands** that bypass the emulator, and (B) **mounting the

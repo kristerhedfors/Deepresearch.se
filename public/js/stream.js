@@ -34,15 +34,17 @@ import {
   setError,
   setText,
 } from "./turns.js";
-import { deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
+import { decryptBytes, deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
 import { clearPending, readPending, writePending } from "./pending-answer.js";
 import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
 import {
+  activeProject,
   activeProjectId,
   getProject,
   projectCloudOn,
   setActiveProject,
 } from "./projects.js";
+import { listOriginals, loadOriginal } from "./opfs.js";
 import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
   asksDeviceLocation,
@@ -764,7 +766,7 @@ async function buildChatPayload(opts) {
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
  */
-async function maybeRunShellLoop(turn) {
+async function maybeRunShellLoop(turn, opts) {
   try {
     if (!bashLiteOn()) return []; // knob off — feature disabled, nothing to do
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
@@ -784,9 +786,10 @@ async function maybeRunShellLoop(turn) {
     // Boot the VM the first (and only the first) time the model asks to run
     // something — surfaced as a turn step so the user sees the (slow) first
     // boot. Returns whether the sandbox is usable.
+    const fileProvider = buildSandboxFileProvider(opts);
     const bootOnce = async () => {
       startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
-      booted = await ensureSandboxBooted();
+      booted = await ensureSandboxBooted(fileProvider);
       if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
       return booted;
     };
@@ -813,6 +816,68 @@ async function maybeRunShellLoop(turn) {
     try { finishGenericStep(turn, { id: "sandbox", label: "Sandbox error — answering normally" }); } catch {}
     return [];
   }
+}
+
+// Build the file provider the sandbox seeds from (design part B): this send's
+// attachments become /workspace files, the active project's files become the
+// project mount. Returns an async fn the sandbox calls once, right before boot
+// — deferred so the (possibly decrypting) byte loads only happen if the model
+// actually needs the VM. Fully fail-soft: a file that won't load is skipped.
+/**
+ * @param {{ docs?: any[], images?: any[] }} opts the send options (attachments)
+ * @returns {() => Promise<{ session: any[], project: any }>}
+ */
+function buildSandboxFileProvider(opts) {
+  return async () => {
+    let meta = [];
+    try { meta = await listOriginals(); } catch { meta = [] }
+    const encById = new Map(meta.map((m) => [m.id, m.enc === true]));
+
+    // Bytes for one attachment/file: prefer already-parsed inline text, else
+    // the OPFS original (decrypted when the meta row says it's encrypted).
+    const bytesFor = async (fileId, inlineText) => {
+      if (typeof inlineText === "string" && inlineText) {
+        return new TextEncoder().encode(inlineText);
+      }
+      if (!fileId) return null;
+      try {
+        const file = await loadOriginal(fileId);
+        if (!file) return null;
+        const raw = new Uint8Array(await file.arrayBuffer());
+        if (encById.get(fileId)) {
+          try { return await decryptBytes(raw); } catch { return null }
+        }
+        return raw;
+      } catch {
+        return null;
+      }
+    };
+
+    const session = [];
+    for (const d of (opts?.docs || [])) {
+      const b = await bytesFor(d.fileId, d.text);
+      if (b && b.length) session.push({ name: d.name, type: d.ext || "doc", bytes: b });
+    }
+    for (const im of (opts?.images || [])) {
+      const b = await bytesFor(im.fileId, null);
+      if (b && b.length) session.push({ name: im.name, type: "image", bytes: b });
+    }
+
+    let project = null;
+    try {
+      const p = activeProject();
+      if (p && Array.isArray(p.files) && p.files.length) {
+        const files = [];
+        for (const f of p.files) {
+          const b = await bytesFor(f.id, null);
+          if (b && b.length) files.push({ name: f.name, type: f.kind || f.ext || "file", bytes: b });
+        }
+        if (files.length) project = { name: p.name, id: p.id, files };
+      }
+    } catch { /* no project / not available — session-only */ }
+
+    return { session, project };
+  };
 }
 
 /**
@@ -871,7 +936,7 @@ export async function sendMessage(text, opts) {
     // in-browser Linux agent loop first and attach its transcript so the
     // answer is written from the real command output. No-op (empty) unless the
     // knob is on and the sandbox can run — see maybeRunShellLoop.
-    const shellTranscript = await maybeRunShellLoop(turn);
+    const shellTranscript = await maybeRunShellLoop(turn, opts);
     if (shellTranscript.length) payload.shell_transcript = shellTranscript;
     // Diagnostic: report the client's sandbox-readiness so a not-running
     // sandbox can be diagnosed from the chat log (src/chatlog.js meta) —
