@@ -238,10 +238,18 @@ export function execInSandbox(command) {
     if (vmState !== "ready" || !cx) return { exitCode: 1, stdout: "", stderr: "sandbox not ready" };
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const marker = "###EXEC" + id + ":";
+    const of = "/tmp/_o" + id;
     const ef = "/tmp/_e" + id;
+    // Redirect stdout AND stderr to files, capture $? IMMEDIATELY (before any
+    // pipe), THEN base64 the files. The prior form piped stdout into base64
+    // and read $? after the pipe, so RC was base64's exit (always 0) — the
+    // command's real exit code was lost. /bin/sh here is dash (no PIPESTATUS),
+    // so the temp-file form is the correct way to preserve it. The
+    // marker+base64 envelope is unchanged (base64 emits no ':' or '#').
     const wrapped =
-      "O=$( (" + command + ") 2>" + ef + " | base64 -w0 ); RC=$?; " +
-      "E=$(base64 -w0 " + ef + " 2>/dev/null); rm -f " + ef + "; " +
+      "( " + command + " ) >" + of + " 2>" + ef + "; RC=$?; " +
+      "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
+      "rm -f " + of + " " + ef + "; " +
       'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
     const env = {
       env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
