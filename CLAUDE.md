@@ -26,6 +26,14 @@ form). No space inside the URL.
 
 ## Git workflow
 
+**Always sync with the latest `origin/main` BEFORE implementing anything.**
+New sessions are routinely off-sync (fresh containers, branches cut from a
+stale base). A SessionStart hook (`.claude/hooks/sync-main.sh`, registered in
+`.claude/settings.json`) fetches and fast-forwards automatically — read its
+output at session start; if it printed a WARNING, rebase onto `origin/main`
+before touching code. Re-fetch before every push. Details in the
+**sync-main** skill.
+
 **Always push straight to `main` after every change.** This project does not use
 feature branches or pull requests for normal work — commit each change and push
 it directly to `main`.
@@ -538,6 +546,10 @@ near-duplicate; keep entries evidence-based (what was actually observed, not
 what docs claim); and update the skill list below plus the skill's
 `description` frontmatter so it gets loaded when relevant.
 
+- **sync-main** — the fetch-latest-main-first rule: every session syncs with
+  `origin/main` before implementing (the SessionStart hook automates it),
+  what to do when the branch is behind or diverged, and re-fetching before
+  every push.
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
