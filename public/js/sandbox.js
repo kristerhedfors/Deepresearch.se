@@ -156,7 +156,12 @@ async function bootVM() {
   setStatus("booting");
 
   await Promise.all([
-    loadCSS(XTERM_CDN + "/css/xterm.css"),
+    // The xterm stylesheet is purely cosmetic terminal styling — exec needs
+    // none of it, so a failed/blocked CSS load must NOT abort the boot (it did:
+    // a transient CDN miss on xterm.css took the whole sandbox down with
+    // "Sandbox unavailable"). The two SCRIPTS are load-bearing (they define the
+    // Terminal/FitAddon globals), so those stay fatal.
+    loadCSS(XTERM_CDN + "/css/xterm.css").catch((e) => console.warn("[sandbox] xterm css skipped:", e?.message || e)),
     loadScript(XTERM_CDN + "/lib/xterm.js"),
     loadScript(XTERM_FIT_CDN + "/lib/addon-fit.js"),
   ]);

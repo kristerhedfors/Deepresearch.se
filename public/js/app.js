@@ -308,6 +308,26 @@ initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
 refreshProjects().catch(() => {});
 initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });
 
+// The composer's send/stop button toggle. Defined HERE — before the
+// pending-answer resume below can call it — because setSendMode reads the
+// icon consts; a `const` used before its initializer is a temporal-dead-zone
+// crash, and readPending() being true at load would otherwise throw
+// "Cannot access 'STOP_ICON' before initialization" and abort the whole
+// bootstrap (no handlers attach, the page is dead). While a response streams,
+// the same button switches from send (arrow) to stop (square) — never
+// disabled, so it stays clickable to interrupt generation. stream.js keeps
+// whatever streamed so far as normal context, so the composer is immediately
+// ready for a follow-up.
+const SEND_ICON = send.innerHTML;
+const STOP_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
+function setSendMode(streaming) {
+  send.innerHTML = streaming ? STOP_ICON : SEND_ICON;
+  send.classList.toggle("stop", streaming);
+  send.setAttribute("aria-label", streaming ? "Stop generating" : "Send");
+  send.title = streaming ? "Stop generating" : "Send";
+}
+
 // Resume-across-relaunch: if a previous session kicked off research and was
 // discarded (a backgrounded PWA iOS reclaimed) before the answer arrived,
 // reopen that conversation and poll the server-parked answer back. The
@@ -338,20 +358,6 @@ const autogrow = () => {
   input.style.height = input.scrollHeight + "px";
 };
 input.addEventListener("input", autogrow);
-
-// While a response is streaming, the same button switches from send
-// (arrow) to stop (square) — never disabled, so it stays clickable to
-// interrupt generation. stream.js keeps whatever streamed so far as
-// normal context, so the composer is immediately ready for a follow-up.
-const SEND_ICON = send.innerHTML;
-const STOP_ICON =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
-function setSendMode(streaming) {
-  send.innerHTML = streaming ? STOP_ICON : SEND_ICON;
-  send.classList.toggle("stop", streaming);
-  send.setAttribute("aria-label", streaming ? "Stop generating" : "Send");
-  send.title = streaming ? "Stop generating" : "Send";
-}
 
 // The image deck's per-image chat panel (imagedeck.js): asking there
 // anchors the next message at that image's position (the map_view anchor —
