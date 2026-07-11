@@ -168,9 +168,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const staleSandboxClient = bashLiteEnabled(env, identity) && body.client_diag === undefined;
   /** @type {Record<string, string>} */
   const responseHeaders = staleSandboxClient ? { "clear-site-data": '"cache"' } : {};
-  if (staleSandboxClient) {
-    log.warn("chat.stale_sandbox_client", { user_id: identity.id, request_id: requestId });
-  }
+  // Full request-level visibility: the exact client_diag the browser sent (or
+  // null when absent = a pre-fix bundle), plus the effective server knob. Lets
+  // a live `wrangler tail` show precisely why the sandbox did or didn't engage.
+  log.info("chat.client_diag", {
+    user_id: identity.id,
+    request_id: requestId,
+    diag: body.client_diag ?? null,
+    knob_on: bashLiteEnabled(env, identity),
+    shell_transcript_len: shellTranscript.length,
+  });
 
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
