@@ -2,6 +2,11 @@
 
 *Research date: 2026-07-11. Status: DESIGN (nothing implemented yet).*
 
+*This doc covers two related capabilities that share one host→guest device:
+(A) **fast host-JS commands** that bypass the emulator, and (B) **mounting the
+files a user drops into chat or a project** so the VM can read them. Read (A)
+first — (B) builds on the same `/host` `DataDevice`.*
+
 ## The problem
 
 The bash-lite execution sandbox (see the **execution-sandbox** skill) boots a
@@ -222,6 +227,11 @@ for large outputs.
 
 ### Phase 1.5 — the `/host` exchange directory (data into the guest)
 
+> The `/host` `DataDevice` this phase adds is the **same device** part B mounts
+> for user files (`/host/files/…` alongside `/host/out/…`). Build the mount once
+> (part B's boot-time populate covers the create + mount); this phase only adds
+> the mid-session `writeFile("/out/<n>", …)` after each host command.
+
 Add a `DataDevice` mount to `CheerpX.Linux.create` in `sandbox.js`:
 
 ```js
@@ -291,8 +301,174 @@ and the in-page lwIP/MessageChannel packet endpoint is not public API. Don't
 pursue it; it would mean reverse-engineering a closed engine and would break on
 any CheerpX update.
 
+---
+
+# (B) Mounting chat & project files into the VM
+
+## The problem
+
+Today the sandbox boots a stock Debian and the guest sees **none** of the files
+the user attached to the chat or added to a project. A research task like "count
+the error lines in this log" or "run this script I uploaded" can't reach the
+file at all — the model can only work from the text we already extracted into
+the message. We want the dropped files to appear **as real files inside the
+VM** (`cat`, `grep`, `python3 analyze.py data.csv`, `wc -l`), read straight
+from the browser's own copy — no upload, no server round-trip.
+
+## The mechanism (documented, shipped — same device as `/host`)
+
+`CheerpX.DataDevice` is the **only documented host→guest write path** (see the
+device matrix in part A): `DataDevice.create()` then
+`writeFile(path, string | Uint8Array)`, mounted read-only into the guest:
+
+```js
+const hostDevice = await CheerpX.DataDevice.create();
+cx = await CheerpX.Linux.create({
+  mounts: [
+    { type: "ext2", dev: overlayDevice, path: "/" },
+    …
+    { type: "dir", dev: hostDevice, path: "/host" },   // ← the exchange mount
+  ],
+});
+// Populate BEFORE the first command runs (see timing below):
+await hostDevice.writeFile("/files/server.log", bytesUint8Array);
+await hostDevice.writeFile("/files/INDEX.txt", manifestText);
+// guest: cat /host/files/server.log   →   the real bytes
+```
+
+The guest can **read** these (`cat`/`grep`/`awk`/`python3`), cannot **write**
+them, and there is **no exec bit** (documented) — so `python3 /host/files/x.py`
+works (python reads the file) but `/host/files/x.sh` won't run directly; the
+model must invoke it through an interpreter. This is the same `hostDevice` part
+A mounts for host-command output, so **one `/host` device serves both**:
+`/host/files/…` (mounted user files) and `/host/out/…` (host-command results).
+
+**Why this is the right primitive (not IDBDevice/WebDevice/OverlayDevice):**
+IDBDevice is for *guest→host* readback and would mean seeding an IndexedDB blob
+store; WebDevice serves reads as same-origin HTTP fetches (extra machinery, and
+it can't take in-memory bytes); the overlay is the persistent root we already
+have. DataDevice takes JS bytes directly and is purpose-built to "expose
+JavaScript data in the VM" — exactly this.
+
+## Timing — populate at boot, before the first command
+
+DataDevice's **mid-session** `writeFile` propagation is undocumented (flagged in
+part A). We sidestep it entirely: the VM boots **lazily** on the model's first
+proposed command (`ensureSandboxBooted`), and the attached files are known at
+send time — *before* the loop starts. So we write every file into the
+DataDevice **inside `bootVM()`, right after `CheerpX.Linux.create`, before
+`ensureSandboxBooted` resolves**. Every file is present before any guest command
+runs, so we only ever rely on the documented boot-time-write behavior, never the
+uncertain mid-session path.
+
+## Where the bytes come from (and decryption)
+
+The client already has every attached file's bytes — the send path and the
+project store both key originals in OPFS (`public/js/opfs.js`), and small chat
+docs also carry parsed `.text` inline. The mount assembler pulls, per file, the
+cheapest readable form:
+
+| Source | Readable bytes | Notes |
+|---|---|---|
+| Chat doc, small (`att.text` present) | the already-parsed `text` | no decrypt, no re-parse — fastest |
+| Chat doc/image, original | `loadOriginal(fileId)` → decrypt with `decryptBytes` when the OPFS meta row's `enc` is set | RAG-indexed docs rest **plaintext** already (no decrypt) |
+| Project file | `loadOriginal(entry.id)` (+ decrypt when `enc`) | indexed docs are plaintext; images optional |
+
+The history key that `decryptBytes` needs is the same in-memory key the app
+already holds for the session (`public/js/history-store.js`) — no new secret, no
+new prompt. If the key is unavailable or a file won't decrypt, that file is
+**skipped** (logged), never mounted as garbage.
+
+## What gets mounted, and the manifest
+
+- **`/host/files/`** — the attachments for THIS message (what the user just
+  dropped): the primary, always-mounted set.
+- **`/host/project/`** — the active project's files, when a project is open.
+  Capped harder (a project can hold many/large files); prefer the
+  extracted-text form for parsable docs to keep the mount small, write originals
+  only for small files.
+- **`/host/files/INDEX.txt`** — a generated manifest (`filename  type  size`
+  per line, plus the sanitized on-disk name when it differs) so the model can
+  discover what's available with one `cat` instead of guessing names.
+
+Filenames are **sanitized** (basename only, path separators stripped, control
+chars removed) and **de-duplicated** (suffix `-2`, `-3` on collision). Total
+mounted bytes are **capped** (proposal: 8 MB for `/host/files`, 8 MB for
+`/host/project`, matching the 25 MB per-file input sanity cap with headroom) —
+when the cap is hit, the largest files are dropped and the manifest records
+`[not mounted — over size cap]` so the omission is legible, never silent
+(invariant-style: no silent truncation).
+
+## Making the model use them (prompt awareness)
+
+Extend `bashAgentPrompt` (`src/prompts.js`) and `drcBashAgentPrompt`
+(`public/js/drc-research.js`) with a mount paragraph, emitted only when files
+are actually mounted:
+
+> The user's attached files are mounted **read-only** at `/host/files/`
+> (and any open project's files at `/host/project/`). Run
+> `cat /host/files/INDEX.txt` to see them. Read them as inputs
+> (`cat`/`grep`/`awk`/`python3 - < …`); you cannot write there and scripts
+> aren't executable — run them through an interpreter.
+
+Without this the model treats the sandbox as empty and never looks.
+
+## Wiring
+
+- **`public/js/sandbox.js`** — `ensureSandboxBooted(fileProvider?)` /
+  `bootVM(fileProvider)`: create the `hostDevice`, add the `/host` mount, and
+  after `CheerpX.Linux.create` `await`-write every file the provider yields
+  (fail-soft per file). `fileProvider` is an async `() => Promise<Array<{path,
+  bytes, name, type, size}>>` so the two tiers assemble their own file lists
+  without `sandbox.js` importing either storage stack.
+- **DRS (`public/js/stream.js`)** — in `maybeRunShellLoop`, build the provider
+  from the pending attachments (already in scope for the send) + the active
+  project (`projects.js`), and pass it into `bootOnce → ensureSandboxBooted`.
+- **DRC (`public/js/drc-research.js` / `drc.js`)** — same shape, provider built
+  from DRC's own attachment/project store (`drc-store.js`).
+- **`public/js/sandbox-files.js`** — NEW pure helper (Node-tested,
+  `isPublicAsset`-allowlisted, in the /cure import closure): `sanitizeName`,
+  `dedupeNames`, `buildManifest`, `applySizeCap` — the deterministic bits, kept
+  out of the browser-only `sandbox.js`.
+
+## Privacy & fail-soft
+
+- **Nothing leaves the browser.** DataDevice is in-memory in the page; the bytes
+  are the user's own files, already in their browser, decrypted with the key the
+  session already holds, written into a VM that also runs in the page. No new
+  network, no third party — consistent with invariant 4 (outbound requests carry
+  the minimum; here there are none).
+- Every step is **fail-soft**: no OPFS, no key, a decrypt failure, a `writeFile`
+  error, or an over-cap file all skip that file and boot proceeds. A boot with
+  zero mountable files is byte-identical to today's empty sandbox.
+
+## Live-verification owed (per the live-verify skill)
+
+- A `DataDevice` mount populated at boot is **readable in the guest** on real
+  iOS Safari under COEP `require-corp` (`cat /host/files/INDEX.txt` returns the
+  bytes) — the `credentialless`/Safari saga is the standing warning.
+- `writeFile` **throughput** for a near-cap set (does an 8 MB mount add
+  noticeable boot latency?).
+- Read-only + no-exec is confirmed fine for our read-only use (scripts via
+  interpreter, not `chmod +x`).
+
+## Bytes-into-the-guest, symmetric note
+
+This is the clean, general version of part A's Phase 1.5 (host-command output →
+`/host/out/…`): the same device, populated at boot instead of mid-session.
+Where part A needed mid-session writes (a host command's result feeding a *later*
+guest command), the same live-verify caveat applies; file mounting avoids it by
+being boot-time only.
+
+---
+
 ## Recommendation
 
+0. **Build (B) file-mounting** — it is independently useful (it needs neither
+   the host-command registry nor guest stubs; it's ~one DataDevice mount + a
+   boot-time write loop + a prompt paragraph) and is the most-requested-shaped
+   gap: "I attached a file, why can't the sandbox see it?". Ship it alongside or
+   before Phase 1.
 1. **Build Phase 1** (host command registry + `sandbox.js` interception +
    generated prompt paragraph + the sandboxed-iframe `js` runner). It is the
    whole performance win — native-speed compute *and* skipping the multi-second
@@ -341,12 +517,14 @@ the CheerpX VM. Moving it host-side MUST preserve equivalent isolation:
 
 ## Files this touches (when implemented)
 
-| File | Change |
-|---|---|
-| `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) |
-| `public/js/sandbox.js` | intercept in `execInSandbox` before the VM; add the `/host` DataDevice mount; the sandboxed-iframe `js` runner |
-| `src/prompts.js` | `bashAgentPrompt` gains the generated host-command paragraph |
-| `public/js/drc-research.js` | `drcBashAgentPrompt` gains the same paragraph |
-| `src/index.js` | add `host-commands.js` to `isPublicAsset` |
-| `public/js/bash-core.js` | (optional) `isHostOnly` predicate so a host-only round skips `ensureReady` and never boots the VM |
-| docs / execution-sandbox skill | document the capability once it ships |
+| File | Change | For |
+|---|---|---|
+| `public/js/sandbox.js` | `/host` DataDevice mount; boot-time file writes (`fileProvider`); intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
+| `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`dedupeNames`/`buildManifest`/`applySizeCap`; Node-tested (`sandbox-files.test.js`) | B |
+| `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) | A |
+| `public/js/stream.js` | DRS: assemble the file provider (attachments + active project) and pass to `bootOnce` | B |
+| `public/js/drc-research.js` | DRC: assemble the file provider from `drc-store`; `drcBashAgentPrompt` gains the host-command + mount paragraphs | A+B |
+| `src/prompts.js` | `bashAgentPrompt` gains the host-command paragraph and the (conditional) mount paragraph | A+B |
+| `src/index.js` | add `host-commands.js` and `sandbox-files.js` to `isPublicAsset` | A+B |
+| `public/js/bash-core.js` | (optional) `isHostOnly` predicate so a host-only round skips `ensureReady` and never boots the VM | A |
+| docs / execution-sandbox skill | document both capabilities once they ship | A+B |
