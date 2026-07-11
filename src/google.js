@@ -61,12 +61,21 @@ function redirectUri(url) {
  * @param {Request} request
  * @param {Env} env
  * @param {URL} url
+ * @param {Logger} [log]
  * @returns {Promise<Response>}
  */
-export async function handleGoogleStart(request, env, url) {
+export async function handleGoogleStart(request, env, url, log) {
   if (!googleConfigured(env)) {
     return new Response("Google sign-in is not configured.", { status: 503 });
   }
+  // Full-visibility trace: the EXACT redirect_uri this request builds (from the
+  // request host) and the client_id, so a live tail shows precisely what Google
+  // receives — the ground truth behind redirect_uri_mismatch.
+  log?.info("google.start", {
+    host: url.host,
+    redirect_uri: redirectUri(url),
+    client_id: String(env.GOOGLE_CLIENT_ID || "").slice(0, 24),
+  });
   const state = [...crypto.getRandomValues(new Uint8Array(16))]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

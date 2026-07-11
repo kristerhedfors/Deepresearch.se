@@ -86,6 +86,7 @@ export default {
       request_id: requestId,
       method: request.method,
       path: url.pathname,
+      host: url.host,
     });
 
     try {
@@ -350,7 +351,7 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: htmlResponse(loginPage(url.searchParams.get("flash") || ""), 200) };
   }
   if (url.pathname === "/auth/google" && request.method === "GET") {
-    return { response: await handleGoogleStart(request, env, url) };
+    return { response: await handleGoogleStart(request, env, url, log) };
   }
   if (url.pathname === "/auth/google/callback" && request.method === "GET") {
     return { response: await handleGoogleCallback(request, env, url, log) };
