@@ -167,13 +167,16 @@ function isPublicAsset(url, method) {
     url.pathname === "/js/settings.js" ||
     url.pathname === "/js/drc-research.js" ||
     url.pathname === "/js/drc-store.js" ||
-    // drc-research.js statically imports the bash-lite sandbox pair (the
-    // in-browser Linux execution tier is present on DRC too): its pure agent
-    // core AND the CheerpX VM bridge. Both must be public or the /cure module
-    // graph fails to link and the whole client tier's JS dies — the same
-    // breakage class as drc-rag.js above (found live 2026-07-11: the sandbox
-    // commit added the imports to drc-research.js but not to this allowlist,
-    // so /js/bash-agent.js and /js/sandbox.js 401'd and /cure went dark).
+    // drc-research.js statically imports the bash-lite sandbox modules (the
+    // in-browser Linux execution tier is present on DRC too): the shared pure
+    // agent core (bash-core.js — also imported by the DRS driver
+    // bash-agent.js) AND the CheerpX VM bridge. All must be public or the
+    // /cure module graph fails to link and the whole client tier's JS dies —
+    // the same breakage class as drc-rag.js above (found live 2026-07-11: the
+    // sandbox commit added the imports to drc-research.js but not to this
+    // allowlist, so /js/bash-agent.js and /js/sandbox.js 401'd and /cure went
+    // dark).
+    url.pathname === "/js/bash-core.js" ||
     url.pathname === "/js/bash-agent.js" ||
     url.pathname === "/js/sandbox.js" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||

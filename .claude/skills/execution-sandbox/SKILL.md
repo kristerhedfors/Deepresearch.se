@@ -3,12 +3,14 @@ name: execution-sandbox
 description: >-
   Load when working on the experimental in-browser Linux execution sandbox and
   the bash-lite agent — the `bash_lite_mcp` knob (DRS) / `bashLite` (DRC) — or
-  anything touching src/bash-agent.js, src/bash-api.js, public/js/sandbox.js,
-  public/js/bash-agent.js, the /api/bash/step endpoint, the shell transcript
-  in the pipeline/synthesis, the cross-origin-isolation (COEP) headers, or the
-  CheerpX WASM Linux VM. Covers the client-orchestrated agentic loop, the
-  fenced-block (no-function-calling) convention, the fail-soft contract, EN+SV
-  intent parity, and the live browser verification. ALSO the go-to when the
+  anything touching public/js/bash-core.js (the shared pure core),
+  src/bash-agent.js (its server façade), src/bash-api.js,
+  public/js/sandbox.js, public/js/bash-agent.js (the DRS driver), the
+  /api/bash/step endpoint, the shell transcript in the pipeline/synthesis, the
+  cross-origin-isolation (COEP) headers, or the CheerpX WASM Linux VM. Covers
+  the client-orchestrated agentic loop, the fenced-block (no-function-calling)
+  convention, the fail-soft contract, EN+SV intent parity, and the live
+  browser verification. ALSO the go-to when the
   sandbox "refuses to run code" on a real device: the COEP must be
   `require-corp` (iOS Safari ignores `credentialless`), the `client_diag`
   browser probe + `wrangler tail` debugging playbook, the edge/PWA
@@ -36,7 +38,8 @@ degrade to a normal answer.
 on, the loop asks the model cold on the first turn; it returns `SHELL_DONE`
 immediately for anything that doesn't need a shell. So "list files", "run la
 -la", and any phrasing a keyword gate would miss all work. `bashIntent`
-(EN+SV, mirrored both sides) is kept only as a non-authoritative heuristic —
+(EN+SV, one shared implementation in `bash-core.js`) is kept only as a
+non-authoritative heuristic —
 it does NOT gate execution (that was the 2026-07-10 production defect:
 chat_logs #200/#201 answered "I can't run code" because the regex missed the
 ask and never engaged the model). The VM boots **lazily** — only once the
@@ -52,13 +55,14 @@ denies the capability even with a transcript in front of it.
 
 | Concern | File |
 |---|---|
-| Pure core (intent, parse, transcript, caps) | `src/bash-agent.js` (+ `.test.js`, Swedish-parity suite) |
+| SHARED pure core (intent, parse, exec-result clamping, transcript, the per-round step user-message `buildStepUserMessage`, the generic injected-step `runShellLoop` driver, caps) | `public/js/bash-core.js` (+ `.test.js`, Swedish-parity suite) — the ONE implementation. Lives under `public/` because the browser can only import served modules while the Worker bundler (wrangler/esbuild) imports from any repo path; it is BOTH served to the browser AND bundled into the Worker. In `index.js`'s `isPublicAsset` allowlist (the /cure module graph imports it) |
+| Server façade over the core | `src/bash-agent.js` (re-export ONLY — since 2026-07-11 this replaced the old hand-mirrored copy; `.test.js` pins the re-export contract so a re-implementation fails the suite) |
 | Settings knob `bash_lite_mcp` | `src/settings.js` (`bashLiteEnabled`, availability = user row only, no secret) |
 | Step prompt + synthesis clause | `src/prompts.js` (`bashAgentPrompt`, `synthPrompt({hasShell})`) |
 | Step endpoint `/api/bash/step` | `src/bash-api.js` (one model turn on `DEFAULT_MODEL`, quota-gated, usage-recorded) |
 | Pipeline consumption | `src/pipeline.js` (`ctx.shellBlock` → synthesis + direct/search-off), `src/chat.js` (`shell_transcript` request field → `state.shellTranscript`) |
 | COEP / cross-origin isolation | `src/index.js` (`serveAsset(..,{coep})` sets COEP **`require-corp`** + `no-store`, strips conditional headers: DRC page always, DRS shell when the knob is on) |
-| DRS client mirror + loop driver | `public/js/bash-agent.js` (`bashIntent`, `runShellLoop`, `parseShellRequest`/`buildShellTranscript`) |
+| DRS client driver | `public/js/bash-agent.js` (`fetchShellStep` + the DRS-shaped `runShellLoop` — the core driver with the step wired to `/api/bash/step`; re-exports the core's pure API) |
 | The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue) |
 | DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript` + the `client_diag` probe) |
 | Isolation self-heal | `public/js/app.js` (knob-on + `!crossOriginIsolated` → **navigate to a fresh `?_coep=<ts>` URL**, NOT `location.reload()`; plus a `pageshow(persisted)` bfcache handler) |
@@ -76,10 +80,11 @@ lazily boots the `sandbox.js` VM via `execInSandbox`, results feed back) →
 attach the transcript as `shell_transcript` on `/api/chat` → the pipeline
 injects it into synthesis/direct as ground truth (`ctx.shellBlock`).
 
-**DRC:** identical shape but fully client-side — `runDrcShellPass` calls the
-user's own provider directly for the step (parsed client-side with
-`parseShellRequest`), executes in the same `sandbox.js` VM, and folds the
-transcript into synthesis/direct.
+**DRC:** identical shape but fully client-side — `runDrcShellPass` drives the
+SAME `bash-core.js` loop with a step function that calls the user's own
+provider directly (parsed client-side with `parseShellRequest`, the same
+shared `buildStepUserMessage`), executes in the same `sandbox.js` VM, and
+folds the transcript into synthesis/direct.
 
 ## Cross-origin isolation (the tricky part)
 
@@ -105,10 +110,13 @@ reloads the page so the shell comes back isolated.
 
 ## Conventions & caps
 
-- `bashIntent` is a non-authoritative heuristic (EN+SV parity, mirrored in
-  `src/` and `public/js/`, both with parity tests) — NOT the execution gate.
-  The model decides. Keep the two SHELL_PATTERNS arrays in lock-step if you
-  touch them, but do NOT reintroduce it as a precondition for running the loop.
+- `bashIntent` is a non-authoritative heuristic (EN+SV parity, ONE
+  implementation in `bash-core.js` since the 2026-07-11 dedup refactor) — NOT
+  the execution gate. The model decides. Do NOT reintroduce it as a
+  precondition for running the loop, and do NOT reintroduce a mirrored copy of
+  any core function — import (or re-export) `bash-core.js`; the façade/driver
+  test suites assert the exports are the SAME function objects, so a copy
+  fails the tests.
 - `MAX_SHELL_ROUNDS=6`, `MAX_COMMANDS_PER_ROUND=6`, output clamped to
   `MAX_OUTPUT_CHARS=4000`. The sandbox is treated as OFFLINE (no network) in
   the prompts.

@@ -1,62 +1,37 @@
-// Unit tests for the DRS client bash-lite agent (public/js/bash-agent.js):
-// the intent gate (must MIRROR the server's src/bash-agent.js, EN+SV parity)
-// and the agentic loop driver against a mock step endpoint + mock sandbox.
+// Unit tests for the DRS client driver of the bash-lite agent
+// (public/js/bash-agent.js): the /api/bash/step fetch wrapper and the
+// DRS-shaped runShellLoop over the shared core driver, against a mock step
+// endpoint + mock sandbox. The pure logic (intent gate, parser, transcript,
+// generic loop) is implemented once in bash-core.js and tested in
+// bash-core.test.js; here we also pin the re-export contract (the client
+// surface IS the core, not a mirror).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { bashIntent, buildShellTranscript, fetchShellStep, parseShellRequest, runShellLoop } from "./bash-agent.js";
+import * as driver from "./bash-agent.js";
+import * as core from "./bash-core.js";
+import { fetchShellStep, runShellLoop } from "./bash-agent.js";
 
-// ---- bashIntent (mirror parity) -----------------------------------------
+// ---- the re-export contract (replaces the old hand-mirror parity suite) ---
 
-describe("bashIntent (client mirror)", () => {
-  test("fires on the same English phrasings the server gate fires on", () => {
-    for (const msg of [
-      "run this command: uname -a",
-      "execute this script for me",
-      "can you run the code in the sandbox?",
-      "use the terminal to compute the sha256",
-      "run the calculation",
-      "pipe this through jq",
+describe("DRS driver re-exports the shared core", () => {
+  test("every pure export IS the core's implementation (same function object)", () => {
+    for (const name of [
+      "bashIntent",
+      "parseShellRequest",
+      "normalizeExecResult",
+      "formatShellResult",
+      "buildShellTranscript",
+      "buildStepUserMessage",
     ]) {
-      assert.equal(bashIntent(msg), true, msg);
+      assert.equal(driver[name], core[name], `${name} must be re-exported, not re-implemented`);
+    }
+    for (const name of ["MAX_SHELL_ROUNDS", "MAX_COMMANDS_PER_ROUND", "MAX_OUTPUT_CHARS", "MAX_COMMAND_CHARS"]) {
+      assert.equal(driver[name], core[name], name);
     }
   });
 
-  test("Swedish parity (invariant 6)", () => {
-    for (const msg of [
-      "kör det här kommandot: uname -a",
-      "exekvera skriptet åt mig",
-      "kan du köra koden i sandlådan?",
-      "använd terminalen för att beräkna sha256",
-      "räkna ut det här åt mig",
-    ]) {
-      assert.equal(bashIntent(msg), true, msg);
-    }
-  });
-
-  test("does not fire on innocent uses or empty input", () => {
-    assert.equal(bashIntent("I want to run a marathon"), false);
-    assert.equal(bashIntent("jag vill köra bil till Göteborg"), false);
-    assert.equal(bashIntent(""), false);
-  });
-});
-
-// ---- parseShellRequest / buildShellTranscript (DRC client-side) ---------
-// These mirror src/bash-agent.js (DRC has no server to parse for it).
-
-describe("parseShellRequest (client mirror)", () => {
-  test("extracts commands from a fenced block and detects done", () => {
-    assert.deepEqual(parseShellRequest("```bash\nuname -a\n```").commands, ["uname -a"]);
-    assert.equal(parseShellRequest("SHELL_DONE").done, true);
-    assert.equal(parseShellRequest("nothing here").done, true);
-  });
-});
-
-describe("buildShellTranscript (client mirror)", () => {
-  test("empty runs → empty block; labels non-empty", () => {
-    assert.equal(buildShellTranscript([]), "");
-    const b = buildShellTranscript([{ command: "echo hi", exitCode: 0, stdout: "hi\n", stderr: "" }]);
-    assert.match(b, /Linux sandbox session/);
-    assert.match(b, /\$ echo hi/);
+  test("runShellLoop is the DRS wrapper, not the generic core driver", () => {
+    assert.notEqual(driver.runShellLoop, core.runShellLoop);
   });
 });
 
@@ -90,11 +65,24 @@ describe("fetchShellStep", () => {
     assert.equal(r.done, false); // only strict true is done
     assert.equal(r.reasoning, "");
   });
+
+  test("POSTs the conversation and the transcript so far to /api/bash/step", async () => {
+    let captured;
+    const fake = async (url, init) => {
+      captured = { url, body: JSON.parse(init.body) };
+      return { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) };
+    };
+    const messages = [{ role: "user", content: "ls /" }];
+    const transcript = [{ command: "pwd", exitCode: 0, stdout: "/root\n", stderr: "" }];
+    await fetchShellStep(messages, transcript, /** @type {any} */ (fake));
+    assert.equal(captured.url, "/api/bash/step");
+    assert.deepEqual(captured.body, { messages, transcript });
+  });
 });
 
-// ---- runShellLoop --------------------------------------------------------
+// ---- runShellLoop (DRS shape: step = /api/bash/step) ----------------------
 
-describe("runShellLoop", () => {
+describe("runShellLoop (DRS)", () => {
   test("runs proposed commands, feeds results back, stops when done", async () => {
     // Step 1 proposes two commands, step 2 says done.
     const steps = [
@@ -113,32 +101,26 @@ describe("runShellLoop", () => {
     assert.equal(transcript[0].stdout, "echo a-out");
   });
 
+  test("the second round's request carries the first round's transcript", async () => {
+    const bodies = [];
+    const steps = [
+      { ok: true, json: async () => ({ commands: ["echo a"], done: false, reasoning: "" }) },
+      { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) },
+    ];
+    let i = 0;
+    const fetchImpl = async (_url, init) => { bodies.push(JSON.parse(init.body)); return steps[i++]; };
+    const exec = async (cmd) => ({ exitCode: 0, stdout: cmd, stderr: "" });
+    await runShellLoop({ messages: [], exec, fetchImpl: /** @type {any} */ (fetchImpl) });
+    assert.equal(bodies[0].transcript.length, 0);
+    assert.equal(bodies[1].transcript.length, 1);
+    assert.equal(bodies[1].transcript[0].command, "echo a");
+  });
+
   test("honors the round cap even if the model never says done", async () => {
     const fetchImpl = async () => ({ ok: true, json: async () => ({ commands: ["echo x"], done: false, reasoning: "" }) });
     const exec = async () => ({ exitCode: 0, stdout: "x", stderr: "" });
     const transcript = await runShellLoop({ messages: [], exec, fetchImpl: /** @type {any} */ (fetchImpl), maxRounds: 3 });
     assert.equal(transcript.length, 3); // one command per round, capped at 3
-  });
-
-  test("a throwing exec becomes a failed run, loop continues", async () => {
-    const steps = [
-      { ok: true, json: async () => ({ commands: ["boom"], done: false, reasoning: "" }) },
-      { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) },
-    ];
-    let i = 0;
-    const fetchImpl = async () => steps[i++];
-    const exec = async () => { throw new Error("exec failed"); };
-    const transcript = await runShellLoop({ messages: [], exec, fetchImpl: /** @type {any} */ (fetchImpl) });
-    assert.equal(transcript.length, 1);
-    assert.equal(transcript[0].exitCode, 1);
-    assert.match(transcript[0].stderr, /exec failed/);
-  });
-
-  test("empty first proposal produces an empty transcript", async () => {
-    const fetchImpl = async () => ({ ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) });
-    const exec = async () => ({ exitCode: 0, stdout: "", stderr: "" });
-    const transcript = await runShellLoop({ messages: [], exec, fetchImpl: /** @type {any} */ (fetchImpl) });
-    assert.deepEqual(transcript, []);
   });
 
   test("ensureReady is NOT called when the model needs no shell (lazy boot)", async () => {

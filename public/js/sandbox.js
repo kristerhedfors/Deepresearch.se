@@ -1,7 +1,7 @@
 // The experimental in-browser Linux execution sandbox (the `bash_lite_mcp`
 // knob). NOT type-checked (no `// @ts-check`): this is browser/CheerpX glue —
 // dynamic CDN imports, xterm globals, WASM VM handles — with no meaningful
-// static type surface. The pure, testable logic lives in bash-agent.js.
+// static type surface. The pure, testable logic lives in bash-core.js.
 //
 // A JavaScript x86 emulator (CheerpX) boots a small Debian Linux
 // ENTIRELY IN THIS BROWSER — the server never runs a shell. This module owns
@@ -23,7 +23,7 @@
 // command's stdout/stderr as base64 between unique markers so it survives the
 // shared console. Everything here only ever runs in a browser (DOM, dynamic
 // import of the CheerpX ESM) — there is no Node-testable surface, so the pure,
-// testable logic lives in public/js/bash-agent.js instead.
+// testable logic lives in public/js/bash-core.js instead.
 
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
 const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";

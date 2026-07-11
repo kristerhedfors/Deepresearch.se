@@ -133,7 +133,7 @@ Server (`src/`):
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, and `bash_lite_mcp` (experimental execution sandbox) knobs — `GET/PUT /api/settings` |
-| `bash-agent.js` | The bash-lite agent's PURE core (Node-tested): `bashIntent` (deterministic EN+SV "wants a shell" gate), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, and `buildShellTranscript` (the labeled synthesis block). Shared shape with the client mirror (`public/js/bash-agent.js`) — see the **execution-sandbox** skill |
+| `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
@@ -451,11 +451,16 @@ validation, the chunked base64 helpers), and `activity.js`'s
 `buildResearchDebugJson` (the copy-to-clipboard debug record: step/service
 projection, per-round searches, URL-deduped sources, the full generated
 `answer`, the `errored` flag + `errors` list, and the ordered timeline), and
-`bash-agent.js` (the DRS client mirror of the bash-lite agent: `bashIntent`
-EN+SV parity vs the server gate, `parseShellRequest`/`buildShellTranscript`
-mirrors, and `runShellLoop`/`fetchShellStep` against a mock step endpoint +
-mock sandbox — the browser VM glue in `public/js/sandbox.js` is deliberately
-NOT Node-testable and carries no `@ts-check`).
+`bash-core.js` (the bash-lite agent's SHARED pure core — the one
+implementation behind the server façade `src/bash-agent.js`, the DRS driver,
+and DRC: the `bashIntent` EN+SV gate incl. the Swedish-parity suite,
+`parseShellRequest`, exec-result clamping, the transcript/step-message
+builders, and the generic injected-step `runShellLoop` driver) plus
+`bash-agent.js` (the DRS driver: `fetchShellStep` and the DRS-shaped
+`runShellLoop` against a mock step endpoint + mock sandbox, and the re-export
+contract pinning that its pure surface IS the core, not a mirror — the
+browser VM glue in `public/js/sandbox.js` is deliberately NOT Node-testable
+and carries no `@ts-check`).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -649,10 +654,12 @@ what docs claim); and update the skill list below plus the skill's
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated
   agentic loop runs shell commands (fenced-block convention, NO function
-  calling — `src/bash-agent.js`, `src/bash-api.js`, `public/js/sandbox.js`,
-  `public/js/bash-agent.js`), and the transcript feeds synthesis as ground
-  truth. Covers the COEP cross-origin-isolation headers, the fail-soft
-  contract, EN+SV intent parity, and the live browser verification still owed.
+  calling — the shared pure core `public/js/bash-core.js` behind the server
+  façade `src/bash-agent.js`, plus `src/bash-api.js`, `public/js/sandbox.js`,
+  and the DRS driver `public/js/bash-agent.js`), and the transcript feeds
+  synthesis as ground truth. Covers the COEP cross-origin-isolation headers,
+  the fail-soft contract, EN+SV intent parity, and the live browser
+  verification still owed.
 
 - **tokemon-game** — the games subsystem (the `src/games.js` registry/dispatch
   seam + how to add a NEW game) and the Tokemon open-world AR game itself

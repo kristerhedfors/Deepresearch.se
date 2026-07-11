@@ -29,6 +29,7 @@ import { bashLiteEnabled } from "./settings.js";
 import {
   MAX_SHELL_ROUNDS,
   buildShellTranscript,
+  buildStepUserMessage,
   normalizeExecResult,
   parseShellRequest,
 } from "./bash-agent.js";
@@ -82,14 +83,13 @@ export async function handleBashStep(request, env, log, identity) {
   const blocked = quota ? quotaExceeded(usage, quota) : null;
   if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
 
-  const convText = formatConversation(body.messages);
-  const lastUser = textOf(lastUserMessage(body.messages)?.content);
-  const priorBlock = buildShellTranscript(transcript);
-  const userContent =
-    `Task (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
-    (priorBlock
-      ? `${priorBlock}\n\nDecide the next command(s), or reply SHELL_DONE if the answer has everything it needs.`
-      : "No commands have run yet. Decide the first command(s) to run, or reply SHELL_DONE if a shell is not actually needed.");
+  // The per-round user message is the shared builder (bash-core.js), so DRS
+  // and DRC ask the model the exact same step question.
+  const userContent = buildStepUserMessage({
+    task: textOf(lastUserMessage(body.messages)?.content),
+    context: formatConversation(body.messages),
+    priorBlock: buildShellTranscript(transcript),
+  });
 
   const startedAt = Date.now();
   try {

@@ -32,7 +32,7 @@
 
 import { createSseParser } from "./sse.js";
 import { drcChatStream, drcCompleteJson, drcProvider } from "./drc-providers.js";
-import { MAX_SHELL_ROUNDS, buildShellTranscript, parseShellRequest } from "./bash-agent.js";
+import { buildShellTranscript, buildStepUserMessage, parseShellRequest, runShellLoop } from "./bash-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 
 const MAX_SUBQUESTIONS = 4;
@@ -205,31 +205,30 @@ function emitChunked(text, onDelta) {
   for (let i = 0; i < text.length; i += 80) onDelta(text.slice(i, i + 80));
 }
 
-// The experimental bash-lite pre-pass (DRC): the agentic shell loop, run
-// ENTIRELY client-side (unlike DRS, where the step decision goes through the
-// server). Each round the model proposes commands (drcBashAgentPrompt, parsed
-// from a fenced block), the browser sandbox runs them, and the transcript
-// feeds the next round — until the model is done or the cap is hit. Returns
-// the transcript for synthesis/direct to use as ground truth. Fully fail-soft:
-// any error ends the loop with whatever was gathered. `sandbox` is injectable
-// for tests; defaults to the real public/js/sandbox.js bridge.
+// The experimental bash-lite pre-pass (DRC): bash-core.js's shared agentic
+// loop, run ENTIRELY client-side (unlike DRS, where the step decision goes
+// through /api/bash/step — here the step is a direct call to the user's own
+// provider on their key, parsed from the same fenced-block convention). Each
+// round the model proposes commands (drcBashAgentPrompt + the shared step
+// user-message), the browser sandbox runs them, and the transcript feeds the
+// next round — until the model is done or the cap is hit. Returns the
+// transcript for synthesis/direct to use as ground truth. Fully fail-soft:
+// any error ends the loop with whatever was gathered (a failing step call
+// resolves to done, and the core driver swallows step/exec errors). The VM
+// boots LAZILY — only once the model actually proposes a command — so a
+// message the model judges not to need a shell pays one cheap model call and
+// never boots the VM. `sandbox` is injectable for tests; defaults to the real
+// public/js/sandbox.js bridge.
 async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox }) {
   const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
   if (!sb.supported()) return [];
-  const transcript = [];
-  // null = not yet booted; the VM boots LAZILY only once the model actually
-  // proposes a command (so a message the model judges not to need a shell pays
-  // one cheap model call and never boots the VM).
-  let ready = null;
-  for (let round = 1; round <= MAX_SHELL_ROUNDS; round++) {
-    let stepText = "";
-    try {
-      const priorBlock = buildShellTranscript(transcript);
-      const userMsg =
-        "Task: " + question + "\n\nConversation:\n" + context + "\n\n" +
-        (priorBlock
-          ? priorBlock + "\n\nDecide the next command(s), or reply SHELL_DONE."
-          : "No commands have run yet. Decide the first command(s), or reply SHELL_DONE if a shell is not actually needed.");
+  return runShellLoop({
+    step: async (transcript) => {
+      const userMsg = buildStepUserMessage({
+        task: question,
+        context,
+        priorBlock: buildShellTranscript(transcript),
+      });
       const res = await drcChatStream(
         provider,
         apiKey,
@@ -237,36 +236,16 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
         [{ role: "system", content: drcBashAgentPrompt() }, { role: "user", content: userMsg }],
         { signal, baseUrl },
       );
-      if (!res.ok || !res.body) break;
-      stepText = await readStream(res, () => {});
-    } catch {
-      break;
-    }
-    const proposal = parseShellRequest(stepText);
-    if (proposal.done || !proposal.commands.length) break;
-    // The model wants to run something — boot the VM now (once).
-    if (ready === null) {
+      if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };
+      return parseShellRequest(await readStream(res, () => {}));
+    },
+    exec: (command) => sb.exec(command),
+    ensureReady: async () => {
       onStatus({ type: "phase", phase: "sandbox" });
-      ready = await sb.boot();
-    }
-    if (!ready) break;
-    onStatus({ type: "phase", phase: "sandbox", detail: proposal.commands.length });
-    for (const command of proposal.commands) {
-      let r;
-      try {
-        r = await sb.exec(command);
-      } catch (err) {
-        r = { exitCode: 1, stdout: "", stderr: String(err?.message || err) };
-      }
-      transcript.push({
-        command,
-        exitCode: Number.isFinite(Number(r?.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1,
-        stdout: typeof r?.stdout === "string" ? r.stdout : "",
-        stderr: typeof r?.stderr === "string" ? r.stderr : "",
-      });
-    }
-  }
-  return transcript;
+      return sb.boot();
+    },
+    onStep: ({ commands }) => onStatus({ type: "phase", phase: "sandbox", detail: commands.length }),
+  });
 }
 
 // ---- the flow ---------------------------------------------------------------------
