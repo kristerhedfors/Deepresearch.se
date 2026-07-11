@@ -7,8 +7,9 @@
 // - "games": the games shelf (GET /api/games).
 // Plus the pieces every view shares: the settings switch row (settingRow),
 // its press-and-hold info popovers (wireSettingPopovers), the header's
-// notification badge (renderNotifBadge), and the summary's Feedback-mode
-// knob (wireFeedbackKnob).
+// notification badge (renderNotifBadge), and the Settings view's
+// Feedback-mode / execution-sandbox rows (renderConfigKnobs +
+// wireFeedbackKnob / wireSandboxKnob — rendered by account-settings.js).
 
 import { escapeHtml } from "./notifications.js";
 import {
@@ -24,7 +25,7 @@ import { applyFeedbackMode } from "./turns.js";
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
 // One settings switch row — the shared building block of the Settings
-// sub-view AND the summary's Feedback-mode knob. A single line — one label,
+// sub-view's knobs. A single line — one label,
 // one info glyph, one switch — with the full explanation tucked into a
 // press-and-hold popover (the same gesture the composer's web-search knob
 // uses; see wireSettingPopovers). The switch itself is the original
@@ -49,9 +50,9 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
     </div>`;
 }
 
-// Feedback mode lives DIRECTLY on the account summary (not buried in the
-// Settings sub-view): it's the dialogue-with-the-developers switch, meant
-// to be one tap away.
+// Feedback mode's knob lives in the Settings view with every other
+// configuration knob (2026-07-11 directive: ALL configuration under the
+// header's gear icon).
 const FEEDBACK_INFO = `<strong>Feedback mode</strong><br>
   <b>On:</b> every reply — including earlier ones — gets a <b>Feedback</b>
   button. Press it to tell the developers what was good or bad about that
@@ -63,14 +64,46 @@ const FEEDBACK_INFO = `<strong>Feedback mode</strong><br>
   write plus that one question and reply — readable by the site's
   developers. Withdrawing an entry deletes it, thread included.`;
 
-// The execution-sandbox knob also sits directly on the summary (short note;
-// the full story is in the /help pages). Enabling it reloads the page so the
+// The execution-sandbox knob sits beside it in Settings (short note; the
+// full story is in the /help pages). Enabling it reloads the page so the
 // app comes back cross-origin isolated and the in-browser Linux VM can boot.
 const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong><br>
   Boots a real Linux <b>inside this browser</b> so the assistant can run shell
   commands to answer you (e.g. “run ls”). Everything runs on your device —
   nothing leaves the browser. The first use downloads a Linux image, so it's
   slow to start; enabling it reloads the page.`;
+
+/**
+ * The Feedback-mode and execution-sandbox rows the Settings view renders
+ * under the server-backed knobs (account-settings.js) — knob state from
+ * the cached /api/settings copy, both gated on a signed-in account.
+ * Wire with wireFeedbackKnob + wireSandboxKnob after insertion.
+ * @param {object} me  cached /api/me payload
+ * @returns {string} HTML
+ */
+export function renderConfigKnobs(me) {
+  if (!me?.email) return "";
+  return (
+    settingRow({
+      id: "fbknob",
+      label: "Feedback mode",
+      checked: feedbackAvailable() && feedbackModeOn(),
+      disabled: !feedbackAvailable(),
+      popId: "fbpop",
+      info: FEEDBACK_INFO,
+    }) +
+    '<p id="fbstatus" class="muted setting-note" hidden></p>' +
+    settingRow({
+      id: "sbknob",
+      label: `Execution sandbox <span class="exp-badge">Experimental</span>`,
+      checked: bashLiteAvailable() && bashLiteOn(),
+      disabled: !bashLiteAvailable(),
+      popId: "sbpop",
+      info: SANDBOX_INFO,
+    }) +
+    '<p id="sbstatus" class="muted setting-note" hidden></p>'
+  );
+}
 
 /**
  * Renders the header's notification counter from the cached /api/me
@@ -173,12 +206,12 @@ export async function loadGamesView(ctx) {
   wireBack();
 }
 
-// The summary's Feedback-mode knob: persists via /api/settings
+// The Feedback-mode knob (Settings view): persists via /api/settings
 // (feedback_mode) and flips the body's `feedback-mode` class so every
 // on-screen reply — existing ones included — shows/hides its Feedback
-// button immediately (turns.js).
+// button immediately (turns.js). Popovers are wired by the view
+// (wireSettingPopovers once over the whole body), not here.
 export function wireFeedbackKnob(ctx) {
-  wireSettingPopovers(ctx.body);
   const knob = document.getElementById("fbknob");
   if (!knob || knob.disabled) return;
   const status = document.getElementById("fbstatus");
@@ -201,7 +234,7 @@ export function wireFeedbackKnob(ctx) {
   });
 }
 
-// The summary's execution-sandbox knob: persists via /api/settings
+// The execution-sandbox knob (Settings view): persists via /api/settings
 // (bash_lite_mcp). Enabling changes how the PAGE must be served (cross-origin
 // isolation for the in-browser Linux VM), which only takes effect on the next
 // load — so on enable we save then reload; disabling just saves.
@@ -245,38 +278,12 @@ export function renderSummary(me) {
     : "Site administrator";
   const msgCount = me.notifications?.total || 0;
   const fbCount = me.notifications?.unread_feedback || 0;
-  // Feedback mode sits directly on the summary — knob state from the cached
-  // /api/settings copy (fetched at boot in app.js; refreshed by the Settings
-  // view). Disabled when the account can't use it (break-glass, no D1).
-  const feedbackRow = me.email
-    ? settingRow({
-        id: "fbknob",
-        label: "Feedback mode",
-        checked: feedbackAvailable() && feedbackModeOn(),
-        disabled: !feedbackAvailable(),
-        popId: "fbpop",
-        info: FEEDBACK_INFO,
-      }) + '<p id="fbstatus" class="muted setting-note" hidden></p>'
-    : "";
-  // The experimental execution-sandbox knob sits directly on the summary too.
-  const sandboxRow = me.email
-    ? settingRow({
-        id: "sbknob",
-        label: `Execution sandbox <span class="exp-badge">Experimental</span>`,
-        checked: bashLiteAvailable() && bashLiteOn(),
-        disabled: !bashLiteAvailable(),
-        popId: "sbpop",
-        info: SANDBOX_INFO,
-      }) + '<p id="sbstatus" class="muted setting-note" hidden></p>'
-    : "";
   return `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
     ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
     ${!me.unlimited && !me.enforced ? '<p class="muted">Admin account: bars are shown for reference and keep counting past 100% — nothing blocks you.</p>' : ""}
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
-    ${feedbackRow}
-    ${sandboxRow}
     <!-- Page links open NEW TABS: even though history now persists across
          reloads (encrypted, local — see /help/), a same-tab navigation
          would still abort any in-flight research request. -->

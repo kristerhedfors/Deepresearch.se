@@ -32,6 +32,9 @@
         <button id="ghostbtn" type="button" class="on" data-feature="ghost" title="You're in ghost mode — DRC: this server never sees your chats" aria-label="Ghost mode (you are here)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
         </button>
+        <button id="gearbtn" type="button" title="Settings (API keys &amp; sandbox)" aria-label="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <button id="accountbtn" type="button" title="Account (this browser)" aria-label="Account">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
         </button>
@@ -136,8 +139,7 @@
   </div>
 
   <!-- The account view (right drawer): DRC has no accounts — this explains the
-       all-client-side model and holds the provider API keys and the
-       experimental execution-sandbox knob. -->
+       all-client-side model. Configuration lives under the gear (settingsview). -->
   <div id="accountview" hidden>
     <aside class="drawer-panel account-panel">
       <div class="drawer-head">
@@ -149,23 +151,43 @@
         leaves your device is the model call itself — sent straight to your chosen
         provider (OpenAI, Groq or Berget) on your own key. This site's server is never in the
         path, so it cannot read or log any of it.</p>
+      <p class="muted">Configuration — your API key and the execution sandbox — lives
+        under <b>Settings</b> (the gear in the header).</p>
+      <div class="row">
+        <button type="button" id="opensettings">Open Settings</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- The settings view (right drawer, the gear): ALL configuration —
+       the one-field API-key form (provider auto-detected from the key
+       prefix) and the experimental execution-sandbox knob. -->
+  <div id="settingsview" hidden>
+    <aside class="drawer-panel account-panel">
+      <div class="drawer-head">
+        <strong>Settings · this browser</strong>
+        <button id="settingsclose" type="button" aria-label="Close">✕</button>
+      </div>
 
       <details id="keyspanel" open>
         <summary>Provider API keys <span id="keysbadge" class="muted"></span></summary>
-        <p class="muted">Your keys go from this browser straight to the provider — never
-          through this site's server. With a saved project they're stored only inside
-          your sealed blob, in this browser. Leave a field blank to keep what's stored;
-          type <code>clear</code> to remove one.</p>
-        <label for="key-openai">OpenAI API key (platform.openai.com)</label>
-        <input id="key-openai" type="password" autocomplete="off" placeholder="not set">
-        <label for="key-groq">Groq API key (console.groq.com — free tier available)</label>
-        <input id="key-groq" type="password" autocomplete="off" placeholder="not set">
-        <label for="key-berget">Berget API key (berget.ai — EU-hosted models)</label>
-        <input id="key-berget" type="password" autocomplete="off" placeholder="not set">
+        <p class="muted">Your key goes from this browser straight to the provider — never
+          through this site's server. With a saved project it's stored only inside
+          your sealed blob, in this browser.</p>
+        <label for="key-input">API key</label>
+        <input id="key-input" type="password" autocomplete="off"
+               placeholder="sk-… (OpenAI) · gsk_… (Groq) · sk_ber_… (Berget)">
+        <label for="key-provider">Provider <span id="keydetect" class="muted"></span></label>
+        <select id="key-provider">
+          <option value="openai">OpenAI (platform.openai.com)</option>
+          <option value="groq">Groq (console.groq.com — free tier available)</option>
+          <option value="berget">Berget (berget.ai — EU-hosted models)</option>
+        </select>
         <div class="row">
-          <button type="button" id="savekeys">Save keys</button>
+          <button type="button" id="savekeys">Save key</button>
           <span id="keysstatus" class="muted"></span>
         </div>
+        <div id="savedkeys"></div>
       </details>
 
       <details id="sandboxpanel">

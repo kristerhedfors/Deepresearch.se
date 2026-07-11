@@ -201,10 +201,14 @@ Node-testable core `stream.js` orchestrates around),
 `models.js` (model dropdown), `attachments.js` (pending images/docs,
 downscaling), `account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
-`account-views.js` (summary incl. the Feedback-mode knob, full usage,
+`account-views.js` (summary, full usage,
 games shelf + the shared building blocks: setting rows, info popovers,
-notification badge), `account-messages.js` (the message center),
-`account-settings.js` (the cloud-storage/Shodan/Maps knobs),
+notification badge, the Feedback-mode/sandbox knob rows the settings
+view renders), `account-messages.js` (the message center),
+`account-settings.js` (ALL configuration — the cloud-storage/Shodan/
+Maps knobs plus the Feedback-mode and sandbox knobs; opened from the
+summary's Settings button OR directly via the header's gear icon,
+2026-07-11 directive),
 `account-feedback.js` (the Feedback dialogue-threads view)),
 `turns.js`
 (bubbles/content/tools — incl. the per-reply Feedback button + inline
@@ -301,10 +305,15 @@ account, attach, camera, the time slider) appear as DIMMED buttons
 (`.drs`) exactly where the app has them; tapping one opens the
 `#drspop` explainer pointing to `/rver`. The knob is REAL here — it
 flips the client-side research phases. A left drawer (the history
-sidebar mirrored) holds the local chat list, the Project panel and the
-API-keys panel. CHAT-FIRST (a visitor can type immediately; the first
-send without a key gets a helpful open-the-key-panel pointer, never an
-error wall), with a first-visit glass pane (`#intro`, doubling as the
+sidebar mirrored) holds the local chat list and the Project panel; the
+header's gear icon (between ghost and account, both tiers) opens the
+settings drawer — ALL configuration: the ONE-FIELD API-key form whose
+provider dropdown auto-follows the pasted key's prefix
+(`detectDrcProvider`: sk-… OpenAI, gsk_… Groq, sk_ber_… Berget) plus
+the sandbox knob; the ghost carries a soft CSS glow-shimmer in BOTH
+tiers as the secure-tier marker. CHAT-FIRST (a visitor can type
+immediately; the first send without a key gets a helpful
+open-the-settings pointer, never an error wall), with a first-visit glass pane (`#intro`, doubling as the
 publication shelf; the full landing at `/` / `/welcome/` links here),
 an unsaved-session → save-as-project flow (the Project panel's one
 submit opens OR creates a BROWSER-LOCAL project, merging this tab's

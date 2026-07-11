@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h22;
+  --css-version: h23;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -683,10 +683,16 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    anchors the row's right edge on its own — unless the ghost is showing,
    in which case the ghost carries the gap so the pair (ghost, account)
    sits together at the right edge. */
+/* The right-docked trio is (ghost, gear, account): the LEFTMOST visible of
+   them carries the auto margin so the group stays glued together at the
+   right edge whichever of them are showing. */
 #accountbtn { margin-left: auto; }
+#gearbtn { margin-left: auto; }
 #ghostbtn:not([hidden]) { margin-left: auto; }
-#ghostbtn:not([hidden]) + #accountbtn { margin-left: 0; }
-#historybtn, #clearbtn, #accountbtn, #ghostbtn, #copybtn {
+#ghostbtn:not([hidden]) ~ #gearbtn,
+#ghostbtn:not([hidden]) ~ #accountbtn,
+#gearbtn:not([hidden]) ~ #accountbtn { margin-left: 0; }
+#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -726,6 +732,30 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* Active incognito stays clearly visible while the chat runs — the lock
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }
+
+/* The ghost is the door to the SECURE tier (deepresearch.se/cure) — mark it
+   with a soft glow and a flowing shimmer (2026-07-11 directive): pure CSS,
+   stilled for prefers-reduced-motion. */
+@keyframes ghost-glow {
+  0%, 100% { box-shadow: 0 4px 18px rgba(4, 30, 60, .10), 0 0 6px 1px rgba(13, 79, 160, .30); }
+  50%      { box-shadow: 0 4px 18px rgba(4, 30, 60, .10), 0 0 14px 3px rgba(13, 79, 160, .55); }
+}
+@keyframes ghost-shimmer {
+  from { transform: translateX(-160%) skewX(-18deg); }
+  to   { transform: translateX(320%) skewX(-18deg); }
+}
+#ghostbtn:not([hidden]) { overflow: hidden; animation: ghost-glow 3.8s ease-in-out infinite; }
+#ghostbtn:not([hidden])::after {
+  content: ""; position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%;
+  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .55), transparent);
+  transform: translateX(-160%) skewX(-18deg);
+  animation: ghost-shimmer 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  #ghostbtn { animation: none; }
+  #ghostbtn::after { animation: none; display: none; }
+}
 
 /* Copy-conversation button: its own right-aligned mini-row directly below
    the account button (the spot the ghost used to occupy). Appears once the

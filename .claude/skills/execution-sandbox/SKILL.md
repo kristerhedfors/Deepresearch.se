@@ -56,8 +56,8 @@ denies the capability even with a transcript in front of it.
 | DRS client mirror + loop driver | `public/js/bash-agent.js` (`bashIntent`, `runShellLoop`, `parseShellRequest`/`buildShellTranscript`) |
 | The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue) |
 | DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript`) |
-| DRS settings UI (Experimental knob) | on the account SUMMARY directly (`public/js/account-views.js` `wireSandboxKnob`/`renderSummary`), next to Feedback mode — NOT in the Settings sub-view; `public/js/settings.js` accessors |
-| DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/js/drc-core.js` (`bashLite` state). The knob lives in the DRC **account view** (`#accountview` in `public/cure/index.html`, opened by `accountbtn` → `openAccount` in `drc.js`) alongside the API keys — the left drawer is chats+projects only. Plain `.toggle-track` styling (no spiderweb) in `drc.css` |
+| DRS settings UI (Experimental knob) | in the Settings view (`public/js/account-settings.js` renders it via account-views.js's `renderConfigKnobs`/`wireSandboxKnob`), next to Feedback mode — since 2026-07-11 ALL configuration lives under Settings, opened from the summary's Settings button or the header's gear icon; `public/js/settings.js` accessors |
+| DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/js/drc-core.js` (`bashLite` state). The knob lives in the DRC **settings view** (`#settingsview` in `public/cure/index.html`, opened by the header's gear `gearbtn` → `openSettings` in `drc.js`) alongside the API keys (since 2026-07-11; the account view keeps only the no-accounts explainer) — the left drawer is chats+projects only. Plain `.toggle-track` styling (no spiderweb) in `drc.css` |
 
 ## The flow
 

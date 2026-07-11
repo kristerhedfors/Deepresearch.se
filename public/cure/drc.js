@@ -46,7 +46,15 @@ import {
   sealDrcState,
   validateDrcState,
 } from "/js/drc-core.js";
-import { DRC_PROVIDERS, configuredDrcProviders, drcEmbed, drcEmbedProvider, drcProvider, listDrcModels } from "/js/drc-providers.js";
+import {
+  DRC_PROVIDERS,
+  configuredDrcProviders,
+  detectDrcProvider,
+  drcEmbed,
+  drcEmbedProvider,
+  drcProvider,
+  listDrcModels,
+} from "/js/drc-providers.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
@@ -143,17 +151,30 @@ function closeDrawer() {
   $("drawer").hidden = true;
 }
 
-// ---- the account view (right drawer): all-client-side explainer + keys + sandbox ----
+// ---- the account view (right drawer): the all-client-side explainer ---------------
 
 function openAccount() {
   closeDrawer();
-  $("bashlite").checked = state.bashLite === true; // reflect current state
-  renderKeysPanel();
+  closeSettings();
   $("accountview").hidden = false;
 }
 
 function closeAccount() {
   $("accountview").hidden = true;
+}
+
+// ---- the settings view (right drawer, the gear): keys + sandbox -------------------
+
+function openSettings() {
+  closeDrawer();
+  closeAccount();
+  $("bashlite").checked = state.bashLite === true; // reflect current state
+  renderKeysPanel();
+  $("settingsview").hidden = false;
+}
+
+function closeSettings() {
+  $("settingsview").hidden = true;
 }
 
 // ---- the DRS explainer: dimmed buttons stand where DRS features live ---------------
@@ -348,33 +369,63 @@ async function saveState() {
 
 // ---- provider keys ---------------------------------------------------------------------
 
+// ONE input for the key + a provider dropdown that follows the pasted
+// key's prefix automatically (sk-… OpenAI, gsk_… Groq, sk_ber_… Berget —
+// detectDrcProvider); unknown prefixes leave the dropdown to the user.
+// Saved keys are listed below with per-provider remove buttons.
 function renderKeysPanel() {
-  const have = [];
-  for (const p of DRC_PROVIDERS.map((x) => x.id)) {
-    const el = $("key-" + p);
-    el.value = "";
-    el.placeholder = state.keys?.[p] ? "•••••• (saved)" : "not set";
-    if (state.keys?.[p]) have.push(drcProvider(p).label);
+  const have = DRC_PROVIDERS.filter((p) => state.keys?.[p.id]);
+  $("keysbadge").textContent = have.length ? "— " + have.map((p) => p.label).join(", ") + " set" : "— none set yet";
+  $("savedkeys").innerHTML = have.length
+    ? have
+        .map(
+          (p) =>
+            `<div class="saved-key-row"><span>${p.label} <span class="muted">••••••</span></span>` +
+            `<button type="button" class="key-remove" data-provider="${p.id}">Remove</button></div>`,
+        )
+        .join("")
+    : "";
+  for (const btn of $("savedkeys").querySelectorAll(".key-remove")) {
+    btn.addEventListener("click", async () => {
+      delete state.keys[/** @type {HTMLElement} */ (btn).dataset.provider];
+      await saveState();
+      renderKeysPanel();
+      await refreshModels();
+    });
   }
-  $("keysbadge").textContent = have.length ? "— " + have.join(", ") + " set" : "— none set yet";
+}
+
+// The dropdown follows the key as it's typed/pasted; the hint says when
+// the provider was recognized (and the choice is therefore automatic).
+function syncKeyDetection() {
+  const detected = detectDrcProvider($("key-input").value);
+  if (detected) {
+    /** @type {HTMLSelectElement} */ ($("key-provider")).value = detected.id;
+    $("keydetect").textContent = "— detected: " + detected.label;
+  } else {
+    $("keydetect").textContent = "";
+  }
 }
 
 async function saveKeys() {
-  // Blank field = keep the stored key; typed = replace; "clear" removes it.
-  for (const p of DRC_PROVIDERS.map((x) => x.id)) {
-    const v = $("key-" + p).value.trim();
-    if (!v) continue;
-    if (v === "-" || v.toLowerCase() === "clear") delete state.keys[p];
-    else state.keys[p] = v;
+  const v = $("key-input").value.trim();
+  if (!v) {
+    $("keysstatus").textContent = "Paste an API key first.";
+    return;
   }
+  const provider = /** @type {HTMLSelectElement} */ ($("key-provider")).value;
+  state.keys[provider] = v;
   $("savekeys").disabled = true;
   $("keysstatus").textContent = "Saving…";
   try {
     await saveState();
+    $("key-input").value = "";
+    syncKeyDetection();
     renderKeysPanel();
-    $("keysstatus").textContent = profile
-      ? "Saved (encrypted in this browser)."
-      : "Kept in this tab — save a project (Project panel) to store them encrypted.";
+    $("keysstatus").textContent =
+      drcProvider(provider).label +
+      " key " +
+      (profile ? "saved (encrypted in this browser)." : "kept in this tab — save a project (Project panel) to store it encrypted.");
     await refreshModels();
     workStatus("");
   } catch (err) {
@@ -551,9 +602,9 @@ async function send(ev) {
   // The first-visit path: no key yet → a helpful pointer, never an error
   // wall. The message stays in the composer so nothing typed is lost.
   if (!configuredDrcProviders(state.keys).length) {
-    openDrawer();
+    openSettings();
     $("keyspanel").open = true;
-    $("key-groq").focus();
+    $("key-input").focus();
     workStatus(
       "One thing first: DRC runs on YOUR API key, sent straight from this browser to the " +
         "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
@@ -674,7 +725,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d9 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d10 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }
@@ -699,12 +750,20 @@ $("drawerclose").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("click", (e) => {
   if (e.target === $("drawer")) closeDrawer();
 });
-// The account view (client-side explainer + API keys + sandbox).
+// The account view (the client-side explainer).
 $("accountbtn").addEventListener("click", openAccount);
 $("accountclose").addEventListener("click", closeAccount);
 $("accountview").addEventListener("click", (e) => {
   if (e.target === $("accountview")) closeAccount();
 });
+// The settings view (the gear): API keys + sandbox — all configuration.
+$("gearbtn").addEventListener("click", openSettings);
+$("settingsclose").addEventListener("click", closeSettings);
+$("settingsview").addEventListener("click", (e) => {
+  if (e.target === $("settingsview")) closeSettings();
+});
+$("opensettings").addEventListener("click", openSettings);
+$("key-input").addEventListener("input", syncKeyDetection);
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);
 // Experimental in-browser Linux sandbox knob (client-local, persisted in the
