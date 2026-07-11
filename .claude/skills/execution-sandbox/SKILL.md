@@ -64,8 +64,8 @@ denies the capability even with a transcript in front of it.
 | Isolation self-heal | `public/js/app.js` (knob-on + `!crossOriginIsolated` → **navigate to a fresh `?_coep=<ts>` URL**, NOT `location.reload()`; plus a `pageshow(persisted)` bfcache handler) |
 | Live diagnostic | `client_diag` `{coi,sab,sb,bl,ran,css,ua}` — `stream.js` attaches it to every `/api/chat`; `chat.js` `sanitizeClientDiag` records it in the `chat_logs` meta and logs `chat.client_diag`. The one window into the real browser (see the playbook below) |
 | Stale-client rescue | `src/chat.js`: a knob-on request with **no `client_diag`** = a pre-fix cached bundle → responds `Clear-Site-Data: "cache"` (self-limiting) |
-| DRS settings UI (Experimental knob) | `public/js/account-settings.js` (+ `public/js/settings.js` accessors) |
-| DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/cure/drc.js`, `public/cure/index.html`, `public/js/drc-core.js` (`bashLite` state) |
+| DRS settings UI (Experimental knob) | on the account SUMMARY directly (`public/js/account-views.js` `wireSandboxKnob`/`renderSummary`), next to Feedback mode — NOT in the Settings sub-view; `public/js/settings.js` accessors |
+| DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/js/drc-core.js` (`bashLite` state). The knob lives in the DRC **account view** (`#accountview` in `public/cure/index.html`, opened by `accountbtn` → `openAccount` in `drc.js`) alongside the API keys — the left drawer is chats+projects only. Plain `.toggle-track` styling (no spiderweb) in `drc.css` |
 
 ## The flow
 

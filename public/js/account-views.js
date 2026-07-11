@@ -11,7 +11,14 @@
 // knob (wireFeedbackKnob).
 
 import { escapeHtml } from "./notifications.js";
-import { feedbackAvailable, feedbackModeOn, setFeedbackMode } from "./settings.js";
+import {
+  bashLiteAvailable,
+  bashLiteOn,
+  feedbackAvailable,
+  feedbackModeOn,
+  setBashLiteMcp,
+  setFeedbackMode,
+} from "./settings.js";
 import { applyFeedbackMode } from "./turns.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -55,6 +62,15 @@ const FEEDBACK_INFO = `<strong>Feedback mode</strong><br>
   <b>Privacy:</b> only what you choose to submit is stored — the comment you
   write plus that one question and reply — readable by the site's
   developers. Withdrawing an entry deletes it, thread included.`;
+
+// The execution-sandbox knob also sits directly on the summary (short note;
+// the full story is in the /help pages). Enabling it reloads the page so the
+// app comes back cross-origin isolated and the in-browser Linux VM can boot.
+const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong><br>
+  Boots a real Linux <b>inside this browser</b> so the assistant can run shell
+  commands to answer you (e.g. “run ls”). Everything runs on your device —
+  nothing leaves the browser. The first use downloads a Linux image, so it's
+  slow to start; enabling it reloads the page.`;
 
 /**
  * Renders the header's notification counter from the cached /api/me
@@ -185,6 +201,36 @@ export function wireFeedbackKnob(ctx) {
   });
 }
 
+// The summary's execution-sandbox knob: persists via /api/settings
+// (bash_lite_mcp). Enabling changes how the PAGE must be served (cross-origin
+// isolation for the in-browser Linux VM), which only takes effect on the next
+// load — so on enable we save then reload; disabling just saves.
+export function wireSandboxKnob(ctx) {
+  const knob = document.getElementById("sbknob");
+  if (!knob || knob.disabled) return;
+  const status = document.getElementById("sbstatus");
+  knob.addEventListener("change", async () => {
+    const on = knob.checked;
+    knob.disabled = true;
+    status.hidden = false;
+    status.textContent = "Saving…";
+    try {
+      await setBashLiteMcp(on);
+      if (on) {
+        status.textContent = "Sandbox enabled — reloading so it can start…";
+        setTimeout(() => location.reload(), 800);
+      } else {
+        status.textContent = "Sandbox disabled.";
+        knob.disabled = false;
+      }
+    } catch (err) {
+      knob.checked = !on;
+      status.textContent = err?.message || "Could not update the setting.";
+      knob.disabled = false;
+    }
+  });
+}
+
 // ---- summary & usage rendering (pure HTML builders) ---------------------------
 
 /**
@@ -212,6 +258,17 @@ export function renderSummary(me) {
         info: FEEDBACK_INFO,
       }) + '<p id="fbstatus" class="muted setting-note" hidden></p>'
     : "";
+  // The experimental execution-sandbox knob sits directly on the summary too.
+  const sandboxRow = me.email
+    ? settingRow({
+        id: "sbknob",
+        label: `Execution sandbox <span class="exp-badge">Experimental</span>`,
+        checked: bashLiteAvailable() && bashLiteOn(),
+        disabled: !bashLiteAvailable(),
+        popId: "sbpop",
+        info: SANDBOX_INFO,
+      }) + '<p id="sbstatus" class="muted setting-note" hidden></p>'
+    : "";
   return `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
     ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
@@ -219,6 +276,7 @@ export function renderSummary(me) {
     ${usageBlock("Last 5 hours", me.windows.h5, true)}
     ${me.db_configured ? "" : '<p class="muted">Accounts database not configured yet — usage tracking and quotas are off.</p>'}
     ${feedbackRow}
+    ${sandboxRow}
     <!-- Page links open NEW TABS: even though history now persists across
          reloads (encrypted, local — see /help/), a same-tab navigation
          would still abort any in-flight research request. -->

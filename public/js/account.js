@@ -27,6 +27,7 @@ import {
   renderNotifBadge,
   renderSummary,
   wireFeedbackKnob,
+  wireSandboxKnob,
 } from "./account-views.js";
 
 /**
@@ -127,6 +128,7 @@ function showView(ctx, view) {
     document.getElementById("settingsbtn")?.addEventListener("click", () => ctx.show("settings"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
     wireFeedbackKnob(ctx);
+    wireSandboxKnob(ctx);
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
     document.getElementById("logoutbtn").addEventListener("click", async () => {
       await fetch("/logout", { method: "POST" });
