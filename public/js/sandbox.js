@@ -13,7 +13,7 @@
 //     the bash-lite agent loop (public/js/bash-agent.js) drives.
 //
 // CheerpX needs SharedArrayBuffer, which needs cross-origin isolation
-// (COOP+COEP). The Worker serves the DRS app shell with COEP: credentialless
+// (COOP+COEP). The Worker serves the DRS app shell with COEP: require-corp
 // only when this account's knob is on (src/index.js), so `crossOriginIsolated`
 // is the definitive "can this run here" check — sandboxSupported() below.
 //

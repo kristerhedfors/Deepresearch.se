@@ -205,12 +205,19 @@ const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
  * @param {{ coep?: boolean }} [opts] coep: add Cross-Origin-Embedder-Policy so
  *   the served DOCUMENT becomes cross-origin isolated (with the site-wide
  *   COOP: same-origin), which SharedArrayBuffer — and thus the CheerpX
- *   execution sandbox (public/js/sandbox.js) — requires. `credentialless`
- *   (not require-corp) keeps cross-origin subresources loading without CORP
- *   headers, so Maps/Street View and CDN loads still work; only a rare
- *   cross-origin iframe that sends no COEP (the keyless Street View Embed
- *   fallback) is affected. Applied to the DRC page always and to the DRS app
- *   shell only when the caller's bash_lite knob is on (see routeAuthed).
+ *   execution sandbox (public/js/sandbox.js) — requires. We use `require-corp`
+ *   (NOT `credentialless`): iOS Safari / WebKit does not implement
+ *   `credentialless` COEP, so it silently never isolates there —
+ *   `SharedArrayBuffer` stays undefined and the VM can't boot (confirmed live
+ *   on iOS 18.7 Safari: header served, `crossOriginIsolated===false`,
+ *   `SharedArrayBuffer` absent). `require-corp` is honored by Chrome, Firefox,
+ *   AND Safari. Its cost: every cross-origin subresource must carry CORP — the
+ *   sandbox's CDN loads (jsdelivr xterm, cxrtnc CheerpX) already send
+ *   `Cross-Origin-Resource-Policy: cross-origin`, and the server-fetched Maps
+ *   imagery is same-origin, so the only casualty is the keyless Street View
+ *   Embed IFRAME (no CORP) — an acceptable trade for a sandbox that actually
+ *   boots on iOS. Applied to the DRC page always and to the DRS app shell only
+ *   when the caller's bash_lite knob is on (see routeAuthed).
  * @returns {Promise<Response>}
  */
 async function serveAsset(request, env, overrideUrl = null, opts = {}) {
@@ -227,7 +234,7 @@ async function serveAsset(request, env, overrideUrl = null, opts = {}) {
   const pathname = new URL(overrideUrl || request.url).pathname;
   const headers = new Headers(res.headers);
   if (opts.coep) {
-    headers.set("cross-origin-embedder-policy", "credentialless");
+    headers.set("cross-origin-embedder-policy", "require-corp");
     headers.set("cache-control", "no-store");
   } else if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
     // Extensionless paths are HTML routes (/, /welcome/, /admin) — revalidate.

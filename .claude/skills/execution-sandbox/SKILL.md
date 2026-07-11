@@ -76,14 +76,23 @@ transcript into synthesis/direct.
 
 CheerpX needs `SharedArrayBuffer` → cross-origin isolation → COOP + COEP on the
 **document**. COOP `same-origin` is already site-wide (`SECURITY_HEADERS`).
-COEP is added as **`credentialless`** (not `require-corp`) so cross-origin
-subresources (Maps/Street View, CDN loads, CORS API calls) keep working — only
-a rare cross-origin iframe that sends no COEP (the keyless Street View Embed
-fallback) is affected, which is why the DRS shell only gets COEP when the knob
-is ON. The DRC page is always isolated (self-contained; no cross-origin iframe
-to break). `sandboxSupported()` = `window.crossOriginIsolated` is the
-definitive "can it run here" check. Flipping the DRS knob reloads the page so
-the shell comes back isolated.
+COEP is added as **`require-corp`** (NOT `credentialless`). This was originally
+`credentialless` to keep cross-origin subresources loading without CORP, but
+**iOS Safari / WebKit does not implement `credentialless`** — it silently never
+isolates, `SharedArrayBuffer` stays undefined, and the VM can't boot (confirmed
+live 2026-07-11 on iOS 18.7 Safari 26.5: header served, `crossOriginIsolated
+=== false`, `SharedArrayBuffer` absent). `require-corp` is honored by Chrome,
+Firefox, AND Safari. Its cost: every cross-origin subresource must carry CORP —
+the sandbox's CDN loads (jsdelivr xterm, cxrtnc CheerpX) already send
+`Cross-Origin-Resource-Policy: cross-origin`, CORS `fetch` (DRC providers, the
+Berget/Exa calls) is unaffected, and the server-fetched Maps imagery is
+same-origin; the ONLY casualty is the keyless Street View Embed **iframe** (no
+CORP). That's why the DRS shell only gets COEP when the knob is ON. The DRC page
+is always isolated (self-contained; no cross-origin iframe to break).
+`sandboxSupported()` = `window.crossOriginIsolated` is the definitive "can it
+run here" check — and it is false on any browser that ignores the COEP mode, so
+verify `SharedArrayBuffer` exists in the target browser. Flipping the DRS knob
+reloads the page so the shell comes back isolated.
 
 ## Conventions & caps
 
