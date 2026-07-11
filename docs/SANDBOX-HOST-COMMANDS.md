@@ -227,12 +227,14 @@ for large outputs.
 
 ### Phase 1.5 — the `/host` exchange directory (data into the guest)
 
-> The `/host` `DataDevice` this phase adds is the **same device** part B mounts
-> for user files (`/host/files/…` alongside `/host/out/…`). Build the mount once
-> (part B's boot-time populate covers the create + mount); this phase only adds
-> the mid-session `writeFile("/out/<n>", …)` after each host command.
+> **Superseded by part B's approach — no DataDevice needed.** Part B establishes
+> that writing into the real filesystem via base64-through-`exec` (the proven
+> aisl mechanism) is simpler and has no mid-session caveat. So a host command's
+> output destined for a *later* guest command is just
+> `writeFileToVm("/root/uploads/out/<n>", stdout)` — the same helper part B adds.
+> The `DataDevice` sketch below is kept only as the rejected alternative.
 
-Add a `DataDevice` mount to `CheerpX.Linux.create` in `sandbox.js`:
+~~Add a `DataDevice` mount to `CheerpX.Linux.create` in `sandbox.js`:~~
 
 ```js
 const hostDevice = await CheerpX.DataDevice.create();
@@ -315,51 +317,65 @@ the message. We want the dropped files to appear **as real files inside the
 VM** (`cat`, `grep`, `python3 analyze.py data.csv`, `wc -l`), read straight
 from the browser's own copy — no upload, no server round-trip.
 
-## The mechanism (documented, shipped — same device as `/host`)
+## The mechanism — base64-decode-through-`exec` into the REAL filesystem
 
-`CheerpX.DataDevice` is the **only documented host→guest write path** (see the
-device matrix in part A): `DataDevice.create()` then
-`writeFile(path, string | Uint8Array)`, mounted read-only into the guest:
+**This is settled by prior art: `aisecurityliteracy.dev` — the very site our
+sandbox was ported from — already does exactly this, and NOT with a DataDevice.**
+Its `tools/modules/js/terminal-panel.js` (boot-time population) and
+`vm-tool-runtime.js` (`__AISL_VM_TOOLS.writeFile`) write files by running a
+shell command that base64-decodes the content into the real overlay
+filesystem:
 
 ```js
-const hostDevice = await CheerpX.DataDevice.create();
-cx = await CheerpX.Linux.create({
-  mounts: [
-    { type: "ext2", dev: overlayDevice, path: "/" },
-    …
-    { type: "dir", dev: hostDevice, path: "/host" },   // ← the exchange mount
-  ],
-});
-// Populate BEFORE the first command runs (see timing below):
-await hostDevice.writeFile("/files/server.log", bytesUint8Array);
-await hostDevice.writeFile("/files/INDEX.txt", manifestText);
-// guest: cat /host/files/server.log   →   the real bytes
+// aisecurityliteracy.dev/tools/modules/js/vm-tool-runtime.js (verbatim shape)
+async function writeFile(path, content) {
+  var b64 = btoa(unescape(encodeURIComponent(content)));   // unicode-safe
+  var dir = path.substring(0, path.lastIndexOf('/'));
+  var cmd = (dir ? 'mkdir -p ' + shellEscape(dir) + ' && ' : '')
+          + 'echo ' + shellEscape(b64) + ' | base64 -d > ' + shellEscape(path);
+  return exec(cmd);   // the same exec bridge we already have (execInSandbox)
+}
 ```
 
-The guest can **read** these (`cat`/`grep`/`awk`/`python3`), cannot **write**
-them, and there is **no exec bit** (documented) — so `python3 /host/files/x.py`
-works (python reads the file) but `/host/files/x.sh` won't run directly; the
-model must invoke it through an interpreter. This is the same `hostDevice` part
-A mounts for host-command output, so **one `/host` device serves both**:
-`/host/files/…` (mounted user files) and `/host/out/…` (host-command results).
+At boot it batches the whole set into ONE script — `mkdir -p` for every unique
+dir, then one `echo <b64>|base64 -d>path` per file — and runs it with a single
+`cx.run('/bin/sh', ['-c', script])` (terminal-panel.js, the `REPO_FILES` path).
 
-**Why this is the right primitive (not IDBDevice/WebDevice/OverlayDevice):**
-IDBDevice is for *guest→host* readback and would mean seeding an IndexedDB blob
-store; WebDevice serves reads as same-origin HTTP fetches (extra machinery, and
-it can't take in-memory bytes); the overlay is the persistent root we already
-have. DataDevice takes JS bytes directly and is purpose-built to "expose
-JavaScript data in the VM" — exactly this.
+**Why this beats the DataDevice mount I first sketched:**
 
-## Timing — populate at boot, before the first command
+| | base64-through-`exec` (aisl, adopt this) | `DataDevice` mount |
+|---|---|---|
+| Lands in | the **real writable overlay FS** (e.g. `/root/uploads/`) | a separate read-only `/host` mount |
+| Guest can | read **and write and `chmod +x` and execute** | read only, **no exec bit** |
+| New CheerpX surface | none — reuses `execInSandbox` | a new device + mount + boot-signature change |
+| Mid-session writes | plain shell write, **always works, any time** | **undocumented** propagation (the part-A caveat) |
+| Persists across sessions | yes (in the IDB overlay cache) | no (in-memory) |
+| Cost | base64 ~+33%, goes through the console marker protocol | direct bytes |
 
-DataDevice's **mid-session** `writeFile` propagation is undocumented (flagged in
-part A). We sidestep it entirely: the VM boots **lazily** on the model's first
-proposed command (`ensureSandboxBooted`), and the attached files are known at
-send time — *before* the loop starts. So we write every file into the
-DataDevice **inside `bootVM()`, right after `CheerpX.Linux.create`, before
-`ensureSandboxBooted` resolves**. Every file is present before any guest command
-runs, so we only ever rely on the documented boot-time-write behavior, never the
-uncertain mid-session path.
+So part B uses the exec path. The only cost — base64 inflation through the
+console — is bounded by the same caps below, and it removes every DataDevice
+caveat. (This also means **part A's Phase 1.5 no longer needs a DataDevice
+either**: a host command's output destined for a later guest command is just
+another `writeFile(path, stdout)` via this same mechanism — see the note under
+Phase 1.5.)
+
+**Optional future optimization (also from aisl):** for *static* bundled content
+(not per-session user files), bake it into a custom **ext2 image** served via
+`CheerpX.HttpBytesDevice.create(diskUrl)` so it's present at boot with zero
+writes (`hasPrebakedFiles`). Irrelevant to user-dropped files, which are
+dynamic per session, but worth knowing if we ever ship a fixed toolkit into the
+VM.
+
+## Timing — write once at boot, before the first command
+
+The VM boots **lazily** on the model's first proposed command
+(`ensureSandboxBooted`), and the attached files are known at send time. Write
+the whole set **inside `bootVM()`, right after the VM is ready and before
+`ensureSandboxBooted` resolves**, as one batched `mkdir + base64 -d` script (the
+aisl `REPO_FILES` shape). Because it's a plain shell write to the real FS there
+is no propagation caveat — but boot-time batching is still preferred so all
+files exist before the model's first command and the per-file console overhead
+is paid once.
 
 ## Where the bytes come from (and decryption)
 
@@ -379,48 +395,57 @@ already holds for the session (`public/js/history-store.js`) — no new secret, 
 new prompt. If the key is unavailable or a file won't decrypt, that file is
 **skipped** (logged), never mounted as garbage.
 
-## What gets mounted, and the manifest
+## Where files land, and the manifest
 
-- **`/host/files/`** — the attachments for THIS message (what the user just
-  dropped): the primary, always-mounted set.
-- **`/host/project/`** — the active project's files, when a project is open.
-  Capped harder (a project can hold many/large files); prefer the
-  extracted-text form for parsable docs to keep the mount small, write originals
-  only for small files.
-- **`/host/files/INDEX.txt`** — a generated manifest (`filename  type  size`
+Files are written into the **real overlay filesystem** under a dedicated dir so
+they're never confused with the guest's own files:
+
+- **`/root/uploads/`** — the attachments for THIS message (what the user just
+  dropped): the primary set. Read/write/executable like any real file.
+- **`/root/uploads/project/`** — the active project's files, when a project is
+  open. Capped harder (a project can hold many/large files); prefer the
+  extracted-text form for parsable docs to keep the base64 payload small, write
+  originals only for small files.
+- **`/root/uploads/INDEX.txt`** — a generated manifest (`filename  type  size`
   per line, plus the sanitized on-disk name when it differs) so the model can
   discover what's available with one `cat` instead of guessing names.
 
 Filenames are **sanitized** (basename only, path separators stripped, control
-chars removed) and **de-duplicated** (suffix `-2`, `-3` on collision). Total
-mounted bytes are **capped** (proposal: 8 MB for `/host/files`, 8 MB for
-`/host/project`, matching the 25 MB per-file input sanity cap with headroom) —
-when the cap is hit, the largest files are dropped and the manifest records
-`[not mounted — over size cap]` so the omission is legible, never silent
-(invariant-style: no silent truncation).
+chars removed — the base64 envelope already neutralizes shell metacharacters in
+*content*, but the path is interpolated into the write command so it must be
+clean and `shellEscape`d exactly as aisl does) and **de-duplicated** (suffix
+`-2`, `-3` on collision). Total written bytes are **capped** (proposal: 8 MB for
+uploads, 8 MB for project, matching the 25 MB per-file input sanity cap with
+headroom, and keeping base64-through-console time bounded) — when the cap is
+hit, the largest files are dropped and the manifest records `[not written —
+over size cap]` so the omission is legible, never silent.
 
 ## Making the model use them (prompt awareness)
 
 Extend `bashAgentPrompt` (`src/prompts.js`) and `drcBashAgentPrompt`
-(`public/js/drc-research.js`) with a mount paragraph, emitted only when files
-are actually mounted:
+(`public/js/drc-research.js`) with a paragraph, emitted only when files were
+actually written:
 
-> The user's attached files are mounted **read-only** at `/host/files/`
-> (and any open project's files at `/host/project/`). Run
-> `cat /host/files/INDEX.txt` to see them. Read them as inputs
-> (`cat`/`grep`/`awk`/`python3 - < …`); you cannot write there and scripts
-> aren't executable — run them through an interpreter.
+> The user's attached files are at `/root/uploads/` (and any open project's
+> files at `/root/uploads/project/`). Run `cat /root/uploads/INDEX.txt` to see
+> them. They are normal readable/writable files — use them as inputs
+> (`cat`/`grep`/`awk`/`python3 analyze.py /root/uploads/data.csv`), and you may
+> modify or `chmod +x` them.
 
 Without this the model treats the sandbox as empty and never looks.
 
 ## Wiring
 
-- **`public/js/sandbox.js`** — `ensureSandboxBooted(fileProvider?)` /
-  `bootVM(fileProvider)`: create the `hostDevice`, add the `/host` mount, and
-  after `CheerpX.Linux.create` `await`-write every file the provider yields
-  (fail-soft per file). `fileProvider` is an async `() => Promise<Array<{path,
-  bytes, name, type, size}>>` so the two tiers assemble their own file lists
-  without `sandbox.js` importing either storage stack.
+- **`public/js/sandbox.js`** — add a `writeFilesToVm(files)` helper that builds
+  the batched `mkdir -p … && echo <b64>|base64 -d>path` script (the aisl shape,
+  `shellEscape`d) and runs it via the existing exec path; call it from
+  `bootVM` once the VM is ready, from an injected `fileProvider`. Also export a
+  per-file `writeFileToVm(path, bytes)` (the on-demand `__AISL_VM_TOOLS.writeFile`
+  analogue) for later use. `fileProvider` is an async `() => Promise<Array<{path,
+  bytes, name, type, size}>>` so the two tiers assemble their own lists without
+  `sandbox.js` importing either storage stack. Unicode-safe base64 exactly as
+  aisl (`btoa(unescape(encodeURIComponent(s)))`), or `Uint8Array`→base64 for
+  binary originals.
 - **DRS (`public/js/stream.js`)** — in `maybeRunShellLoop`, build the provider
   from the pending attachments (already in scope for the send) + the active
   project (`projects.js`), and pass it into `bootOnce → ensureSandboxBooted`.
@@ -428,8 +453,9 @@ Without this the model treats the sandbox as empty and never looks.
   from DRC's own attachment/project store (`drc-store.js`).
 - **`public/js/sandbox-files.js`** — NEW pure helper (Node-tested,
   `isPublicAsset`-allowlisted, in the /cure import closure): `sanitizeName`,
-  `dedupeNames`, `buildManifest`, `applySizeCap` — the deterministic bits, kept
-  out of the browser-only `sandbox.js`.
+  `dedupeNames`, `buildManifest`, `applySizeCap`, and `buildWriteScript(files)`
+  (the deterministic mkdir+base64 script builder, ported from aisl's boot
+  population) — kept out of the browser-only `sandbox.js`.
 
 ## Privacy & fail-soft
 
@@ -444,31 +470,31 @@ Without this the model treats the sandbox as empty and never looks.
 
 ## Live-verification owed (per the live-verify skill)
 
-- A `DataDevice` mount populated at boot is **readable in the guest** on real
-  iOS Safari under COEP `require-corp` (`cat /host/files/INDEX.txt` returns the
-  bytes) — the `credentialless`/Safari saga is the standing warning.
-- `writeFile` **throughput** for a near-cap set (does an 8 MB mount add
-  noticeable boot latency?).
-- Read-only + no-exec is confirmed fine for our read-only use (scripts via
-  interpreter, not `chmod +x`).
-
-## Bytes-into-the-guest, symmetric note
-
-This is the clean, general version of part A's Phase 1.5 (host-command output →
-`/host/out/…`): the same device, populated at boot instead of mid-session.
-Where part A needed mid-session writes (a host command's result feeding a *later*
-guest command), the same live-verify caveat applies; file mounting avoids it by
-being boot-time only.
+- The batched boot-write script populates `/root/uploads/` and the files are
+  readable on real iOS Safari under COEP `require-corp` (`cat
+  /root/uploads/INDEX.txt` returns the bytes). aisl runs this exact pattern in
+  production, but the `credentialless`/Safari saga is the standing warning —
+  verify on the real device.
+- **Base64-through-console throughput** for a near-cap set: an 8 MB set becomes
+  ~11 MB of base64 piped through the marker protocol / `cx.run`. Measure the
+  added boot latency; if it's too slow, chunk the write script or lower the cap
+  (aisl writes a whole repo this way, so it's expected fine, but our per-file
+  console round-trip differs — measure).
+- Binary originals (a PDF/image the guest might inspect with `file`/`python`)
+  survive the `Uint8Array`→base64→`base64 -d` round-trip byte-for-byte.
 
 ---
 
 ## Recommendation
 
-0. **Build (B) file-mounting** — it is independently useful (it needs neither
-   the host-command registry nor guest stubs; it's ~one DataDevice mount + a
-   boot-time write loop + a prompt paragraph) and is the most-requested-shaped
-   gap: "I attached a file, why can't the sandbox see it?". Ship it alongside or
-   before Phase 1.
+0. **Build (B) file-mounting FIRST** — it is independently useful (needs neither
+   the host-command registry nor guest stubs), it's the most-requested-shaped
+   gap ("I attached a file, why can't the sandbox see it?"), and it is nearly
+   zero-risk: the write mechanism (base64-through-`exec` into the real FS) is
+   already proven in production in the exact codebase our sandbox was ported
+   from (`aisecurityliteracy.dev`). It's a boot-time batched write script + a
+   prompt paragraph + the pure `sandbox-files.js` helper — no new CheerpX
+   surface. Ship it first.
 1. **Build Phase 1** (host command registry + `sandbox.js` interception +
    generated prompt paragraph + the sandboxed-iframe `js` runner). It is the
    whole performance win — native-speed compute *and* skipping the multi-second
@@ -519,7 +545,7 @@ the CheerpX VM. Moving it host-side MUST preserve equivalent isolation:
 
 | File | Change | For |
 |---|---|---|
-| `public/js/sandbox.js` | `/host` DataDevice mount; boot-time file writes (`fileProvider`); intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
+| `public/js/sandbox.js` | boot-time `writeFilesToVm(fileProvider)` (batched base64-through-`exec` into `/root/uploads/`) + a per-file `writeFileToVm`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
 | `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`dedupeNames`/`buildManifest`/`applySizeCap`; Node-tested (`sandbox-files.test.js`) | B |
 | `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) | A |
 | `public/js/stream.js` | DRS: assemble the file provider (attachments + active project) and pass to `bootOnce` | B |
