@@ -170,6 +170,21 @@ The tools that actually work:
    Caveat: Chromium honors `credentialless`, so it will NOT reproduce the
    iOS-Safari isolation failure — **always confirm `SharedArrayBuffer` on the
    actual failing browser.**
+4. **Verify /cure ANONYMOUSLY, and use the build stamp as the liveness
+   check.** An allowlist 401 anywhere in the public module graph kills the
+   whole tier's JS, but an AUTHED probe (break-glass headers, a signed-in
+   browser) serves every module fine and masks it completely — that is how
+   /cure shipped dead on 2026-07-11 (vault.js pulled the DRS storage chain
+   into the graph via drc-core.js; fixed by splitting `vault-core.js` out).
+   The `#stamp` element is the tell: drc.js rewrites it to `d<N> · browser`
+   at boot, so the static HTML value (e.g. `d5`) on a live page means the
+   module graph never linked. When touching ANY import in a public module,
+   re-run an import-closure walk of `/cure/drc.js` against `isPublicAsset`
+   (a ~25-line Node script: regex the `import … from` specifiers, resolve
+   recursively, diff against the allowlist) — every module in the closure
+   must be public, and modules that mix public-needed pure logic with
+   DRS-only imports get SPLIT (`vault-core.js`, `bash-core.js`), never
+   allowlisted wholesale.
 
 ## Incident log — failed attempts, root causes, fixes (2026-07-11)
 
