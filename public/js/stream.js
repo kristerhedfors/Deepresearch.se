@@ -873,6 +873,17 @@ export async function sendMessage(text, opts) {
     // knob is on and the sandbox can run — see maybeRunShellLoop.
     const shellTranscript = await maybeRunShellLoop(turn);
     if (shellTranscript.length) payload.shell_transcript = shellTranscript;
+    // Diagnostic: report the client's sandbox-readiness so a not-running
+    // sandbox can be diagnosed from the chat log (src/chatlog.js meta) —
+    // crossOriginIsolated is the gate the loop needs, and it can only be
+    // observed in the actual browser session.
+    payload.client_diag = {
+      coi: typeof crossOriginIsolated !== "undefined" ? !!crossOriginIsolated : null,
+      bl: bashLiteOn(),
+      sb: sandboxSupported(),
+      ran: shellTranscript.length,
+      css: (() => { try { return getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim(); } catch { return ""; } })(),
+    };
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },

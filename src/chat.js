@@ -55,6 +55,8 @@ import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
  * @property {any} [shell_transcript] bash-lite sandbox runs gathered client-side
  *   before this request ({command,exitCode,stdout,stderr}[]); honored only when
  *   the caller's bash_lite_mcp knob is on, ignored otherwise
+ * @property {any} [client_diag] client sandbox-readiness diagnostic
+ *   ({coi,bl,sb,ran,css}) recorded to the chat log's meta
  */
 
 /**
@@ -355,6 +357,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             quiz: state.quiz || undefined,
             berget_cost,
             exa_cost,
+            // Diagnostic: the client's sandbox-readiness (public/js/stream.js
+            // client_diag) — crossOriginIsolated (coi), the knob (bl), whether
+            // the sandbox can run (sb), how many commands ran (ran), and the
+            // CSS build stamp. Lets a not-running sandbox be diagnosed from the
+            // log without device access.
+            client_diag: sanitizeClientDiag(body.client_diag),
           },
         });
       }
@@ -520,6 +528,24 @@ function resolveShellTranscript(raw) {
     if (out.length >= MAX_SHELL_ROUNDS * 8) break;
   }
   return out;
+}
+
+/**
+ * Coerces the client's diagnostic block (public/js/stream.js client_diag) to a
+ * small, whitelisted shape for the chat log — untrusted, so every field is
+ * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
+ * @param {any} d
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string } | undefined}
+ */
+function sanitizeClientDiag(d) {
+  if (!d || typeof d !== "object") return undefined;
+  return {
+    coi: d.coi === true ? true : d.coi === false ? false : null,
+    bl: d.bl === true,
+    sb: d.sb === true,
+    ran: Number.isFinite(d.ran) ? Math.max(0, Math.min(50, Math.trunc(d.ran))) : 0,
+    css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
+  };
 }
 
 /**

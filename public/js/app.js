@@ -22,7 +22,7 @@ import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { loadSettings } from "./settings.js";
+import { bashLiteOn, loadSettings } from "./settings.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
@@ -121,6 +121,20 @@ loadSettings()
     pullNewer().catch(() => {});
   })
   .catch(() => {});
+
+// bfcache / PWA-resume self-heal: a page restored from the back-forward cache
+// (Safari especially, and any tab navigated away-and-back) keeps its ORIGINAL
+// isolation state and does NOT re-run the module-top self-heal above — so a
+// tab that was ever shown non-isolated stays non-isolated (and the sandbox
+// silently refuses) across every resume. On a bfcache restore, re-check and
+// reload to fetch the now-isolated shell. `persisted` is true only for an
+// actual bfcache restore, so a normal navigation never triggers this.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted && bashLiteOn() && !window.crossOriginIsolated) {
+    sessionStorage.removeItem("dr_coep_reload");
+    location.reload();
+  }
+});
 
 // ---- Research time-target slider ----------------------------------------
 // Persisted as seconds; sent as time_budget_s with each request (the server
