@@ -231,7 +231,8 @@ for large outputs.
 > that writing into the real filesystem via base64-through-`exec` (the proven
 > aisl mechanism) is simpler and has no mid-session caveat. So a host command's
 > output destined for a *later* guest command is just
-> `writeFileToVm("/root/uploads/out/<n>", stdout)` — the same helper part B adds.
+> a Tier-3 base64 write to `/workspace/out/<n>` (the persistent writable volume
+> part B adds) — no DataDevice needed.
 > The `DataDevice` sketch below is kept only as the rejected alternative.
 
 ~~Add a `DataDevice` mount to `CheerpX.Linux.create` in `sandbox.js`:~~
@@ -317,65 +318,155 @@ the message. We want the dropped files to appear **as real files inside the
 VM** (`cat`, `grep`, `python3 analyze.py data.csv`, `wc -l`), read straight
 from the browser's own copy — no upload, no server round-trip.
 
-## The mechanism — base64-decode-through-`exec` into the REAL filesystem
+## The mechanism — REAL device mounts, tiered by size (base64 is only the fallback)
 
-**This is settled by prior art: `aisecurityliteracy.dev` — the very site our
-sandbox was ported from — already does exactly this, and NOT with a DataDevice.**
-Its `tools/modules/js/terminal-panel.js` (boot-time population) and
-`vm-tool-runtime.js` (`__AISL_VM_TOOLS.writeFile`) write files by running a
-shell command that base64-decodes the content into the real overlay
-filesystem:
+Files can be large, so the base64-through-`exec` write (what
+`aisecurityliteracy.dev` uses — `echo <b64> | base64 -d > path` batched at boot,
+its `vm-tool-runtime.js`/`terminal-panel.js`) is exactly wrong as the primary
+path: it inflates every payload ~33% and streams it byte-by-byte through the
+console marker protocol. CheerpX has **real device mounts** that pass bytes
+directly; we use those and keep base64 only as a fallback for small
+writable/executable files.
+
+All device semantics below are from the CheerpX **File-System-support** and
+**input-output** guides + the reference (also mirrored verbatim in the aisl
+clone under `docs/cheerpx/`), and cross-checked against WebVM's own source.
+
+### Tier 1 — `DataDevice` (default): direct binary bytes, no base64
+
+`DataDevice.create()` + `writeFile(path, Uint8Array | string)`, mounted
+read-only into the guest. Binary is first-class — a `Uint8Array` goes in with
+**no base64, no console** (note: `ArrayBuffer`/`Blob` are NOT accepted — wrap in
+`new Uint8Array(buf)`):
 
 ```js
-// aisecurityliteracy.dev/tools/modules/js/vm-tool-runtime.js (verbatim shape)
-async function writeFile(path, content) {
-  var b64 = btoa(unescape(encodeURIComponent(content)));   // unicode-safe
-  var dir = path.substring(0, path.lastIndexOf('/'));
-  var cmd = (dir ? 'mkdir -p ' + shellEscape(dir) + ' && ' : '')
-          + 'echo ' + shellEscape(b64) + ' | base64 -d > ' + shellEscape(path);
-  return exec(cmd);   // the same exec bridge we already have (execInSandbox)
-}
+const dataDev = await CheerpX.DataDevice.create();
+cx = await CheerpX.Linux.create({
+  mounts: [
+    { type: "ext2", path: "/",        dev: overlayDevice },
+    …
+    { type: "dir",  path: "/mnt/data", dev: dataDev },   // ← input files, read-only
+  ],
+});
+await dataDev.writeFile("/server.log", bytesUint8Array);   // guest: cat /mnt/data/server.log
 ```
 
-At boot it batches the whole set into ONE script — `mkdir -p` for every unique
-dir, then one `echo <b64>|base64 -d>path` per file — and runs it with a single
-`cx.run('/bin/sh', ['-c', script])` (terminal-panel.js, the `REPO_FILES` path).
+- **Read-only in the guest**, which is exactly right for *input* files (logs,
+  CSVs, PDFs, datasets). Guest can `cp /mnt/data/x /workspace/x` if it wants a
+  writable copy.
+- **In-memory**: the bytes live in the JS heap and are **re-supplied every boot**
+  (no size limit is documented, but the whole payload sits in page RAM). So this
+  tier is for files that comfortably fit memory — proposal: per-file ≤ ~32 MB,
+  total ≤ a configurable budget. Their source of truth is the browser's own file
+  store (OPFS), so re-supplying each session is free correctness-wise.
+- **This is the default real mount** and replaces base64 for read-only inputs.
 
-**Why this beats the DataDevice mount I first sketched:**
+### Tier 2 — `WebDevice` + a Service Worker: lazy/streamed, for genuinely huge files
 
-| | base64-through-`exec` (aisl, adopt this) | `DataDevice` mount |
-|---|---|---|
-| Lands in | the **real writable overlay FS** (e.g. `/root/uploads/`) | a separate read-only `/host` mount |
-| Guest can | read **and write and `chmod +x` and execute** | read only, **no exec bit** |
-| New CheerpX surface | none — reuses `execInSandbox` | a new device + mount + boot-signature change |
-| Mid-session writes | plain shell write, **always works, any time** | **undocumented** propagation (the part-A caveat) |
-| Persists across sessions | yes (in the IDB overlay cache) | no (in-memory) |
-| Cost | base64 ~+33%, goes through the console marker protocol | direct bytes |
+For files too big to hold in memory, `WebDevice.create(path)` mounts a
+read-only HTTP-backed dir; a guest read of `/mnt/web/foo` becomes a **same-origin
+HTTP GET** at `<page-dir>/<path>/foo`. Because those are ordinary same-origin
+fetches, a **Service Worker on our origin can intercept them** and synthesize the
+bytes on demand — decrypting from OPFS or proxying/streaming from R2 — so a
+hundreds-of-MB file never loads up front and only touched bytes transfer.
 
-So part B uses the exec path. The only cost — base64 inflation through the
-console — is bounded by the same caps below, and it removes every DataDevice
-caveat. (This also means **part A's Phase 1.5 no longer needs a DataDevice
-either**: a host command's output destined for a later guest command is just
-another `writeFile(path, stdout)` via this same mechanism — see the note under
-Phase 1.5.)
+```js
+const webDev = await CheerpX.WebDevice.create("vmfiles");   // → /<page-dir>/vmfiles/*
+cx = await CheerpX.Linux.create({
+  mounts: [ …, { type: "dir", path: "/mnt/web", dev: webDev } ],
+});
+// A service worker intercepts fetches under /<page-dir>/vmfiles/ and serves
+// decrypted OPFS bytes (honoring Range for real streaming).
+```
 
-**Optional future optimization (also from aisl):** for *static* bundled content
-(not per-session user files), bake it into a custom **ext2 image** served via
-`CheerpX.HttpBytesDevice.create(diskUrl)` so it's present at boot with zero
-writes (`hasPrebakedFiles`). Irrelevant to user-dropped files, which are
-dynamic per session, but worth knowing if we ever ship a fixed toolkit into the
-VM.
+Requirements (all confirmable, some undocumented — **verify live**):
+- The SW **must be registered/active before `Linux.create`** and must serve
+  `Content-Type: application/octet-stream` (CheerpX requirement for binary).
+- SW responses must satisfy **COEP `require-corp`** — add
+  `Cross-Origin-Resource-Policy: same-origin` (our whole isolation story, part A).
+- Directory *listing* needs an `index.list` per dir; the SW synthesizes it.
+- **SW-backing a WebDevice is architecturally sound (standard fetch semantics)
+  but NOT a documented CheerpX feature** — this tier is the one real unknown and
+  must be proven on the target browsers before we rely on it. Range support is
+  documented only for `HttpBytesDevice`, but a SW can honor `Range` itself.
 
-## Timing — write once at boot, before the first command
+This is more infrastructure — we have **no service worker today** — so Tier 2 is
+the "big files" upgrade, built only once Tier 1's memory ceiling is a real
+limit. (WebVM itself mounts read-only sample docs exactly this way, via a
+`WebDevice` at `/home/user/documents`.)
 
-The VM boots **lazily** on the model's first proposed command
-(`ensureSandboxBooted`), and the attached files are known at send time. Write
-the whole set **inside `bootVM()`, right after the VM is ready and before
-`ensureSandboxBooted` resolves**, as one batched `mkdir + base64 -d` script (the
-aisl `REPO_FILES` shape). Because it's a plain shell write to the real FS there
-is no propagation caveat — but boot-time batching is still preferred so all
-files exist before the model's first command and the per-file console overhead
-is paid once.
+### Tier 3 — base64-into-overlay (`/workspace` or `/root/uploads`): the FALLBACK
+
+Kept for two cases only: (a) no Service Worker AND the file is over the
+DataDevice memory budget, and (b) the guest needs the file **writable or
+executable** (Tiers 1–2 are read-only) — e.g. the model writes a small script
+and `chmod +x`es it. Small files only; the base64/console cost is negligible
+there, and it lands in the **persistent overlay** so it survives sessions (see
+persistence below). This is the aisl mechanism, demoted to fallback:
+
+```js
+// unicode-safe; the ONE writable path. Small files only.
+'mkdir -p ' + shellEscape(dir) + ' && echo ' + shellEscape(btoa(…)) + ' | base64 -d > ' + shellEscape(path)
+```
+
+### Choosing a tier (deterministic, in `sandbox-files.js`)
+
+```
+read-only input, fits memory budget            → Tier 1  DataDevice   (/mnt/data)
+read-only input, over budget, SW available      → Tier 2  WebDevice+SW (/mnt/web)
+needs writable/executable, OR small, OR no SW    → Tier 3  base64       (/workspace or /root/uploads)
+```
+
+## Persistence — preserve the overlay FS across sessions
+
+This is already half-solved and the rest is one extra mount.
+
+**The root overlay already persists.** We boot
+`OverlayDevice.create(cloudDisk, IDBDevice("deepresearch-sandbox-vm"))`
+(`sandbox.js`) — and CheerpX writes **every guest change to `/` into that
+IndexedDB layer**, restored on the next load because the `dbName` is stable
+(confirmed: the CheerpX docs and the WebVM 2.0 post both state overlay changes
+are "saved in an IndexedDB persisted by the browser"). So anything the guest
+writes — including Tier-3 files and its own work — **already survives reboots
+today**. Make this deliberate: keep the stable id, and never call
+`IDBDevice.reset()` except behind an explicit user "reset sandbox" action.
+
+**Add a dedicated persistent workspace volume.** Mount a *second, independently
+named* bare `IDBDevice` at `/workspace` so user/guest data persists **separately
+from the base-image block cache**:
+
+```js
+const workspace = await CheerpX.IDBDevice.create("dr-sandbox-workspace");
+cx = await CheerpX.Linux.create({
+  mounts: [
+    { type: "ext2", path: "/",          dev: overlayDevice },
+    { type: "dir",  path: "/mnt/data",  dev: dataDev },     // Tier 1 inputs (ephemeral)
+    { type: "dir",  path: "/workspace", dev: workspace },   // persistent user work
+  ],
+});
+```
+
+Why the split: we can upgrade or `reset()` the (large) Debian base cache
+**without wiping the user's files**, and offer "clear my workspace" without
+re-streaming Debian. Read-write and persistent across sessions.
+
+**Round-trip export (a real bonus for "preserve").** `IDBDevice` exposes
+`readFileAsBlob(path)` on the host side — so files the guest creates under
+`/workspace` can be **read back out into JS** and saved to the user's project or
+offered as a download. The VM stops being a dead-end: work done inside it comes
+back. (There is **no** host-side `writeFile` for `IDBDevice` — only DataDevice
+has that — so to *seed* `/workspace` from the host you write to `/mnt/data` and
+`cp` once, or let the guest write it.)
+
+## Timing — mounts at create, DataDevice writes before the first command
+
+`DataDevice`/`WebDevice`/`IDBDevice` are all passed in the `mounts` array to
+`CheerpX.Linux.create`, so the mount points exist from boot. Tier-1 bytes are
+written with `dataDev.writeFile(...)` **inside `bootVM()` right after
+`Linux.create`, before `ensureSandboxBooted` resolves** — the VM boots lazily on
+the model's first command, so every input file is present before any guest
+command runs. Tier-2 needs only the SW active before `create`; Tier-3 fallback
+writes are boot-time batched exactly as before.
 
 ## Where the bytes come from (and decryption)
 
@@ -397,55 +488,49 @@ new prompt. If the key is unavailable or a file won't decrypt, that file is
 
 ## Where files land, and the manifest
 
-Files are written into the **real overlay filesystem** under a dedicated dir so
-they're never confused with the guest's own files:
-
-- **`/root/uploads/`** — the attachments for THIS message (what the user just
-  dropped): the primary set. Read/write/executable like any real file.
-- **`/root/uploads/project/`** — the active project's files, when a project is
-  open. Capped harder (a project can hold many/large files); prefer the
-  extracted-text form for parsable docs to keep the base64 payload small, write
-  originals only for small files.
-- **`/root/uploads/INDEX.txt`** — a generated manifest (`filename  type  size`
+- **`/mnt/data/`** — the attachments for THIS message + the active project's
+  files, Tier-1 mounted (read-only, direct bytes). The primary input set. Huge
+  files that go Tier-2 appear here too, under the same tree, from the guest's
+  point of view (the mount just differs).
+- **`/workspace/`** — persistent, read-write; where the guest does work and
+  where Tier-3 writable files land. Survives sessions.
+- **`/mnt/data/INDEX.txt`** — a generated manifest (`filename  type  size  tier`
   per line, plus the sanitized on-disk name when it differs) so the model can
-  discover what's available with one `cat` instead of guessing names.
+  discover what's available with one `cat`.
 
-Filenames are **sanitized** (basename only, path separators stripped, control
-chars removed — the base64 envelope already neutralizes shell metacharacters in
-*content*, but the path is interpolated into the write command so it must be
-clean and `shellEscape`d exactly as aisl does) and **de-duplicated** (suffix
-`-2`, `-3` on collision). Total written bytes are **capped** (proposal: 8 MB for
-uploads, 8 MB for project, matching the 25 MB per-file input sanity cap with
-headroom, and keeping base64-through-console time bounded) — when the cap is
-hit, the largest files are dropped and the manifest records `[not written —
-over size cap]` so the omission is legible, never silent.
+Filenames are **sanitized** (basename only, path separators/control chars
+stripped) and **de-duplicated** (suffix `-2`, `-3` on collision) — the on-disk
+name is always safe regardless of tier. Per-file and total **caps** apply
+(proposal: Tier-1 per-file ≤ 32 MB and a total memory budget; anything larger
+routes to Tier-2 if a SW is available, else is dropped) — a dropped file is
+recorded in the manifest as `[not mounted — over budget, no streaming backend]`
+so the omission is legible, never silent.
 
 ## Making the model use them (prompt awareness)
 
 Extend `bashAgentPrompt` (`src/prompts.js`) and `drcBashAgentPrompt`
 (`public/js/drc-research.js`) with a paragraph, emitted only when files were
-actually written:
+actually mounted:
 
-> The user's attached files are at `/root/uploads/` (and any open project's
-> files at `/root/uploads/project/`). Run `cat /root/uploads/INDEX.txt` to see
-> them. They are normal readable/writable files — use them as inputs
-> (`cat`/`grep`/`awk`/`python3 analyze.py /root/uploads/data.csv`), and you may
-> modify or `chmod +x` them.
+> The user's attached files are mounted **read-only** at `/mnt/data/` (run
+> `cat /mnt/data/INDEX.txt` to list them). Use them as inputs
+> (`cat`/`grep`/`awk`/`python3 analyze.py /mnt/data/data.csv`). To modify a file
+> or write your own, work under `/workspace/` (read-write, and it persists) —
+> e.g. `cp /mnt/data/x /workspace/x` first.
 
 Without this the model treats the sandbox as empty and never looks.
 
 ## Wiring
 
-- **`public/js/sandbox.js`** — add a `writeFilesToVm(files)` helper that builds
-  the batched `mkdir -p … && echo <b64>|base64 -d>path` script (the aisl shape,
-  `shellEscape`d) and runs it via the existing exec path; call it from
-  `bootVM` once the VM is ready, from an injected `fileProvider`. Also export a
-  per-file `writeFileToVm(path, bytes)` (the on-demand `__AISL_VM_TOOLS.writeFile`
-  analogue) for later use. `fileProvider` is an async `() => Promise<Array<{path,
-  bytes, name, type, size}>>` so the two tiers assemble their own lists without
-  `sandbox.js` importing either storage stack. Unicode-safe base64 exactly as
-  aisl (`btoa(unescape(encodeURIComponent(s)))`), or `Uint8Array`→base64 for
-  binary originals.
+- **`public/js/sandbox.js`** — mount the extra devices in `bootVM`
+  (`DataDevice` at `/mnt/data`, the persistent `IDBDevice` at `/workspace`, and
+  — Tier 2 — a `WebDevice` at `/mnt/web` once the SW exists). Add
+  `mountFiles(fileProvider)`: pull the file list, route each by tier
+  (`sandbox-files.js`), and for Tier 1 call `dataDev.writeFile(path, bytes)`
+  directly (binary `Uint8Array`, no base64) right after `Linux.create`, before
+  `ensureSandboxBooted` resolves. Keep the Tier-3 base64 batched-write helper as
+  the fallback path only. Also export `exportWorkspaceFile(path)` →
+  `workspace.readFileAsBlob(path)` for the round-trip-out.
 - **DRS (`public/js/stream.js`)** — in `maybeRunShellLoop`, build the provider
   from the pending attachments (already in scope for the send) + the active
   project (`projects.js`), and pass it into `bootOnce → ensureSandboxBooted`.
@@ -453,48 +538,64 @@ Without this the model treats the sandbox as empty and never looks.
   from DRC's own attachment/project store (`drc-store.js`).
 - **`public/js/sandbox-files.js`** — NEW pure helper (Node-tested,
   `isPublicAsset`-allowlisted, in the /cure import closure): `sanitizeName`,
-  `dedupeNames`, `buildManifest`, `applySizeCap`, and `buildWriteScript(files)`
-  (the deterministic mkdir+base64 script builder, ported from aisl's boot
-  population) — kept out of the browser-only `sandbox.js`.
+  `dedupeNames`, `buildManifest`, `applySizeCap`, `chooseTier(file, {swAvailable,
+  memBudget})`, and `buildFallbackWriteScript(files)` (the Tier-3 mkdir+base64
+  builder) — the deterministic bits, kept out of the browser-only `sandbox.js`.
+- **`public/sw.js`** (Tier 2 only, NEW, deferred) — a Service Worker that
+  intercepts fetches under the WebDevice path and serves decrypted OPFS / proxied
+  R2 bytes with `application/octet-stream` + `Cross-Origin-Resource-Policy:
+  same-origin`, honoring `Range`. We have no SW today; this lands only when
+  Tier-1's memory ceiling is a real limit.
 
 ## Privacy & fail-soft
 
-- **Nothing leaves the browser.** DataDevice is in-memory in the page; the bytes
-  are the user's own files, already in their browser, decrypted with the key the
-  session already holds, written into a VM that also runs in the page. No new
-  network, no third party — consistent with invariant 4 (outbound requests carry
-  the minimum; here there are none).
-- Every step is **fail-soft**: no OPFS, no key, a decrypt failure, a `writeFile`
-  error, or an over-cap file all skip that file and boot proceeds. A boot with
-  zero mountable files is byte-identical to today's empty sandbox.
+- **Nothing leaves the browser.** Tier 1 (`DataDevice`) is in-memory in the page;
+  Tier 3 writes to the local overlay; Tier 2's Service Worker reads local OPFS
+  (or, if it proxies R2, only the user's OWN already-stored ciphertext over the
+  authenticated same-origin path — no third party). The bytes are the user's own
+  files, decrypted with the key the session already holds, in a VM that runs in
+  the page — consistent with invariant 4.
+- Every step is **fail-soft**: no OPFS, no key, a decrypt failure, a device
+  `writeFile`/mount error, an over-budget file with no streaming backend, or a SW
+  that never activates all skip that file (or that tier) and boot proceeds. A
+  boot with zero mountable files is byte-identical to today's empty sandbox.
 
 ## Live-verification owed (per the live-verify skill)
 
-- The batched boot-write script populates `/root/uploads/` and the files are
-  readable on real iOS Safari under COEP `require-corp` (`cat
-  /root/uploads/INDEX.txt` returns the bytes). aisl runs this exact pattern in
-  production, but the `credentialless`/Safari saga is the standing warning —
-  verify on the real device.
-- **Base64-through-console throughput** for a near-cap set: an 8 MB set becomes
-  ~11 MB of base64 piped through the marker protocol / `cx.run`. Measure the
-  added boot latency; if it's too slow, chunk the write script or lower the cap
-  (aisl writes a whole repo this way, so it's expected fine, but our per-file
-  console round-trip differs — measure).
-- Binary originals (a PDF/image the guest might inspect with `file`/`python`)
-  survive the `Uint8Array`→base64→`base64 -d` round-trip byte-for-byte.
+- **Tier 1:** a `DataDevice` mounted at `/mnt/data` and populated with
+  `writeFile(path, Uint8Array)` right after `Linux.create` is **readable in the
+  guest** on real iOS Safari under COEP `require-corp` (`cat /mnt/data/INDEX.txt`
+  returns the bytes; a binary PDF survives byte-for-byte). WebVM mounts a
+  DataDevice this way, but the `credentialless`/Safari saga is the standing
+  warning — verify on the real device.
+- **Persistence:** a file written to `/workspace` (dedicated `IDBDevice`) is
+  still there after a full reload, and `workspace.readFileAsBlob()` reads it back
+  out in JS. Confirm `reset()` of the base overlay cache does NOT wipe
+  `/workspace`, and vice-versa.
+- **Tier 2 (the real unknown):** that a page **Service Worker actually
+  intercepts `WebDevice` reads** on our target browsers (Chrome, Firefox, iOS
+  Safari) — SW active before `Linux.create`, response `application/octet-stream`
+  + `Cross-Origin-Resource-Policy: same-origin` under `require-corp`, and `Range`
+  honored for true streaming. This is architecturally sound but undocumented;
+  do NOT build Tier 2 on the assumption without a live probe first.
+- **Tier 3 fallback:** base64-through-console throughput for a near-budget small
+  file, and that it lands in the persistent overlay.
 
 ---
 
 ## Recommendation
 
-0. **Build (B) file-mounting FIRST** — it is independently useful (needs neither
-   the host-command registry nor guest stubs), it's the most-requested-shaped
-   gap ("I attached a file, why can't the sandbox see it?"), and it is nearly
-   zero-risk: the write mechanism (base64-through-`exec` into the real FS) is
-   already proven in production in the exact codebase our sandbox was ported
-   from (`aisecurityliteracy.dev`). It's a boot-time batched write script + a
-   prompt paragraph + the pure `sandbox-files.js` helper — no new CheerpX
-   surface. Ship it first.
+0. **Build (B) file-mounting FIRST**, as **Tier 1 (`DataDevice`) + persistent
+   `/workspace`** — it's independently useful, the most-requested-shaped gap ("I
+   attached a file, why can't the sandbox see it?"), and low-risk: `DataDevice`
+   and the `IDBDevice` overlay are documented, shipped, and used by WebVM itself.
+   That's real direct-byte mounts for large-ish files (no base64) plus the
+   overlay persistence the user asked for, in a couple of extra mounts + the pure
+   `sandbox-files.js` helper + a prompt paragraph. Keep base64 (Tier 3) only as
+   the small-writable-file fallback. Add **Tier 2 (WebDevice + Service Worker)**
+   later, and only after a live probe confirms SW-backed WebDevice works on the
+   target browsers — it's the one unproven piece and it needs a service worker we
+   don't yet have.
 1. **Build Phase 1** (host command registry + `sandbox.js` interception +
    generated prompt paragraph + the sandboxed-iframe `js` runner). It is the
    whole performance win — native-speed compute *and* skipping the multi-second
@@ -545,8 +646,9 @@ the CheerpX VM. Moving it host-side MUST preserve equivalent isolation:
 
 | File | Change | For |
 |---|---|---|
-| `public/js/sandbox.js` | boot-time `writeFilesToVm(fileProvider)` (batched base64-through-`exec` into `/root/uploads/`) + a per-file `writeFileToVm`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
-| `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`dedupeNames`/`buildManifest`/`applySizeCap`; Node-tested (`sandbox-files.test.js`) | B |
+| `public/js/sandbox.js` | mount `DataDevice`→`/mnt/data` + persistent `IDBDevice`→`/workspace` (and later `WebDevice`→`/mnt/web`); `mountFiles(fileProvider)` (Tier-1 `dataDev.writeFile` direct bytes, Tier-3 base64 fallback); `exportWorkspaceFile`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
+| `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`dedupeNames`/`buildManifest`/`applySizeCap`/`chooseTier`/`buildFallbackWriteScript`; Node-tested (`sandbox-files.test.js`) | B |
+| `public/sw.js` | NEW (Tier 2, deferred) — Service Worker backing the WebDevice: serves decrypted OPFS / proxied R2 bytes as `application/octet-stream` + CORP, honoring `Range` | B |
 | `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) | A |
 | `public/js/stream.js` | DRS: assemble the file provider (attachments + active project) and pass to `bootOnce` | B |
 | `public/js/drc-research.js` | DRC: assemble the file provider from `drc-store`; `drcBashAgentPrompt` gains the host-command + mount paragraphs | A+B |
