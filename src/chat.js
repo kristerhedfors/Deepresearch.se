@@ -558,7 +558,7 @@ function resolveShellTranscript(raw) {
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string } | undefined}
  */
 function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;
