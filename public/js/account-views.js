@@ -35,11 +35,17 @@ import { applyFeedbackMode } from "./turns.js";
 // break-glass identity, or a server missing the feature's backing — rather
 // than hidden, so the state stays explainable.
 export function settingRow({ id, label, checked, disabled, popId, info }) {
+  // The label may carry markup (the sandbox row's Experimental badge), which
+  // is fine inside the visible span but must NOT be interpolated into the
+  // aria-label ATTRIBUTE — its quotes break out of the attribute and leak
+  // markup fragments as visible text. The accessible name gets a
+  // tags-stripped, escaped copy.
+  const plainLabel = escapeHtml(String(label).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
   return `
     <div class="settings-item">
       <div class="settings-row">
         <span class="settings-label">${label}
-          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${label}”">ⓘ</button>
+          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${plainLabel}”">ⓘ</button>
         </span>
         <label class="switch">
           <input type="checkbox" id="${id}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}>
