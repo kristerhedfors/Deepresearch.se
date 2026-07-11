@@ -320,35 +320,38 @@ from the browser's own copy — no upload, no server round-trip.
 
 ## Layout — where files live inside the VM
 
-Two distinct file sets, two folders (plus a convenience symlink):
+Two distinct file sets. Session files live in a folder; the project is its own
+**mount** (under `/mnt`, so it's obvious it's a mounted volume), reached from the
+session by a friendly symlink:
 
 ```
-/workspace/                     ← THIS chat session's files (attachments) + guest scratch. RW, persistent.
-/workspace/INDEX.txt            ← generated manifest of what's mounted
-/workspace/project  ->  /projects/<projname>   ← symlink to the ACTIVE project
-/projects/<projname>/           ← a project's contents. RW, persistent, one dir per project.
-/projects/<other>/              ← other projects persist here too
+/workspace/                              ← THIS chat session's files (attachments) + guest scratch. RW, persistent.
+/workspace/INDEX.txt                     ← generated manifest of what's mounted
+/workspace/<projname>  ->  /mnt/<projname>-<hash>   ← friendly symlink (NO hash) to the project mount
+/mnt/<projname>-<hash>/                  ← the ACTIVE project, its OWN mounted persistent volume. RW.
 ```
 
 - **Session files** (the chat's own attachments) live directly in `/workspace`.
-- **Project files** live under `/projects/<projname>/` — canonical, one dir per
-  project, so multiple projects coexist and persist independently. `<projname>`
-  is the sanitized project name (collision-suffixed; the real project id is
-  recorded in `/projects/<projname>/.projectid` and the manifest).
-- The **active project** is reachable at the stable path `/workspace/project`
-  via a symlink (`ln -sfn /projects/<projname> /workspace/project`), so a session
-  always finds "the project" in one place regardless of its name.
+- **The project** is a **mount at `/mnt/<projname>-<hash>`** — its own persistent
+  volume. `<projname>` is the sanitized project name; `<hash>` is a short stable
+  hash of the project id, so the path is unique (two projects sharing a name
+  don't collide), stable across sessions (same project → same mount), and
+  visibly a mount. The real project id is also in
+  `/mnt/<projname>-<hash>/.projectid` and the manifest.
+- The session reaches it at the clean path **`/workspace/<projname>`** (no hash)
+  via a symlink (`ln -sfn /mnt/<projname>-<hash> /workspace/<projname>`), so the
+  model refers to the project by its plain name.
 
-Both `/workspace` and `/projects` are **persistent** (see Persistence below), so
-a project's files — and any work the guest does — survive across sessions.
+Both `/workspace` and the project mount are **persistent** (see Persistence
+below), so project files — and any work the guest does — survive across sessions.
 
 ## The mechanism — REAL device mounts, tiered ingest (base64 is only the fallback)
 
 Two layers, kept separate:
 
-1. **Where files LIVE** — `/workspace` and `/projects` are **persistent
-   read-write `IDBDevice` volumes** (below). This is what the model reads and
-   writes.
+1. **Where files LIVE** — `/workspace` (session) and the project mount
+   `/mnt/<projname>-<hash>` are **persistent read-write `IDBDevice` volumes**
+   (below). This is what the model reads and writes.
 2. **How host bytes GET there** — `IDBDevice` has **no host-side `writeFile`**
    (only `DataDevice` does), so host bytes transit an **ingest mount** and are
    `cp`'d into the persistent tree at boot. The ingest mount is chosen by size:
@@ -362,9 +365,9 @@ All device semantics below are from the CheerpX **File-System-support** and
 clone under `docs/cheerpx/`), and cross-checked against WebVM's own source.
 
 The ingest mount is `/mnt/in` (a scratch mount the model never uses directly);
-at boot a small script `cp`s from `/mnt/in` into `/workspace` and
-`/projects/<projname>`, then makes the symlink. Ingest bytes never go through
-base64 unless they must (Tier 3).
+at boot a small script `cp`s from `/mnt/in` into `/workspace` and the project
+mount `/mnt/<projname>-<hash>`, then makes the `/workspace/<projname>` symlink.
+Ingest bytes never go through base64 unless they must (Tier 3).
 
 ### Tier 1 — `DataDevice` ingest (default): direct binary bytes, no base64
 
@@ -377,23 +380,23 @@ console** (note: `ArrayBuffer`/`Blob` are NOT accepted — wrap in
 const inDev = await CheerpX.DataDevice.create();
 cx = await CheerpX.Linux.create({
   mounts: [
-    { type: "ext2", path: "/",           dev: overlayDevice },
-    { type: "dir",  path: "/workspace",  dev: workspaceIdb },   // persistent RW
-    { type: "dir",  path: "/projects",   dev: projectsIdb },    // persistent RW
-    { type: "dir",  path: "/mnt/in",     dev: inDev },          // ingest, read-only
+    { type: "ext2", path: "/",                         dev: overlayDevice },
+    { type: "dir",  path: "/workspace",                dev: workspaceIdb },  // persistent RW
+    { type: "dir",  path: `/mnt/${projName}-${hash}`,  dev: projectIdb },    // persistent RW, the project mount
+    { type: "dir",  path: "/mnt/in",                   dev: inDev },         // ingest, read-only
     …
   ],
 });
 await inDev.writeFile("/session/server.log", bytesUint8Array);   // → cp'd to /workspace/server.log
-await inDev.writeFile("/project/notes.md",  bytesUint8Array);    // → cp'd to /projects/<projname>/notes.md
+await inDev.writeFile("/project/notes.md",  bytesUint8Array);    // → cp'd to /mnt/<projname>-<hash>/notes.md
 ```
 
 - **In-memory**: bytes live in the JS heap, **re-supplied every boot** (no
   documented size limit, but the payload sits in page RAM). For files that fit
   memory — proposal: per-file ≤ ~32 MB, total ≤ a configurable budget. Their
   source of truth is the browser's own store, so re-supplying each session is
-  free correctness-wise; the persistent COPY in `/workspace`/`/projects` is what
-  the guest edits.
+  free correctness-wise; the persistent COPY in `/workspace` / the project mount
+  is what the guest edits.
 - **This is the default ingest** and replaces base64 for the common case.
 
 ### Tier 2 — `WebDevice` + a Service Worker ingest: lazy/streamed, for genuinely huge files
@@ -423,7 +426,7 @@ Requirements (some undocumented — **verify live**):
 
 Kept only for: no Service Worker AND over the DataDevice budget, or a tiny file
 where it's simplest. Writes straight into the persistent tree (`/workspace/…` or
-`/projects/<projname>/…`) — no ingest+cp needed. The aisl mechanism, demoted:
+`/mnt/<projname>-<hash>/…`) — no ingest+cp needed. The aisl mechanism, demoted:
 
 ```js
 'mkdir -p ' + shellEscape(dir) + ' && echo ' + shellEscape(btoa(…)) + ' | base64 -d > ' + shellEscape(path)
@@ -437,8 +440,9 @@ over budget, SW available                 → Tier 2  WebDevice+SW ingest → cp
 over budget, no SW  (or tiny convenience)  → Tier 3  base64 straight into the tree
 ```
 
-Everything lands in `/workspace` or `/projects/<projname>` regardless of tier —
-the tier is only *how the bytes arrive*, never where they live.
+Everything lands in `/workspace` or the project mount `/mnt/<projname>-<hash>`
+regardless of tier — the tier is only *how the bytes arrive*, never where they
+live.
 
 ## Persistence — preserve the overlay FS across sessions
 
@@ -454,40 +458,45 @@ writes — including Tier-3 files and its own work — **already survives reboot
 today**. Make this deliberate: keep the stable id, and never call
 `IDBDevice.reset()` except behind an explicit user "reset sandbox" action.
 
-**Two dedicated persistent volumes** — `/workspace` (session) and `/projects`
-(all projects) — each a *separately named* bare `IDBDevice`, so user/project
-data persists **independently of the base-image block cache** and of each other:
+**One persistent volume per file set, each a separately named bare `IDBDevice`**:
+`/workspace` (session) and the project mount `/mnt/<projname>-<hash>`, so session
+and project data persist **independently of the base-image block cache and of
+each other**:
 
 ```js
 const workspaceIdb = await CheerpX.IDBDevice.create("dr-sandbox-workspace");
-const projectsIdb  = await CheerpX.IDBDevice.create("dr-sandbox-projects");
-// … mounted at /workspace and /projects (see the Tier-1 snippet above).
+const projectIdb   = await CheerpX.IDBDevice.create(`dr-proj-${hash}`);  // stable per-project db name
+// … mounted at /workspace and /mnt/<projname>-<hash> (see the Tier-1 snippet).
 ```
 
-Why separate: we can `reset()` the (large) Debian base cache **without wiping
-user files**, offer "clear session" (`workspaceIdb.reset()`) distinctly from
-"clear projects", and re-stream Debian without touching either. All read-write,
-persistent across sessions.
+`<hash>` is derived from the project id (stable), so the SAME project reuses the
+SAME IndexedDB across sessions and its files persist; a different project is a
+different db + mount. Why separate: we can `reset()` the (large) Debian base
+cache **without wiping user files**, offer "clear session"
+(`workspaceIdb.reset()`) distinctly from "clear this project"
+(`projectIdb.reset()`), and re-stream Debian without touching either. (Only the
+active project is mounted per session; other projects rest untouched in their own
+dbs until opened.)
 
 **Boot seed + symlink** (the one script, after `Linux.create`, before ready):
 
 ```sh
-mkdir -p /workspace /projects/<projname>
-cp -a /mnt/in/session/.  /workspace/            2>/dev/null || true   # Tier-1/2 ingest → session
-cp -a /mnt/in/project/.   /projects/<projname>/ 2>/dev/null || true   # Tier-1/2 ingest → project
-printf '%s' "<projectId>" > /projects/<projname>/.projectid
-ln -sfn /projects/<projname> /workspace/project                      # active project, stable path
+mkdir -p /workspace "/mnt/<projname>-<hash>"
+cp -a  /mnt/in/session/.  /workspace/               2>/dev/null || true   # ingest → session (refresh)
+cp -an /mnt/in/project/.  "/mnt/<projname>-<hash>/" 2>/dev/null || true   # ingest → project (add/update-only)
+printf '%s' "<projectId>" > "/mnt/<projname>-<hash>/.projectid"
+ln -sfn "/mnt/<projname>-<hash>" "/workspace/<projname>"                  # friendly no-hash symlink
 ```
 
 Seed policy (a decision, defaulted): **session** files are refreshed every boot
 (the chat's current attachments are the truth). **Project** files are synced
-add/update-only — new or changed files copied in, guest-created files under
-`/projects/<projname>` left intact — so work done in the VM isn't clobbered by a
-re-seed. (Simplest first cut: `cp -a` no-clobber via `cp -an`.)
+add/update-only (`cp -an`) — new/changed files copied in, guest-created files in
+the project mount left intact — so work done in the VM isn't clobbered by a
+re-seed.
 
 **Round-trip export (a real bonus for "preserve").** `IDBDevice.readFileAsBlob(path)`
 reads guest-created files back into JS — so a report the model writes to
-`/workspace` or a file it adds under `/projects/<projname>` can be **pulled back
+`/workspace`, or a file it adds under the project mount, can be **pulled back
 out** and saved to the user's project or offered as a download. The VM stops
 being a dead-end. (There is **no** host-side `IDBDevice.writeFile` — only
 `DataDevice` has it — which is exactly why host bytes ingest through `/mnt/in`
@@ -499,9 +508,10 @@ All devices are passed in the `mounts` array to `CheerpX.Linux.create`, so mount
 points exist from boot. **Inside `bootVM()`, right after `Linux.create` and
 before `ensureSandboxBooted` resolves**: `inDev.writeFile(...)` the Tier-1 bytes,
 then run the seed+symlink script above. The VM boots lazily on the model's first
-command, so `/workspace`, `/projects/<projname>`, and `/workspace/project` are
-all populated before any guest command runs. Tier-2 needs the SW active before
-`create`; Tier-3 writes straight into the tree in the same boot step.
+command, so `/workspace`, the project mount `/mnt/<projname>-<hash>`, and the
+`/workspace/<projname>` symlink are all populated before any guest command runs.
+Tier-2 needs the SW active before `create`; Tier-3 writes straight into the tree
+in the same boot step.
 
 ## Where the bytes come from (and decryption)
 
@@ -524,19 +534,20 @@ new prompt. If the key is unavailable or a file won't decrypt, that file is
 ## Where files land, and the manifest
 
 Per the Layout section: **`/workspace/`** (session files + guest scratch, RW,
-persistent), **`/projects/<projname>/`** (project files, RW, persistent), and
-the **`/workspace/project`** symlink to the active project. The manifest lives at
+persistent), the project mount **`/mnt/<projname>-<hash>/`** (RW, persistent), and
+the **`/workspace/<projname>`** symlink to it. The manifest lives at
 **`/workspace/INDEX.txt`** (`scope  filename  type  size  tier` per line, scope ∈
 `session|project`, plus the sanitized on-disk name when it differs) so the model
 discovers everything — session AND project — with one `cat`.
 
 Filenames are **sanitized** (basename only, path separators/control chars
 stripped) and **de-duplicated** within each folder (suffix `-2`, `-3` on
-collision). `<projname>` is likewise sanitized and collision-suffixed. Per-file
-and total **caps** apply (proposal: Tier-1 per-file ≤ 32 MB and a total memory
-budget; larger routes to Tier-2 if a SW is available, else is dropped) — a
-dropped file is recorded in the manifest as `[not mounted — over budget, no
-streaming backend]` so the omission is legible, never silent.
+collision). `<projname>` is sanitized for the path; `<hash>` (from the project
+id) makes the mount unique and stable. Per-file and total **caps** apply
+(proposal: Tier-1 per-file ≤ 32 MB and a total memory budget; larger routes to
+Tier-2 if a SW is available, else is dropped) — a dropped file is recorded in the
+manifest as `[not mounted — over budget, no streaming backend]` so the omission
+is legible, never silent.
 
 ## Making the model use them (prompt awareness)
 
@@ -545,7 +556,7 @@ Extend `bashAgentPrompt` (`src/prompts.js`) and `drcBashAgentPrompt`
 actually mounted:
 
 > This chat's attached files are in `/workspace/` and the current project's
-> files in `/workspace/project/` (a symlink to `/projects/<name>/`). Run
+> files in `/workspace/<projname>/` (a symlink to its mount under `/mnt/`). Run
 > `cat /workspace/INDEX.txt` to list everything. All of it is read-write and
 > persists across sessions — read files as inputs
 > (`cat`/`grep`/`awk`/`python3 analyze.py /workspace/data.csv`), and write your
@@ -555,18 +566,19 @@ Without this the model treats the sandbox as empty and never looks.
 
 ## Wiring
 
-- **`public/js/sandbox.js`** — in `bootVM`, mount the two persistent volumes
-  (`IDBDevice("dr-sandbox-workspace")`→`/workspace`,
-  `IDBDevice("dr-sandbox-projects")`→`/projects`) and the ingest `DataDevice`
-  →`/mnt/in` (and — Tier 2 — a `WebDevice`→`/mnt/in-web` once the SW exists). Add
-  `mountFiles(fileProvider)`: pull the file list (each item tagged
-  `scope: "session"|"project"` + the sanitized `projName`/`projId`), route each
-  by tier (`sandbox-files.js`), `inDev.writeFile("/session/…" | "/project/…",
-  bytes)` for Tier 1 (binary `Uint8Array`, no base64), then run the seed+symlink
-  script — all right after `Linux.create`, before `ensureSandboxBooted` resolves.
-  Tier-3 base64 writes straight into the tree. Also export
-  `exportFile(path)` → `(path.startsWith("/projects") ? projectsIdb :
-  workspaceIdb).readFileAsBlob(path)` for the round-trip-out.
+- **`public/js/sandbox.js`** — in `bootVM`, mount the session volume
+  (`IDBDevice("dr-sandbox-workspace")`→`/workspace`), the active project's volume
+  (`IDBDevice(\`dr-proj-${hash}\`)`→`/mnt/<projname>-<hash>`), and the ingest
+  `DataDevice`→`/mnt/in` (and — Tier 2 — a `WebDevice`→`/mnt/in-web` once the SW
+  exists). Add `mountFiles(fileProvider)`: pull the file list (each item tagged
+  `scope: "session"|"project"`; provider also yields the sanitized
+  `projName`/`projId`/`hash`), route each by tier (`sandbox-files.js`),
+  `inDev.writeFile("/session/…" | "/project/…", bytes)` for Tier 1 (binary
+  `Uint8Array`, no base64), then run the seed+symlink script — all right after
+  `Linux.create`, before `ensureSandboxBooted` resolves. Tier-3 base64 writes
+  straight into the tree. Also export `exportFile(path)` →
+  `(path.startsWith("/mnt/") ? projectIdb : workspaceIdb).readFileAsBlob(path)`
+  for the round-trip-out.
 - **DRS (`public/js/stream.js`)** — in `maybeRunShellLoop`, build the provider
   from the pending attachments (scope `session`) + the active project's files
   (scope `project`, `projects.js`), and pass it into `bootOnce →
@@ -576,10 +588,10 @@ Without this the model treats the sandbox as empty and never looks.
 - **`public/js/sandbox-files.js`** — NEW pure helper (Node-tested,
   `isPublicAsset`-allowlisted, in the /cure import closure): `sanitizeName`,
   `sanitizeProjName`, `dedupeNames`, `buildManifest`, `applySizeCap`,
-  `chooseTier(file, {swAvailable, memBudget})`, `buildSeedScript({projName,
-  projId})` (the mkdir + `cp -a`/`cp -an` + `ln -sfn` builder), and
-  `buildFallbackWriteScript(files)` (Tier-3) — the deterministic bits, kept out
-  of the browser-only `sandbox.js`.
+  `chooseTier(file, {swAvailable, memBudget})`, `projHash(projId)` (the stable
+  short hash), `buildSeedScript({projName, projId, hash})` (the mkdir + `cp -a`/
+  `cp -an` + `ln -sfn` builder), and `buildFallbackWriteScript(files)` (Tier-3) —
+  the deterministic bits, kept out of the browser-only `sandbox.js`.
 - **`public/sw.js`** (Tier 2 only, NEW, deferred) — a Service Worker that
   intercepts fetches under the WebDevice path and serves decrypted OPFS / proxied
   R2 bytes with `application/octet-stream` + `Cross-Origin-Resource-Policy:
@@ -602,18 +614,18 @@ Without this the model treats the sandbox as empty and never looks.
 ## Live-verification owed (per the live-verify skill)
 
 - **Tier 1 + seed:** a `DataDevice`→`/mnt/in` populated with `writeFile(path,
-  Uint8Array)` then `cp`'d into `/workspace` and `/projects/<projname>` is
-  **readable in the guest** on real iOS Safari under COEP `require-corp` (`cat
-  /workspace/INDEX.txt`; a binary PDF survives byte-for-byte), and
-  `/workspace/project` resolves through the symlink to the project dir. WebVM
-  mounts a DataDevice this way, but the `credentialless`/Safari saga is the
-  standing warning — verify on the real device.
+  Uint8Array)` then `cp`'d into `/workspace` and the project mount
+  `/mnt/<projname>-<hash>` is **readable in the guest** on real iOS Safari under
+  COEP `require-corp` (`cat /workspace/INDEX.txt`; a binary PDF survives
+  byte-for-byte), and `/workspace/<projname>` resolves through the symlink to the
+  project mount. WebVM mounts a DataDevice this way, but the
+  `credentialless`/Safari saga is the standing warning — verify on the real device.
 - **Persistence:** a file written to `/workspace` and one under
-  `/projects/<projname>` are both still there after a full reload, and
-  `readFileAsBlob()` reads them back out. Confirm `reset()` of the base overlay
-  cache does NOT wipe `/workspace` or `/projects`, that the two volumes are
-  independent, and that cross-mount symlinks (`/workspace/project` →
-  `/projects/…`) resolve after a reboot.
+  `/mnt/<projname>-<hash>` are both still there after a full reload (the project's
+  `dr-proj-<hash>` db reused), and `readFileAsBlob()` reads them back out. Confirm
+  `reset()` of the base overlay cache does NOT wipe either volume, that session
+  and project dbs are independent, and that the cross-mount symlink
+  (`/workspace/<projname>` → `/mnt/…`) resolves after a reboot.
 - **Tier 2 (the real unknown):** that a page **Service Worker actually
   intercepts `WebDevice` reads** on our target browsers (Chrome, Firefox, iOS
   Safari) — SW active before `Linux.create`, response `application/octet-stream`
@@ -688,8 +700,8 @@ the CheerpX VM. Moving it host-side MUST preserve equivalent isolation:
 
 | File | Change | For |
 |---|---|---|
-| `public/js/sandbox.js` | mount persistent `IDBDevice`→`/workspace` + `IDBDevice`→`/projects` + ingest `DataDevice`→`/mnt/in` (and later `WebDevice`→`/mnt/in-web`); `mountFiles(fileProvider)` (Tier-1 `inDev.writeFile` direct bytes → seed `cp`/`ln -sfn`, Tier-3 base64 fallback); `exportFile`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
-| `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`sanitizeProjName`/`dedupeNames`/`buildManifest`/`applySizeCap`/`chooseTier`/`buildSeedScript`/`buildFallbackWriteScript`; Node-tested (`sandbox-files.test.js`) | B |
+| `public/js/sandbox.js` | mount persistent `IDBDevice`→`/workspace` + per-project `IDBDevice`→`/mnt/<projname>-<hash>` + ingest `DataDevice`→`/mnt/in` (and later `WebDevice`→`/mnt/in-web`); `mountFiles(fileProvider)` (Tier-1 `inDev.writeFile` direct bytes → seed `cp`/`ln -sfn`, Tier-3 base64 fallback); `exportFile`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
+| `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`sanitizeProjName`/`projHash`/`dedupeNames`/`buildManifest`/`applySizeCap`/`chooseTier`/`buildSeedScript`/`buildFallbackWriteScript`; Node-tested (`sandbox-files.test.js`) | B |
 | `public/sw.js` | NEW (Tier 2, deferred) — Service Worker backing the WebDevice: serves decrypted OPFS / proxied R2 bytes as `application/octet-stream` + CORP, honoring `Range` | B |
 | `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) | A |
 | `public/js/stream.js` | DRS: assemble the file provider (attachments + active project) and pass to `bootOnce` | B |
