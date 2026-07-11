@@ -156,6 +156,22 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // folded into the answer as ground truth by the pipeline (ctx.shellBlock).
   const shellTranscript = bashLiteEnabled(env, identity) ? resolveShellTranscript(body.shell_transcript) : [];
 
+  // Stale-client auto-heal. A knob-on account whose request carries NO
+  // client_diag (public/js/stream.js has attached it since the sandbox fixes)
+  // is running a pre-fix cached bundle — the sandbox can't work no matter what
+  // because the client code predates it, and a plain reload keeps serving the
+  // cached assets. Answer this request normally, but tell the browser to drop
+  // its HTTP cache (and, in Chromium, its back-forward cache) so the NEXT load
+  // fetches the fixed code. Scoped to "cache" only — never "cookies"/"storage"
+  // — so the encrypted local history is untouched; self-limiting, since once
+  // the fresh bundle loads it sends client_diag and this stops firing.
+  const staleSandboxClient = bashLiteEnabled(env, identity) && body.client_diag === undefined;
+  /** @type {Record<string, string>} */
+  const responseHeaders = staleSandboxClient ? { "clear-site-data": '"cache"' } : {};
+  if (staleSandboxClient) {
+    log.warn("chat.stale_sandbox_client", { user_id: identity.id, request_id: requestId });
+  }
+
   // Client-disconnect detection: when the reader goes away (backgrounded
   // PWA, dropped network), the runtime calls cancel() — enqueue does NOT
   // reliably throw. The pipeline keeps running after a disconnect (emit
@@ -390,7 +406,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     }
   }
 
-  return sseResponse(stream);
+  return sseResponse(stream, responseHeaders);
 }
 
 // ---- pre-stream setup helpers ----------------------------------------------

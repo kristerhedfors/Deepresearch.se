@@ -21,13 +21,15 @@ export function jsonResponse(obj, status = 200, extraHeaders = {}) {
 /**
  * Wraps a stream as a text/event-stream response for SSE.
  * @param {ReadableStream} stream
+ * @param {Record<string, string>} [extraHeaders]
  * @returns {Response}
  */
-export function sseResponse(stream) {
+export function sseResponse(stream, extraHeaders = {}) {
   return new Response(stream, {
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
+      ...extraHeaders,
     },
   });
 }
