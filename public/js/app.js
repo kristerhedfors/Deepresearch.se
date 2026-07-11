@@ -112,7 +112,13 @@ loadSettings()
     // sends COEP can't cause a reload loop.
     if (s?.bash_lite_mcp === true && !window.crossOriginIsolated && !sessionStorage.getItem("dr_coep_reload")) {
       sessionStorage.setItem("dr_coep_reload", "1");
-      location.reload();
+      // NOT location.reload(): an installed iOS PWA relaunches from a shell
+      // cached ON THE DEVICE that predates the COEP header, and reload() keeps
+      // returning that same non-isolated copy (observed live: fresh JS but
+      // client_diag.coi=false). Navigate to a FRESH URL instead — a distinct
+      // path forces a real network fetch of /rver (which the server sends with
+      // COEP), which no on-device or bfcache copy can satisfy.
+      location.replace(location.pathname + "?_coep=" + Date.now());
       return;
     }
     if (window.crossOriginIsolated) sessionStorage.removeItem("dr_coep_reload");
@@ -132,7 +138,7 @@ loadSettings()
 window.addEventListener("pageshow", (e) => {
   if (e.persisted && bashLiteOn() && !window.crossOriginIsolated) {
     sessionStorage.removeItem("dr_coep_reload");
-    location.reload();
+    location.replace(location.pathname + "?_coep=" + Date.now());
   }
 });
 
