@@ -8,7 +8,12 @@ description: >-
   in the pipeline/synthesis, the cross-origin-isolation (COEP) headers, or the
   CheerpX WASM Linux VM. Covers the client-orchestrated agentic loop, the
   fenced-block (no-function-calling) convention, the fail-soft contract, EN+SV
-  intent parity, and what still needs live browser verification.
+  intent parity, and the live browser verification. ALSO the go-to when the
+  sandbox "refuses to run code" on a real device: the COEP must be
+  `require-corp` (iOS Safari ignores `credentialless`), the `client_diag`
+  browser probe + `wrangler tail` debugging playbook, the edge/PWA
+  stale-code caching traps, and the 2026-07-11 incident log of failed attempts
+  and the working fix.
 ---
 
 # Execution sandbox (bash-lite)
@@ -52,20 +57,24 @@ denies the capability even with a transcript in front of it.
 | Step prompt + synthesis clause | `src/prompts.js` (`bashAgentPrompt`, `synthPrompt({hasShell})`) |
 | Step endpoint `/api/bash/step` | `src/bash-api.js` (one model turn on `DEFAULT_MODEL`, quota-gated, usage-recorded) |
 | Pipeline consumption | `src/pipeline.js` (`ctx.shellBlock` → synthesis + direct/search-off), `src/chat.js` (`shell_transcript` request field → `state.shellTranscript`) |
-| COEP / cross-origin isolation | `src/index.js` (`serveAsset(..,{coep})`: DRC page always, DRS shell when the knob is on) |
+| COEP / cross-origin isolation | `src/index.js` (`serveAsset(..,{coep})` sets COEP **`require-corp`** + `no-store`, strips conditional headers: DRC page always, DRS shell when the knob is on) |
 | DRS client mirror + loop driver | `public/js/bash-agent.js` (`bashIntent`, `runShellLoop`, `parseShellRequest`/`buildShellTranscript`) |
 | The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue) |
-| DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript`) |
+| DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript` + the `client_diag` probe) |
+| Isolation self-heal | `public/js/app.js` (knob-on + `!crossOriginIsolated` → **navigate to a fresh `?_coep=<ts>` URL**, NOT `location.reload()`; plus a `pageshow(persisted)` bfcache handler) |
+| Live diagnostic | `client_diag` `{coi,sab,sb,bl,ran,css,ua}` — `stream.js` attaches it to every `/api/chat`; `chat.js` `sanitizeClientDiag` records it in the `chat_logs` meta and logs `chat.client_diag`. The one window into the real browser (see the playbook below) |
+| Stale-client rescue | `src/chat.js`: a knob-on request with **no `client_diag`** = a pre-fix cached bundle → responds `Clear-Site-Data: "cache"` (self-limiting) |
 | DRS settings UI (Experimental knob) | `public/js/account-settings.js` (+ `public/js/settings.js` accessors) |
 | DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/cure/drc.js`, `public/cure/index.html`, `public/js/drc-core.js` (`bashLite` state) |
 
 ## The flow
 
-**DRS:** `stream.js` → if `bashLiteOn()` && `sandboxSupported()` && `bashIntent(msg)`
-→ boot `sandbox.js` VM → `runShellLoop` (each round POSTs `/api/bash/step`,
-runs the returned commands via `execInSandbox`, feeds results back) → attach
-the transcript as `shell_transcript` on `/api/chat` → the pipeline injects it
-into synthesis/direct as ground truth (`ctx.shellBlock`).
+**DRS:** `stream.js` `maybeRunShellLoop` → if `bashLiteOn()` &&
+`sandboxSupported()` (NB: **no** `bashIntent` gate — the model decides) →
+`runShellLoop` (each round POSTs `/api/bash/step`; the FIRST proposed command
+lazily boots the `sandbox.js` VM via `execInSandbox`, results feed back) →
+attach the transcript as `shell_transcript` on `/api/chat` → the pipeline
+injects it into synthesis/direct as ground truth (`ctx.shellBlock`).
 
 **DRC:** identical shape but fully client-side — `runDrcShellPass` calls the
 user's own provider directly for the step (parsed client-side with
@@ -107,20 +116,113 @@ reloads the page so the shell comes back isolated.
   serialized queue) is ported verbatim from aisecurityliteracy.dev — it
   survives the shared xterm console; don't "simplify" it.
 
-## Live verification still owed (can't be done in Node/CI)
+## Live verification (DONE — 2026-07-11)
 
-The pure logic is unit-tested (`src/bash-agent.test.js`,
-`public/js/bash-agent.test.js`) and typecheck/`npm test` are green, but the
-BROWSER path only reproduces live (see the **live-verify** skill):
+Verified end to end on the real target device. On **iOS 18.7 Safari 26.5**,
+knob ON, `/rver` serving `require-corp`: the live `client_diag` flipped to
+`{coi:true, sab:true, sb:true, ran:1}` and `/api/bash/step` returned
+`ls /` → `SHELL_DONE`; the answer listed the real Debian root. Also verified
+from a fresh Chromium context (Playwright) and the break-glass admin session.
+Two things to still spot-check when you touch this: the keyless Street View
+Embed **iframe** (the one casualty of `require-corp`), and DRC `/cure` on the
+user's own provider key.
 
-1. With the knob ON, confirm `/rver` serves `cross-origin-embedder-policy:
-   credentialless` and `crossOriginIsolated === true` in the console.
-2. Ask "run `uname -a` in the sandbox" — the terminal panel should boot Debian
-   (first boot streams the disk image; slow), run the command, and the answer
-   should quote the real output.
-3. Confirm the Street View keyless-iframe fallback still behaves acceptably
-   with the knob on (SDK path unaffected; only the keyless iframe may not load
-   under isolation).
-4. DRC: on `/cure`, enable the sandbox knob, ask a compute question, confirm
-   the loop runs on the user's own provider key with no server call for the
-   shell decision.
+## Debugging playbook — "the sandbox refuses on a real device"
+
+The whole 2026-07-11 saga (see the incident log) came down to **you cannot
+debug this from your own browser — you must see the target browser's state**.
+The tools that actually work:
+
+1. **`client_diag` is the single most important signal.** It rides on every
+   `/api/chat` request and lands in the `chat_logs` meta, readable with
+   `scripts/chatlogs --id N --json`. Fields and how to read them:
+   - `bl` (knob on) `false` → the account's `bash_lite_mcp` isn't effective
+     (settings/availability), fix there — nothing else matters.
+   - `sab` (SharedArrayBuffer defined) `false` **and** `coi` (crossOriginIsolated)
+     `false` → the page is **not isolated**. Either the browser ignores the COEP
+     mode (see `ua`; **iOS Safari ignores `credentialless`** → use `require-corp`)
+     or the isolated document never reached the browser (cache — see below).
+   - `coi:true, sb:true, ran:0` → isolation is fine; the model returned
+     `SHELL_DONE` (didn't think a shell was needed) or the VM boot failed —
+     check `bash.step` and the CDN loads.
+   - `ua` is the ground truth for which browser/version — never assume.
+   - **`client_diag` ABSENT (logs show `null`)** → the browser is running a
+     **pre-fix cached bundle** (the field didn't exist yet). This is a caching
+     problem, NOT a code problem — do not "fix" the code, fix delivery.
+2. **`wrangler tail deepresearch-se --format json`** is live request-level
+   truth. MUST run from the repo root or pass the worker name (else "Required
+   Worker name missing"). Watch `chat.client_diag`, `bash.step`
+   (commands/done), and `google.start` (the exact OAuth `redirect_uri`). If the
+   user is actively clicking and **nothing appears in the tail**, the edge is
+   serving fully-cached responses without running the worker.
+3. **Reproduce a fresh load yourself with Playwright** (`/opt/pw-browsers/chromium`,
+   the proxy quirks in `tests/playwright.config.js`): a fresh context mimics a
+   private tab and confirms whether the code+delivery are correct *from your
+   POP* — isolating "my code is wrong" from "the user's browser/edge is stale."
+   Caveat: Chromium honors `credentialless`, so it will NOT reproduce the
+   iOS-Safari isolation failure — **always confirm `SharedArrayBuffer` on the
+   actual failing browser.**
+
+## Incident log — failed attempts, root causes, fixes (2026-07-11)
+
+The reported symptom was always identical ("List files in / → I can't run
+code"), but there were SEVEN distinct causes stacked. In rough order found:
+
+1. **DRC `/cure` fully dark.** `drc-research.js` statically imports
+   `bash-agent.js` + `sandbox.js`, which weren't in `index.js`'s
+   `isPublicAsset` allowlist → both 401'd → the whole `/cure` module graph
+   failed to link. Fix: allowlist both (same class as the earlier `drc-rag.js`
+   miss).
+2. **Exec exit codes always 0.** The marker wrapper piped stdout into `base64`
+   and read `$?` after the pipe (dash → no `PIPESTATUS`), capturing base64's
+   exit. Fix: redirect stdout+stderr to temp files, capture `$?` immediately,
+   then base64 the files. (`sandbox.js` exec marker.)
+3. **`STOP_ICON` TDZ crash.** `if (readPending()) setSendMode(true)` ran at
+   module load but referenced `const` icons defined ~30 lines later → any
+   reload-with-pending-answer threw "Cannot access 'STOP_ICON' before
+   initialization" and killed the whole `app.js` bootstrap. Fix: move the
+   consts + `setSendMode` above their first call.
+4. **A transient xterm-CSS CDN miss killed the boot.** `loadCSS(xterm.css)` was
+   fatal in `Promise.all`; the CSS is purely cosmetic. Fix: make it non-fatal
+   (`.catch`), keep the two load-bearing scripts fatal.
+5. **Untestable by the operator.** `bashLiteEnabled` required a D1 user row, so
+   the break-glass admin (the only automatable identity) couldn't exercise the
+   real flow. Fix: grant `isSecretAdmin` the sandbox (`settings.js`) — this is
+   what made the Playwright DRS test possible.
+6. **THE root cause: `COEP: credentialless` never isolates iOS Safari.** WebKit
+   does not implement the `credentialless` mode, so on iPhone the page served
+   the header but `crossOriginIsolated===false` and `SharedArrayBuffer` was
+   undefined — the VM could never boot. Invisible on Chrome (which honors
+   `credentialless`), which is why every one of my tests "passed." Fix: switch
+   to **`require-corp`** (honored by Chrome, Firefox, AND Safari); the sandbox
+   CDNs already send CORP, only the keyless SV embed iframe is lost.
+7. **Stale-code delivery masked everything.** `/rver`, `app.js`, `stream.js`
+   returned `cf-cache-status: HIT` while `no-store` — a Cache Rule force-caches
+   the app at the edge and survives deploys, and an installed **iOS PWA also
+   caches the launch shell on-device**. Mitigations shipped: `Clear-Site-Data`
+   for stale clients, and a self-heal that **navigates to a fresh `?_coep=<ts>`
+   URL instead of `location.reload()`** (reload re-serves the iOS PWA's cached
+   shell). The operator-side clear is **Purge Everything** — NOT Development
+   Mode (which doesn't cover Workers-assets / Cache-Rule caching).
+
+**Dead ends that wasted time (don't repeat them):**
+
+- "It's a missing `tools` argument / the model doesn't know it has bash." NO —
+  this app has **no function calling** by design; the model learns about bash
+  via `bashAgentPrompt` in the SEPARATE `/api/bash/step` call, and the real
+  blocker was browser isolation. A tools array changes nothing when there's no
+  isolated VM to execute in. `client_diag {coi:false, sab:false}` settled it.
+- "Just reload the page." An iOS PWA relaunches a device-cached shell;
+  `location.reload()` returns the same non-isolated copy. Use a fresh URL.
+- "Enable Development Mode." Dev Mode bypasses the standard zone cache but NOT
+  the layer caching these assets. Only **Purge Everything** clears it.
+- Trusting a Chrome/Playwright pass as proof it works everywhere. The
+  `credentialless`/Safari gap is invisible on Chromium. Verify
+  `SharedArrayBuffer` on the actual failing browser.
+
+**Related (not sandbox, surfaced during the same session):** Google OAuth
+`redirect_uri_mismatch` — the Worker is routed on both apex and `www`, and
+`redirect_uri` is built from the request host, so a `www` sign-in sent Google a
+`www` callback that only a (non-matching) wildcard covered. Fixed by
+canonicalizing `www → apex` (301) at the top of `route()` before anything else.
+See the **access-control** skill.
