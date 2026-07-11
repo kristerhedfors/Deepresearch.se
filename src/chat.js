@@ -568,6 +568,8 @@ function sanitizeClientDiag(d) {
     sb: d.sb === true,
     ran: Number.isFinite(d.ran) ? Math.max(0, Math.min(50, Math.trunc(d.ran))) : 0,
     css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
+    sab: d.sab === true,
+    ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
   };
 }
 

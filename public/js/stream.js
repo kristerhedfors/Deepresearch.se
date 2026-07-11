@@ -883,6 +883,11 @@ export async function sendMessage(text, opts) {
       sb: sandboxSupported(),
       ran: shellTranscript.length,
       css: (() => { try { return getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim(); } catch { return ""; } })(),
+      // Browser capability probe: is SharedArrayBuffer even defined (the thing
+      // cross-origin isolation gates), and which browser/version — so a
+      // coi:false with the header served can be pinned to browser support.
+      sab: typeof SharedArrayBuffer !== "undefined",
+      ua: (() => { try { return (navigator.userAgent || "").slice(0, 140); } catch { return ""; } })(),
     };
     const res = await fetch("/api/chat", {
       method: "POST",
