@@ -834,6 +834,16 @@ what docs claim); and update the skill list below plus the skill's
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/architecture/` `/welcome/`
   pages, the message center, and the public (no-auth) surface.
+- **ux-conventions** — the NUMBERED REGISTRY of codified UX interaction rules
+  ("when X → then Y") that must feel the same everywhere and no unit test
+  catches — the behavioral companion to ui-notes' UI facts. Load before wiring
+  any new interactive surface (popover / speech bubble / explainer / gesture /
+  dismissal), and ADD an entry when a new UX decision is made. UX-1: speaker
+  bubbles dismiss on any outside interaction while live content inside stays
+  clickable — the shared popover-dismissal mechanics behind
+  `wireSettingPopovers` (`account-views.js`), the web-search popover
+  (`app.js`), the `#drspop` DRS explainer (`cure/drc.js`), and the TIN mascot
+  bubble (`introspect-ui.js`).
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated
