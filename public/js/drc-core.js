@@ -119,6 +119,12 @@ export function emptyDrcState() {
     // the server's bash_lite_mcp knob). Default OFF; an absent field (older
     // blobs) reads as off. Purely client-side here, like everything in DRC.
     bashLite: false,
+    // Developer mode (the DRC counterpart of the server's developer_mode
+    // knob): unlocks introspection mode — the deployed source snapshot as
+    // context (fetched as a public static file; the server stays out of the
+    // data path) and, with bashLite also on, the /src sandbox mount. Default
+    // OFF; an absent field (older blobs) reads as off.
+    developerMode: false,
     conversations: [],
     rag: { docs: [] },
   };

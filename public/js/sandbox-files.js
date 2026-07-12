@@ -168,6 +168,7 @@ export function applySizeCap(files, opts = {}) {
  *   session: MountKept[],
  *   project: { name: string, files: MountKept[] } | null,
  *   dropped?: Array<{ scope: string, name: string, reason: string }>,
+ *   source?: { count: number, bytes: number } | null,
  * }} plan
  * @returns {string}
  */
@@ -176,6 +177,12 @@ export function buildManifest(plan) {
   lines.push("# Files mounted into this Linux sandbox.");
   lines.push("# Session files are in /workspace/. The active project's files are in");
   lines.push("# /workspace/" + (plan.project ? plan.project.name : "<projname>") + "/ (a symlink to its /mnt mount).");
+  if (plan.source) {
+    lines.push(
+      `# INTROSPECTION: the deepresearch.se source snapshot (${plan.source.count} files, ${plan.source.bytes} bytes)`,
+    );
+    lines.push("# is mounted at /src (also reachable as /workspace/source) — ls/cat/grep it freely.");
+  }
   lines.push("# columns: scope\\tname\\ttype\\tsize_bytes\\ttier");
   lines.push("");
   for (const f of plan.session || []) {
@@ -227,4 +234,66 @@ export function buildSeedScript(p) {
     lines.push(`cp -a /mnt/in-s/. /workspace/ 2>/dev/null || true`);
   }
   return lines.join("\n");
+}
+
+// ---- the introspection source mount (developer mode) ------------------------
+
+// Byte budget for the source snapshot's DataDevice mount (in page memory,
+// like every Tier-1 mount). Today's whole snapshot is ~3 MB, so this is pure
+// headroom, not a working limit.
+export const MAX_SOURCE_TOTAL_BYTES = 24 * 1024 * 1024;
+
+// A snapshot repo path safe to recreate inside the guest: relative, no
+// traversal, a conservative alphabet (matches what the bundler emits).
+const SAFE_REPO_PATH_RE = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
+
+/**
+ * Plan the introspection source mount: the snapshot's files (repo-relative
+ * paths + full text, introspect-core.js's Snapshot shape) become FLAT entries
+ * for one ingest DataDevice at /mnt/in-src (f0, f1, … — files at the device
+ * root, the same no-nested-dirs discipline as the other ingest devices) plus
+ * a seed script that recreates the real tree at /src. The script is written
+ * INTO the device (as .seed) and run with `sh /mnt/in-src/.seed`, so a
+ * hundreds-of-lines script never rides in argv. /src is refreshed on every
+ * boot (it lives in the persistent overlay, so a stale copy would otherwise
+ * survive reloads); a friendly /workspace/source symlink points at it.
+ * @param {Array<{ p: string, s?: number, t: string }>} files
+ * @param {{ totalMax?: number }} [opts]
+ * @returns {{ entries: Array<{ flat: string, path: string, bytes: Uint8Array }>, seed: string, count: number, bytes: number, dropped: number } | null}
+ */
+export function planSourceMount(files, opts = {}) {
+  const list = Array.isArray(files) ? files : [];
+  const totalMax = opts.totalMax ?? MAX_SOURCE_TOTAL_BYTES;
+  const enc = new TextEncoder();
+  /** @type {Array<{ flat: string, path: string, bytes: Uint8Array }>} */
+  const entries = [];
+  const dirs = new Set();
+  let bytes = 0;
+  let dropped = 0;
+  for (const f of list) {
+    const path = typeof f?.p === "string" ? f.p : "";
+    if (!SAFE_REPO_PATH_RE.test(path) || path.includes("..")) {
+      dropped += 1;
+      continue;
+    }
+    const b = enc.encode(typeof f.t === "string" ? f.t : "");
+    if (!b.length || bytes + b.length > totalMax) {
+      dropped += 1;
+      continue;
+    }
+    bytes += b.length;
+    const slash = path.lastIndexOf("/");
+    if (slash > 0) dirs.add("/src/" + path.slice(0, slash));
+    entries.push({ flat: "f" + entries.length, path, bytes: b });
+  }
+  if (!entries.length) return null;
+  const lines = [];
+  lines.push("rm -rf /src");
+  lines.push("mkdir -p /src " + [...dirs].sort().map(shellEscape).join(" "));
+  for (const e of entries) {
+    lines.push(`cp /mnt/in-src/${e.flat} ${shellEscape("/src/" + e.path)}`);
+  }
+  lines.push("mkdir -p /workspace 2>/dev/null || true");
+  lines.push("ln -sfn /src /workspace/source 2>/dev/null || true");
+  return { entries, seed: lines.join("\n") + "\n", count: entries.length, bytes, dropped };
 }

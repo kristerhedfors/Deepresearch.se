@@ -15,9 +15,12 @@ import { escapeHtml } from "./notifications.js";
 import {
   bashLiteAvailable,
   bashLiteOn,
+  developerModeAvailable,
+  developerModeOn,
   feedbackAvailable,
   feedbackModeOn,
   setBashLiteMcp,
+  setDeveloperMode,
   setFeedbackMode,
 } from "./settings.js";
 import { applyFeedbackMode } from "./turns.js";
@@ -79,6 +82,21 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
   nothing leaves the browser. The first use downloads a Linux image, so it's
   slow to start; enabling it reloads the page.`;
 
+// The developer-mode knob unlocks introspection: ask the assistant about the
+// site's own implementation and it answers from the deployed source snapshot
+// (and can explore the tree at /src when the sandbox is also enabled).
+const DEVELOPER_INFO = `<strong>Developer mode</strong><br>
+  <b>On:</b> unlocks <b>introspection mode</b> — ask about this site's own
+  implementation (“how are you built?”, “show me src/pipeline.js”) and the
+  assistant answers from a snapshot of the exact source code this deployment
+  runs. With the execution sandbox also on, the whole source tree is mounted
+  at <code>/src</code> inside the in-browser Linux VM so the assistant can
+  explore it with real shell commands.<br>
+  <b>Off (default):</b> implementation questions are answered like any other
+  research question.<br>
+  The source is public on GitHub; this knob is about keeping developer
+  tooling out of the way, not secrecy.`;
+
 /**
  * The Feedback-mode and execution-sandbox rows the Settings view renders
  * under the server-backed knobs (account-settings.js) — knob state from
@@ -107,7 +125,16 @@ export function renderConfigKnobs(me) {
       popId: "sbpop",
       info: SANDBOX_INFO,
     }) +
-    '<p id="sbstatus" class="muted setting-note" hidden></p>'
+    '<p id="sbstatus" class="muted setting-note" hidden></p>' +
+    settingRow({
+      id: "devknob",
+      label: "Developer mode",
+      checked: developerModeAvailable() && developerModeOn(),
+      disabled: !developerModeAvailable(),
+      popId: "devpop",
+      info: DEVELOPER_INFO,
+    }) +
+    '<p id="devstatus" class="muted setting-note" hidden></p>'
   );
 }
 
@@ -265,6 +292,32 @@ export function wireSandboxKnob(ctx) {
     } catch (err) {
       knob.checked = !on;
       status.textContent = err?.message || "Could not update the setting.";
+      knob.disabled = false;
+    }
+  });
+}
+
+// The developer-mode knob (Settings view): persists via /api/settings
+// (developer_mode). Nothing about page serving changes (unlike the sandbox
+// knob) — introspection engages per conversation from the next send.
+/** @param {PanelCtx} ctx */
+export function wireDeveloperKnob(ctx) {
+  const knob = /** @type {HTMLInputElement | null} */ (document.getElementById("devknob"));
+  if (!knob || knob.disabled) return;
+  const status = document.getElementById("devstatus");
+  knob.addEventListener("change", async () => {
+    const on = knob.checked;
+    knob.disabled = true;
+    status.hidden = false;
+    try {
+      await setDeveloperMode(on);
+      status.textContent = on
+        ? "Developer mode is on — ask about this site's own source code to enter introspection mode."
+        : "Developer mode is off.";
+    } catch (err) {
+      knob.checked = !on;
+      status.textContent = err?.message || "Could not update the setting.";
+    } finally {
       knob.disabled = false;
     }
   });

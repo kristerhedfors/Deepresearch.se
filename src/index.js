@@ -194,6 +194,14 @@ function isPublicAsset(url, method) {
     // must be public or the /cure module graph (drc-research.js → sandbox.js)
     // fails to link.
     url.pathname === "/js/sandbox-files.js" ||
+    // Introspection (developer mode): the shared pure core (imported by
+    // /cure/drc.js — same public-graph rule as the modules above) and the
+    // committed source-snapshot artifact both tiers fetch. The snapshot is
+    // the repo's own tracked text files — public on GitHub anyway — so
+    // serving it unauthenticated exposes nothing new; DRC needs it public
+    // because its server-not-in-the-path posture forbids an authed endpoint.
+    url.pathname === "/js/introspect-core.js" ||
+    url.pathname === "/introspect/source-snapshot.json" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||
@@ -215,7 +223,12 @@ function isPublicAsset(url, method) {
 // current module graph. Icons/media (not part of the module graph, rarely
 // changed) keep a short real TTL. The Cloudflare EDGE cache is unaffected
 // and safe — it is content-addressed per deploy.
-const ASSET_REVALIDATE = /\.(js|css|html|md|webmanifest)$/i;
+// json included (2026-07-12): the introspection source snapshot
+// (/introspect/source-snapshot.json) must track the deploy it shipped with —
+// a fixed TTL would serve a previous deploy's source for up to an hour, the
+// exact staleness class the cache-helper skill documents. Strong etags make
+// the revalidation a cheap 304.
+const ASSET_REVALIDATE = /\.(js|css|html|md|json|webmanifest)$/i;
 /**
  * @param {Request} request
  * @param {Env} env

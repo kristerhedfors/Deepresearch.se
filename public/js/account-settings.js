@@ -6,7 +6,7 @@
 // from account-views.js's shared settingRow/wireSettingPopovers building
 // blocks; the panel shell (showView) lives in account.js.
 
-import { renderConfigKnobs, settingRow, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
+import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
@@ -130,6 +130,7 @@ export async function loadSettingsView(ctx) {
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
+  wireDeveloperKnob(ctx);
 
   if (usable) wireCloudStorageKnob();
   if (shodanUsable) {

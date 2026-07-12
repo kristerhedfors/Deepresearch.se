@@ -30,7 +30,7 @@ import {
   recordUsage,
 } from "./quota.js";
 import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
-import { bashLiteEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
+import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -87,6 +87,7 @@ import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
  * @typedef {Object} EnrichmentOptions
  * @property {boolean} shodanOn
  * @property {boolean} googleMapsOn
+ * @property {boolean} developerOn
  * @property {boolean} modelIsVision
  * @property {string | null} visionModel
  * @property {string[]} visionModels
@@ -217,6 +218,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     const encoder = new TextEncoder();
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, enrich.shodanOn, {
       googleMaps: enrich.googleMapsOn,
+      introspection: enrich.developerOn,
       vision: enrich.modelIsVision,
       visionModel: enrich.visionModel,
       visionModels: enrich.visionModels,
@@ -317,6 +319,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         sources: state.sources.length,
         shodan_hosts: state.shodanCount,
         google_maps: state.mapsCount,
+        introspection: state.introspectionCount,
         duration_ms,
         client_gone: disconnect.gone,
         incognito,
@@ -365,6 +368,9 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             conflicts: state.conflicts,
             shodan_hosts: state.shodanCount,
             google_maps: state.mapsCount,
+            // 1 when developer mode's introspection enrichment folded the
+            // source snapshot into this exchange (src/introspect.js).
+            introspection: state.introspectionCount,
             // Which maps intent matcher decided (or "none") — the routing
             // trace scripts/chatlogs surfaces (undefined when the knob is
             // off and the enrichment never ran).
@@ -509,6 +515,7 @@ async function enforceQuotaGate(env, log, config, identity) {
 function resolveEnrichmentOptions(body, env, identity, catalog, model) {
   const shodanOn = shodanEnabled(env, identity);
   const googleMapsOn = googleMapsEnabled(env, identity);
+  const developerOn = developerModeEnabled(env, identity);
   const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
   const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
   const visionModels = (modelIsVision
@@ -518,6 +525,7 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
   return {
     shodanOn,
     googleMapsOn,
+    developerOn,
     modelIsVision,
     visionModels,
     visionModel: visionModels[0] || null,
@@ -708,7 +716,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -719,6 +727,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     webSearch,
     shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
     shodanCount: 0, // hosts Shodan actually returned data for
+    // Developer mode's introspection enrichment (src/introspect.js): the gate
+    // is the knob; whether the conversation actually engages the mode is the
+    // enrichment's own (deterministic) decision.
+    introspection: !!extras.introspection,
+    introspectionCount: 0, // 1 when the source snapshot was folded in
     googleMaps: !!extras.googleMaps, // opt-in Google Maps enrichment (src/settings.js)
     mapsCount: 0, // 1 when Google Maps data was found & folded in
     vision: !!extras.vision, // chosen answer model supports image input

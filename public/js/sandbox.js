@@ -29,6 +29,7 @@ import {
   applySizeCap,
   buildManifest,
   buildSeedScript,
+  planSourceMount,
   projHash,
   sanitizeProjName,
 } from "./sandbox-files.js";
@@ -302,7 +303,7 @@ async function bootVM(fileProvider = null) {
   // persistent /workspace volume, the two flat ingest DataDevices, and — if a
   // project is active — its own persistent volume at /mnt/<projname>-<hash>.
   // All fail-soft: any error here leaves the sandbox booting as a bare VM.
-  /** @type {{ plan: any, inSession: any, inProject: any, projMount: string } | null} */
+  /** @type {{ plan: any, inSession: any, inProject: any, inSource: any, projMount: string } | null} */
   let fileMount = null;
   if (fileProvider) {
     try {
@@ -326,16 +327,26 @@ async function bootVM(fileProvider = null) {
         inProject = await CheerpX.DataDevice.create();
         extra.push({ type: "dir", dev: inProject, path: "/mnt/in-p" });
       }
+      // Introspection (developer mode): the source snapshot's ingest device.
+      // Same Tier-1 DataDevice pattern as the session/project ingests — the
+      // pre-bundled files stream in as raw bytes at the device root and the
+      // seed script (planSourceMount) recreates the tree at /src.
+      let inSource = null;
+      if (plan && plan.source) {
+        inSource = await CheerpX.DataDevice.create();
+        extra.push({ type: "dir", dev: inSource, path: "/mnt/in-src" });
+      }
       for (const m of extra) mounts.push(m);
       workspaceDev = wsDev;
       projectDev = projDev;
-      fileMount = { plan, inSession, inProject, projMount };
+      fileMount = { plan, inSession, inProject, inSource, projMount };
       sblog("info", "sandbox.fs.mount", {
         workspace: "/workspace",
         project: projMount || null,
         ingest: inProject ? "/mnt/in-s,/mnt/in-p" : "/mnt/in-s",
         session_files: plan.session.length,
         project_files: plan.project ? plan.project.files.length : 0,
+        source_files: plan.source ? plan.source.count : 0,
         dropped: plan.dropped.length,
         bytes: plan.bytes,
       });
@@ -379,6 +390,8 @@ async function bootVM(fileProvider = null) {
     n: plan ? plan.session.length + (plan.project ? plan.project.files.length : 0) : 0,
     b: plan ? plan.bytes : 0,
     proj: !!(plan && plan.project),
+    // Introspection source mount (developer mode): file count, 0 when absent.
+    src: plan && plan.source ? plan.source.count : 0,
     drop: plan ? plan.dropped.length : 0,
     ms: bootMs,
     err: "",
@@ -422,13 +435,14 @@ async function bootVM(fileProvider = null) {
 
 // ---- file mounting (design part B) -----------------------------------------
 
-// Call the provider and turn its raw {session, project} into a mount plan:
-// size-capped, sanitized, de-duped kept lists + a manifest + the project's
-// sanitized name/hash. Pure logic lives in sandbox-files.js. Never throws for
-// a bad provider payload — returns a session-only (or empty) plan.
+// Call the provider and turn its raw {session, project, source} into a mount
+// plan: size-capped, sanitized, de-duped kept lists + a manifest + the
+// project's sanitized name/hash + the introspection source-mount plan. Pure
+// logic lives in sandbox-files.js. Never throws for a bad provider payload —
+// returns a session-only (or empty) plan.
 /**
  * @param {() => Promise<any>} fileProvider
- * @returns {Promise<{ session: any[], project: any, manifest: string, dropped: any[], bytes: number }>}
+ * @returns {Promise<{ session: any[], project: any, source: any, manifest: string, dropped: any[], bytes: number }>}
  */
 async function preparePlan(fileProvider) {
   const raw = (await fileProvider()) || {};
@@ -447,22 +461,32 @@ async function preparePlan(fileProvider) {
       files: projCap.kept,
     };
   }
+  // Introspection (developer mode): the pre-bundled source snapshot becomes
+  // its own flat ingest + /src seed script — budgeted separately (it's a
+  // fixed, known artifact, not user data competing for the session budget).
+  let source = null;
+  if (raw.source && Array.isArray(raw.source.files) && raw.source.files.length) {
+    source = planSourceMount(raw.source.files);
+    if (source) total += source.bytes;
+  }
   const manifest = buildManifest({
     session: sessionCap.kept,
     project: project ? { name: project.name, files: project.files } : null,
     dropped,
+    source: source ? { count: source.count, bytes: source.bytes } : null,
   });
   sblog("info", "sandbox.fs.plan", {
     session_files: sessionCap.kept.length,
     project_files: project ? project.files.length : 0,
     project_name: project ? project.name : null,
+    source_files: source ? source.count : 0,
     total_bytes: total,
     dropped: dropped.length,
   });
   // Per-dropped-file detail at debug so a "why isn't my file there" can be
   // answered from the log URL without a repro.
   for (const d of dropped) sblog("debug", "sandbox.fs.dropped", { scope: d.scope, name: d.name, reason: d.reason });
-  return { session: sessionCap.kept, project, manifest, dropped, bytes: total };
+  return { session: sessionCap.kept, project, source, manifest, dropped, bytes: total };
 }
 
 // Write the kept bytes into the flat ingest DataDevices (files at the device
@@ -472,7 +496,7 @@ async function preparePlan(fileProvider) {
  * @param {{ plan: any, inSession: any, inProject: any, projMount: string }} fm
  */
 async function seedFiles(fm) {
-  const { plan, inSession, inProject } = fm;
+  const { plan, inSession, inProject, inSource } = fm;
   const enc = new TextEncoder();
   // The manifest rides in as a session file so it lands at /workspace/INDEX.txt.
   await inSession.writeFile("/INDEX.txt", enc.encode(plan.manifest));
@@ -486,13 +510,24 @@ async function seedFiles(fm) {
       sblog("debug", "sandbox.fs.write", { scope: "project", name: f.name, size: f.size });
     }
   }
+  // The introspection source snapshot: flat pre-bundled files (f0, f1, …)
+  // plus its own tree-building seed script, written INTO the device so the
+  // (hundreds-of-lines) script never rides in argv.
+  if (plan.source && inSource) {
+    for (const e of plan.source.entries) {
+      await inSource.writeFile("/" + e.flat, e.bytes);
+    }
+    await inSource.writeFile("/.seed", enc.encode(plan.source.seed));
+    sblog("debug", "sandbox.fs.write", { scope: "source", name: "/src tree", size: plan.source.bytes });
+  }
   const script = buildSeedScript({
     hasProject: !!plan.project,
     projName: plan.project?.name,
     projId: plan.project?.id,
     hash: plan.project?.hash,
   });
-  const r = await cx.run("/bin/sh", ["-c", script], {
+  const full = plan.source && inSource ? script + "\nsh /mnt/in-src/.seed 2>/dev/null || true" : script;
+  const r = await cx.run("/bin/sh", ["-c", full], {
     env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
     cwd: "/root",
     uid: 0,
@@ -501,6 +536,7 @@ async function seedFiles(fm) {
   sblog("info", "sandbox.fs.seed", {
     exit: r && Number.isFinite(r.status) ? r.status : null,
     project_mount: plan.project ? `/mnt/${plan.project.name}-${plan.project.hash}` : null,
+    source_files: plan.source ? plan.source.count : 0,
   });
 }
 

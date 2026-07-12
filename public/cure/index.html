@@ -202,6 +202,22 @@
         </label>
         <span id="sandboxstatus" class="muted"></span>
       </details>
+
+      <details id="devpanel">
+        <summary>Developer mode</summary>
+        <p class="muted">Unlocks <b>introspection mode</b>: ask about this site's own
+          implementation (“how are you built?”, “show me src/pipeline.js”) and the
+          assistant answers from a snapshot of the exact source code this deployment
+          runs — fetched as a public static file, so the server still sees none of
+          your conversation. With the sandbox also on, the whole source tree is
+          mounted at <code>/src</code> in the Linux VM for real shell exploration.</p>
+        <label class="knob-row">
+          <input id="devmode" type="checkbox">
+          <span class="toggle-track"><span class="toggle-dot"></span></span>
+          <span>Enable developer mode (introspection)</span>
+        </label>
+        <span id="devmodestatus" class="muted"></span>
+      </details>
     </aside>
   </div>
 

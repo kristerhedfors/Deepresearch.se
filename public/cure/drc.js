@@ -57,6 +57,13 @@ import {
 } from "/js/drc-providers.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
+import {
+  SNAPSHOT_PATH,
+  buildIntrospectionBlock,
+  introspectionActive,
+  maybeRepoPathMention,
+  validateSnapshot,
+} from "/js/introspect-core.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
@@ -210,6 +217,7 @@ function openSettings() {
   closeDrawer();
   closeAccount();
   $("bashlite").checked = state.bashLite === true; // reflect current state
+  $("devmode").checked = state.developerMode === true;
   renderKeysPanel();
   $("settingsview").hidden = false;
 }
@@ -381,6 +389,7 @@ async function unlock(ev) {
     await saveState(); // create, or persist the merge
     $("websearch").checked = state.research !== false;
     $("bashlite").checked = state.bashLite === true;
+    $("devmode").checked = state.developerMode === true;
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
@@ -618,6 +627,45 @@ async function recallContext(conv, query) {
   }
 }
 
+// Introspection mode (the developer-mode knob): when this conversation asks
+// about the site's own implementation, fetch the deployed source snapshot —
+// a PUBLIC static file, so the server still sees none of the conversation —
+// and build the context block + the sandbox /src mount provider from it.
+// Shared deterministic logic (EN+SV gate, block builder) is introspect-core.js;
+// the snapshot is fetched once per page load. Fail-soft: any problem means an
+// empty block and no mount, never a broken send.
+let snapshotCache = null;
+async function loadSnapshotOnce() {
+  if (!snapshotCache) {
+    snapshotCache = fetch(SNAPSHOT_PATH)
+      .then(async (res) => (res.ok ? validateSnapshot(await res.json()) : null))
+      .catch(() => null);
+  }
+  return snapshotCache;
+}
+
+async function introspectionContext(conv, latestText) {
+  if (state.developerMode !== true) return { block: "", fileProvider: null };
+  try {
+    const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+    if (!introspectionActive(texts) && !texts.some((t) => maybeRepoPathMention(t))) {
+      return { block: "", fileProvider: null };
+    }
+    phaseLine("Loading the source snapshot…");
+    const snap = await loadSnapshotOnce();
+    if (!snap || !introspectionActive(texts, snap)) return { block: "", fileProvider: null };
+    const block = buildIntrospectionBlock(snap, {
+      latestText,
+      sandboxMounted: state.bashLite === true,
+    });
+    // The sandbox boots lazily; if it does, the whole tree lands at /src.
+    const fileProvider = async () => ({ session: [], project: null, source: { files: snap.files } });
+    return { block, fileProvider };
+  } catch {
+    return { block: "", fileProvider: null };
+  }
+}
+
 // Index this conversation's not-yet-indexed turns into the sealed state —
 // runs AFTER the answer is rendered (perceived latency untouched) and
 // before the save, so vectors persist with the turns they index.
@@ -690,6 +738,7 @@ async function send(ev) {
   $("chat").appendChild(live);
 
   const retrieved = await recallContext(conv, text);
+  const intro = await introspectionContext(conv, text);
 
   let shown = "";
   let errMsg = null;
@@ -702,7 +751,9 @@ async function send(ev) {
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
       retrieved,
+      introspection: intro.block,
       bash: state.bashLite === true,
+      fileProvider: intro.fileProvider,
       onStatus: (s) => {
         if (s.type === "phase") {
           phaseLine(PHASE_LABELS[s.phase] || s.phase);
@@ -822,6 +873,17 @@ $("bashlite").addEventListener("change", () => {
   st.textContent = state.bashLite
     ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
     : "Sandbox disabled.";
+  saveState().catch(() => {});
+});
+// Developer-mode knob (client-local, persisted in the sealed project state):
+// unlocks introspection mode for this browser's conversations.
+$("devmode").checked = state.developerMode === true;
+$("devmode").addEventListener("change", () => {
+  state.developerMode = $("devmode").checked;
+  const st = $("devmodestatus");
+  st.textContent = state.developerMode
+    ? "Developer mode is on — ask about this site's own source code to enter introspection mode."
+    : "Developer mode is off.";
   saveState().catch(() => {});
 });
 // Dimmed DRS-feature buttons: the tap explains and points to /rver.

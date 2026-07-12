@@ -46,11 +46,11 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
  */
 /**
  * The effective per-account knob state parseSettings coerces to.
- * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean }} Settings
+ * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability).
- * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean, bash_lite: boolean }} FeatureAvailability
+ * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean, bash_lite: boolean, developer: boolean }} FeatureAvailability
  */
 
 // Four knobs today:
@@ -74,7 +74,14 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    never runs a shell), and the transcript feeds synthesis. Purely a
 //    browser capability, so it needs no server secret — only a user row to
 //    persist the knob; only an explicit stored `true` enables it).
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false };
+//  - developer_mode: default OFF (opt-in — unlocks INTROSPECTION MODE:
+//    conversations that ask about this site's own implementation get the
+//    deployed source snapshot as context (src/introspect.js), and — with the
+//    sandbox knob also on — the source tree mounted at /src in the VM. The
+//    source is public on GitHub anyway; the knob keeps the mode out of
+//    ordinary users' way, not out of reach. No server secret; only an
+//    explicit stored `true` enables it).
+const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped,
 // known keys are coerced to their expected type, anything unreadable means
@@ -101,6 +108,7 @@ export function parseSettings(json) {
     google_maps: raw.google_maps === true,
     feedback_mode: raw.feedback_mode === true,
     bash_lite_mcp: raw.bash_lite_mcp === true,
+    developer_mode: raw.developer_mode === true,
   };
 }
 
@@ -146,6 +154,12 @@ export function featureAvailability(env, identity) {
     // bashLiteEnabled), which is what makes the feature reachable and
     // end-to-end testable with the break-glass credentials.
     bash_lite: !!(identity.user || identity.isSecretAdmin),
+    // Developer mode (the introspection gate) mirrors bash_lite exactly:
+    // no server secret — the source snapshot is a committed public artifact —
+    // and the break-glass admin (an explicit operator identity with no D1
+    // row) gets it, which keeps introspection end-to-end testable with the
+    // break-glass credentials.
+    developer: !!(identity.user || identity.isSecretAdmin),
   };
 }
 
@@ -225,6 +239,21 @@ export function bashLiteEnabled(env, identity) {
   return identity?.user ? getSettings(identity).bash_lite_mcp : true;
 }
 
+// The effective developer-mode state. Gates INTROSPECTION MODE: the
+// source-snapshot enrichment (src/introspect.js) and — client-side — the
+// /src sandbox mount. A signed-in account gates on its stored knob; the
+// break-glass admin is a developer by definition, so the mode is simply on
+// for it (same rationale and same testability path as bashLiteEnabled).
+/**
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
+export function developerModeEnabled(env, identity) {
+  if (!featureAvailability(env, identity).developer) return false;
+  return identity?.user ? getSettings(identity).developer_mode : true;
+}
+
 /**
  * @param {Env} env
  * @param {number | string} userId
@@ -259,6 +288,7 @@ function settingsPayload(env, identity, settings) {
     google_maps: available.google_maps && settings.google_maps,
     feedback_mode: available.feedback && settings.feedback_mode,
     bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
+    developer_mode: available.developer && (identity.user ? settings.developer_mode : true),
     // Browser key for the interactive Street View embed — public by design,
     // safe because the key is HTTP-referrer-locked to the site. Prefers a
     // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY
@@ -308,11 +338,12 @@ export async function handleSettingsPut(request, env, log, identity) {
   const hasGoogleMaps = body?.google_maps !== undefined;
   const hasFeedback = body?.feedback_mode !== undefined;
   const hasBashLite = body?.bash_lite_mcp !== undefined;
-  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite) {
+  const hasDeveloper = body?.developer_mode !== undefined;
+  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite && !hasDeveloper) {
     return jsonResponse(
       {
         error:
-          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean}.",
+          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
       },
       400,
     );
@@ -331,6 +362,9 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   if (hasBashLite && typeof body.bash_lite_mcp !== "boolean") {
     return jsonResponse({ error: "bash_lite_mcp must be a boolean." }, 400);
+  }
+  if (hasDeveloper && typeof body.developer_mode !== "boolean") {
+    return jsonResponse({ error: "developer_mode must be a boolean." }, 400);
   }
   const available = featureAvailability(env, identity);
   if (hasHistory && body.server_history && !available.storage) {
@@ -365,12 +399,21 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
+  // developer_mode needs only a user row (the snapshot is a public artifact)
+  // — available is false only for break-glass, which can't reach this handler.
+  if (hasDeveloper && body.developer_mode && !available.developer) {
+    return jsonResponse(
+      { error: "Developer mode needs a signed-in account." },
+      503,
+    );
+  }
   const settings = { ...getSettings(identity) };
   if (hasHistory) settings.server_history = body.server_history;
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   if (hasGoogleMaps) settings.google_maps = body.google_maps;
   if (hasFeedback) settings.feedback_mode = body.feedback_mode;
   if (hasBashLite) settings.bash_lite_mcp = body.bash_lite_mcp;
+  if (hasDeveloper) settings.developer_mode = body.developer_mode;
   await saveSettings(env, identity.user.id, settings);
   log.info("settings.updated", {
     user_id: identity.id,
@@ -379,6 +422,7 @@ export async function handleSettingsPut(request, env, log, identity) {
     google_maps: settings.google_maps,
     feedback_mode: settings.feedback_mode,
     bash_lite_mcp: settings.bash_lite_mcp,
+    developer_mode: settings.developer_mode,
   });
   return jsonResponse(settingsPayload(env, identity, settings));
 }
