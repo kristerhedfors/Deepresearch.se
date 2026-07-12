@@ -31,7 +31,7 @@ routes = [
 # locked to *.deepresearch.se/* (the mitigation for browser exposure). Set a
 # dedicated Embed-API-only key only to narrow the browser-exposed scope.
 [vars]
-LOG_LEVEL = "info" # debug | info | warn | error
+LOG_LEVEL = "debug" # debug | info | warn | error — temporarily debug for sandbox-filesystem heavy testing (2026-07-12); revert to "info" when done
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on
 # sign-in; everyone else is auto-provisioned as a regular, quota-capped
 # user) is configured directly as a Cloudflare dashboard variable, not
