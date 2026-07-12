@@ -118,9 +118,9 @@ export const SECURITY_RISK_ITEMS = [
     id: "P-8",
     title: "Two unbounded outbound fetches (M-5)",
     severity: "medium",
-    status: "open",
+    status: "fixed",
     summary:
-      "exa.js webSearch (the hot path) and berget.js fetchCatalog fetch without AbortSignal.timeout, violating invariant 2 (helpers degrade, never hang). Add signal: AbortSignal.timeout(...) to both; keep the fail-soft catches. Cheap fix.",
+      "FIXED (2026-07-12): exa.js webSearch and berget.js fetchCatalog now fetch with signal: AbortSignal.timeout (15s each); a TimeoutError lands in each function's existing fail-soft catch, so a hung backend degrades instead of hanging (invariant 2). Was: both hot-path fetches were unbounded.",
   },
   {
     id: "P-9",

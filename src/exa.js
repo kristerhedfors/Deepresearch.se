@@ -13,6 +13,12 @@ const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
 // an unbounded fetch has bitten this project before. Full-content fetch is
 // budget-gated top-tier work, so a hung backend must degrade, never hang.
 const CONTENTS_TIMEOUT_MS = 20_000;
+// Bounds the /search fetch the same way — the search wave is the pipeline's
+// hot path, so a hung Exa backend must degrade to a failure() string (which
+// the pipeline carries on with), never hang the request. A TimeoutError from
+// AbortSignal lands in webSearch's existing catch below, same as any other
+// fetch rejection.
+const SEARCH_TIMEOUT_MS = 15_000;
 // Cap the extracted text per source so a handful of long pages can't blow the
 // synthesis digest / Worker memory. Generous enough to carry a real article.
 const CONTENTS_MAX_CHARS = 6000;
@@ -137,6 +143,7 @@ export async function webSearch(env, log, query, depth = {}) {
         numResults,
         contents: { highlights: true },
       }),
+      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
     });
   } catch (err) {
     const msg = /** @type {any} */ (err)?.message || String(err);
