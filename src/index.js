@@ -145,6 +145,7 @@ function isPublicAsset(url, method) {
     url.pathname.startsWith("/help/") ||
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
+    url.pathname.startsWith("/architecture/") ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page
