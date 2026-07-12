@@ -10,6 +10,12 @@ XSS/DOM; and HTTP headers/quota/config/secrets). Highest-impact findings were
 re-verified directly against source. Findings are labelled **Confirmed**
 (traced to exact code) or **Suspected** (latent / depends on a precondition).
 
+> **Tracking moved (2026-07-12):** this document is a frozen point-in-time
+> review. Ongoing status of every still-open finding — plus the
+> public-source-specific risk classes and the priority-ordered fix backlog —
+> now lives in **`SECURITY-RISKS.md`** (the living register; verified via the
+> **security-posture** skill). Do not update statuses here.
+
 > **Update (2026-07-08): the three HIGH-severity findings (H-1, H-2, H-3) have
 > been remediated** in the same commit that lands this document. Each is marked
 > **✅ Fixed** below with the change made. The Medium/Low findings remain open and

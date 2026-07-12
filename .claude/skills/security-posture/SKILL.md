@@ -1,0 +1,121 @@
+---
+name: security-posture
+description: >-
+  Load when verifying or updating the project's security posture — "check
+  security", "any leaked keys?", "is finding X still open?", auditing the
+  public-source risk list, before/after touching auth (src/auth.js), headers
+  (src/index.js withRequestId/CSP), storage privacy, quota/rate limiting, or
+  prompts that read untrusted web content — and WHENEVER SECURITY-RISKS.md is
+  edited. Companion to SECURITY-RISKS.md (the living risk register): this
+  skill holds the concrete re-check procedure for every register item — the
+  secret-leak scans (working tree + git history, incl. the shallow-clone
+  caveat), header/CSP probes, per-finding greps (M-1…M-6, L-1…L-12), the
+  provider key-cap checklist, and the commit-time rules that keep live user
+  data and credentials out of the public repo.
+---
+
+# Security posture verification
+
+The register (`SECURITY-RISKS.md` at the repo root) is the source of truth for
+open security work; this skill is HOW to verify each item. Rules of the loop:
+
+- **Run the relevant section before AND after touching security-adjacent code**
+  (auth, headers, storage, quota, prompts, providers).
+- **When a check's result changes** (an item got fixed, or regressed), update
+  the register: status tag, one-line fix description, dated History-log entry.
+- **When adding a register risk, add its check here** in the same change.
+- Everything here is read-only verification — safe to run any time. Findings
+  are verified against SOURCE first; live probes confirm deploys, not truth.
+
+## 1. Secret-leak scan (R-1 / P-2) — run before every push touching docs/tests/config
+
+Working tree + fetched history, one command (from repo root):
+
+```bash
+git log --all -p --unified=0 | grep -aoE \
+  "(sk-[A-Za-z0-9_-]{24,}|sk_ber_[A-Za-z0-9_-]{8,}|gsk_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{35}|xox[bpoas]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)" \
+  | sort -u
+```
+
+Empty output = clean. Also grep the WORKING TREE with the same pattern set
+(catches not-yet-committed files), and check `ls .dev.vars* .env*` finds
+nothing outside `.gitignore` (which must keep covering `.dev.vars` and `.env`).
+
+**Shallow-clone caveat (learned 2026-07-12):** remote-session clones are
+shallow (`git rev-parse --is-shallow-repository` → `true`), so the history
+scan only covers fetched commits. A FULL-history verdict needs
+`git fetch --unshallow` first, or GitHub's secret scanning on the server side.
+Key patterns: OpenAI `sk-`, Berget `sk_ber_`, Groq `gsk_`, Anthropic is also
+`sk-`-prefixed (`sk-ant-`), AWS `AKIA`, GitHub `ghp_`/`github_pat_`, Google
+`AIza`, Slack `xox*`, PEM blocks. Extend the pattern when a new provider joins
+(`add-llm-provider` skill).
+
+**If a secret is EVER found:** rotate at the provider FIRST (the repo is
+public — assume compromised the moment it was pushed), then rewrite history,
+then log the incident in the register's History log.
+
+## 2. Commit-time hygiene (R-6) — when committing anything derived from live traffic
+
+Chatlog excerpts, feedback threads, eval-ledger entries, verbatim-message
+regression tests (the `bugreport-bugfix` convention): before committing,
+(a) scrub names/emails/locations that identify a user, (b) never commit a full
+chatlog row, (c) run the §1 tree grep over the staged diff — users paste keys
+into chats. The repo is public; a committed excerpt is published.
+
+## 3. Provider key caps (P-1) — quarterly + on any new provider
+
+Not verifiable from the repo — needs a dashboard pass per provider: Berget
+spend limit, OpenAI monthly hard limit, Anthropic workspace spend cap, Exa
+plan/credits, Google Cloud (per-key API restriction + quota caps + billing
+alert; the Embed key MUST be referrer-locked to `*.deepresearch.se/*` — it is
+deliberately browser-exposed and the lock is its only mitigation), Shodan plan
+credits. Record cap values + date in the register's History log.
+
+## 4. Headers & CSP (H-2 follow-up / P-4)
+
+Source: `src/index.js` — `CSP_ENABLED` flag (currently `false`) and the
+always-on header set in `withRequestId` (nosniff, `X-Frame-Options: DENY`,
+Referrer-Policy, HSTS, COOP, Permissions-Policy). Live probe:
+
+```bash
+curl -sI https://deepresearch.se/ | grep -iE \
+  "content-security|x-content-type|x-frame|referrer-policy|strict-transport|permissions-policy"
+```
+
+All five non-CSP headers must be present on EVERY response class (HTML, JSON
+`/api/*`, assets, SSE). When flipping `CSP_ENABLED`: re-verify the two
+inline-script hashes, the Maps origins, AND the sandbox's COEP/cross-origin
+needs (`execution-sandbox` skill), then watch a live console through app +
+Street View + sandbox flows.
+
+## 5. Register-item greps (imported findings) — each must stay/turn as tagged
+
+| Item | Check (repo root) | OPEN looks like |
+|---|---|---|
+| M-1 quota race | `grep -n "recordUsage\|quotaExceeded" src/chat.js src/quiz-api.js src/mcp.js src/bash-api.js` | gate at admission, record after; no reservation |
+| M-2 rate limit | `grep -rn "rate" src/index.js src/quota.js` | no limiter on chat/mcp/embed/quiz/bash-step |
+| M-3 chat_logs drain | `grep -n "chat_logs" src/storage.js src/chatlog.js` | absent from `handleStorageDelete`; no TTL/prune |
+| M-4 plaintext convos | `grep -n "iv, ciphertext.*data\|{data" src/storage.js` | `putEncRecord` accepts `{data}` for convos |
+| M-5 unbounded fetches | `grep -n "AbortSignal" src/exa.js src/berget.js` | `webSearch` + `fetchCatalog` have none |
+| M-6 anti-injection | `grep -n "ANTI_INJECTION" src/prompts.js` then eyeball `gapPrompt`/`validatePrompt` tails | those two builders lack the note |
+| L-1 href scheme | `grep -n "a.href = src.url" public/js/activity.js` | assignment with no scheme check |
+| L-2 RAG post-filter | `grep -n "metadata" src/rag.js` around the query | no `m.metadata.u === uid` assertion |
+| L-3 key cacheable | `grep -n -A3 "handleHistoryKey" src/user-api.js` | plain `jsonResponse`, no `no-store` |
+| L-12 vendor manifest | `ls public/vendor/` | no version/SHA-256 manifest file |
+| H-3 stays fixed | `node --test src/auth.test.js` | (regression) any fallback key reappearing |
+| R-7 log level | `grep -n "LOG_LEVEL" wrangler.toml` | `debug` in prod past its testing window |
+
+Full status history + remediation detail: the register §3 and
+`SECURITY-ASSESSMENT.md` §2.
+
+## 6. Invariants that must never regress (assessment §3 "verified sound")
+
+Spot-check when touching the area: secrets only via `env.*` (never logged,
+never in prompts); storage/RAG/answer keys scoped to SERVER-derived
+`identity.user.id` with regex-validated ids; SQL always parameterised; no
+Worker fetch of user/model-controlled URLs (SSRF); outbound minimum-data rule
+(query/coordinate/host only); DOMPurify on every untrusted-HTML sink; OAuth
+state CSRF cookie; fail-closed Basic Auth + `SESSION_SECRET`-only cookie HMAC;
+DRC keys never at rest outside the sealed blob (`drc-core` tests pin this).
+The unit suite (`npm test`) carries regression tests for most of these — a
+security-relevant change without an accompanying test is a register entry.
