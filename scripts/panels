@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# The panel-SELECTION board on the LIVE site — the ATTENTION loop's view of
+# which admin surface the owner is working on now. Unlike security/features
+# (which order a backlog), this board's items ARE the admin panels, reshaped
+# PURELY by the owner's ▲/▼ thumbs (no drag, no explicit priority). Wraps
+# /api/admin/panels (src/panels.js) using the break-glass Basic Auth
+# credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars
+# scripts/features and scripts/security use. The default text output IS the
+# focus order (highest net votes first) — see the feature-board skill (the
+# attention board).
+#
+# Usage:
+#   scripts/panels                          the focus order, readable text
+#   scripts/panels --default                the authored order (JSON view only;
+#                                           text output always shows focus order)
+#   scripts/panels --json                   JSON instead of text
+#   scripts/panels --vote users up          upvote a panel (or: down)
+#   scripts/panels --set users '{"note":"working accounts today"}'
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+order="focus"
+action=""
+id=""
+arg=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --default) order="default" ;;
+    --vote) action="vote"; id="$2"; arg="$3"; shift 2 ;;
+    --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+case "$action" in
+  vote)
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg d "$arg" '{dir:$d}')" \
+      "$BASE_URL/api/admin/panels/$id/vote"
+    exit 0 ;;
+  set)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$arg" \
+      "$BASE_URL/api/admin/panels/$id"
+    exit 0 ;;
+esac
+
+qs="order=$order"
+[ "$format" = "text" ] && qs="$qs&format=text"
+curl_auth "$BASE_URL/api/admin/panels?$qs"

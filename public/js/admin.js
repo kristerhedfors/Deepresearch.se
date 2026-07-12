@@ -53,6 +53,7 @@ async function load() {
   renderConfig();
   loadSecurity();
   loadFeatures();
+  loadPanels();
 }
 
 // ---- decision-board interaction (shared by every selection board) ---------
@@ -364,6 +365,71 @@ for (const mode of ["priority", "impact"]) {
     loadFeatures();
   });
 }
+
+// ---- panel selection board (the ATTENTION loop) ---------------------------
+// A board whose ITEMS are the admin panels themselves — and it has NO board
+// widget of its own. Each panel header carries ▲/▼ thumbs (injected below),
+// and voting reshapes THIS view in place: panels sort by net votes (whatever
+// the owner is working on floats to the top), and a net-negative panel
+// collapses its body and sinks. That live order is the admin's FOCUS ORDER a
+// Claude Code loop reads (/api/admin/panels?format=text) to know which surface
+// the owner is actively working — a loop driven PURELY by up/down votes, no
+// drag, no explicit priority. See the feature-board skill (the attention
+// board) and src/panels.js. Fail-soft: the reshaping is an enhancement, so any
+// error just leaves the authored order untouched.
+
+const PANEL_MAIN = document.querySelector("main");
+
+async function loadPanels() {
+  let data;
+  try {
+    data = await api("/panels?order=focus");
+  } catch {
+    return; // DB off or endpoint missing — leave the page as authored
+  }
+  for (const it of data.items) {
+    const sec = PANEL_MAIN.querySelector(`section[data-panel="${it.id}"]`);
+    if (!sec) continue;
+    // Inject / refresh the header vote widget (once per panel).
+    const h2 = sec.querySelector("h2");
+    if (h2) {
+      let w = h2.querySelector(".pvote");
+      if (!w) {
+        h2.insertAdjacentHTML(
+          "beforeend",
+          `<span class="pvote" data-panel-vote="${it.id}">
+             <button data-pact="up" class="secondary" title="Pull this panel up">▲</button>
+             <b>0</b>
+             <button data-pact="down" class="secondary" title="Push this panel down">▼</button>
+           </span>`,
+        );
+        w = h2.querySelector(".pvote");
+      }
+      w.querySelector("b").textContent = it.votes;
+    }
+    // Net-negative panels are "muted": collapsed (body hidden) and dimmed, but
+    // the header + votes stay so the owner can pull it back up.
+    sec.classList.toggle("panel-muted", it.votes < 0);
+    // Re-sequence: append in the server's focus order (moving an element that
+    // is already a child just relocates it), so the DOM matches the votes.
+    PANEL_MAIN.appendChild(sec);
+  }
+}
+
+// Delegated vote handler — the thumbs live inside the panel headers, so one
+// listener on <main> covers them all (and survives header re-renders).
+PANEL_MAIN.addEventListener("click", async (e) => {
+  const btn = e.target.closest?.("[data-pact]");
+  if (!btn) return;
+  const id = btn.closest("[data-panel-vote]")?.dataset.panelVote;
+  if (!id) return;
+  try {
+    await api(`/panels/${id}/vote`, { method: "POST", body: { dir: btn.dataset.pact } });
+    await loadPanels();
+  } catch (err) {
+    alert(err.message);
+  }
+});
 
 // ---- notification center ---------------------------------------------------
 // Unifies everything needing admin attention — pending sign-in approvals
