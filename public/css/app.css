@@ -17,6 +17,30 @@
   --ok: #157a4b;
   --user: #d8edff;
 }
+/* Developer mode's titanium-gray palette. Applied by toggling `dev-mode` on the
+   ROOT element (public/js/dev-mode.js) — it must sit on :root because the html
+   background reads --bg, so the class that overrides the palette variables has
+   to be on the same element (a body class couldn't repaint html). Every chrome
+   surface already draws from these nine variables, so re-pointing them here
+   re-skins the whole app in one place — a cool brushed-metal neutral (a faint
+   blue undertone keeps it "titanium", not flat gray) that reads as a distinct,
+   quieter "you're in developer mode" surface without touching any component
+   rule. The one non-variable touch is a subtle metallic sheen on the html
+   background so the field itself looks like brushed titanium, not paper. */
+:root.dev-mode {
+  --bg: #8b9299;
+  --panel: #f3f4f6;
+  --panel-2: #e4e7ea;
+  --border: #b6bcc4;
+  --text: #1b2127;
+  --muted: #55606b;
+  --accent: #4a5967;
+  --ok: #2f7d59;
+  --user: #dee2e7;
+}
+html.dev-mode {
+  background-image: linear-gradient(155deg, #969ca3 0%, #868d95 45%, #7c848c 100%);
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }

@@ -24,6 +24,7 @@ import {
   setFeedbackMode,
 } from "./settings.js";
 import { applyFeedbackMode } from "./turns.js";
+import { applyDeveloperTheme } from "./dev-mode.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -340,8 +341,12 @@ export function wireDeveloperKnob(ctx) {
     status.hidden = false;
     try {
       await setDeveloperMode(on);
+      // Flip the titanium-gray theme the instant the knob commits (and cache it
+      // for the next load — dev-mode.js). Only after the server accepts the
+      // write, so a rejected save leaves the palette untouched.
+      applyDeveloperTheme(on);
       status.textContent = on
-        ? "Developer mode is on — ask about this site's own source code to enter introspection mode."
+        ? "Developer mode is on — the titanium theme is on, and asking about this site's own source code enters introspection mode."
         : "Developer mode is off.";
     } catch (err) {
       knob.checked = !on;

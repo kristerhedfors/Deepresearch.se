@@ -23,6 +23,7 @@ import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachm
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
+import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
 import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
@@ -49,6 +50,14 @@ const chat = document.getElementById("chat");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
+
+// Developer-mode titanium theme — applied FIRST, synchronously, from the local
+// cache (dev-mode.js) so a returning developer-mode user (a PWA relaunch reads
+// the device-cached shell before /api/settings answers) paints the titanium
+// palette with no blue flash. The server's authoritative developer_mode
+// reconciles this below once loadSettings() resolves. { persist: false }: this
+// is reading the cache, not making a new decision.
+applyDeveloperTheme(cachedDeveloperMode(), { persist: false });
 
 // ---- Auto-follow scrolling ---------------------------------------------
 // Streaming pins the view to the bottom ONLY while the user is already
@@ -104,6 +113,11 @@ loadSettings()
     // Feedback mode (account panel knob): reveal the per-reply Feedback
     // buttons — turns.js keeps them in the DOM, the body class shows them.
     applyFeedbackMode(s?.feedback_mode === true);
+    // Reconcile the titanium theme with the server's authoritative
+    // developer_mode: repaints (and re-caches) if this device flipped the knob
+    // elsewhere, or if the account had developer mode on but no local cache
+    // yet (first load on a new device). A no-op when the cache already agreed.
+    applyDeveloperTheme(s?.developer_mode === true);
     // Experimental execution sandbox self-heal: the sandbox needs the page to
     // be cross-origin isolated (COEP), which the server only sends when the
     // bash_lite knob is on. If the knob is on but THIS page loaded without

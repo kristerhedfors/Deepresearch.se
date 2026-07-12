@@ -537,8 +537,13 @@ function clip(t, max) {
 
 // Caps — the loop is bounded so a runaway (or hostile) model can't blow the
 // context window or spin forever. Sized so the gathered source fits alongside
-// the sitemap on the reliable JSON model that drives the loop.
-export const MAX_SOURCE_READ_ROUNDS = 4; // agentic read rounds before we answer regardless
+// the sitemap on the reliable JSON model that drives the loop. This whole read
+// loop only runs in developer mode (the introspection-first source-research
+// path, src/pipeline.js runSourceResearch), so these caps ARE the developer
+// exploration profile — leaned generously so the model gets several rounds to
+// follow its own curiosity through the tree (reading files as it wants) before
+// we make it answer regardless, rather than forcing a verdict after a glance.
+export const MAX_SOURCE_READ_ROUNDS = 6; // agentic read rounds before we answer regardless
 export const MAX_FILES_PER_ROUND = 6; // file paths accepted from one model turn
 export const MAX_READ_FILE_CHARS = 16_000; // one file's text kept, truncated beyond
 export const MAX_READ_TOTAL_CHARS = 60_000; // all files read together

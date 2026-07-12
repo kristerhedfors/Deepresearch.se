@@ -311,7 +311,14 @@ project chats which rest readable because they're RAG-indexed — now also
 dual-writing each record to the cloud while the knob is on),
 `history-ui.js` (the left history sidebar: list/rename/delete/load),
 `settings.js` (cached `/api/settings` client; `serverHistoryOn()` is the
-synchronous question every storage-touching module asks), `opfs.js`
+synchronous question every storage-touching module asks), `dev-mode.js`
+(developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`
+class on the ROOT element re-pointing the nine palette variables, `:root.dev-mode`
+in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
+relaunch paints the titanium palette at first paint before `/api/settings`
+answers; `app.js` applies the cache synchronously at boot then reconciles with
+the server's authoritative `developer_mode`, and the developer knob flips it on
+toggle — Node-tested), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental
