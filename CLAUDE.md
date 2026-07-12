@@ -507,8 +507,13 @@ flat ingest entries + the /src tree-building seed script — see the
 implementation behind the server enrichment `src/introspect.js` and both
 tiers' clients: the `introspectionIntent` EN+SV gate incl. the
 Swedish-parity suite, the sticky `introspectionActive` conversation gate,
-snapshot validation, path-mention extraction, and the capped context-block
-builder) and `src/introspect.test.js` (the enrichment against a mocked
+snapshot validation, path-mention extraction, the capped context-block
+builder, and `groupIntrospectionModels`/`parseIntrospectionChoice` — the
+private-vs-remote model-picker grouping) and `introspect-ui.test.js` (the
+DRS routing accessors `privateIntrospectionRoute`/`introspectionRemoteModel`
+over a localStorage stub — the rest of `introspect-ui.js` is the TIN
+titanium-mascot + picker DOM glue, verified live) and
+`src/introspect.test.js` (the enrichment against a mocked
 ASSETS binding + the snapshot FRESHNESS check: `npm test` fails when
 `public/introspect/source-snapshot.json` is stale — re-run `npm run
 bundle`; see the **introspection** skill).

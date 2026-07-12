@@ -22,7 +22,8 @@ import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { bashLiteOn, loadSettings } from "./settings.js";
+import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
+import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
@@ -378,6 +379,20 @@ const autogrow = () => {
   input.style.height = input.scrollHeight + "px";
 };
 input.addEventListener("input", autogrow);
+
+// Introspection mode's mascot (developer mode): as soon as what the user is
+// TYPING reads as an ask about this site's own implementation, TIN — the
+// titanium robot — slides in with the answer-route picker, so the private
+// (own-key, browser-direct) choice can be made BEFORE the question is sent.
+// Debounced; a no-op with the knob off. See public/js/introspect-ui.js.
+initIntrospectUi({ tier: "drs" });
+let introspectTypeTimer = 0;
+input.addEventListener("input", () => {
+  clearTimeout(introspectTypeTimer);
+  introspectTypeTimer = setTimeout(() => {
+    if (developerModeOn()) noteIntrospectionText(input.value);
+  }, 350);
+});
 
 // The image deck's per-image chat panel (imagedeck.js): asking there
 // anchors the next message at that image's position (the map_view anchor —

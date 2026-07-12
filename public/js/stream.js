@@ -23,7 +23,9 @@ import {
   updateGenericStep,
 } from "./activity.js";
 import { bashLiteOn, developerModeOn } from "./settings.js";
-import { introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
+import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
+import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
+import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop } from "./bash-agent.js";
 import { ensureSandboxBooted, execInSandbox, sandboxFsSummary, sandboxSupported, sblog } from "./sandbox.js";
 import {
@@ -819,6 +821,156 @@ async function maybeRunShellLoop(turn, opts) {
   }
 }
 
+// ---- introspection mode: the private (browser-direct) answer route -----------
+
+// The source snapshot, fetched once per page load (multi-MB; introspection
+// asks are rare and the artifact only changes with a deploy).
+let introspectSnapshotPromise = null;
+function introspectSnapshot() {
+  if (!introspectSnapshotPromise) {
+    introspectSnapshotPromise = fetch(SNAPSHOT_PATH)
+      .then(async (res) => (res.ok ? validateSnapshot(await res.json()) : null))
+      .catch(() => null);
+  }
+  return introspectSnapshotPromise;
+}
+
+// Introspection-engaged check for the CURRENT conversation (regex gate free;
+// the snapshot loads only when a path-shaped mention needs confirming).
+async function introspectionEngagedNow() {
+  const texts = userTexts(history);
+  if (introspectionActive(texts)) return true;
+  if (!texts.some((t) => maybeRepoPathMention(t))) return false;
+  const snap = await introspectSnapshot();
+  return !!snap && introspectionActive(texts, snap);
+}
+
+// The friendly phase labels for the private run's single activity step.
+const PRIVATE_PHASE_LABELS = {
+  triage: "Planning (browser-direct)…",
+  harvest: "Gathering notes (browser-direct)…",
+  gap: "Auditing coverage (browser-direct)…",
+  synth: "Writing the answer (browser-direct)…",
+  validate: "Reviewing the draft (browser-direct)…",
+  sandbox: "Running in the Linux sandbox…",
+  answer: "Writing the answer (browser-direct)…",
+  clarify: "Asking for a detail…",
+};
+
+// The PRIVATE introspection route: with developer mode on, the conversation
+// in introspection mode, and a private (own-key) model picked in TIN's panel
+// (introspect-ui.js), the whole exchange runs BROWSER-DIRECT through the
+// client-side pipeline (drc-research.js) on the user's key — /api/chat is
+// never called, so this site's server sees nothing of the conversation.
+// Returns false (fall through to the normal server path) unless the route
+// fully applies; once the run starts, every outcome settles HERE.
+async function maybePrivateIntrospection(turn, opts, signal, gen) {
+  let route = null;
+  let snap = null;
+  try {
+    if (!developerModeOn()) return false;
+    route = privateIntrospectionRoute();
+    if (!route) return false;
+    if (!(await introspectionEngagedNow())) return false;
+    snap = await introspectSnapshot();
+    if (!snap) return false; // no snapshot → no introspection to speak of
+  } catch {
+    return false; // any decision-phase problem → the ordinary server path
+  }
+  await runPrivateIntrospection(turn, opts, signal, gen, route, snap);
+  return true;
+}
+
+async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
+  let acc = "";
+  try {
+    const texts = userTexts(history);
+    startGenericStep(turn, "introspect", `Private introspection — ${route.model} on your ${route.label} key…`);
+    recordResearchEvent(turn, { event: "private_introspection", provider: route.providerId, model: route.model });
+    const block = buildIntrospectionBlock(snap, {
+      latestText: texts[texts.length - 1] || "",
+      sandboxMounted: bashLiteOn() && sandboxSupported(),
+    });
+    // The client pipeline works on plain text turns: flatten multimodal
+    // content to its text parts (images can't ride the browser-direct wire).
+    const messages = history.slice(-12).map((m) => ({
+      role: m.role,
+      content:
+        typeof m.content === "string"
+          ? m.content
+          : Array.isArray(m.content)
+            ? m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n")
+            : "",
+    })).filter((m) => m.content);
+    const result = await runDrcResearch({
+      providerId: route.providerId,
+      apiKey: route.apiKey,
+      model: route.model,
+      messages,
+      research: opts.webSearch !== false, // the composer knob keeps its meaning: phases on/off
+      introspection: block,
+      bash: bashLiteOn(),
+      fileProvider: async () => ({ session: [], project: null, source: { files: snap.files } }),
+      onStatus: (s) => {
+        if (gen !== generation) return;
+        if (s.type === "phase") {
+          updateGenericStep(turn, "introspect", PRIVATE_PHASE_LABELS[s.phase] || "Working (browser-direct)…");
+          recordResearchEvent(turn, { event: "phase", phase: s.phase });
+        } else if (s.type === "discard_text") {
+          acc = "";
+          resetForRevision(turn);
+        }
+      },
+      onDelta: (chunk) => {
+        if (gen !== generation) return;
+        acc += chunk;
+        setText(turn, acc);
+        scrollDown();
+      },
+      signal,
+    });
+    if (gen !== generation) return; // New chat took the conversation mid-run
+    const answer = result?.answer || acc;
+    if (answer) {
+      setText(turn, answer);
+      history.push({ role: "assistant", content: answer });
+      finishGenericStep(turn, {
+        id: "introspect",
+        label: `Answered privately — browser → ${route.label} on your key; this site's server was not involved`,
+      });
+      await persistConversation(opts);
+    } else {
+      finishGenericStep(turn, { id: "introspect", label: "Private introspection produced no answer" });
+      setError(turn, "No response received.");
+      await abandonUnanswered(opts);
+    }
+  } catch (e) {
+    if (gen !== generation) return;
+    if (e?.name === "AbortError") {
+      // The user pressed Stop: keep the partial as context, like the server path.
+      finishGenericStep(turn, { id: "introspect", label: "Stopped" });
+      if (acc) {
+        const stopped = acc + "\n\n*(Stopped.)*";
+        setText(turn, stopped);
+        history.push({ role: "assistant", content: stopped });
+        await persistConversation(opts);
+      } else {
+        setError(turn, "Stopped before any response arrived.");
+        history.pop();
+        pruneEmbeds();
+      }
+      return;
+    }
+    finishGenericStep(turn, { id: "introspect", label: "Private route failed" });
+    setError(turn, (e?.message || "The private request failed.") + " (Your key, browser-direct — nothing was sent to this site's server.)");
+    history.pop();
+    pruneEmbeds();
+  } finally {
+    inFlight = false;
+    collapseActivity(turn);
+  }
+}
+
 // Build the file provider the sandbox seeds from (design part B): this send's
 // attachments become /workspace files, the active project's files become the
 // project mount. Returns an async fn the sandbox calls once, right before boot
@@ -898,8 +1050,7 @@ function buildSandboxFileProvider(opts) {
         const texts = userTexts(history);
         const cheap = introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t));
         if (cheap) {
-          const res = await fetch(SNAPSHOT_PATH);
-          const snap = res.ok ? validateSnapshot(await res.json()) : null;
+          const snap = await introspectSnapshot(); // page-lifetime cache
           if (snap && introspectionActive(texts, snap)) source = { files: snap.files };
         }
       }
@@ -938,6 +1089,15 @@ export async function sendMessage(text, opts) {
   controller = new AbortController();
   const signal = controller.signal;
 
+  // INTROSPECTION MODE's private route (developer mode + TIN's picker set to
+  // an own-key model + the conversation asking about this site's own
+  // implementation): the exchange runs browser-direct on the user's key and
+  // settles entirely inside runPrivateIntrospection — /api/chat, the
+  // watchdog, and the recovery machinery below never engage (there is no
+  // server request to watch or recover). Stop still works: it aborts the
+  // same controller this send owns.
+  if (await maybePrivateIntrospection(turn, opts, signal, gen)) return;
+
   // iOS suspends network for backgrounded apps/PWAs — the most common cause
   // of mid-stream drops. On return the torn-down socket frequently makes the
   // next reader.read() HANG with no error, so a plain try/catch would never
@@ -967,6 +1127,14 @@ export async function sendMessage(text, opts) {
   let requestId = "";
   try {
     const payload = await buildChatPayload(opts);
+    // Introspection on the SERVER route: wave TIN in (the user may still
+    // switch to the private route for the next message), and honor a remote
+    // model explicitly picked in the panel over the composer dropdown.
+    if (developerModeOn() && (await introspectionEngagedNow())) {
+      engageIntrospection();
+      const remoteModel = introspectionRemoteModel();
+      if (remoteModel) payload.model = remoteModel;
+    }
     // Experimental bash-lite sandbox: when the message wants a shell, run the
     // in-browser Linux agent loop first and attach its transcript so the
     // answer is written from the real command output. No-op (empty) unless the

@@ -201,6 +201,10 @@ function isPublicAsset(url, method) {
     // serving it unauthenticated exposes nothing new; DRC needs it public
     // because its server-not-in-the-path posture forbids an authed endpoint.
     url.pathname === "/js/introspect-core.js" ||
+    // The introspection mascot/picker component (imported by /cure/drc.js —
+    // same public-graph rule; its own imports, introspect-core.js and
+    // drc-providers.js, are already above).
+    url.pathname === "/js/introspect-ui.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||

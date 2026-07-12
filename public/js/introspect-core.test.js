@@ -6,6 +6,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  groupIntrospectionModels,
+  parseIntrospectionChoice,
   MAX_INLINE_FILE_CHARS,
   MAX_INLINE_FILES,
   MAX_INLINE_TOTAL_CHARS,
@@ -182,4 +184,55 @@ test("buildIntrospectionBlock: per-file and total inline caps truncate honestly"
 
 test("snapshotIndex: one row per file", () => {
   assert.equal(snapshotIndex(snap()).split("\n").length, 4);
+});
+
+// ---- the model picker grouping ---------------------------------------------------
+
+test("groupIntrospectionModels: private first + recommended, remote labeled as remote", () => {
+  const { groups, recommended } = groupIntrospectionModels(
+    [
+      { id: "openai", label: "OpenAI", models: ["gpt-5.6-sol", "gpt-5.4-mini"] },
+      { id: "groq", label: "Groq", models: ["llama-4"] },
+    ],
+    [
+      { id: "mistral-small", name: "Mistral Small", up: true },
+      { id: "downmodel", name: "Down Model", up: false },
+    ],
+  );
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].kind, "private");
+  assert.equal(groups[0].options.length, 3);
+  assert.match(groups[0].options[0].label, /your key \(private\)/);
+  assert.equal(groups[1].kind, "remote");
+  assert.match(groups[1].options[0].label, /remote \(this site's server\)/);
+  assert.equal(groups[1].options[1].disabled, true); // down models stay visible but disabled
+  assert.equal(recommended, "p:openai:gpt-5.6-sol"); // the privacy-obvious choice
+});
+
+test("groupIntrospectionModels: no keys → remote only, nothing recommended", () => {
+  const { groups, recommended } = groupIntrospectionModels([], [{ id: "m1" }]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].kind, "remote");
+  assert.equal(recommended, "");
+});
+
+test("groupIntrospectionModels: DRC shape — private only (no server catalog)", () => {
+  const { groups } = groupIntrospectionModels([{ id: "berget", label: "Berget", models: ["m"] }], []);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].kind, "private");
+});
+
+test("parseIntrospectionChoice round-trips both kinds and rejects junk", () => {
+  assert.deepEqual(parseIntrospectionChoice("p:openai:gpt-5.6-sol"), {
+    kind: "private",
+    providerId: "openai",
+    model: "gpt-5.6-sol",
+  });
+  // model ids may contain colons — split at the FIRST one only
+  assert.deepEqual(parseIntrospectionChoice("p:x:a:b"), { kind: "private", providerId: "x", model: "a:b" });
+  assert.deepEqual(parseIntrospectionChoice("s:mistral-small"), { kind: "server", model: "mistral-small" });
+  assert.equal(parseIntrospectionChoice("p:broken"), null);
+  assert.equal(parseIntrospectionChoice("s:"), null);
+  assert.equal(parseIntrospectionChoice(""), null);
+  assert.equal(parseIntrospectionChoice(null), null);
 });

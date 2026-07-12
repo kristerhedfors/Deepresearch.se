@@ -64,6 +64,7 @@ import {
   maybeRepoPathMention,
   validateSnapshot,
 } from "/js/introspect-core.js";
+import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
@@ -654,6 +655,7 @@ async function introspectionContext(conv, latestText) {
     phaseLine("Loading the source snapshot…");
     const snap = await loadSnapshotOnce();
     if (!snap || !introspectionActive(texts, snap)) return { block: "", fileProvider: null };
+    engageIntrospection(); // TIN slides in — the mode's visible marker
     const block = buildIntrospectionBlock(snap, {
       latestText,
       sandboxMounted: state.bashLite === true,
@@ -874,6 +876,18 @@ $("bashlite").addEventListener("change", () => {
     ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
     : "Sandbox disabled.";
   saveState().catch(() => {});
+});
+// Introspection mode's mascot (developer mode): TIN, the titanium robot,
+// slides in when what the user is TYPING reads as an ask about this site's
+// own implementation — here it explains that DRC is already the private
+// route (own key, browser-direct). Debounced; no-op with the knob off.
+initIntrospectUi({ tier: "drc" });
+let introTypeTimer = 0;
+$("input").addEventListener("input", () => {
+  clearTimeout(introTypeTimer);
+  introTypeTimer = setTimeout(() => {
+    if (state.developerMode === true) noteIntrospectionText($("input").value);
+  }, 350);
 });
 // Developer-mode knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations.
