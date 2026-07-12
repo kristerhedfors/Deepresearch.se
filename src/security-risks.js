@@ -1,0 +1,371 @@
+// @ts-check
+// The security-risk review board (D1 `security_reviews`) — the admin-panel
+// surface over SECURITY-RISKS.md's §3 open-fix backlog.
+//
+// The ITEMS catalog below is a code MIRROR of the register's §3 (one entry
+// per P-item, same ids, same default order). The register stays the source
+// of truth for full descriptions/history; this catalog is what the admin
+// panel renders and what the fix loop orders by. KEEP THEM IN SYNC: any §3
+// edit (new item, status change) lands here in the same commit — the
+// security-posture skill's checklist enforces it.
+//
+// What the admin adds on top (stored in D1, keyed by item id):
+//   - votes    up/down signal (net count) on how much an item matters
+//   - score    a free-form manual severity note, e.g. a CVSS vector/number
+//   - note     a short remark/suggestion
+//   - priority an explicit rank — THE FIXED ORDER. Items with a priority set
+//              come first (ascending) in the fix ordering; everything else
+//              follows by votes, then documented severity, then register
+//              order. The Claude Code security-fix loop reads this ordering
+//              (?format=text / scripts/security) and works top-down.
+//
+// Endpoints (admin-gated in index.js, dispatched from admin-api.js):
+//   GET   /api/admin/security          board (?order=priority|severity,
+//                                      ?open=1, ?format=text)
+//   POST  /api/admin/security/:id/vote {dir:"up"|"down"}
+//   PATCH /api/admin/security/:id      {score?, note?, priority?} (null clears)
+
+import { getDb } from "./db.js";
+import { jsonResponse } from "./http.js";
+
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/**
+ * One catalog entry (code-maintained; mirrors SECURITY-RISKS.md §3).
+ * @typedef {{ id: string, title: string, severity: "high" | "medium" | "low", status: "open" | "fixed" | "accepted", recurring?: boolean, summary: string }} RiskItem
+ */
+/**
+ * A D1 `security_reviews` row (admin-maintained state for one item).
+ * @typedef {{ item_id: string, votes: number, score?: string | null, note?: string | null, priority?: number | null, updated_at: number }} ReviewRow
+ */
+
+// ---------------------------------------------------------------------------
+// The catalog — mirrors SECURITY-RISKS.md §3 (array order = register order)
+// ---------------------------------------------------------------------------
+
+/** @type {RiskItem[]} */
+export const SECURITY_RISK_ITEMS = [
+  {
+    id: "P-1",
+    title: "Provider-side caps on every API key",
+    severity: "high",
+    status: "open",
+    recurring: true,
+    summary:
+      "A leaked or abused key is unbounded spend unless the PROVIDER enforces a ceiling — in-app quota code cannot cap a key used from outside the app. Set/verify hard caps in each console (Berget, OpenAI, Anthropic, Exa, Google Cloud incl. the referrer-lock on the Embed key, Shodan) and record values + date in the register's history log. Re-verify quarterly.",
+  },
+  {
+    id: "P-2",
+    title: "Mechanical secret-leak prevention on the repo",
+    severity: "high",
+    status: "open",
+    summary:
+      "Nothing but convention stops a secret reaching a public commit. Enable GitHub secret scanning + push protection, add a pre-push credential-pattern scan, and run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
+  },
+  {
+    id: "P-3",
+    title: "Quota race + no rate limiting on expensive endpoints (M-1/M-2)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "Check-then-act quota: N concurrent requests near the limit all pass and overspend ≈N× (/api/chat, /mcp, /api/embed, /api/quiz/grade, /api/bash/step). No per-user/IP rate limiter. Reserve spend at admission (or cap in-flight per user); severity raised because the race is documented with file:line in public source.",
+  },
+  {
+    id: "P-4",
+    title: "Flip the CSP on (H-2 follow-up)",
+    severity: "high",
+    status: "open",
+    summary:
+      "The CSP is fully authored in src/index.js but CSP_ENABLED = false. Until flipped, one DOMPurify bypass is full session-context XSS reaching IndexedDB (history key, project chats) on DRS and the sealed-state surface on DRC. Re-verify inline-script hashes + Maps/sandbox origins, flip, watch a live console.",
+  },
+  {
+    id: "P-5",
+    title: "Plaintext chat_logs: retention, drain, accurate copy (M-3)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "Every non-incognito exchange rests as plaintext in D1 — append-only, excluded from DELETE /api/storage, no TTL. The dominant server-side privacy exposure. Add the table to the user drain, add a retention TTL, and/or encrypt columns; make /help/ state the true exposure.",
+  },
+  {
+    id: "P-6",
+    title: "Server accepts plaintext for the convos family (M-4)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "putEncRecord accepts {data} for both convos and projects, so the ciphertext-at-rest invariant for conversations is client-enforced only. Reject plaintext records for convos server-side; allow plaintext only where project/RAG membership is confirmable.",
+  },
+  {
+    id: "P-7",
+    title: "Anti-injection note missing on gap + validate prompts (M-6)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "gapPrompt and validatePrompt read the untrusted source digest but lack ANTI_INJECTION_NOTE — and the exact prompt text is public, so injections can be crafted offline against these phases. Blast radius: research integrity only (fail-soft, no secrets in prompts). Cheap fix: append the note to both builders.",
+  },
+  {
+    id: "P-8",
+    title: "Two unbounded outbound fetches (M-5)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "exa.js webSearch (the hot path) and berget.js fetchCatalog fetch without AbortSignal.timeout, violating invariant 2 (helpers degrade, never hang). Add signal: AbortSignal.timeout(...) to both; keep the fail-soft catches. Cheap fix.",
+  },
+  {
+    id: "P-9",
+    title: "Low-severity backlog (L-1 … L-12)",
+    severity: "low",
+    status: "open",
+    summary:
+      "The assessment's Low findings, all re-verified open 2026-07-12: href scheme validation (L-1), RAG post-query uid assertion (L-2), no-store on /api/history-key (L-3), Content-Disposition on stored files (L-4), OAuth state timestamp / id_token verification (L-5/6), Shodan IP re-check, Maps image byte cap, lat/lon encoding, thumbnail escaping, admin-asset gating (L-7..11), aggregate size cap + vendored-lib SHA-256 manifest (L-12 — do the manifest half first).",
+  },
+  {
+    id: "P-10",
+    title: "Revert production LOG_LEVEL to info",
+    severity: "low",
+    status: "open",
+    summary:
+      "wrangler.toml sets LOG_LEVEL=debug in prod (2026-07-12, time-boxed for sandbox-filesystem testing). Debug paths log more request detail into Workers Logs — a server-side data pool. Revert when that testing round completes.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Pure helpers — unit-tested in src/security-risks.test.js
+// ---------------------------------------------------------------------------
+
+export const REVIEW_CAPS = { score: 120, note: 2_000 };
+const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
+export const ORDER_MODES = ["priority", "severity"];
+
+/** @param {string} id */
+export function findRiskItem(id) {
+  return SECURITY_RISK_ITEMS.find((i) => i.id === id) || null;
+}
+
+// Catalog entry + its D1 review row → one board item. `register_order` is
+// the item's position in the catalog (the register's §3 order).
+/**
+ * @param {RiskItem} item
+ * @param {ReviewRow | undefined} review
+ * @param {number} registerOrder
+ */
+export function projectRiskItem(item, review, registerOrder) {
+  return {
+    id: item.id,
+    title: item.title,
+    severity: item.severity,
+    status: item.status,
+    recurring: !!item.recurring,
+    summary: item.summary,
+    register_order: registerOrder,
+    votes: review?.votes ?? 0,
+    score: review?.score ?? null,
+    note: review?.note ?? null,
+    priority: review?.priority ?? null,
+    reviewed_at: review?.updated_at ?? null,
+  };
+}
+
+// The FIX ORDER (mode "priority") — the order the Claude Code security-fix
+// loop works in: admin-prioritized items first (ascending priority), then
+// the rest by votes (desc), documented severity, register order. Non-open
+// items always sink to the bottom (they're done or consciously accepted).
+// Mode "severity": documented severity, then register order — the
+// "what does the assessment say" view, votes/priority ignored.
+/**
+ * @param {ReturnType<typeof projectRiskItem>[]} items
+ * @param {string} mode "priority" | "severity"
+ * @returns {ReturnType<typeof projectRiskItem>[]} a new sorted array
+ */
+export function orderRiskItems(items, mode) {
+  /** @param {{ severity: string }} i */
+  const sevRank = (i) => SEVERITY_RANK[/** @type {"high"|"medium"|"low"} */ (i.severity)] ?? 9;
+  /** @param {{ status: string }} i */
+  const openRank = (i) => (i.status === "open" ? 0 : 1);
+  const out = [...items];
+  if (mode === "severity") {
+    out.sort(
+      (a, b) =>
+        openRank(a) - openRank(b) || sevRank(a) - sevRank(b) || a.register_order - b.register_order,
+    );
+    return out;
+  }
+  out.sort((a, b) => {
+    const d = openRank(a) - openRank(b);
+    if (d) return d;
+    const ap = a.priority, bp = b.priority;
+    if (ap != null && bp != null) return ap - bp || a.register_order - b.register_order;
+    if ((ap != null) !== (bp != null)) return ap != null ? -1 : 1;
+    return b.votes - a.votes || sevRank(a) - sevRank(b) || a.register_order - b.register_order;
+  });
+  return out;
+}
+
+/** @param {unknown} v @param {number} max */
+const cleanStr = (v, max) => {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t ? t.slice(0, max) : null;
+};
+
+// PATCH body → {score?, note?, priority?} (only the fields present in the
+// body; explicit null/"" clears a field), or {error}.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, patch: { score?: string | null, note?: string | null, priority?: number | null } }}
+ */
+export function validateReviewPatch(body) {
+  if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
+  /** @type {{ score?: string | null, note?: string | null, priority?: number | null }} */
+  const patch = {};
+  if ("score" in body) patch.score = cleanStr(body.score, REVIEW_CAPS.score);
+  if ("note" in body) patch.note = cleanStr(body.note, REVIEW_CAPS.note);
+  if ("priority" in body) {
+    if (body.priority == null || body.priority === "") {
+      patch.priority = null;
+    } else {
+      const n = Number(body.priority);
+      if (!Number.isInteger(n) || n < 1 || n > 999) {
+        return { error: "priority must be an integer 1–999, or null to clear." };
+      }
+      patch.priority = n;
+    }
+  }
+  if (!Object.keys(patch).length) {
+    return { error: "Nothing to update — send score, note, and/or priority." };
+  }
+  return { patch };
+}
+
+// POST …/vote body → +1 | -1, or {error}.
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, delta: number }}
+ */
+export function validateVote(body) {
+  const dir = body?.dir;
+  if (dir === "up") return { delta: 1 };
+  if (dir === "down") return { delta: -1 };
+  return { error: 'vote body must be {"dir":"up"} or {"dir":"down"}.' };
+}
+
+// Plain-text rendering (?format=text) — the fix loop's input. Always the
+// FIX ORDER; open items numbered top-down (this numbering IS the round's
+// work order), closed items as a short tail for context.
+/**
+ * @param {ReturnType<typeof projectRiskItem>[]} ordered orderRiskItems(..., "priority") output
+ * @returns {string}
+ */
+export function formatSecurityText(ordered) {
+  const open = ordered.filter((i) => i.status === "open");
+  const closed = ordered.filter((i) => i.status !== "open");
+  const lines = ["SECURITY FIX ORDER (admin-decided; work top-down — see SECURITY-RISKS.md §3)", ""];
+  open.forEach((i, n) => {
+    lines.push(
+      `${n + 1}. ${i.id} [${i.severity}]${i.priority != null ? ` (admin priority ${i.priority})` : ""}` +
+        ` votes=${i.votes}${i.score ? ` score=${i.score}` : ""} — ${i.title}`,
+    );
+    lines.push(`   ${i.summary}`);
+    if (i.note) lines.push(`   ADMIN NOTE: ${i.note}`);
+    lines.push("");
+  });
+  if (closed.length) {
+    lines.push(
+      "Closed/accepted: " + closed.map((i) => `${i.id} [${i.status}]`).join(", "),
+    );
+  }
+  return lines.join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------------------
+// The admin endpoint — /api/admin/security* (admin gate in index.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {URL} url
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
+export async function handleAdminSecurity(request, env, url, log) {
+  const db = await getDb(env);
+  if (!db) return jsonResponse({ error: "Database not configured." }, 503);
+  const path = url.pathname.replace(/^\/api\/admin\/security/, "");
+  const method = request.method;
+
+  if (path === "" && method === "GET") {
+    const p = url.searchParams;
+    const mode = ORDER_MODES.includes(p.get("order") || "") ? /** @type {string} */ (p.get("order")) : "priority";
+    const { results } = await db.prepare("SELECT * FROM security_reviews").all();
+    const reviews = new Map(
+      (/** @type {ReviewRow[]} */ (results || [])).map((r) => [r.item_id, r]),
+    );
+    let items = SECURITY_RISK_ITEMS.map((it, idx) => projectRiskItem(it, reviews.get(it.id), idx));
+    if (p.get("open") === "1") items = items.filter((i) => i.status === "open");
+    const ordered = orderRiskItems(items, mode);
+    if (p.get("format") === "text") {
+      // Text is the fix loop's input — always the fix (priority) order.
+      const text = formatSecurityText(mode === "priority" ? ordered : orderRiskItems(items, "priority"));
+      return new Response(text, { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
+    }
+    return jsonResponse({ items: ordered, order: mode, count: ordered.length });
+  }
+
+  const m = path.match(/^\/(P-\d{1,3})(\/vote)?$/);
+  const item = m ? findRiskItem(m[1]) : null;
+  if (!m || !item) return jsonResponse({ error: "No such security item." }, 404);
+
+  // Upsert-friendly: the review row is created on first vote/patch.
+  if (m[2] && method === "POST") {
+    const v = validateVote(await request.json().catch(() => null));
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
+    await db
+      .prepare(
+        `INSERT INTO security_reviews (item_id, votes, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(item_id) DO UPDATE SET votes = votes + ?, updated_at = ?`,
+      )
+      .bind(item.id, v.delta, Date.now(), v.delta, Date.now())
+      .run();
+    log.info("security.vote", { item_id: item.id, delta: v.delta });
+    return projectedItem(db, item);
+  }
+
+  if (!m[2] && method === "PATCH") {
+    const v = validateReviewPatch(await request.json().catch(() => null));
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
+    const sets = ["updated_at = ?"];
+    /** @type {any[]} */
+    const binds = [Date.now()];
+    for (const k of /** @type {const} */ (["score", "note", "priority"])) {
+      if (k in v.patch) { sets.push(`${k} = ?`); binds.push(v.patch[k]); }
+    }
+    await db
+      .prepare(
+        `INSERT INTO security_reviews (item_id, votes, score, note, priority, updated_at)
+         VALUES (?, 0, ?, ?, ?, ?)
+         ON CONFLICT(item_id) DO UPDATE SET ${sets.join(", ")}`,
+      )
+      .bind(
+        item.id,
+        v.patch.score ?? null, v.patch.note ?? null, v.patch.priority ?? null, Date.now(),
+        ...binds,
+      )
+      .run();
+    log.info("security.review", { item_id: item.id, fields: Object.keys(v.patch).join(",") });
+    return projectedItem(db, item);
+  }
+
+  return jsonResponse({ error: "Not found." }, 404);
+}
+
+/**
+ * @param {D1Database} db
+ * @param {RiskItem} item
+ */
+async function projectedItem(db, item) {
+  const row = /** @type {ReviewRow | null} */ (
+    await db.prepare("SELECT * FROM security_reviews WHERE item_id = ?").bind(item.id).first()
+  );
+  const idx = SECURITY_RISK_ITEMS.findIndex((i) => i.id === item.id);
+  return jsonResponse({ item: projectRiskItem(item, row || undefined, idx) });
+}

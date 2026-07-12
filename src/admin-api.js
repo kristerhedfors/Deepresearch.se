@@ -14,6 +14,10 @@
 //                                    the agentic debugging workflow; see the
 //                                    chat-logs skill for query params)
 //   *      /api/admin/feedback*      the Feedback-mode queue (src/feedback.js)
+//   *      /api/admin/security*      the security-risk review board
+//                                    (src/security-risks.js — votes/score/
+//                                    note/priority over SECURITY-RISKS.md §3;
+//                                    ?format=text is the fix loop's input)
 //
 // Accounts are provisioned by Google sign-in (src/google.js) — there is no
 // create-user endpoint; the admin manages status, names, and quotas.
@@ -21,6 +25,7 @@
 import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { handleChatLogs } from "./chatlog.js";
 import { handleAdminFeedback } from "./feedback.js";
+import { handleAdminSecurity } from "./security-risks.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -85,6 +90,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // Feedback mode — list, read, set status, reply, delete.
     if (path === "/feedback" || path.startsWith("/feedback/")) {
       return handleAdminFeedback(request, env, url, log);
+    }
+    // The security-risk review board (src/security-risks.js): the register's
+    // §3 backlog with admin votes, manual scores, notes, and the explicit
+    // priority order the security-fix loop works in.
+    if (path === "/security" || path.startsWith("/security/")) {
+      return handleAdminSecurity(request, env, url, log);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

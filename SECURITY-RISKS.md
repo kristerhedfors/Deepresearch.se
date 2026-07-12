@@ -27,6 +27,21 @@ implemented security fix, in priority order.
    procedure for every item here. Run it whenever this file is updated, after
    any auth/storage/headers change, and periodically. Keep skill and register
    in sync — a new risk here needs a check there.
+6. **The admin review board mirrors §3.** `src/security-risks.js` carries a
+   code catalog of the P-items (id/title/severity/status/summary) that the
+   admin panel renders (`/admin` → Security risks) and the fix loop orders by
+   (`/api/admin/security?format=text`, `scripts/security`). Any §3 edit —
+   new item, status change, reworded summary — updates that catalog **in the
+   same commit**. The admin's votes/scores/notes/priorities live in D1
+   (`security_reviews`), keyed by these ids, so ids are stable forever: a
+   fixed item keeps its id (rule 2), and new items take the next free P-n.
+7. **The admin's explicit priority is the FIX ORDER.** When the admin has
+   prioritized items on the board, the security-fix loop works through them
+   in that order — it overrides this file's §3 default order. Unprioritized
+   items follow by admin votes, then documented severity, then §3 order.
+   Before starting a fix round, ALWAYS read the board
+   (`scripts/security`); §3's order is only the default when the board is
+   silent.
 6. **This file is itself public** — see R-3. Write entries so they describe the
    risk and the fix without handing over a working exploit (no PoC payloads,
    no live identifiers beyond what the source already shows).
@@ -252,9 +267,12 @@ most: until the CSP is on it is the sole XSS defence (H-2 follow-up).
 
 ## 3. Open fixes — priority-ordered backlog
 
-Work top-down. Each entry: full description → recommendation → status.
-Severity inputs: exploitability with public source, blast radius, and whether
-it guards the top asset classes (secrets > user privacy > spend).
+Work top-down — but check the **admin review board first** (`scripts/security`
+or `/admin` → Security risks): an admin-set priority there overrides this
+default order (maintenance rule 7). Each entry: full description →
+recommendation → status. Severity inputs: exploitability with public source,
+blast radius, and whether it guards the top asset classes (secrets > user
+privacy > spend).
 
 ### P-1 · Provider-side caps on every API key — 🔁 OPERATIONAL (verify + record) 
 **The "all API keys capped" rule (top of the list by explicit product
@@ -373,3 +391,4 @@ so the exception terminates.
 |---|---|
 | 2026-07-08 | `SECURITY-ASSESSMENT.md` produced (six-domain manual review: 3 High, 6 Medium, 12 Low). H-1 (`/mcp` quota bypass), H-2 (security headers; CSP authored but held OFF), H-3 (session-HMAC fallback removed, `SESSION_SECRET` required) all **fixed same day**. |
 | 2026-07-12 | **This register created** (product decision: continuously maintain public-source risk list + priority-ordered fix backlog + this log in one file). Companion **security-posture** verification skill added (`.claude/skills/security-posture/`). Re-verified against source: M-1–M-6 and L-1–L-12 all still open (CSP still off; `webSearch`/`fetchCatalog` still unbounded; `chat_logs` still outside the drain; gap/validate prompts still lack the anti-injection note; history-key response still cacheable). Secret scan over the working tree + fetched (shallow) git history: **clean**. New items opened: P-1 (provider-side key caps — top priority), P-2 (push protection + full-history scan), P-10/R-7 (`LOG_LEVEL=debug` in prod, time-boxed). New risk classes recorded for surfaces added since the assessment: `/api/bash/step` in the P-3 rate-limit scope, DRC key storage (R-8), sandbox COEP origins in the P-4 CSP checklist. |
+| 2026-07-12 | **Admin review board added** (product decision): the §3 backlog gets an interactive admin-panel view (`/admin` → Security risks; `src/security-risks.js`, D1 `security_reviews`, `/api/admin/security*`, `scripts/security`) with up/down votes, a manual severity-score field (CVSS or free-form), notes, and an explicit per-item **priority that is the fix loop's fixed order** (maintenance rules 6–7 added). Two orderings: admin fix order ⇄ documented severity. |
