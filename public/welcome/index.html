@@ -399,7 +399,10 @@
       }, 400);
     }
     function dismiss(e) {
-      if (e && (ghost.contains(e.target) || bubble.contains(e.target))) return;
+      // Tapping the bubble itself dismisses too (its link still navigates —
+      // nothing here prevents the default); only the ghost button is exempt,
+      // since tapping IT is the whole point.
+      if (e && ghost.contains(e.target)) return;
       document.removeEventListener("click", dismiss, true);
       mascot.classList.add("bye");
       bubble.classList.remove("show");
