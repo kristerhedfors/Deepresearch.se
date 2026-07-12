@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Activate this repo's version-controlled git hooks (security register P-2).
+# Points git at .githooks/ so the pre-push secret scanner runs on every push.
+# Git does NOT auto-activate hooksPath in a fresh clone — run this once per
+# clone (it is idempotent).
+#
+# Usage:
+#   scripts/install-git-hooks
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+git config core.hooksPath .githooks
+chmod +x .githooks/* 2>/dev/null || true
+
+echo "Installed: core.hooksPath = $(git config core.hooksPath)"
+echo "Active hooks:"
+for h in .githooks/*; do
+  [ -f "$h" ] && echo "  - $(basename "$h")"
+done
+echo
+echo "The pre-push hook now runs scripts/scan-secrets over outgoing commits."
+echo "Bypass a verified false positive with:  git push --no-verify"

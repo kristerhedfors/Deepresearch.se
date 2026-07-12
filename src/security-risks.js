@@ -72,7 +72,7 @@ export const SECURITY_RISK_ITEMS = [
     severity: "high",
     status: "open",
     summary:
-      "Nothing but convention stops a secret reaching a public commit. Enable GitHub secret scanning + push protection, add a pre-push credential-pattern scan, and run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
+      "PARTIAL (2026-07-12): local mechanical scan shipped — scripts/scan-secrets (worktree/--staged/--range, redacted matches) + a .githooks/pre-push hook that blocks a push on a credential match + scripts/install-git-hooks; see docs/SECRET-SCANNING.md. RESIDUAL (both operational, not code): (a) enable GitHub secret scanning + push protection in repo Settings (server-side backstop); (c) run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
   },
   {
     id: "P-3",
