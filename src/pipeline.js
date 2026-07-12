@@ -557,7 +557,15 @@ async function runSourceResearch(ctx) {
   // (src/introspect-tools.js) instead of the deterministic Mistral read loop
   // below. Fail-soft — any failure falls through to the deterministic path, so
   // catalog models without tool use (and Claude when its API blips) still work.
-  if (introspectionToolsAvailable(ctx)) {
+  const toolsOn = introspectionToolsAvailable(ctx);
+  ctx.log.info("introspect.tools_gate", {
+    on: toolsOn,
+    model: ctx.model,
+    anthropic_model: isAnthropicModel(ctx.model),
+    anthropic_configured: anthropicConfigured(ctx.env),
+    images: ctx.imageParts.length,
+  });
+  if (toolsOn) {
     try {
       return await runSourceResearchTools(ctx, snapshot);
     } catch (/** @type {any} */ err) {
