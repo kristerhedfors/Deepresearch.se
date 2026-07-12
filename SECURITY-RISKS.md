@@ -353,12 +353,15 @@ integrity only (fail-soft phases, no secrets in prompts). Recommendation:
 append the note to both builders; consider delimiter-wrapping untrusted spans.
 Cheap fix — bundle with any prompts.js touch.
 
-### P-8 · M-5 · Two unbounded outbound fetches — 🔴 OPEN
-Imported; re-verified 2026-07-12: `exa.js` `webSearch` (the hot path) and
-`berget.js` `fetchCatalog` still fetch without `AbortSignal.timeout`,
-violating invariant 2 (helper phases must degrade, not hang). Recommendation:
-add `signal: AbortSignal.timeout(...)` to both; keep existing fail-soft
-catches. Cheap fix.
+### P-8 · M-5 · Two unbounded outbound fetches — ✅ FIXED (2026-07-12)
+Both hot-path fetches are now time-bounded: `exa.js` `webSearch` gained
+`signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS)` (15 s) and `berget.js`
+`fetchCatalog` gained `signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS)`
+(15 s) — a `TimeoutError` now lands in each function's pre-existing fail-soft
+catch (a `failure()` digest string for search, a `null`/degraded catalog for
+Berget), so a hung backend degrades instead of hanging, satisfying invariant
+2. The values sit within the existing Berget/Exa bounds (connect 30 s, JSON
+45 s, contents 20 s, embed 60 s). Verified: `src/exa.test.js` + `src/berget.test.js`.
 
 ### P-9 · Low-severity backlog (imported L-1 … L-12) — 🔴 OPEN
 Re-verified still open 2026-07-12 unless noted. In rough order:
@@ -392,3 +395,4 @@ so the exception terminates.
 | 2026-07-08 | `SECURITY-ASSESSMENT.md` produced (six-domain manual review: 3 High, 6 Medium, 12 Low). H-1 (`/mcp` quota bypass), H-2 (security headers; CSP authored but held OFF), H-3 (session-HMAC fallback removed, `SESSION_SECRET` required) all **fixed same day**. |
 | 2026-07-12 | **This register created** (product decision: continuously maintain public-source risk list + priority-ordered fix backlog + this log in one file). Companion **security-posture** verification skill added (`.claude/skills/security-posture/`). Re-verified against source: M-1–M-6 and L-1–L-12 all still open (CSP still off; `webSearch`/`fetchCatalog` still unbounded; `chat_logs` still outside the drain; gap/validate prompts still lack the anti-injection note; history-key response still cacheable). Secret scan over the working tree + fetched (shallow) git history: **clean**. New items opened: P-1 (provider-side key caps — top priority), P-2 (push protection + full-history scan), P-10/R-7 (`LOG_LEVEL=debug` in prod, time-boxed). New risk classes recorded for surfaces added since the assessment: `/api/bash/step` in the P-3 rate-limit scope, DRC key storage (R-8), sandbox COEP origins in the P-4 CSP checklist. |
 | 2026-07-12 | **Admin review board added** (product decision): the §3 backlog gets an interactive admin-panel view (`/admin` → Security risks; `src/security-risks.js`, D1 `security_reviews`, `/api/admin/security*`, `scripts/security`) with up/down votes, a manual severity-score field (CVSS or free-form), notes, and an explicit per-item **priority that is the fix loop's fixed order** (maintenance rules 6–7 added). Two orderings: admin fix order ⇄ documented severity. |
+| 2026-07-12 | **Security-fix round (admin-prioritized top items) — P-8 FIXED.** `exa.js` `webSearch` + `berget.js` `fetchCatalog` now use `AbortSignal.timeout` (15 s), degrading fail-soft on a hung backend (invariant 2). First of the round working down the admin board's fix order (`scripts/security`); P-1/P-2/P-3 addressed in the same round's following commits. |
