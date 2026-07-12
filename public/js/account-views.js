@@ -59,6 +59,26 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
     </div>`;
 }
 
+// A settings row whose control is a SLIDER rather than a switch — same label +
+// info-popover shell as settingRow, with a live value readout beside the label
+// and a range input beneath. Used by the agent-activity backdrop's
+// transparency control (a plain client-side/localStorage preference, so it's
+// shown for every account — break-glass and unconfigured servers included).
+export function settingRange({ id, label, value, min = 0, max = 100, step = 1, popId, info, valueLabel }) {
+  const plainLabel = escapeHtml(String(label).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+  return `
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">${label}
+          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${plainLabel}”">ⓘ</button>
+        </span>
+        <span class="setting-range-val" id="${id}val">${escapeHtml(valueLabel != null ? String(valueLabel) : String(value))}</span>
+      </div>
+      <input type="range" class="setting-range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${plainLabel}">
+      <div class="setting-pop" id="${popId}" hidden>${info}</div>
+    </div>`;
+}
+
 // Feedback mode's knob lives in the Settings view with every other
 // configuration knob (2026-07-11 directive: ALL configuration under the
 // header's gear icon).

@@ -69,7 +69,8 @@ denies the capability even with a transcript in front of it.
 | Pipeline consumption | `src/pipeline.js` (`ctx.shellBlock` → synthesis + direct/search-off), `src/chat.js` (`shell_transcript` request field → `state.shellTranscript`) |
 | COEP / cross-origin isolation | `src/assets.js` (`serveAsset(..,{coep})` sets COEP **`require-corp`** + `no-store`, strips conditional headers: DRC page always, DRS shell when the knob is on) |
 | DRS client driver | `public/js/bash-agent.js` (`fetchShellStep` + the DRS-shaped `runShellLoop` — the core driver with the step wired to `/api/bash/step`; re-exports the core's pure API) |
-| The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue) |
+| The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue). Since 2026-07-12 the terminal panel is **built but NOT auto-shown** — activity surfaces on the backdrop layer instead (see below); the panel stays hidden unless the user opens it |
+| Agent activity backdrop (the faint page-background command/output layer) | `public/js/agent-backdrop.js` (DOM glue, NOT `@ts-check`) over the pure core `public/js/agent-backdrop-core.js` (+ `.test.js`) — fed from `execInSandbox` so BOTH tiers + any agent surface automatically. Both allowlisted in `assets.js` (sandbox.js is in the /cure graph). Styled in `css/app.css` (DRS) AND `cure/drc.css` (DRC self-contained) under `#dr-agent-backdrop` |
 | DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript` + the `client_diag` probe) |
 | Isolation self-heal | `public/js/app.js` (knob-on + `!crossOriginIsolated` → **navigate to a fresh `?_coep=<ts>` URL**, NOT `location.reload()`; plus a `pageshow(persisted)` bfcache handler) |
 | Live diagnostic | `client_diag` `{coi,sab,sb,bl,ran,css,ua}` — `stream.js` attaches it to every `/api/chat`; `chat.js` `sanitizeClientDiag` records it in the `chat_logs` meta and logs `chat.client_diag`. The one window into the real browser (see the playbook below) |
@@ -91,6 +92,45 @@ SAME `bash-core.js` loop with a step function that calls the user's own
 provider directly (parsed client-side with `parseShellRequest`, the same
 shared `buildStepUserMessage`), executes in the same `sandbox.js` VM, and
 folds the transcript into synthesis/direct.
+
+## Activity backdrop (no more auto-popping terminal — 2026-07-12)
+
+The floating xterm terminal used to `showSandbox()` itself the moment the VM
+booted, covering the screen and breaking the prompt-first flow. It no longer
+does: `bootVM` builds the panel (exec still needs the xterm console) but leaves
+it **hidden**. Instead every command and its raw output drift **faintly across
+the page's sky-blue/khaki background** so the user keeps visibility without
+leaving the composer.
+
+- **One feed point.** `execInSandbox` (the single exec choke point on BOTH
+  tiers) calls `feedCommand("shell", cmd)` before running and
+  `feedResult("shell", result)` after parsing — so DRS, DRC, and any future
+  agent surface automatically, with no callback threading through
+  `stream.js`/`drc-research.js`. Both feeds are wrapped fail-soft (the backdrop
+  is decoration and must never break exec).
+- **Pure core** `agent-backdrop-core.js`: a ring-buffered, multi-CHANNEL
+  transcript (one channel per agent id) + the round-robin `clipToNextChannel`
+  that "clips between agents" when several are active + `ShellRun`→lines
+  formatting + the transparency-preference parse/clamp. Node-tested.
+- **DOM glue** `agent-backdrop.js`: lazily builds `#dr-agent-backdrop` (fixed,
+  `z-index:-1`, `pointer-events:none`, behind the chat), renders the active
+  channel's tail into a `<pre>`, applies the user's opacity, and runs the clip
+  timer. Import-safe in Node (guards every browser global) because
+  `sandbox.js`←`drc-research.js` is Node-tested.
+- **Transparency setting — every user, both tiers.** A slider persisted in
+  **localStorage** (`dr_agent_backdrop`), so it works signed-out and on /cure
+  with no account and no server write. 0 = layer off; up to 100 = the faint
+  ceiling (`opacityCss` caps CSS opacity at 0.55 so even "full" reads as
+  background). DRS: `settingRange` row in the Settings view
+  (`account-settings.js`, `wireBackdropSlider`). DRC: a `<details>` slider in
+  the gear/settings drawer (`cure/index.html` `#backdropslider`, wired in
+  `drc.js` `syncBackdropSlider`).
+- **CSS lives in two places** because `drc.css` is self-contained (app.css is
+  auth-served): `#dr-agent-backdrop` + `.dr-agent-backdrop-text` + the
+  `agent-wave` keyframe are mirrored in `css/app.css` and `cure/drc.css` (only
+  the text color differs per palette). If you touch the layer's look, update
+  BOTH. A CSS change to app.css also needs the `--css-version`/`CSS_VERSION`
+  handshake bump (bumped to `h25` for this).
 
 ## Cross-origin isolation (the tricky part)
 

@@ -590,7 +590,13 @@ builders, and the generic injected-step `runShellLoop` driver) plus
 `runShellLoop` against a mock step endpoint + mock sandbox, and the re-export
 contract pinning that its pure surface IS the core, not a mirror — the
 browser VM glue in `public/js/sandbox.js` is deliberately NOT Node-testable
-and carries no `@ts-check`) plus `sandbox-files.js` (the file-mounting pure
+and carries no `@ts-check`) plus `agent-backdrop-core.js` (the agent-activity
+BACKDROP's pure core — the faint page-background command/output layer that
+replaced the auto-popping sandbox terminal: the ring-buffered multi-channel
+transcript, the `clipToNextChannel` round-robin between agents, the
+`ShellRun`→lines formatting, and the transparency-preference parse/clamp; the
+DOM glue `agent-backdrop.js` is browser-only, fed from `execInSandbox`) plus
+`sandbox-files.js` (the file-mounting pure
 core: `sanitizeName`/`sanitizeProjName`/`projHash`, `dedupeNames`,
 `applySizeCap` byte budgets, `buildManifest`, `buildSeedScript`,
 `shellEscape`, and `planSourceMount` — the introspection source-mount plan:
