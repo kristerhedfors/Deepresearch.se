@@ -49,6 +49,25 @@ git commit -m "…"
 git push origin main
 ```
 
+> **Commit signing is NOT provisioned — pushed commits show "Unverified", and
+> that is EXPECTED (TODO for the repo owner, not fixable in a session).** The
+> stop-hook / GitHub will flag pushed commits as Unverified (missing signature).
+> This is a known, standing gap: these remote containers ship **no `ssh-keygen`
+> and no signing key material**, and the `GIT_SIGNING_KEY` / `GIT_SIGNING_EMAIL`
+> environment secrets the signing hook needs (`.claude/hooks/setup-signing.sh`)
+> are **not set**. Nearly all of `main`'s recent history is Unverified for the
+> same reason. **Do NOT try to fix it from inside a session:** you cannot
+> generate a key (no tools), you cannot re-sign an already-pushed commit without
+> a force-push, and force-pushing `main` is blocked by repo rules — so
+> attempting it only wastes a turn. Just ignore the Unverified warning and move
+> on. Fixing it for real is an **owner action outside the session**: generate a
+> dedicated ed25519 key on a real device (or an iOS shell like a-Shell), add the
+> PUBLIC half to GitHub as a *Signing Key*, and put the PRIVATE half in the
+> environment's `GIT_SIGNING_KEY` secret (+ `GIT_SIGNING_EMAIL` = a
+> GitHub-verified address; `noreply@anthropic.com` can never verify). Once the
+> secret exists, the signing hook wires it up automatically on the next session
+> and future commits verify — but until then, Unverified is the normal state.
+
 ## Load-bearing invariants
 
 1. **Deterministic orchestration — NO function calling.** Every pipeline phase
