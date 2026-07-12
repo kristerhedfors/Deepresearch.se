@@ -275,8 +275,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // moment the user asks for outside material — web search, cited sources,
   // current facts, or an external comparison (externalSourceIntent, EN+SV).
   // This keeps introspection pure without a protocol change: the server decides
-  // from the knob + message.
-  if (ctx.hasSource && !externalSourceIntent(ctx.lastUser)) {
+  // from the knob + message. Tested against the CLEAN message (cleanLastUser),
+  // not the excerpt-appended lastUser: the introspection block folded into
+  // lastUser carries the CLAUDE.md orientation, whose prose trips
+  // externalSourceIntent (e.g. a bare "vs") and would spuriously route every
+  // dev-mode ask to the web-search wave / a triage direct reply instead of the
+  // source read loop.
+  if (ctx.hasSource && !externalSourceIntent(ctx.cleanLastUser)) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runSourceResearch(ctx);
   }

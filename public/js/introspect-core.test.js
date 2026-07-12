@@ -151,6 +151,9 @@ test("externalSourceIntent: pure introspection asks never trigger it (search sta
   for (const s of [
     "gimme source code examples",
     "tell me about the security implementation",
+    "conduct a proper security assessment", // an AUDIT of the own code stays introspection (pipeline.js routes it to the source read loop)
+    "security assessment",
+    "assess the codebase",
     "how does the current pipeline work?", // "current" alone is not external
     "show me the latest version of pipeline.js", // "latest version" of OWN file — still introspection
     "explain how you handle quotas",
