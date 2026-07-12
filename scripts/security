@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# The security-risk review board on the LIVE site — the fix loop's view of
+# SECURITY-RISKS.md §3 with the admin's votes/scores/notes/priorities on top.
+# Wraps /api/admin/security (src/security-risks.js) using the break-glass
+# Basic Auth credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars
+# scripts/chatlogs and scripts/feedback use. The default text output IS the
+# round's work order (admin priority first) — see the security-posture skill.
+#
+# Usage:
+#   scripts/security                        the fix order, readable text
+#   scripts/security --severity             ordered by documented severity (JSON view only;
+#                                           text output always shows the fix order)
+#   scripts/security --json                 JSON instead of text
+#   scripts/security --vote P-3 up          upvote (or: down)
+#   scripts/security --set P-3 '{"priority":1,"score":"CVSS 6.5","note":"do first"}'
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+order="priority"
+action=""
+id=""
+arg=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --severity) order="severity" ;;
+    --vote) action="vote"; id="$2"; arg="$3"; shift 2 ;;
+    --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+case "$action" in
+  vote)
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg d "$arg" '{dir:$d}')" \
+      "$BASE_URL/api/admin/security/$id/vote"
+    exit 0 ;;
+  set)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$arg" \
+      "$BASE_URL/api/admin/security/$id"
+    exit 0 ;;
+esac
+
+qs="order=$order"
+[ "$format" = "text" ] && qs="$qs&format=text"
+curl_auth "$BASE_URL/api/admin/security?$qs"

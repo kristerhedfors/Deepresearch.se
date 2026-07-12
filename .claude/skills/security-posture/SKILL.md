@@ -11,7 +11,12 @@ description: >-
   secret-leak scans (working tree + git history, incl. the shallow-clone
   caveat), header/CSP probes, per-finding greps (M-1…M-6, L-1…L-12), the
   provider key-cap checklist, and the commit-time rules that keep live user
-  data and credentials out of the public repo.
+  data and credentials out of the public repo. ALSO load when running a
+  security-FIX round or touching the admin review board
+  (src/security-risks.js, /api/admin/security, scripts/security, the admin
+  panel's Security risks view): the board's admin-set priority is the FIXED
+  work order for fix rounds, and the code catalog must mirror the register's
+  §3 in the same commit.
 ---
 
 # Security posture verification
@@ -26,6 +31,35 @@ open security work; this skill is HOW to verify each item. Rules of the loop:
 - **When adding a register risk, add its check here** in the same change.
 - Everything here is read-only verification — safe to run any time. Findings
   are verified against SOURCE first; live probes confirm deploys, not truth.
+
+## 0. Fix rounds start at the admin review board
+
+The register's §3 backlog has an interactive admin surface: `/admin` →
+**Security risks** (`src/security-risks.js`, D1 `security_reviews`,
+`/api/admin/security*`). The admin votes items up/down, attaches a manual
+severity score (e.g. a CVSS vector) and notes, and can set an explicit
+per-item **priority — the FIXED order a security-fix round works through**,
+overriding the register's default §3 order. Unprioritized items follow by
+votes, then documented severity, then register order; fixed/accepted items
+sink to the bottom.
+
+Before starting a fix round, read the board's fix order (break-glass creds,
+same env vars as scripts/chatlogs):
+
+```bash
+scripts/security            # the work order, readable text (?format=text)
+scripts/security --json     # full JSON (also: --severity for the other view)
+scripts/security --vote P-3 up
+scripts/security --set P-3 '{"priority":1,"score":"CVSS 6.5","note":"…"}'
+```
+
+Work top-down through the numbered open items. When an item is fixed, in the
+SAME commit: flip its `status` in the `SECURITY_RISK_ITEMS` catalog
+(`src/security-risks.js`), tag it `✅ FIXED` in the register §3, and append a
+History-log entry (register rules 2 and 6). **The catalog is a code mirror of
+§3** — item ids are stable forever (D1 review state is keyed by them); new
+register items take the next free P-n and a catalog entry in the same change.
+`src/security-risks.test.js` pins catalog shape and the ordering semantics.
 
 ## 1. Secret-leak scan (R-1 / P-2) — run before every push touching docs/tests/config
 

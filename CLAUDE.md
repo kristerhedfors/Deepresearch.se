@@ -143,7 +143,8 @@ Server (`src/`):
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
-| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback |
+| `security-risks.js` | The security-risk review board (D1 `security_reviews`): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `triage.js` | The pipeline's JSON-hardening layer: the declared schemas for every JSON planning phase + `hardenJson`, and `normalizeTriage` (the triage-failure fallback) — pure, no I/O |
@@ -397,7 +398,10 @@ deterministic intent gate incl. question-count parsing, quiz-JSON
 hardening, grade-request validation/normalization), and `feedback.js`
 (the feedback pipeline's pure logic: create/reply validation incl.
 truncation markers, the status lifecycle, row projection, the
-`?format=text` rendering), and `games.js` (the
+`?format=text` rendering), and `security-risks.js` (the review board's
+pure logic: catalog shape/mirror discipline, the fix-order vs severity
+orderings, review-patch/vote validation, the `?format=text` fix-loop
+rendering), and `games.js` (the
 games registry/dispatch seam: entry shape, shelf payload, subpath
 dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
 game core: type-chart parity vs the official matchups, Gen-1
@@ -672,7 +676,12 @@ what docs claim); and update the skill list below plus the skill's
   append-only history log — update the register whenever an item is fixed):
   the secret-leak scans (incl. the shallow-clone caveat), header/CSP probes,
   per-finding greps, the provider key-cap checklist, and the commit-time
-  rules keeping live user data and credentials out of the public repo.
+  rules keeping live user data and credentials out of the public repo. Also
+  the admin review board (`src/security-risks.js`, `/admin` → Security
+  risks, `scripts/security`): votes/scores/notes plus the admin-set priority
+  that is the security-fix loop's FIXED work order — read the board before
+  every fix round; the code catalog mirrors the register's §3 in the same
+  commit.
 - **ui-notes** — the client UI/UX conventions: Markdown rendering, the PDF
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message

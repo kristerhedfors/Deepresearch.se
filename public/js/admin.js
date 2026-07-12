@@ -51,6 +51,96 @@ async function load() {
   renderByModel();
   renderUsers();
   renderConfig();
+  loadSecurity();
+}
+
+// ---- security-risk review board -------------------------------------------
+// The register's (SECURITY-RISKS.md §3) open-fix backlog with admin review
+// state on top: up/down votes, a manual severity score (CVSS or free-form),
+// a note, and the explicit PRIORITY — the fixed order the Claude Code
+// security-fix loop works through (?format=text / scripts/security reads the
+// same ordering). Two views: fix order (priority) and documented severity.
+
+let secOrder = "priority";
+
+async function loadSecurity() {
+  let data;
+  try {
+    data = await api(`/security?order=${secOrder}`);
+  } catch (err) {
+    $("security").innerHTML = `<p class="err">${escapeHtml(err.message)}</p>`;
+    $("security-sec").hidden = false;
+    return;
+  }
+  const box = $("security");
+  box.innerHTML = "";
+  $("sec-order-priority").className = secOrder === "priority" ? "on" : "secondary";
+  $("sec-order-severity").className = secOrder === "severity" ? "on" : "secondary";
+
+  let fixPos = 0;
+  for (const it of data.items) {
+    const open = it.status === "open";
+    const posLabel =
+      secOrder === "priority" && open ? `<b class="muted">#${++fixPos}</b>` : "";
+    const el = document.createElement("div");
+    el.className = "rowitem";
+    el.innerHTML = `
+      <div class="head">
+        ${posLabel}
+        <span class="badge sev-${it.severity}">${it.severity}</span>
+        ${open ? "" : `<span class="badge ${escapeHtml(it.status)}">${escapeHtml(it.status)}</span>`}
+        ${it.priority != null ? `<span class="badge prio">priority ${it.priority}</span>` : ""}
+        ${it.recurring ? '<span class="badge">recurring</span>' : ""}
+        <b>${escapeHtml(it.id)} · ${escapeHtml(it.title)}</b>
+        <span class="spacer"></span>
+        <span class="vote">
+          <button data-act="up" class="secondary" title="Upvote">▲</button>
+          <b>${it.votes}</b>
+          <button data-act="down" class="secondary" title="Downvote">▼</button>
+        </span>
+      </div>
+      <p class="muted" style="margin:.35rem 0 0">${escapeHtml(it.summary)}</p>
+      <div class="sec-review">
+        <label>Priority
+          <input type="number" min="1" max="999" step="1" data-f="priority"
+            value="${it.priority ?? ""}" placeholder="—"></label>
+        <label>Score
+          <input type="text" data-f="score" value="${escapeHtml(it.score || "")}"
+            placeholder="e.g. CVSS 6.5 / AV:N…" maxlength="120"></label>
+        <label style="flex:1">Note
+          <input type="text" data-f="note" value="${escapeHtml(it.note || "")}"
+            placeholder="suggestion / rationale" maxlength="2000"></label>
+        <button data-act="save" class="secondary">Save</button>
+      </div>`;
+    el.addEventListener("click", async (e) => {
+      const act = e.target.dataset?.act;
+      if (!act) return;
+      try {
+        if (act === "up" || act === "down") {
+          await api(`/security/${it.id}/vote`, { method: "POST", body: { dir: act } });
+          await loadSecurity();
+        } else if (act === "save") {
+          const body = {};
+          for (const input of el.querySelectorAll("[data-f]")) {
+            body[input.dataset.f] = input.value === "" ? null : input.value;
+          }
+          await api(`/security/${it.id}`, { method: "PATCH", body });
+          await loadSecurity();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    box.appendChild(el);
+  }
+  $("security-sec").hidden = false;
+}
+
+for (const mode of ["priority", "severity"]) {
+  $(`sec-order-${mode}`).addEventListener("click", () => {
+    secOrder = mode;
+    loadSecurity();
+  });
 }
 
 // ---- notification center ---------------------------------------------------
