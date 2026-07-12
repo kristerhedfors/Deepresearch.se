@@ -106,7 +106,36 @@ const DEVELOPER_INFO = `<strong>Developer mode</strong><br>
  * @returns {string} HTML
  */
 export function renderConfigKnobs(me) {
-  if (!me?.email) return "";
+  // Break-glass admin (no email): can't persist per-account settings — the
+  // /api/settings PUT needs a D1 user row — but the two BROWSER-ONLY features
+  // are ON for it by default (settings.js bashLiteEnabled/developerModeEnabled
+  // force them true for isSecretAdmin). Previously this returned "" and the
+  // developer/introspection AND sandbox knobs were simply ABSENT from the
+  // admin's Settings panel — reported as "the introspection knob doesn't
+  // move": there was no knob to move. Show them as read-only ON instead, so
+  // the admin sees the state honestly. Feedback needs a user row (it stores
+  // per-user threads), so it stays out of the admin view.
+  if (!me?.email) {
+    return (
+      settingRow({
+        id: "sbknob",
+        label: `Execution sandbox <span class="exp-badge">Experimental</span>`,
+        checked: true,
+        disabled: true,
+        popId: "sbpop",
+        info: SANDBOX_INFO,
+      }) +
+      settingRow({
+        id: "devknob",
+        label: "Developer mode",
+        checked: true,
+        disabled: true,
+        popId: "devpop",
+        info: DEVELOPER_INFO,
+      }) +
+      `<p class="muted setting-note">Admin session: the execution sandbox and developer (introspection) mode are on by default. Sign in with a Google account to switch these per account.</p>`
+    );
+  }
   return (
     settingRow({
       id: "fbknob",
