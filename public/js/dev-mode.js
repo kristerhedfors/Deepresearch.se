@@ -33,6 +33,44 @@ export const DEV_MODE_KEY = "dr_dev_mode";
 /** The class toggled on documentElement to repaint the titanium palette. */
 export const DEV_MODE_CLASS = "dev-mode";
 
+// The iOS status-bar / theme-color tint. On an iPhone the strip behind the
+// status bar is painted from the `theme-color` meta, NOT from CSS — so the
+// palette swap alone leaves a blue bar above a titanium page (reported live).
+// These are the two target tints: the titanium field (matches --bg in dev
+// mode) and the original sky blue when dev mode is off.
+const THEME_COLOR_DEV = "#8b9299";
+const THEME_COLOR_DEFAULT = "#6fc3fd"; // must match the static meta in index.html
+
+/**
+ * Re-tint the iOS status bar to match the active theme. WebKit pins the bar
+ * tint and ignores a plain content swap, so — exactly like cure/drc.js does
+ * across the ghost-button navigation — we nudge the meta to a near value then
+ * to the target across two animation frames, forcing a re-evaluation. Guarded
+ * for Node (no document / no rAF): a missing meta or missing rAF degrades to a
+ * direct set or a no-op.
+ * @param {string} color
+ */
+function paintStatusBar(color) {
+  try {
+    const meta = globalThis.document?.querySelector?.('meta[name="theme-color"]');
+    if (!meta) return;
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === "function") {
+      // A one-digit nudge off the target — enough to change the string so
+      // WebKit re-reads it, invisible to the eye.
+      const nudged = color.slice(0, -1) + (color.endsWith("e") ? "d" : "e");
+      raf(() => {
+        meta.setAttribute("content", nudged);
+        raf(() => meta.setAttribute("content", color));
+      });
+    } else {
+      meta.setAttribute("content", color);
+    }
+  } catch {
+    /* no DOM — the class + cache are the durable parts */
+  }
+}
+
 /**
  * The locally-cached developer-mode state — the synchronous answer used at
  * first paint before /api/settings resolves. False (the safe default: the
@@ -81,5 +119,8 @@ export function applyDeveloperTheme(on, opts) {
   } catch {
     /* no DOM (SSR/tests) — persistence above is the durable part */
   }
+  // Match the iOS status-bar tint to the palette (the blue-strip-above-titanium
+  // fix). Runs on every path — boot cache-apply, server reconcile, knob toggle.
+  paintStatusBar(on ? THEME_COLOR_DEV : THEME_COLOR_DEFAULT);
   return !!on;
 }

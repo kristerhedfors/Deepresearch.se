@@ -24,9 +24,15 @@ function stubStorage() {
   return store;
 }
 
-/** Minimal documentElement.classList stub tracking a class set. */
-function stubDocument() {
+/**
+ * Minimal document stub: a classList set plus an optional theme-color <meta>.
+ * Returns { classes, meta } — meta.content tracks the last value set.
+ */
+function stubDocument({ withMeta = false } = {}) {
   const set = new Set();
+  const meta = withMeta
+    ? { content: "#6fc3fd", setAttribute: (_k, v) => (meta.content = v), getAttribute: () => meta.content }
+    : null;
   globalThis.document = {
     documentElement: {
       classList: {
@@ -38,13 +44,15 @@ function stubDocument() {
         contains: (cls) => set.has(cls),
       },
     },
+    querySelector: (sel) => (sel === 'meta[name="theme-color"]' ? meta : null),
   };
-  return set;
+  return { classes: set, meta };
 }
 
 function reset() {
   delete globalThis.localStorage;
   delete globalThis.document;
+  delete globalThis.requestAnimationFrame;
 }
 
 test("cachedDeveloperMode: false without storage, and false when unset", () => {
@@ -68,7 +76,7 @@ test("storeDeveloperMode: round-trips through the cache key, removes when off", 
 
 test("applyDeveloperTheme: toggles the root class AND persists by default", () => {
   const store = stubStorage();
-  const classes = stubDocument();
+  const { classes } = stubDocument();
   applyDeveloperTheme(true);
   assert.equal(classes.has(DEV_MODE_CLASS), true);
   assert.equal(store.get(DEV_MODE_KEY), "1");
@@ -80,10 +88,23 @@ test("applyDeveloperTheme: toggles the root class AND persists by default", () =
 
 test("applyDeveloperTheme: { persist: false } applies the class without writing the cache", () => {
   const store = stubStorage();
-  const classes = stubDocument();
+  const { classes } = stubDocument();
   applyDeveloperTheme(true, { persist: false });
   assert.equal(classes.has(DEV_MODE_CLASS), true); // theme applied for this page
   assert.equal(store.has(DEV_MODE_KEY), false); // but the cache was not touched
+  reset();
+});
+
+test("applyDeveloperTheme: re-tints the iOS theme-color meta to match the palette", () => {
+  stubStorage();
+  const { meta } = stubDocument({ withMeta: true });
+  // Run rAF callbacks synchronously so we can observe the settled value.
+  globalThis.requestAnimationFrame = (cb) => cb();
+  assert.equal(meta.content, "#6fc3fd"); // starts at the default sky blue
+  applyDeveloperTheme(true);
+  assert.equal(meta.content, "#8b9299"); // settles on the titanium tint
+  applyDeveloperTheme(false);
+  assert.equal(meta.content, "#6fc3fd"); // and back to the default when off
   reset();
 });
 
