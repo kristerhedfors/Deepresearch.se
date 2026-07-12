@@ -33,6 +33,10 @@
     p.lead, .muted { font-size: .92rem; }
     .muted { color: var(--muted); }
     section a { color: var(--accent); overflow-wrap: anywhere; }
+    section video {
+      display: block; width: 100%; border-radius: 12px; margin: 0 0 .8rem;
+      background: #0a2e5c; box-shadow: 0 4px 18px rgba(4, 30, 60, .2);
+    }
     /* The rendered history (fetched markdown). This page IS the story, so
        it flows with normal page scroll — no inner scroll box. NOTHING may
        scroll sideways: tables and code wrap instead of forcing width. */
@@ -67,6 +71,8 @@
   </div>
 
   <section>
+    <video src="/llm-assiterad-utveckling.mp4" controls muted loop playsinline
+      aria-label="Promotional video: LLM-assisted development research"></video>
     <p class="lead">How this site was built over a weekend, entirely
     through the Claude Code iPhone app — domain purchase, every deployment,
     and every service configured, without the source or config ever viewed

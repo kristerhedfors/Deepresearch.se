@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeepResearch.se — a deep-research assistant, built from a phone</title>
-  <meta name="description" content="A deep-research AI assistant built over a weekend, entirely through the Claude Code iPhone app. Invite-only research project — docs, build story, and source are open.">
+  <title>DeepResearch.se — deep research, hosted or in your browser</title>
+  <meta name="description" content="A deep-research AI assistant that plans web searches and answers with citations. Use it hosted (invite-only) or entirely in your browser on your own key. Docs, build story, and source are open.">
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=4">
   <meta name="theme-color" content="#6fc3fd">
@@ -67,18 +67,20 @@
     }
     .card h2 { font-size: 1rem; margin: 0 0 .45rem; }
     .card p { font-size: .92rem; margin: .35rem 0; }
-    video {
-      display: block; width: 100%; border-radius: 12px;
-      background: #0a2e5c; box-shadow: 0 4px 18px rgba(4, 30, 60, .2);
-    }
-    .cta { text-align: center; padding: 1.1rem 1.15rem; }
-    .cta a.signin {
+    /* The two ways in — the first-time user's decision, one card each. */
+    .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; }
+    @media (max-width: 560px) { .tiers { grid-template-columns: 1fr; } }
+    .tier { display: flex; flex-direction: column; }
+    .tier h2 { margin: 0 0 .2rem; font-size: 1.02rem; }
+    .tier ul { margin: .3rem 0 .8rem; padding-left: 1.05rem; font-size: .88rem; }
+    .tier li { margin: .3rem 0; }
+    .tier .go {
+      margin-top: auto; align-self: flex-start;
       display: inline-block; background: var(--accent); color: #fff;
-      text-decoration: none; font-weight: 600; font-size: .95rem;
-      border-radius: 12px; padding: .65rem 1.4rem;
+      text-decoration: none; font-weight: 600; font-size: .92rem;
+      border-radius: 12px; padding: .55rem 1.2rem;
       box-shadow: 0 4px 14px rgba(13, 79, 160, .35);
     }
-    .cta p { font-size: .8rem; color: var(--muted); margin: .55rem 0 0; }
     .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; }
     .links a {
       display: block; background: rgba(255, 255, 255, .55);
@@ -285,35 +287,37 @@
     within a time budget you set.</p>
   </div>
 
-  <div class="card">
-    <video src="/llm-assiterad-utveckling.mp4" controls autoplay muted loop playsinline
-      aria-label="Promotional video: LLM-assisted development research"></video>
-  </div>
-
-  <div class="card">
-    <h2>Built over a weekend — entirely from a phone</h2>
-    <p>The assistant is real, but it's also the evidence: this whole
-    SaaS-style application — Google sign-in, research quotas grounded in
-    real cost, a five-phase research pipeline, an admin console, a PWA —
-    was built over one weekend <b>entirely through the Claude Code iPhone
-    app</b>. Every prompt, the domain purchase, every deployment, every
-    service configuration; the source code was never viewed on any other
-    device. The complete prompt-by-prompt record is public, and so is the
-    code.</p>
+  <!-- The first-time user's decision, front and center: the two ways in,
+       each with its action. Build-story messaging lives in the links below
+       and on /story/ itself (2026-07-12 directive: off the forefront). -->
+  <div class="tiers">
+    <div class="card tier">
+      <h2 class="wtier">deepresearch.<b>se/cure</b></h2>
+      <ul>
+        <li>No account. Research runs in your browser: bring an OpenAI or
+          Berget API key, or a local server such as Ollama.</li>
+        <li>Chats, keys and projects stay on your device — this site's
+          server never receives them.</li>
+      </ul>
+      <a class="go" href="/cure">Try it now →</a>
+    </div>
+    <div class="card tier">
+      <h2 class="wtier">deepresearch.<b>se/rver</b></h2>
+      <ul>
+        <li>The hosted service: live web search within a time budget you
+          set, documents and photos, projects, cloud sync.</li>
+        <li>Invite-only: sign in with Google; new accounts wait for the
+          operator's approval.</li>
+      </ul>
+      <a class="go" href="/login">Sign in →</a>
+    </div>
   </div>
 
   <div class="links">
-    <a href="/cure"><b>Try it now — no account</b><span>deepresearch.<b>se/cure</b> — DRC: runs in your browser, against the one provider you choose — OpenAI, Berget, or your own local endpoint</span></a>
-    <a href="/story/"><b>The build story</b><span>Every prompt, verbatim, with its commit</span></a>
+    <a href="/story/"><b>The build story</b><span>The whole site was written in one weekend through the Claude Code iPhone app — every prompt, verbatim, with its commit</span></a>
     <a href="/build/"><b>About this project</b><span>Purpose &amp; EU AI Act use restrictions</span></a>
     <a href="/help/"><b>Documentation</b><span>Every control, and its privacy meaning</span></a>
     <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener"><b>Source code</b><span>MIT-licensed, on GitHub</span></a>
-  </div>
-
-  <div class="card cta">
-    <a class="signin" href="/login">Sign in</a>
-    <p>Invite-only research project — new accounts await the operator's
-    approval after signing in with Google.</p>
   </div>
 
   <footer>
@@ -359,9 +363,9 @@
         </ul>
       </div>
     </div>
-    <p class="wmore">The whole site was built in a weekend through the Claude
-      Code iPhone app. Read <a href="/story/">the build story</a> — every
-      prompt, verbatim — or see <a href="/build/">about this project</a>,
+    <p class="wmore">Curious how this site came to be? Read
+      <a href="/story/">the build story</a> — every prompt, verbatim — or see
+      <a href="/build/">about this project</a>,
       <a href="/help/">the documentation</a>, and
       <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener">the source code</a>.</p>
     <button id="wintrook" type="button">Got it</button>

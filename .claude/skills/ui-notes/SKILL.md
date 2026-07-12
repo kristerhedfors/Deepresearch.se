@@ -223,11 +223,20 @@ description: >-
   render with (`/js/markdown.js`, vendored `marked`/`DOMPurify` — all
   public on GitHub anyway). The app itself and every `/api/*` stay gated.
 - **Landing page** (`public/welcome/index.html`): signed-out visitors
-  hitting `/` get this promotional page (hero, the promo video, cards to
-  story/about/docs/GitHub, a sign-in CTA noting invite-only approval)
-  instead of a bare login form; `/login` remains the explicit sign-in
-  page and the target for auth bounces on other paths. Signed-in users
-  at `/` get the app, as always.
+  hitting `/` get this page instead of a bare login form; `/login`
+  remains the explicit sign-in page and the target for auth bounces on
+  other paths. Signed-in users at `/` get the app, as always.
+  STRUCTURE (2026-07-12 directive — the front page is the FIRST-TIME
+  USER experience, not the build pitch): hero + product tagline, then
+  the two-ways-in tier cards (deepresearch.se/cure with a "Try it now"
+  button; deepresearch.se/rver with "Sign in", invite-only noted — tier
+  names in the header brand treatment, gold tail with dark outer
+  border), then the link cards (story/about/docs/GitHub — the
+  built-in-a-weekend-from-a-phone hook lives in the build-story card's
+  DESCRIPTION and nowhere more prominent), then the footer. The promo
+  video and the "Built over a weekend" narrative moved OFF the landing
+  onto `/story/` (video at its top) — keep build-story messaging one
+  tap away but never at the forefront of `/`.
 - **First-visit onboarding animations (2026-07-12):** both tiers greet a
   first-time visitor once, gated by plain localStorage UI flags and
   replayable with `?anim=1`; both respect `prefers-reduced-motion` and
