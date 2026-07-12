@@ -35,6 +35,12 @@ export function isPublicAsset(url, method) {
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
     url.pathname.startsWith("/architecture/") ||
+    // Project pulse — the commit-analytics dashboard: the page plus its
+    // committed dataset (pulse/data.json). Public so it is reachable from
+    // BOTH tiers (the signed-in app links it, and the /cure client tier can
+    // open it without an account). The dataset is derived from the public
+    // git history, so serving it unauthenticated exposes nothing new.
+    url.pathname.startsWith("/pulse/") ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

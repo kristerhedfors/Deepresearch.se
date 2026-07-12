@@ -840,3 +840,13 @@ what docs claim); and update the skill list below plus the skill's
   (account panel → Games): the no-invented-game-logic rule (Pokémon Gen-1
   mechanics verbatim, mapped species/moves), the pure-core/API/client split,
   deterministic spawning, and the server-authoritative battle protocol.
+
+- **commit-analytics** — the "Project pulse" dashboard at
+  `deepresearch.se/pulse` (public, linked from both tiers): three
+  small-multiple charts (commits / lines / new features per day, with a
+  day/week/month toggle) over the repo's own git history, and the skill to
+  refresh it. Covers `scripts/build-pulse.mjs` (the git → `public/pulse/data.json`
+  aggregator, `npm run pulse`), how each series is counted (exact commit/line
+  counts with generated-artifact exclusion; a keyword heuristic for features
+  that a human curates), the curate-then-commit update workflow, and the
+  `/pulse/` public-allowlist entry.
