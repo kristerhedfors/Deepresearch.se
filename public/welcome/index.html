@@ -406,17 +406,27 @@
       bubble.style.top = (mascot.getBoundingClientRect().bottom + 10) + "px";
       bubble.hidden = false;
       requestAnimationFrame(function () { bubble.classList.add("show"); });
-      // Clicks anywhere else wave the mascot goodbye (the ghost button and
-      // the bubble's link keep working on their own).
+      // While the bubble is up, only two things may happen: follow the
+      // bubble's link (or the ghost it points at) to /cure, or dismiss.
+      // Any other tap must NOT also reach the page underneath, so the
+      // handler swallows the click — the background is inert behind the
+      // bubble.
       setTimeout(function () {
         document.addEventListener("click", dismiss, true);
       }, 400);
     }
     function dismiss(e) {
-      // Tapping the bubble itself dismisses too (its link still navigates —
-      // nothing here prevents the default); only the ghost button is exempt,
-      // since tapping IT is the whole point.
-      if (e && ghost.contains(e.target)) return;
+      // Following what the bubble points to navigates on its own — let it:
+      // the ghost button (its own click handler) and the bubble's own link
+      // (its href) are the two exempt targets.
+      if (e && (ghost.contains(e.target) ||
+          (bubble.contains(e.target) && e.target.closest && e.target.closest("a")))) {
+        return;
+      }
+      // Anything else just closes the bubble and drops you onto the page —
+      // swallow the click so a link/button in the background isn't triggered
+      // too (the whole point: the background is inert while the bubble shows).
+      if (e) { e.preventDefault(); e.stopPropagation(); }
       document.removeEventListener("click", dismiss, true);
       mascot.classList.add("bye");
       bubble.classList.remove("show");
