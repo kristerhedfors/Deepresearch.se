@@ -18,6 +18,15 @@ import {
   mentionedSnapshotPaths,
   snapshotIndex,
   validateSnapshot,
+  chunkSourceText,
+  snapshotChunks,
+  quantizeInt8,
+  int8ToB64,
+  b64ToInt8,
+  cosineF32Int8,
+  retrieveSourceChunks,
+  validateRagIndex,
+  SOURCE_CHUNK_TARGET,
 } from "./introspect-core.js";
 
 /** A small snapshot fixture in the bundler's exact shape. */
@@ -137,21 +146,35 @@ test("mentionedSnapshotPaths: exact paths, root files, and basenames", () => {
 
 test("buildIntrospectionBlock: markers, index, orientation, capability line", () => {
   const block = buildIntrospectionBlock(snap(), { latestText: "how are you built?" });
-  assert.ok(block.startsWith("\n\n--- Introspection: deepresearch.se source snapshot"));
-  assert.ok(block.trimEnd().endsWith("--- End of introspection snapshot ---"));
-  assert.match(block, /You DO have access to this site's own implementation/);
+  assert.ok(block.startsWith("\n\n--- Introspection: deepresearch.se source"));
+  assert.ok(block.trimEnd().endsWith("--- End of introspection source ---"));
+  assert.match(block, /You DO have this site's own source here/);
+  assert.match(block, /Never say you have no access to the source or that this isn't a coding tool/);
   assert.match(block, /src\/pipeline\.js\t30/); // the index row
   assert.match(block, /# CLAUDE\.md — architecture orientation/);
   assert.match(block, /Project orientation text/);
   assert.match(block, /digest abc123def456/);
-  // no sandbox → the enable-the-sandbox pointer, not the /src pointer
-  assert.match(block, /enable the execution sandbox/);
 });
 
-test("buildIntrospectionBlock: sandboxMounted flips the pointer to /src", () => {
-  const block = buildIntrospectionBlock(snap(), { sandboxMounted: true });
-  assert.match(block, /mounted at \/src inside the Linux sandbox/);
-  assert.doesNotMatch(block, /enable the execution sandbox/);
+test("buildIntrospectionBlock: sandboxMounted adds the /src pointer", () => {
+  const withSb = buildIntrospectionBlock(snap(), { sandboxMounted: true });
+  assert.match(withSb, /mounted at \/src inside the Linux sandbox/);
+  const noSb = buildIntrospectionBlock(snap(), {});
+  assert.doesNotMatch(noSb, /mounted at \/src inside the Linux sandbox/);
+});
+
+test("buildIntrospectionBlock: RAG-retrieved chunks are shown as relevant excerpts", () => {
+  const block = buildIntrospectionBlock(snap(), {
+    latestText: "code examples from site",
+    retrieved: [
+      { p: "src/pipeline.js", text: "export function runPipeline() {}", score: 0.84 },
+      { p: "src/chat.js", text: "export function handleChat() {}", score: 0.8 },
+    ],
+  });
+  assert.match(block, /Source excerpts most relevant to this question/);
+  assert.match(block, /## src\/pipeline\.js/);
+  assert.match(block, /export function runPipeline/);
+  assert.match(block, /export function handleChat/);
 });
 
 test("buildIntrospectionBlock: inlines named files in full", () => {
@@ -235,4 +258,94 @@ test("parseIntrospectionChoice round-trips both kinds and rejects junk", () => {
   assert.equal(parseIntrospectionChoice("s:"), null);
   assert.equal(parseIntrospectionChoice(""), null);
   assert.equal(parseIntrospectionChoice(null), null);
+});
+
+// ---- source RAG core --------------------------------------------------------------
+
+test("chunkSourceText: bounded chunks with overlap, deterministic", () => {
+  const text = Array.from({ length: 200 }, (_, i) => `line ${i} of source code here`).join("\n");
+  const a = chunkSourceText(text);
+  const b = chunkSourceText(text);
+  assert.deepEqual(a, b); // deterministic
+  assert.ok(a.length > 1);
+  for (const c of a) assert.ok(c.length <= SOURCE_CHUNK_TARGET + 5);
+  assert.deepEqual(chunkSourceText(""), []);
+  assert.deepEqual(chunkSourceText(null), []);
+});
+
+test("snapshotChunks: one entry per (file, chunk) in file order", () => {
+  const s = /** @type {any} */ (
+    validateSnapshot({ v: 1, digest: "", files: [
+      { p: "a.js", s: 5, t: "short" },
+      { p: "b.js", s: 5, t: "also short" },
+    ] })
+  );
+  const chunks = snapshotChunks(s);
+  assert.equal(chunks.length, 2);
+  assert.equal(chunks[0].p, "a.js");
+  assert.equal(chunks[0].ci, 0);
+  assert.equal(chunks[0].text, "short");
+});
+
+test("int8 codec: quantize round-trips through b64 and cosine tracks the float cosine", () => {
+  // two similar vectors and one different; check int8 cosine preserves ranking
+  const mk = (f) => Float32Array.from({ length: 64 }, (_, i) => f(i));
+  const q = mk((i) => Math.sin(i * 0.3));
+  const near = mk((i) => Math.sin(i * 0.3) + 0.01 * Math.cos(i));
+  const far = mk((i) => Math.cos(i * 1.7));
+  const qi = quantizeInt8(q), ni = quantizeInt8(near), fi = quantizeInt8(far);
+  // b64 round-trip is exact
+  assert.deepEqual(Array.from(b64ToInt8(int8ToB64(qi))), Array.from(qi));
+  // int8 cosine ranks 'near' above 'far', same as float would
+  const sNear = cosineF32Int8(q, ni);
+  const sFar = cosineF32Int8(q, fi);
+  assert.ok(sNear > sFar, `near ${sNear} should beat far ${sFar}`);
+  // self-similarity is ~1
+  assert.ok(cosineF32Int8(q, qi) > 0.999);
+});
+
+test("validateRagIndex: accepts the built shape, rejects junk", () => {
+  const good = { v: 1, model: "e5", dims: 4, target: 1400, overlap: 200,
+    vectors: [int8ToB64(quantizeInt8(Float32Array.of(1, 2, 3, 4)))], map: [{ p: "a.js", ci: 0 }] };
+  assert.ok(validateRagIndex(good));
+  assert.equal(validateRagIndex(null), null);
+  assert.equal(validateRagIndex({ v: 2, vectors: [], map: [] }), null);
+  assert.equal(validateRagIndex({ v: 1, vectors: ["x"], map: [] }), null); // length mismatch
+  assert.equal(validateRagIndex({ v: 1, vectors: ["x"], map: [{ p: "a", ci: "0" }] }), null);
+});
+
+test("retrieveSourceChunks: returns the highest-cosine chunks with current text", () => {
+  const s = /** @type {any} */ (
+    validateSnapshot({ v: 1, digest: "", files: [
+      { p: "pipe.js", s: 5, t: "alpha" },
+      { p: "chat.js", s: 5, t: "bravo" },
+    ] })
+  );
+  const chunks = snapshotChunks(s); // [{pipe,0,alpha},{chat,0,bravo}]
+  // Build an index whose vectors make the query prefer chat.js.
+  const vPipe = quantizeInt8(Float32Array.of(1, 0, 0));
+  const vChat = quantizeInt8(Float32Array.of(0, 1, 0));
+  const index = /** @type {any} */ (validateRagIndex({
+    v: 1, model: "e5", dims: 3, target: SOURCE_CHUNK_TARGET, overlap: 200,
+    vectors: [int8ToB64(vPipe), int8ToB64(vChat)],
+    map: [{ p: "pipe.js", ci: 0 }, { p: "chat.js", ci: 0 }],
+  }));
+  const top = retrieveSourceChunks(index, s, Float32Array.of(0, 1, 0), 1);
+  assert.equal(top.length, 1);
+  assert.equal(top[0].p, "chat.js");
+  assert.equal(top[0].text, "bravo"); // resolved from the CURRENT snapshot
+  assert.ok(top[0].score > 0.9);
+  assert.equal(chunks.length, 2);
+});
+
+test("retrieveSourceChunks: skips a (p,ci) that no longer resolves after source shrank", () => {
+  const s = /** @type {any} */ (validateSnapshot({ v: 1, digest: "", files: [{ p: "a.js", s: 3, t: "one" }] }));
+  const index = /** @type {any} */ (validateRagIndex({
+    v: 1, model: "e5", dims: 3, target: SOURCE_CHUNK_TARGET, overlap: 200,
+    vectors: [int8ToB64(quantizeInt8(Float32Array.of(1, 0, 0))), int8ToB64(quantizeInt8(Float32Array.of(0, 1, 0)))],
+    map: [{ p: "a.js", ci: 0 }, { p: "a.js", ci: 5 }], // ci:5 no longer exists
+  }));
+  const top = retrieveSourceChunks(index, s, Float32Array.of(1, 0, 0), 5);
+  assert.equal(top.length, 1); // the stale ci:5 is skipped, not returned as undefined
+  assert.equal(top[0].text, "one");
 });

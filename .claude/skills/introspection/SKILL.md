@@ -24,6 +24,40 @@ MODE: the exact deployed source is given to the model as structured context,
 and — when the execution sandbox is also on — mounted at `/src` inside the
 in-browser Linux VM for real `ls`/`cat`/`grep -rn` exploration.
 
+## How it engages (2026-07-12 redesign — READ THIS FIRST)
+
+Developer mode being ON is the ONLY gate. There is NO intent regex deciding
+whether to inject the source. The original gate (`introspectionActive` — "your
+source code" / "how are you built" / a named path) was too narrow: "Code
+examples from site" matched nothing, so nothing was injected and the model
+gave its stock "isn't a coding tool" denial (chat_logs #275). Now, whenever
+developer mode is on (`state.introspection`), `src/introspect.js` ALWAYS
+appends the site's own source, built around **dense RAG retrieval**:
+
+1. Embed the user's question server-side (Berget e5, `query:` prefix).
+2. Cosine-rank it against the committed DENSE index
+   `public/introspect/source-rag.json` (one int8 embedding per source chunk),
+   take the top-K (6) chunks — the code relevant to THIS question, for any
+   phrasing, NO VM.
+3. Build the block: the retrieved excerpts + a CLAUDE.md orientation excerpt +
+   (only for strong "how are you built / list files" asks) the full file index
+   + any file the message names by path, inlined.
+4. `hasSource` flips the answer prompts' capabilities tail
+   (`prompts.js capabilitiesTail`, threaded via `pipeline.js ctx.hasSource ←
+   state.introspectionCount`) so the model quotes the source instead of
+   denying it.
+
+`introspectionActive` still exists — but only to decide `includeIndex` (full
+file index vs the lean "name any file" pointer) and named-file inlining, never
+whether to engage. Everything is fail-soft: no rag index / embed failure →
+orientation-only block (still injected, model still has source); no snapshot →
+unchanged conversation.
+
+DRC has no server embedder of the right model, so it can't do dense retrieval
+(the client-side provider embedders differ); it injects the snapshot block
+(orientation + named files, full index on strong intent) whenever developer
+mode is on — same "always on in dev mode" rule, minus retrieval.
+
 ## The load-bearing idea: ONE committed snapshot artifact
 
 `scripts/bundle-source.mjs` (`npm run bundle`) walks the **git-tracked** text
@@ -80,13 +114,43 @@ inlined under caps (30k/file, 60k total, 6 files). Depth beyond the caps is
 the sandbox's job, not more inlining — the block rides through EVERY phase
 including the ~32k-context JSON model.
 
+## The dense RAG index (`source-rag.json`)
+
+`scripts/bundle-source-rag.mjs` (`npm run bundle:rag`) chunks the committed
+snapshot with the SHARED deterministic chunker (`introspect-core.js
+chunkSourceText`, 1400/200 — mirrors rag.js so e5's ~512-token window never
+overflows), embeds each chunk, and stores ONE **int8-quantized** vector per
+`{p, ci}` (path + chunk index) — NOT the text. Cosine is scale-invariant, so
+quantizing each vector by its own max-abs (÷127) is lossless for ranking and
+no scale is stored. Retrieval RE-CHUNKS the snapshot to resolve `{p, ci}` →
+text, so the returned code is ALWAYS current even if vectors lag.
+
+Embeddings must match the model the server embeds the query with (Berget
+e5-large, 1024-d). The builder gets them via `BERGET_API_TOKEN` (direct) OR,
+when that's absent, the live `/api/embed` with the break-glass creds
+(`BASIC_AUTH_USER`/`PASS`) — production holds the key. It is RESILIENT: a
+token-dense chunk that 502s the batch is retried, then the batch is split to
+singles and any lone unembeddable chunk is skipped (logged), so one bad chunk
+never aborts the ~2700-chunk build. NOT part of `npm run bundle` (that stays
+pure/offline) and NOT run in CI.
+
+**Rebuild order when source changes:** finish edits → `npm run bundle`
+(snapshot) → `npm run bundle:rag` (index, against the FINAL snapshot) → commit
+both. Doing rag before the final snapshot leaves the index chunk-map misaligned
+and trips the consistency check.
+
 ## Freshness discipline
 
-`src/introspect.test.js` runs `node scripts/bundle-source.mjs --check`; a
-stale artifact **fails `npm test`**. So: touch any bundled source file →
-`npm run bundle` → commit the regenerated artifact in the same commit. New
-files must be `git add`ed BEFORE bundling (the walker uses `git ls-files`).
-Never hand-edit the artifact.
+`src/introspect.test.js` enforces two things and **fails `npm test`** on
+either: (1) `node scripts/bundle-source.mjs --check` — the snapshot matches the
+tree; (2) the rag index's every `{p, ci}` still resolves against the current
+snapshot's chunking (no stale refs) and covers ≥90% of files. CI can't
+re-embed (no key), so #2 is the correctness guarantee — the retrieved TEXT is
+always current; vectors may lag semantically until someone re-runs
+`npm run bundle:rag`. So: touch a bundled source file → `npm run bundle` →
+`npm run bundle:rag` → commit all three (source, snapshot, rag). New files must
+be `git add`ed BEFORE bundling (the walker uses `git ls-files`). Never
+hand-edit the artifacts.
 
 ## Gating
 
