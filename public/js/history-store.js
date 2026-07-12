@@ -27,23 +27,18 @@
 // knob is off). Bulk moves in either direction live in sync.js; this
 // module only dual-writes the record it just touched.
 //
-// THE ONE EXCEPTION — project chats rest READABLE, in both locations.
-// Conversations inside a project are RAG-indexed (chat-rag.js) so the
-// project's other chats can retrieve from them, and this app's storage
-// rule is that indexed material rests readable (the index already holds
-// its text in the clear — encrypting the record would protect nothing
-// the index doesn't expose; same rule as RAG-indexed documents). Their
-// records are stored as {data} instead of {iv, ciphertext}. Everything
-// outside a project keeps the encrypted-always posture above.
+// LEGACY: the removed DRS projects feature (2026-07-12) stored its chats
+// READABLE ({data} instead of {iv, ciphertext}) because they were
+// RAG-indexed. Old rows in that form still load (readRecordData), and
+// re-saving one re-encrypts it — every write is ciphertext now.
 
 import { serverHistoryOn } from "./settings.js";
 
 const DB_NAME = "dr_history";
-// v2 adds the "projects" store (public/js/projects.js): one encrypted
-// record per project, same {iv, ciphertext} shape as a conversation.
-const DB_VERSION = 2;
+// v2 added the "projects" store; v3 removes it again (the DRS projects
+// feature was removed 2026-07-12 — its records have no reader left).
+const DB_VERSION = 3;
 const STORE = "conversations";
-const PROJECTS = "projects";
 
 let dbPromise = null;
 let keyPromise = null;
@@ -58,8 +53,8 @@ function openDb() {
         const store = db.createObjectStore(STORE, { keyPath: "id" });
         store.createIndex("updatedAt", "updatedAt");
       }
-      if (!db.objectStoreNames.contains(PROJECTS)) {
-        db.createObjectStore(PROJECTS, { keyPath: "id" });
+      if (db.objectStoreNames.contains("projects")) {
+        db.deleteObjectStore("projects"); // v2 leftover of the removed projects feature
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -151,8 +146,8 @@ function reqToPromise(req) {
 }
 
 // One stored row → its conversation data, whichever form it rests in:
-// readable {data} for project chats (see the header), encrypted
-// {iv, ciphertext} for everything else.
+// encrypted {iv, ciphertext} normally, readable {data} for legacy chats
+// of the removed projects feature (see the header).
 async function readRecordData(r) {
   if (r.data) return r.data;
   const key = await historyKey();
@@ -166,8 +161,8 @@ async function readRecordData(r) {
 // record that fails to decrypt (corrupted, or encrypted under a
 // since-rotated secret) is skipped rather than crashing the whole list.
 /**
- * @returns {Promise<Array<{id: string, title: string, updatedAt: number,
- *   projectId: ?string}>>} newest first; undecryptable rows are skipped
+ * @returns {Promise<Array<{id: string, title: string, updatedAt: number}>>}
+ *   newest first; undecryptable rows are skipped
  *   (counted by undecryptableConversations)
  */
 export async function listConversations() {
@@ -178,7 +173,7 @@ export async function listConversations() {
   for (const r of records) {
     try {
       const data = await readRecordData(r);
-      items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt, projectId: r.projectId || null });
+      items.push({ id: r.id, title: data.title, updatedAt: r.updatedAt });
     } catch {
       // Undecryptable — leave it out of the list rather than break the
       // sidebar, but COUNT it so the sidebar can say "N conversations can't
@@ -213,49 +208,36 @@ export async function loadConversation(id) {
 }
 
 // data: {title, messages, model, budgetS, webSearch, createdAt, updatedAt,
-// ragDocs, projectId}. The row keeps projectId OUTSIDE the ciphertext —
-// LOCALLY ONLY (never uploaded; the cloud body below carries just the
-// stored form + timestamps): it's a random uuid revealing grouping, not
-// content, and sync needs it to honor a project's cloud-off knob without
-// decrypting every record. A conversation WITH a projectId is a project
-// chat — RAG-indexed for cross-chat retrieval, so its record rests
-// readable ({data}) instead of encrypted (the header explains the rule).
-// opts.cloud=false skips the cloud mirror even when the account knob is
-// on — that's the per-project opt-out (public/js/projects.js decides).
+// ragDocs}. Every write is encrypted — a legacy readable {data} row (the
+// removed projects feature) re-encrypts the moment it is re-saved.
 /**
  * @param {string} id
  * @param {object} data  the conversation record (stream.js ConversationRecord)
- * @param {{cloud?: boolean}} [opts]
  */
-export async function saveConversation(id, data, { cloud = true } = {}) {
+export async function saveConversation(id, data) {
   const db = await openDb();
-  let stored;
-  let body;
-  if (data.projectId) {
-    stored = { data };
-    body = { data, updatedAt: data.updatedAt, createdAt: data.createdAt };
-  } else {
-    const key = await historyKey();
-    const enc = await encryptRecord(key, data);
-    stored = { iv: enc.iv, ciphertext: enc.ciphertext };
-    body = { iv: enc.iv, ciphertext: enc.ciphertext, updatedAt: data.updatedAt, createdAt: data.createdAt };
-  }
-  const record = {
-    id,
-    updatedAt: data.updatedAt,
-    projectId: data.projectId || null,
-    ...stored,
-  };
+  const key = await historyKey();
+  const enc = await encryptRecord(key, data);
   await reqToPromise(
-    db.transaction(STORE, "readwrite").objectStore(STORE).put(record),
+    db.transaction(STORE, "readwrite").objectStore(STORE).put({
+      id,
+      updatedAt: data.updatedAt,
+      iv: enc.iv,
+      ciphertext: enc.ciphertext,
+    }),
   );
   // Cloud mirror (fire-and-forget): a failed push must never surface as a
   // chat error — sync.js reconciles by updatedAt on the next opportunity.
-  if (serverHistoryOn() && cloud) {
+  if (serverHistoryOn()) {
     fetch("/api/convos/" + encodeURIComponent(id), {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: data.updatedAt,
+        createdAt: data.createdAt,
+      }),
     }).catch(() => {});
   }
 }
@@ -270,8 +252,8 @@ export async function deleteConversation(id) {
 
 // ---- raw (storage-form) record access for sync.js ---------------------------
 // Sync moves records in their stored form as-is — ciphertext blobs without
-// a decrypt/re-encrypt round trip (no need for the key on the bulk path),
-// readable {data} records (project chats) verbatim.
+// a decrypt/re-encrypt round trip (no need for the key on the bulk path);
+// legacy readable {data} rows (the removed projects feature) verbatim.
 
 export async function exportEncryptedRecords() {
   const db = await openDb();
@@ -279,19 +261,15 @@ export async function exportEncryptedRecords() {
   return records.map((r) => ({
     id: r.id,
     updatedAt: r.updatedAt,
-    projectId: r.projectId || null,
     iv: r.iv,
     ciphertext: r.ciphertext,
     data: r.data,
   }));
 }
 
-// Imports one server-side record (either stored form), last-write-wins by
-// updatedAt. Returns true when the local store actually changed. For an
-// encrypted record the projectId row field is recovered by decrypting the
-// incoming blob (this device has the key) — the cloud copy deliberately
-// doesn't carry it in the clear; a readable project-chat record carries it
-// in its data.
+// Imports one server-side record (either stored form — {data} is the
+// legacy readable form), last-write-wins by updatedAt. Returns true when
+// the local store actually changed.
 /**
  * @param {string} id
  * @param {object} record  server-side stored form ({iv, ciphertext} or {data})
@@ -304,107 +282,14 @@ export async function importEncryptedRecord(id, record) {
   const existing = await reqToPromise(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
   const updatedAt = Number(record.updatedAt) || 0;
   if (existing && existing.updatedAt >= updatedAt) return false;
-  let projectId = existing?.projectId || null;
-  let stored;
-  if (isPlain) {
-    projectId = record.data.projectId || null;
-    stored = { data: record.data };
-  } else {
-    stored = { iv: record.iv, ciphertext: record.ciphertext };
-    try {
-      const key = await historyKey();
-      const data = await decryptRecord(key, record.iv, record.ciphertext);
-      projectId = data.projectId || null;
-    } catch {
-      // Undecryptable content still imports (it may decrypt after a key
-      // becomes available again); it just can't be project-scoped yet.
-    }
-  }
+  const stored = isPlain
+    ? { data: record.data }
+    : { iv: record.iv, ciphertext: record.ciphertext };
   await reqToPromise(
     db
       .transaction(STORE, "readwrite")
       .objectStore(STORE)
-      .put({ id, updatedAt, projectId, ...stored }),
-  );
-  return true;
-}
-
-// ---- project records (public/js/projects.js owns the shape) ----------------
-// Same encrypted-record pattern as conversations, in their own store and
-// their own R2 family. `data`: {name, files, notes?, serverStorage,
-// createdAt, updatedAt} — everything, name included, inside the ciphertext.
-
-export async function saveProjectRecord(id, data, { cloud = true } = {}) {
-  const key = await historyKey();
-  const db = await openDb();
-  const enc = await encryptRecord(key, data);
-  await reqToPromise(
-    db
-      .transaction(PROJECTS, "readwrite")
-      .objectStore(PROJECTS)
-      .put({ id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext }),
-  );
-  if (serverHistoryOn() && cloud) {
-    fetch("/api/projects/" + encodeURIComponent(id), {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        iv: enc.iv,
-        ciphertext: enc.ciphertext,
-        updatedAt: data.updatedAt,
-        createdAt: data.createdAt,
-      }),
-    }).catch(() => {});
-  }
-}
-
-export async function listProjectRecords() {
-  const key = await historyKey();
-  const db = await openDb();
-  const records = await reqToPromise(
-    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).getAll(),
-  );
-  const items = [];
-  for (const r of records) {
-    try {
-      items.push({ id: r.id, ...(await decryptRecord(key, r.iv, r.ciphertext)) });
-    } catch {
-      // Undecryptable — skip rather than break the projects list.
-    }
-  }
-  items.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return items;
-}
-
-export async function deleteProjectRecord(id, { cloud = true } = {}) {
-  const db = await openDb();
-  await reqToPromise(db.transaction(PROJECTS, "readwrite").objectStore(PROJECTS).delete(id));
-  if (serverHistoryOn() && cloud) {
-    fetch("/api/projects/" + encodeURIComponent(id), { method: "DELETE" }).catch(() => {});
-  }
-}
-
-export async function exportEncryptedProjectRecords() {
-  const db = await openDb();
-  const records = await reqToPromise(
-    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).getAll(),
-  );
-  return records.map((r) => ({ id: r.id, updatedAt: r.updatedAt, iv: r.iv, ciphertext: r.ciphertext }));
-}
-
-export async function importEncryptedProjectRecord(id, record) {
-  if (!record?.iv || !record?.ciphertext) return false;
-  const db = await openDb();
-  const existing = await reqToPromise(
-    db.transaction(PROJECTS, "readonly").objectStore(PROJECTS).get(id),
-  );
-  const updatedAt = Number(record.updatedAt) || 0;
-  if (existing && existing.updatedAt >= updatedAt) return false;
-  await reqToPromise(
-    db
-      .transaction(PROJECTS, "readwrite")
-      .objectStore(PROJECTS)
-      .put({ id, updatedAt, iv: record.iv, ciphertext: record.ciphertext }),
+      .put({ id, updatedAt, ...stored }),
   );
   return true;
 }

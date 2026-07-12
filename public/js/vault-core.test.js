@@ -13,7 +13,7 @@ import {
   normalizeVaultSecret,
   validateVaultArchive,
   vaultSecretValid,
-} from "./vault.js";
+} from "./vault-core.js";
 
 // ---- secret generation ---------------------------------------------------------
 

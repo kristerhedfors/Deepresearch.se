@@ -132,8 +132,12 @@ reloads the page so the shell comes back isolated.
 
 ## Mounting user files into the VM (part B — Tier 1 shipped 2026-07-11)
 
-Attachments and project files are mounted into the guest so the model can
-`cat`/`grep`/`python3` them. Full design + research citations:
+Attachments are mounted into the guest so the model can
+`cat`/`grep`/`python3` them. (The project mount half of the design is
+DORMANT in DRS since the projects feature was removed 2026-07-12 — the
+provider's `project` slot is always null there; the pure plumbing in
+`sandbox-files.js`/`sandbox.js` keeps supporting it as the seam a DRC
+project mount would use.) Full design + research citations:
 `docs/SANDBOX-HOST-COMMANDS.md`. The load-bearing facts (all from CheerpX's
 primary docs — mirrored in the `aisecurityliteracy.dev` clone under
 `docs/cheerpx/` — cross-checked against WebVM's source):
@@ -187,7 +191,7 @@ round-trip OUT (guest-written files back to the user).
 | Pure core (sanitize/dedupe/cap/manifest/`projHash`/`buildSeedScript`/`shellEscape`) | `public/js/sandbox-files.js` (+ `.test.js`); in `isPublicAsset` |
 | Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM) |
 | Boot signature | `ensureSandboxBooted(fileProvider?)` — provider is `async () => ({session:[{name,type,bytes}], project:{name,id,files:[…]}|null})` |
-| DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `activeProject().files`→project; bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed |
+| DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `project` always null (DRS projects removed 2026-07-12); bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed |
 | Prompt awareness | `bashAgentPrompt` (points the model at `/workspace/INDEX.txt`) |
 
 **Gotchas / rules:**

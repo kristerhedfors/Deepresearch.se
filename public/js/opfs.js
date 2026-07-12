@@ -101,9 +101,9 @@ export async function listOriginals() {
   return filesMetaStore.getAll();
 }
 
-// One-stop archival used by attachments.js AND projects.js: original bytes
-// → OPFS (and, when both the account knob and the caller's scope allow it,
-// mirrored to R2). Pure archival — never blocks or fails the caller.
+// One-stop archival used by attachments.js: original bytes → OPFS (and,
+// when the account knob allows it, mirrored to R2). Pure archival —
+// never blocks or fails the caller.
 //
 // Everything is AES-GCM ENCRYPTED under the same never-persisted history
 // key conversations use, before it rests anywhere — with ONE deliberate
@@ -111,8 +111,7 @@ export async function listOriginals() {
 // search index needs readable text anyway (disclosed in the settings UI).
 // Images especially always take the encrypted path. If the key is
 // unavailable, the encrypted class stores NOTHING at all — never a
-// plaintext fallback. `cloud: false` skips the R2 mirror even when the
-// account knob is on (the per-project storage opt-out).
+// plaintext fallback.
 export async function archiveFile(fileId, file, { plaintext = false, cloud = true } = {}) {
   try {
     let stored = file;
@@ -148,8 +147,7 @@ export async function archiveFile(fileId, file, { plaintext = false, cloud = tru
 }
 
 // Remove a file everywhere it can rest: OPFS + meta row, and (when the
-// account knob is on) the R2 copy. Used by projects.js when a file is
-// removed from a project or the project is deleted.
+// account knob is on) the R2 copy.
 export async function purgeFile(fileId) {
   await deleteOriginal(fileId);
   if (serverHistoryOn()) {

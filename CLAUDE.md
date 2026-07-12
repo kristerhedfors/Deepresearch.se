@@ -63,12 +63,17 @@ git push origin main
    and profiles are all split accordingly.
 4. **The privacy split.** Conversations and attached-file originals rest as
    ciphertext in BOTH the browser and (if the cloud knob is on) R2 — the ONLY
-   readable exceptions are RAG-indexed material and project chats, because
-   retrieval needs plaintext. The encryption key is derived server-side and
-   held only in memory, never at rest beside the ciphertext. The
-   secret-keyed project vault (`src/vault.js` + `public/js/vault.js`) is
-   the strictest tier: archives rest server-side as ciphertext under a
-   user-held secret the server never sees and cannot derive. Since 2026-07-08
+   readable exception is RAG-indexed material (large attached documents and
+   the search index itself), because retrieval needs plaintext. The
+   encryption key is derived server-side and held only in memory, never at
+   rest beside the ciphertext. Since 2026-07-12 this is also the TIER
+   split: DRS carries NO client-side project machinery and NO secret-keyed
+   vault — projects, and everything sealed under a user-held DR1-… secret,
+   are DRC territory (the deliberate product line between the tiers; the
+   DRS projects feature, project-chat RAG, and `src/vault.js` +
+   `public/js/vault.js` were removed — only the public pure crypto core
+   `public/js/vault-core.js` remains, because DRC builds on it).
+   Since 2026-07-08
    (explicit product decision) the server ALSO keeps a full-visibility
    interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
    exchange's complete question, answer, and research metadata — UNLESS the
@@ -135,8 +140,7 @@ Server (`src/`):
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, and `bash_lite_mcp` (experimental execution sandbox) knobs — `GET/PUT /api/settings` |
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
-| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
-| `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
+| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation records (`/api/convos*`), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — also clears legacy `projects/{uid}/` objects of the removed projects feature) |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
@@ -234,36 +238,29 @@ via the map_view anchor; live-session only, pure registry core
 Node-tested),
 `markdown.js`
 (sanitized rendering), `timescale.js` (slider scale), `history-store.js`
-(IndexedDB + AES-GCM: the conversation store itself — encrypted, except
-project chats which rest readable because they're RAG-indexed — now also
-dual-writing each record to the cloud while the knob is on),
+(IndexedDB + AES-GCM: the conversation store itself — every write
+encrypted (legacy readable rows of the removed projects feature still
+load) — also dual-writing each record to the cloud while the knob is
+on),
 `history-ui.js` (the left history sidebar: list/rename/delete/load),
 `settings.js` (cached `/api/settings` client; `serverHistoryOn()` is the
 synchronous question every storage-touching module asks), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
-server-index push/import), `chat-rag.js` (project-chat RAG: incremental
-turn indexing as a conversation grows, the `chat-<convId>` doc ids, the
-sibling-chat retrieval scope, index deletion — pure text-extraction core
-Node-tested), `sync.js` (bulk sync when the account knob
-flips, either direction, + `pullNewer` reconciliation + the per-project
-`pushProjectScope`/`drainProjectScope`), `projects.js` (project records,
-file/note ingestion + indexing, the per-project knob, scope helpers),
-`project-context.js` (pure builders: the project-materials block,
-`projectDocIds` — Node-testable), `projects-ui.js` (the project panel:
-knob at top, the vault store-with-secret section, dropzone, add-text
-form, file/chat lists, header chip; plus the sidebar's
-load-project-from-secret form), `vault-core.js` (the project vault's
-dependency-free PURE core: the copy-safe 160-bit Crockford-base32
+server-index push/import), `chat-rag.js` (the chat-as-retrieval-doc
+PURE core — `chat-<convId>` doc ids, block-stripping index-text
+extraction — kept for DRC's `drc-rag.js`, which builds on it;
+Node-tested; the DRS project-chat indexing that once lived here went
+with the projects feature, 2026-07-12), `sync.js` (bulk sync when the
+account knob flips, either direction, + `pullNewer` reconciliation),
+`vault-core.js` (the vault's
+dependency-free PURE crypto core: the copy-safe 160-bit Crockford-base32
 secret — generation, forgiving normalization — HKDF id+key derivation,
 AES-256-GCM archive encrypt/decrypt, archive validation, base64
-helpers; publicly served because DRC builds on it) + `vault.js` (the
-DRS store/load orchestration over it, re-exporting the core: packing a
-whole project — record, chats, decrypted file originals, RAG index
-with vectors — into ONE blob the server only ever sees encrypted; its
-static imports pull the DRS storage stack, so it must NEVER enter the
-/cure module graph — public modules import `vault-core.js` instead;
-pure core Node-tested). DRC's client modules — the whole public tier:
+helpers; publicly served because DRC builds on it — the DRS store/load
+orchestration that once wrapped it (`public/js/vault.js`) was removed
+with the projects feature; Node-tested as `vault-core.test.js`).
+DRC's client modules — the whole public tier:
 `drc-core.js` (DRC's pure core, built on `vault-core.js`: ONE master secret →
 HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
@@ -374,9 +371,6 @@ predicates + the catalog merge/degrade path),
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
-`vault.js` (the project-vault endpoints against a mocked R2 bucket:
-id validation, PUT/GET/DELETE round-trip, size/count caps, per-user
-namespacing, and the works-with-the-knob-OFF guarantee),
 `pub.js` (published research replays: slug rules incl. the dot-free
 asset-collision guard, `validatePublication`, the publish → public read
 → index → unpublish round-trip against a mocked R2, storage-missing
@@ -409,12 +403,11 @@ timestamp extraction, byte-order handling, malformed-input safety) and
 comment extraction), `rag.js`'s pure core (`chunkText` coverage/
 overlap/termination properties, `cosineSim`, `topKChunks`, the vector
 codec — the module is written to be import-safe outside a browser),
-`project-context.js` (the project-materials block builder, doc-id
-scoping, note/name normalization), `chat-rag.js`'s pure core (chat doc
-ids, the appended-block-stripping turn-text extraction, the
-sibling-chat scope picker), `message-content.js` (the
+`chat-rag.js` (chat doc
+ids, the appended-block-stripping turn-text
+extraction), `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
-RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
+RAG-excerpt blocks incl. the legacy chat-doc variant — plus `deriveTitle`,
 `stripOldImages`, `splitUserContent`, and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
@@ -447,7 +440,7 @@ clarify short-circuit, triage fail-soft, and the recall block threaded
 into triage/synthesis/validation but never harvest), `drc-store.js` (the
 browser-local storage adapter: round-trip over an injected backend,
 ciphertext-only at rest, listing, quota/corruption fail-soft),
-`vault-core.js` — via `vault.js`'s re-exports — (secret
+`vault-core.js` (secret
 format/entropy/uniqueness, the forgiving normalization incl. misread
 mapping and prefix stripping, the Crockford codec round-trip, HKDF
 id/key derivation determinism, archive encrypt/decrypt incl. tamper
@@ -503,7 +496,7 @@ suite.
 
 ```bash
 cd tests && npm install && npm run fixtures   # once
-npm run test:mocked   # 43 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
+npm run test:mocked   # 40 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
 npm run test:live     # 5 tests, real Berget tokens + one Exa run
 ```
 
@@ -587,10 +580,11 @@ what docs claim); and update the skill list below plus the skill's
   ledger, deciding evidence-driven `model-profiles.js` entries, and
   don't-commit-mid-battery.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
-  `server_history` cloud knob, RAG documents, projects, the secret-keyed
-  project vault, and the encryption-asymmetry rule (`storage.js`,
-  `vault.js`, `settings.js`, `rag.js`, `history-store.js`, `sync.js`,
-  `projects.js`, `public/js/vault.js`).
+  `server_history` cloud knob, RAG documents, the DRS/DRC tier split
+  (projects and the secret-keyed vault live in DRC only, since
+  2026-07-12), and the encryption-asymmetry rule (`storage.js`,
+  `settings.js`, `rag.js`, `history-store.js`, `sync.js`,
+  `public/js/vault-core.js`).
 - **integrations** — external providers and the enrichment pattern: Berget,
   Anthropic, OpenAI, Exa, OpenStreetMap Nominatim geocoding, Shodan, Google
   Maps / Street View, Hugging Face Hub search (`berget.js`, `anthropic.js`,

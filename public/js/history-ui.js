@@ -14,7 +14,6 @@ import {
   saveConversation,
   undecryptableConversations,
 } from "./history-store.js";
-import { renderProjectsList } from "./projects-ui.js";
 import { loadSettings, serverHistoryOn, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
@@ -59,12 +58,8 @@ export function initHistorySidebar(opts = {}) {
 
   async function refresh() {
     list.innerHTML = '<p class="muted">Loading…</p>';
-    renderProjectsList().catch(() => {});
     const items = await listConversations();
-    // Project conversations live inside their project's panel — the main
-    // list shows plain chats only, so nothing appears twice.
-    const plain = items.filter((c) => !c.projectId);
-    renderList(plain);
+    renderList(items);
 
     // An empty (or thinned) pane must explain itself — every silent branch
     // here has been mistaken for data loss at least once (2026-07-08).
@@ -73,9 +68,7 @@ export function initHistorySidebar(opts = {}) {
     if (skipped) {
       parts.push(`${skipped} saved conversation${skipped === 1 ? "" : "s"} can't be decrypted on this device right now — not deleted, just unreadable with the current key. Reload the page (signed in) and reopen this panel to retry.`);
     }
-    if (!plain.length) {
-      const projectChats = items.length - plain.length;
-      if (projectChats) parts.push(`${projectChats} conversation${projectChats === 1 ? " lives" : "s live"} inside projects — open the project to see them.`);
+    if (!items.length) {
       if (!settingsLoaded()) parts.push("Account settings couldn't be loaded, so cloud copies weren't checked — reload the page to retry.");
       else if (!storageAvailable()) parts.push("Cloud storage isn't available for this account, so only this device's copies can be shown.");
       else if (!serverHistoryOn()) parts.push("Cloud backup is switched off in Settings, so only this device's copies can be shown.");
@@ -98,7 +91,7 @@ export function initHistorySidebar(opts = {}) {
     // 2026-07-08 debugging marathon: it costs one muted line and turns
     // any user screenshot into a build/data report — see the
     // on-device-trace skill before removing it.
-    parts.push(`[h21 · ${plain.length} here${items.length - plain.length ? ` + ${items.length - plain.length} in projects` : ""}${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
+    parts.push(`[h24 · ${items.length} here${skipped ? ` + ${skipped} unreadable` : ""}${pullBit}${cssBit()}]`);
     baseNote = parts.join(" ");
     updateNote();
   }
@@ -108,7 +101,7 @@ export function initHistorySidebar(opts = {}) {
   // handshake) is old while this module is current. A mismatched
   // stylesheet gets one force-refresh per page load, and the stamp
   // shows what was seen so the state is visible in any report.
-  const CSS_WANT = "h21";
+  const CSS_WANT = "h24";
   let cssFixTried = false;
   function cssBit() {
     let seen = "";
@@ -140,8 +133,8 @@ export function initHistorySidebar(opts = {}) {
       return;
     }
     const activeId = currentConversationId();
-    // At REST a chat row contains ONLY the open button — the exact
-    // structure of a project row. That's load-bearing on iOS: rows that
+    // At REST a chat row contains ONLY the open button. That's
+    // load-bearing on iOS: rows that
     // permanently carry an absolutely-positioned (even invisible) action
     // strip inside the backdrop-filtered panel render INVISIBLE on real
     // iOS Safari (2026-07-08 device incident; Linux WebKit can't

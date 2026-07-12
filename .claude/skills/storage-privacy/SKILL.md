@@ -1,20 +1,20 @@
 ---
 name: storage-privacy
 description: >-
-  Load when touching src/storage.js, src/vault.js, src/settings.js,
-  src/rag.js, public/js/history-store.js, sync.js, projects.js,
-  public/js/vault.js, public/js/vault-core.js (the vault's public pure
-  crypto core), or anything about chat-history encryption, the
+  Load when touching src/storage.js, src/settings.js,
+  src/rag.js, public/js/history-store.js, sync.js,
+  public/js/vault-core.js (the public pure
+  crypto core DRC builds on), or anything about chat-history encryption, the
   per-account server_history cloud-storage knob, RAG document indexing,
-  projects, the secret-keyed project vault (store/load a project with a
-  DR1-… secret), DRC — "deep research secure", the client-side public tier
+  projects (DRC-only since 2026-07-12 — removed from DRS along with the
+  secret-keyed vault), DRC — "deep research secure", the client-side public tier
   at /cure (the root redirects there; /my/project-<hash>; public/cure/,
   public/js/drc-core.js, drc-providers.js, drc-rag.js, drc-research.js, drc-store.js:
   no-account deep research with DIRECT browser→provider calls on user keys
   — OpenAI + Groq + Berget, the CORS-capable providers — and BROWSER-LOCAL sealed
   storage; the server is in no DRC data path), or the
-  privacy/encryption model (encrypted-at-rest except RAG-indexed and
-  project chats; keys never at rest beside ciphertext).
+  privacy/encryption model (encrypted-at-rest except RAG-indexed
+  material; keys never at rest beside ciphertext).
 ---
 
 # Storage, encryption & privacy model
@@ -34,18 +34,16 @@ history remains browser-first and encrypted; the log is the server's
 own product-improvement record. Keep `/help/`, the privacy notice, and
 the ghost button titles consistent with this whenever any of it changes.
 
-## Chat history — encrypted (project chats excepted); browser-local, with an opt-out cloud copy
+## Chat history — encrypted; browser-local, with an opt-out cloud copy
 
 Conversations are encrypted client-side before they rest anywhere
-(the cloud-storage mode below stores the same ciphertext), with ONE
-deliberate exception: **chats inside a project rest READABLE**, in both
-locations, because they are RAG-indexed for cross-chat retrieval (see
-"Projects" below) and the app's storage rule is that indexed material
-rests readable — the index already holds the text in the clear, so
-encrypting the record would protect nothing the index doesn't expose
-(the same exception RAG-indexed documents have always had; disclosed in
-`/help/`, the privacy notice, and the cloud-knob popover — the history
-sidebar's own footnote was removed 2026-07-08 to declutter the pane).
+(the cloud-storage mode below stores the same ciphertext). The app's
+storage rule — indexed material rests readable, because the index
+already holds the text in the clear — now applies ONLY to RAG-indexed
+attached documents; conversations are never indexed in DRS since the
+projects feature was removed (2026-07-12; legacy readable project-chat
+rows still load and re-encrypt on their next save). Disclosed in
+`/help/`, the privacy notice, and the cloud-knob popover.
 Unlike
 the original ephemeral-only design (history erased by "New chat" or a
 reload), every conversation **persists across reloads inside the
@@ -58,12 +56,13 @@ this browser ONLY — nothing conversation-derived server-side.
 **Storage**: IndexedDB (`history-store.js`, database `dr_history`) — the
 modern, higher-capacity, async successor to `localStorage`, appropriate
 here since a conversation with attached images can be sizeable. Every
-non-project record is AES-256-GCM encrypted before it is written; even
+record is AES-256-GCM encrypted before it is written; even
 the title
 (which can reveal the topic) lives inside the ciphertext, so listing
 conversations for the sidebar means decrypting each one — fine at the
-scale one person's history reaches. Project chats are stored as a
-readable `{data}` row instead (`readRecordData` handles both forms).
+scale one person's history reaches. (Legacy readable `{data}` rows —
+chats of the removed projects feature — still load; `readRecordData`
+handles both forms.)
 
 **Key hierarchy — the actual security property being engineered for**:
 the encryption key is deterministically derived server-side
@@ -182,10 +181,9 @@ server-side.
 - **Conversations** (`src/storage.js`, R2 `convos/{uid}/{convId}`): the
   SAME record the browser writes to its own IndexedDB — the encrypted
   `{iv, ciphertext}` blob (under the same `/api/history-key` mechanism
-  regardless of where it rests) for ordinary chats, a readable `{data}`
-  record for project chats (RAG-indexed — the exception above; the
-  client chooses the form per record, the server stores what it's
-  given, the same posture as `x-file-enc` on files). `history-store.js`
+  regardless of where it rests); the server also still accepts the
+  legacy readable `{data}` form (chats of the removed projects
+  feature) so old local stores can sync up. `history-store.js`
   dual-writes each save and propagates
   deletes; `sync.js`'s `pullNewer()` (on sidebar open) downloads records
   written from other devices — cloud mode is therefore also cross-device
@@ -261,132 +259,52 @@ retrieval misses entirely still contributes its opening chunks
 (`firstChunks`) so it is never silently absent from its own turn.
 
 **Encryption asymmetry, stated once more because it's the design**:
-non-project conversations AND attached-file originals (images included)
+conversations AND attached-file originals (images included)
 are ciphertext in BOTH locations; the plaintext, in both locations, is
-exactly what's indexed — the RAG index itself, RAG-indexed documents'
-originals, and project-chat records (indexed by `chat-rag.js`) — because
+exactly what's indexed — the RAG index itself and RAG-indexed documents'
+originals — because
 retrieval requires readable text. Keep the settings UI, `/help/`, and
 the privacy notice consistent with that whenever any of it changes.
 
-## Projects — collections of chats and files, with their own cloud knob
+## Projects and the secret-keyed vault — REMOVED from DRS (2026-07-12)
 
-A project (`public/js/projects.js` data/rules, `projects-ui.js` panel,
-`project-context.js` pure builders) is a named collection of
-conversations and materials. Everything reuses the machinery above —
-nothing project-specific was invented storage-side:
+DRS no longer has projects or the secret-keyed project vault. Both were
+removed as an explicit product decision: everything client-side-private —
+projects (collections of chats, files, notes), the DR1-… master secret,
+sealed archives — is DRC's territory, and DRS is the plain signed-in
+server tier. That IS the distinction between the two tiers now.
 
-- **The record**: one encrypted blob per project (name, file inventory
-  incl. extracted metadata, the per-project knob — all inside the
-  ciphertext), in the `dr_history` IndexedDB's `projects` store (DB v2)
-  and mirrored to R2 `projects/{uid}/{id}` (same handler as
-  conversations, `src/storage.js`). Conversation rows carry a `projectId`
-  — plaintext LOCALLY only (a random uuid revealing grouping, not
-  content; sync needs it to honor project knobs without decrypting), and
-  additionally inside the record data. The project's CONVERSATIONS are
-  the readable exception documented under "Chat history" — their records
-  rest plaintext because of the chat indexing below.
-- **Chats are indexed too** (`public/js/chat-rag.js`): every conversation
-  in a project is a RAG doc of its own (`chat-<convId>`, named by the
-  chat's title), **growing with the conversation** — after each persisted
-  exchange, `stream.js` calls `indexChatTurns`, which chunks/embeds ONLY
-  the turns not yet indexed (the doc row's `srcMsgs` counter tracks
-  progress; a failed embed retries on the next exchange) and appends them
-  (`rag.js`'s `appendToDoc`; the cloud mirror re-pushes the whole doc —
-  vectors ride along, nothing re-embeds). Indexed text is the user's
-  actual questions (appended context blocks stripped — re-indexing
-  retrieval excerpts would echo documents back as second-hand chunks)
-  plus the full answers, with the title leading the first increment.
-  Incognito chats are never indexed (nothing persists at all), and
-  deleting a conversation/project deletes its chat docs from both rests
-  (`deleteChatIndex`).
-- **Materials**: added via picker or drag-drop onto the panel, or as a
-  text note (title + content). Documents and notes are ALWAYS indexed
-  (project material is reference material — no 9K inline cutoff logic
-  here), their originals stored readable per the RAG exception; images
-  get EXIF extracted (`exif.js`) into the inventory and their originals
-  encrypted; unsupported types are archived encrypted, unindexed.
-- **Scope**: a chat inside a project retrieves across the project's
-  indexed docs, its SIBLING CHATS in the project (`siblingChatDocs` —
-  newest first, capped; the current conversation is excluded since it IS
-  the context; excerpts render under a "Related project chat" header,
-  `message-content.js`), PLUS its own attachments — never another
-  project's
-  (retrieval is by explicit docId list; isolation is structural and
-  e2e-asserted). Each send also carries the project-materials block
-  (inventory + image EXIF — how a text pipeline "sees" project images).
-  A fresh chat adopts the ACTIVE project on its first send; reopening a
-  conversation re-enters its project (header chip shows which).
-- **The per-project knob** (top of the open project panel, same slide
-  switch): `serverStorage !== false` follows the account setting; an
-  explicit false keeps the whole project — record, conversations, files,
-  index — out of the cloud. Dual-writes consult it (`projectCloudOn`),
-  bulk sync skips cloud-off projects, and flipping it drives the scoped
-  moves (`sync.js`: `pushProjectScope` / `drainProjectScope` — the drain
-  deletes ONLY that project's cloud objects, item by item, after
-  confirming local copies; never the account-wide wipe).
-- **Deleting a project** removes its files, index entries (chat docs
-  included), conversations and record from BOTH rests; the per-project
-  drain (`drainProjectScope`) likewise pulls down and deletes the
-  project's chat docs alongside its files and records.
+What was removed, and what remains:
 
-## The project vault — store/load a whole project under a user-held secret
+- **Removed**: `src/vault.js` (+ `/api/vault/*` routes), `public/js/vault.js`
+  (the DRS store/load orchestration), `public/js/projects.js`,
+  `projects-ui.js`, `project-context.js`, the project panel/chip/sidebar
+  forms in `index.html`, project-chat RAG indexing in DRS (`stream.js` no
+  longer calls `indexChatTurns`; `chat-rag.js` was trimmed to the pure
+  doc-id/index-text core DRC's `drc-rag.js` builds on), the per-project
+  cloud knob and the scoped sync moves (`pushProjectScope` /
+  `drainProjectScope`), the `projects` R2 family in `src/storage.js`, and
+  the `projects` IndexedDB store (dr_history v3 deletes it on upgrade).
+- **Remains**: `public/js/vault-core.js` — the dependency-free pure crypto
+  core (secret generation/normalization, Crockford codec, HKDF
+  derivation, archive encrypt/decrypt) — because DRC's `drc-core.js`
+  builds on it. It is publicly served and tested directly
+  (`vault-core.test.js`). Never delete it, and never reintroduce an
+  auth-served import into the /cure module graph.
+- **Legacy data**: old readable `{data}` conversation rows (project chats
+  rested readable because they were RAG-indexed) still LOAD
+  (`readRecordData` handles both forms) and re-encrypt on their next save;
+  the server still accepts the `{data}` PUT form so old local stores can
+  sync up. Leftover R2 objects under `projects/{uid}/` and `vault/{uid}/`
+  are inert (no routes serve them); the drain-wipe (`DELETE /api/storage`)
+  clears `projects/{uid}/` as legacy cleanup but deliberately still leaves
+  `vault/{uid}/` untouched. Legacy `chat-<convId>` RAG docs stay local and
+  are never pushed (sync.js skips them via `chatConvId`).
 
-The strictest storage tier (added 2026-07-10): any project — INCLUDING a
-local-only one (its knob off, or the whole account knob off) — can be
-parked server-side as ONE client-encrypted archive and loaded back on any
-of the account's devices, without the server ever holding anything
-readable or any key material. `src/vault.js` (endpoints) +
-`public/js/vault-core.js` (the dependency-free PURE crypto core: secret
-generation/normalization, the Crockford codec, HKDF derivation, archive
-encrypt/decrypt/validation — split out 2026-07-11 because DRC's
-drc-core.js builds on these primitives and the public /cure module graph
-must not drag in vault.js's DRS storage imports; vault-core.js is the
-allowlisted public module, vault.js deliberately is NOT) +
-`public/js/vault.js` (re-exports the core and adds the pack/load
-orchestration over history-store/opfs/projects/rag); UI in
-`projects-ui.js` (the panel's "Encrypted copy,
-keyed by a secret" store section, the sidebar's "🔑 Load project from
-secret" form).
-
-- **The secret is the whole key hierarchy**: 160 CSPRNG bits, shown once
-  as `DR1-` + 8×4 Crockford base32 chars (no I/L/O/U — copy-safe;
-  normalization forgives case, separators, and O→0 / I,l→1 misreads,
-  including in a mangled prefix). HKDF-SHA-256 derives BOTH the storage
-  id (`info="…vault id v1"`) and the AES-256-GCM key
-  (`info="…vault key v1"`) — the secret locates AND decrypts; the server
-  stores an unlabeled opaque blob at `vault/{uid}/{id}` it can never
-  read. This is deliberately stronger than the history-key model: there
-  the server could re-derive the key; here it holds nothing derivable.
-  The secret is NEVER persisted anywhere — losing it loses the copy, by
-  design (no recovery path; say so in UI copy, don't soften it).
-- **The archive is self-contained under the secret alone**: project
-  record, its conversations, file ORIGINALS (decrypted from their
-  history-key storage form first, so the archive doesn't depend on that
-  key), and its RAG docs with vectors (nothing re-embeds on load). On
-  load everything returns to its normal storage form: files re-encrypted
-  under the history key (RAG-indexed docs readable, as always; no key →
-  file skipped, never stored readable), records via the normal
-  save paths, LWW by updatedAt, gap-filling.
-- **Import honors the archived project's own cloud posture** — a
-  local-only project loads as local-only (`cloud` follows the record's
-  `serverStorage`), so loading never silently uploads anything readable.
-- **NOT `server_history`-gated** (unlike every `src/storage.js` write):
-  each store is its own explicit consent act, and the whole point is
-  serving knob-off projects. Gated only on `storageAvailability` (R2
-  binding + user row). Per-user namespacing means a vault blob is only
-  reachable from the account that stored it — the secret alone is not
-  enough from another account.
-- **Excluded from the drain-wipe**: `DELETE /api/storage` (account knob
-  off) deliberately does NOT touch `vault/{uid}/` — those copies are
-  often made precisely because the knob is going off. Keep it that way.
-- **Re-storing rotates**: the record remembers its `vaultId` (inside the
-  encrypted record); a new store uploads under the NEW secret's id,
-  updates `vaultId`, deletes the old blob — the old secret stops
-  working. Caps: 100 MB/archive, 50 objects/user (`MAX_VAULT_OBJECTS`).
-- Disclosed at `/help/` ("Backing up or moving a project with a secret" +
-  a "Privacy, in full" bullet) — keep those consistent with any change
-  here.
-
+Consequently the ONLY readable-at-rest exception left in DRS is
+RAG-indexed material: large attached documents' text and the search index
+itself. Conversations are always encrypted, full stop. Keep `/help/`, the
+privacy notice, and the cloud-knob popover consistent with that.
 
 ## DRC — "deep research secure": the client-side public tier at /cure
 

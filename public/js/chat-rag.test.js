@@ -1,14 +1,13 @@
-// Node tests for chat-rag.js's pure helpers: chat doc ids, block-stripping index text, the sibling-chat scope picker.
+// Node tests for chat-rag.js's pure helpers: chat doc ids and the
+// block-stripping index text (the conventions DRC's drc-rag.js builds on).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  MAX_SIBLING_CHATS,
   chatConvId,
   chatDocId,
   chatIndexText,
   messageIndexText,
-  siblingChatDocs,
 } from "./chat-rag.js";
 
 test("chatDocId/chatConvId round-trip; chatConvId rejects non-chat ids", () => {
@@ -83,28 +82,4 @@ test("chatIndexText skips empty messages and returns '' when nothing is indexabl
     "",
   );
   assert.equal(out, "Assistant:\ndescribed the image");
-});
-
-test("siblingChatDocs scopes to the project, excludes the current chat, caps, and names", () => {
-  const conversations = [
-    { id: "current", title: "Me", projectId: "p1", updatedAt: 9 },
-    { id: "c1", title: "Sibling one", projectId: "p1", updatedAt: 8 },
-    { id: "c2", title: "", projectId: "p1", updatedAt: 7 },
-    { id: "other", title: "Other project", projectId: "p2", updatedAt: 6 },
-    { id: "plain", title: "No project", projectId: null, updatedAt: 5 },
-  ];
-  const docs = siblingChatDocs(conversations, "p1", "current");
-  assert.deepEqual(docs, [
-    { id: "chat-c1", name: "Sibling one" },
-    { id: "chat-c2", name: "Untitled chat" },
-  ]);
-  assert.deepEqual(siblingChatDocs(conversations, null, "current"), []);
-
-  const many = Array.from({ length: MAX_SIBLING_CHATS + 5 }, (_, i) => ({
-    id: "c" + i,
-    title: "t" + i,
-    projectId: "p1",
-    updatedAt: i,
-  }));
-  assert.equal(siblingChatDocs(many, "p1", "nope").length, MAX_SIBLING_CHATS);
 });

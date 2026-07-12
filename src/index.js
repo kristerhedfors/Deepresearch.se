@@ -57,7 +57,6 @@ import { handleFeedbackApi } from "./feedback.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleBashStep } from "./bash-api.js";
 import { handleStorage } from "./storage.js";
-import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
@@ -153,14 +152,12 @@ function isPublicAsset(url, method) {
     // assets (found live 2026-07-10: /cure/<slug> served the sign-in 401,
     // then 404, until this).
     (url.pathname.startsWith("/cure/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
-    // The vault's PURE core only — NOT /js/vault.js: that module's store/load
-    // orchestration statically imports the DRS storage stack (history-store/
-    // opfs/projects), which is deliberately not public, and any 401 inside a
-    // public module graph kills the whole /cure tier (found live 2026-07-11:
-    // /cure was dead — static "d5" stamp — because drc-core.js imported
-    // vault.js and its DRS chain 401'd; fixed by splitting vault-core.js out
-    // and importing that). If a module here ever needs vault functionality,
-    // import vault-core.js, never vault.js.
+    // The vault's PURE crypto core — DRC's drc-core.js builds on it. It is
+    // dependency-free by design: any 401 inside a public module graph kills
+    // the whole /cure tier (found live 2026-07-11 when drc-core.js imported
+    // the then-existing DRS vault.js and its private import chain 401'd —
+    // that's why the core was split out; the DRS vault itself was removed
+    // 2026-07-12). Public modules must never import anything auth-served.
     url.pathname === "/js/vault-core.js" ||
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/drc-core.js" ||
@@ -589,24 +586,15 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname.startsWith("/api/rag/")) {
     return handleRag(request, env, url, log, identity);
   }
-  // Opt-in cloud storage: encrypted conversation/project records + files.
+  // Opt-in cloud storage: encrypted conversation records + files.
   if (
     url.pathname === "/api/convos" ||
     url.pathname.startsWith("/api/convos/") ||
-    url.pathname === "/api/projects" ||
-    url.pathname.startsWith("/api/projects/") ||
     url.pathname === "/api/files" ||
     url.pathname.startsWith("/api/files/") ||
     url.pathname === "/api/storage"
   ) {
     return handleStorage(request, env, url, log, identity);
-  }
-  // The secret-keyed project vault (src/vault.js): client-encrypted project
-  // archives under a user-held secret the server never sees. Deliberately
-  // NOT knob-gated — each store is its own explicit consent, and the blob
-  // is ciphertext only.
-  if (url.pathname.startsWith("/api/vault/")) {
-    return handleVault(request, env, url, log, identity);
   }
   // The games subsystem (src/games.js): GET /api/games lists the shelf the
   // account panel renders; /api/games/<id>/* dispatches to the registered

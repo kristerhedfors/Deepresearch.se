@@ -2,8 +2,8 @@
 // public tier at /cure; its remote sibling DRS, "deep research server",
 // is the signed-in app at /rver). The page (public/cure/drc.js) wires
 // this to the DOM: everything derivable and everything cryptographic,
-// built on the project-vault primitives (vault.js) so DRC invents no new
-// crypto.
+// built on the vault-core crypto primitives (vault-core.js) so DRC
+// invents no new crypto.
 //
 // ONE master secret (the vault's DR1-… format — generated with the same
 // 160-bit CSPRNG routine, saved in the user's password manager) is the
@@ -31,13 +31,13 @@
 // constants; changing them would silently break every existing secret
 // and sealed state.
 
-// Imported from the vault's PURE core module — NOT vault.js: vault.js's
-// store/load orchestration statically imports the DRS storage stack
-// (history-store/opfs/projects), which is not publicly served, and a 401
-// anywhere in the /cure module graph kills the whole client tier (found
-// live 2026-07-11: /cure was dead with the static "d5" stamp because this
-// import pulled that chain in). vault-core.js is dependency-free and
-// allowlisted in src/index.js's isPublicAsset.
+// Imported from vault-core.js, the dependency-free pure crypto module
+// allowlisted in src/index.js's isPublicAsset. It must stay
+// dependency-free: a 401 anywhere in the /cure module graph kills the
+// whole client tier (found live 2026-07-11: /cure was dead with the
+// static "d5" stamp because this import went through the then-existing
+// DRS vault.js, whose auth-served import chain 401'd — the DRS vault
+// was removed 2026-07-12).
 import {
   bytesToB64,
   decodeCrockford,

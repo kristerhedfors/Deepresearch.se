@@ -4,13 +4,15 @@
 // and the message-array transforms (title derivation, history image
 // stripping) that stream.js assembles around its DOM/network/state
 // orchestration. Kept import-free so the Node unit suite exercises them
-// directly, the same pattern as project-context.js and rag.js's pure core.
+// directly, the same pattern as rag.js's pure core.
 //
 // The labeled-block convention (--- Attached document: … --- / --- Image
 // metadata: … ---) is shared with the server-side context blocks
-// (src/conversation.js's withAppendedText) and the project-materials block
-// (project-context.js): each piece of research material is its own clearly
-// delimited block, never silently blended into the user's text.
+// (src/conversation.js's withAppendedText): each piece of research
+// material is its own clearly delimited block, never silently blended
+// into the user's text. (The Project/Related-project-chat variants are
+// LEGACY — written by the DRS projects feature removed 2026-07-12; old
+// stored conversations still carry them, so they stay parsed here.)
 
 /**
  * One part of a multimodal user message (OpenAI wire shape).
@@ -155,8 +157,8 @@ export function splitUserContent(content) {
 
 // Where the appended labeled blocks begin in a user message's text — the
 // same block family chat-rag.js strips before indexing (kept in sync with
-// inlineDocBlock / ragExcerptBlocks / project-context.js / the image-
-// metadata block below).
+// inlineDocBlock / ragExcerptBlocks / the image-metadata block below;
+// Project/Related-project-chat are legacy variants, see the header).
 const APPENDED_BLOCK = /\n\n--- (Attached document:|Project:|Related project chat:|Image metadata:)/;
 
 // One appended block's opening line, capturing kind + display name.
@@ -443,9 +445,10 @@ export function imageMetadataBlock(image) {
  * buildRagBlocks (retrieval itself stays there — it's async/network). Groups
  * the retrieved matches back under their documents, enforces a per-excerpt
  * cap and a total char budget, and formats one labeled block per document.
- * Docs in `chatDocIds` are indexed PROJECT CHATS (chat-rag.js) — those get
- * a header saying what they actually are (an earlier conversation in this
- * project) instead of the attached-document one.
+ * Docs in `chatDocIds` are indexed chats (chat-rag.js conventions) — those
+ * get a header saying what they actually are (an earlier conversation)
+ * instead of the attached-document one. Legacy in DRS (nothing passes it
+ * since the projects feature was removed 2026-07-12).
  * @param {Array<{docId: string, seq: number, text: string}>} matches
  * @param {Map<string, string>} names docId → display name
  * @param {Map<string, string>} metaByDoc docId → extracted metadata

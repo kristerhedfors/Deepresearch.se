@@ -352,7 +352,9 @@ describe("directPrompt / searchOffPrompt", () => {
       assert.match(p, /PDF, DOCX, MD, TXT/);
       assert.match(p, /EXIF/);
       assert.match(p, /tracked-change/);
-      assert.match(p, /Projects/);
+      // Projects were removed from DRS (2026-07-12) — the capabilities list
+      // must no longer promise them.
+      assert.doesNotMatch(p, /Projects/);
     });
 
     test("states where each toggleable feature is turned on or off", () => {

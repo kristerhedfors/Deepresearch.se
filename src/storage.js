@@ -1,29 +1,22 @@
 // @ts-check
 // Opt-in server-side storage (R2 binding `STORAGE`) for the per-user
-// `server_history` knob (src/settings.js). Three key families, all
-// namespaced per user id:
+// `server_history` knob (src/settings.js). Key families, all namespaced
+// per user id:
 //
-//   projects/{uid}/{projectId} — one PROJECT record as JSON, same encrypted
-//       {iv, ciphertext} shape as a conversation: the project's name, file
-//       inventory (incl. extracted image metadata), notes, and per-project
-//       cloud knob all live inside the ciphertext. Which files/convos
-//       belong to a project is therefore invisible server-side — the
-//       per-project drain is client-driven (it knows the ids and deletes
-//       them individually through the endpoints below).
-//   convos/{uid}/{convId} — one conversation record as JSON. Two stored
-//       forms, chosen by the client the same way it chooses a file's
-//       x-file-enc: {iv, ciphertext, updatedAt, createdAt} — the SAME
-//       encrypted blob the client stores in its own IndexedDB
+//   convos/{uid}/{convId} — one conversation record as JSON:
+//       {iv, ciphertext, updatedAt, createdAt} — the SAME encrypted blob
+//       the client stores in its own IndexedDB
 //       (public/js/history-store.js): AES-256-GCM ciphertext under the
 //       per-user key from /api/history-key. The server stores it, lists
 //       it, serves it back — it never holds the key material to read it
 //       (only the secret a live server could re-derive it from; see
 //       src/history-key.js's threat model). Titles included: they live
-//       inside the ciphertext here exactly as they do client-side. OR
-//       {data, updatedAt, createdAt} — a READABLE record: project chats,
-//       which are RAG-indexed for cross-chat retrieval and therefore rest
-//       readable like every other indexed material (the index would hold
-//       their text in the clear anyway — public/js/chat-rag.js).
+//       inside the ciphertext here exactly as they do client-side. A
+//       LEGACY readable form {data, updatedAt, createdAt} is still
+//       accepted: chats of the removed DRS projects feature (2026-07-12)
+//       rested readable because they were RAG-indexed, and old local
+//       stores may still sync such rows up — new clients only ever write
+//       the encrypted form.
 //   files/{uid}/{fileId} — an attached file's ORIGINAL bytes, as-is
 //       (name/type in customMetadata). Not encrypted — disclosed in the
 //       settings UI; the server needs readable bytes to serve them back
@@ -62,12 +55,12 @@ const MAX_OBJECTS_PER_USER = 1000; // per key family — sanity backstop, not a 
 /** @param {unknown} s */
 const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
 
-// Two families share the encrypted-record shape and handlers below:
-// "convos" (one conversation each) and "projects" (one project's metadata
-// record each — name, file inventory, notes, per-project knob — all inside
-// the ciphertext; the server can't tell them apart and doesn't need to).
+// One family carries the encrypted-record shape below ("projects" was a
+// second one until the DRS projects feature was removed, 2026-07-12 —
+// its route is gone; leftover projects/{uid}/ objects are only ever
+// touched by wipeAll's legacy cleanup).
 /** @type {Record<string, string>} family -> the list response's key */
-const ENC_FAMILIES = { convos: "conversations", projects: "projects" };
+const ENC_FAMILIES = { convos: "conversations" };
 /** @param {string} family @param {number | string} uid @param {string} id */
 const encKey = (family, uid, id) => `${family}/${uid}/${id}`;
 /** @param {number | string} uid @param {string} id */
@@ -78,7 +71,7 @@ const fileKey = (uid, id) => `files/${uid}/${id}`;
 /** @param {Env} env @returns {R2Bucket} */
 const bucket = (env) => /** @type {R2Bucket} */ (env.STORAGE);
 
-// Router for /api/convos*, /api/projects*, /api/files*, DELETE /api/storage
+// Router for /api/convos*, /api/files*, DELETE /api/storage
 // — called from src/index.js once the identity is resolved.
 /**
  * @param {Request} request
@@ -143,7 +136,7 @@ async function countUnder(env, prefix) {
   return (await listAll(env, prefix)).length;
 }
 
-// ---- encrypted records (conversations + project records) -------------------
+// ---- encrypted records (conversations) --------------------------------------
 
 /** @param {Env} env @param {number | string} uid @param {string} family */
 async function listEncRecords(env, uid, family) {
@@ -187,9 +180,9 @@ async function putEncRecord(request, env, log, identity, uid, family, id) {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
   // Either stored form (see the header): the encrypted {iv, ciphertext}
-  // blob, or a readable {data} record (project chats — RAG-indexed, so
-  // they rest readable). The client decides per record; the server just
-  // stores what it's given, same as x-file-enc on files.
+  // blob, or the LEGACY readable {data} record (chats of the removed
+  // projects feature — an old local store may still sync one up). The
+  // server just stores what it's given, same as x-file-enc on files.
   const isPlain = body?.data && typeof body.data === "object" && !Array.isArray(body.data);
   if (!isPlain && (typeof body?.iv !== "string" || typeof body?.ciphertext !== "string")) {
     return jsonResponse({ error: "Expected {iv, ciphertext, updatedAt} or {data, updatedAt}." }, 400);
@@ -306,10 +299,10 @@ async function deleteObject(env, key) {
  * @param {number | string} uid
  */
 async function wipeAll(env, log, identity, uid) {
-  // vault/{uid}/ (src/vault.js) is deliberately NOT in this list: vault
-  // objects are secret-encrypted archives stored by explicit user action —
-  // often made precisely BECAUSE the knob is going off — so the knob-driven
-  // drain must never destroy them.
+  // projects/{uid}/ stays in this list as LEGACY cleanup only: the DRS
+  // projects feature (and its /api/projects routes) was removed 2026-07-12,
+  // but accounts that used it may still hold record objects under that
+  // prefix — the drain is the one path that still clears them out.
   const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
   for (const prefix of prefixes) {

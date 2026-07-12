@@ -13,7 +13,7 @@ import {
   DRC_STATE_KIND,
   DRC_STATE_V,
 } from "./drc-core.js";
-import { deriveVaultLocator } from "./vault.js";
+import { deriveVaultLocator } from "./vault-core.js";
 
 test("one secret, deterministic derivation, format-insensitive input", async () => {
   const secret = generateDrcSecret();

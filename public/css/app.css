@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h23;
+  --css-version: h24;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -811,11 +811,8 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* The history drawer's ✕ floats at the exact screen position of the
    header's history button (measured by history-ui.js when the drawer
    opens), so on a phone the same tap spot opens AND closes the drawer.
-   Styled like the header glass buttons it stands in for. The project
-   panel's ✕ (#projectclose, placed by projects-ui.js) matches it — the
-   panel opens from the history drawer, so the close button stays in the
-   same spot throughout. */
-#historyclose, #projectclose {
+   Styled like the header glass buttons it stands in for. */
+#historyclose {
   position: fixed; z-index: 11;
   top: 1.8rem; left: 1rem; /* fallback; JS sets the measured position */
   background: rgba(255, 255, 255, .3);
@@ -830,9 +827,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 /* Head content starts below the floating ✕ (which sits over the panel's
    top-left corner at the header-row height). */
-#historysidebar .history-head, #projectpanel .history-head { margin-top: 3rem; }
-/* Above #projectpanel's own z-index (11). */
-#projectclose { z-index: 12; }
+#historysidebar .history-head { margin-top: 3rem; }
 .history-new {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--border); border-radius: 10px;
@@ -840,7 +835,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   text-align: left;
 }
 /* New chat is the speech-bubble-with-a-plus icon (same glyph as the
-   header's New chat and the project panel's new-chat-in-project). */
+   header's New chat). */
 #historynewbtn { display: flex; align-items: center; justify-content: center; line-height: 0; }
 /* No flex:1/min-height:0 here: inside the panel's overflow-y:auto flex
    column, that combination collapses the list to ~zero height on iOS
@@ -858,12 +853,12 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    iOS RENDERING CONSTRAINT (2026-07-08, real-device incident, FOUR
    iterations deep — the rules that finally stuck): chat rows rendered
    INVISIBLE on a real iPhone — present in the DOM, selectable — while
-   the project rows, identical except for not PERMANENTLY containing
+   sibling rows, identical except for not PERMANENTLY containing
    the (opacity:0) absolute action strip, painted fine; and a TRANSFORM
    on the card (even transient, during the drag) broke painting again
    (h7: card flickered instead of sliding). Linux WebKit reproduces
-   none of this. The surviving rules: (1) a row AT REST must be
-   structurally identical to a project row — just the open button;
+   none of this. The surviving rules: (1) a row AT REST must contain
+   just the open button;
    history-ui.js mounts the strip/clip ONLY during an interaction and
    removes them after; (2) the slide is pure LAYOUT — negative
    margin-left — never transform/position/z-index, so no new
@@ -1086,110 +1081,6 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .switch input:checked + .switch-track .switch-thumb { left: 20px; }
 .switch input:disabled + .switch-track { opacity: .45; cursor: not-allowed; }
 .setting-desc { font-size: .82em; line-height: 1.45; margin: .15rem 0 .4rem; }
-
-/* Projects (public/js/projects-ui.js): the panel overlay reuses the
-   history drawer's glass panel, docked wider; the chip sits in the header
-   next to the model selector while a project chat is active. */
-#projectpanel {
-  position: fixed; inset: 0; z-index: 11;
-  background: rgba(10, 46, 92, .45);
-}
-#projectpanel[hidden] { display: none; }
-.project-panel { width: min(420px, 92vw); }
-.project-body { display: flex; flex-direction: column; gap: .55rem; min-height: 0; }
-.project-body .section-lbl { margin: .5rem 0 .1rem; font-size: .78rem; font-weight: 700; color: var(--muted); }
-.project-knob { background: rgba(255, 255, 255, .28); border: 1px solid rgba(255, 255, 255, .5); border-radius: 12px; padding: .45rem .7rem; }
-.project-chip {
-  max-width: 9.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: rgba(255, 255, 255, .3); border: 1px solid rgba(255, 255, 255, .55);
-  border-radius: 999px; padding: .35rem .7rem; font: inherit; font-size: .78rem; font-weight: 600;
-  color: var(--text); cursor: pointer;
-}
-.project-chip[hidden] { display: none; }
-.project-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
-.project-actions button {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px;
-  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
-}
-.project-actions button.danger { color: #a33; border-color: #d9b1b1; }
-#ptextform { display: flex; flex-direction: column; gap: .4rem; }
-#ptextform input, #ptextform textarea {
-  font: inherit; font-size: .85rem; padding: .45rem .6rem;
-  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
-}
-.project-drop {
-  display: flex; flex-direction: column; gap: .35rem;
-  min-height: 3.2rem; border: 1.5px dashed var(--border); border-radius: 12px; padding: .5rem;
-}
-.project-drop.dragging { border-color: var(--accent); background: rgba(126, 201, 255, .18); }
-.project-file {
-  display: flex; align-items: center; gap: .5rem;
-  background: rgba(255, 255, 255, .35); border-radius: 10px; padding: .35rem .5rem;
-}
-.project-file .icon { font-size: 1rem; }
-.project-file .meta { flex: 1; min-width: 0; }
-.project-file .name { font-size: .82rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-file .sub { font-size: .7rem; color: var(--muted); }
-.project-file .pf-remove { background: none; border: 0; color: var(--muted); font-size: .9rem; padding: .15rem .3rem; cursor: pointer; }
-#projectcreate { display: flex; gap: .4rem; }
-#projectcreate[hidden] { display: none; }
-#projectcreate input {
-  flex: 1; min-width: 0; font: inherit; font-size: .85rem; padding: .45rem .6rem;
-  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
-}
-#projectcreate button {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px;
-  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
-}
-/* The project vault (public/js/vault.js): the sidebar's load-from-secret
-   form mirrors the create form; the panel's secret reveal renders the
-   one-time secret in a tap-selectable monospace block. */
-#projectload { display: flex; gap: .4rem; }
-#projectload[hidden] { display: none; }
-#projectload input {
-  flex: 1; min-width: 0; font: inherit; font-size: .85rem; padding: .45rem .6rem;
-  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6);
-}
-#projectload button, #pvaultstore, #pvaultcopy {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px;
-  padding: .45rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
-}
-#projectloadstatus { font-size: .78rem; }
-#projectloadstatus[hidden] { display: none; }
-.vault-secret-row { display: flex; align-items: center; gap: .4rem; margin: .25rem 0 .4rem; }
-.vault-secret {
-  flex: 1; min-width: 0; overflow-wrap: anywhere;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem;
-  padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 10px;
-  background: rgba(255,255,255,.6);
-  -webkit-user-select: all; user-select: all; /* one tap selects the whole secret */
-}
-.vault-warn { font-weight: 600; }
-.project-file .pf-thumb {
-  width: 34px; height: 34px; object-fit: cover; border-radius: 8px; flex: none;
-  box-shadow: 0 1px 3px rgba(4, 30, 60, .25);
-}
-.project-actions .icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 38px; height: 38px; padding: 0; border-radius: 50%;
-}
-.project-actions .icon-btn.danger { color: #a33; }
-.flex-spacer { flex: 1; }
-.pf-add {
-  display: flex; align-items: center; justify-content: center; gap: .5rem;
-  min-height: 44px; border: 0; border-radius: 10px;
-  background: rgba(255, 255, 255, .35); color: var(--muted);
-  font: inherit; font-size: .8rem; cursor: pointer;
-}
-.pf-add:hover { color: var(--text); }
-#projecttitle #projectrename {
-  font: inherit; font-weight: 700; width: 100%;
-  border: 1px solid var(--border); border-radius: 8px; padding: .15rem .4rem;
-  background: rgba(255,255,255,.7);
-}
 
 /* ---- image deck (imagedeck.js): the enlarged slideshow ------------------- */
 .streetview-frames-strip figure.deck-openable { cursor: zoom-in; }

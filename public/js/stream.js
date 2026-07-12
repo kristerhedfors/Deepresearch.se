@@ -34,18 +34,9 @@ import {
   setError,
   setText,
 } from "./turns.js";
-import { decryptBytes, deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
+import { decryptBytes, deleteConversation, loadConversation, saveConversation } from "./history-store.js";
 import { clearPending, readPending, writePending } from "./pending-answer.js";
-import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
-import {
-  activeProject,
-  activeProjectId,
-  getProject,
-  projectCloudOn,
-  setActiveProject,
-} from "./projects.js";
 import { listOriginals, loadOriginal } from "./opfs.js";
-import { buildProjectContext, projectDocIds } from "./project-context.js";
 import {
   asksDeviceLocation,
   asksPhysicalLocation,
@@ -87,7 +78,7 @@ import { ackAnswer, recoverAnswer } from "./recovery.js";
 
 /**
  * The stored conversation record (history-store.js encrypts and persists
- * it; history-ui.js/projects-ui.js reopen it via applyLoadedConversation).
+ * it; history-ui.js reopens it via applyLoadedConversation).
  * @typedef {object} ConversationRecord
  * @property {string} title
  * @property {Array<{role: string, content: string|object[]}>} messages
@@ -96,7 +87,6 @@ import { ackAnswer, recoverAnswer } from "./recovery.js";
  * @property {boolean} webSearch
  * @property {Array<{id: string, name: string}>} ragDocs
  * @property {import("./embeds.js").EmbedEntry[]} embeds
- * @property {?string} projectId
  * @property {number} createdAt
  * @property {number} updatedAt
  */
@@ -121,14 +111,6 @@ let convRagDocs = []; // [{id, name}]
 initEmbeds({ history, persist: () => persistConversation(lastSendOpts) });
 
 // ---- Conversation identity & persistence ---------------------------------
-
-// The project this conversation belongs to (null = none): adopted from the
-// active project on the FIRST send of a fresh conversation, persisted in
-// the encrypted record, restored on load. Project scope means: retrieval
-// runs across the project's indexed docs too, the project-materials block
-// (inventory + image EXIF) rides in each message, and persistence honors
-// the project's cloud knob.
-let convProjectId = null;
 
 // The most recent send's persistence options (model/budget/webSearch) — a
 // quiz answered AFTER its stream finished still needs to persist the
@@ -219,10 +201,6 @@ function openConversationRecord(id, record) {
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   setEmbeds(record.embeds); // normalized inside (any non-array means none)
   convIncognito = false; // a saved conversation is by definition not incognito
-  // Reopening a project conversation re-enters that project's context
-  // (and leaving one, a plain conversation leaves it).
-  convProjectId = record.projectId || null;
-  setActiveProject(convProjectId);
   // Finishing a reloaded quiz re-persists the conversation — with the
   // record's own metadata, not a stale (or empty) previous send's.
   lastSendOpts = { model: record.model || "", budgetS: record.budgetS ?? null, webSearch: record.webSearch !== false };
@@ -266,29 +244,14 @@ async function persistConversation(opts) {
         webSearch: opts?.webSearch !== false,
         ragDocs: convRagDocs,
         embeds: getEmbeds(),
-        projectId: convProjectId,
         createdAt: convCreatedAt,
         updatedAt: now,
       },
-      { cloud: projectCloudOn(convProjectId) },
     );
     onHistoryChange(currentId);
   } catch {
     // See comment above — history storage being unavailable must never
     // surface as a chat error.
-  }
-  // Project chats are RAG-indexed as they grow (chat-rag.js): only the
-  // turns not yet indexed are embedded, so this is one small embed call
-  // per exchange. Fire-and-forget and fail-soft — an indexing hiccup
-  // leaves srcMsgs where it was and the same turns retry after the next
-  // exchange; it must never surface as a chat error.
-  if (convProjectId && currentId) {
-    indexChatTurns({
-      convId: currentId,
-      title: convTitle,
-      messages: history.slice(),
-      cloud: projectCloudOn(convProjectId),
-    }).catch(() => {});
   }
 }
 
@@ -307,21 +270,20 @@ export function clearHistory() {
   controller?.abort();
   controller = null;
   clearPending(); // "New chat" abandons any pending-answer resume too
-  resetConversationMeta(); // the next send re-adopts whatever project is active
+  resetConversationMeta();
   convIncognito = false; // incognito is chosen per conversation, never inherited
   resetStreetViewPov(); // a fresh chat must not inherit the old panorama's view
 }
 
 // Forgets the identity/metadata of the current conversation (id, title,
-// timestamps, RAG docs, embeds, project scope) — the messages themselves and
-// the incognito flag are the caller's to handle.
+// timestamps, RAG docs, embeds) — the messages themselves and the
+// incognito flag are the caller's to handle.
 function resetConversationMeta() {
   currentId = null;
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
   setEmbeds([]);
-  convProjectId = null;
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -566,33 +528,11 @@ function recordResearchEvent(turn, entry) {
 // user JUST attached must never be silently absent from its own turn),
 // and a hard total-size budget.
 async function buildRagBlocks(questionText, newRagDocs) {
-  const project = convProjectId ? getProject(convProjectId) : null;
   const names = new Map(convRagDocs.map((d) => [d.id, d.name]));
-  for (const f of project?.files || []) names.set(f.id, f.name);
-  // Sibling chats: the project's OTHER conversations are indexed too
-  // (chat-rag.js), so what was worked out in one project chat is
-  // retrievable in this one. The current conversation is excluded — it's
-  // already the context.
-  let chatDocs = [];
-  if (project) {
-    try {
-      chatDocs = siblingChatDocs(await listConversations(), convProjectId, currentId);
-      for (const d of chatDocs) names.set(d.id, d.name);
-    } catch {
-      chatDocs = []; // sibling chats are optional context, never a blocker
-    }
-  }
-  // Retrieval scope: this conversation's attached docs PLUS its project's
-  // indexed material (documents, notes, sibling chats) — and nothing else
-  // (no other project can leak in; the docId list IS the scope). Capped at
-  // the server query's 20-docId limit, project material first.
-  const docIds = [
-    ...new Set([
-      ...convRagDocs.map((d) => d.id),
-      ...projectDocIds(project),
-      ...chatDocs.map((d) => d.id),
-    ]),
-  ].slice(0, 20);
+  // Retrieval scope: this conversation's attached docs and nothing else
+  // (the docId list IS the scope). Capped at the server query's 20-docId
+  // limit.
+  const docIds = [...new Set(convRagDocs.map((d) => d.id))].slice(0, 20);
   const metaByDoc = new Map(newRagDocs.filter((d) => d.metadata).map((d) => [d.docId, d.metadata]));
   let matches = [];
   try {
@@ -606,7 +546,7 @@ async function buildRagBlocks(questionText, newRagDocs) {
     }
   }
   if (!matches.length) return "";
-  return ragExcerptBlocks(matches, names, metaByDoc, undefined, new Set(chatDocs.map((d) => d.id)));
+  return ragExcerptBlocks(matches, names, metaByDoc);
 }
 
 // Build one outgoing user message's content (string, or multimodal parts
@@ -620,14 +560,9 @@ async function buildRagBlocks(questionText, newRagDocs) {
 // Large documents don't ride inline: they were RAG-indexed at attach
 // time (attachments.js / rag.js) and contribute retrieved excerpts here
 // instead — on this turn and on every follow-up in this conversation.
-// A fresh conversation adopts the project that's active when its first
-// message is sent; after that the conversation's own projectId rules —
-// this is also where that adoption (convProjectId) and the conversation's
-// RAG-doc roster (convRagDocs) are updated.
+// This is also where the conversation's RAG-doc roster (convRagDocs) is
+// updated.
 async function buildOutgoingUserContent(text, opts) {
-  if (!currentId && !convProjectId) convProjectId = activeProjectId();
-  const project = convProjectId ? getProject(convProjectId) : null;
-
   const newRagDocs = (opts.docs || []).filter((d) => d.rag && d.docId);
   for (const d of newRagDocs) {
     if (!convRagDocs.some((r) => r.id === d.docId)) {
@@ -639,13 +574,7 @@ async function buildOutgoingUserContent(text, opts) {
     if (d.rag) continue; // excerpts appended below
     apiText += inlineDocBlock(d);
   }
-  // Project materials: inventory + extracted image metadata (EXIF) as
-  // context, then the same retrieval mechanism attachments use pulls the
-  // relevant excerpts out of the project's indexed docs/notes.
-  if (project) {
-    apiText += buildProjectContext(project);
-  }
-  if (convRagDocs.length || project) {
+  if (convRagDocs.length) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
   for (const a of opts.images) {
@@ -819,10 +748,12 @@ async function maybeRunShellLoop(turn, opts) {
 }
 
 // Build the file provider the sandbox seeds from (design part B): this send's
-// attachments become /workspace files, the active project's files become the
-// project mount. Returns an async fn the sandbox calls once, right before boot
-// — deferred so the (possibly decrypting) byte loads only happen if the model
-// actually needs the VM. Fully fail-soft: a file that won't load is skipped.
+// attachments become /workspace files. Returns an async fn the sandbox calls
+// once, right before boot — deferred so the (possibly decrypting) byte loads
+// only happen if the model actually needs the VM. Fully fail-soft: a file
+// that won't load is skipped. (The `project` slot in the returned shape is
+// the sandbox's mount seam — always null since the DRS projects feature was
+// removed 2026-07-12.)
 /**
  * @param {{ docs?: any[], images?: any[] }} opts the send options (attachments)
  * @returns {() => Promise<{ session: any[], project: any }>}
@@ -872,25 +803,8 @@ function buildSandboxFileProvider(opts) {
       if (b && b.length) session.push({ name: im.name, type: "image", bytes: b });
     }
 
-    let project = null;
-    try {
-      const p = activeProject();
-      if (p && Array.isArray(p.files) && p.files.length) {
-        const files = [];
-        for (const f of p.files) {
-          const b = await bytesFor(f.id, null, f.name);
-          if (b && b.length) files.push({ name: f.name, type: f.kind || f.ext || "file", bytes: b });
-        }
-        if (files.length) project = { name: p.name, id: p.id, files };
-      }
-    } catch { /* no project / not available — session-only */ }
-
-    sblog("info", "sandbox.fs.provider", {
-      session_files: session.length,
-      project: project ? project.name : null,
-      project_files: project ? project.files.length : 0,
-    });
-    return { session, project };
+    sblog("info", "sandbox.fs.provider", { session_files: session.length });
+    return { session, project: null };
   };
 }
 
@@ -969,7 +883,7 @@ export async function sendMessage(text, opts) {
       ua: (() => { try { return (navigator.userAgent || "").slice(0, 140); } catch { return ""; } })(),
       // The last sandbox filesystem-mount summary (public/js/sandbox.js) — so a
       // mount problem shows in the chat log meta (src/chatlog.js) even without
-      // the debug beacon: files mounted (n), bytes (b), a project mount (proj),
+      // the debug beacon: files mounted (n), bytes (b),
       // dropped count (drop), boot ms, and any error.
       fs: sandboxFsSummary() || undefined,
     };

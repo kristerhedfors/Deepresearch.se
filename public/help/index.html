@@ -143,35 +143,24 @@
         simply doesn't appear — conversations still work, they just don't
         persist across a reload, the previous behavior.</li>
     </ul>
-    <h3>The exception: chats inside a project</h3>
-    <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the
-    same way project documents and notes are — so your other chats in that
-    project can automatically draw on what was worked out in it. The index
-    keeps growing as the conversation does: each new exchange is added to
-    it. Because a search index needs readable text, indexed material is
-    stored <b>readable, not encrypted</b> — and that includes project chats
-    themselves, in this browser and (when cloud storage is on) in the cloud
-    copy. Chats outside projects are not indexed and stay encrypted exactly
-    as described above. If a conversation shouldn't be readable at rest —
-    or retrievable from your other chats — keep it outside projects, or
-    take it to ghost mode (the ghost button → DRC at
-    deepresearch.<b>se/cure</b>, where nothing reaches this server at
-    all).</p>
-    <h3>Backing up or moving a project with a secret</h3>
-    <p>A project — even one kept out of the cloud — can be stored as
-    <b>one encrypted archive</b> keyed by a secret: open the project and
-    press <b>Store</b> next to "Encrypted copy, keyed by a secret". Your
-    browser packs the project's chats, files, and search index, encrypts
-    everything locally with a freshly generated secret
-    (<code>DR1-XXXX-…</code>, 160 random bits), and uploads only the
-    unreadable result. Unlike regular cloud storage, the server never holds
-    anything readable — not the project's name, not its files, not even a
-    key it could derive: the secret shown to you (once — copy it!) is the
-    only way to find and decrypt the copy. Use <b>🔑 Load project from
-    secret</b> in the History panel on any of your devices to bring the
-    project back. Storing again replaces the copy under a new secret, and
-    the old secret stops working; losing the secret loses the copy — there
-    is deliberately no recovery.</p>
+    <h3>The exception: what's indexed for search</h3>
+    <p>Large attached documents are <b>indexed for retrieval</b> so
+    follow-up questions keep drawing on them. Because a search index needs
+    readable text, indexed material — the documents and the index itself —
+    is stored <b>readable, not encrypted</b>, in this browser and (when
+    cloud storage is on) in the cloud copy. Conversations themselves are
+    never indexed and stay encrypted exactly as described above. If
+    something shouldn't be readable at rest at all, take it to ghost mode
+    (the ghost button → DRC at deepresearch.<b>se/cure</b>, where nothing
+    reaches this server at all).</p>
+    <h3>Looking for projects?</h3>
+    <p>Projects — named collections of chats, files, and notes, sealed
+    under a <code>DR1-…</code> secret — live in <b>DRC</b>, the
+    client-side tier at deepresearch.<b>se/cure</b> (the ghost button
+    takes you there). That's the deliberate split between the two tiers:
+    here on deepresearch.<b>se/rver</b> the server hosts the research
+    pipeline and your account; in DRC your projects and keys stay in your
+    browser, sealed under a secret this server never sees.</p>
   </section>
 
   <section>
@@ -241,7 +230,7 @@
     recap at the end.</p>
     <ul>
       <li><b>The material is up to you</b> — the conversation so far, an
-        attached document, your project's files and notes, or (with web
+        attached document, or (with web
         search on) fresh web research on the topic you name.</li>
       <li><b>Written answers are graded on meaning</b>, not exact wording —
         synonyms, paraphrases, and another language all count. If a written
@@ -327,8 +316,8 @@
       <li><b>Store history in the cloud</b> (on by default) — keeps a copy of
         your conversations, files and search index in this site's storage so
         your history follows your account across devices. Conversations and
-        files are stored encrypted; indexed material — large documents,
-        project files and notes, project chats, and the search index itself —
+        files are stored encrypted; indexed material — large attached
+        documents and the search index itself —
         is stored readable, since retrieval needs readable text. Switching it
         off downloads everything to this browser and deletes the cloud copies.
         See "Chat history" above for how the encryption works.</li>
@@ -365,10 +354,7 @@
       <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
         answers. Saved locally in your browser,
         encrypted (see "Chat history" above) — erased only when you delete
-        a conversation there or clear this browser's site data. Chats inside
-        a <b>project</b> are the exception: they're indexed for retrieval and
-        stored readable, like the project's documents (see "The exception"
-        above).</li>
+        a conversation there or clear this browser's site data.</li>
       <li><b>The interaction log</b>: to improve the service, the server
         logs each completed exchange — your question, the answer, the
         searches run and sources found, timings, and any error. For
@@ -378,12 +364,6 @@
         messages in the first place.
         (API clients can still send <code>incognito: true</code> per
         conversation to suppress the log row.)</li>
-      <li><b>Project vault copies</b>: made only when you press <b>Store</b>
-        on a project's "Encrypted copy, keyed by a secret". The archive is
-        encrypted in your browser under a secret only you hold — the server
-        stores unreadable bytes it has no key for (not even derivable), and
-        switching cloud storage off never touches these copies. Load one
-        back with 🔑 Load project from secret in the History panel.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an

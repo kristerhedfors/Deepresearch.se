@@ -9,7 +9,6 @@
 //   account.js        — account & usage panel (/api/me)
 //   stream.js         — conversation history + /api/chat SSE send loop
 //   history-ui.js     — the encrypted local-history drawer
-//   projects.js/-ui   — project records, panel, header chip
 //   settings.js       — cached /api/settings (cloud/feedback knob state)
 //   sync.js           — boot-time cloud reconcile (push diff + pullNewer)
 //   imagedeck.js      — the conversation-wide image deck (onDeckAsk hook)
@@ -20,8 +19,6 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
-import { refreshProjects, setActiveProject } from "./projects.js";
-import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, loadSettings } from "./settings.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
@@ -244,7 +241,7 @@ syncGhostState();
 // ---- Copy conversation ------------------------------------------------------
 // Directly below the account button: copies the whole on-screen conversation
 // as plain text — "User: …" / "Assistant: …" turns, with images and appended
-// context blocks (documents, project materials) reduced to one-line
+// context blocks (documents, retrieval excerpts) reduced to one-line
 // references (stream.js's conversationAsText). Visible only once there is a
 // conversation to copy; the icon flips to a checkmark briefly as the
 // confirmation (a title attribute alone is invisible on touch devices).
@@ -286,13 +283,9 @@ copyBtn.addEventListener("click", async () => {
 });
 syncCopyState();
 
-// ---- Header: clear chat / chat history / projects ---------------------------
+// ---- Header: clear chat / chat history --------------------------------------
 
-// The header's "New chat" leaves any project context (a plain chat);
-// "New chat in project" (projects-ui.js) passes keepProject so the fresh
-// conversation adopts the project it was started from.
-function newChat(keepProject = false) {
-  if (keepProject !== true) setActiveProject(null);
+function newChat() {
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
   syncCopyState();
@@ -302,7 +295,7 @@ document.getElementById("clearbtn").addEventListener("click", () => newChat());
 
 // Loading a saved conversation restores the model/time-target/web-search
 // settings it was sent with, same as re-opening a real chat-app
-// conversation. Shared by the history sidebar and the project panel.
+// conversation.
 function applyRecordSettings(record) {
   if (record.model) selectModel(record.model);
   if (Number.isFinite(record.budgetS) && record.budgetS >= BUDGET_MIN_S && record.budgetS <= BUDGET_MAX_S) {
@@ -322,10 +315,6 @@ const historySidebar = initHistorySidebar({
   onNew: newChat,
   onLoad: applyRecordSettings,
 });
-// Projects (public/js/projects.js + projects-ui.js): collections of chats
-// and files with their own cloud knob and retrieval scope.
-initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
-refreshProjects().catch(() => {});
 initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });
 
 // The composer's send/stop button toggle. Defined HERE — before the
@@ -433,7 +422,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h23";
+const CSS_VERSION = "h24";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

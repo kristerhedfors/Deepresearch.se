@@ -219,7 +219,7 @@ export const synthPrompt = ({ hasShell = false } = {}) =>
 export const bashAgentPrompt = () =>
   `You drive a Linux command-line sandbox for Deepresearch.se. Today's date: ${today()}.\n` +
   "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n" +
-  "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
+  "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/. Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
   "Your job: take the user's request and, step by step, run shell commands to accomplish it, then stop so the assistant can write the final answer using what you found.\n" +
   "Each turn, respond in ONE of these two ways:\n" +
   "1. To run commands: write a short (one sentence) plan, then a single fenced ```bash code block containing the commands to run this turn — one command per line, no prose inside the block. Keep each turn small (1-3 commands) and use the output shown to you before deciding the next turn.\n" +
@@ -286,8 +286,8 @@ export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
 // deterministic quizIntent). Runs on the reliable JSON model like the other
 // JSON phases — a broken quiz JSON means no quiz at all, so JSON reliability
 // outranks the user's answer-model choice here. The material is whatever the
-// pipeline already holds: the conversation (attached documents, project
-// materials, and RAG excerpts all ride inside it as labeled blocks) plus the
+// pipeline already holds: the conversation (attached documents and RAG
+// excerpts ride inside it as labeled blocks) plus the
 // numbered web-source registry when triage chose research. The shape is
 // hardened by src/quiz.js's normalizeQuiz; `correct` is a 0-based index.
 // The substance-over-structure bullet exists because a real quiz (built from
@@ -304,7 +304,7 @@ export const revisePrompt = ({ reinforceJsonOnly = false } = {}) =>
  */
 export const quizPrompt = (numQuestions, { reinforceJsonOnly = false } = {}) =>
   `You create an interactive quiz for Deepresearch.se, a deep-research assistant. Today's date: ${today()}.\n` +
-  "From the provided material (the conversation — including any attached documents and project materials — and the numbered web sources when present), write a quiz that tests the user's understanding of the subject they asked to be quizzed on. Respond ONLY with a JSON object:\n" +
+  "From the provided material (the conversation — including any attached documents — and the numbered web sources when present), write a quiz that tests the user's understanding of the subject they asked to be quizzed on. Respond ONLY with a JSON object:\n" +
   '{"title":"...","intro":"...","questions":[{"question":"...","alternatives":["...","..."],"correct":0,"explanation":"..."}]}\n' +
   `- Exactly ${numQuestions} questions (fewer ONLY if the material genuinely cannot support that many — never pad with questions the material does not answer).\n` +
   "- Each question has 3-4 plausible alternatives with EXACTLY ONE correct; \"correct\" is the 0-based index into that question's alternatives. Vary the position of the correct alternative across questions and keep alternatives similar in length and tone — the correct one must not stand out.\n" +
@@ -352,9 +352,8 @@ const CAPABILITIES_NOTE =
   "9. Google Maps & Street View. When your message names a street address (or you attach a photo carrying GPS location), the site looks it up on Google Maps Platform — resolving it with the Places API (canonical name, formatted address, place type, rating, business status and precise coordinates), confirming Google Street View coverage and its imagery capture date, and pulling a road map of the spot — then folds those details plus clickable Maps and Street View links into the research, hands several Street View angles around the location plus the map to a vision-capable model to describe, and (where coverage exists) shows an inline drag-to-navigate Street View in the answer. Example: \"what does the building at <street address> look like, and what's there?\". TURN ON/OFF: Account panel → Settings → \"Google Maps & Street View\", OFF by default (only the address or the photo's coordinates is sent to Google, never your whole question).\n" +
   "10. Chat history, encrypted and local. Every conversation is saved in this browser, encrypted, and listed in the History panel (clock icon, header) to reopen, rename, or delete; \"New chat\" starts fresh without deleting the old one. The ghost button (upper right) opens GHOST MODE — DRC at deepresearch.se/cure, the khaki client-side twin of this app where the server never sees your messages at all (your own OpenAI/Groq/Berget API key, browser-local storage): for chats that should leave no trace here, use the ghost.\n" +
   "11. Cloud storage & cross-device sync. Optionally keeps an encrypted copy of your history, files, and search index in the site's storage so it follows your account across devices. TURN ON/OFF: Account panel → Settings → \"Store history in the cloud\", ON by default; turning it off downloads everything back to this browser and deletes the cloud copies.\n" +
-  "12. Projects. Group related chats and files into a named project; chats and materials in a project are indexed so other chats in the same project can draw on them. Each project has its own cloud-storage switch at the top of its panel.\n" +
-  "13. Report export. Each answer has Raw (plain-text), Copy, and PDF buttons; PDF downloads a branded DeepResearch.se report (with any images you attached) generated entirely in your browser.\n" +
-  "14. Interactive quizzes. Ask to be quizzed (e.g. \"quiz me on this document\", \"quiz me on the French Revolution with 8 questions\", \"förhör mig på kapitlet\") and the answer becomes an interactive quiz: one question at a time with multiple-choice alternatives plus a free-text field to answer in your own words, immediate feedback with explanations, and a final score. Questions are built from the conversation, attached documents, project materials, or fresh web research on the topic (with web search on). Written answers are graded on meaning, not exact wording. TURN ON/OFF: triggered by asking for a quiz — no separate switch.\n";
+  "12. Report export. Each answer has Raw (plain-text), Copy, and PDF buttons; PDF downloads a branded DeepResearch.se report (with any images you attached) generated entirely in your browser.\n" +
+  "13. Interactive quizzes. Ask to be quizzed (e.g. \"quiz me on this document\", \"quiz me on the French Revolution with 8 questions\", \"förhör mig på kapitlet\") and the answer becomes an interactive quiz: one question at a time with multiple-choice alternatives plus a free-text field to answer in your own words, immediate feedback with explanations, and a final score. Questions are built from the conversation, attached documents, or fresh web research on the topic (with web search on). Written answers are graded on meaning, not exact wording. TURN ON/OFF: triggered by asking for a quiz — no separate switch.\n";
 
 // The capabilities-note closing line, split out so it can flip when the
 // experimental execution sandbox actually ran for THIS request. Default: the

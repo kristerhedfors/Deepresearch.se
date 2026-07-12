@@ -18,10 +18,8 @@
 //     devices); the local copy stays as a lazy cache and fallback.
 //
 // The RAG index is NOT encrypted (in either location): retrieval needs
-// readable chunk text. Conversations outside projects stay encrypted
-// regardless (history-store.js); PROJECT chats are themselves indexed
-// (chat-rag.js) and therefore follow the same readable-when-indexed rule
-// as documents — the settings UI spells out this split.
+// readable chunk text. Conversations stay encrypted regardless
+// (history-store.js) — the settings UI spells out this split.
 //
 // The pure helpers (chunkText, cosineSim, topKChunks, f32/b64 codecs) are
 // exported for the Node unit suite — keep this module import-safe outside
@@ -301,8 +299,7 @@ async function putDocLocally(doc, chunks, vectors) {
  * One locally-indexed document in its portable form — the same
  * chunks-plus-b64-vectors shape the server index stores in R2 and
  * importDoc below accepts, so moving a doc never re-embeds. Used by the
- * server push right below and by the project vault archive
- * (public/js/vault.js).
+ * server push right below.
  * @param {string} docId
  * @returns {Promise<?{docId: string, name: string, chunks: Chunk[],
  *   vectors: string[], createdAt: number}>} null when the doc isn't in the
@@ -343,8 +340,7 @@ export async function pushDocToServer(docId) {
 
 /**
  * Chunk + embed + store one document. opts.cloud=false skips the server
- * mirror even when the account knob is on — the per-project storage opt-out
- * (public/js/projects.js decides).
+ * mirror even when the account knob is on.
  * @param {string} docId
  * @param {string} name display name
  * @param {string} fullText
@@ -386,7 +382,7 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
 
 /**
  * Incrementally extend an indexed doc (creating it on first call) — the
- * growing-source case (project chats, chat-rag.js): only the NEW text is
+ * growing-source case (chat docs, chat-rag.js conventions): only the NEW text is
  * chunked and embedded, appended after the existing chunks. `meta` fields
  * ride on the doc row (chat-rag.js keeps its srcMsgs progress counter
  * there). The server mirror re-pushes the WHOLE doc — /api/rag/index
