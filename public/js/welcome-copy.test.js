@@ -50,6 +50,8 @@ test("the first-visit message states the required facts", () => {
   );
   assert.match(pane, /<h3 class="wtier">deepresearch\.<b>se\/cure<\/b><\/h3>/);
   assert.match(pane, /<h3 class="wtier">deepresearch\.<b>se\/rver<\/b><\/h3>/);
+  // The identity: a showcase to build on, not a service (2026-07-12).
+  assert.match(text, /showcase, not a service/i);
   // The links the pane must carry.
   for (const href of ["/story/", "/build/", "/help/", "github.com/kristerhedfors/Deepresearch.se"]) {
     assert.ok(pane.includes(`href="${href}`) || pane.includes(`href="https://${href}`), "links " + href);
