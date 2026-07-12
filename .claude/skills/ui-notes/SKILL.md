@@ -251,7 +251,16 @@ description: >-
     tilt to a 3D side view (shaft + J-hook fade in) where the wireframe
     umbrellas spin, sway and sink. The FIRST tap stops and removes the
     overlay immediately (straight to cleanup + onDone — no fade to wait
-    through), so it can never sit in the way of the page.
+    through), so it can never sit in the way of the page. PACE: the scene
+    runs at `BASE_SPEED` (2.5× the original design — 2026-07-12 "make it
+    2.5× as fast by default") times the admin's `anim_speed` site-config
+    multiplier — the /admin Configuration slider ("Intro animation",
+    log-scaled 4^(v/100) so ¼×–4× with the default exactly at center),
+    served publicly at `GET /api/anim` (pre-auth route in src/index.js,
+    60 s browser cache + the ~30 s config cache ⇒ ~90 s propagation);
+    drc.js time-boxes that fetch to ~900 ms and falls back to 1, and
+    umbrella.js clamps it (`clampAnimMult`, mirroring src/config.js's
+    [0.25, 4] clamp). Speed scales the CLOCK, not the T marks.
 - **History pane rows & the iOS paint constraint (2026-07-08):** each
   chat row is a swipe-to-reveal card (`history-ui.js`): swiping left
   slides the WHOLE card via inline `margin-left` (`.swiped` parks it at

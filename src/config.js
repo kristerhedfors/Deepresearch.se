@@ -23,6 +23,9 @@ import { PERIODS } from "./quota.js";
  * @property {number} max_time_budget_s cap for the UI slider value accepted server-side
  * @property {string} default_model empty = Worker default (BERGET_MODEL var / built-in)
  * @property {boolean} require_approval new sign-ins land as "pending" until approved
+ * @property {number} anim_speed intro-animation speed multiplier (1 = the
+ *   default pace, which is itself 2.5× the original — see BASE_SPEED in
+ *   public/cure/umbrella.js); served publicly via GET /api/anim
  */
 
 /** @type {SiteConfig} */
@@ -39,6 +42,9 @@ export const DEFAULT_CONFIG = {
   // Approval gate: new Google sign-ins land as status "pending" (waiting
   // page, no API access) until the admin approves them in /admin.
   require_approval: true,
+  // The /cure first-visit umbrella intro's speed, relative to its default
+  // pace (admin slider in /admin; the slider's center is exactly this 1).
+  anim_speed: 1,
 };
 
 /** @type {{ at: number, value: SiteConfig | null }} */
@@ -114,6 +120,11 @@ function mergeConfig(base, patch) {
   }
   if (typeof patch.default_model === "string") out.default_model = patch.default_model;
   if (typeof patch.require_approval === "boolean") out.require_approval = patch.require_approval;
+  if (Number.isFinite(patch.anim_speed)) {
+    // Same clamp as the client's clampAnimMult: a hostile patch can only
+    // ever slow to ¼× or hasten to 4× the default.
+    out.anim_speed = Math.min(4, Math.max(0.25, patch.anim_speed));
+  }
   return out;
 }
 
@@ -129,6 +140,7 @@ function sanitizeConfigPatch(patch) {
     max_time_budget_s: numOr(patch?.max_time_budget_s),
     default_model: patch?.default_model,
     require_approval: patch?.require_approval,
+    anim_speed: numOr(patch?.anim_speed),
   };
 }
 /** @param {any} v @returns {number | undefined} */

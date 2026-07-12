@@ -304,7 +304,9 @@ a future remote adapter would slot into — Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
-timeline/geometry core Node-tested, replay with `?anim=1`; the landing
+timeline/geometry core Node-tested, replay with `?anim=1`, pace =
+2.5× base × the admin's `anim_speed` config slider (public
+`GET /api/anim`); the landing
 page carries the sibling first-visit onboarding — the does/doesn't
 pane and the ghost mascot pointing out the ghost button, inline in
 `public/welcome/index.html` — see the **ui-notes** skill):

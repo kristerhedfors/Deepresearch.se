@@ -21,7 +21,25 @@
 
 // ---- the timeline (pure) -----------------------------------------------------------
 
-// Phase boundaries in ms. One shared clock; every visual parameter below is
+// The whole scene runs 2.5× the originally-designed pace (2026-07-12
+// directive: the first cut was "a little bit slow"), scaled further by the
+// admin's site-config `anim_speed` slider (served publicly at GET
+// /api/anim; slider center = 1 = exactly this default). Speed scales the
+// CLOCK, not the marks — T below stays the designed shape, and everything
+// (phases, spin, sway, sink) hastens uniformly.
+export const BASE_SPEED = 2.5;
+
+/** The admin multiplier, defensively: garbage in → the default 1; honest
+ * values clamp to [0.25, 4] (the same clamp src/config.js enforces).
+ * @param {unknown} v */
+export function clampAnimMult(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(4, Math.max(0.25, n));
+}
+
+// Phase boundaries in ms of DESIGN time (divide by BASE_SPEED × multiplier
+// for wall-clock). One shared clock; every visual parameter below is
 // a ramp between two of these marks, so the phases overlap smoothly instead
 // of cutting: swirl → untwist → contours drawn while color drains → the
 // quarter-circle camera drop → fade.
@@ -143,11 +161,14 @@ let playing = false;
 /**
  * Plays the intro once over the whole viewport. Resolves the caller via
  * onDone when finished or skipped (tap anywhere). Never throws into the
- * caller — animation failure must not cost a chat.
- * @param {{ onDone?: () => void }} [opts]
+ * caller — animation failure must not cost a chat. `speed` is the admin
+ * multiplier from /api/anim (1 = default; the 2.5× BASE_SPEED is applied
+ * here on top of it).
+ * @param {{ onDone?: () => void, speed?: number }} [opts]
  */
 export function playUmbrellaIntro(opts = {}) {
   const onDone = opts.onDone || (() => {});
+  const clockRate = BASE_SPEED * clampAnimMult(opts.speed);
   if (playing || typeof document === "undefined") {
     onDone();
     return;
@@ -215,9 +236,11 @@ export function playUmbrellaIntro(opts = {}) {
   /** @param {number} now */
   function frame(now) {
     if (!ctx) return cleanup();
-    const dt = Math.min(50, now - last);
+    // Design-time clock: real elapsed ms × the speed (BASE_SPEED × the
+    // admin multiplier). dt drives the spin integration, so it scales too.
+    const dt = Math.min(50, now - last) * clockRate;
     last = now;
-    const t = now - start;
+    const t = (now - start) * clockRate;
     const P = paramsAt(t);
     if (P.done) return cleanup();
 

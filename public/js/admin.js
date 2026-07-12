@@ -423,7 +423,30 @@ function renderConfig() {
       <label><input type="checkbox" name="approval" ${c.require_approval ? "checked" : ""}>
         Require admin approval for new sign-ins (off = anyone with a Google account gets access immediately)</label>
     </div>
+    <h3>Intro animation</h3>
+    <div class="group">
+      <label style="flex:1;display:flex;align-items:center;gap:.6rem">Speed
+        <input type="range" name="animspeed" min="-100" max="100" step="1" style="flex:1"
+          value="${Math.round((100 * Math.log(c.anim_speed > 0 ? c.anim_speed : 1)) / Math.log(4))}">
+        <span id="animspeed-val" style="min-width:8.5rem;font-variant-numeric:tabular-nums"></span>
+      </label>
+    </div>
+    <p class="muted">The /cure first-visit umbrella intro. Center = the default pace
+      (itself 2.5× the original design); range ¼× to 4× of that. Served publicly at
+      /api/anim; a change reaches visitors within ~2 minutes (config + browser cache).</p>
     <div class="group"><button type="submit">Save configuration</button><span class="muted" id="config-msg"></span></div>`;
+  // The slider is log-scaled so the default sits exactly at center with
+  // symmetric slower/faster halves: multiplier = 4^(v/100), v ∈ [-100, 100].
+  const animSlider = form.querySelector('[name="animspeed"]');
+  const animLabel = form.querySelector("#animspeed-val");
+  const animMult = () => Math.pow(4, Number(animSlider.value) / 100);
+  const syncAnimLabel = () => {
+    const m = animMult();
+    animLabel.textContent =
+      `${m.toFixed(2)}× default` + (Math.abs(m - 1) < 0.005 ? " (center)" : ` (${(2.5 * m).toFixed(1)}× original)`);
+  };
+  syncAnimLabel();
+  animSlider.addEventListener("input", syncAnimLabel);
   form.onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(form);
@@ -440,6 +463,7 @@ function renderConfig() {
           max_time_budget_s: Number(f.get("maxbudget")),
           default_model: String(f.get("model") || ""),
           require_approval: f.get("approval") === "on",
+          anim_speed: Math.round(animMult() * 1000) / 1000,
         },
       });
       $("config-msg").textContent = "Saved ✓";

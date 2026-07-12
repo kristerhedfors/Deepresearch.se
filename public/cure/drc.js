@@ -156,8 +156,17 @@ function maybePlayUmbrella(deepLinked) {
   } catch {
     // fine — it may play again next visit
   }
-  return import("./umbrella.js")
-    .then((m) => new Promise((res) => m.playUmbrellaIntro({ onDone: res })))
+  // The admin-set speed multiplier (site config, GET /api/anim — public and
+  // edge/browser-cacheable). Time-boxed so a slow server can only ever cost
+  // ~900 ms before the intro runs at the default speed instead.
+  const speedFetch = Promise.race([
+    fetch("/api/anim")
+      .then((r) => r.json())
+      .then((j) => Number(j?.speed) || 1),
+    new Promise((res) => setTimeout(() => res(1), 900)),
+  ]).catch(() => 1);
+  return Promise.all([import("./umbrella.js"), speedFetch])
+    .then(([m, speed]) => new Promise((res) => m.playUmbrellaIntro({ onDone: res, speed })))
     .catch(() => {
       // decoration only — never block the page over it
     });
@@ -757,7 +766,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d11 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d12 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }

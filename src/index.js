@@ -62,6 +62,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
+import { getConfig } from "./config.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -367,6 +368,17 @@ async function route(request, env, url, log, ctx, requestId) {
   if (request.method === "GET" && (url.pathname === "/api/pub" || url.pathname.startsWith("/api/pub/"))) {
     const slug = url.pathname === "/api/pub" ? null : decodeURIComponent(url.pathname.slice("/api/pub/".length));
     return { response: await handlePubGet(env, slug) };
+  }
+  // The intro-animation speed knob (site config `anim_speed`, the admin
+  // slider in /admin): public because the /cure first-visit intro reads it
+  // before any identity exists. Presentation config only — one number,
+  // browser-cacheable for a minute, so a slider change propagates within
+  // ~90 s (this cache + the ~30 s config cache).
+  if (request.method === "GET" && url.pathname === "/api/anim") {
+    const cfg = await getConfig(env);
+    return {
+      response: jsonResponse({ speed: cfg.anim_speed }, 200, { "cache-control": "public, max-age=60" }),
+    };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------

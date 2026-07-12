@@ -16,6 +16,8 @@ import {
   canopyZ,
   project,
   FLEET,
+  BASE_SPEED,
+  clampAnimMult,
 } from "../cure/umbrella.js";
 
 test("timeline marks are ordered and phases overlap only as designed", () => {
@@ -90,6 +92,24 @@ test("parameter monotonicity over the whole clock", () => {
   }
   // The spin never fully stops — umbrellas keep turning to the end.
   assert.ok(paramsAt(T.end).spinRate > 0.25);
+});
+
+test("speed: 2.5× base pace, admin multiplier clamped with 1 as the default", () => {
+  assert.equal(BASE_SPEED, 2.5); // 2026-07-12 directive — the slider's center
+  // Garbage and non-positives fall back to the default, never to a freeze.
+  for (const bad of [undefined, null, "", "fast", NaN, 0, -3]) {
+    assert.equal(clampAnimMult(bad), 1, `bad input ${String(bad)}`);
+  }
+  // Honest values pass through inside the clamp, numeric strings included.
+  assert.equal(clampAnimMult(1), 1);
+  assert.equal(clampAnimMult(0.5), 0.5);
+  assert.equal(clampAnimMult("2"), 2);
+  // The clamp matches src/config.js's server-side clamp: [0.25, 4].
+  assert.equal(clampAnimMult(0.01), 0.25);
+  assert.equal(clampAnimMult(99), 4);
+  // Sanity of the wall-clock outcome: at the default multiplier the whole
+  // scene now runs in under 6 s of real time.
+  assert.ok(T.end / (BASE_SPEED * clampAnimMult(undefined)) < 6000);
 });
 
 test("smooth/clamp01 basics", () => {
