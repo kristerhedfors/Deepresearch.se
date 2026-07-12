@@ -302,3 +302,105 @@ describe("runDrcResearch end to end (mock provider)", () => {
     }
   });
 });
+
+// Developer-mode native tool investigation (runDrcSourceTools + the
+// runDrcResearch snapshot branch): with a snapshot present, the user's provider
+// drives grep_source/read_file over it and answers from what it reads — the
+// client twin of the server's runSourceResearchTools. Mock server returns a
+// tool_call, then the final answer once the tool result comes back.
+describe("DRC developer-mode tool loop", () => {
+  const SNAP = {
+    v: 1,
+    digest: "abc123def4567890",
+    count: 2,
+    bytes: 0,
+    files: [
+      { p: "src/auth.js", s: 60, t: "// auth\nif (!env.SESSION_SECRET) return [];\n" },
+      { p: "src/index.js", s: 30, t: "// entry\nexport default {};\n" },
+    ],
+  };
+  const requests = [];
+  let round = 0;
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      requests.push(body);
+      round++;
+      res.writeHead(200, { "content-type": "application/json" });
+      if (round === 1) {
+        res.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    { id: "c1", type: "function", function: { name: "grep_source", arguments: '{"pattern":"SESSION_SECRET"}' } },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      } else {
+        res.end(JSON.stringify({ choices: [{ message: { content: "**Auth gates on SESSION_SECRET** (`src/auth.js`)." } }] }));
+      }
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+
+  test("runDrcResearch with a snapshot runs the tool loop and returns action 'source'", async () => {
+    requests.length = 0;
+    round = 0;
+    const phases = [];
+    let streamed = "";
+    const result = await runDrcResearch({
+      providerId: "openai",
+      apiKey: "sk-user",
+      model: "gpt-5.6-terra",
+      messages: [{ role: "user", content: "Do a security assessment" }],
+      snapshot: SNAP,
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      onDelta: (c) => (streamed += c),
+      baseUrl,
+    });
+
+    assert.equal(result.action, "source");
+    assert.equal(result.toolCalls, 1);
+    assert.match(result.answer, /SESSION_SECRET/);
+    assert.match(streamed, /SESSION_SECRET/); // emitted chunked to the client
+    assert.ok(phases.includes("source"));
+
+    // The model was offered the source tools, and the executed grep result
+    // (real snapshot content) came back as a role:"tool" message.
+    assert.ok(requests[0].tools.some((t) => t.function.name === "grep_source"));
+    const toolMsg = requests[1].messages.find((m) => m.role === "tool");
+    assert.match(toolMsg.content, /src\/auth\.js:2: .*SESSION_SECRET/);
+  });
+
+  test("no run_bash tool is offered when the bash knob is off", async () => {
+    requests.length = 0;
+    round = 0;
+    await runDrcResearch({
+      providerId: "openai",
+      apiKey: "sk-user",
+      model: "gpt-5.6-terra",
+      messages: [{ role: "user", content: "assess it" }],
+      snapshot: SNAP,
+      bash: false,
+      onDelta: () => {},
+      baseUrl,
+    });
+    const toolNames = requests[0].tools.map((t) => t.function.name);
+    assert.ok(!toolNames.includes("run_bash"));
+    assert.deepEqual(toolNames.sort(), ["grep_source", "list_files", "read_file"]);
+  });
+});

@@ -12,7 +12,9 @@ import {
   drcEmbed,
   drcEmbedProvider,
   drcProvider,
+  drcToolRun,
   listDrcModels,
+  toOpenAiTools,
 } from "./drc-providers.js";
 
 test("the registry holds exactly the CORS-capable providers", () => {
@@ -269,5 +271,84 @@ describe("provider calls over mock HTTP", () => {
     const value = await drcCompleteJson(berget, "good-key", berget.jsonModel, [{ role: "user", content: "x" }], { baseUrl });
     assert.deepEqual(value, { ok: true });
     assert.deepEqual(requests.at(-1).body.response_format, { type: "json_object" });
+  });
+});
+
+// The native TOOL-USE loop (drcToolRun) over a mock OpenAI-compatible server:
+// round 1 returns a tool_call, we execute it, round 2 sees the role:"tool"
+// result and returns the final content. Verifies the OpenAI tools mapping, the
+// tool_call_id pairing, execution, and the returned answer/counters.
+describe("drcToolRun over mock HTTP", () => {
+  const requests = [];
+  let round = 0;
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      requests.push(body);
+      round++;
+      res.writeHead(200, { "content-type": "application/json" });
+      if (round === 1) {
+        res.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    { id: "call_1", type: "function", function: { name: "grep_source", arguments: '{"pattern":"SESSION_SECRET"}' } },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      } else {
+        res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "Found it in src/auth.js." } }] }));
+      }
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+
+  test("toOpenAiTools maps the provider-neutral defs to function tools", () => {
+    const [t] = toOpenAiTools([{ name: "grep_source", description: "d", input_schema: { type: "object" } }]);
+    assert.equal(t.type, "function");
+    assert.equal(t.function.name, "grep_source");
+    assert.deepEqual(t.function.parameters, { type: "object" });
+  });
+
+  test("drives a tool call, feeds the result back, and returns the final answer", async () => {
+    const executed = [];
+    const result = await drcToolRun(drcProvider("openai"), "good-key", "gpt-5.6-terra", {
+      system: "investigate",
+      userContent: "assess auth",
+      tools: [{ name: "grep_source", description: "grep", input_schema: { type: "object", properties: {} } }],
+      execTool: (name, input) => {
+        executed.push({ name, input });
+        return "src/auth.js:3: if (!env.SESSION_SECRET) return [];";
+      },
+      baseUrl,
+    });
+
+    assert.deepEqual(executed, [{ name: "grep_source", input: { pattern: "SESSION_SECRET" } }]);
+    assert.match(result.text, /Found it in src\/auth\.js/);
+    assert.equal(result.toolCalls, 1);
+
+    // Round 1 carried the OpenAI function-tool shape.
+    assert.equal(requests[0].tools[0].type, "function");
+    assert.equal(requests[0].tools[0].function.name, "grep_source");
+    // Round 2 echoed the assistant tool_calls turn + a paired role:"tool" result.
+    const roles = requests[1].messages.map((m) => m.role);
+    assert.deepEqual(roles, ["system", "user", "assistant", "tool"]);
+    const toolMsg = requests[1].messages[3];
+    assert.equal(toolMsg.tool_call_id, "call_1");
+    assert.match(toolMsg.content, /SESSION_SECRET/);
   });
 });

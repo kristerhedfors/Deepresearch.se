@@ -81,6 +81,20 @@ git push origin main
    is a direct JSON-mode or streamed call, so the whole thing works across
    Berget's entire catalog, including models with unreliable tool-calling.
    Don't introduce function/tool-calling into the pipeline.
+   **ONE authorized exception (owner directive, 2026-07-12):** DEVELOPER MODE's
+   source investigation. When developer mode is on AND the answer model
+   supports real tool use, the ANSWER model itself drives an agentic tool loop
+   over the site's own source — `grep_source` / `read_file` / `list_files`
+   (shared executors in `public/js/introspect-core.js`; DRS runs them
+   server-side via `src/anthropic.js` `anthropicToolRun` + `src/pipeline.js`
+   `runSourceResearchTools`; DRC runs them browser-side on the user's own
+   provider via `public/js/drc-providers.js` `drcToolRun` + `drc-research.js`
+   `runDrcSourceTools`, and ADDS a real `run_bash` tool over the CheerpX
+   sandbox). This is DELIBERATE and must not be "fixed" back. It stays scoped:
+   models WITHOUT tool use fall back to the deterministic source read loop, and
+   the three JSON planning phases (invariant 3) never use tools — so the
+   no-function-calling guarantee still holds for the whole catalog everywhere
+   except this one dev-mode answer path.
 2. **Helper phases fail soft, never break the request.** Search, gap check,
    validation, and every enrichment (geocode/Shodan/Maps) degrade to a lesser
    result (fewer searches, accepted draft, conversation unchanged) rather than

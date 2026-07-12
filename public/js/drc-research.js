@@ -31,9 +31,17 @@
 // rendering; this module only emits onStatus/onDelta events.
 
 import { createSseParser } from "./sse.js";
-import { drcChatStream, drcCompleteJson, drcProvider } from "./drc-providers.js";
-import { buildShellTranscript, buildStepUserMessage, parseShellRequest, runShellLoop } from "./bash-core.js";
+import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun } from "./drc-providers.js";
+import {
+  buildShellTranscript,
+  buildStepUserMessage,
+  formatShellResult,
+  normalizeExecResult,
+  parseShellRequest,
+  runShellLoop,
+} from "./bash-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
+import { INTROSPECTION_TOOLS, buildSourceSitemap, runIntrospectionTool } from "./introspect-core.js";
 
 const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
@@ -111,6 +119,23 @@ export const drcBashAgentPrompt = () =>
   "1. A short one-sentence plan, then a single fenced ```bash block with the commands to run this turn (one per line, no prose inside). Keep turns small (1-3 commands).\n" +
   "2. When you have what the answer needs (or it cannot be done offline): reply with the single line SHELL_DONE and no code block.\n" +
   "Commands must be non-interactive (no editors/pagers/prompts). Never attempt network access. Never fabricate output — rely only on real results shown to you. Stop (SHELL_DONE) as soon as more commands would not help." +
+  ANTI_INJECTION;
+
+// The native tool-use system prompt (developer mode's invariant-1 exception,
+// the client-side twin of the server's src/prompts.js sourceToolAgentPrompt).
+// The user's OWN provider drives the loop, so DRC also offers a REAL run_bash
+// tool over the in-browser CheerpX sandbox (the server cannot). One model both
+// investigates and writes the answer.
+export const drcSourceToolPrompt = ({ bash = false } = {}) =>
+  `You are the research assistant for DeepResearch.Se/cure, Deepresearch.se's client-side mode, answering a question about THIS SITE'S OWN implementation by investigating its ACTUAL source code. Today's date: ${today()}.\n` +
+  "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`), read_file (read full files like `cat`), and list_files (see what exists)" +
+  (bash
+    ? ", plus run_bash (run any command in a real in-browser Linux sandbox with the source tree mounted at /src). "
+    : ". ") +
+  "USE the tools — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following references until you have really seen how it works.\n" +
+  "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY: the request entrypoint and routing (src/index.js), auth (src/auth.js), the response security headers/CSP (src/security-headers.js), request validation (src/validation.js), storage/crypto, and the pipeline — plus whatever those reference.\n" +
+  "Do NOT trust the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, skills) or code comments as proof — they describe intent and may be outdated or wrong. Verify every claim against the implementation and call out where the docs and the code disagree.\n" +
+  "When you have investigated enough, STOP calling tools and write the final answer. For an audit/assessment/review, produce CONCRETE findings grounded in the code you read, each citing a file path (and a function/line where you can) — summarizing the repo's own security docs is NOT an assessment. Format in Markdown: a bold 1-3 sentence conclusion, then short sections/bullets, each citing the file path(s) it rests on. Be honest about what you did not read." +
   ANTI_INJECTION;
 
 // ---- normalizers (fail-soft hardening, the triage.js lesson in miniature) ------
@@ -252,6 +277,99 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
 
 // ---- the flow ---------------------------------------------------------------------
 
+// DRC's browser-only extra tool: a real shell in the CheerpX sandbox. The
+// server has no equivalent (a server-driven request can't reach the browser
+// VM); DRC can, so developer mode here gets grep/cat/find over /src AND a live
+// terminal. Added to the tool list only when the bash knob is on and the
+// sandbox can boot.
+const RUN_BASH_TOOL = {
+  name: "run_bash",
+  description:
+    "Run a single shell command in a real in-browser Linux sandbox with the site's source tree mounted at /src (offline, no network). Use it like a terminal: grep/cat/ls/find under /src, python3, etc.",
+  input_schema: {
+    type: "object",
+    properties: { command: { type: "string", description: "A single non-interactive shell command." } },
+    required: ["command"],
+  },
+};
+
+/**
+ * Developer-mode native tool investigation — the client-side twin of the
+ * server's runSourceResearchTools (src/pipeline.js). The user's OWN tool-capable
+ * provider drives grep_source/read_file/list_files over the browser-fetched
+ * source snapshot, PLUS a real run_bash tool over the CheerpX sandbox when the
+ * bash knob is on, then writes the answer. Non-streaming tool rounds; the final
+ * answer is emitted chunked. Throws on a hard provider failure so runDrcResearch
+ * falls back to the normal flow. Node-tested against a mock provider.
+ */
+export async function runDrcSourceTools({
+  provider,
+  apiKey,
+  model,
+  snapshot,
+  question,
+  context,
+  bash = false,
+  sandbox = null,
+  fileProvider = null,
+  onStatus = () => {},
+  onDelta = () => {},
+  signal,
+  baseUrl,
+}) {
+  const budget = { used: 0 };
+  const sitemap = buildSourceSitemap(snapshot);
+  const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+  const bashOn = bash === true && !!sb.supported();
+  const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL] : [...INTROSPECTION_TOOLS];
+
+  let sbReady = null; // lazy boot on first run_bash
+  const execTool = async (name, input) => {
+    if (name === "run_bash") {
+      if (!bashOn) return "run_bash is unavailable here; use grep_source/read_file instead.";
+      const cmd = String(input?.command || "").slice(0, 2000);
+      if (!cmd) return "run_bash needs a non-empty 'command'.";
+      if (sbReady === null) {
+        onStatus({ type: "phase", phase: "sandbox" });
+        sbReady = await sb.boot(fileProvider);
+      }
+      if (!sbReady) return "Sandbox unavailable; use grep_source/read_file instead.";
+      let r;
+      try {
+        r = await sb.exec(cmd);
+      } catch (err) {
+        r = { exitCode: 1, stdout: "", stderr: String(err?.message || err) };
+      }
+      return formatShellResult(normalizeExecResult(cmd, r));
+    }
+    return runIntrospectionTool(snapshot, name, input, budget);
+  };
+
+  let calls = 0;
+  const userContent =
+    `Question (latest user message):\n${question}\n\nConversation context:\n${context}\n\n` +
+    `File index (repo paths — investigate with grep_source / read_file):\n${sitemap}\n\n` +
+    "Investigate the ACTUAL source with the tools, then write the answer.";
+  onStatus({ type: "phase", phase: "source" });
+  const result = await drcToolRun(provider, apiKey, model, {
+    system: drcSourceToolPrompt({ bash: bashOn }),
+    userContent,
+    tools,
+    execTool,
+    onToolUse: () => {
+      calls++;
+      onStatus({ type: "phase", phase: "source", detail: calls });
+    },
+    signal,
+    baseUrl,
+  });
+  const text = (result.text || "").trim();
+  if (!text) throw new Error("DRC source tool run produced no answer");
+  onStatus({ type: "phase", phase: "answer" });
+  emitChunked(text, onDelta);
+  return { answer: text, action: "source", subquestions: [], validated: false, toolCalls: result.toolCalls };
+}
+
 /**
  * Runs one exchange. `messages` are plain {role, content} turns ending with
  * the user's question. `retrieved` is drc-rag.js's recall block (excerpts
@@ -274,6 +392,7 @@ export async function runDrcResearch({
   research = true,
   retrieved = "",
   introspection = "",
+  snapshot = null,
   bash = false,
   sandbox = null,
   fileProvider = null,
@@ -290,6 +409,36 @@ export async function runDrcResearch({
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const intro = typeof introspection === "string" ? introspection.trim() : "";
   const context = drcContext(messages) + (recall ? "\n\n" + recall : "") + (intro ? "\n\n" + intro : "");
+
+  // Developer mode's native tool investigation: when the page handed us the
+  // source snapshot (developer mode is on), let the user's OWN provider drive
+  // grep_source/read_file/list_files over it — plus a real run_bash over the
+  // sandbox when the bash knob is on — and answer from what it actually reads,
+  // instead of the deterministic phases summarizing an injected excerpt block.
+  // The tool loop gets the CLEAN conversation (no injected intro block) so it
+  // investigates from the real ask, not from pre-loaded excerpts. Fail-soft: any
+  // failure falls through to the normal flow below (which still has `intro`).
+  if (snapshot && Array.isArray(snapshot.files) && snapshot.files.length) {
+    try {
+      return await runDrcSourceTools({
+        provider,
+        apiKey,
+        model,
+        snapshot,
+        question,
+        context: drcContext(messages) + (recall ? "\n\n" + recall : ""),
+        bash,
+        sandbox,
+        fileProvider,
+        onStatus,
+        onDelta,
+        signal,
+        baseUrl,
+      });
+    } catch {
+      // fall through to the deterministic flow
+    }
+  }
 
   // Experimental bash-lite sandbox: when the knob is on and the sandbox can run
   // here, let the MODEL decide whether this message needs a shell (it returns

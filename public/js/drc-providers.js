@@ -256,6 +256,99 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
   return value;
 }
 
+// ---- native tool calling (developer mode's invariant-1 exception) -----------
+//
+// DRC's counterpart to the server's src/anthropic.js anthropicToolRun: the
+// user's OWN provider drives an agentic tool loop straight from the browser.
+// All three DRC providers speak the OpenAI tools / tool_calls wire, so the
+// shared provider-neutral tool defs (introspect-core.js INTROSPECTION_TOOLS,
+// {name, description, input_schema}) map onto `{type:"function", function:{…}}`
+// here. Unlike the server, DRC can also expose a REAL run_bash tool (the CheerpX
+// sandbox is browser-reachable) — the caller adds that entry and handles it in
+// execTool. Non-streaming (tool rounds are request/response); the final answer
+// text is returned whole for the caller to emit.
+
+/**
+ * Map the provider-neutral tool defs to the OpenAI function-tool shape.
+ * @param {Array<{name:string,description:string,input_schema:object}>} tools
+ */
+export function toOpenAiTools(tools) {
+  return (Array.isArray(tools) ? tools : []).map((t) => ({
+    type: "function",
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
+}
+
+/**
+ * Run the browser-direct tool loop on the user's provider: each round the model
+ * may return tool_calls; we execute them via `execTool` and feed the results
+ * back as role:"tool" messages, until it stops calling tools and returns text.
+ * Bounded by maxRounds (then one tools-off call forces an answer). Throws on a
+ * hard HTTP failure (callers fall back to the normal flow).
+ * @returns {Promise<{ text: string, toolCalls: number, rounds: number }>}
+ */
+export async function drcToolRun(
+  provider,
+  apiKey,
+  model,
+  { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl } = {},
+) {
+  const url = (baseUrl || provider.base) + "/chat/completions";
+  const headers = { "content-type": "application/json", authorization: "Bearer " + apiKey };
+  const messages = [
+    ...(system ? [{ role: "system", content: system }] : []),
+    { role: "user", content: userContent },
+  ];
+  const oaiTools = toOpenAiTools(tools);
+  let toolCalls = 0;
+
+  const call = async (body) => {
+    const timeout =
+      signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(60_000) : undefined);
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: timeout });
+    if (!res.ok) throw new Error(provider.label + " rejected the tool request (" + res.status + ").");
+    return res.json();
+  };
+
+  for (let round = 1; round <= maxRounds; round++) {
+    const data = await call({ model, messages, tools: oaiTools, ...provider.params(maxTokens) });
+    const msg = data?.choices?.[0]?.message || {};
+    const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+    if (!calls.length) return { text: typeof msg.content === "string" ? msg.content : "", toolCalls, rounds: round };
+    // Echo the assistant tool-call turn, then answer each call with a tool msg.
+    messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: msg.tool_calls });
+    for (const c of calls) {
+      toolCalls++;
+      let args = {};
+      try {
+        args = JSON.parse(c?.function?.arguments || "{}");
+      } catch {
+        args = {};
+      }
+      let result;
+      try {
+        result = await execTool(c?.function?.name, args);
+      } catch (err) {
+        result = "Tool error: " + (err?.message || String(err));
+      }
+      if (onToolUse) onToolUse({ round, name: c?.function?.name, input: args });
+      messages.push({
+        role: "tool",
+        tool_call_id: c?.id,
+        content: typeof result === "string" ? result : JSON.stringify(result),
+      });
+    }
+  }
+
+  // Round cap: force a final answer with tools removed.
+  messages.push({
+    role: "user",
+    content: "You have gathered enough. Do NOT call more tools — write the complete final answer now from what you found.",
+  });
+  const finalData = await call({ model, messages, ...provider.params(maxTokens) });
+  return { text: finalData?.choices?.[0]?.message?.content || "", toolCalls, rounds: maxRounds };
+}
+
 /**
  * The provider's chat-capable model list — live from the user's key, the
  * static fallback when the fetch fails (wrong key still gets a dropdown to
