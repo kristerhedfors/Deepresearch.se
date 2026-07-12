@@ -235,7 +235,15 @@ description: >-
   - *Landing* (`dr_welcome_seen`, inline in `welcome/index.html`): the
     page wears the DRS glass header (ghost + account buttons — account
     goes to `/login`, ghost to `/cure`, with the app's glow/shimmer). A
-    what-it-does/-doesn't overlay card shows first; dismissing it sends
+    first-visit overlay card ("First time here?") shows first — END-USER
+    copy under a spec (2026-07-12): brief precise instructions, the two
+    tiers each explained by their full-URL name (what it provides + which
+    header button enters it), and the /story/ /build/ /help/ GitHub
+    links; `public/js/welcome-copy.test.js` enforces the spec
+    DETERMINISTICALLY (required facts/links, length budgets, and an
+    AI-tell ban list — stock marketing phrases, exclamation marks,
+    emoji, an em-dash budget; extend the ban list when a new tell slips
+    in, never delete to make copy pass). Dismissing it sends
     a little ghost mascot dancing in along the top (travel transition on
     the wrapper, dance keyframes on the SVG body, arm rotate to point),
     which points at the ghost button with a speech bubble explaining it

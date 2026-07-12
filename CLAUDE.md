@@ -326,9 +326,12 @@ buttons are the gesture-free path; all fragments pre-fetched/hardcoded
 in the module (the RAG-style corpus ships with the page), pure
 core (tree + reveal/zoom math) Node-tested, opened from the intro
 pane ("Pinch the reasoning") and the account view, lazy-imported; the landing
-page carries the sibling first-visit onboarding — the does/doesn't
-pane and the ghost mascot pointing out the ghost button, inline in
-`public/welcome/index.html` — see the **ui-notes** skill):
+page carries the sibling first-visit onboarding — the two-tiers
+pane (end-user copy under a SPEC: precise instructions, both tiers
+explained, build-story links — guarded by the deterministic AI-tell
+smell test `public/js/welcome-copy.test.js`, which any wording change
+must keep passing) and the ghost mascot pointing out the ghost button,
+inline in `public/welcome/index.html` — see the **ui-notes** skill):
 a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
 palette (2026-07-10 directive) — the same floating glass chrome, waves,
 composer, spiderweb knob and slider shapes as `css/app.css`,
