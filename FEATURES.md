@@ -169,6 +169,21 @@ The opt-in `google_maps` enrichment (Places / Street View / Static Maps /
 Routes, POV vision-describe, the image deck) and the Tokemon street-view AR
 mode built on it. See the **integrations** and **tokemon-game** skills.
 
+### F-15 · Panel selection board — the attention loop — ✅ SHIPPED (medium)
+
+A THIRD decision-board channel of a new KIND: instead of ordering a backlog,
+its items ARE the admin panels themselves, reshaped **purely by the owner's
+▲/▼ thumbs** — no drag, no explicit priority, no board widget of its own.
+Voting a panel header up floats that panel to the top of the admin view;
+voting one down collapses and sinks it. That live order is the admin's
+**focus order** a Claude Code session reads (`scripts/panels` /
+`/api/admin/panels?format=text`) to know which admin surface the owner is
+working on now (`src/panels.js`, D1 `panels_reviews`, façade over
+`src/board.js`). The usage tables were also folded one layer down
+(`<details>`) so the view leads with the boards, not the money tables. This
+"attention loop" variant is documented in the **feature-board** skill and
+`docs/DECISION-BOARD-LOOPS.md`.
+
 ---
 
 ## 4. History log (append-only)
@@ -180,3 +195,12 @@ mode built on it. See the **integrations** and **tokemon-game** skills.
   `features_reviews`, `/api/admin/features`, `scripts/features`) as the second
   loop-feeding channel next to the security board; registered it in the
   `ADMIN_BOARDS` discovery index.
+- **2026-07-12** — F-15 shipped: the Panel selection board (`src/panels.js`, D1
+  `panels_reviews`, `/api/admin/panels`, `scripts/panels`), a third board
+  channel of a new KIND — the ATTENTION loop. Its items are the admin panels
+  themselves, reshaped purely by ▲/▼ thumbs on each panel header (no drag/
+  priority, no board widget); the votes-driven focus order is what a Claude
+  Code session reads to know which surface the owner is working on. Registered
+  in `ADMIN_BOARDS`; documented the new loop type in the feature-board skill
+  and `docs/DECISION-BOARD-LOOPS.md`. Also folded the two usage tables one
+  layer down under `<details>` so the admin view leads with the boards.

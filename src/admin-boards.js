@@ -72,6 +72,20 @@ export const ADMIN_BOARDS = [
     skill: "feature-board",
   },
   {
+    id: "panels",
+    title: "Panel selection board",
+    purpose:
+      "The admin panels themselves, reshaped purely by the owner's ▲/▼ thumbs (no drag, no explicit priority) — the ATTENTION loop's focus order: which admin surface the owner is working on now.",
+    feeds_loop: true,
+    api: "/api/admin/panels",
+    text_query: "format=text&order=focus",
+    orderings: ["focus", "default"],
+    order_help:
+      "order=focus (default) is the votes-driven attention order the loop reads (highest net votes first; net-negative panels muted at the bottom); order=default is the authored catalog order (votes ignored). The text view always renders the focus order. This board has NO explicit priority/drag — it reshapes purely on up/down votes.",
+    script: "scripts/panels",
+    skill: "feature-board",
+  },
+  {
     id: "feedback",
     title: "Feedback queue",
     purpose:

@@ -172,6 +172,14 @@ export const FEATURE_ITEMS = [
     summary:
       "The opt-in google_maps enrichment (Places / Street View / Static Maps / Routes, POV vision-describe, the image deck) and the Tokemon street-view AR mode built on it. See the integrations and tokemon-game skills.",
   },
+  {
+    id: "F-15",
+    title: "Panel selection board — the attention loop",
+    impact: "medium",
+    status: "shipped",
+    summary:
+      "A third decision-board channel of a new KIND: its items ARE the admin panels themselves, reshaped purely by the owner's ▲/▼ thumbs (no drag, no priority, no board widget). The votes-driven focus order is what a Claude Code session reads (scripts/panels) to know which admin surface the owner is working on now (src/panels.js, D1 panels_reviews, façade over board.js). See the feature-board skill (the attention board).",
+  },
 ];
 
 // ---------------------------------------------------------------------------

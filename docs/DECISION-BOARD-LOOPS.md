@@ -20,13 +20,24 @@ the fixed work order the loop executes top-down:
 | **Security fixes** | `SECURITY-RISKS.md` §3 | `src/security-risks.js` | `security_reviews` | `scripts/security` | security-posture |
 | **Feature build** | `FEATURES.md` §3 | `src/features.js` | `features_reviews` | `scripts/features` | feature-board |
 
-Two more admin lists share the same `?format=text` + `scripts/<name>` shape but
-are variants, not priority boards:
+Three more admin lists share the same `?format=text` + `scripts/<name>` shape but
+are variants, not backlog priority boards:
 
 | List | Kind | Module | Text view / CLI | Loop skill |
 |---|---|---|---|---|
+| **Panel selection** | ATTENTION loop — the admin panels, reshaped purely by ▲/▼ | `src/panels.js` | `scripts/panels` | feature-board |
 | **Feedback queue** | dynamic user rows, dialogue threads | `src/feedback.js` | `scripts/feedback` | feedback-loop |
 | **Chat logs** | read-only tap (no choices) | `src/chatlog.js` | `scripts/chatlogs` | chat-logs |
+
+The **panel selection board** is a decision board too (built on the same
+`src/board.js` core), but a different KIND from the two priority channels: it
+orders no backlog. Its *items are the admin panels themselves*, and it has **no
+board widget** — each panel header carries ▲/▼ thumbs, and voting reshapes the
+admin view in place (up = float to top, down = collapse + sink). The
+votes-driven **focus order** is the admin's *attention*, read by a Claude Code
+session to decide which admin surface to work next (then it reads that
+surface's OWN board for the work order within it). It reshapes **purely on
+votes** — no drag, no explicit priority. See §4d.
 
 All of them are discoverable in one call — `scripts/boards` /
 `GET /api/admin/boards?format=text` (registry: `src/admin-boards.js`).
@@ -175,6 +186,36 @@ Not a code catalog: rows are user-created, the "choice" is a status lifecycle
 plus a dialogue reply. Every entry gets a human decision before the agent acts;
 the agent messages back in plain language. See the feedback-loop skill.
 
+### 4d · Attention loop (variant — the panel selection board)
+
+The odd one out: it feeds an admin-decided *order* like the priority channels,
+but that order is **not a backlog** and is set **purely by ▲/▼ votes** — no
+drag, no explicit priority number, and no board widget of its own. Its catalog
+is the admin panels (`PANEL_ITEMS`: Notifications, Usage, Users, the
+Security/Features boards, Configuration), and the ▲/▼ thumbs live on each
+panel's own header. Voting reshapes the admin view *in place*:
+
+```mermaid
+flowchart LR
+    A["owner ▲/▼ a panel header<br/>on /admin"] --> B["POST /panels/:id/vote<br/>panels_reviews upsert"]
+    B --> C["reload → orderBoardItems<br/>(priority mode, no priorities<br/>set → pure votes-desc)"]
+    C --> D["admin view reshapes:<br/>up = float to top<br/>net-negative = collapse + sink"]
+    D --> E["GET /panels?format=text<br/>scripts/panels = FOCUS ORDER"]
+    E --> F["Claude Code session picks<br/>the top surface to work,<br/>then reads THAT board"]
+    F --> A
+```
+
+Because it reuses `orderBoardItems`' `"priority"` mode with **no priorities ever
+set**, the ordering collapses to exactly *votes-desc, catalog order as
+tiebreak* — the "reshapes purely on thumbs" property falls straight out of the
+shared core, so `src/panels.js` stays a thin façade (catalog + projection +
+`formatPanelsText` + endpoint). All panels are `status: "open"` (a live admin
+surface has no closed/shipped notion). The loop this feeds is *"which surface is
+the owner focused on?"*, one level above the per-board work orders — read
+`scripts/panels` first to choose the surface, then `scripts/security` /
+`scripts/features` for the items within it. See the **feature-board** skill (the
+attention board section).
+
 ---
 
 ## 5. Where the pieces live
@@ -186,20 +227,26 @@ Catalog  src/security-risks.js         src/features.js
         │  re-exports (façade)                        │
 Board core  ─────────────  src/board.js  ─────────────
         │  validation · orderBoardItems · D1 helpers
-Schema      src/db.js  (security_reviews, features_reviews)
-Routing     src/admin-api.js  → handleAdmin{Security,Features}
+Schema      src/db.js  (security_reviews, features_reviews, panels_reviews)
+Routing     src/admin-api.js  → handleAdmin{Security,Features,Panels}
 Discovery   src/admin-boards.js  (ADMIN_BOARDS) → GET /api/admin/boards
 Panel       public/admin/index.html  +  public/js/admin.js
             (shared board UX: collapsed headers, tap-to-open,
              pointer drag reorder → priority — wireBoardItemToggle,
-             enableBoardReorder)
+             enableBoardReorder. The attention board has NO widget:
+             loadPanels() injects ▲/▼ into each panel header and
+             re-sequences the <section>s by vote)
 Panel CSS   public/css/admin.css  (.board / .board-item / .board-detail /
-             .grip / .caret; sev-* and imp-* rank badges)
-CLI         scripts/security   scripts/features   scripts/boards
+             .grip / .caret; sev-* and imp-* rank badges; .pvote / .panel-muted
+             for the attention board; .fold for the folded usage tables)
+CLI         scripts/security   scripts/features   scripts/panels   scripts/boards
 Loop skills security-posture   feature-board      (feedback-loop, chat-logs)
 ```
 
-Adding a **third** priority board is the same nine steps (catalog module → D1
-table → route → panel section → CLI → discovery entry → tests → docs → the loop
-skill) — see the **feature-board** skill, which walks the checklist end to end
-using this board as the worked example.
+Adding a **third backlog** priority board is the same nine steps (catalog
+module → D1 table → route → panel section → CLI → discovery entry → tests →
+docs → the loop skill) — see the **feature-board** skill, which walks the
+checklist end to end using the features board as the worked example. The
+**panel selection board** (§4d) is the same machine minus the drag/priority UI:
+it reuses the core's votes-desc ordering and injects thumbs onto the existing
+panel headers instead of rendering a board section.

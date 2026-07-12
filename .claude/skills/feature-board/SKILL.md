@@ -12,9 +12,11 @@ description: >-
   (read board → fan out by priority → build a tier → verify → flip status →
   push), the mirror discipline (catalog ⇄ FEATURES.md §3 in the same commit),
   the status lifecycle (open → PARTIAL → SHIPPED / DROPPED), and the nine-step
-  checklist to stand up another board. Companion to the decision-boards skill
-  (the shared mechanism) and docs/DECISION-BOARD-LOOPS.md (the data-flow
-  diagrams).
+  checklist to stand up another board. ALSO covers the ATTENTION-loop variant
+  (§6): a votes-only selection board with no backlog, no drag, and no board
+  widget — the admin panels reshaped purely by ▲/▼ thumbs (src/panels.js).
+  Companion to the decision-boards skill (the shared mechanism) and
+  docs/DECISION-BOARD-LOOPS.md (the data-flow diagrams).
 ---
 
 # Feature-board loop — the second priority channel
@@ -189,6 +191,59 @@ reference):
 - **Drag writes priority 1..N.** The panel's `enableBoardReorder` PATCHes only
   the items whose priority changed; on reload the server re-sorts (open first),
   so closed items sink even if dragged up — expected, not a bug.
+
+---
+
+## 6. The attention board — a votes-only selection variant
+
+The **panel selection board** (`src/panels.js`, `scripts/panels`, D1
+`panels_reviews`) is a decision board of a **different kind** from the two
+backlog channels above. It is the reference for a whole class of loop, so it's
+worth understanding as its own pattern.
+
+**What makes it different**
+
+- **Its items ARE the admin panels themselves** — Notifications, Usage, Users,
+  the Security/Features boards, Configuration — not a list of work.
+- **No board widget.** There is no "panels" section on `/admin`. Instead
+  `loadPanels()` injects ▲/▼ thumbs into *each panel's own header* and
+  re-sequences the `<section>`s. The board is invisible as a widget; it's
+  expressed only as the admin view reshaping.
+- **It reshapes purely on votes.** No drag, no explicit priority number. Vote a
+  panel up → it floats to the top; vote it net-negative → it collapses (body
+  hidden) and sinks. That's the whole interaction.
+- **The order is ATTENTION, not a backlog.** The focus order
+  (`scripts/panels` / `GET /api/admin/panels?format=text`) answers *"which admin
+  surface is the owner working on now?"* — one level ABOVE the per-board work
+  orders. A session reads it to pick a surface, then reads THAT surface's own
+  board (`scripts/security`, `scripts/features`) for the items within it.
+
+**Why it's still the same machine.** It reuses `src/board.js`'s
+`orderBoardItems` in `"priority"` mode — but *never sets a priority*, so the
+ordering collapses to exactly *votes-desc, catalog order as tiebreak*. The
+"reshapes purely on thumbs" behavior falls straight out of the shared core.
+`src/panels.js` is therefore a thin façade (catalog + projection +
+`formatPanelsText` + endpoint), same as the security/features boards. All
+panels are `status: "open"` — a live admin surface has no closed notion.
+
+**Running the attention loop.** When the owner drives a session by voting
+panels rather than naming a task:
+
+```bash
+scripts/panels                    # the focus order (top = what's in focus now)
+scripts/panels --vote users up    # (the owner does this from the /admin headers)
+```
+
+Read `scripts/panels` FIRST to see the top surface, work that surface's own
+board top-down, and re-read between rounds — the owner's votes are the plan.
+A net-negative panel is one the owner has explicitly pushed out of the way;
+don't work it unless asked.
+
+**Building another votes-only board** is the §5 checklist minus the drag/
+priority UI: give each rendered item a ▲/▼ vote widget instead of a board
+section, skip `enableBoardReorder`, order by `"priority"` mode with no
+priorities set, and phrase the `?format=text` header as the loop's question.
+`src/panels.js` + `public/js/admin.js`'s `loadPanels()` are the reference.
 
 ---
 

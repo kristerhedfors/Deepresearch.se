@@ -38,7 +38,7 @@ section {
   border-radius: 12px;
   padding: 1rem 1.1rem;
 }
-h2 { margin: 0 0 .8rem; font-size: 1rem; }
+h2 { margin: 0 0 .8rem; font-size: 1rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 h2 .count {
   background: var(--accent); color: #fff; border-radius: 10px;
   font-size: .75rem; padding: .1rem .5rem; vertical-align: middle;
@@ -50,6 +50,27 @@ pre {
 }
 .muted { color: var(--muted); font-size: .8rem; }
 .err { color: var(--warn); font-size: .85rem; }
+
+/* Collapsible ("one layer down") — the usage tables fold under a summary so
+   the admin view leads with the boards, not the money tables. */
+.fold > summary {
+  cursor: pointer; color: var(--accent); font-size: .82rem; font-weight: 600;
+  list-style: revert; padding: .1rem 0; user-select: none;
+}
+.fold[open] > summary { margin-bottom: .6rem; }
+
+/* Panel selection board: NO board widget of its own — each panel header (h2)
+   carries ▲/▼ thumbs, and voting reshapes the admin view in place. A
+   net-negative panel is "muted": its body collapses and it dims, but the
+   header + votes stay so it can be pulled back up. See src/panels.js. */
+.pvote {
+  margin-left: auto; display: inline-flex; align-items: center; gap: .3rem;
+  font-size: .78rem; font-weight: 400;
+}
+.pvote button { padding: .12rem .42rem; font-size: .72rem; line-height: 1; }
+.pvote b { min-width: 1.4rem; text-align: center; color: var(--muted); }
+.panel-muted { opacity: .55; }
+.panel-muted > :not(h2) { display: none; }
 
 /* Overview cards */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; }

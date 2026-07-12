@@ -46,6 +46,9 @@ test("registry: the known boards are indexed with the right endpoints", () => {
   assert.equal(by.features.api, "/api/admin/features");
   assert.equal(by.features.script, "scripts/features");
   assert.deepEqual(by.features.orderings, ["priority", "impact"]);
+  assert.equal(by.panels.api, "/api/admin/panels");
+  assert.equal(by.panels.script, "scripts/panels");
+  assert.deepEqual(by.panels.orderings, ["focus", "default"]);
   assert.equal(by.feedback.api, "/api/admin/feedback");
   assert.equal(by.feedback.script, "scripts/feedback");
   assert.equal(by.chatlogs.api, "/api/admin/chatlogs");

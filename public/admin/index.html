@@ -22,7 +22,7 @@
 # (uncomment it), commit and push — the schema applies itself on first use.</pre>
     </section>
 
-    <section id="alerts-sec" hidden>
+    <section id="alerts-sec" data-panel="alerts" hidden>
       <h2>Notifications</h2>
       <p class="muted">Everything needing admin attention in one place:
       sign-ins awaiting approval and operational issues (Berget errors,
@@ -34,20 +34,26 @@
       <div id="alerts"></div>
     </section>
 
-    <section id="totals-sec" hidden>
+    <section id="totals-sec" data-panel="usage" hidden>
       <h2>Usage (all users)</h2>
-      <div class="cards" id="totals"></div>
+      <details class="fold">
+        <summary>Show usage totals</summary>
+        <div class="cards" id="totals"></div>
+      </details>
     </section>
 
-    <section id="models-sec" hidden>
+    <section id="models-sec" data-panel="models" hidden>
       <h2>Usage by model</h2>
-      <p class="muted">Token counts per model and what they actually cost
-      (each model bills its own per-token price — this is the ground truth
-      behind the budgets).</p>
-      <div class="table-scroll"><table id="models-table"></table></div>
+      <details class="fold">
+        <summary>Show per-model usage</summary>
+        <p class="muted">Token counts per model and what they actually cost
+        (each model bills its own per-token price — this is the ground truth
+        behind the budgets).</p>
+        <div class="table-scroll"><table id="models-table"></table></div>
+      </details>
     </section>
 
-    <section id="users-sec" hidden>
+    <section id="users-sec" data-panel="users" hidden>
       <h2>Users</h2>
       <p class="muted">Accounts are created automatically on first Google
       sign-in — the address configured as <code>ADMIN_EMAIL</code> becomes
@@ -56,7 +62,7 @@
       <div id="users"></div>
     </section>
 
-    <section id="security-sec" hidden>
+    <section id="security-sec" data-panel="security" hidden>
       <h2>Security risks</h2>
       <p class="muted">The open items from <code>SECURITY-RISKS.md</code>
       (the living register in the repo). Items are collapsed to their
@@ -74,7 +80,7 @@
       <div id="security"></div>
     </section>
 
-    <section id="features-sec" hidden>
+    <section id="features-sec" data-panel="features" hidden>
       <h2>Features</h2>
       <p class="muted">The feature backlog from <code>FEATURES.md</code> (the
       living roadmap in the repo) — the <b>second channel</b> that feeds a
@@ -93,7 +99,7 @@
       <div id="features"></div>
     </section>
 
-    <section id="config-sec" hidden>
+    <section id="config-sec" data-panel="config" hidden>
       <h2>Configuration</h2>
       <form id="config-form"></form>
     </section>

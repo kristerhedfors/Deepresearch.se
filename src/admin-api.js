@@ -22,6 +22,10 @@
 //                                    (src/features.js — votes/effort/note/
 //                                    priority over FEATURES.md §3;
 //                                    ?format=text is the build loop's input)
+//   *      /api/admin/panels*        the panel-SELECTION board (src/panels.js —
+//                                    the admin panels reshaped purely by ▲/▼
+//                                    thumbs; ?format=text is the attention
+//                                    loop's input — which surface is in focus)
 //   GET    /api/admin/boards         the admin-BOARDS discovery index
 //                                    (src/admin-boards.js — one entry per
 //                                    Claude-fetchable list + how to fetch its
@@ -36,6 +40,7 @@ import { handleChatLogs } from "./chatlog.js";
 import { handleAdminFeedback } from "./feedback.js";
 import { handleAdminSecurity } from "./security-risks.js";
 import { handleAdminFeatures } from "./features.js";
+import { handleAdminPanels } from "./panels.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
@@ -113,6 +118,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // priority order the feature-build loop works in — the second loop channel.
     if (path === "/features" || path.startsWith("/features/")) {
       return handleAdminFeatures(request, env, url, log);
+    }
+    // The panel-selection board (src/panels.js): the admin panels themselves,
+    // reshaped purely by the owner's ▲/▼ thumbs — the ATTENTION loop (which
+    // admin surface the owner is working on now). ?format=text is its input.
+    if (path === "/panels" || path.startsWith("/panels/")) {
+      return handleAdminPanels(request, env, url, log);
     }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized
