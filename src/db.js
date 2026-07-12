@@ -125,6 +125,14 @@ CREATE TABLE IF NOT EXISTS security_reviews (
   priority INTEGER,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS features_reviews (
+  item_id TEXT PRIMARY KEY,
+  votes INTEGER NOT NULL DEFAULT 0,
+  score TEXT,
+  note TEXT,
+  priority INTEGER,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS feedback_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   feedback_id INTEGER NOT NULL,

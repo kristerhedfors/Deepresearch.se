@@ -17,7 +17,7 @@ const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
 // ---- registry shape ---------------------------------------------------------
 
 test("registry: every entry has the required fields, well-typed", () => {
-  assert.ok(ADMIN_BOARDS.length >= 3, "at least the three known boards");
+  assert.ok(ADMIN_BOARDS.length >= 4, "at least the four known boards");
   for (const b of ADMIN_BOARDS) {
     assert.ok(typeof b.id === "string" && b.id.trim().length > 0, `${b.id} id`);
     assert.ok(typeof b.title === "string" && b.title.trim().length > 0, `${b.id} title`);
@@ -38,11 +38,14 @@ test("registry: ids are unique", () => {
   assert.equal(new Set(ids).size, ids.length, "no duplicate ids");
 });
 
-test("registry: the three known boards are indexed with the right endpoints", () => {
+test("registry: the known boards are indexed with the right endpoints", () => {
   const by = Object.fromEntries(ADMIN_BOARDS.map((b) => [b.id, b]));
   assert.equal(by.security.api, "/api/admin/security");
   assert.equal(by.security.script, "scripts/security");
   assert.deepEqual(by.security.orderings, ["priority", "severity"]);
+  assert.equal(by.features.api, "/api/admin/features");
+  assert.equal(by.features.script, "scripts/features");
+  assert.deepEqual(by.features.orderings, ["priority", "impact"]);
   assert.equal(by.feedback.api, "/api/admin/feedback");
   assert.equal(by.feedback.script, "scripts/feedback");
   assert.equal(by.chatlogs.api, "/api/admin/chatlogs");

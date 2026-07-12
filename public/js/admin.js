@@ -52,6 +52,7 @@ async function load() {
   renderUsers();
   renderConfig();
   loadSecurity();
+  loadFeatures();
 }
 
 // ---- decision-board interaction (shared by every selection board) ---------
@@ -246,6 +247,121 @@ for (const mode of ["priority", "severity"]) {
   $(`sec-order-${mode}`).addEventListener("click", () => {
     secOrder = mode;
     loadSecurity();
+  });
+}
+
+// ---- features/priority board ----------------------------------------------
+// The SECOND loop channel (see the feature-board skill): FEATURES.md §3's
+// backlog with the same board choice UX as security — votes, an EFFORT
+// estimate (the shared "score" field, relabelled), a note, and the explicit
+// PRIORITY (drag the headers) that is the build loop's fixed order. Same
+// collapse-to-header + drag mechanics; impact instead of severity, build order
+// instead of fix order. ?format=text / scripts/features reads the same order.
+
+let featOrder = "priority";
+let featItems = [];
+
+async function loadFeatures() {
+  let data;
+  try {
+    data = await api(`/features?order=${featOrder}`);
+  } catch (err) {
+    $("features").innerHTML = `<p class="err">${escapeHtml(err.message)}</p>`;
+    $("features-sec").hidden = false;
+    return;
+  }
+  featItems = data.items;
+  const box = $("features");
+  box.innerHTML = "";
+  box.className = "board" + (featOrder === "priority" ? " reorderable" : "");
+  $("feat-order-priority").className = featOrder === "priority" ? "on" : "secondary";
+  $("feat-order-impact").className = featOrder === "impact" ? "on" : "secondary";
+
+  let buildPos = 0;
+  for (const it of data.items) {
+    const open = it.status === "open";
+    const posLabel =
+      featOrder === "priority" && open ? `<b class="muted">#${++buildPos}</b>` : "";
+    const el = document.createElement("div");
+    el.className = "rowitem board-item";
+    el.dataset.id = it.id;
+    el.innerHTML = `
+      <div class="head">
+        <span class="grip" title="Drag to reorder">⠿</span>
+        ${posLabel}
+        <span class="badge imp-${it.impact}">${it.impact} impact</span>
+        ${open ? "" : `<span class="badge ${escapeHtml(it.status)}">${escapeHtml(it.status)}</span>`}
+        ${it.priority != null ? `<span class="badge prio">priority ${it.priority}</span>` : ""}
+        <b>${escapeHtml(it.id)} · ${escapeHtml(it.title)}</b>
+        <span class="spacer"></span>
+        <span class="vote">
+          <button data-act="up" class="secondary" title="Upvote">▲</button>
+          <b>${it.votes}</b>
+          <button data-act="down" class="secondary" title="Downvote">▼</button>
+        </span>
+        <span class="caret" aria-hidden="true">▸</span>
+      </div>
+      <div class="board-detail">
+        <p class="muted" style="margin:.35rem 0 0">${escapeHtml(it.summary)}</p>
+        <div class="sec-review">
+          <label>Priority
+            <input type="number" min="1" max="999" step="1" data-f="priority"
+              value="${it.priority ?? ""}" placeholder="—"></label>
+          <label>Effort
+            <input type="text" data-f="score" value="${escapeHtml(it.score || "")}"
+              placeholder="e.g. S / ~2 days" maxlength="120"></label>
+          <label style="flex:1">Note
+            <input type="text" data-f="note" value="${escapeHtml(it.note || "")}"
+              placeholder="direction / suggestion" maxlength="2000"></label>
+          <button data-act="save" class="secondary">Save</button>
+        </div>
+      </div>`;
+    wireBoardItemToggle(el);
+    el.addEventListener("click", async (e) => {
+      const act = e.target.dataset?.act;
+      if (!act) return;
+      try {
+        if (act === "up" || act === "down") {
+          await api(`/features/${it.id}/vote`, { method: "POST", body: { dir: act } });
+          await loadFeatures();
+        } else if (act === "save") {
+          const body = {};
+          for (const input of el.querySelectorAll("[data-f]")) {
+            body[input.dataset.f] = input.value === "" ? null : input.value;
+          }
+          await api(`/features/${it.id}`, { method: "PATCH", body });
+          await loadFeatures();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    box.appendChild(el);
+  }
+  $("features-sec").hidden = false;
+}
+
+// Drag-drop reorder → write the new visual order as priority 1..N (the build
+// loop's fixed order); only PATCH items whose priority actually changed.
+enableBoardReorder($("features"), async (ids) => {
+  const byId = new Map(featItems.map((it) => [it.id, it]));
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const it = byId.get(ids[i]);
+      if (it && it.priority !== i + 1) {
+        await api(`/features/${ids[i]}`, { method: "PATCH", body: { priority: i + 1 } });
+      }
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadFeatures();
+});
+
+for (const mode of ["priority", "impact"]) {
+  $(`feat-order-${mode}`).addEventListener("click", () => {
+    featOrder = mode;
+    loadFeatures();
   });
 }
 

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# The features/priority review board on the LIVE site — the build loop's view
+# of FEATURES.md §3 with the admin's votes/effort/notes/priorities on top.
+# Wraps /api/admin/features (src/features.js) using the break-glass Basic Auth
+# credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/security
+# and scripts/feedback use. The default text output IS the round's build order
+# (admin priority first) — see the feature-board skill.
+#
+# Usage:
+#   scripts/features                        the build order, readable text
+#   scripts/features --impact               ordered by documented impact (JSON view only;
+#                                           text output always shows the build order)
+#   scripts/features --json                 JSON instead of text
+#   scripts/features --vote F-3 up          upvote (or: down)
+#   scripts/features --set F-3 '{"priority":1,"score":"~2 days","note":"do first"}'
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+order="priority"
+action=""
+id=""
+arg=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --impact) order="impact" ;;
+    --vote) action="vote"; id="$2"; arg="$3"; shift 2 ;;
+    --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+case "$action" in
+  vote)
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg d "$arg" '{dir:$d}')" \
+      "$BASE_URL/api/admin/features/$id/vote"
+    exit 0 ;;
+  set)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$arg" \
+      "$BASE_URL/api/admin/features/$id"
+    exit 0 ;;
+esac
+
+qs="order=$order"
+[ "$format" = "text" ] && qs="$qs&format=text"
+curl_auth "$BASE_URL/api/admin/features?$qs"

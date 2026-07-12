@@ -179,10 +179,11 @@ Server (`src/`):
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
-| `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, and the `*_reviews` D1 upsert helpers — a new board (e.g. a features panel) implements none of this itself |
+| `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, and the `*_reviews` D1 upsert helpers — a new board implements none of this itself. TWO priority-board consumers today: `security-risks.js` and `features.js` |
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
-| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, boards |
-| `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
+| `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, boards |
+| `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) with `chat.js` |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
@@ -483,7 +484,10 @@ helpers' SQL shape, and the façade contract pinning that a board's
 re-exported surface IS the core), and `security-risks.js` (the review
 board's own logic: catalog shape/mirror discipline, the fix-order vs
 severity orderings, the `?format=text` fix-loop
-rendering), and `games.js` (the
+rendering), and `features.js` (the features/priority board's own logic:
+catalog shape/mirror discipline against `FEATURES.md` §3, the build-order
+vs impact orderings, the façade-is-the-core identity check, the
+`?format=text` build-loop rendering), and `games.js` (the
 games registry/dispatch seam: entry shape, shelf payload, subpath
 dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
 game core: type-chart parity vs the official matchups, Gen-1
@@ -811,10 +815,21 @@ what docs claim); and update the skill list below plus the skill's
   manual scores, notes, an explicit priority = the loop's FIXED work
   order), and the choices feed back as loop context: the shared core
   (`src/board.js`), the catalog/façade/mirror disciplines, the admin-panel
-  UX conventions, the `?format=text` + `scripts/<board>` loop-input shape,
-  and the checklist for standing up a NEW board (the features panel walks
-  it). The security board is the reference; the feedback queue and
-  chatlogs are documented variants.
+  UX conventions (collapsed headers, tap-to-open, drag-to-priority), the
+  `?format=text` + `scripts/<board>` loop-input shape, and the checklist
+  for standing up a NEW board. The security board and the features board
+  are the two live priority-board consumers; the feedback queue and
+  chatlogs are documented variants. Data-flow diagrams:
+  `docs/DECISION-BOARD-LOOPS.md`.
+- **feature-board** — the SECOND priority channel (`src/features.js`,
+  `FEATURES.md`, `scripts/features`, `/api/admin/features*`): running the
+  FEATURE-BUILD loop (read board → fan out by priority → build a tier →
+  verify → flip status → push), the mirror discipline against `FEATURES.md`
+  §3, the status lifecycle (open → PARTIAL → SHIPPED / DROPPED). ALSO the
+  general playbook for IMPLEMENTING A NEW LOOP / priority board — the
+  nine-step checklist and the board-shape decisions (relabelled score,
+  positive-palette rank, `status==="open"` is the work set, drag writes
+  priority 1..N). Companion to decision-boards + `docs/DECISION-BOARD-LOOPS.md`.
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.

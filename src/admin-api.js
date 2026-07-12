@@ -18,6 +18,10 @@
 //                                    (src/security-risks.js — votes/score/
 //                                    note/priority over SECURITY-RISKS.md §3;
 //                                    ?format=text is the fix loop's input)
+//   *      /api/admin/features*      the features/priority review board
+//                                    (src/features.js — votes/effort/note/
+//                                    priority over FEATURES.md §3;
+//                                    ?format=text is the build loop's input)
 //   GET    /api/admin/boards         the admin-BOARDS discovery index
 //                                    (src/admin-boards.js — one entry per
 //                                    Claude-fetchable list + how to fetch its
@@ -31,6 +35,7 @@ import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { handleChatLogs } from "./chatlog.js";
 import { handleAdminFeedback } from "./feedback.js";
 import { handleAdminSecurity } from "./security-risks.js";
+import { handleAdminFeatures } from "./features.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
@@ -102,6 +107,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // priority order the security-fix loop works in.
     if (path === "/security" || path.startsWith("/security/")) {
       return handleAdminSecurity(request, env, url, log);
+    }
+    // The features/priority review board (src/features.js): FEATURES.md §3's
+    // backlog with admin votes, effort estimates, notes, and the explicit
+    // priority order the feature-build loop works in — the second loop channel.
+    if (path === "/features" || path.startsWith("/features/")) {
+      return handleAdminFeatures(request, env, url, log);
     }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized
