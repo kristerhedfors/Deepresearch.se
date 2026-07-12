@@ -6,7 +6,10 @@ description: >-
   timing a deploy around an eval battery. Covers the push-to-main
   git-connected auto-deploy, direct wrangler deploy and the API token's
   route-update limitation, live verification probes, and the
-  don't-deploy-mid-battery rule.
+  don't-deploy-mid-battery rule. ALSO the commit-signing / GitHub
+  Verified-badge remediation (the managed /tmp/code-sign wrapper, the
+  setup-signing.sh SessionStart hook, GIT_SIGNING_KEY/GIT_SIGNING_EMAIL
+  environment secrets, why %G? is always N in these containers).
 ---
 
 # Deployment
@@ -165,3 +168,47 @@ debug "works for me, broken for the user" client reports with header
 inspection (curl -I: is cache-control still there?) and a REAL browser
 repro via Playwright against live (tests/playwright.config.js has the
 sandbox quirks), not just API probes.
+
+## Commit signing & the GitHub Verified badge (2026-07-12, empirical)
+
+The remediation for "commits don't show Verified on GitHub". Facts
+established by live probing — do not re-derive them:
+
+- **Every commit from these containers is ALREADY SSH-signed** — the image's
+  global git config routes signing through a managed wrapper
+  (`gpg.ssh.program=/tmp/code-sign`, `commit.gpgsign=true`). GitHub does not
+  know that per-environment key, so commit pages show **no badge at all**
+  (checked live). The wrapper supports SIGNING ONLY — any verify operation
+  errors — so `git log --format=%G?` reports `N` for every commit in-container
+  regardless of signature presence. The reliable local check is
+  `git cat-file commit <sha> | grep -q gpgsig`.
+- **`noreply@anthropic.com` resolves to the official `@claude` GitHub
+  account.** GitHub marks a commit Verified only when the signing key lives on
+  the account that owns the COMMITTER email — so with that committer identity
+  a Verified badge is unreachable; only Anthropic could register the key.
+- The wrapper also **ignores `user.signingkey`**, and the image ships **no
+  ssh-keygen** (`apt-get update && apt-get install openssh-client` works; the
+  update is required — the mirror 404s stale package indexes).
+
+**The remediation** (hook committed as `.claude/hooks/setup-signing.sh`,
+registered as a SessionStart hook; contains no key material and exits
+silently when unconfigured):
+
+1. Generate a dedicated key on YOUR machine (never in a session — the private
+   key would land in transcripts): `ssh-keygen -t ed25519 -f
+   ~/.ssh/claude_code_signing -N "" -C "claude-code-signing"`.
+2. GitHub → Settings → SSH and GPG keys → New SSH key → **key type "Signing
+   Key"** (can't authenticate/push — bounded blast radius) → paste the `.pub`.
+3. Claude Code environment secrets: `GIT_SIGNING_KEY` = the private key (PEM
+   or base64 — the hook accepts both), `GIT_SIGNING_EMAIL` = your
+   `<id>+<user>@users.noreply.github.com` address (a personal address bounces
+   the push if GitHub's "block pushes that expose my email" is on).
+
+The hook then: installs openssh-client if missing, writes the key to
+`~/.ssh`, and sets REPO-LOCAL `gpg.format=ssh`,
+`gpg.ssh.program=$(command -v ssh-keygen)` (must be reset or the managed
+wrapper keeps signing with its own key), `user.signingkey`,
+`commit.gpgsign=true`, and `user.email=$GIT_SIGNING_EMAIL`. Result: commits
+display "authored by claude, committed by <you>" with a green Verified badge.
+Any stop-hook/CI check on committer identity must then expect YOUR email, and
+must test signature presence via `gpgsig`, not `%G?` (see above).

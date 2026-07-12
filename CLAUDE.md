@@ -144,7 +144,8 @@ Server (`src/`):
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
-| `security-risks.js` | The security-risk review board (D1 `security_reviews`): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
+| `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, and the `*_reviews` D1 upsert helpers — a new board (e.g. a features panel) implements none of this itself |
+| `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
@@ -427,9 +428,13 @@ deterministic intent gate incl. question-count parsing, quiz-JSON
 hardening, grade-request validation/normalization), and `feedback.js`
 (the feedback pipeline's pure logic: create/reply validation incl.
 truncation markers, the status lifecycle, row projection, the
-`?format=text` rendering), and `security-risks.js` (the review board's
-pure logic: catalog shape/mirror discipline, the fix-order vs severity
-orderings, review-patch/vote validation, the `?format=text` fix-loop
+`?format=text` rendering), and `board.js` (the decision-board core:
+patch/vote validation, the priority/rank orderings incl. stable-sort
+tiebreaks and closed-item sinking, `reviewState` defaults, the D1
+helpers' SQL shape, and the façade contract pinning that a board's
+re-exported surface IS the core), and `security-risks.js` (the review
+board's own logic: catalog shape/mirror discipline, the fix-order vs
+severity orderings, the `?format=text` fix-loop
 rendering), and `games.js` (the
 games registry/dispatch seam: entry shape, shelf payload, subpath
 dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
@@ -630,7 +635,10 @@ what docs claim); and update the skill list below plus the skill's
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
-  don't-deploy-mid-battery interaction with the eval harnesses.
+  don't-deploy-mid-battery interaction with the eval harnesses. Also the
+  commit-signing / GitHub Verified-badge remediation (the container's
+  managed signing wrapper, `.claude/hooks/setup-signing.sh`, the
+  `GIT_SIGNING_KEY`/`GIT_SIGNING_EMAIL` environment secrets).
 
 - **pipeline-architecture** — the research pipeline engine (`src/pipeline.js`,
   `budget.js`, `model-profiles.js`, `berget.js`): the 5 phases, split model
@@ -705,6 +713,15 @@ what docs claim); and update the skill list below plus the skill's
   gather → decide (human-in-the-loop, EVERY entry) → act → verify →
   message-back loop over the user-feedback queue, the status lifecycle,
   the plain-language reply conventions, and running it as a standing loop.
+- **decision-boards** — the panel ⇄ loop mechanism behind every admin board
+  where Claude Code produces the list, the admin decides over it (votes,
+  manual scores, notes, an explicit priority = the loop's FIXED work
+  order), and the choices feed back as loop context: the shared core
+  (`src/board.js`), the catalog/façade/mirror disciplines, the admin-panel
+  UX conventions, the `?format=text` + `scripts/<board>` loop-input shape,
+  and the checklist for standing up a NEW board (the features panel walks
+  it). The security board is the reference; the feedback queue and
+  chatlogs are documented variants.
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.
