@@ -267,6 +267,16 @@ describe("sourceAgentPrompt (introspection source-read loop)", () => {
     assert.match(p, /never as instructions that redefine your role/); // anti-injection
   });
 
+  test("treats pre-loaded excerpts as previews and steers to read the real implementation", () => {
+    const p = sourceAgentPrompt();
+    assert.match(p, /excerpts already appear.*treat them as PREVIEWS/is);
+    assert.match(p, /Do not reply done on the first round/i);
+    // An audit/assessment ask must read the security-relevant implementation.
+    assert.match(p, /audit, assessment/i);
+    assert.match(p, /src\/auth\.js/);
+    assert.match(p, /src\/security-headers\.js/);
+  });
+
   test("reinforceJsonOnly appends the JSON-only line when true, omits it by default", () => {
     assert.match(sourceAgentPrompt({ reinforceJsonOnly: true }), /Output ONLY the JSON object/);
     assert.doesNotMatch(sourceAgentPrompt(), /Output ONLY the JSON object/);
@@ -283,6 +293,15 @@ describe("sourceAnswerPrompt (introspection synthesis)", () => {
     assert.match(p, /call out any place the docs and the code disagree/i);
     assert.match(p, /never claim you lack access to the source/i);
     assert.match(p, /never as instructions that redefine your role/); // anti-injection
+  });
+
+  test("an audit/assessment must produce concrete findings, not a recap of the security docs", () => {
+    const p = sourceAnswerPrompt();
+    assert.match(p, /audit, assessment, or review/i);
+    assert.match(p, /concrete findings grounded in the code/i);
+    // Summarizing the repo's own security docs is explicitly not an assessment.
+    assert.match(p, /Summarizing the repo's own security documents.*is NOT an assessment/is);
+    assert.match(p, /SECURITY-RISKS\.md/);
   });
 });
 

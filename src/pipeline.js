@@ -167,6 +167,8 @@ import {
  *   hasSource: boolean,
  *   lastUser: string,
  *   convText: string,
+ *   cleanLastUser: string,
+ *   cleanConvText: string,
  *   imageParts: import('./types.js').ContentPart[],
  *   emitDelta: (text: string) => void,
  *   step: (id: string, label: string) => void,
@@ -232,6 +234,15 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     hasSource: !!(/** @type {any} */ (state).introspectionCount),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
+    // The CLEAN question + context — from the PRE-enrichment conversation, so
+    // the introspection excerpt block runEnrichments appended to `convo` is NOT
+    // in them. The developer-mode read-loop PLANNER (runSourceResearch) reads
+    // from these: with the block folded in, the planner sees the pre-loaded doc
+    // excerpts as "already enough" and declines to read any real files, so the
+    // answer degrades to a summary of those excerpts (the security-assessment
+    // UX bug). Synthesis still uses the excerpt-bearing lastUser/convText above.
+    cleanLastUser: textOf(lastUserMessage(conversation)?.content),
+    cleanConvText: formatConversation(conversation),
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
     imageParts: imagePartsOf(lastUserMessage(convo)),
@@ -474,9 +485,13 @@ async function runSourceResearch(ctx) {
           { role: "system", content: sourceAgentPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
           {
             role: "user",
+            // CLEAN question/context (not the excerpt-appended lastUser/convText):
+            // the planner must decide reads from the user's ACTUAL ask, not from
+            // the pre-loaded excerpts — otherwise it reads nothing and the answer
+            // becomes a summary of those excerpts.
             content: buildSourceStepMessage({
-              question: ctx.lastUser,
-              context: ctx.convText,
+              question: ctx.cleanLastUser,
+              context: ctx.cleanConvText,
               sitemap,
               priorBlock: buildSourceResearchBlock(priorReads),
             }),
