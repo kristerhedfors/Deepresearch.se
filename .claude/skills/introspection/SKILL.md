@@ -53,6 +53,30 @@ whether to engage. Everything is fail-soft: no rag index / embed failure →
 orientation-only block (still injected, model still has source); no snapshot →
 unchanged conversation.
 
+## Introspection-first search suppression (2026-07-12)
+
+A pure "how is X implemented / show me the code" ask in dev mode used to STILL
+run the web + HF search wave, which pulled in unrelated third-party repos that
+share the "deep research" name (e.g. Jina's node-DeepResearch, u14app) and
+presented them as sources. The fix, in `pipeline.js runResearch`: when the
+site's own source is in context (`ctx.hasSource`, i.e. dev mode on) **the
+default is to answer from THAT source with NO search wave** — it routes to
+`runDirectReply` (the source is already injected, `hasSource` is set) and emits
+a "Answering from the site's own source — web search skipped" plan step.
+
+The search wave is re-enabled only when the user EXPLICITLY wants outside
+material, decided by `externalSourceIntent` (introspect-core.js, EN+SV per
+invariant 6, Node-tested with a parity suite): explicit web/internet search,
+cited/external sources, outward-facing recency ("latest news", "up to date" —
+NOT bare "current"/"latest", which still read as the site's current code), or a
+comparison against something external ("compare our X with …", "versus"). The
+gate is deliberately CONSERVATIVE — leaning toward pure introspection is the
+product intent, and a false negative just means the user re-asks with "search
+the web". Note the trigger is `hasSource` (dev mode on), NOT
+`introspectionIntent`: the canonical failing asks ("gimme source code
+examples") don't match the intent regex at all — that's exactly why dev mode
+always injects — so the intent gate can't be the signal here.
+
 DRC has no server embedder of the right model, so it can't do dense retrieval
 (the client-side provider embedders differ); it injects the snapshot block
 (orientation + named files, full index on strong intent) whenever developer

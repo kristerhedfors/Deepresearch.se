@@ -85,6 +85,7 @@ import {
   validatePrompt,
 } from "./prompts.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
+import { externalSourceIntent } from "../public/js/introspect-core.js";
 
 // ---- shared shapes -------------------------------------------------------
 
@@ -233,6 +234,21 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (!state.webSearch) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runWithoutSearch(ctx);
+  }
+
+  // Developer mode, introspection-first: the site's OWN source is already in
+  // context (runEnrichments set hasSource). Answer from THAT by default instead
+  // of running the web/HF search wave, which on a pure "how is X implemented /
+  // show me the code" ask only pulls in unrelated third-party repos that share
+  // the "deep research" name. The wave is re-enabled the moment the user asks
+  // for outside material — web search, cited sources, current facts, or an
+  // external comparison (externalSourceIntent, EN+SV). This keeps introspection
+  // pure without a protocol change: the server decides from the knob + message.
+  if (ctx.hasSource && !externalSourceIntent(ctx.lastUser)) {
+    ctx.step("plan", "Analyzing request…");
+    ctx.stepDone("plan", "Answering from the site's own source — web search skipped");
+    if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
+    return runDirectReply(ctx);
   }
 
   const decision = await runTriage(ctx);

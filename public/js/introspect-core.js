@@ -99,6 +99,58 @@ export function introspectionActive(userTexts, snapshot = null) {
   return texts.some((t) => mentionedSnapshotPaths(t, snapshot, { exactOnly: true }).length > 0);
 }
 
+// ---- external-source intent (EN + SV, deterministic) -------------------------
+
+// Whether a message EXPLICITLY wants outside material — web search, cited
+// sources, current/recent facts, or a comparison against something external.
+// In developer mode the pipeline answers from the site's OWN injected source by
+// default (leaning toward pure introspection), and only runs the web/HF search
+// wave when this gate fires — so it is deliberately CONSERVATIVE (clear signals
+// only). Anchored away from introspection false-friends: "current"/"latest"
+// alone don't count (a question about the site's CURRENT code is still
+// introspection), only their outward-facing phrasings ("latest news", "up to
+// date") do. Swedish forms carry the same breadth (invariant 6).
+const EXTERNAL_SOURCE_PATTERNS = [
+  // Explicit web / internet search requests.
+  /\b(?:search|look)\s+(?:it\s+|them\s+)?(?:up\s+)?(?:on|in|across|the)?\s*(?:the\s+)?(?:web|internet|online)\b/i,
+  /\bweb\s+search\b/i,
+  /\bgoogle\s+(?:it|this|that|for|search)\b/i,
+  /\bon\s+the\s+(?:web|internet)\b/i,
+  /\bfrom\s+the\s+(?:web|internet)\b/i,
+  // Sources / references / citations from outside.
+  /\b(?:find|fetch|get|cite|with|use|external|provide|include|add)\s+(?:me\s+)?(?:some\s+|real\s+|actual\s+)?(?:web\s+|online\s+|external\s+)?(?:sources?|references?|citations?|links?)\b/i,
+  /\bexternal\s+(?:sources?|references?|links?|docs?|documentation|material)\b/i,
+  // Currency / recency, outward-facing only (not bare "current"/"latest").
+  /\b(?:latest|recent|newest|current)\s+(?:news|developments?|updates?|research|papers?|articles?|releases?|trends?)\b/i,
+  /\bup[\s-]?to[\s-]?date\b/i,
+  /\bwhat'?s\s+new\b/i,
+  /\bcurrent\s+events?\b/i,
+  // Comparison against something external ("compare [our X] with/to/against …").
+  /\bcompared?\b(?:\s+\S+){0,4}?\s+(?:with|to|against)\b/i,
+  /\bversus\b|\bvs\.?\b/i,
+  // Swedish parity.
+  /\bsök(?:er|ning(?:ar)?)?\s+(?:på\s+|i\s+)?(?:nätet|webben|internet|online|google)\b/i,
+  /\bwebbsökning(?:ar)?\b/i,
+  /\bgoogla\b/i,
+  /\bpå\s+(?:nätet|internet|webben)\b/i,
+  /\b(?:hitta|ange|ge|använd|med|externa|inkludera)\s+(?:mig\s+)?(?:några\s+|riktiga\s+)?(?:web[b]?\s+|online\s+|externa\s+)?källor\b/i,
+  /\bexterna\s+(?:källor|referenser|länkar)\b/i,
+  /\b(?:senaste|aktuella?|nyaste)\s+(?:nyheter(?:na)?|nytt|utveckling(?:en|ar)?|forskning(?:en)?|uppdateringar(?:na)?|artiklar(?:na)?|släpp(?:en)?|trender(?:na)?)\b/i,
+  /\bjämför[t]?\b(?:\s+\S+){0,4}?\s+(?:med|mot)\b/i,
+];
+
+/**
+ * Deterministic "the user explicitly wants outside material" gate for ONE
+ * message — the switch that re-enables the web/HF search wave in developer
+ * mode. Conservative by design (see EXTERNAL_SOURCE_PATTERNS).
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function externalSourceIntent(text) {
+  const s = String(text || "");
+  return EXTERNAL_SOURCE_PATTERNS.some((re) => re.test(s));
+}
+
 // ---- snapshot validation -------------------------------------------------------
 
 /**

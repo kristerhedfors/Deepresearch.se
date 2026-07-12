@@ -13,6 +13,7 @@ import {
   MAX_INLINE_TOTAL_CHARS,
   ORIENTATION_CHARS,
   buildIntrospectionBlock,
+  externalSourceIntent,
   introspectionActive,
   introspectionIntent,
   mentionedSnapshotPaths,
@@ -91,6 +92,62 @@ test("introspectionIntent: ordinary questions never trigger", () => {
     "",
   ]) {
     assert.equal(introspectionIntent(s), false, s);
+  }
+});
+
+// ---- external-source intent (the introspection search re-enabler) -----------
+
+test("externalSourceIntent: English request forms", () => {
+  for (const s of [
+    "search the web for the latest on this",
+    "look it up online",
+    "do a web search please",
+    "google it and tell me",
+    "find sources on the web",
+    "can you cite sources for that?",
+    "include external references",
+    "what are the latest developments here",
+    "give me up-to-date info",
+    "what's new in this space",
+    "compare it with LangChain's approach",
+    "compare our security posture with local projects", // object between verb and preposition
+    "deepresearch versus other tools",
+  ]) {
+    assert.equal(externalSourceIntent(s), true, s);
+  }
+});
+
+test("externalSourceIntent: Swedish parity — same breadth as English", () => {
+  for (const s of [
+    "sök på nätet efter det här",
+    "gör en webbsökning",
+    "googla det åt mig",
+    "hitta källor på webben",
+    "ange några källor",
+    "inkludera externa referenser",
+    "vad är den senaste utvecklingen",
+    "vilka är de aktuella nyheterna",
+    "jämför det med LangChain",
+    "jämför er säkerhet med lokala projekt", // object between verb and preposition
+    "sök på internet",
+  ]) {
+    assert.equal(externalSourceIntent(s), true, s);
+  }
+});
+
+test("externalSourceIntent: pure introspection asks never trigger it (search stays off)", () => {
+  for (const s of [
+    "gimme source code examples",
+    "tell me about the security implementation",
+    "how does the current pipeline work?", // "current" alone is not external
+    "show me the latest version of pipeline.js", // "latest version" of OWN file — still introspection
+    "explain how you handle quotas",
+    "visa mig källkodsexempel",
+    "berätta om säkerhetsimplementationen",
+    "hur fungerar den nuvarande pipelinen?",
+    "",
+  ]) {
+    assert.equal(externalSourceIntent(s), false, s);
   }
 });
 
