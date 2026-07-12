@@ -302,12 +302,15 @@ export function cosineF32Int8(q, c) {
 }
 
 /**
- * @typedef {{ v: number, model: string, dims: number, target: number, overlap: number, vectors: string[], map: Array<{ p: string, ci: number }> }} RagIndex
+ * @typedef {{ v: number, model: string, dims: number, target: number, overlap: number, hashes: Record<string, string>, vectors: string[], map: Array<{ p: string, ci: number }> }} RagIndex
  */
 
 /**
  * Tolerant validation of a fetched source-rag index. Returns the typed index
- * or null (callers fail soft to snapshot-only introspection).
+ * or null (callers fail soft to snapshot-only introspection). `hashes` (per-
+ * file content hash) is used only by the builder for DELTA rebuilds — it
+ * re-embeds a file's chunks only when its hash changed — so it's optional and
+ * retrieval ignores it.
  * @param {unknown} value
  * @returns {RagIndex | null}
  */
@@ -323,6 +326,7 @@ export function validateRagIndex(value) {
     dims: Number(v.dims) || 0,
     target: Number(v.target) || SOURCE_CHUNK_TARGET,
     overlap: Number(v.overlap) || SOURCE_CHUNK_OVERLAP,
+    hashes: v.hashes && typeof v.hashes === "object" && !Array.isArray(v.hashes) ? v.hashes : {},
     vectors: v.vectors,
     map: v.map,
   };
