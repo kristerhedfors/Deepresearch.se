@@ -24,7 +24,16 @@ import { formatConversation, lastUserMessage, textOf } from "./conversation.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import { bashAgentPrompt } from "./prompts.js";
-import { bergetCost, effectiveQuota, getUsage, quotaExceeded, recordUsage } from "./quota.js";
+import {
+  bergetCost,
+  effectiveQuota,
+  getUsage,
+  inflightLimitResponse,
+  quotaExceeded,
+  recordUsage,
+  releaseInflight,
+  reserveInflight,
+} from "./quota.js";
 import { bashLiteEnabled } from "./settings.js";
 import {
   MAX_SHELL_ROUNDS,
@@ -83,6 +92,12 @@ export async function handleBashStep(request, env, log, identity) {
   const blocked = quota ? quotaExceeded(usage, quota) : null;
   if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
 
+  // Per-user concurrency reservation (M-1/M-2), released in the finally below
+  // on every exit path. reqId minted locally; fail-soft on any D1 trouble.
+  const reqId = crypto.randomUUID();
+  const reserved = await reserveInflight(env, identity.id, reqId);
+  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+
   // The per-round user message is the shared builder (bash-core.js), so DRS
   // and DRC ask the model the exact same step question.
   const userContent = buildStepUserMessage({
@@ -128,6 +143,8 @@ export async function handleBashStep(request, env, log, identity) {
     log.error("bash.step_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     // Fail soft — the client stops the loop and the pipeline answers normally.
     return jsonResponse({ commands: [], done: true, reasoning: "" });
+  } finally {
+    await releaseInflight(env, reqId);
   }
 }
 

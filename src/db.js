@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS usage_events (
   duration_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_events(user_id, ts);
+CREATE TABLE IF NOT EXISTS inflight (
+  req_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inflight_user ON inflight(user_id, ts);
 CREATE TABLE IF NOT EXISTS config (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

@@ -300,18 +300,26 @@ are shallow; the 2026-07-12 scan covered only fetched history) and record the
 result here. Rotation runbook if anything is ever found: rotate at the
 provider FIRST, then rewrite history, then log the incident here.
 
-### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🔴 OPEN
-Imported from the assessment; **severity raised by public source** (the race
-is documented with file:line — R-2). Check-then-act quota: admission reads
-usage, spend records only after completion (`src/chat.js` gate vs record;
-same shape in `quiz-api.js`, `/api/embed`, `/mcp` post-H-1), so N concurrent
-requests near the limit all pass and overspend ≈N×. No per-user/IP rate
-limiter exists on `/api/chat`, `/mcp`, `/api/embed`, `/api/quiz/grade`,
-`/api/bash/step` (new since the assessment — quota-gated but same race
-shape). Recommendation: reserve spend at admission (D1 conditional update or
-in-flight counter, reconcile on completion) and/or cap per-user concurrent
-requests; optionally Cloudflare rate-limiting rules in front. Combined with
-P-1 caps, this closes the spend-abuse class.
+### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🟡 PARTIAL (2026-07-12)
+A per-user **concurrent-request cap** now bounds the check-then-act race: a
+small D1-backed reservation (`inflight` table; `reserveInflight`/
+`releaseInflight` in `src/quota.js`, `INFLIGHT_CAP = 5`, `INFLIGHT_TTL_MS =
+300 s`) is taken at admission — after the quota gate — and released in a
+`finally` on every exit path (success, error, client disconnect via
+`ctx.waitUntil`) on `/api/chat`, `/api/embed`, `/api/quiz/grade`, and
+`/api/bash/step`. A refused reservation returns 429 (`inflightLimitResponse`,
+no cost figures). This caps the ≈N× overspend at ≈`CAP`× per user, which —
+**combined with the P-1 provider caps** — closes the spend-abuse class. The
+gate is FAIL-SOFT (invariant 2): any D1 error fails open, never blocking a
+user. Unit-tested against an in-memory D1 mock (`src/quota.test.js`, 35
+tests: cap saturation, per-user isolation, release, TTL sweep, no-DB and
+throwing-DB fail-open). **Residual (why PARTIAL, not FIXED):** the concurrency
+cap bounds a burst but is not a true spend RESERVATION (a request's cost is
+still recorded only on completion), and the true simultaneous-isolate race +
+the disconnect-release lifecycle only reproduce in production — owed a
+live-verify pass (see the **live-verify** skill). A stricter fix (reserve
+estimated spend at admission, reconcile on completion) and/or Cloudflare
+rate-limiting rules remain available if the cap proves insufficient.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/index.js` but `CSP_ENABLED = false`
@@ -396,3 +404,4 @@ so the exception terminates.
 | 2026-07-12 | **This register created** (product decision: continuously maintain public-source risk list + priority-ordered fix backlog + this log in one file). Companion **security-posture** verification skill added (`.claude/skills/security-posture/`). Re-verified against source: M-1–M-6 and L-1–L-12 all still open (CSP still off; `webSearch`/`fetchCatalog` still unbounded; `chat_logs` still outside the drain; gap/validate prompts still lack the anti-injection note; history-key response still cacheable). Secret scan over the working tree + fetched (shallow) git history: **clean**. New items opened: P-1 (provider-side key caps — top priority), P-2 (push protection + full-history scan), P-10/R-7 (`LOG_LEVEL=debug` in prod, time-boxed). New risk classes recorded for surfaces added since the assessment: `/api/bash/step` in the P-3 rate-limit scope, DRC key storage (R-8), sandbox COEP origins in the P-4 CSP checklist. |
 | 2026-07-12 | **Admin review board added** (product decision): the §3 backlog gets an interactive admin-panel view (`/admin` → Security risks; `src/security-risks.js`, D1 `security_reviews`, `/api/admin/security*`, `scripts/security`) with up/down votes, a manual severity-score field (CVSS or free-form), notes, and an explicit per-item **priority that is the fix loop's fixed order** (maintenance rules 6–7 added). Two orderings: admin fix order ⇄ documented severity. |
 | 2026-07-12 | **Security-fix round (admin-prioritized top items) — P-8 FIXED.** `exa.js` `webSearch` + `berget.js` `fetchCatalog` now use `AbortSignal.timeout` (15 s), degrading fail-soft on a hung backend (invariant 2). First of the round working down the admin board's fix order (`scripts/security`); P-1/P-2/P-3 addressed in the same round's following commits. |
+| 2026-07-12 | **P-3 → PARTIAL.** Per-user concurrent-request cap added (D1 `inflight` table; `reserveInflight`/`releaseInflight` in `src/quota.js`, `CAP=5`, `TTL=300 s`, fail-soft) — reserved at admission, released in a `finally` on every exit path (incl. client disconnect via `ctx.waitUntil`) on `/api/chat`, `/api/embed`, `/api/quiz/grade`, `/api/bash/step`; 429 on refusal. Bounds the ≈N× overspend race at ≈`CAP`× per user (closes the spend-abuse class with the P-1 caps). 35 unit tests over an in-memory D1 mock. Residual: not a true spend reservation; simultaneous-isolate + disconnect-release paths owed a live-verify pass. |
