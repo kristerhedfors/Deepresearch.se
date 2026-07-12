@@ -323,8 +323,12 @@ header's gear icon (between ghost and account, both tiers) opens the
 settings drawer — ALL configuration: the ONE-FIELD API-key form whose
 provider dropdown auto-follows the pasted key's prefix
 (`detectDrcProvider`: sk-… OpenAI, gsk_… Groq, sk_ber_… Berget) plus
-the sandbox knob; the ghost carries a soft CSS glow-shimmer in BOTH
-tiers as the secure-tier marker. CHAT-FIRST (a visitor can type
+the sandbox knob; the ghost is the secure-tier marker in both tiers,
+each its own way (2026-07-12): on the BLUE tier a glow + shimmer
+sweep once a MINUTE (event in the first ~6% of a 60 s CSS cycle —
+app.css and the landing alike), on DRC the ghost character's contours
+glow and breathe while it floats (`ghost-contour` in drc.css).
+CHAT-FIRST (a visitor can type
 immediately; the first send without a key gets a helpful
 open-the-settings pointer, never an error wall), with a first-visit glass pane (`#intro`, doubling as the
 publication shelf; the full landing at `/` / `/welcome/` links here),
