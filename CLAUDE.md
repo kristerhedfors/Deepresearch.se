@@ -641,6 +641,17 @@ what docs claim); and update the skill list below plus the skill's
   commit-signing / GitHub Verified-badge remediation (the container's
   managed signing wrapper, `.claude/hooks/setup-signing.sh`, the
   `GIT_SIGNING_KEY`/`GIT_SIGNING_EMAIL` environment secrets).
+- **refactor-clarity** — how to refactor for clarity/modularity here without
+  breaking anything: the pure-core convention this repo already follows, what
+  to PRESERVE (byte-identical behavior, the load-bearing invariants, the
+  institutional comments, the module-graph constraints, public import
+  surfaces) and what to FOCUS on (residual pure helpers → testable companion
+  modules; verbatim duplicates → leaf modules; concerns out of the untested
+  entrypoint; client pure logic → an import-free core), the
+  baseline→survey→extract→verify workflow, and the traps (local typedefs not
+  in `types.js`, the source-snapshot freshness ordering, server-vs-client
+  risk). Worked example: the 2026-07-12 `assets.js`/`security-headers.js`/
+  `model-routing.js`/`pipeline-inputs.js`/`activity-core.js` pass.
 
 - **pipeline-architecture** — the research pipeline engine (`src/pipeline.js`,
   `budget.js`, `model-profiles.js`, `berget.js`): the 5 phases, split model
