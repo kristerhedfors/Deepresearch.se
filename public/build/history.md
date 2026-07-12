@@ -1373,3 +1373,38 @@ one device that mattered: the iPhone the whole site was built from.
   inline, and the pane self-diagnosing (stamp, restore counts,
   stylesheet self-repair). Verified on the real device; other devices
   still to be exercised.
+
+## The architecture story — pairing the two tiers (2026-07-12)
+
+A question about the execution sandbox ("which Linux are we running —
+Arch? is it size-optimized?") turned into a documentation feature. The
+answer — a stock WebVM **Debian** (`debian_large_20230522`, ~4.7 GiB),
+streamed lazily block-by-block so only what boot and the commands touch
+ever downloads, cached in IndexedDB, with user volumes on separate
+overlays and the VM boot skipped entirely for host-command sessions —
+was judged good as-is, and the decision deserved a durable home.
+
+- **New public page `/architecture/` — "The architecture story":** the
+  first documentation that treats the two tiers as the deliberate PAIR
+  they are, with inline-SVG visualizations. Side-by-side data-path
+  diagrams (deepresearch.**se/rver**: browser → Worker-orchestrated
+  pipeline → providers, D1 and R2 beside it; deepresearch.**se/cure**:
+  the pipeline inside the browser, direct CORS calls on the user's own
+  keys, the server drawn dashed — present only as a static file host).
+  Then two paired tables: privacy (the punchline row — DRS is privacy by
+  encryption and policy, DRC is privacy by structure) and capabilities
+  (what having a server buys: Exa search waves, Claude/GPT catalog,
+  Maps/Shodan enrichments, accounts — and what the browser tier keeps
+  anyway: the same five-phase pipeline, RAG on browser-direct
+  embeddings, projects, replays).
+- **The shared engine room:** the sandbox gets its own section as the
+  clearest expression of the whole architecture — even on the server
+  tier the server never runs a shell — including a block-streaming
+  visualization of why a ~5 GB stock Debian image is the right call in
+  a browser (full toolchain for the agent, near-zero cost for untouched
+  blocks), and the honest note that it's a borrowed image with licensing
+  terms to review before the feature leaves "experimental".
+- Wired as promotional/public surface (`isPublicAsset`), linked from the
+  account panel after "The build story" and from the /welcome/ landing
+  cards. Each tier keeps its identity color throughout (app flag-blue vs
+  /cure dark-olive), everything direct-labeled.

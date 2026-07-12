@@ -707,8 +707,8 @@ what docs claim); and update the skill list below plus the skill's
   commit.
 - **ui-notes** — the client UI/UX conventions: Markdown rendering, the PDF
   report, document/image attachments + metadata extraction, floating glass
-  chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message
-  center, and the public (no-auth) surface.
+  chrome, the `/help/` `/build/` `/story/` `/architecture/` `/welcome/`
+  pages, the message center, and the public (no-auth) surface.
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated

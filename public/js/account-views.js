@@ -301,6 +301,7 @@ export function renderSummary(me) {
       <button id="gamesbtn" type="button">Games</button>
       <a href="/build/" target="_blank" rel="noopener">About this project</a>
       <a href="/story/" target="_blank" rel="noopener">The build story</a>
+      <a href="/architecture/" target="_blank" rel="noopener">The architecture story</a>
       <a href="/help/" target="_blank" rel="noopener">Documentation</a>
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
