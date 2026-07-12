@@ -9,7 +9,9 @@
   <style>
     /* Same visual family as /story/ and /build/ — the blue docs surface.
        The two tiers keep their identity colors EVERYWHERE on this page:
-       DRS = flag blue (the app), DRC = dark olive (the khaki /cure tier).
+       se/rver = flag blue (the app), se/cure = dark olive (the khaki
+       /cure tier) — always the slashed short tokens, never acronyms
+       (2026-07-12 naming directive; see CLAUDE.md's branding rule).
        Every colored element is also direct-labeled — identity is never
        color-alone. */
     :root {
@@ -95,20 +97,20 @@
   <section>
     <h2>One product, two answers to the same question</h2>
     <p class="lead">DeepResearch.se ships the same deep-research assistant
-    twice, as a deliberate pair: <span class="chip drs">DRS</span>
-    deepresearch.<strong>se/rver</strong> — the signed-in tier, where a
+    twice, as a deliberate pair: deepresearch.<strong>se/rver</strong> —
+    <span class="chip drs">se/rver</span>, the signed-in tier, where a
     Cloudflare Worker orchestrates the research — and
-    <span class="chip drc">DRC</span> deepresearch.<strong>se/cure</strong> —
-    the public client-side tier, where <em>your browser</em> is the research
+    deepresearch.<strong>se/cure</strong> —
+    <span class="chip drc">se/cure</span>, the public client-side tier, where <em>your browser</em> is the research
     engine and the server is deliberately absent from every data path. Same
-    floating glass UI (DRC in khaki), same five-phase pipeline shape, same
+    floating glass UI (se/cure in khaki), same five-phase pipeline shape, same
     no-function-calling determinism — and opposite answers to the question
     <em>"where is the user's data allowed to exist?"</em>.</p>
     <p>The short version of the trade this page visualizes:
-    <span class="verdict drs">DRS buys capability</span> — live web search,
+    <span class="verdict drs">se/rver buys capability</span> — live web search,
     maps, host intelligence, attachments, accounts — by having a server, and
     protects the data that server handles with encryption and policy.
-    <span class="verdict drc">DRC buys privacy</span> structurally — the
+    <span class="verdict drc">se/cure buys privacy</span> structurally — the
     server <em>cannot</em> log, leak, or be compelled to reveal what never
     reaches it — and pays for that with the capabilities only a server can
     hold keys for.</p>
@@ -119,7 +121,7 @@
     <div class="pair">
       <figure>
         <div class="diagram">
-        <svg viewBox="0 0 420 470" role="img" aria-label="DRS data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
+        <svg viewBox="0 0 420 470" role="img" aria-label="The se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
           <!-- Browser -->
           <rect x="90" y="10" width="240" height="62" rx="10" fill="#e2f1ff" stroke="#0d4fa0" stroke-width="1.5"/>
           <text x="210" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#0a2e5c">Your browser</text>
@@ -171,14 +173,14 @@
           <text x="210" y="458" text-anchor="middle" font-size="9.5" fill="#2f5d8e">never the conversation, a filename, or who asked</text>
         </svg>
         </div>
-        <figcaption><span class="chip drs">DRS</span>
-        deepresearch.<strong>se/rver</strong> — the Worker orchestrates;
+        <figcaption><span class="chip drs">se/rver</span> — deepresearch.<strong>se/rver</strong>:
+        the Worker orchestrates;
         data the server handles is encrypted at rest, and its handling is
         governed by policy.</figcaption>
       </figure>
       <figure>
         <div class="diagram">
-        <svg viewBox="0 0 420 470" role="img" aria-label="DRC data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
+        <svg viewBox="0 0 420 470" role="img" aria-label="The se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
           <!-- Browser: the engine -->
           <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
           <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
@@ -217,8 +219,8 @@
           <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
         </svg>
         </div>
-        <figcaption><span class="chip drc">DRC</span>
-        deepresearch.<strong>se/cure</strong> — the browser orchestrates;
+        <figcaption><span class="chip drc">se/cure</span> — deepresearch.<strong>se/cure</strong>:
+        the browser orchestrates;
         the server's absence from the path IS the privacy guarantee.</figcaption>
       </figure>
     </div>
@@ -227,8 +229,8 @@
   <section>
     <h2>Privacy, paired</h2>
     <p class="muted">The same concerns, answered by each architecture. The
-    pattern to notice: on <span class="chip drs">DRS</span> each row is a
-    <em>promise the code keeps</em>; on <span class="chip drc">DRC</span>
+    pattern to notice: on <span class="chip drs">se/rver</span> each row is a
+    <em>promise the code keeps</em>; on <span class="chip drc">se/cure</span>
     each row is a <em>consequence of the structure</em> — there is no
     server-side behavior to trust, because there is no server-side behavior.</p>
     <table>
@@ -236,8 +238,8 @@
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h">DRS — deepresearch.<strong>se/rver</strong></th>
-          <th class="drc-h">DRC — deepresearch.<strong>se/cure</strong></th>
+          <th class="drs-h">deepresearch.<strong>se/rver</strong></th>
+          <th class="drc-h">deepresearch.<strong>se/cure</strong></th>
         </tr>
       </thead>
       <tbody>
@@ -249,7 +251,7 @@
         <tr>
           <th>Conversations at rest</th>
           <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — only if the cloud knob is on — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
-          <td class="drc-c">One sealed archive in the browser's own storage: chats, the RAG index (chunk text <em>and</em> vectors), and your provider API keys, AES-256-GCM under a secret only you hold. Stricter than DRS's RAG exception — even indexed material rests as ciphertext.</td>
+          <td class="drc-c">One sealed archive in the browser's own storage: chats, the RAG index (chunk text <em>and</em> vectors), and your provider API keys, AES-256-GCM under a secret only you hold. Stricter than se/rver's RAG exception — even indexed material rests as ciphertext.</td>
         </tr>
         <tr>
           <th>Interaction log</th>
@@ -269,7 +271,7 @@
         <tr>
           <th>The strictest tier</th>
           <td class="drs-c">The secret-keyed project vault: a whole project archived server-side as ciphertext under a user-held secret the server never sees and cannot derive. One feature with the structural property.</td>
-          <td class="drc-c">The whole tier <em>is</em> that property. The vault's crypto core (<code>vault-core.js</code>) is literally the foundation DRC's sealed state is built on.</td>
+          <td class="drc-c">The whole tier <em>is</em> that property. The vault's crypto core (<code>vault-core.js</code>) is literally the foundation se/cure's sealed state is built on.</td>
         </tr>
         <tr>
           <th>In one line</th>
@@ -282,16 +284,16 @@
 
   <section>
     <h2>Capabilities, paired</h2>
-    <p class="muted">What each side of the trade buys. Rows where DRC matches
-    DRS are the deliberate ports; rows where it can't are exactly the
+    <p class="muted">What each side of the trade buys. Rows where se/cure matches
+    se/rver are the deliberate ports; rows where it can't are exactly the
     capabilities that require server-held keys or a server-side data path.</p>
     <table>
       <colgroup><col class="concern"><col><col></colgroup>
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h">DRS — deepresearch.<strong>se/rver</strong></th>
-          <th class="drc-h">DRC — deepresearch.<strong>se/cure</strong></th>
+          <th class="drs-h">deepresearch.<strong>se/rver</strong></th>
+          <th class="drc-h">deepresearch.<strong>se/cure</strong></th>
         </tr>
       </thead>
       <tbody>
@@ -327,7 +329,7 @@
         </tr>
         <tr>
           <th>Execution sandbox</th>
-          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="chip drs">DRS</span> the Worker's reliable model does (<code>/api/bash/step</code>); on <span class="chip drc">DRC</span> even that decision happens client-side on your key. Execution never leaves the browser on either tier.</td>
+          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="chip drs">se/rver</span> the Worker's reliable model does (<code>/api/bash/step</code>); on <span class="chip drc">se/cure</span> even that decision happens client-side on your key. Execution never leaves the browser on either tier.</td>
         </tr>
       </tbody>
     </table>
@@ -411,10 +413,10 @@
     CheerpX runtime and the public disk service carry their own licensing
     terms to review before this graduates from experimental.</p>
     <p>And the pairing holds here too: the sandbox gives
-    <span class="chip drs">DRS</span> a capability without a privacy cost
+    <span class="chip drs">se/rver</span> a capability without a privacy cost
     (your files mount into a VM that lives and dies in your tab — the
     server only ever suggests the next command), and it gives
-    <span class="chip drc">DRC</span> a capability that would otherwise be
+    <span class="chip drc">se/cure</span> a capability that would otherwise be
     impossible (a no-server tier still gets code execution, because
     execution never needed the server in the first place).</p>
   </section>

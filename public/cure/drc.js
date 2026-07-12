@@ -223,26 +223,26 @@ function closeSettings() {
 const DRS_FEATURES = {
   ghost: {
     title: "Ghost mode — you are here",
-    text: "The ghost in the signed-in app brings you HERE: DRC is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In DRS the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
+    text: "The ghost in the signed-in app brings you HERE: se/cure is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
   attach: {
     title: "Attachments & documents",
-    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a DRS feature: the hosted pipeline parses and indexes your documents for cited answers.",
+    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a se/rver feature: the hosted pipeline parses and indexes your documents for cited answers.",
   },
   camera: {
     title: "Photos",
-    text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a DRS feature of the hosted pipeline.",
+    text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a se/rver feature of the hosted pipeline.",
   },
   budget: {
     title: "Research time target",
-    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. DRC's client-side phases run without a time budget; live web search itself is also DRS.",
+    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. se/cure's client-side phases run without a time budget; live web search itself is also a se/rver feature.",
   },
 };
 
 function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
-  $("drspop-title").textContent = feature === "ghost" ? f.title : f.title + " — a DRS feature";
+  $("drspop-title").textContent = feature === "ghost" ? f.title : f.title + " — a se/rver feature";
   $("drspop-text").textContent = f.text;
   $("drspop").hidden = false;
 }
@@ -502,7 +502,7 @@ async function refreshModels() {
   // when api.berget.ai started serving browser CORS — it's a real
   // provider above now.
   groups.push(
-    '<optgroup label="DRS only — deepresearch.se/rver">' +
+    '<optgroup label="se/rver only — deepresearch.se/rver">' +
       '<option disabled>Anthropic Claude</option>' +
       "</optgroup>",
   );
@@ -647,7 +647,7 @@ async function send(ev) {
     $("keyspanel").open = true;
     $("key-input").focus();
     workStatus(
-      "One thing first: DRC runs on YOUR API key, sent straight from this browser to the " +
+      "One thing first: se/cure runs on YOUR API key, sent straight from this browser to the " +
         "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
         "or Berget key above (Groq has a free tier at console.groq.com; Berget is EU-hosted), press " +
         "Save keys, then send again.",
@@ -766,7 +766,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d13 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d14 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }

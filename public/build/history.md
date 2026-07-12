@@ -1408,3 +1408,11 @@ was judged good as-is, and the decision deserved a durable home.
   account panel after "The build story" and from the /welcome/ landing
   cards. Each tier keeps its identity color throughout (app flag-blue vs
   /cure dark-olive), everything direct-labeled.
+
+The tier naming got its final form the same day: the acronyms the code
+uses internally (DRC/DRS) turned out to be one name pair too many for
+readers, so user-facing copy now uses the slashed tails themselves —
+se/rver and se/cure, the included slash as the distinguishing marker —
+everywhere a short name is needed (the branding rule in CLAUDE.md was
+amended, and the acronyms were swept out of /architecture/, /help/,
+/welcome/, and the /cure page's visible copy).

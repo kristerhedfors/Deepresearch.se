@@ -177,7 +177,7 @@ description: >-
   adding a new section per session the way earlier entries did.
 - **"The architecture story"** at `/architecture/` (public static page,
   self-contained like /story/, added 2026-07-12): pairs the two tiers —
-  deepresearch.**se/rver** (DRS) vs deepresearch.**se/cure** (DRC) — on
+  deepresearch.**se/rver** vs deepresearch.**se/cure** — on
   privacy and capabilities, with inline-SVG visualizations: the two
   data-path diagrams (Worker-orchestrated vs browser-orchestrated), the
   paired privacy table (privacy by policy+encryption vs privacy by
@@ -188,7 +188,12 @@ description: >-
   2026-07-12). Each tier keeps its identity color everywhere on the page
   (DRS flag blue, DRC dark olive from drc.css); everything is
   direct-labeled, never color-alone. Linked from the account panel (after
-  "The build story") and the /welcome/ landing cards.
+  "The build story") and the /welcome/ landing cards. In user-facing copy
+  the tiers' SHORT names are the slashed tokens **se/rver** and
+  **se/cure** — NEVER the internal DRC/DRS acronyms (2026-07-12
+  directive; the sweep that enforced it covered /architecture/, /help/,
+  /welcome/, and the /cure page + drc.js popovers — see CLAUDE.md's
+  amended branding rule).
 - **Account panel** (`public/js/account.js`) is five views: the default
   view shows only the rolling 5-hour window (the one that actually gates
   the next message) and the **Feedback mode** knob (directly on the
