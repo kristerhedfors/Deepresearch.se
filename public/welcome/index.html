@@ -225,6 +225,9 @@
       font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-weight: 800; color: var(--accent);
     }
+    /* Pull the letters in around the slash so se/cure reads closer to
+       "secure" — the monospace glyph carries wide side-bearings. */
+    #mbubble .tail .sl { margin: 0 -.12em; }
     #mbubble a { color: var(--accent); font-weight: 600; }
     @media (prefers-reduced-motion: reduce) {
       #ghostbtn { animation: none; }
@@ -354,7 +357,7 @@
 </div>
 <div id="mbubble" hidden>
   <b>Psst — see the glowing ghost up there?</b> That's the door to
-  deepresearch.<b class="tail">se/cure</b>: anonymous deep research that runs
+  deepresearch.<b class="tail">se<span class="sl">/</span>cure</b>: anonymous deep research that runs
   entirely in <i>your</i> browser, no account — this site's server is never
   in the data path, so it can't see those chats even in principle.
   <a href="/cure">Tap the ghost to try it →</a>
