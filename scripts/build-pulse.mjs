@@ -3,21 +3,24 @@
 //   node scripts/build-pulse.mjs          # update public/pulse/data.json
 //   npm run pulse                          # same, via package.json
 //
-// It reads `git log --numstat` and aggregates, per calendar day, the three
-// series the /pulse page charts: commits, lines changed, and NEW FEATURES.
-// The first two are exact counts from git; the third is a keyword HEURISTIC
-// over commit subjects (see classify()) — a starting point a human (or Claude,
-// running the commit-analytics skill) refines by hand. Each day also carries a
-// short `summary` derived from its commit subjects; the skill rewrites those
-// into real prose.
+// It reads `git log --numstat` and emits TWO things:
 //
-// CURATION IS PRESERVED. On re-run, a day whose subject list is unchanged and
-// that was marked `curated: true` keeps its hand-written `summary` and
-// `features` — only the exact git counts refresh. New or changed days get fresh
-// heuristic defaults and `curated: false`, which is the skill's review queue.
+//   commits[] — one lightweight record per commit ({ t, a, r, f }): timestamp,
+//     lines added, lines removed, and a feature flag. This is what the /pulse
+//     page charts: it buckets these records by HOUR (day view), by DAY (week
+//     view) or by WEEK (month view) entirely client-side, so the graphs can
+//     show the shape WITHIN a single day / week / month.
+//   days[]    — one record per calendar day, carrying that day's aggregates and
+//     a short `summary` for the "What happened" panel. Summaries are the ONE
+//     human-curated field: the commit-analytics skill rewrites them into prose
+//     and marks `curated: true`; a re-run preserves a curated summary when the
+//     day's subjects are unchanged.
 //
-// The deterministic parts (commits/added/removed/subjects) are always exact;
-// nothing here calls a model or the network — it's plain git + text.
+// Line counts are exact from git (generated/vendored artifacts excluded from
+// churn — see GENERATED). The feature flag `f` is a keyword HEURISTIC over the
+// commit subject (see classify()); it drives the features chart at every
+// resolution, so the graph and the totals always agree. Nothing here calls a
+// model or the network — it's plain git + text.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -82,7 +85,7 @@ function readCommits() {
       added += a === "-" ? 0 : Number(a) || 0;
       removed += r === "-" ? 0 : Number(r) || 0;
     }
-    commits.push({ hash, date: (dateIso || "").slice(0, 10), subject, added, removed });
+    commits.push({ hash, iso: dateIso || "", date: (dateIso || "").slice(0, 10), subject, added, removed });
   }
   return commits;
 }
@@ -125,27 +128,33 @@ function heuristicSummary(day) {
   return `${day.commits} commit${plural}, ${churn}. Mostly ${label}.`;
 }
 
+/** Per-day aggregates + subjects (for the summaries panel), sorted ascending. */
 function aggregate(commits) {
   /** @type {Record<string, any>} */
   const byDate = {};
   for (const c of commits) {
     if (!c.date) continue;
-    const d = (byDate[c.date] ||= { date: c.date, commits: 0, added: 0, removed: 0, subjects: [] });
+    const d = (byDate[c.date] ||= { date: c.date, commits: 0, added: 0, removed: 0, features: 0, subjects: [] });
     d.commits += 1;
     d.added += c.added;
     d.removed += c.removed;
+    d.features += classify(c.subject) === "feature" ? 1 : 0;
     d.subjects.push(c.subject);
   }
   const days = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   for (const d of days) {
-    d.features = d.subjects.filter((s) => classify(s) === "feature").length;
     d.summary = heuristicSummary(d);
     d.curated = false;
   }
   return days;
 }
 
-/** Merge fresh git aggregates with any previously curated summaries/features. */
+/**
+ * Preserve the ONE human-curated field — the day `summary` — across a rebuild.
+ * Aggregates (commits/lines/features) are always recomputed exactly from git; a
+ * day keeps its hand-written summary only when it was `curated:true` and its
+ * commit subjects are unchanged.
+ */
 function mergeCuration(freshDays, prevPath) {
   if (!existsSync(prevPath)) return freshDays;
   let prev;
@@ -159,23 +168,22 @@ function mergeCuration(freshDays, prevPath) {
     const p = prevByDate.get(d.date);
     const sameSubjects = p && JSON.stringify(p.subjects) === JSON.stringify(d.subjects);
     if (p && p.curated && sameSubjects) {
-      // Keep the human's summary + feature call; refresh only the exact counts.
-      return { ...d, features: p.features, summary: p.summary, curated: true };
+      return { ...d, summary: p.summary, curated: true };
     }
     return d;
   });
 }
 
 function main() {
-  const commits = readCommits();
-  const days = mergeCuration(aggregate(commits), OUT);
-  const totals = days.reduce(
-    (t, d) => ({
-      commits: t.commits + d.commits,
-      added: t.added + d.added,
-      removed: t.removed + d.removed,
-      features: t.features + d.features,
-    }),
+  const raw = readCommits();
+  // Per-commit records the page buckets by hour/day/week (oldest → newest).
+  const commits = raw
+    .filter((c) => c.iso)
+    .map((c) => ({ t: c.iso, a: c.added, r: c.removed, f: classify(c.subject) === "feature" ? 1 : 0 }))
+    .sort((x, y) => x.t.localeCompare(y.t));
+  const days = mergeCuration(aggregate(raw), OUT);
+  const totals = commits.reduce(
+    (t, c) => ({ commits: t.commits + 1, added: t.added + c.a, removed: t.removed + c.r, features: t.features + c.f }),
     { commits: 0, added: 0, removed: 0, features: 0 },
   );
   const data = {
@@ -183,13 +191,14 @@ function main() {
     repo: REPO,
     range: days.length ? { from: days[0].date, to: days[days.length - 1].date } : null,
     totals,
+    commits,
     days,
   };
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(data, null, 2) + "\n");
   const pending = days.filter((d) => !d.curated).length;
   console.log(
-    `pulse: ${days.length} day(s), ${totals.commits} commits, ` +
+    `pulse: ${commits.length} commits over ${days.length} day(s), ` +
       `${totals.features} heuristic features → ${OUT}` +
       (pending ? `\n  ${pending} day(s) need summary review (curated:false)` : ""),
   );

@@ -1,22 +1,505 @@
 {
-  "generated": "2026-07-12T15:02:48.991Z",
+  "generated": "2026-07-12T15:33:55.223Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-10",
     "to": "2026-07-12"
   },
   "totals": {
-    "commits": 71,
-    "added": 143978,
-    "removed": 3252,
-    "features": 11
+    "commits": 80,
+    "added": 146312,
+    "removed": 3713,
+    "features": 13
   },
+  "commits": [
+    {
+      "t": "2026-07-10T19:57:20+00:00",
+      "a": 61369,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-10T20:32:59+00:00",
+      "a": 33,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T20:39:29+00:00",
+      "a": 30,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T20:46:31+00:00",
+      "a": 28,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T20:52:00+00:00",
+      "a": 44,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T20:54:12+00:00",
+      "a": 31,
+      "r": 9,
+      "f": 1
+    },
+    {
+      "t": "2026-07-10T21:00:38+00:00",
+      "a": 88,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T21:26:31+00:00",
+      "a": 740,
+      "r": 38,
+      "f": 1
+    },
+    {
+      "t": "2026-07-10T21:30:42+00:00",
+      "a": 10,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-10T22:28:41+00:00",
+      "a": 2155,
+      "r": 34,
+      "f": 1
+    },
+    {
+      "t": "2026-07-10T22:43:29+00:00",
+      "a": 58,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T05:57:16+00:00",
+      "a": 159,
+      "r": 100,
+      "f": 1
+    },
+    {
+      "t": "2026-07-11T06:54:33+00:00",
+      "a": 64514,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T07:02:25+00:00",
+      "a": 52,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T07:16:56+00:00",
+      "a": 20,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T07:32:18+00:00",
+      "a": 10,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T08:13:13+00:00",
+      "a": 16,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T10:17:33+00:00",
+      "a": 12,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T11:39:17+00:00",
+      "a": 8,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T12:01:47+00:00",
+      "a": 7,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T12:02:09+00:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T12:07:55+00:00",
+      "a": 32,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T15:07:04+00:00",
+      "a": 163,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T15:07:29+00:00",
+      "a": 131,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T15:15:24+00:00",
+      "a": 139,
+      "r": 33,
+      "f": 1
+    },
+    {
+      "t": "2026-07-11T15:38:42+00:00",
+      "a": 328,
+      "r": 118,
+      "f": 1
+    },
+    {
+      "t": "2026-07-11T15:45:39+00:00",
+      "a": 7,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T16:18:32+00:00",
+      "a": 1016,
+      "r": 843,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T16:38:18+00:00",
+      "a": 298,
+      "r": 208,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T16:39:48+00:00",
+      "a": 15,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T17:29:45+00:00",
+      "a": 352,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T18:02:35+00:00",
+      "a": 187,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T18:10:36+00:00",
+      "a": 121,
+      "r": 95,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T18:22:15+00:00",
+      "a": 225,
+      "r": 123,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T19:02:08+00:00",
+      "a": 189,
+      "r": 147,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T19:10:42+00:00",
+      "a": 102,
+      "r": 90,
+      "f": 0
+    },
+    {
+      "t": "2026-07-11T19:33:06+00:00",
+      "a": 489,
+      "r": 17,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T05:50:04+00:00",
+      "a": 96,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T06:29:47+00:00",
+      "a": 44,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T06:41:45+00:00",
+      "a": 302,
+      "r": 18,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T06:45:27+00:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T08:04:10+00:00",
+      "a": 499,
+      "r": 6,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T08:04:10+00:00",
+      "a": 499,
+      "r": 6,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T08:16:12+00:00",
+      "a": 953,
+      "r": 6,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T08:28:41+00:00",
+      "a": 509,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T08:37:24+00:00",
+      "a": 7,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T08:43:38+00:00",
+      "a": 842,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:09:51+00:00",
+      "a": 121,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:18:04+00:00",
+      "a": 44,
+      "r": 38,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:19:13+00:00",
+      "a": 6,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:23:55+00:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:29:19+00:00",
+      "a": 84,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:43:35+00:00",
+      "a": 598,
+      "r": 117,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:52:01+00:00",
+      "a": 88,
+      "r": 68,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:52:57+00:00",
+      "a": 1403,
+      "r": 38,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T09:59:23+00:00",
+      "a": 10,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T10:19:55+00:00",
+      "a": 46,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T10:20:57+00:00",
+      "a": 885,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T10:45:31+00:00",
+      "a": 30,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:01:53+00:00",
+      "a": 879,
+      "r": 149,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:13:01+00:00",
+      "a": 136,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:13:43+00:00",
+      "a": 26,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:18:27+00:00",
+      "a": 342,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:19:24+00:00",
+      "a": 263,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:24:13+00:00",
+      "a": 412,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:33:40+00:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T12:54:05+00:00",
+      "a": 183,
+      "r": 53,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:08:45+00:00",
+      "a": 1150,
+      "r": 632,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:10:00+00:00",
+      "a": 149,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:15:42+00:00",
+      "a": 184,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:35:14+00:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:53:27+00:00",
+      "a": 58,
+      "r": 46,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T14:56:24+00:00",
+      "a": 732,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:03:12+00:00",
+      "a": 399,
+      "r": 75,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:04:04+00:00",
+      "a": 19,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:06:13+00:00",
+      "a": 709,
+      "r": 1,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T15:21:41+00:00",
+      "a": 126,
+      "r": 119,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:24:22+00:00",
+      "a": 19,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:29:19+00:00",
+      "a": 21,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:29:48+00:00",
+      "a": 251,
+      "r": 187,
+      "f": 0
+    }
+  ],
   "days": [
     {
       "date": "2026-07-10",
       "commits": 11,
       "added": 64586,
       "removed": 119,
+      "features": 4,
       "subjects": [
         "bash-lite: fix the sandbox never becoming cross-origin isolated",
         "Add experimental in-browser Linux execution sandbox + bash-lite agent",
@@ -30,8 +513,7 @@
         "fix(drc): khaki iOS bar tint when arriving via the ghost",
         "feat(ghost): the ghost symbol's new meaning — it takes you to DRC"
       ],
-      "features": 3,
-      "summary": "Shipped the experimental in-browser Linux execution sandbox and its bash-lite agent, and added client-side RAG for Se/cure conversations and projects (browser-direct OpenAI embeddings, sealed in local state). The ghost button was repurposed as the door to the /cure client tier. Plus two-font URL branding and iOS/ghost-navigation fixes.",
+      "summary": "Shipped the experimental in-browser Linux execution sandbox and its bash-lite agent, and added client-side RAG for se/cure conversations and projects (browser-direct OpenAI embeddings, sealed in local state). The ghost button was repurposed as the door to the /cure client tier. Plus two-font URL branding and iOS/ghost-navigation fixes.",
       "curated": true
     },
     {
@@ -39,6 +521,7 @@
       "commits": 26,
       "added": 68593,
       "removed": 1836,
+      "features": 4,
       "subjects": [
         "feat(sandbox): mount chat + project files into the Linux VM (part B, Tier 1)",
         "docs: project mounts at /mnt/<projname>-<hash> with no-hash /workspace symlink",
@@ -67,16 +550,25 @@
         "bash-lite: admin sandbox access, non-fatal xterm CSS, fix STOP_ICON TDZ crash",
         "sandbox UI: move the knob under the account view, drop the spiderweb, add a DRC account view"
       ],
-      "features": 3,
-      "summary": "Extended the sandbox to mount chat and project files into the Linux VM, gave both tiers a unified settings gear with a one-field API-key form (provider auto-detect), and brought Berget in as a third client-side Se/cure provider. A large day of sandbox research and design docs, plus the anonymous-visitor /cure fix (splitting vault-core out of the public graph) and COEP/iOS cross-origin-isolation fixes.",
+      "summary": "Extended the sandbox to mount chat and project files into the Linux VM, gave both tiers a unified settings gear with a one-field API-key form (provider auto-detect), and brought Berget in as a third client-side se/cure provider. A large day of sandbox research and design docs, plus the anonymous-visitor /cure fix (splitting vault-core out of the public graph) and COEP/iOS cross-origin-isolation fixes.",
       "curated": true
     },
     {
       "date": "2026-07-12",
-      "commits": 34,
-      "added": 10799,
-      "removed": 1297,
+      "commits": 43,
+      "added": 13133,
+      "removed": 1758,
+      "features": 5,
       "subjects": [
+        "pulse: zoom the graphs into one period (hours/days/weeks) with a navigator",
+        "welcome: reframe the first-visit pane around features and the project idea",
+        "branding: render the tier wordmarks in CamelCase (DeepResearch.Se/cure, DeepResearch.Se/rver)",
+        "docs: note that commit signing is unprovisioned (Unverified commits are expected)",
+        "Introspection: research the site's own source with an agentic file-read loop",
+        "pulse: add the Project pulse commit-analytics dashboard + update skill",
+        "docs: align documentation with the code and add provider-region flags",
+        "cure header: drop the visible d-number/pwa debug stamp; tighten remaining wordmark slashes",
+        "wordmarks: tighten the slash in every rendered se/cure and se/rver",
         "welcome: tighten space around the slash in se/cure so it reads more like 'secure'",
         "Introspection mode: answer from own source by default, skip web/HF search",
         "Build introspection source-RAG index; make the builder much faster",
@@ -112,9 +604,8 @@
         "docs: persist the Tier 2 (WebDevice+SW) roadmap for VM file mounting",
         "docs(skill): bundle VM file-mounting into the execution-sandbox skill"
       ],
-      "features": 5,
-      "summary": "Introspection mode (the developer_mode knob) landed on both tiers: a conversation can ask about the site’s own deployed source, answered from a committed source-RAG snapshot, with the TIN mascot and a private-vs-remote model picker. Added the /architecture/ story page and first-visit onboarding animations, the admin security-risk review board and a unified boards discovery index, plus a round of security hardening (secret-leak scanner, in-flight concurrency caps, bounded outbound fetches) and a clarity refactor of the largest orchestrators.",
-      "curated": true
+      "summary": "43 commits, +13133/−1758 lines. New: pulse: add the Project pulse commit-analytics dashboard + update skill; Add /architecture/ — the architecture story pairing DRS and DRC; Add first-visit onboarding animations to the landing page and DRC.",
+      "curated": false
     }
   ]
 }

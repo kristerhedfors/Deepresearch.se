@@ -6,19 +6,17 @@
   <title>DeepResearch.se — project pulse</title>
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
   <meta name="theme-color" content="#6fc3fd">
-  <meta name="description" content="Commits, lines and new features per day, week and month across DeepResearch.se's development.">
+  <meta name="description" content="Commits, lines and new features across DeepResearch.se's development — by hour within a day, by day within a week, by week within a month.">
   <style>
     /* Same visual family as /architecture/, /build/, /story/ — the blue docs
        surface — with a selected dark mode for the chart surfaces so the page
        is legible in either theme. Series hues are the data-viz reference
        palette's categorical slots (blue / aqua / orange), each its own small
-       multiple; identity is carried by the chart title AND the color, never
-       color alone. */
+       multiple; identity is carried by the chart title AND the color. */
     :root {
       --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
       --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
       --surface: #fcfcfb; --grid: #e1e0d9; --axis: #c3c2b7; --ink-muted: #6b7a8d;
-      /* categorical series slots (light) */
       --commits: #2a78d6; --lines: #1baf7a; --features: #eb6834;
     }
     @media (prefers-color-scheme: dark) {
@@ -55,7 +53,7 @@
     p, li { font-size: .9rem; }
     .muted { color: var(--muted); }
 
-    /* Totals row — stat tiles, not a chart. */
+    /* Totals row — all-time stat tiles. */
     .totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
     @media (max-width: 560px) { .totals { grid-template-columns: repeat(2, 1fr); } }
     .tile {
@@ -67,17 +65,28 @@
     .tile.commits .v { color: var(--commits); } .tile.lines .v { color: var(--lines); }
     .tile.features .v { color: var(--features); }
 
-    /* Granularity toggle. */
+    /* Controls: the resolution toggle + the period navigator. */
+    .controls { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; margin-bottom: .5rem; }
     .toggle { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
     .toggle button {
       border: 0; background: transparent; color: var(--muted); font: inherit;
       font-size: .82rem; font-weight: 600; padding: .35rem .8rem; border-radius: 7px; cursor: pointer;
     }
     .toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .nav { display: inline-flex; align-items: center; gap: .3rem; }
+    .nav button {
+      border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+      font: inherit; font-size: 1rem; line-height: 1; width: 2rem; height: 2rem; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .nav button:disabled { opacity: .38; cursor: default; }
+    .nav .winlabel { font-weight: 700; font-size: .9rem; min-width: 9.5rem; text-align: center; }
+    .wintotals { color: var(--muted); font-size: .82rem; margin: 0 0 .4rem; }
+    .wintotals b { color: var(--text); font-weight: 700; }
 
     .charts { display: flex; flex-direction: column; gap: .1rem; position: relative; }
     figure { margin: 0; }
-    .chart-head { display: flex; align-items: baseline; gap: .5rem; margin: .5rem 0 .1rem; }
+    .chart-head { display: flex; align-items: baseline; gap: .5rem; margin: .5rem 0 .1rem; flex-wrap: wrap; }
     .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
     .chart-head .name { font-weight: 700; font-size: .9rem; }
     .chart-head .note { color: var(--ink-muted); font-size: .76rem; }
@@ -86,20 +95,18 @@
     .grid-line { stroke: var(--grid); stroke-width: 1; }
     .y-lbl, .x-lbl { fill: var(--ink-muted); font-size: 11px; font-family: system-ui, sans-serif; }
     .y-lbl { text-anchor: end; } .x-lbl { text-anchor: middle; }
+    .xunit { fill: var(--ink-muted); font-size: 10px; font-family: system-ui, sans-serif; text-anchor: end; font-style: italic; }
     .val-lbl { font-size: 11px; font-weight: 600; font-family: system-ui, sans-serif; text-anchor: middle; }
     .bar { cursor: pointer; transition: opacity .12s; }
     .bar:hover { opacity: .82; }
 
-    /* Tooltip. */
     #tip {
       position: fixed; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .1s;
       background: var(--text); color: var(--panel); border-radius: 8px; padding: .4rem .55rem;
       font-size: .78rem; line-height: 1.35; max-width: 240px; box-shadow: 0 6px 20px rgba(0,0,0,.28);
     }
     #tip .tt { font-weight: 700; margin-bottom: .1rem; }
-    #tip b { font-weight: 700; }
 
-    /* Summaries. */
     .sumitem { border-top: 1px solid var(--border); padding: .7rem 0; }
     .sumitem:first-child { border-top: 0; padding-top: .2rem; }
     .sumhead { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
@@ -110,11 +117,9 @@
     .chip.lines { color: var(--lines); border-color: var(--lines); }
     .chip.features { color: var(--features); border-color: var(--features); }
     .sumbody { margin: .35rem 0 0; }
-    .sumbody ul { margin: .2rem 0 0; padding-left: 1.1rem; }
-    .sumbody li { margin: .15rem 0; }
     .review { color: var(--features); font-size: .74rem; font-weight: 600; }
 
-    .loading, .error { color: var(--muted); font-size: .88rem; }
+    .loading, .error, .empty-win { color: var(--muted); font-size: .88rem; }
     .error { color: #c0392b; }
     footer { color: var(--muted); font-size: .78rem; text-align: center; }
     footer a { color: var(--accent); }
@@ -130,26 +135,34 @@
     <a class="back" href="/">← Back</a>
   </div>
 
-  <section id="totals-sec">
+  <section>
     <div class="totals" id="totals"><span class="loading">Loading…</span></div>
   </section>
 
   <section>
     <div class="top" style="margin-bottom:.6rem">
       <h2 style="margin:0">Activity over time</h2>
-      <div class="toggle" id="toggle" role="group" aria-label="Time granularity">
-        <button type="button" data-g="day" aria-pressed="true">Day</button>
-        <button type="button" data-g="week" aria-pressed="false">Week</button>
-        <button type="button" data-g="month" aria-pressed="false">Month</button>
+    </div>
+    <div class="controls">
+      <div class="toggle" id="toggle" role="group" aria-label="Resolution">
+        <button type="button" data-g="day" aria-pressed="true">Day · hours</button>
+        <button type="button" data-g="week" aria-pressed="false">Week · days</button>
+        <button type="button" data-g="month" aria-pressed="false">Month · weeks</button>
+      </div>
+      <div class="nav">
+        <button type="button" id="prev" aria-label="Previous period">‹</button>
+        <span class="winlabel" id="winlabel">—</span>
+        <button type="button" id="next" aria-label="Next period">›</button>
       </div>
     </div>
+    <p class="wintotals" id="wintotals"></p>
     <div class="charts" id="charts"><span class="loading">Loading charts…</span></div>
   </section>
 
   <section>
     <h2>What happened</h2>
     <p class="muted" style="margin:.1rem 0 .4rem;font-size:.82rem">Summaries are drawn from
-      each period's commit messages. Feature counts are a heuristic the
+      each day's commit messages. Feature counts are a heuristic the
       <code>commit-analytics</code> skill refines.</p>
     <div id="summaries"><span class="loading">Loading…</span></div>
   </section>
@@ -163,55 +176,79 @@
 <div id="tip" role="status" aria-live="polite"></div>
 
 <script type="module">
-  // ---- data-viz reference palette, categorical slots ----------------------
   const SERIES = {
-    commits:  { key: "commits",  name: "Commits",      note: "merge commits excluded" },
-    lines:    { key: "lines",    name: "Lines changed", note: "added + removed; generated artifacts excluded" },
-    features: { key: "features", name: "New features",  note: "heuristic over commit subjects" },
+    commits:  { name: "Commits",       note: "commits in the period" },
+    lines:    { name: "Lines changed", note: "added + removed; generated artifacts excluded" },
+    features: { name: "New features",  note: "heuristic over commit subjects" },
   };
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-
-  let DATA = null;
-  let gran = "day";
-
   const el = (id) => document.getElementById(id);
   const fmt = (n) => n.toLocaleString("en-US");
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const WD = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-  function parseDay(s) { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); }
-  function iso(dt) { return dt.toISOString().slice(0, 10); }
+  let DATA = null;
+  let gran = "day";
+  let anchor = null;   // Date (UTC midnight) inside the current window
+  let minDay = null, maxDay = null; // "YYYY-MM-DD"
 
-  // Monday of the ISO week containing dt (UTC).
-  function weekStart(dt) {
-    const d = new Date(dt);
-    const wd = (d.getUTCDay() + 6) % 7; // 0 = Monday
-    d.setUTCDate(d.getUTCDate() - wd);
-    return d;
+  // ---- date helpers (all UTC to avoid DST/tz drift) -----------------------
+  const parseDay = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const iso = (dt) => dt.toISOString().slice(0, 10);
+  const addDays = (dt, n) => { const d = new Date(dt); d.setUTCDate(d.getUTCDate() + n); return d; };
+  const weekStart = (dt) => { const d = new Date(dt); const wd = (d.getUTCDay() + 6) % 7; return addDays(d, -wd); };
+  const monthStart = (dt) => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
+  const monthEnd = (dt) => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+  const clampDay = (dt) => { const s = iso(dt); if (s < minDay) return parseDay(minDay); if (s > maxDay) return parseDay(maxDay); return dt; };
+
+  // ---- windowing: the sub-buckets shown for the current resolution --------
+  // day → 24 hourly buckets; week → 7 daily buckets; month → the month's weeks.
+  function windowFor() {
+    if (gran === "day") return { start: iso(anchor), end: iso(anchor) };
+    if (gran === "week") { const ws = weekStart(anchor); return { start: iso(ws), end: iso(addDays(ws, 6)) }; }
+    return { start: iso(monthStart(anchor)), end: iso(monthEnd(anchor)) };
   }
 
-  // Roll the per-day records into buckets for the chosen granularity. Each
-  // bucket keeps `lines` (= added+removed churn), its component metrics, and
-  // the member days (for the summaries panel).
-  function bucketize(days, g) {
-    const map = new Map();
-    for (const day of days) {
-      const dt = parseDay(day.date);
-      let key, label, order;
-      if (g === "day") { key = day.date; label = `${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}`; order = day.date; }
-      else if (g === "week") { const ws = weekStart(dt); key = iso(ws); const we = new Date(ws); we.setUTCDate(we.getUTCDate() + 6); label = `${MONTHS[ws.getUTCMonth()]} ${ws.getUTCDate()}–${we.getUTCDate()}`; order = key; }
-      else { key = day.date.slice(0, 7); label = `${MONTHS[dt.getUTCMonth()]} ${dt.getUTCFullYear()}`; order = key; }
-      let b = map.get(key);
-      if (!b) { b = { key, label, order, commits: 0, added: 0, removed: 0, features: 0, days: [] }; map.set(key, b); }
-      b.commits += day.commits; b.added += day.added; b.removed += day.removed; b.features += day.features;
-      b.days.push(day);
+  function emptyBucket(label, axis) { return { label, axis, commits: 0, added: 0, removed: 0, features: 0 }; }
+
+  function buildBuckets() {
+    const w = windowFor();
+    let buckets, assign;
+    if (gran === "day") {
+      buckets = Array.from({ length: 24 }, (_, h) => emptyBucket(`${String(h).padStart(2, "0")}:00`, String(h)));
+      assign = (c) => (c.date === w.start ? c.hour : -1);
+    } else if (gran === "week") {
+      const ws = weekStart(anchor);
+      buckets = Array.from({ length: 7 }, (_, i) => { const d = addDays(ws, i); return emptyBucket(`${WD[i]} ${d.getUTCDate()}`, `${WD[i]}`); });
+      const keys = buckets.map((_, i) => iso(addDays(ws, i)));
+      assign = (c) => keys.indexOf(c.date);
+    } else {
+      const ms = monthStart(anchor), me = monthEnd(anchor);
+      const starts = [];
+      for (let wk = weekStart(ms); iso(wk) <= iso(me); wk = addDays(wk, 7)) starts.push(new Date(wk));
+      buckets = starts.map((wk) => emptyBucket(`Wk of ${MONTHS[wk.getUTCMonth()]} ${wk.getUTCDate()}`, `${wk.getUTCDate()}/${wk.getUTCMonth() + 1}`));
+      const keys = starts.map((wk) => iso(wk));
+      assign = (c) => (c.date >= w.start && c.date <= w.end ? keys.indexOf(iso(weekStart(parseDay(c.date)))) : -1);
     }
-    const out = [...map.values()].sort((a, b) => a.order.localeCompare(b.order));
-    for (const b of out) b.lines = b.added + b.removed;
-    return out;
+    for (const c of DATA._commits) {
+      const i = assign(c);
+      if (i < 0 || i >= buckets.length) continue;
+      const b = buckets[i];
+      b.commits += 1; b.added += c.a; b.removed += c.r; b.features += c.f;
+    }
+    for (const b of buckets) b.lines = b.added + b.removed;
+    return buckets;
   }
 
-  // ---- SVG chart (single-series bars, shared geometry) --------------------
-  const VW = 1000, LP = 46, RP = 10, TP = 16, PLOT_H = 118, BP = 4;
+  function windowLabel() {
+    if (gran === "day") { const d = anchor; return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; }
+    if (gran === "week") { const ws = weekStart(anchor), we = addDays(ws, 6); const sameM = ws.getUTCMonth() === we.getUTCMonth(); return `${MONTHS[ws.getUTCMonth()]} ${ws.getUTCDate()} – ${sameM ? "" : MONTHS[we.getUTCMonth()] + " "}${we.getUTCDate()}, ${we.getUTCFullYear()}`; }
+    return `${["January","February","March","April","May","June","July","August","September","October","November","December"][anchor.getUTCMonth()]} ${anchor.getUTCFullYear()}`;
+  }
+  const xUnit = () => ({ day: "hour of day", week: "day of week", month: "week" }[gran]);
+
+  // ---- SVG chart ----------------------------------------------------------
+  const VW = 1000, LP = 46, RP = 10, TP = 16, PLOT_H = 100, BP = 4;
   const plotW = VW - LP - RP;
   const plotBottom = TP + PLOT_H;
 
@@ -221,91 +258,96 @@
     for (const m of [1, 2, 2.5, 5, 10]) { const c = m * pow; if (c >= v) return c; }
     return 10 * pow;
   }
-
   function roundedTopBar(x, w, top, r) {
-    // Bar from baseline (plotBottom) up to `top`, with rounded top corners.
-    const h = plotBottom - top;
-    const rr = Math.min(r, w / 2, h);
+    const h = plotBottom - top, rr = Math.min(r, w / 2, h);
     return `M${x} ${plotBottom} V${top + rr} Q${x} ${top} ${x + rr} ${top} H${x + w - rr} Q${x + w} ${top} ${x + w} ${top + rr} V${plotBottom} Z`;
   }
-
   function chartSvg(buckets, metric, color, showX) {
     const n = buckets.length || 1;
     const max = niceMax(Math.max(1, ...buckets.map((b) => b[metric])));
     const step = plotW / n;
-    const bw = Math.min(46, Math.max(6, step * 0.62));
-    const showVals = buckets.length <= 16;
+    const bw = Math.min(46, Math.max(5, step * 0.66));
+    const showVals = buckets.filter((b) => b[metric] > 0).length <= 14 && n <= 16;
     const y = (v) => plotBottom - (v / max) * PLOT_H;
-
+    const every = Math.ceil(n / 8);
     let g = "";
-    // gridlines + y labels at 0, mid, max
     for (const t of [0, max / 2, max]) {
       const yy = y(t);
       g += `<line class="grid-line" x1="${LP}" y1="${yy.toFixed(1)}" x2="${VW - RP}" y2="${yy.toFixed(1)}"/>`;
       g += `<text class="y-lbl" x="${LP - 6}" y="${(yy + 3.5).toFixed(1)}">${fmt(Math.round(t))}</text>`;
     }
     g += `<line class="axis-line" x1="${LP}" y1="${plotBottom}" x2="${VW - RP}" y2="${plotBottom}"/>`;
-
     buckets.forEach((b, i) => {
-      const cx = LP + (i + 0.5) * step;
-      const x = cx - bw / 2;
-      const v = b[metric];
+      const cx = LP + (i + 0.5) * step, x = cx - bw / 2, v = b[metric];
       const top = v > 0 ? y(v) : plotBottom - 0.5;
       g += `<path class="bar" d="${roundedTopBar(x, bw, top, 4)}" fill="${color}" data-i="${i}" data-m="${metric}"/>`;
       if (showVals && v > 0) g += `<text class="val-lbl" x="${cx.toFixed(1)}" y="${(top - 4).toFixed(1)}" fill="${color}">${fmt(v)}</text>`;
-      if (showX) {
-        const every = Math.ceil(n / 12);
-        if (i % every === 0 || i === n - 1) g += `<text class="x-lbl" x="${cx.toFixed(1)}" y="${plotBottom + 15}">${b.label}</text>`;
-      }
+      if (showX && (i % every === 0 || i === n - 1)) g += `<text class="x-lbl" x="${cx.toFixed(1)}" y="${plotBottom + 15}">${b.axis}</text>`;
     });
-
+    // The x-axis unit (hour of day / day of week / week) is already named by the
+    // active toggle button ("Day · hours" …), so no redundant axis caption.
     const h = showX ? plotBottom + 22 : plotBottom + 4;
-    return `<svg class="chart" viewBox="0 0 ${VW} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${SERIES[metric].name} per ${gran}">${g}</svg>`;
+    return `<svg class="chart" viewBox="0 0 ${VW} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${SERIES[metric].name} by ${xUnit()}">${g}</svg>`;
   }
 
   function renderCharts() {
-    const buckets = bucketize(DATA.days, gran);
+    const buckets = buildBuckets();
     const box = el("charts");
     box.innerHTML = "";
     const order = ["commits", "lines", "features"];
     order.forEach((m, idx) => {
-      const s = SERIES[m];
       const color = css(`--${m}`);
       const fig = document.createElement("figure");
       fig.innerHTML =
         `<figcaption class="chart-head"><span class="swatch" style="background:${color}"></span>` +
-        `<span class="name">${s.name}</span><span class="note">${s.note}</span></figcaption>` +
+        `<span class="name">${SERIES[m].name}</span><span class="note">${SERIES[m].note}</span></figcaption>` +
         chartSvg(buckets, m, color, idx === order.length - 1);
       box.appendChild(fig);
     });
     wireTips(buckets);
+
+    const tot = buckets.reduce((t, b) => ({ c: t.c + b.commits, l: t.l + b.lines, f: t.f + b.features }), { c: 0, l: 0, f: 0 });
+    el("wintotals").innerHTML = tot.c
+      ? `This ${gran}: <b>${fmt(tot.c)}</b> commit${tot.c === 1 ? "" : "s"} · <b>${fmt(tot.l)}</b> lines changed · <b>${fmt(tot.f)}</b> new feature${tot.f === 1 ? "" : "s"}.`
+      : `No commits in this ${gran}.`;
   }
 
-  // ---- tooltip ------------------------------------------------------------
   function wireTips(buckets) {
     const tip = el("tip");
     const show = (e) => {
       const t = e.target;
-      if (!t.classList || !t.classList.contains("bar")) return;
-      const b = buckets[+t.dataset.i]; const m = t.dataset.m;
+      if (!t.classList || !t.classList.contains("bar")) { tip.style.opacity = "0"; return; }
+      const b = buckets[+t.dataset.i], m = t.dataset.m;
       let body = `<div class="tt">${b.label}</div>`;
       if (m === "lines") body += `<b>${fmt(b.lines)}</b> lines changed<br><span style="opacity:.85">+${fmt(b.added)} added · −${fmt(b.removed)} removed</span>`;
       else if (m === "commits") body += `<b>${fmt(b.commits)}</b> commit${b.commits === 1 ? "" : "s"}`;
       else body += `<b>${fmt(b.features)}</b> new feature${b.features === 1 ? "" : "s"}`;
-      tip.innerHTML = body;
-      tip.style.opacity = "1";
+      tip.innerHTML = body; tip.style.opacity = "1";
       const r = tip.getBoundingClientRect();
       let x = e.clientX + 12, yy = e.clientY - r.height - 10;
       if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 12;
       if (yy < 8) yy = e.clientY + 16;
       tip.style.left = x + "px"; tip.style.top = yy + "px";
     };
-    const hide = () => { tip.style.opacity = "0"; };
     const box = el("charts");
     box.onmousemove = show;
-    box.onmouseleave = hide;
-    // touch: tap a bar to reveal, tap elsewhere to hide
-    box.ontouchstart = (e) => { const tch = e.touches[0]; show({ target: e.target, clientX: tch.clientX, clientY: tch.clientY }); };
+    box.onmouseleave = () => { tip.style.opacity = "0"; };
+    box.ontouchstart = (e) => { const tc = e.touches[0]; show({ target: e.target, clientX: tc.clientX, clientY: tc.clientY }); };
+  }
+
+  // ---- navigation ---------------------------------------------------------
+  function step(dir) {
+    if (gran === "day") anchor = addDays(anchor, dir);
+    else if (gran === "week") anchor = addDays(anchor, 7 * dir);
+    else anchor = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + dir, 1));
+    anchor = clampDay(anchor);
+    render();
+  }
+  function updateNav() {
+    const w = windowFor();
+    el("prev").disabled = w.start <= minDay;
+    el("next").disabled = w.end >= maxDay;
+    el("winlabel").textContent = windowLabel();
   }
 
   // ---- totals + summaries -------------------------------------------------
@@ -316,39 +358,29 @@
       tile("lines", "Lines changed", t.added + t.removed) +
       tile("features", "New features", t.features) +
       tile("", "Days tracked", DATA.days.length);
-    if (DATA.range) el("range").textContent =
-      `${fmtDate(DATA.range.from)} – ${fmtDate(DATA.range.to)} · commits, lines and new features over time.`;
+    if (DATA.range) el("range").textContent = `${fmtDate(DATA.range.from)} – ${fmtDate(DATA.range.to)} · all-time totals below; the graphs zoom into one period.`;
     if (DATA.generated) el("gen").textContent = `Last updated ${new Date(DATA.generated).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}.`;
   }
-  function tile(cls, k, v) {
-    return `<div class="tile ${cls}"><span class="v">${fmt(v)}</span><span class="k">${k}</span></div>`;
-  }
-  function fmtDate(s) { const d = parseDay(s); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; }
+  const tile = (cls, k, v) => `<div class="tile ${cls}"><span class="v">${fmt(v)}</span><span class="k">${k}</span></div>`;
+  const fmtDate = (s) => { const d = parseDay(s); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; };
 
   function renderSummaries() {
-    const buckets = bucketize(DATA.days, gran).slice().reverse(); // newest first
+    const w = windowFor();
+    const days = DATA.days.filter((d) => d.date >= w.start && d.date <= w.end).sort((a, b) => b.date.localeCompare(a.date));
     const host = el("summaries");
-    host.innerHTML = buckets.map((b) => {
-      const needsReview = b.days.some((d) => d.curated === false);
+    if (!days.length) { host.innerHTML = `<p class="empty-win">No commits in this ${gran}.</p>`; return; }
+    host.innerHTML = days.map((d) => {
       const chips =
-        `<span class="chips"><span class="chip commits">${fmt(b.commits)} commits</span>` +
-        `<span class="chip lines">${fmt(b.lines)} lines</span>` +
-        `<span class="chip features">${fmt(b.features)} features</span></span>`;
-      let body;
-      if (gran === "day") {
-        body = `<p class="sumbody">${escapeHtml(b.days[0].summary || "")}</p>`;
-      } else {
-        const items = b.days.slice().sort((a, c) => c.date.localeCompare(a.date))
-          .map((d) => `<li><b>${fmtDate(d.date)}:</b> ${escapeHtml(d.summary || "")}</li>`).join("");
-        body = `<div class="sumbody"><ul>${items}</ul></div>`;
-      }
-      const review = needsReview ? ` <span class="review" title="Heuristic summary — pending review by the commit-analytics skill">· review pending</span>` : "";
-      return `<div class="sumitem"><div class="sumhead"><span class="lbl">${b.label}</span>${chips}${review}</div>${body}</div>`;
+        `<span class="chips"><span class="chip commits">${fmt(d.commits)} commits</span>` +
+        `<span class="chip lines">${fmt(d.added + d.removed)} lines</span>` +
+        `<span class="chip features">${fmt(d.features)} features</span></span>`;
+      const review = d.curated === false ? ` <span class="review" title="Heuristic summary — pending review by the commit-analytics skill">· review pending</span>` : "";
+      return `<div class="sumitem"><div class="sumhead"><span class="lbl">${fmtDate(d.date)}</span>${chips}${review}</div><p class="sumbody">${escapeHtml(d.summary || "")}</p></div>`;
     }).join("");
   }
-  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  function renderAll() { renderCharts(); renderSummaries(); }
+  function render() { updateNav(); renderCharts(); renderSummaries(); }
 
   // ---- boot ---------------------------------------------------------------
   el("toggle").addEventListener("click", (e) => {
@@ -356,23 +388,32 @@
     if (!btn) return;
     gran = btn.dataset.g;
     for (const b of el("toggle").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === btn));
-    renderAll();
+    anchor = clampDay(anchor);
+    render();
   });
+  el("prev").addEventListener("click", () => step(-1));
+  el("next").addEventListener("click", () => step(1));
 
   fetch("/pulse/data.json", { cache: "no-cache" })
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then((d) => {
       DATA = d;
-      if (!DATA.days || !DATA.days.length) {
+      const commits = d.commits || [];
+      if (!commits.length || !d.days || !d.days.length) {
         el("charts").innerHTML = '<p class="muted">No commit history yet.</p>';
-        el("summaries").innerHTML = ""; el("totals").innerHTML = "";
+        el("summaries").innerHTML = ""; el("totals").innerHTML = ""; el("wintotals").textContent = "";
         return;
       }
-      renderTotals(); renderAll();
+      // Pre-parse each commit's date + local hour once.
+      DATA._commits = commits.map((c) => ({ date: c.t.slice(0, 10), hour: Number(c.t.slice(11, 13)), a: c.a || 0, r: c.r || 0, f: c.f || 0 }));
+      minDay = d.range.from; maxDay = d.range.to;
+      anchor = parseDay(maxDay); // start on the most recent day of activity
+      renderTotals();
+      render();
     })
     .catch((err) => {
       el("charts").innerHTML = `<p class="error">Couldn't load the pulse data (${escapeHtml(err.message)}).</p>`;
-      el("totals").innerHTML = ""; el("summaries").innerHTML = "";
+      el("totals").innerHTML = ""; el("summaries").innerHTML = ""; el("wintotals").textContent = "";
     });
 </script>
 </body>

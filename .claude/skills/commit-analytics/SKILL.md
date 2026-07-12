@@ -16,16 +16,22 @@ description: >-
 ## What this is
 
 `deepresearch.se/pulse` is a public page (both tiers link it) showing three
-small-multiple bar charts over the repo's own git history — **commits per
-period, lines changed per period, and new features per period** — with a
-**Day / Week / Month** toggle and a per-period summary drawn from commit
-messages. It is a static page fed by a committed JSON dataset:
+small-multiple bar charts over the repo's own git history — **commits, lines
+changed, and new features**. The **Day / Week / Month** toggle is a ZOOM level,
+not a whole-history rollup: it shows the sub-buckets WITHIN one period —
+
+- **Day** → the **24 hours** of one day
+- **Week** → the **7 days** of one week
+- **Month** → the **weeks** of one month
+
+— with a ‹ › navigator to page between periods, a per-period totals line, and a
+per-day summary. It is a static page fed by a committed JSON dataset:
 
 | File | Role |
 |---|---|
-| `scripts/build-pulse.mjs` | Reads `git log --numstat`, aggregates per day, writes the dataset. `npm run pulse`. |
-| `public/pulse/data.json` | The committed dataset (per-day commits/added/removed/features/summary + totals). |
-| `public/pulse/index.html` | The self-contained page (inline CSS+JS). Fetches `data.json`, rolls days into week/month buckets client-side, draws the SVG charts. |
+| `scripts/build-pulse.mjs` | Reads `git log --numstat`, writes the dataset. `npm run pulse`. |
+| `public/pulse/data.json` | The committed dataset: `commits[]` (one `{t,a,r,f}` per commit — the charting source) + `days[]` (per-day aggregates + a `summary`) + `totals`. |
+| `public/pulse/index.html` | The self-contained page (inline CSS+JS). Fetches `data.json` and buckets the per-commit records by hour/day/week client-side, draws the SVG charts. |
 | `src/assets.js` | `/pulse/` is on the public (no-auth) allowlist so both tiers can open it. |
 
 There is **no build step and no server code** for this feature — the page is a
@@ -34,19 +40,26 @@ script, refining the summaries, and pushing.
 
 ## How the three series are counted
 
-- **Commits** — exact count of non-merge commits with that day's author date.
-- **Lines changed** — `added + removed` from `git log --numstat`, EXCLUDING
-  committed generated/vendored artifacts (`source-snapshot.json`,
+Each commit becomes one `commits[]` record `{ t, a, r, f }` — timestamp, lines
+added, lines removed, feature flag. The page buckets those records by hour (day
+view), day (week view) or week (month view), so all three series stay
+consistent at every resolution.
+
+- **Commits** — one per non-merge commit; the bucket count.
+- **Lines changed (`a`/`r`)** — `added + removed` from `git log --numstat`,
+  EXCLUDING committed generated/vendored artifacts (`source-snapshot.json`,
   `source-rag.json`, `public/vendor/**`, `*.min.*`, lock files, and
   `pulse/data.json` itself — see `GENERATED` in the script), so the metric
   reflects human-written change rather than a `npm run bundle` rewrite. Binary
-  files count as 0. Commit counts are never affected by this exclusion.
-- **New features** — a keyword HEURISTIC over commit subjects
-  (`classify()`): a commit is a "feature" only if its subject does not match
-  the fix / refactor / docs / test / chore patterns first, then matches an
-  add/new/introduce/implement/support pattern (English + Swedish). This is a
-  DEFAULT you refine (see below) — the heuristic over-counts things like
-  "feat(ui): tighten…" and misses features phrased as "X mode: …".
+  files count as 0; the commit itself still counts.
+- **New features (`f`)** — a keyword HEURISTIC over the commit subject
+  (`classify()`): `f=1` only if the subject does not match the
+  fix / refactor / docs / test / chore patterns first, then matches an
+  add/new/introduce/implement/support pattern (English + Swedish). It drives
+  the features chart AND the "New features" total, so they always agree. It's a
+  heuristic — it over-counts "feat(ui): tighten…" and misses features phrased
+  as "X mode: …" — but it is NOT hand-curated (only the summaries are; see
+  below). If the heuristic is systematically wrong, fix `classify()`.
 
 ## The update workflow (what to do when invoked)
 
@@ -58,20 +71,18 @@ script, refining the summaries, and pushing.
    ```
    It prints how many days need review (`curated:false`). Curation is
    preserved: a day whose commit subjects are unchanged and was previously
-   marked `curated:true` keeps its hand-written summary and feature count — only
-   the exact git counts refresh. New or changed days get fresh heuristic
-   defaults flagged `curated:false` (the page shows a "review pending" marker on
-   those).
-3. **Curate the days flagged `curated:false`.** For each such day in
-   `public/pulse/data.json`, read that day's `subjects` and:
-   - Rewrite `summary` into one or two concise, human sentences describing what
-     actually shipped that day (not a raw subject dump). Keep it factual and
-     specific — name the real features/areas.
-   - Set `features` to the honest count of genuinely NEW capabilities that
-     landed that day (use judgment; the heuristic is only a starting point).
-   - Set `"curated": true` on that day so the next `npm run pulse` preserves it.
-   Do not touch `commits`, `added`, `removed`, or `subjects` — those are exact
-   from git and the script rewrites them anyway.
+   marked `curated:true` keeps its hand-written `summary` — only the exact git
+   counts refresh. New or changed days get a fresh heuristic summary flagged
+   `curated:false` (the page shows a "review pending" marker on those).
+3. **Curate the `summary` of days flagged `curated:false`.** The summary is the
+   ONLY hand-edited field. For each such day in `public/pulse/data.json`, read
+   its `subjects` and rewrite `summary` into one or two concise, factual
+   sentences describing what actually shipped that day (not a raw subject
+   dump) — name the real features/areas. Then set `"curated": true` so the next
+   `npm run pulse` preserves it. Do NOT edit `commits`, `added`, `removed`,
+   `features`, `subjects`, or the `commits[]` array — those are exact from git
+   and the script rewrites them. (Feature COUNTS are heuristic, not curated — if
+   they're systematically off, fix `classify()` in the script, not the data.)
 4. **Verify** the JSON is valid and the page renders:
    ```bash
    node -e "JSON.parse(require('fs').readFileSync('public/pulse/data.json'))"
@@ -96,10 +107,11 @@ script, refining the summaries, and pushing.
 - **Adding new commits to an already-summarized day** changes that day's
   `subjects`, which resets it to `curated:false` — re-curate it (the summary may
   now be stale).
-- The page rolls days into **week** (Monday-anchored ISO week) and **month**
-  buckets entirely client-side; you only ever edit per-DAY records. Week/month
-  summaries are the member days' summaries listed together, so good day
-  summaries are all that's needed.
+- The charts are windowed: **Day** = 24 hourly buckets of one day, **Week** =
+  the 7 days (Monday-anchored ISO week), **Month** = the weeks of one month; the
+  ‹ › navigator pages between periods and defaults to the most recent day of
+  activity. All bucketing is client-side from the `commits[]` records — you only
+  ever hand-edit the per-day `summary` text.
 - Colours are the data-viz reference palette's categorical slots (commits =
   blue, lines = aqua, features = orange); each chart is its own single-series
   small multiple. If you change them, keep identity carried by the chart title

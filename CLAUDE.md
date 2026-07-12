@@ -868,11 +868,13 @@ what docs claim); and update the skill list below plus the skill's
   deterministic spawning, and the server-authoritative battle protocol.
 
 - **commit-analytics** — the "Project pulse" dashboard at
-  `deepresearch.se/pulse` (public, linked from both tiers): three
-  small-multiple charts (commits / lines / new features per day, with a
-  day/week/month toggle) over the repo's own git history, and the skill to
-  refresh it. Covers `scripts/build-pulse.mjs` (the git → `public/pulse/data.json`
-  aggregator, `npm run pulse`), how each series is counted (exact commit/line
-  counts with generated-artifact exclusion; a keyword heuristic for features
-  that a human curates), the curate-then-commit update workflow, and the
-  `/pulse/` public-allowlist entry.
+  `deepresearch.se/pulse` (public, linked from both tiers): three small-multiple
+  charts (commits / lines / new features) over the repo's own git history, where
+  the day/week/month toggle is a ZOOM level — Day shows the 24 hours of a day,
+  Week the 7 days of a week, Month the weeks of a month, with a ‹ › period
+  navigator — plus the skill to refresh it. Covers `scripts/build-pulse.mjs`
+  (the git → `public/pulse/data.json` builder, `npm run pulse`; emits per-commit
+  `{t,a,r,f}` records the page buckets client-side), how each series is counted
+  (exact commit/line counts with generated-artifact exclusion; a keyword feature
+  heuristic), the curate-summaries-then-commit workflow, and the `/pulse/`
+  public-allowlist entry.
