@@ -59,13 +59,14 @@
     <section id="security-sec" hidden>
       <h2>Security risks</h2>
       <p class="muted">The open items from <code>SECURITY-RISKS.md</code>
-      (the living register in the repo). Vote items up or down, attach a
-      manual severity score (e.g. a CVSS vector) and a note, and — the part
-      that binds — set an explicit <b>priority</b>: prioritized items form
+      (the living register in the repo). Items are collapsed to their
+      headers — <b>tap a header</b> to open its full details (summary, votes,
+      score, note), <b>drag the ⠿ grip</b> to reorder. In the fix-order view
+      the top-to-bottom order you drag into IS the explicit <b>priority</b>:
       the FIXED order the Claude&nbsp;Code security-fix loop works through on
       its next round (unprioritized items follow by votes, then documented
-      severity). Switch the view between that fix order and documented
-      severity.</p>
+      severity). You can still set a priority number by hand inside an item.
+      Switch the view between that fix order and documented severity.</p>
       <p class="seg" role="group" aria-label="Sort order">
         <button type="button" id="sec-order-priority" class="on">Fix order (priority)</button>
         <button type="button" id="sec-order-severity" class="secondary">Documented severity</button>

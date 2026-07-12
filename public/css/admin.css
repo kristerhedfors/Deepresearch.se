@@ -85,8 +85,33 @@ pre {
 .badge.accepted { background: #eee; color: #666; border-color: #ccc; }
 .badge.prio { background: #0d4fa0; color: #fff; border-color: #0d4fa0; }
 
-/* Security board: the sort-order segment + the per-item review controls. */
+/* Decision boards (Security risks, and any future selection board): items
+   render COLLAPSED to their header — tap a header to open its full detail,
+   drag the grip (work-order view only) to reorder. */
 .seg button.on { outline: 2px solid var(--accent); }
+.board-item .board-detail { display: none; }
+.board-item.open .board-detail { display: block; }
+.board-item .head { cursor: pointer; }
+.board-item .caret {
+  color: var(--muted); font-size: .7rem; transition: transform .15s;
+  flex: 0 0 auto;
+}
+.board-item.open .caret { transform: rotate(90deg); }
+/* The drag grip only appears (and only grabs) in the reorderable work order.
+   touch-action:none lets a touch on the grip drag instead of scrolling; the
+   rest of the header keeps its default touch-action so the list still scrolls
+   and headers still tap. */
+.board-item .grip { display: none; }
+.board.reorderable .board-item .grip {
+  display: inline-flex; cursor: grab; touch-action: none;
+  color: var(--muted); user-select: none; padding: 0 .1rem; line-height: 1;
+}
+.board.reordering .board-item .grip { cursor: grabbing; }
+.board-item.dragging {
+  opacity: .65; background: var(--panel-2); border-color: var(--accent);
+}
+
+/* Security board: the per-item review controls. */
 .sec-review {
   display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center;
   margin-top: .55rem; border-top: 1px dashed var(--border); padding-top: .55rem;
