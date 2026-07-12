@@ -216,6 +216,68 @@ export function mentionedSnapshotPaths(text, snapshot, opts = {}) {
   return out;
 }
 
+// ---- back-reference resolution -----------------------------------------------
+//
+// A follow-up like "read those" / "do that" (EN+SV) names no files itself — the
+// files it points at were listed in a PRIOR assistant turn ("I have not re-read
+// src/db.js, src/quota.js, …"). The source-read-loop PLANNER decides reads from
+// the latest user message, so a contentless "those" anchors it on nothing: it
+// reads no files and the answer degrades to a hallucinated "I read them" reply.
+// So the source-research path resolves the referent DETERMINISTICALLY — detect
+// the back-reference, then pull the paths the most recent prior turn named and
+// seed them into the read loop. Fail-soft: no gate match, or no named paths, and
+// the normal planner behavior is untouched.
+
+// Demonstrative/continuation follow-ups. Anchored to an explicit demonstrative
+// ("those/them/these/the rest") or a bare continuation verb so an ordinary new
+// question never trips it.
+const BACK_REFERENCE_PATTERNS = [
+  // A verb + an explicit demonstrative — safe anywhere in the message.
+  /\b(?:read|open|look\s+at|check|go\s+through|review|show\s+me|pull\s+up)\s+(?:those|them|these|the\s+(?:rest|others?|remaining|ones))\b/i,
+  /\b(?:do|try|run)\s+(?:that|those|it|so)\b/i,
+  /\b(?:those\s+files?|them\s+all|all\s+of\s+(?:them|those))\b/i,
+  // Bare continuations — anchored to the START of the message so a long real
+  // question that merely CONTAINS "continue" / "the rest" doesn't trip.
+  /^\s*(?:go\s+on|go\s+ahead|carry\s+on|keep\s+going|continue|proceed|the\s+rest)\b/i,
+  /^\s*(?:read|do|them|those)\b/i,
+  // Swedish parity (invariant 6).
+  /\b(?:läs|öppna|kolla(?:\s+på)?|titta\s+på|gå\s+igenom|granska|visa)\s+(?:dem|de(?:\s+där)?|dessa|resten|de\s+andra|de\s+(?:kvarvarande|återstående))\b/i,
+  /\b(?:gör|prova|kör)\s+(?:det|de(?:t\s+där)?|så|dem)\b/i,
+  /\b(?:de\s+där\s+filerna|alla\s+(?:dem|dessa))\b/i,
+  /^\s*(?:fortsätt|kör\s+(?:på|vidare)|gå\s+vidare|resten)\b/i,
+];
+
+/**
+ * Deterministic "this is a back-reference to a prior turn" gate (EN+SV). Kept to
+ * short-ish follow-ups so a long message that merely contains "continue" or
+ * "review" isn't mistaken for a bare back-reference.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function backReferenceIntent(text) {
+  const s = String(text || "");
+  if (s.trim().length > 200) return false;
+  return BACK_REFERENCE_PATTERNS.some((re) => re.test(s));
+}
+
+/**
+ * The snapshot paths a back-reference points at: the paths named by the most
+ * recent prior text that names any (walking the given texts in order — pass
+ * them MOST RECENT FIRST), bounded to `cap`. [] when nothing prior names a
+ * snapshot path.
+ * @param {string[]} priorTexts prior message texts, MOST RECENT FIRST
+ * @param {Snapshot} snapshot
+ * @param {number} [cap]
+ * @returns {string[]}
+ */
+export function resolveReferencedPaths(priorTexts, snapshot, cap = 8) {
+  for (const t of Array.isArray(priorTexts) ? priorTexts : []) {
+    const paths = mentionedSnapshotPaths(t, snapshot);
+    if (paths.length) return paths.slice(0, Math.max(1, cap));
+  }
+  return [];
+}
+
 // ---- the context block -------------------------------------------------------------
 
 /**
@@ -785,14 +847,24 @@ export function buildSourceStepMessage({ question, context, sitemap, priorBlock 
  *   read: (paths: string[], alreadyRead: Set<string>) => Promise<Array<{ p: string, text: string, truncated?: boolean }>>,
  *   maxRounds?: number,
  *   onRound?: (info: { round: number, reasoning: string, requested: string[], got: Array<{ p: string }> }) => void,
+ *   initial?: Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>,
  * }} params
  * @returns {Promise<Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>>}
  */
-export async function runSourceReadLoop({ step, read, maxRounds = MAX_SOURCE_READ_ROUNDS, onRound }) {
+export async function runSourceReadLoop({ step, read, maxRounds = MAX_SOURCE_READ_ROUNDS, onRound, initial = [] }) {
   /** @type {Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>} */
   const reads = [];
   /** @type {Set<string>} */
   const readPaths = new Set();
+  // Pre-seeded reads (e.g. a "read those" back-reference resolved to the files
+  // the prior turn named): counted as already-read so the planner continues
+  // from them (round 1 sees a non-empty priorReads) and they ground the answer.
+  for (const r of Array.isArray(initial) ? initial : []) {
+    if (r && r.p && !readPaths.has(r.p)) {
+      readPaths.add(r.p);
+      reads.push(r);
+    }
+  }
   for (let round = 1; round <= maxRounds; round++) {
     /** @type {ReadProposal} */
     let proposal;

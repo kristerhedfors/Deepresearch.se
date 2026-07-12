@@ -35,6 +35,8 @@ import {
   buildSourceResearchBlock,
   buildSourceStepMessage,
   runSourceReadLoop,
+  backReferenceIntent,
+  resolveReferencedPaths,
   MAX_FILES_PER_ROUND,
   MAX_READ_FILE_CHARS,
   MAX_READ_TOTAL_CHARS,
@@ -583,6 +585,102 @@ test("runSourceReadLoop: round 1 done (no files) yields an empty gather, never t
     },
   });
   assert.deepEqual(reads, []);
+});
+
+// ---- back-reference resolution ("read those" / "do that") -------------------
+
+test("backReferenceIntent: English demonstrative / continuation follow-ups", () => {
+  for (const s of [
+    "read those",
+    "read those files",
+    "Read them all",
+    "open the rest",
+    "go through the remaining ones",
+    "do that",
+    "go on",
+    "keep going",
+    "continue",
+    "the rest",
+    "read the ones you haven't yet",
+  ]) {
+    assert.equal(backReferenceIntent(s), true, s);
+  }
+});
+
+test("backReferenceIntent: Swedish parity — same breadth as English", () => {
+  for (const s of [
+    "läs dem",
+    "läs de där",
+    "läs dessa",
+    "läs resten",
+    "gå igenom de återstående",
+    "gör det",
+    "kör dem",
+    "fortsätt",
+    "kör vidare",
+    "gå vidare",
+    "resten",
+  ]) {
+    assert.equal(backReferenceIntent(s), true, s);
+  }
+});
+
+test("backReferenceIntent: ordinary new questions do NOT trip it", () => {
+  for (const s of [
+    "Security assessment",
+    "Gimme architecture overview",
+    "How does auth work?",
+    "explain the pipeline",
+    "Visa mig arkitekturen",
+    // A long message that merely contains a continuation word is a real ask.
+    "Please review the entire authentication subsystem and continue only if you find something concrete worth reporting in detail here.",
+  ]) {
+    assert.equal(backReferenceIntent(s), false, s);
+  }
+});
+
+test("resolveReferencedPaths: pulls the paths the most recent prior turn named", () => {
+  const s = snap();
+  // Mirrors the live bug: the prior assistant turn listed unread files in prose.
+  const priorMostRecentFirst = [
+    "I have not re-read src/pipeline.js or public/js/stream.js in this pass.",
+    "Earlier I covered CLAUDE.md.",
+  ];
+  assert.deepEqual(resolveReferencedPaths(priorMostRecentFirst, s), [
+    "src/pipeline.js",
+    "public/js/stream.js",
+  ]);
+});
+
+test("resolveReferencedPaths: walks back to the first prior text that names paths; [] when none", () => {
+  const s = snap();
+  // Most-recent text names nothing → fall through to the one that does.
+  assert.deepEqual(resolveReferencedPaths(["read those", "see wrangler.toml"], s), ["wrangler.toml"]);
+  assert.deepEqual(resolveReferencedPaths(["nothing here", "still nothing"], s), []);
+  assert.deepEqual(resolveReferencedPaths([], s), []);
+});
+
+test("resolveReferencedPaths: bounded by cap", () => {
+  const s = snap();
+  const all = "look at CLAUDE.md src/pipeline.js public/js/stream.js wrangler.toml";
+  assert.equal(resolveReferencedPaths([all], s, 2).length, 2);
+});
+
+test("runSourceReadLoop: initial seed reads are counted as already-read and returned", async () => {
+  const seed = [{ p: "src/pipeline.js", text: "// seeded", truncated: false }];
+  let sawPrior = -1;
+  const reads = await runSourceReadLoop({
+    initial: seed,
+    step: async (prior) => {
+      sawPrior = prior.length; // round 1 must already see the seed
+      return { done: true };
+    },
+    read: async () => {
+      throw new Error("should not read when the planner is immediately done");
+    },
+  });
+  assert.equal(sawPrior, 1); // planner saw the seed as prior context
+  assert.deepEqual(reads.map((r) => r.p), ["src/pipeline.js"]); // seed grounds the answer
 });
 
 test("runSourceReadLoop: bounded to MAX_SOURCE_READ_ROUNDS even if the model never stops", async () => {

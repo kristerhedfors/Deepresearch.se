@@ -97,12 +97,15 @@ import {
 } from "./prompts.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
+  MAX_FILES_PER_ROUND,
   MAX_SOURCE_READ_ROUNDS,
+  backReferenceIntent,
   buildSourceResearchBlock,
   buildSourceSitemap,
   buildSourceStepMessage,
   externalSourceIntent,
   readSnapshotFiles,
+  resolveReferencedPaths,
   runSourceReadLoop,
 } from "../public/js/introspect-core.js";
 
@@ -477,9 +480,27 @@ async function runSourceResearch(ctx) {
   const sitemap = buildSourceSitemap(snapshot);
   const budget = { used: 0 };
 
+  // Demonstrative back-reference ("read those" / "do that", EN+SV): the planner
+  // can't infer a contentless "those", so resolve it here — pull the file paths
+  // the most recent prior assistant turn named and pre-read them, seeding the
+  // loop. Without this the loop reads nothing and the answer becomes a
+  // hallucinated "I read them". Fail-soft: no gate match / no named paths → the
+  // normal planner behavior (seedReads stays []).
+  /** @type {Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>} */
+  let seedReads = [];
+  if (backReferenceIntent(ctx.cleanLastUser)) {
+    const priorAssistant = ctx.conversation
+      .filter((m) => m.role === "assistant")
+      .map((m) => textOf(m.content))
+      .reverse(); // most recent first
+    const seedPaths = resolveReferencedPaths(priorAssistant, snapshot, MAX_FILES_PER_ROUND);
+    if (seedPaths.length) seedReads = readSnapshotFiles(snapshot, seedPaths, new Set(), budget);
+  }
+
   ctx.step("source", "Reading the site's own source…");
   const reads = await runSourceReadLoop({
     maxRounds: MAX_SOURCE_READ_ROUNDS,
+    initial: seedReads,
     // One agent turn: ask the reliable JSON model which files to read next.
     step: async (priorReads, round) =>
       jsonPhase(ctx, {
@@ -517,7 +538,12 @@ async function runSourceResearch(ctx) {
   ctx.stepDone(
     "source",
     `Read ${reads.length} source file${reads.length === 1 ? "" : "s"} from the project`,
-    reads.map((r) => r.p).slice(0, 40),
+    [
+      ...(seedReads.length
+        ? [`resolved back-reference → ${seedReads.map((r) => r.p).join(", ")}`]
+        : []),
+      ...reads.map((r) => r.p).slice(0, 40),
+    ],
   );
 
   // Synthesis: stream the answer on the user's chosen model, grounded in the
