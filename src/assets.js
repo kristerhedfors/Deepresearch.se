@@ -93,6 +93,9 @@ export function isPublicAsset(url, method) {
     // same public-graph rule; its own imports, introspect-core.js and
     // drc-providers.js, are already above).
     url.pathname === "/js/introspect-ui.js" ||
+    // Provider country-of-processing flags — a leaf pure module imported by
+    // /cure/drc.js and by introspect-core.js (both in the public graph).
+    url.pathname === "/js/provider-region.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||

@@ -126,7 +126,7 @@ falls through to a NATIVE form submit → page reloads to a blank chat
 deceptive — the bug lives in returning devices' caches.
 
 Standing fixes (keep them intact):
-- `src/index.js` `serveAsset()` — every asset response carries an explicit
+- `src/assets.js` `serveAsset()` — every asset response carries an explicit
   policy: `no-cache` for js/css/html/md/webmanifest and extensionless HTML
   routes (etag revalidation = cheap 304, consistent graph every load),
   `max-age=3600` for icons/media.

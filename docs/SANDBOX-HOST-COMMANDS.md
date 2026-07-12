@@ -368,31 +368,37 @@ All device semantics below are from the CheerpX **File-System-support** and
 **input-output** guides + the reference (also mirrored verbatim in the aisl
 clone under `docs/cheerpx/`), and cross-checked against WebVM's own source.
 
-The ingest mount is `/mnt/in` (a scratch mount the model never uses directly);
-at boot a small script `cp`s from `/mnt/in` into `/workspace` and the project
-mount `/mnt/<projname>-<hash>`, then makes the `/workspace/<projname>` symlink.
-Ingest bytes never go through base64 unless they must (Tier 3).
+Ingest uses two `DataDevice` scratch mounts the model never touches directly —
+`/mnt/in-s` (session files) and `/mnt/in-p` (project files) — plus a third,
+`/mnt/in-src`, for the developer-mode source tree that mounts at `/src`. At boot
+a small seed script `cp`s `/mnt/in-s` into `/workspace` (every boot, `cp -a`) and
+`/mnt/in-p` into the project mount `/mnt/<projname>-<hash>` (add/update-only,
+`cp -an`, so the guest's own edits aren't clobbered), then makes the
+`/workspace/<projname>` symlink. Ingest bytes never go through base64 unless they
+must (Tier 3).
 
 ### Tier 1 — `DataDevice` ingest (default): direct binary bytes, no base64
 
-`DataDevice.create()` + `writeFile(path, Uint8Array | string)`, mounted at
-`/mnt/in`. Binary is first-class — a `Uint8Array` goes in with **no base64, no
-console** (note: `ArrayBuffer`/`Blob` are NOT accepted — wrap in
-`new Uint8Array(buf)`):
+`DataDevice.create()` + `writeFile(path, Uint8Array | string)`, one device per
+ingest mount (`/mnt/in-s`, `/mnt/in-p`). Binary is first-class — a `Uint8Array`
+goes in with **no base64, no console** (note: `ArrayBuffer`/`Blob` are NOT
+accepted — wrap in `new Uint8Array(buf)`):
 
 ```js
-const inDev = await CheerpX.DataDevice.create();
+const inSession = await CheerpX.DataDevice.create();
+const inProject = await CheerpX.DataDevice.create();
 cx = await CheerpX.Linux.create({
   mounts: [
     { type: "ext2", path: "/",                         dev: overlayDevice },
     { type: "dir",  path: "/workspace",                dev: workspaceIdb },  // persistent RW
     { type: "dir",  path: `/mnt/${projName}-${hash}`,  dev: projectIdb },    // persistent RW, the project mount
-    { type: "dir",  path: "/mnt/in",                   dev: inDev },         // ingest, read-only
+    { type: "dir",  path: "/mnt/in-s",                 dev: inSession },     // session ingest, read-only
+    { type: "dir",  path: "/mnt/in-p",                 dev: inProject },     // project ingest, read-only
     …
   ],
 });
-await inDev.writeFile("/session/server.log", bytesUint8Array);   // → cp'd to /workspace/server.log
-await inDev.writeFile("/project/notes.md",  bytesUint8Array);    // → cp'd to /mnt/<projname>-<hash>/notes.md
+await inSession.writeFile("/server.log", bytesUint8Array);   // → cp'd to /workspace/server.log
+await inProject.writeFile("/notes.md",   bytesUint8Array);   // → cp'd to /mnt/<projname>-<hash>/notes.md
 ```
 
 - **In-memory**: bytes live in the JS heap, **re-supplied every boot** (no
@@ -530,8 +536,8 @@ dbs until opened.)
 
 ```sh
 mkdir -p /workspace "/mnt/<projname>-<hash>"
-cp -a  /mnt/in/session/.  /workspace/               2>/dev/null || true   # ingest → session (refresh)
-cp -an /mnt/in/project/.  "/mnt/<projname>-<hash>/" 2>/dev/null || true   # ingest → project (add/update-only)
+cp -a  /mnt/in-s/.  /workspace/               2>/dev/null || true   # session ingest → /workspace (refresh)
+cp -an /mnt/in-p/.  "/mnt/<projname>-<hash>/" 2>/dev/null || true   # project ingest → project mount (add/update-only)
 printf '%s' "<projectId>" > "/mnt/<projname>-<hash>/.projectid"
 ln -sfn "/mnt/<projname>-<hash>" "/workspace/<projname>"                  # friendly no-hash symlink
 ```
@@ -748,7 +754,7 @@ the CheerpX VM. Moving it host-side MUST preserve equivalent isolation:
 
 | File | Change | For |
 |---|---|---|
-| `public/js/sandbox.js` | mount persistent `IDBDevice`→`/workspace` + per-project `IDBDevice`→`/mnt/<projname>-<hash>` + ingest `DataDevice`→`/mnt/in` (and later `WebDevice`→`/mnt/in-web`); `mountFiles(fileProvider)` (Tier-1 `inDev.writeFile` direct bytes → seed `cp`/`ln -sfn`, Tier-3 base64 fallback); `exportFile`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
+| `public/js/sandbox.js` | mount persistent `IDBDevice`→`/workspace` + per-project `IDBDevice`→`/mnt/<projname>-<hash>` + ingest `DataDevice`s→`/mnt/in-s` (session) & `/mnt/in-p` (project) & `/mnt/in-src` (dev-mode source→`/src`) (and later `WebDevice`→`/mnt/in-web`); `mountFiles(fileProvider)` (Tier-1 `inDev.writeFile` direct bytes → seed `cp`/`ln -sfn`, Tier-3 base64 fallback); `exportFile`; intercept in `execInSandbox` before the VM; the sandboxed-iframe `js` runner | A+B |
 | `public/js/sandbox-files.js` | NEW — pure `sanitizeName`/`sanitizeProjName`/`projHash`/`dedupeNames`/`buildManifest`/`applySizeCap`/`chooseTier`/`buildSeedScript`/`buildFallbackWriteScript`; Node-tested (`sandbox-files.test.js`) | B |
 | `public/sw.js` | NEW (Tier 2, deferred) — Service Worker backing the WebDevice: serves decrypted OPFS / proxied R2 bytes as `application/octet-stream` + CORP, honoring `Range` | B |
 | `public/js/host-commands.js` | NEW — registry + `matchHostCommand`/`tokenizeCommand`/`runHostCommand`; pure core Node-tested (`host-commands.test.js`) | A |

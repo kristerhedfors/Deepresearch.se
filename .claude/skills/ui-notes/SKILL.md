@@ -233,7 +233,7 @@ description: >-
   logs, no stored conversations — except the ≤15 min answer-recovery
   buffer, disclosed in the notice); acknowledgement remembered for a year
   in the `dr_privacy_ack` cookie.
-- **Public surface** (`isPublicAsset` in `src/index.js`) — served without
+- **Public surface** (`isPublicAsset` in `src/assets.js`) — served without
   auth: branding (`/favicon.ico`, `/manifest.webmanifest`, `/icons/*` —
   iOS/Chrome fetch these *without* credentials, so gating them silently
   breaks PWA icons) plus the **promotional surface**: `/welcome/` (the

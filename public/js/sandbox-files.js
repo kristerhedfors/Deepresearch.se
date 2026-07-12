@@ -12,8 +12,8 @@
 //   /mnt/<projname>-<hash>/     ← the active project's own persistent mount
 //
 // Host bytes can't be written into an IDBDevice directly (no host writeFile),
-// so they ingest through a DataDevice at /mnt/in (/session/* and /project/*)
-// and a boot script cp's them into the persistent tree — buildSeedScript()
+// so they ingest through DataDevices at /mnt/in-s (session) and /mnt/in-p
+// (project) and a boot script cp's them into the persistent tree — buildSeedScript()
 // is that script. Everything here is pure string/byte manipulation.
 
 // ---- caps -----------------------------------------------------------------

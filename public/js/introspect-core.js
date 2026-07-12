@@ -19,6 +19,8 @@
 // builder with its caps. Fetching the snapshot and appending the block are
 // the callers' jobs.
 
+import { regionForModelEntry, regionForProvider } from "./provider-region.js";
+
 // Where the committed snapshot artifact is served from (same-origin).
 export const SNAPSHOT_PATH = "/introspect/source-snapshot.json";
 // The committed DENSE source-RAG index (scripts/bundle-source-rag.mjs).
@@ -534,28 +536,37 @@ function clip(t, max) {
  * — the privacy-obvious choice; server models are labeled as remote so
  * nobody mistakes them for local.
  * @param {Array<{ id: string, label: string, models: string[] }>} privateProviders configured (key present) providers
- * @param {Array<{ id: string, name?: string, up?: boolean }>} serverModels /api/models entries ([] on DRC)
+ * @param {Array<{ id: string, name?: string, up?: boolean, provider?: string }>} serverModels /api/models entries ([] on DRC)
  * @returns {{ groups: Array<{ kind: "private" | "remote", label: string, options: Array<{ value: string, label: string, disabled?: boolean }> }>, recommended: string }}
  */
 export function groupIntrospectionModels(privateProviders, serverModels) {
   /** @type {Array<{ kind: "private" | "remote", label: string, options: Array<{ value: string, label: string, disabled?: boolean }> }>} */
   const groups = [];
-  const priv = (Array.isArray(privateProviders) ? privateProviders : []).flatMap((p) =>
-    (Array.isArray(p?.models) ? p.models : []).map((m) => ({
+  // A flag prefix (with trailing space) marks where each route's data is
+  // processed; a local/unknown provider yields "" (no flag) — see
+  // provider-region.js.
+  const priv = (Array.isArray(privateProviders) ? privateProviders : []).flatMap((p) => {
+    const pr = regionForProvider(p?.id);
+    const pf = pr ? pr.flag + " " : "";
+    return (Array.isArray(p?.models) ? p.models : []).map((m) => ({
       value: `p:${p.id}:${m}`,
-      label: `🔒 ${m} — ${p.label}, your key (private)`,
-    })),
-  );
+      label: `🔒 ${pf}${m} — ${p.label}, your key (private)`,
+    }));
+  });
   if (priv.length) {
     groups.push({ kind: "private", label: "Private — your key, straight from this browser", options: priv });
   }
   const remote = (Array.isArray(serverModels) ? serverModels : [])
     .filter((m) => m && typeof m.id === "string" && m.id)
-    .map((m) => ({
-      value: `s:${m.id}`,
-      label: `☁ ${m.name || m.id} — remote (this site's server)`,
-      disabled: m.up === false,
-    }));
+    .map((m) => {
+      const r = regionForModelEntry(m);
+      const rf = r ? r.flag + " " : "";
+      return {
+        value: `s:${m.id}`,
+        label: `☁ ${rf}${m.name || m.id} — remote (this site's server)`,
+        disabled: m.up === false,
+      };
+    });
   if (remote.length) {
     groups.push({ kind: "remote", label: "Remote — this site's server pipeline", options: remote });
   }

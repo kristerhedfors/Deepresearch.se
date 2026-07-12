@@ -61,13 +61,13 @@ denies the capability even with a transcript in front of it.
 
 | Concern | File |
 |---|---|
-| SHARED pure core (intent, parse, exec-result clamping, transcript, the per-round step user-message `buildStepUserMessage`, the generic injected-step `runShellLoop` driver, caps) | `public/js/bash-core.js` (+ `.test.js`, Swedish-parity suite) — the ONE implementation. Lives under `public/` because the browser can only import served modules while the Worker bundler (wrangler/esbuild) imports from any repo path; it is BOTH served to the browser AND bundled into the Worker. In `index.js`'s `isPublicAsset` allowlist (the /cure module graph imports it) |
+| SHARED pure core (intent, parse, exec-result clamping, transcript, the per-round step user-message `buildStepUserMessage`, the generic injected-step `runShellLoop` driver, caps) | `public/js/bash-core.js` (+ `.test.js`, Swedish-parity suite) — the ONE implementation. Lives under `public/` because the browser can only import served modules while the Worker bundler (wrangler/esbuild) imports from any repo path; it is BOTH served to the browser AND bundled into the Worker. In `assets.js`'s `isPublicAsset` allowlist (the /cure module graph imports it) |
 | Server façade over the core | `src/bash-agent.js` (re-export ONLY — since 2026-07-11 this replaced the old hand-mirrored copy; `.test.js` pins the re-export contract so a re-implementation fails the suite) |
 | Settings knob `bash_lite_mcp` | `src/settings.js` (`bashLiteEnabled`, availability = user row only, no secret) |
 | Step prompt + synthesis clause | `src/prompts.js` (`bashAgentPrompt`, `synthPrompt({hasShell})`) |
 | Step endpoint `/api/bash/step` | `src/bash-api.js` (one model turn on `DEFAULT_MODEL`, quota-gated, usage-recorded) |
 | Pipeline consumption | `src/pipeline.js` (`ctx.shellBlock` → synthesis + direct/search-off), `src/chat.js` (`shell_transcript` request field → `state.shellTranscript`) |
-| COEP / cross-origin isolation | `src/index.js` (`serveAsset(..,{coep})` sets COEP **`require-corp`** + `no-store`, strips conditional headers: DRC page always, DRS shell when the knob is on) |
+| COEP / cross-origin isolation | `src/assets.js` (`serveAsset(..,{coep})` sets COEP **`require-corp`** + `no-store`, strips conditional headers: DRC page always, DRS shell when the knob is on) |
 | DRS client driver | `public/js/bash-agent.js` (`fetchShellStep` + the DRS-shaped `runShellLoop` — the core driver with the step wired to `/api/bash/step`; re-exports the core's pure API) |
 | The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue) |
 | DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript` + the `client_diag` probe) |

@@ -1,7 +1,11 @@
 // Model dropdown: catalog from /api/models, selection persisted in
 // localStorage. If the catalog can't load, the dropdown stays hidden and
 // the server default applies. Models the provider reports as down render
-// disabled and become selectable again when they come back.
+// disabled and become selectable again when they come back. Each option is
+// flag-prefixed with its provider's country of processing (data goes where
+// the provider resides — Berget/EU vs the US providers).
+
+import { labelWithFlag, regionForModelEntry } from "./provider-region.js";
 
 let sel;
 let onChange = () => {};
@@ -65,9 +69,12 @@ async function loadModels() {
     for (const m of models) {
       const opt = document.createElement("option");
       opt.value = m.id;
-      opt.textContent = m.up === false ? m.name + " (unavailable)" : m.name;
+      const region = regionForModelEntry(m);
+      const base = m.up === false ? m.name + " (unavailable)" : m.name;
+      opt.textContent = labelWithFlag(region ? region.flag : "", base);
       if (m.up === false) opt.disabled = true;
-      if (m.pricing) opt.title = m.pricing;
+      opt.title = [m.pricing, region ? "Processed in " + region.country : ""]
+        .filter(Boolean).join(" · ");
       sel.appendChild(opt);
     }
     const usable = (m) => m.up !== false;

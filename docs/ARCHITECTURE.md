@@ -214,8 +214,10 @@ A thin shell around the pipeline:
   capability when images are attached, and degrades to the default model if
   the catalog is unreachable.
 - `clampBudget(body.time_budget_s)` (15–600 s, default 60) and
-  `web_search !== false` (knob, default on). `body.incognito === true` is
-  the ghost toggle — it suppresses the `chat_logs` row (§9).
+  `web_search !== false` (knob, default on). `body.incognito === true`
+  suppresses the `chat_logs` row (§9) — the anonymous-chat API contract.
+  (The ghost BUTTON no longer sets this: since 2026-07-10 it navigates to
+  `/cure` instead; the flag stays honored for any client that sends it.)
 - Resolves the per-user enrichment knobs (`shodan_mcp`, `google_maps`) and
   reverse-geocodes attached photos' EXIF GPS (`augmentWithLocations`,
   OSM Nominatim, fail-soft) before the pipeline starts.
@@ -701,8 +703,11 @@ Client-side behaviors that matter architecturally:
   auto-follow; a jump-to-latest button appears; scrolling to the bottom
   re-attaches.
 - **Recovery**: a dropped stream flips the client into polling
-  `GET /api/chat/answer` (`pending-answer.js`) so the finished answer is
-  recovered instead of re-asked.
+  `GET /api/chat/answer` (`recovery.js`) so the finished answer is
+  recovered instead of re-asked. A separate metadata-only pointer
+  (`pending-answer.js`) survives a full PWA relaunch — iOS can discard a
+  backgrounded tab and lose the in-memory request id — so the next launch
+  can still collect an answer the server finished while the tab was gone.
 - **Floating glass chrome**: fixed, click-transparent header/footer strips
   whose glass items re-enable pointer events; content scrolls beneath.
 
@@ -788,8 +793,11 @@ The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
   `/mcp` exchange is logged **with full visibility** — the complete
   question, complete answer, the conversation as sent, research metadata
   (queries, sources, phase outputs) and any error — **UNLESS** the
-  conversation was started with the **ghost (incognito) toggle**
-  (`incognito: true` on `/api/chat`), which suppresses the row entirely.
+  conversation carries **`incognito: true`** on `/api/chat` (the
+  anonymous-chat API contract), which suppresses the row entirely. (The
+  ghost BUTTON no longer toggles this flag — since 2026-07-10 it navigates
+  to `/cure`, the structurally stronger anonymity; the flag itself stays
+  honored for any client that sends it.)
   The log exists for the agentic debugging workflow
   (`GET /api/admin/chatlogs`, `?format=text`, `scripts/chatlogs` — see
   the **chat-logs** skill); writes fail soft and secrets never appear in
@@ -820,6 +828,38 @@ What D1 persists in full:
 Per-isolate ephemeral caches remain: the ~5-minute model catalog, the
 ~30 s config cache, the EWMA phase-duration stats — plus the fail-soft
 cross-request Workers Cache for Exa/Maps lookups (`src/edge-cache.js`).
+
+### The project vault — the strictest tier (`src/vault.js`, `public/js/vault.js`)
+
+The vault packs a whole project — its record, chats, decrypted file
+originals, and the RAG index with vectors — into ONE blob the server only
+ever sees as ciphertext. Both the R2 object id AND the AES-256-GCM key are
+derived in the browser (HKDF) from a copy-safe 160-bit secret the user
+holds; the server never receives it and cannot derive either value
+(`public/js/vault-core.js`). So a local-only project gains backup and
+cross-device transport as pure ciphertext. Unlike cloud history it is NOT
+gated on the `server_history` knob — each store is its own explicit
+consent — and it is excluded from the drain-wipe. Endpoints:
+`PUT/GET/DELETE /api/vault/:id`, R2 `vault/{uid}/{id}`.
+
+### deepresearch.se/cure — the client-side tier
+
+A second, public product tier at `deepresearch.se/cure` where the server
+is in NO data path at all. There are no accounts: the browser calls the
+user's OWN CORS-capable providers (OpenAI, Groq, Berget) directly with the
+user's key, runs the whole research pipeline client-side
+(`public/js/drc-research.js` — the same triage → harvest → gap → synthesis
+→ validation flow, ported, deterministic, no function calling), and stores
+the sealed project state — chats AND the user's API keys, sealed in one
+client-encrypted blob under a user-held master secret — in the browser's
+own storage (`public/js/drc-store.js`, over the vault's crypto core). The
+Worker only serves the static page (`public/cure/`) and the public replay
+JSONs (`src/pub.js`), so it could not log content or keys even in
+principle. Published replays live at `deepresearch.se/cure/<slug>`
+(`src/pub.js`, R2 `pub/{slug}`): frozen read-only sessions each opened in
+place by the DRC app so a visitor can continue on their own keys. The
+signed-in app described in the rest of this document is its remote sibling
+tier at `/rver`.
 
 ## 10. Security model
 
@@ -895,3 +935,52 @@ Three layers (all dependency-minimal, matching invariant 5):
   multi-sample-per-cell A/Bs. Disciplines: fixed seed/judge/budget across
   a comparison, don't deploy mid-battery, append — never edit — the
   ledgers.
+
+## 13. The in-browser execution sandbox (experimental)
+
+An opt-in per-user knob (`bash_lite_mcp`, default OFF, on both tiers)
+turns on a bash-lite agent backed by a real x86 Linux VM that boots IN THE
+BROWSER (CheerpX WASM). The loop is client-orchestrated and uses NO
+function calling: `POST /api/bash/step` (`src/bash-api.js`) asks the
+reliable model what shell command to run next given the transcript so far
+(the fenced ```` ```bash ```` convention), the browser runs it in the VM
+(`public/js/sandbox.js`), and the labeled transcript feeds synthesis as
+ground truth. All the pure logic — the EN+SV "wants a shell" intent gate,
+the fenced-block parser, exec-result clamping, the transcript/step-message
+builders, and the injected-step loop driver — lives in ONE shared core
+(`public/js/bash-core.js`) behind the server façade `src/bash-agent.js`
+and the DRS driver `public/js/bash-agent.js`. Every failure is fail-soft
+(returns `done`, the client stops, the chat proceeds without a shell).
+Because a WASM VM needs `SharedArrayBuffer`, the served page is
+cross-origin isolated — `serveAsset` sets COEP `require-corp` (iOS Safari
+ignores `credentialless`) on the relevant assets. User files and, in
+developer mode, the site's own source can be MOUNTED into the VM via
+CheerpX device mounts (`public/js/sandbox-files.js`): tiered ingest
+`DataDevice`s at `/mnt/in-s` (session), `/mnt/in-p` (project) and
+`/mnt/in-src` (source → `/src`), copied at boot into the persistent
+`/workspace` and per-project overlays. Full design + the CheerpX
+device-API facts: `docs/SANDBOX-HOST-COMMANDS.md` and the
+**execution-sandbox** skill.
+
+## 14. Introspection mode (`developer_mode`)
+
+An opt-in per-user knob (`developer_mode`, default OFF, both tiers) that
+lets a conversation ask about THIS SITE's own implementation and be
+answered from the deployed source rather than an "I'm not a coding tool"
+denial. When on, the server enrichment (`src/introspect.js`) retrieves the
+source chunks most relevant to the question from a COMMITTED dense index
+(`public/introspect/source-rag.json` — int8 embeddings per source chunk,
+built by `npm run bundle:rag`), embeds the query with the same Berget e5
+model the index was built with, and appends the matching source (plus a
+CLAUDE.md orientation excerpt and the file index) as context — so it works
+for ANY phrasing with no intent regex. Both artifacts (the source snapshot
+and the rag index) are committed and read back through the ASSETS binding,
+so by construction they are the exact source this deploy runs; `npm test`
+fails if either drifts from the working tree. The shared pure core
+(`public/js/introspect-core.js`) — the EN+SV gate, the sticky
+conversation-mode gate, the source-RAG chunker / int8 codec / retrieval,
+and the capped context-block builder — is the one implementation behind
+the server enrichment and both tiers' clients (`public/js/introspect-ui.js`
+is the DRS titanium mascot + the private-vs-remote model picker). With the
+sandbox knob also on, the source tree additionally mounts at `/src`. See
+the **introspection** skill.

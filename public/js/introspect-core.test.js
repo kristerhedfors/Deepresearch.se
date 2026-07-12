@@ -283,8 +283,10 @@ test("groupIntrospectionModels: private first + recommended, remote labeled as r
   assert.equal(groups[0].kind, "private");
   assert.equal(groups[0].options.length, 3);
   assert.match(groups[0].options[0].label, /your key \(private\)/);
+  assert.match(groups[0].options[0].label, /🇺🇸/); // OpenAI → US flag
   assert.equal(groups[1].kind, "remote");
   assert.match(groups[1].options[0].label, /remote \(this site's server\)/);
+  assert.match(groups[1].options[0].label, /🇸🇪/); // Berget catalog entry (no provider field) → SE flag
   assert.equal(groups[1].options[1].disabled, true); // down models stay visible but disabled
   assert.equal(recommended, "p:openai:gpt-5.6-sol"); // the privacy-obvious choice
 });
