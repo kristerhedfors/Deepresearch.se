@@ -465,7 +465,11 @@ builders, and the generic injected-step `runShellLoop` driver) plus
 `runShellLoop` against a mock step endpoint + mock sandbox, and the re-export
 contract pinning that its pure surface IS the core, not a mirror — the
 browser VM glue in `public/js/sandbox.js` is deliberately NOT Node-testable
-and carries no `@ts-check`).
+and carries no `@ts-check`) plus `sandbox-files.js` (the file-mounting pure
+core: `sanitizeName`/`sanitizeProjName`/`projHash`, `dedupeNames`,
+`applySizeCap` byte budgets, `buildManifest`, `buildSeedScript`,
+`shellEscape` — see the **execution-sandbox** skill and
+`docs/SANDBOX-HOST-COMMANDS.md`).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -664,7 +668,14 @@ what docs claim); and update the skill list below plus the skill's
   and the DRS driver `public/js/bash-agent.js`), and the transcript feeds
   synthesis as ground truth. Covers the COEP cross-origin-isolation headers,
   the fail-soft contract, EN+SV intent parity, and the live browser
-  verification still owed.
+  verification still owed. ALSO covers MOUNTING user files into the VM
+  (`public/js/sandbox-files.js` + the `sandbox.js` device mounts): the CheerpX
+  device-API facts (no guest→host hypercall; DataDevice direct-bytes,
+  IDBDevice-persistent-but-no-host-writeFile, WebDevice+SW), the `/workspace`
+  + `/mnt/<projname>-<hash>` layout with the friendly symlink, the tiered
+  ingest, overlay persistence, and the `fileProvider` seam
+  (`stream.js` `buildSandboxFileProvider`). Full design +
+  research: `docs/SANDBOX-HOST-COMMANDS.md`.
 
 - **tokemon-game** — the games subsystem (the `src/games.js` registry/dispatch
   seam + how to add a NEW game) and the Tokemon open-world AR game itself

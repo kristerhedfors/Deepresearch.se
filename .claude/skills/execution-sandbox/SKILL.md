@@ -15,7 +15,13 @@ description: >-
   `require-corp` (iOS Safari ignores `credentialless`), the `client_diag`
   browser probe + `wrangler tail` debugging playbook, the edge/PWA
   stale-code caching traps, and the 2026-07-11 incident log of failed attempts
-  and the working fix.
+  and the working fix. ALSO covers MOUNTING user files into the VM
+  (public/js/sandbox-files.js + the sandbox.js device mounts): the CheerpX
+  device-API facts (DataDevice/IDBDevice/WebDevice/OverlayDevice, no host→guest
+  hypercall, no host IDBDevice.writeFile), the /workspace + /mnt/<projname>-<hash>
+  layout, the tiered ingest (DataDevice direct-bytes → WebDevice+SW → base64
+  fallback), overlay persistence, and the fileProvider seam — load this when
+  adding/changing how attachments or project files reach the sandbox.
 ---
 
 # Execution sandbox (bash-lite)
@@ -123,6 +129,82 @@ reloads the page so the shell comes back isolated.
 - Exec marker protocol in `sandbox.js` (base64 between unique markers, a
   serialized queue) is ported verbatim from aisecurityliteracy.dev — it
   survives the shared xterm console; don't "simplify" it.
+
+## Mounting user files into the VM (part B — Tier 1 shipped 2026-07-11)
+
+Attachments and project files are mounted into the guest so the model can
+`cat`/`grep`/`python3` them. Full design + research citations:
+`docs/SANDBOX-HOST-COMMANDS.md`. The load-bearing facts (all from CheerpX's
+primary docs — mirrored in the `aisecurityliteracy.dev` clone under
+`docs/cheerpx/` — cross-checked against WebVM's source):
+
+**CheerpX device-API reality (memorize this — it dictates every choice):**
+- **No guest→host hypercall / callback-device / custom-syscall exists** in any
+  CheerpX version through 1.3.5, and there's no feature request. `registerCallback`
+  is monitoring-only (cpu/disk/processCreated, no payload). So we NEVER rely on
+  the guest calling JS; the loop stays host-orchestrated.
+- **`DataDevice`** — host→guest, `writeFile(path, Uint8Array | string)` (binary
+  first-class, **no base64**; `ArrayBuffer`/`Blob` NOT accepted — wrap in
+  `new Uint8Array`). Mounted `{type:"dir", …}`. **Read-only in the guest,
+  in-memory** (re-supplied every boot, bounded by page RAM).
+- **`IDBDevice`** — persistent RW (IndexedDB), mounted `{type:"dir", …}`.
+  Host side has **only** `readFileAsBlob(path)` and `reset()` — **there is NO
+  host `IDBDevice.writeFile`**. That single fact is why host bytes can't be
+  written straight into the persistent volume and must transit a DataDevice.
+- **`OverlayDevice(base, IDBDevice)`** — guest writes to `/` persist in the IDB
+  layer across reloads (reuse the same db name). WebVM 2.0 confirms this.
+- **`WebDevice.create(path)`** — read-only, lazy: guest reads become same-origin
+  HTTP GETs relative to the page URL → a **Service Worker can intercept them**
+  (architecturally sound, undocumented — verify live) to stream huge files.
+
+**Layout** (`/workspace` = session, project = its own mount, friendly symlink):
+```
+/workspace/                    session files + guest scratch · persistent RW
+/workspace/INDEX.txt           manifest (scope name type size tier)
+/workspace/<projname> -> /mnt/<projname>-<hash>   friendly symlink, NO hash
+/mnt/<projname>-<hash>/        the active project · its own persistent volume
+```
+`<hash>` = `projHash(projId)` (stable FNV-1a, 8 hex) — unique + stable so the
+same project reuses the same `dr-proj-<hash>` IndexedDB across sessions.
+
+**Tiered ingest (base64 is ONLY the fallback — it inflates ~33% + is byte-by-byte
+through the console, wrong for large files):**
+1. **DataDevice (default, shipped)** — `writeFile(path, Uint8Array)` into two
+   flat ingest devices `/mnt/in-s` (session) + `/mnt/in-p` (project), then a boot
+   `cp` into the persistent tree. Flat (files at device root) so we never depend
+   on DataDevice auto-creating nested dirs.
+2. **WebDevice + Service Worker (deferred)** — for files over the memory budget;
+   needs a SW we don't have yet, and the SW-intercept is unverified.
+3. **base64-through-`exec` (fallback)** — small writable/executable files only.
+
+**Seed policy:** session refreshed each boot (`cp -a`); project add/update-only
+(`cp -an`) so guest edits aren't clobbered. `readFileAsBlob` gives the
+round-trip OUT (guest-written files back to the user).
+
+**Implementation map:**
+| Concern | Where |
+|---|---|
+| Pure core (sanitize/dedupe/cap/manifest/`projHash`/`buildSeedScript`/`shellEscape`) | `public/js/sandbox-files.js` (+ `.test.js`); in `isPublicAsset` |
+| Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM) |
+| Boot signature | `ensureSandboxBooted(fileProvider?)` — provider is `async () => ({session:[{name,type,bytes}], project:{name,id,files:[…]}|null})` |
+| DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `activeProject().files`→project; bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed |
+| Prompt awareness | `bashAgentPrompt` (points the model at `/workspace/INDEX.txt`) |
+
+**Gotchas / rules:**
+- The provider is called ONCE inside `ensureSandboxBooted` (which `runShellLoop`
+  invokes only when the model proposes a command) — so a no-shell message never
+  loads/decrypts bytes and never boots the VM. Keep it that way.
+- Stage extra mounts in a local array; a partial device-setup failure must NOT
+  reach `Linux.create` (would break the whole boot).
+- `sandbox.js` imports `sandbox-files.js` → BOTH must be in `isPublicAsset` or
+  `/cure` goes dark (the recurring public-graph 401 class).
+- **DRC note:** attach is a DRS-only feature (the `/cure` attach button is
+  dimmed), so chat-attachment mounting is inherently DRS. `sandbox.js` is
+  provider-agnostic; DRC would only ever wire *project* files, and hasn't yet.
+- **Still owed (live-verify):** DataDevice mount readable in-guest on real iOS
+  Safari under `require-corp`; `/workspace` + project-volume persistence across
+  reload; cross-mount symlink resolves; binary round-trip byte-exact. Logic is
+  green in CI but unproven in a real browser.
 
 ## Live verification (DONE — 2026-07-11)
 
