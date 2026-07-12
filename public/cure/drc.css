@@ -127,28 +127,28 @@ header {
    side it reads "you are in ghost mode". Tapping it explains. */
 #ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* The secure tier's living marker (2026-07-11 directive): the ghost glows
-   softly, with a flowing shimmer sweeping across it — pure CSS, and
-   stilled for prefers-reduced-motion. */
-@keyframes ghost-glow {
-  0%, 100% { box-shadow: 0 4px 18px rgba(60, 50, 10, .10), 0 0 6px 1px rgba(124, 106, 36, .35); }
-  50%      { box-shadow: 0 4px 18px rgba(60, 50, 10, .10), 0 0 14px 3px rgba(124, 106, 36, .6); }
+/* The secure tier's living marker (2026-07-12 directive, superseding the
+   2026-07-11 flowing shimmer): here the ghost CHARACTER itself stands out —
+   its contours (the white SVG strokes on the lit accent button) carry a
+   breathing glow while the little ghost floats, gently rocking. Pure CSS;
+   reduced-motion keeps a constant contour glow with no movement, so the
+   marker still reads. */
+@keyframes ghost-contour {
+  0%, 100% {
+    transform: translateY(.6px) rotate(-4deg);
+    filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .8));
+  }
+  50% {
+    transform: translateY(-.8px) rotate(4deg);
+    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 1)) drop-shadow(0 0 7px rgba(255, 255, 255, .85));
+  }
 }
-@keyframes ghost-shimmer {
-  from { transform: translateX(-160%) skewX(-18deg); }
-  to   { transform: translateX(320%) skewX(-18deg); }
-}
-#ghostbtn { overflow: hidden; animation: ghost-glow 3.8s ease-in-out infinite; }
-#ghostbtn::after {
-  content: ""; position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%;
-  background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .5), transparent);
-  transform: translateX(-160%) skewX(-18deg);
-  animation: ghost-shimmer 3.8s ease-in-out infinite;
-  pointer-events: none;
-}
+#ghostbtn svg { animation: ghost-contour 3.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  #ghostbtn { animation: none; }
-  #ghostbtn::after { animation: none; display: none; }
+  #ghostbtn svg {
+    animation: none;
+    filter: drop-shadow(0 0 2px rgba(255, 255, 255, .9));
+  }
 }
 .drs-wrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; cursor: pointer; }
 .drs-wrap input { pointer-events: none; }
