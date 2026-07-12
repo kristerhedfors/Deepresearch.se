@@ -51,6 +51,61 @@ body::before {
   body::before { animation: none; }
 }
 
+/* Agent activity backdrop: the sandbox's raw commands + output drifting faintly
+   across the khaki field behind the chat (shared logic in
+   public/js/agent-backdrop.js — the element is created there and appended to
+   body; app.css styles it on the signed-in app, this mirror styles it on
+   /cure, since drc.css is self-contained). Overall opacity is set inline from
+   the user's transparency slider; 0 hides it. Olive-toned text for the khaki
+   palette. */
+#dr-agent-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.dr-agent-backdrop-text {
+  position: absolute;
+  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
+  margin: 0;
+  max-height: 62vh;
+  overflow: hidden;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(61, 52, 24, .55);
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  animation: agent-wave 7.5s ease-in-out infinite;
+}
+@keyframes agent-wave {
+  0%, 100% { transform: translateX(0) skewX(0deg); }
+  50% { transform: translateX(7px) skewX(-1.1deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dr-agent-backdrop-text { animation: none; }
+}
+/* The backdrop transparency slider in the settings drawer. */
+.drc-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; margin: .35rem 0;
+  border-radius: 999px; background: var(--border); cursor: pointer;
+}
+.drc-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(30, 24, 8, .35);
+}
+.drc-range::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(30, 24, 8, .35);
+}
+
 /* Floating click-transparent chrome, exactly the app's pattern. */
 header {
   position: fixed;

@@ -66,6 +66,7 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
+import { backdropOpacityPct, setBackdropOpacity } from "/js/agent-backdrop.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
 const $ = (id) => document.getElementById(id);
@@ -228,8 +229,18 @@ function openSettings() {
   closeAccount();
   $("bashlite").checked = state.bashLite === true; // reflect current state
   $("devmode").checked = state.developerMode === true;
+  syncBackdropSlider(); // reflect the (browser-local) activity-backdrop setting
   renderKeysPanel();
   $("settingsview").hidden = false;
+}
+
+// The sandbox activity-backdrop transparency slider — a browser-local display
+// preference (localStorage via agent-backdrop.js), not part of the sealed
+// state. Applied live; 0 turns the faint background layer off.
+function syncBackdropSlider() {
+  const pct = backdropOpacityPct();
+  $("backdropslider").value = String(pct);
+  $("backdropval").textContent = pct <= 0 ? "Off" : pct + "%";
 }
 
 function closeSettings() {
@@ -879,6 +890,11 @@ $("settingsview").addEventListener("click", (e) => {
 });
 $("opensettings").addEventListener("click", openSettings);
 $("key-input").addEventListener("input", syncKeyDetection);
+$("backdropslider").addEventListener("input", () => {
+  const pct = Number($("backdropslider").value) || 0;
+  setBackdropOpacity(pct);
+  $("backdropval").textContent = pct <= 0 ? "Off" : pct + "%";
+});
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);
 // Experimental in-browser Linux sandbox knob (client-local, persisted in the
