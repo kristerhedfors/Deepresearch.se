@@ -655,6 +655,13 @@ what docs claim); and update the skill list below plus the skill's
 - **access-control** — Google sign-in, accounts, terms + approval gates,
   sessions/PWA longevity, break-glass Basic Auth, the four-window quota model,
   the admin interface, the alerts/notification center, and D1 setup.
+- **security-posture** — verifying the project's security posture against the
+  living risk register (`SECURITY-RISKS.md` at the repo root: the
+  public-source threat model, the priority-ordered open-fix backlog, and the
+  append-only history log — update the register whenever an item is fixed):
+  the secret-leak scans (incl. the shallow-clone caveat), header/CSP probes,
+  per-finding greps, the provider key-cap checklist, and the commit-time
+  rules keeping live user data and credentials out of the public repo.
 - **ui-notes** — the client UI/UX conventions: Markdown rendering, the PDF
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message
