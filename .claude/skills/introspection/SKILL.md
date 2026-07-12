@@ -82,6 +82,54 @@ DRC has no server embedder of the right model, so it can't do dense retrieval
 (orientation + named files, full index on strong intent) whenever developer
 mode is on — same "always on in dev mode" rule, minus retrieval.
 
+## Agentic source investigation — read loop + native tools (2026-07-12)
+
+Injecting retrieved excerpts is not enough for "assess/audit/how does X work"
+asks — the model would summarize the excerpts (or, worse, the repo's own
+security DOCS) instead of investigating the code (the "conduct a proper security
+assessment" → doc-recap UX bug, chat_logs #289/#290). So dev mode does REAL
+research in the source. `pipeline.js runResearch` routes a dev-mode,
+non-`externalSourceIntent` ask to **`runSourceResearch`** (NOT `runDirectReply`
+— that older note is superseded), which has two paths:
+
+1. **Native tool calling (the invariant-1 EXCEPTION, owner-authorized).** When
+   the ANSWER model supports real function calling (`introspectionToolsAvailable`
+   = `isAnthropicModel(model) && anthropicConfigured(env) && no images`), the
+   model ITSELF drives an agentic loop with three tools — `grep_source`
+   (≈ `grep -rn`), `read_file` (≈ `cat`), `list_files` (≈ `ls`) — executed
+   server-side against `state.sourceSnapshot`. `src/anthropic.js`
+   `anthropicToolRun` runs the Messages-API tool loop (tool_use → tool_result →
+   repeat → force a final answer at the round cap, `MAX_SOURCE_TOOL_ROUNDS=6`);
+   `pipeline.js runSourceResearchTools` wires it, emits a `source` step per tool
+   call ("Investigated the source with N tool calls"), and bills the rounds to
+   the answer model's bucket. System prompt: `prompts.js sourceToolAgentPrompt`.
+2. **Deterministic read loop (fallback, every other model).** The reliable JSON
+   model (Mistral) drives `runSourceReadLoop` (introspect-core.js): each round
+   it returns `{"read":[...]}` JSON, the server serves those files from the
+   snapshot, up to `MAX_SOURCE_READ_ROUNDS`. System prompt: `sourceAgentPrompt`;
+   answer: `sourceAnswerPrompt`. This is the pure no-function-calling path.
+
+`runSourceResearch` tries the tool path first, **fail-soft**: any provider
+failure logs `introspect.tools_failed` and falls through to the read loop; a
+model with no tool support skips straight to it. So catalog-wide compatibility
+holds — only the tool-capable dev-mode answer path uses function calling
+(invariant 1's exception; documented there and in `src/introspect-tools.js`).
+
+**Feed the PLANNER clean text.** Both paths read `ctx.cleanLastUser` /
+`ctx.cleanConvText` (built from the PRE-enrichment conversation), NOT the
+excerpt-appended `lastUser`/`convText`. The enrichment appends its block to the
+last user message; if the planner sees that wall of pre-loaded excerpts it
+concludes "I already have enough" and reads nothing → doc-recap. `cleanLastUser`
+is also what `externalSourceIntent` is tested against (the CLAUDE.md orientation
+in the block trips it, e.g. a bare "vs", spuriously routing to web search).
+
+**The tools live in the SHARED core.** `INTROSPECTION_TOOLS` + the pure
+executors (`grepSource`/`readFileTool`/`listFilesTool`/`runIntrospectionTool`)
+are in `public/js/introspect-core.js`; `src/introspect-tools.js` is a thin
+re-export façade (the `bash-core.js`/`bash-agent.js` pattern) so BOTH tiers
+share one implementation. DRC's client-side counterpart is in the
+**execution-sandbox** skill (it adds a real `run_bash` tool over CheerpX).
+
 ## The load-bearing idea: ONE committed snapshot artifact
 
 `scripts/bundle-source.mjs` (`npm run bundle`) walks the **git-tracked** text

@@ -93,6 +93,39 @@ provider directly (parsed client-side with `parseShellRequest`, the same
 shared `buildStepUserMessage`), executes in the same `sandbox.js` VM, and
 folds the transcript into synthesis/direct.
 
+## `run_bash` as a NATIVE TOOL — DRC developer mode (2026-07-12)
+
+Separate from the fenced-block shell pass above: DRC's **developer-mode**
+investigation drives a native FUNCTION-CALLING loop (the owner-authorized
+invariant-1 exception — see the **introspection** skill), and because CheerpX
+is browser-reachable it gives the model a real `run_bash` tool that the SERVER
+tier structurally cannot (a server-driven `/api/chat` request can't reach the
+browser VM synchronously).
+
+- `public/js/drc-research.js` `runDrcSourceTools` runs the loop when the page
+  hands `runDrcResearch` a `snapshot` (dev mode on). Tools: the shared
+  `INTROSPECTION_TOOLS` (`grep_source`/`read_file`/`list_files`, executed over
+  the snapshot via `runIntrospectionTool` from `introspect-core.js`) PLUS
+  `RUN_BASH_TOOL` — appended ONLY when `bash === true && sandboxSupported()`.
+- `RUN_BASH_TOOL`'s executor boots the VM lazily on the first call
+  (`sb.boot(fileProvider)` — the SAME `/src`-mounting `fileProvider` the shell
+  pass uses), runs the command via `execInSandbox`, and returns
+  `formatShellResult(normalizeExecResult(...))` from `bash-core.js` — one shared
+  formatting for both mechanisms.
+- The loop itself is `public/js/drc-providers.js` `drcToolRun` (the OpenAI
+  `tools`/`tool_calls` wire — all three DRC providers speak it; `toOpenAiTools`
+  maps the provider-neutral defs). Non-streaming rounds; the final answer is
+  emitted chunked. System prompt: `drcSourceToolPrompt({bash})`.
+- Fail-soft: no tool support / any failure → falls through to the normal DRC
+  phases (which still carry the injected introspection block). Node-tested end
+  to end against a mock provider (`drc-research.test.js`,
+  `drc-providers.test.js`). **Still owed:** live in-browser verification of the
+  real `run_bash` tool on a user key (the CheerpX + provider-tool-call path).
+
+The DRS tier's equivalent (server-side, `grep_source`/`read_file`/`list_files`
+only, NO `run_bash`) is `runSourceResearchTools` + `anthropicToolRun` — see the
+**introspection** skill.
+
 ## Activity backdrop + transparency bar (no auto-popping terminal — 2026-07-12)
 
 The floating xterm terminal used to `showSandbox()` itself the moment the VM
