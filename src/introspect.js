@@ -161,6 +161,11 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     stepDone("introspect", "Source snapshot unavailable — continuing without it");
     return conversation;
   }
+  // Stash the loaded snapshot so the pipeline's source-research phase can READ
+  // files from it (the agentic read loop) without a second ASSETS fetch. The
+  // enrichment still injects retrieved excerpts + orientation below; the read
+  // loop uses this to go deeper into whichever files the model actually needs.
+  /** @type {any} */ (state).sourceSnapshot = snapshot;
 
   // Dense retrieval for THIS question (fail-soft to []). This is the part that
   // makes the mode phrasing-agnostic.

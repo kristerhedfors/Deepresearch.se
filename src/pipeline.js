@@ -89,12 +89,22 @@ import {
   quizPrompt,
   revisePrompt,
   searchOffPrompt,
+  sourceAgentPrompt,
+  sourceAnswerPrompt,
   synthPrompt,
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
-import { externalSourceIntent } from "../public/js/introspect-core.js";
+import {
+  MAX_SOURCE_READ_ROUNDS,
+  buildSourceResearchBlock,
+  buildSourceSitemap,
+  buildSourceStepMessage,
+  externalSourceIntent,
+  readSnapshotFiles,
+  runSourceReadLoop,
+} from "../public/js/introspect-core.js";
 
 // ---- shared shapes -------------------------------------------------------
 
@@ -247,18 +257,17 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   }
 
   // Developer mode, introspection-first: the site's OWN source is already in
-  // context (runEnrichments set hasSource). Answer from THAT by default instead
-  // of running the web/HF search wave, which on a pure "how is X implemented /
-  // show me the code" ask only pulls in unrelated third-party repos that share
-  // the "deep research" name. The wave is re-enabled the moment the user asks
-  // for outside material — web search, cited sources, current facts, or an
-  // external comparison (externalSourceIntent, EN+SV). This keeps introspection
-  // pure without a protocol change: the server decides from the knob + message.
+  // context (runEnrichments set hasSource). Do REAL research in that source
+  // instead of running the web/HF search wave, which on a pure "how is X
+  // implemented / assess this project" ask only pulls in unrelated third-party
+  // repos that share the "deep research" name. The wave is re-enabled the
+  // moment the user asks for outside material — web search, cited sources,
+  // current facts, or an external comparison (externalSourceIntent, EN+SV).
+  // This keeps introspection pure without a protocol change: the server decides
+  // from the knob + message.
   if (ctx.hasSource && !externalSourceIntent(ctx.lastUser)) {
-    ctx.step("plan", "Analyzing request…");
-    ctx.stepDone("plan", "Answering from the site's own source — web search skipped");
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    return runDirectReply(ctx);
+    return runSourceResearch(ctx);
   }
 
   const decision = await runTriage(ctx);
@@ -424,6 +433,92 @@ async function runDirectReply(ctx) {
  */
 async function runClarify(ctx, question) {
   emitChunked(ctx, question);
+}
+
+// Introspection-first research: the developer-mode answer path that does REAL
+// research in the site's OWN source instead of a web search. The enrichment
+// already injected retrieved excerpts + orientation and stashed the deployed
+// source snapshot (state.sourceSnapshot); here the model drives an agentic READ
+// loop over the SITEMAP — asking for the files it needs, round by round — so the
+// answer is grounded in the actual implementation, not the repo's own docs
+// (the "read files as it wants / don't trust documented issues" requirement).
+// NO function calling (invariant 1): each read request is a JSON object on the
+// reliable JSON model. Fully fail-soft — a missing snapshot or a failing loop
+// degrades to a plain source-grounded reply from what's already in context.
+/** @param {PipelineCtx} ctx */
+async function runSourceResearch(ctx) {
+  const { state } = ctx;
+  const snapshot = /** @type {any} */ (state).sourceSnapshot;
+  ctx.step("plan", "Analyzing request…");
+  ctx.stepDone("plan", "Researching the site's own source — web search skipped");
+
+  if (!snapshot || !Array.isArray(snapshot.files) || !snapshot.files.length) {
+    // No readable snapshot — answer from the excerpts the enrichment already
+    // injected (still hasSource), exactly the pre-read-loop behavior.
+    return runDirectReply(ctx);
+  }
+
+  const sitemap = buildSourceSitemap(snapshot);
+  const budget = { used: 0 };
+
+  ctx.step("source", "Reading the site's own source…");
+  const reads = await runSourceReadLoop({
+    maxRounds: MAX_SOURCE_READ_ROUNDS,
+    // One agent turn: ask the reliable JSON model which files to read next.
+    step: async (priorReads, round) =>
+      jsonPhase(ctx, {
+        label: `source_read_${round}`,
+        statKey: "triage",
+        maxTokens: 500,
+        messages: [
+          { role: "system", content: sourceAgentPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+          {
+            role: "user",
+            content: buildSourceStepMessage({
+              question: ctx.lastUser,
+              context: ctx.convText,
+              sitemap,
+              priorBlock: buildSourceResearchBlock(priorReads),
+            }),
+          },
+        ],
+      }),
+    // Resolve the requested paths out of the snapshot (fail-soft, budget-bounded).
+    read: async (paths, alreadyRead) => readSnapshotFiles(snapshot, paths, alreadyRead, budget),
+  });
+
+  if (!reads.length) {
+    // The model didn't need to read any files (e.g. a non-implementation
+    // question asked while dev mode happens to be on). Answer from the excerpts
+    // the enrichment already injected — the pre-read-loop behavior.
+    ctx.stepDone("source", "Answered from the retrieved excerpts");
+    return runDirectReply(ctx);
+  }
+  ctx.stepDone(
+    "source",
+    `Read ${reads.length} source file${reads.length === 1 ? "" : "s"} from the project`,
+    reads.map((r) => r.p).slice(0, 40),
+  );
+
+  // Synthesis: stream the answer on the user's chosen model, grounded in the
+  // files gathered above plus the excerpts/orientation already in the
+  // conversation. No web sources, so no numbered-source validation phase.
+  const gathered = buildSourceResearchBlock(reads);
+  const synthText =
+    `Question:\n${ctx.lastUser}\n\nConversation context:\n${ctx.convText}\n\n` +
+    (gathered ? `${gathered}\n\n` : "") +
+    "Write the answer now, grounded in the project's ACTUAL source code above and in the conversation context. Cite file paths for every claim about the implementation, and verify against the code rather than the repo's own documentation.";
+  ctx.step("synth", "Writing report…");
+  const synthStartedAt = Date.now();
+  await streamCompletion(ctx, [
+    { role: "system", content: sourceAnswerPrompt() },
+    {
+      role: "user",
+      content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
+    },
+  ]);
+  recordPhase(ctx.model, "synth", Date.now() - synthStartedAt);
+  ctx.stepDone("synth", "Report drafted");
 }
 
 // Phase 3: audits source coverage and runs follow-up searches for the most
