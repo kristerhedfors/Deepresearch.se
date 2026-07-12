@@ -31,7 +31,7 @@
         "feat(ghost): the ghost symbol's new meaning — it takes you to DRC"
       ],
       "features": 3,
-      "summary": "Shipped the experimental in-browser Linux execution sandbox and its bash-lite agent, and added client-side RAG for se/cure conversations and projects (browser-direct OpenAI embeddings, sealed in local state). The ghost button was repurposed as the door to the /cure client tier. Plus two-font URL branding and iOS/ghost-navigation fixes.",
+      "summary": "Shipped the experimental in-browser Linux execution sandbox and its bash-lite agent, and added client-side RAG for Se/cure conversations and projects (browser-direct OpenAI embeddings, sealed in local state). The ghost button was repurposed as the door to the /cure client tier. Plus two-font URL branding and iOS/ghost-navigation fixes.",
       "curated": true
     },
     {
@@ -68,7 +68,7 @@
         "sandbox UI: move the knob under the account view, drop the spiderweb, add a DRC account view"
       ],
       "features": 3,
-      "summary": "Extended the sandbox to mount chat and project files into the Linux VM, gave both tiers a unified settings gear with a one-field API-key form (provider auto-detect), and brought Berget in as a third client-side se/cure provider. A large day of sandbox research and design docs, plus the anonymous-visitor /cure fix (splitting vault-core out of the public graph) and COEP/iOS cross-origin-isolation fixes.",
+      "summary": "Extended the sandbox to mount chat and project files into the Linux VM, gave both tiers a unified settings gear with a one-field API-key form (provider auto-detect), and brought Berget in as a third client-side Se/cure provider. A large day of sandbox research and design docs, plus the anonymous-visitor /cure fix (splitting vault-core out of the public graph) and COEP/iOS cross-origin-isolation fixes.",
       "curated": true
     },
     {

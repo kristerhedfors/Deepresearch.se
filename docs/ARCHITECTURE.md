@@ -842,9 +842,9 @@ gated on the `server_history` knob — each store is its own explicit
 consent — and it is excluded from the drain-wipe. Endpoints:
 `PUT/GET/DELETE /api/vault/:id`, R2 `vault/{uid}/{id}`.
 
-### deepresearch.se/cure — the client-side tier
+### DeepResearch.Se/cure — the client-side tier
 
-A second, public product tier at `deepresearch.se/cure` where the server
+A second, public product tier at `DeepResearch.Se/cure` where the server
 is in NO data path at all. There are no accounts: the browser calls the
 user's OWN CORS-capable providers (OpenAI, Groq, Berget) directly with the
 user's key, runs the whole research pipeline client-side
@@ -855,7 +855,7 @@ client-encrypted blob under a user-held master secret — in the browser's
 own storage (`public/js/drc-store.js`, over the vault's crypto core). The
 Worker only serves the static page (`public/cure/`) and the public replay
 JSONs (`src/pub.js`), so it could not log content or keys even in
-principle. Published replays live at `deepresearch.se/cure/<slug>`
+principle. Published replays live at `DeepResearch.Se/cure/<slug>`
 (`src/pub.js`, R2 `pub/{slug}`): frozen read-only sessions each opened in
 place by the DRC app so a visitor can continue on their own keys. The
 signed-in app described in the rest of this document is its remote sibling

@@ -176,7 +176,7 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
   // The .se domain completes English words, and the two product tiers live
   // under them:
-  //   deepresearch.se/cure — DRC, "deep research SECURE" (C = CLIENT-side):
+  //   DeepResearch.Se/cure — DRC, "deep research SECURE" (C = CLIENT-side):
   //       the public tier. Minimal server involvement by DESIGN: this
   //       Worker serves the static page and the public replay JSONs, and
   //       nothing else — model calls go browser→provider directly, storage
@@ -184,7 +184,7 @@ async function route(request, env, url, log, ctx, requestId) {
   //       redirects here; /my/project-<hash> reopens a browser-local saved
   //       project; /cure/<slug> is a published frozen replay (src/pub.js +
   //       the publish-research skill), continue-able in place.
-  //   deepresearch.se/rver — DRS, "deep research SERVER" (R = REMOTE, as in
+  //   DeepResearch.Se/rver — DRS, "deep research SERVER" (R = REMOTE, as in
   //       a remote cloud-server): the signed-in tier with the hosted
   //       pipeline, web search, accounts, and cloud storage (handled in
   //       routeAuthed; unauthenticated visitors get the login page).

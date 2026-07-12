@@ -1,7 +1,7 @@
 // @ts-check
 // Published research replays — the /cure/<slug> surface (R2 `pub/{slug}`).
 //
-// The URL is the product: deepresearch.se/cure/<slug> reads as
+// The URL is the product: DeepResearch.Se/cure/<slug> reads as
 // "deep research secure <slug>", so publications are frozen deep-research
 // sessions on security-flavored subjects whose slug completes the phrase
 // ("/cure/your-cloud-storage" → "…secure your cloud storage"). The
@@ -31,7 +31,7 @@ import { jsonResponse } from "./http.js";
 export const PUB_MAX_BYTES = 2 * 1024 * 1024; // a frozen session is text
 const MAX_MESSAGES = 200;
 
-// Slugs are URL words completing the "…se/cure/<slug>" phrase: lowercase,
+// Slugs are URL words completing the "…Se/cure/<slug>" phrase: lowercase,
 // digits, hyphens. No dots — so a slug can never collide with the viewer
 // page's own asset files under /cure/.
 /** @param {unknown} s */

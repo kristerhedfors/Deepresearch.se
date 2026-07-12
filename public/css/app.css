@@ -84,7 +84,7 @@ header {
    legible over scrolling content. Never captures clicks.
    The URL wordmark is a TWO-FONT pairing matched to the logotype (the
    Swedish-flag vortex): "deepresearch." in a light ROUNDED sans — the
-   swirl's soft curves — and the bold wordplay tail (<b>se/rver</b>) in a
+   swirl's soft curves — and the bold wordplay tail (<b>Se/rver</b>) in a
    heavy MONOSPACE, the terminal/URL half, tinted the logo's flag
    YELLOW on this blue tier (the khaki DRC tier carries the flag BLUE —
    public/cure/drc.css). System stacks only: no external font hosts. */
@@ -105,7 +105,7 @@ header {
   color: #f5c518; /* the logotype's golden swirl */
   text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
 }
-/* Tighten the slash so se/cure and se/rver read closer to "secure"/"server"
+/* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
 .header-right, #composer { pointer-events: auto; }
@@ -736,7 +736,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }
 
-/* The ghost is the door to the SECURE tier (deepresearch.se/cure) — mark it
+/* The ghost is the door to the SECURE tier (DeepResearch.Se/cure) — mark it
    with a soft glow and a flowing shimmer (2026-07-11 directive): pure CSS,
    stilled for prefers-reduced-motion. Since 2026-07-12 the glow is a
    once-a-MINUTE event, not a steady pulse ("glows too frequently on

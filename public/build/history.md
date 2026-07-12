@@ -1387,8 +1387,8 @@ was judged good as-is, and the decision deserved a durable home.
 - **New public page `/architecture/` — "The architecture story":** the
   first documentation that treats the two tiers as the deliberate PAIR
   they are, with inline-SVG visualizations. Side-by-side data-path
-  diagrams (deepresearch.**se/rver**: browser → Worker-orchestrated
-  pipeline → providers, D1 and R2 beside it; deepresearch.**se/cure**:
+  diagrams (DeepResearch.**Se/rver**: browser → Worker-orchestrated
+  pipeline → providers, D1 and R2 beside it; DeepResearch.**Se/cure**:
   the pipeline inside the browser, direct CORS calls on the user's own
   keys, the server drawn dashed — present only as a static file host).
   Then two paired tables: privacy (the punchline row — DRS is privacy by
@@ -1412,16 +1412,16 @@ was judged good as-is, and the decision deserved a durable home.
 The tier naming got its final form the same day: the acronyms the code
 uses internally (DRC/DRS) turned out to be one name pair too many for
 readers, so user-facing copy now uses the slashed tails themselves —
-se/rver and se/cure, the included slash as the distinguishing marker —
+Se/rver and Se/cure, the included slash as the distinguishing marker —
 everywhere a short name is needed (the branding rule in CLAUDE.md was
 amended, and the acronyms were swept out of /architecture/, /help/,
 /welcome/, and the /cure page's visible copy).
 
 A follow-up the same day fixed how the tier names render on the
 architecture page: the first pass had drawn them as invented solid-colour
-pills (a mustard se/cure pill read as "yellow characters with a thin dark
+pills (a mustard Se/cure pill read as "yellow characters with a thin dark
 edge" — nothing like the real chrome). They now reproduce each product
 header exactly — "deepresearch." in the light rounded sans, the slashed
-tail in heavy monospace, se/rver's tail golden on the app's blue field and
-se/cure's flag-blue on the /cure khaki — so a tier token on the page is
+tail in heavy monospace, Se/rver's tail golden on the app's blue field and
+Se/cure's flag-blue on the /cure khaki — so a tier token on the page is
 literally its header in miniature, same font, colours and style.

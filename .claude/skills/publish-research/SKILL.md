@@ -2,7 +2,7 @@
 name: publish-research
 description: >-
   Load when publishing a deep-research session as a frozen public replay at
-  deepresearch.se/cure/<slug> — "publish this chat", "freeze this research",
+  DeepResearch.Se/cure/<slug> — "publish this chat", "freeze this research",
   "put this session under /cure" — or when touching src/pub.js, the
   public/cure/ viewer, the /?continue= handoff, or choosing publication
   slugs. Covers the wordplay naming rule, sourcing a session (chatlogs /
@@ -16,7 +16,7 @@ description: >-
 
 The site publishes deep-research sessions as READ-ONLY replays under
 wordplay URLs: the `.se` domain completes English words, so
-`deepresearch.se/cure/<slug>` reads as **"deep research secure <slug>"**.
+`DeepResearch.Se/cure/<slug>` reads as **"deep research secure <slug>"**.
 A publication is a frozen conversation (question + researched answer,
 possibly multi-turn) served by `src/pub.js` from R2 `pub/{slug}` and
 opened IN PLACE by the DRC app (`public/cure/drc.js` — DRC, "deep
@@ -105,7 +105,7 @@ unpublishes. Public reads need no auth: `GET /api/pub` (index),
 
 ```bash
 curl -sS https://deepresearch.se/api/pub/<slug> | head -c 300   # JSON is up
-curl -sS -o /dev/null -w "%{http_code}\n" https://deepresearch.se/cure/<slug>  # 200
+curl -sS -o /dev/null -w "%{http_code}\n" https://DeepResearch.Se/cure/<slug>  # 200
 curl -sS https://deepresearch.se/api/pub | python3 -m json.tool  # index lists it
 ```
 

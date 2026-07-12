@@ -29,7 +29,7 @@ description: >-
 An EXPERIMENTAL, opt-in, default-OFF capability: when a message "wants a
 shell", a real x86 Linux boots **in the browser** (CheerpX WASM), an agentic
 loop runs commands in it, and the real output feeds the answer. Present on
-**both** tiers — DRS (`deepresearch.se/rver`) and DRC (`deepresearch.se/cure`).
+**both** tiers — DRS (`DeepResearch.Se/rver`) and DRC (`DeepResearch.Se/cure`).
 
 ## The load-bearing idea
 

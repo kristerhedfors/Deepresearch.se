@@ -177,7 +177,7 @@ description: >-
   adding a new section per session the way earlier entries did.
 - **"The architecture story"** at `/architecture/` (public static page,
   self-contained like /story/, added 2026-07-12): pairs the two tiers —
-  deepresearch.**se/rver** vs deepresearch.**se/cure** — on
+  DeepResearch.**Se/rver** vs DeepResearch.**Se/cure** — on
   privacy and capabilities, with inline-SVG visualizations: the two
   data-path diagrams (Worker-orchestrated vs browser-orchestrated), the
   paired privacy table (privacy by policy+encryption vs privacy by
@@ -189,8 +189,8 @@ description: >-
   (DRS flag blue, DRC dark olive from drc.css); everything is
   direct-labeled, never color-alone. Linked from the account panel (after
   "The build story") and the /welcome/ landing cards. In user-facing copy
-  the tiers' SHORT names are the slashed tokens **se/rver** and
-  **se/cure** — NEVER the internal DRC/DRS acronyms (2026-07-12
+  the tiers' SHORT names are the slashed tokens **Se/rver** and
+  **Se/cure** — NEVER the internal DRC/DRS acronyms (2026-07-12
   directive; the sweep that enforced it covered /architecture/, /help/,
   /welcome/, and the /cure page + drc.js popovers — see CLAUDE.md's
   amended branding rule).
@@ -259,7 +259,7 @@ description: >-
     a little ghost mascot dancing in along the top (travel transition on
     the wrapper, dance keyframes on the SVG body, arm rotate to point),
     which points at the ghost button with a speech bubble explaining it
-    as the door to deepresearch.**se/cure**.
+    as the door to DeepResearch.**Se/cure**.
   - *DRC* (`dr_umbrella_seen`, `public/cure/umbrella.js`, wired in
     `drc.js` boot — plays BEFORE the intro pane, never over a deep
     link): the logotype vortex → umbrella canvas animation. Pure
