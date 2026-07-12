@@ -72,7 +72,7 @@ export const SECURITY_RISK_ITEMS = [
     severity: "high",
     status: "open",
     summary:
-      "Nothing but convention stops a secret reaching a public commit. Enable GitHub secret scanning + push protection, add a pre-push credential-pattern scan, and run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
+      "PARTIAL (2026-07-12): local mechanical scan shipped — scripts/scan-secrets (worktree/--staged/--range, redacted matches) + a .githooks/pre-push hook that blocks a push on a credential match + scripts/install-git-hooks; see docs/SECRET-SCANNING.md. RESIDUAL (both operational, not code): (a) enable GitHub secret scanning + push protection in repo Settings (server-side backstop); (c) run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
   },
   {
     id: "P-3",
@@ -80,7 +80,7 @@ export const SECURITY_RISK_ITEMS = [
     severity: "medium",
     status: "open",
     summary:
-      "Check-then-act quota: N concurrent requests near the limit all pass and overspend ≈N× (/api/chat, /mcp, /api/embed, /api/quiz/grade, /api/bash/step). No per-user/IP rate limiter. Reserve spend at admission (or cap in-flight per user); severity raised because the race is documented with file:line in public source.",
+      "PARTIAL (2026-07-12): a per-user CONCURRENCY cap now bounds the check-then-act race — a D1-backed inflight reservation (CAP=5, TTL=300s, fail-soft) taken at admission and released in a finally on /api/chat, /api/embed, /api/quiz/grade, /api/bash/step; caps the ≈N× overspend at ≈CAP× (closes the spend-abuse class with the P-1 provider caps). RESIDUAL: not a true spend reservation, and the simultaneous-isolate + disconnect-release paths need a live-verify pass; keep open until verified.",
   },
   {
     id: "P-4",
@@ -118,9 +118,9 @@ export const SECURITY_RISK_ITEMS = [
     id: "P-8",
     title: "Two unbounded outbound fetches (M-5)",
     severity: "medium",
-    status: "open",
+    status: "fixed",
     summary:
-      "exa.js webSearch (the hot path) and berget.js fetchCatalog fetch without AbortSignal.timeout, violating invariant 2 (helpers degrade, never hang). Add signal: AbortSignal.timeout(...) to both; keep the fail-soft catches. Cheap fix.",
+      "FIXED (2026-07-12): exa.js webSearch and berget.js fetchCatalog now fetch with signal: AbortSignal.timeout (15s each); a TimeoutError lands in each function's existing fail-soft catch, so a hung backend degrades instead of hanging (invariant 2). Was: both hot-path fetches were unbounded.",
   },
   {
     id: "P-9",

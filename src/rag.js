@@ -33,7 +33,15 @@ import { embedModel, embedTexts, rawModelEntry } from "./berget.js";
 import { quotaBlockedResponse } from "./chat.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
-import { effectiveQuota, getUsage, quotaExceeded, recordUsage } from "./quota.js";
+import {
+  effectiveQuota,
+  getUsage,
+  inflightLimitResponse,
+  quotaExceeded,
+  recordUsage,
+  releaseInflight,
+  reserveInflight,
+} from "./quota.js";
 import { serverHistoryEnabled, storageAvailability } from "./settings.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -238,6 +246,12 @@ export async function handleEmbed(request, env, log, identity) {
   const blocked = await quotaGate(env, identity);
   if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
 
+  // Per-user concurrency reservation (M-1/M-2), released in the finally below
+  // on every exit path. reqId minted locally; fail-soft on any D1 trouble.
+  const reqId = crypto.randomUUID();
+  const reserved = await reserveInflight(env, identity.id, reqId);
+  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+
   const prefix = body.kind === "query" ? QUERY_PREFIX : PASSAGE_PREFIX;
   const startedAt = Date.now();
   try {
@@ -252,6 +266,8 @@ export async function handleEmbed(request, env, log, identity) {
   } catch (err) {
     log.error("rag.embed_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Embedding service unavailable." }, 502);
+  } finally {
+    await releaseInflight(env, reqId);
   }
 }
 

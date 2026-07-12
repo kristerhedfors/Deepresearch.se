@@ -288,30 +288,50 @@ History log (values themselves are fine to publish — they are ceilings, not
 credentials). Re-verify quarterly and after adding any provider.
 **Status: 🔴 OPEN — caps unverified from this repo; needs a dashboard pass.**
 
-### P-2 · Mechanical secret-leak prevention on the repo — 🔴 OPEN
-The issue (R-1): today nothing but convention stops a secret reaching a public
-commit; detection is manual greps. Recommendation, in order of value:
-(a) enable **GitHub secret scanning + push protection** on the repo (free for
-public repos; blocks pushes containing recognised credentials);
-(b) add a **pre-push git hook** running the credential-pattern scan from the
-security-posture skill over outgoing diffs;
-(c) run one **full-history scan from an unshallowed clone** (session clones
-are shallow; the 2026-07-12 scan covered only fetched history) and record the
-result here. Rotation runbook if anything is ever found: rotate at the
-provider FIRST, then rewrite history, then log the incident here.
+### P-2 · Mechanical secret-leak prevention on the repo — 🟡 PARTIAL (2026-07-12)
+The issue (R-1): nothing but convention stops a secret reaching a public
+commit; detection was manual greps. Progress:
+- ✅ (b) **Local mechanical scan shipped.** `scripts/scan-secrets` runs the
+  credential-pattern set from the security-posture skill §1 (worktree /
+  `--staged` / `--range A..B` modes, redacted matches, rotation runbook on
+  fail), a `.githooks/pre-push` hook runs it over outgoing commits and blocks
+  a push on a match, and `scripts/install-git-hooks` activates it in a clone
+  (`git config core.hooksPath .githooks`). Verified: flags a planted fake
+  credential, passes the real working tree clean, and does not self-match.
+  Documented in `docs/SECRET-SCANNING.md`. Note the hook is repo-local and
+  bypassable (`--no-verify`) — it is a fast first line, not the backstop.
+- 🔴 (a) **GitHub secret scanning + push protection** — still to enable in the
+  repo Settings → Code security (free for public repos; the server-side
+  backstop that catches a push even without the local hook). Dashboard action,
+  not code.
+- 🔴 (c) **Full-history scan from an unshallowed clone** — still owed; session
+  clones are shallow (`--range`/history scans cover only fetched commits), so
+  a full-history verdict needs `git fetch --unshallow` first (or relies on
+  (a)). Record the result here when run.
 
-### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🔴 OPEN
-Imported from the assessment; **severity raised by public source** (the race
-is documented with file:line — R-2). Check-then-act quota: admission reads
-usage, spend records only after completion (`src/chat.js` gate vs record;
-same shape in `quiz-api.js`, `/api/embed`, `/mcp` post-H-1), so N concurrent
-requests near the limit all pass and overspend ≈N×. No per-user/IP rate
-limiter exists on `/api/chat`, `/mcp`, `/api/embed`, `/api/quiz/grade`,
-`/api/bash/step` (new since the assessment — quota-gated but same race
-shape). Recommendation: reserve spend at admission (D1 conditional update or
-in-flight counter, reconcile on completion) and/or cap per-user concurrent
-requests; optionally Cloudflare rate-limiting rules in front. Combined with
-P-1 caps, this closes the spend-abuse class.
+Rotation runbook if anything is ever found: rotate at the provider FIRST,
+then rewrite history, then log the incident here.
+
+### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🟡 PARTIAL (2026-07-12)
+A per-user **concurrent-request cap** now bounds the check-then-act race: a
+small D1-backed reservation (`inflight` table; `reserveInflight`/
+`releaseInflight` in `src/quota.js`, `INFLIGHT_CAP = 5`, `INFLIGHT_TTL_MS =
+300 s`) is taken at admission — after the quota gate — and released in a
+`finally` on every exit path (success, error, client disconnect via
+`ctx.waitUntil`) on `/api/chat`, `/api/embed`, `/api/quiz/grade`, and
+`/api/bash/step`. A refused reservation returns 429 (`inflightLimitResponse`,
+no cost figures). This caps the ≈N× overspend at ≈`CAP`× per user, which —
+**combined with the P-1 provider caps** — closes the spend-abuse class. The
+gate is FAIL-SOFT (invariant 2): any D1 error fails open, never blocking a
+user. Unit-tested against an in-memory D1 mock (`src/quota.test.js`, 35
+tests: cap saturation, per-user isolation, release, TTL sweep, no-DB and
+throwing-DB fail-open). **Residual (why PARTIAL, not FIXED):** the concurrency
+cap bounds a burst but is not a true spend RESERVATION (a request's cost is
+still recorded only on completion), and the true simultaneous-isolate race +
+the disconnect-release lifecycle only reproduce in production — owed a
+live-verify pass (see the **live-verify** skill). A stricter fix (reserve
+estimated spend at admission, reconcile on completion) and/or Cloudflare
+rate-limiting rules remain available if the cap proves insufficient.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/index.js` but `CSP_ENABLED = false`
@@ -353,12 +373,15 @@ integrity only (fail-soft phases, no secrets in prompts). Recommendation:
 append the note to both builders; consider delimiter-wrapping untrusted spans.
 Cheap fix — bundle with any prompts.js touch.
 
-### P-8 · M-5 · Two unbounded outbound fetches — 🔴 OPEN
-Imported; re-verified 2026-07-12: `exa.js` `webSearch` (the hot path) and
-`berget.js` `fetchCatalog` still fetch without `AbortSignal.timeout`,
-violating invariant 2 (helper phases must degrade, not hang). Recommendation:
-add `signal: AbortSignal.timeout(...)` to both; keep existing fail-soft
-catches. Cheap fix.
+### P-8 · M-5 · Two unbounded outbound fetches — ✅ FIXED (2026-07-12)
+Both hot-path fetches are now time-bounded: `exa.js` `webSearch` gained
+`signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS)` (15 s) and `berget.js`
+`fetchCatalog` gained `signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS)`
+(15 s) — a `TimeoutError` now lands in each function's pre-existing fail-soft
+catch (a `failure()` digest string for search, a `null`/degraded catalog for
+Berget), so a hung backend degrades instead of hanging, satisfying invariant
+2. The values sit within the existing Berget/Exa bounds (connect 30 s, JSON
+45 s, contents 20 s, embed 60 s). Verified: `src/exa.test.js` + `src/berget.test.js`.
 
 ### P-9 · Low-severity backlog (imported L-1 … L-12) — 🔴 OPEN
 Re-verified still open 2026-07-12 unless noted. In rough order:
@@ -392,3 +415,8 @@ so the exception terminates.
 | 2026-07-08 | `SECURITY-ASSESSMENT.md` produced (six-domain manual review: 3 High, 6 Medium, 12 Low). H-1 (`/mcp` quota bypass), H-2 (security headers; CSP authored but held OFF), H-3 (session-HMAC fallback removed, `SESSION_SECRET` required) all **fixed same day**. |
 | 2026-07-12 | **This register created** (product decision: continuously maintain public-source risk list + priority-ordered fix backlog + this log in one file). Companion **security-posture** verification skill added (`.claude/skills/security-posture/`). Re-verified against source: M-1–M-6 and L-1–L-12 all still open (CSP still off; `webSearch`/`fetchCatalog` still unbounded; `chat_logs` still outside the drain; gap/validate prompts still lack the anti-injection note; history-key response still cacheable). Secret scan over the working tree + fetched (shallow) git history: **clean**. New items opened: P-1 (provider-side key caps — top priority), P-2 (push protection + full-history scan), P-10/R-7 (`LOG_LEVEL=debug` in prod, time-boxed). New risk classes recorded for surfaces added since the assessment: `/api/bash/step` in the P-3 rate-limit scope, DRC key storage (R-8), sandbox COEP origins in the P-4 CSP checklist. |
 | 2026-07-12 | **Admin review board added** (product decision): the §3 backlog gets an interactive admin-panel view (`/admin` → Security risks; `src/security-risks.js`, D1 `security_reviews`, `/api/admin/security*`, `scripts/security`) with up/down votes, a manual severity-score field (CVSS or free-form), notes, and an explicit per-item **priority that is the fix loop's fixed order** (maintenance rules 6–7 added). Two orderings: admin fix order ⇄ documented severity. |
+| 2026-07-12 | **Security-fix round (admin-prioritized top items) — P-8 FIXED.** `exa.js` `webSearch` + `berget.js` `fetchCatalog` now use `AbortSignal.timeout` (15 s), degrading fail-soft on a hung backend (invariant 2). First of the round working down the admin board's fix order (`scripts/security`); P-1/P-2/P-3 addressed in the same round's following commits. |
+| 2026-07-12 | **P-3 → PARTIAL.** Per-user concurrent-request cap added (D1 `inflight` table; `reserveInflight`/`releaseInflight` in `src/quota.js`, `CAP=5`, `TTL=300 s`, fail-soft) — reserved at admission, released in a `finally` on every exit path (incl. client disconnect via `ctx.waitUntil`) on `/api/chat`, `/api/embed`, `/api/quiz/grade`, `/api/bash/step`; 429 on refusal. Bounds the ≈N× overspend race at ≈`CAP`× per user (closes the spend-abuse class with the P-1 caps). 35 unit tests over an in-memory D1 mock. Residual: not a true spend reservation; simultaneous-isolate + disconnect-release paths owed a live-verify pass. |
+| 2026-07-12 | **P-2 → PARTIAL.** Local mechanical secret-leak prevention shipped: `scripts/scan-secrets` (worktree/`--staged`/`--range` modes, redacted matches, the security-posture §1 pattern set), a `.githooks/pre-push` hook that blocks a push on a credential match, `scripts/install-git-hooks`, and `docs/SECRET-SCANNING.md`. Verified: flags a planted fake credential, passes the real tree clean, no self-match. Residual (both operational, not code): (a) enable GitHub secret scanning + push protection in repo Settings; (c) run a full-history scan from an unshallowed clone. |
+| 2026-07-12 | **P-1 reviewed — remains 🔁 OPERATIONAL.** Provider-side spend caps cannot be set or verified from the repo (each lives in a provider dashboard). No code change possible; recorded here honestly rather than marked done. Still owed: a dashboard pass per provider (Berget / OpenAI / Anthropic / Exa / Google Cloud incl. the Embed-key referrer lock / Shodan) recording the cap values + date, per §3 P-1. It stays the top of the board precisely because the P-3 concurrency cap only bounds abuse *inside* the app — a leaked key used from outside is bounded ONLY by these provider caps. |
+| 2026-07-12 | **Board discovery layer added.** `src/admin-boards.js` (`ADMIN_BOARDS` registry) + `GET /api/admin/boards` + `scripts/boards`: one call lists every Claude-fetchable admin board (security, feedback, chatlogs) with its `?format=text` fetch line and ordering options — the entry point for popping up all boards and fanning out sub-agents on the admin's chosen priority order. Documented across the decision-boards / security-posture / feedback-loop / chat-logs skills. |

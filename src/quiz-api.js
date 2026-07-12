@@ -17,7 +17,16 @@ import { quotaBlockedResponse } from "./chat.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import { quizGradePrompt } from "./prompts.js";
-import { bergetCost, effectiveQuota, getUsage, quotaExceeded, recordUsage } from "./quota.js";
+import {
+  bergetCost,
+  effectiveQuota,
+  getUsage,
+  inflightLimitResponse,
+  quotaExceeded,
+  recordUsage,
+  releaseInflight,
+  reserveInflight,
+} from "./quota.js";
 import { normalizeGradeResults, validateGradeItems } from "./quiz.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -54,6 +63,13 @@ export async function handleQuizGrade(request, env, log, identity) {
   const blocked = quota ? quotaExceeded(usage, quota) : null;
   if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
 
+  // Per-user concurrency reservation (M-1/M-2), released in the finally below
+  // on every exit path. reqId minted locally (this endpoint isn't threaded a
+  // request id). Fail-soft: reserve returns ok on any D1 trouble.
+  const reqId = crypto.randomUUID();
+  const reserved = await reserveInflight(env, identity.id, reqId);
+  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+
   const startedAt = Date.now();
   try {
     const r = await completeJson(
@@ -83,6 +99,8 @@ export async function handleQuizGrade(request, env, log, identity) {
   } catch (err) {
     log.error("quiz.grade_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
     return jsonResponse({ error: "Grading service unavailable." }, 502);
+  } finally {
+    await releaseInflight(env, reqId);
   }
 }
 

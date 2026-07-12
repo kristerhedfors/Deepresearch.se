@@ -290,6 +290,108 @@ export function quotaExceeded(usage, quota, now = Date.now()) {
   return null;
 }
 
+// ---- in-flight concurrency reservation (M-1 / M-2) -------------------------
+//
+// The quota gate above is check-then-act: admission reads accumulated usage,
+// but a request's spend is only recorded AFTER it finishes. N requests firing
+// concurrently near the cap all read the same pre-spend usage, all pass, and
+// overspend by ~N×. There is also no ceiling on how many expensive requests a
+// single user can have running at once. A per-user CONCURRENT-request cap
+// bounds both: a small D1-backed reservation held for the life of a request.
+//
+// CAP = 5: comfortably above any honest user (a few browser tabs / a retry
+// mid-flight), low enough that a burst can't multiply spend by a large factor.
+// TTL = 300 s: a crashed request's row can't hold a slot forever — it ages out
+// on the next reservation sweep. Aligned with wrangler.toml's cpu_ms=300000
+// (the Paid maximum); a request that has legitimately been alive longer than
+// this is an outlier, and the only cost of sweeping it early is that its slot
+// frees a little sooner (a softer cap, never a broken request).
+//
+// FAIL-SOFT ABOVE ALL (invariant 2): every D1 touch here degrades to "allowed"
+// — a database outage must never turn into a blocked user or a 500. The cap is
+// abuse mitigation, not a correctness barrier, so failing open is correct.
+
+export const INFLIGHT_CAP = 5;
+export const INFLIGHT_TTL_MS = 300_000;
+
+/**
+ * Pure decision: is a user at/over the concurrency cap? At EXACTLY the cap the
+ * user already holds `cap` slots, so a further request is refused. Unit-tested.
+ * @param {number} activeCount reservations currently held by the user
+ * @param {number} cap
+ * @returns {boolean}
+ */
+export function overCap(activeCount, cap) {
+  return activeCount >= cap;
+}
+
+/**
+ * Reserves one in-flight slot for a user, enforcing the per-user concurrency
+ * cap. Sweeps stale rows first, counts the user's live reservations, and
+ * either inserts the reservation (ok) or refuses without inserting (limited).
+ * FAIL-SOFT: no db, or ANY D1 error, returns `{ ok: true, degraded: true }`
+ * (fail open — never block on infrastructure failure).
+ * @param {Env} env
+ * @param {string | number} userId
+ * @param {string} reqId unique per request (reuse the request id, or mint one)
+ * @param {number} [now]
+ * @returns {Promise<{ ok: true, degraded?: boolean } | { ok: false, limit: number, active: number }>}
+ */
+export async function reserveInflight(env, userId, reqId, now = Date.now()) {
+  try {
+    const db = await getDb(env);
+    if (!db) return { ok: true, degraded: true };
+    // Age out crashed/abandoned reservations before counting.
+    await db.prepare("DELETE FROM inflight WHERE ts < ?1").bind(now - INFLIGHT_TTL_MS).run();
+    const row = /** @type {{ n: number } | null} */ (
+      await db.prepare("SELECT COUNT(*) AS n FROM inflight WHERE user_id = ?1").bind(String(userId)).first()
+    );
+    const active = row?.n || 0;
+    if (overCap(active, INFLIGHT_CAP)) return { ok: false, limit: INFLIGHT_CAP, active };
+    await db
+      .prepare("INSERT INTO inflight (req_id, user_id, ts) VALUES (?1, ?2, ?3)")
+      .bind(String(reqId), String(userId), now)
+      .run();
+    return { ok: true };
+  } catch {
+    // Fail open: a D1 outage must never block a user or 500 the request.
+    return { ok: true, degraded: true };
+  }
+}
+
+/**
+ * Releases a user's in-flight reservation. Fully fail-soft (swallows errors):
+ * a failed release only leaves a row that the next sweep ages out.
+ * @param {Env} env
+ * @param {string | number} reqId
+ * @returns {Promise<void>}
+ */
+export async function releaseInflight(env, reqId) {
+  try {
+    const db = await getDb(env);
+    if (!db) return;
+    await db.prepare("DELETE FROM inflight WHERE req_id = ?1").bind(String(reqId)).run();
+  } catch {
+    // Swallow — accounting/limits must never break the request.
+  }
+}
+
+/**
+ * The 429 payload for a refused concurrency reservation — plain-language, no
+ * internal cost figures (mirrors quotaBlockedResponse's shape, but this is a
+ * rate/concurrency limit, said so explicitly).
+ * @param {{ limit: number, active: number }} limited
+ * @returns {{ error: string, rate_limit: { limit: number, active: number } }}
+ */
+export function inflightLimitResponse(limited) {
+  return {
+    error:
+      `You already have ${limited.limit} research requests running at once, ` +
+      `which is the limit. Please wait for one to finish, then try again.`,
+    rate_limit: { limit: limited.limit, active: limited.active },
+  };
+}
+
 // ---- recording -------------------------------------------------------------
 
 // Accumulates one Berget usage report into a running {prompt_tokens,

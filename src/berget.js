@@ -41,6 +41,12 @@ export function embedModel(env) {
 // error instead.
 const JSON_CALL_TIMEOUT_MS = 45_000;
 const STREAM_CONNECT_TIMEOUT_MS = 30_000;
+// Bounds the model-catalog fetch the same way — an unbounded fetch to Berget
+// has bitten this project before (see the round-2 note above). A TimeoutError
+// from AbortSignal surfaces as a normal throw, exactly like the existing
+// !resp.ok throw, so every caller's fail-soft handling (rawModelEntry's
+// try/catch, listModels' callers) degrades rather than hanging.
+const CATALOG_TIMEOUT_MS = 15_000;
 
 // A round 4 model-eval battery (cybersecurity queries, mid-long time
 // budget) found several models' synthesis stream just never completing:
@@ -102,6 +108,7 @@ async function fetchCatalog(env) {
   }
   const resp = await fetch(modelsUrl(env), {
     headers: { authorization: `Bearer ${env.BERGET_API_TOKEN}` },
+    signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`Berget models fetch failed (${resp.status})`);
   const data = await resp.json();

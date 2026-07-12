@@ -26,8 +26,11 @@ import {
   bergetCost,
   effectiveQuota,
   getUsage,
+  inflightLimitResponse,
   quotaExceeded,
   recordUsage,
+  releaseInflight,
+  reserveInflight,
 } from "./quota.js";
 import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
@@ -139,6 +142,18 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
 
   const quotaBlocked = await enforceQuotaGate(env, log, config, identity);
   if (quotaBlocked) return quotaBlocked;
+
+  // Per-user concurrency reservation (M-1/M-2): bounds how many expensive
+  // requests one user can have in flight, so a burst near the quota can't all
+  // pass the check-then-act gate above and overspend. Reserved AFTER the quota
+  // gate; the slot is released in runChatStream's finally (below), which the
+  // waitUntil keeps alive to run on EVERY exit — success, error, or client
+  // disconnect. Fail-soft: reserveInflight returns ok on any D1 trouble.
+  const reserved = await reserveInflight(env, identity.id, requestId);
+  if (!reserved.ok) {
+    log.info("chat.rate_limited", { user_id: identity.id, active: reserved.active, limit: reserved.limit });
+    return jsonResponse(inflightLimitResponse(reserved), 429);
+  }
 
   const conversation = body.messages;
   // The ghost (incognito) toggle, forwarded by the client: an incognito
@@ -304,6 +319,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       emit({ error: "Worker error: " + errMessage });
     } finally {
       clearInterval(keepalive);
+      // Free the concurrency slot reserved in handleChat. This finally runs on
+      // EVERY exit path — normal completion, a thrown pipeline error (caught
+      // above), and client disconnect (ctx.waitUntil keeps the Worker alive
+      // through here) — so a slot is never leaked. Fail-soft, so it also
+      // can't disturb the accounting/logging that follows.
+      await releaseInflight(env, requestId);
       const duration_ms = Date.now() - state.startedAt;
       // Searches served from the Exa result cache cost nothing, so they
       // don't consume the user's Exa search quota or add Exa cost — only the
