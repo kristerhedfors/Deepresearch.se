@@ -242,6 +242,10 @@ export interface RequestState {
   shodan: boolean;
   /** Hosts Shodan returned data for. */
   shodanCount: number;
+  /** Developer-mode gate for the introspection enrichment (src/introspect.js). */
+  introspection: boolean;
+  /** 1 when the source snapshot was actually folded into the conversation. */
+  introspectionCount: number;
   googleMaps: boolean;
   /** 1 when Google Maps data was folded in. */
   mapsCount: number;
@@ -306,6 +310,10 @@ export interface Settings {
   google_maps: boolean;
   /** Per-reply feedback buttons + the account panel's Feedback view (default OFF — opt-in). */
   feedback_mode: boolean;
+  /** The in-browser Linux execution sandbox + bash-lite agent (default OFF — opt-in). */
+  bash_lite_mcp: boolean;
+  /** Developer mode: unlocks introspection mode (default OFF — opt-in). */
+  developer_mode: boolean;
 }
 
 // ---- SSE protocol (/api/chat) ----------------------------------------------

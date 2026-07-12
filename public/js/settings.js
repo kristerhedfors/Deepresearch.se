@@ -17,8 +17,9 @@
  * @property {boolean} [google_maps]
  * @property {boolean} [feedback_mode]
  * @property {boolean} [bash_lite_mcp]
+ * @property {boolean} [developer_mode]
  * @property {string} [maps_embed_key]
- * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean, bash_lite?: boolean}} [available]
+ * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean, bash_lite?: boolean, developer?: boolean}} [available]
  */
 
 /** @type {Settings | null} */
@@ -161,6 +162,25 @@ export function setFeedbackMode(on) {
 // so flipping this knob only takes full effect on the next reload.
 export function bashLiteOn() {
   return settings?.bash_lite_mcp === true;
+}
+
+// Developer-mode knob (default off; needs only a signed-in account). While
+// on, conversations that ask about this site's own implementation enter
+// INTROSPECTION MODE: the server appends the deployed source snapshot as
+// context (src/introspect.js), and — when the sandbox knob is also on — the
+// client mounts the source tree at /src in the in-browser Linux VM
+// (public/js/introspect-core.js is the shared gate/plan logic).
+export function developerModeOn() {
+  return settings?.developer_mode === true;
+}
+
+export function developerModeAvailable() {
+  return settings?.available?.developer === true;
+}
+
+/** @param {boolean} on */
+export function setDeveloperMode(on) {
+  return updateSetting({ developer_mode: on });
 }
 
 export function bashLiteAvailable() {

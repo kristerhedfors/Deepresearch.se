@@ -219,7 +219,7 @@ function emitChunked(text, onDelta) {
 // message the model judges not to need a shell pays one cheap model call and
 // never boots the VM. `sandbox` is injectable for tests; defaults to the real
 // public/js/sandbox.js bridge.
-async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox }) {
+async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider }) {
   const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
   if (!sb.supported()) return [];
   return runShellLoop({
@@ -242,7 +242,9 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
     exec: (command) => sb.exec(command),
     ensureReady: async () => {
       onStatus({ type: "phase", phase: "sandbox" });
-      return sb.boot();
+      // The optional provider mounts files into the VM at boot (introspection
+      // mounts the source snapshot at /src — see public/cure/drc.js).
+      return sb.boot(fileProvider || null);
     },
     onStep: ({ commands }) => onStatus({ type: "phase", phase: "sandbox", detail: commands.length }),
   });
@@ -254,7 +256,12 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
  * Runs one exchange. `messages` are plain {role, content} turns ending with
  * the user's question. `retrieved` is drc-rag.js's recall block (excerpts
  * from the project's other indexed chats) — threaded through the phases as
- * CONTEXT, never persisted into the conversation itself. Emits
+ * CONTEXT, never persisted into the conversation itself. `introspection` is
+ * the introspection-mode source-snapshot block (built by the page from
+ * introspect-core.js when developer mode is on and the conversation engages
+ * the mode) — threaded exactly like the recall block; `fileProvider` is the
+ * matching sandbox mount provider (the /src source tree), handed to the VM
+ * boot when the bash pass runs. Emits
  * onStatus({type:"phase", phase, detail?}) and
  * onStatus({type:"discard_text"}) + onDelta(chunk) events; resolves to
  * {answer, action, subquestions, validated}.
@@ -266,8 +273,10 @@ export async function runDrcResearch({
   messages,
   research = true,
   retrieved = "",
+  introspection = "",
   bash = false,
   sandbox = null,
+  fileProvider = null,
   onStatus = () => {},
   onDelta = () => {},
   signal,
@@ -279,7 +288,8 @@ export async function runDrcResearch({
   const jsonModel = provider.jsonModel;
   const question = messages[messages.length - 1]?.content || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
-  const context = drcContext(messages) + (recall ? "\n\n" + recall : "");
+  const intro = typeof introspection === "string" ? introspection.trim() : "";
+  const context = drcContext(messages) + (recall ? "\n\n" + recall : "") + (intro ? "\n\n" + intro : "");
 
   // Experimental bash-lite sandbox: when the knob is on and the sandbox can run
   // here, let the MODEL decide whether this message needs a shell (it returns
@@ -290,7 +300,7 @@ export async function runDrcResearch({
   let shellBlock = "";
   if (bash) {
     try {
-      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox });
+      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider });
       shellBlock = buildShellTranscript(transcript);
     } catch {
       shellBlock = "";
@@ -300,8 +310,9 @@ export async function runDrcResearch({
     ? shellBlock + "\n\nUse this real sandbox output directly in your answer — it is ground truth you produced (no citation needed)."
     : null;
   // For the direct paths (which don't run the notes phases), the extra user
-  // message carries BOTH the RAG recall block and the sandbox transcript.
-  const directExtra = [recall, shellExtra].filter(Boolean).join("\n\n") || null;
+  // message carries the RAG recall block, the introspection source block,
+  // and the sandbox transcript — whichever of them exist.
+  const directExtra = [recall, intro, shellExtra].filter(Boolean).join("\n\n") || null;
 
   const streamAnswer = async (system, extraUser = null) => {
     const convo = [{ role: "system", content: system }, ...messages];
@@ -411,6 +422,8 @@ export async function runDrcResearch({
     "Harvested notes (model knowledge, structured by sub-question):\n" +
     renderDrcNotes(harvest) +
     (recall ? "\n\n" + recall : "") +
+    // Introspection mode's source-snapshot block (empty otherwise).
+    (intro ? "\n\n" + intro : "") +
     // The bash-lite sandbox transcript rides along as ground truth when the
     // experimental sandbox ran for this request (empty otherwise).
     (shellBlock ? "\n\n" + shellBlock : "");

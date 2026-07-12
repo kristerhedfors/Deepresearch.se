@@ -13,6 +13,7 @@
 // subsystem refactor); this module owns the registry and Shodan.
 
 import { lastUserMessage, textOf, withAppendedText } from "./conversation.js";
+import { runIntrospectionEnrichment } from "./introspect.js";
 import { runGoogleMapsEnrichment } from "./maps-enrichment.js";
 import { extractTargets, runShodanLookup } from "./shodan.js";
 
@@ -75,6 +76,15 @@ const ENRICHMENTS = [
         runGoogleMapsEnrichment(c.env, c.log, c.emit, c.step, c.stepDone, c.conversation,
           /** @type {import('./maps-enrichment.js').MapsState} */ (c.state))
       ),
+  },
+  {
+    // Introspection (developer mode): a conversation asking about THIS
+    // SITE's own implementation gets the deployed source snapshot appended
+    // as context (src/introspect.js). Silent unless the conversation
+    // engages the mode (EN+SV gate / a named repo path — introspect-core.js).
+    id: "introspect",
+    enabled: (state) => !!state.introspection,
+    run: (c) => runIntrospectionEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
   },
 ];
 

@@ -22,7 +22,8 @@ import {
   startSearchStep,
   updateGenericStep,
 } from "./activity.js";
-import { bashLiteOn } from "./settings.js";
+import { bashLiteOn, developerModeOn } from "./settings.js";
+import { introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { runShellLoop } from "./bash-agent.js";
 import { ensureSandboxBooted, execInSandbox, sandboxFsSummary, sandboxSupported, sblog } from "./sandbox.js";
 import {
@@ -885,12 +886,32 @@ function buildSandboxFileProvider(opts) {
       }
     } catch { /* no project / not available — session-only */ }
 
+    // Introspection (developer mode): when this conversation asks about the
+    // site's own implementation, fetch the pre-bundled source snapshot and
+    // hand it to the sandbox as the `source` scope — sandbox.js streams the
+    // files into a DataDevice and seeds the tree at /src (no unpacking in the
+    // guest). Deferred like everything in this provider: the (multi-MB) fetch
+    // only happens once the model actually proposes a command. Fail-soft.
+    let source = null;
+    try {
+      if (developerModeOn()) {
+        const texts = userTexts(history);
+        const cheap = introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t));
+        if (cheap) {
+          const res = await fetch(SNAPSHOT_PATH);
+          const snap = res.ok ? validateSnapshot(await res.json()) : null;
+          if (snap && introspectionActive(texts, snap)) source = { files: snap.files };
+        }
+      }
+    } catch { /* snapshot unavailable — mount without it */ }
+
     sblog("info", "sandbox.fs.provider", {
       session_files: session.length,
       project: project ? project.name : null,
       project_files: project ? project.files.length : 0,
+      source_files: source ? source.files.length : 0,
     });
-    return { session, project };
+    return { session, project, source };
   };
 }
 

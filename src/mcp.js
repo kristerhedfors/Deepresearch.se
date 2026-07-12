@@ -526,6 +526,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     webSearch,
     shodan: false,
     shodanCount: 0,
+    // The MCP channel never enters introspection mode (no developer knob on
+    // this channel) — the flag exists for the shared RequestState shape.
+    introspection: false,
+    introspectionCount: 0,
     googleMaps: false,
     mapsCount: 0,
     vision: false,
