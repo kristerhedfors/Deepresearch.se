@@ -131,13 +131,29 @@ when that's absent, the live `/api/embed` with the break-glass creds
 (`BASIC_AUTH_USER`/`PASS`) — production holds the key. It is RESILIENT: a
 token-dense chunk that 502s the batch is retried, then the batch is split to
 singles and any lone unembeddable chunk is skipped (logged), so one bad chunk
-never aborts the ~2700-chunk build. NOT part of `npm run bundle` (that stays
-pure/offline) and NOT run in CI.
+never aborts the ~2100-chunk build. Test files (`*.test.js`, `tests/`) are
+excluded from the index (low value for "how does the app work"; still in the
+snapshot, so a user can name one by path for its full text). NOT part of `npm
+run bundle` (that stays pure/offline) and NOT run in CI.
+
+**DELTA rebuilds (2026-07-12).** The index carries a per-file content hash
+(`hashes: {p: sha256/16}`). A rebuild re-embeds ONLY files whose hash changed
+(plus new files) and REUSES the existing int8 vectors for everything else — so
+after a one-file edit, `npm run bundle:rag` embeds a handful of chunks in
+seconds instead of re-embedding all ~2100. A FULL rebuild happens only when
+there's no prior index, or the embed model / chunker params changed (all
+vectors would be incomparable). The reuse is keyed by hash AND requires the old
+chunk vectors to still cover the file's current chunk count, so it can never
+splice a stale vector onto shifted text. The delta-built index is byte-for-byte
+a normal index (same flat `vectors`/`map`), committed and served like before —
+so it "follows along" into the web app with no server change; retrieval ignores
+`hashes`.
 
 **Rebuild order when source changes:** finish edits → `npm run bundle`
-(snapshot) → `npm run bundle:rag` (index, against the FINAL snapshot) → commit
-both. Doing rag before the final snapshot leaves the index chunk-map misaligned
-and trips the consistency check.
+(snapshot) → `npm run bundle:rag` (index, against the FINAL snapshot — now a
+cheap DELTA that only re-embeds the changed files) → commit all three. Doing
+rag before the final snapshot leaves the index chunk-map misaligned and trips
+the consistency check.
 
 ## Freshness discipline
 
