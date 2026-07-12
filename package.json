@@ -7,7 +7,8 @@
     "test": "node --test src/*.test.js public/js/*.test.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.public.json --noEmit",
     "bundle": "node scripts/bundle-source.mjs",
-    "bundle:rag": "node scripts/bundle-source-rag.mjs"
+    "bundle:rag": "node scripts/bundle-source-rag.mjs",
+    "pulse": "node scripts/build-pulse.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
