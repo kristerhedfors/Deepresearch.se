@@ -178,8 +178,8 @@
     .dodont h3 { font-size: .85rem; margin: 0 0 .3rem; color: var(--accent); }
     /* The tier headings wear the app headers' brand treatment: light
        rounded sans for "deepresearch.", heavy monospace for the wordplay
-       tail — with the tail carrying the highlight (the logotype gold as a
-       marker wash; the header's gold TEXT would drown on this light card),
+       tail in the header's own gold — kept legible on this light card by
+       a dark outer border around the letters (stroke under the fill),
        so "se/cure" and "se/rver" read as secure/server at a glance. */
     .wtier {
       font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
@@ -188,10 +188,10 @@
     }
     .wtier b {
       font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-weight: 800; font-size: 1.05em; letter-spacing: 0;
-      color: #1a56b0; /* the logotype's flag blue */
-      background: rgba(245, 197, 24, .4); /* the logotype's golden swirl, as highlight */
-      border-radius: 4px; padding: 0 .18em;
+      font-weight: 800; font-size: 1.1em; letter-spacing: 0;
+      color: #f5c518; /* the logotype's golden swirl — the header tail's gold */
+      -webkit-text-stroke: 3px #000;
+      paint-order: stroke fill; /* outer border: stroke behind the fill */
     }
     .dodont ul { margin: 0; padding-left: 1.05rem; font-size: .84rem; }
     .dodont li { margin: .3rem 0; }
