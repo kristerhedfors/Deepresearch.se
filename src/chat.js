@@ -13,7 +13,7 @@
 
 import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
-import { recordChatLog } from "./chatlog.js";
+import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
@@ -413,6 +413,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // this request became one — the streamed `answer` above is only
             // its intro, so the log would otherwise hide what was asked.
             quiz: state.quiz || undefined,
+            // The bash-lite agent's shell tool calls (state.shellTranscript):
+            // the exact commands the browser's agentic loop ran, their exit
+            // codes, and their clamped output — full "tool call" visibility.
+            // Undefined (key dropped) when nothing ran; client_diag.ran still
+            // carries the count. See chatlog.js shellLogSummary.
+            shell: shellLogSummary(state.shellTranscript),
             berget_cost,
             exa_cost,
             // Diagnostic: the client's sandbox-readiness (public/js/stream.js

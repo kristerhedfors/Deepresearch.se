@@ -7,11 +7,14 @@ import assert from "node:assert/strict";
 
 import {
   LOG_CAPS,
+  SHELL_LOG_CAPS,
   buildChatLogEntry,
   formatChatLogsText,
+  formatShellForLog,
   likePattern,
   projectChatLog,
   sanitizeConversationForLog,
+  shellLogSummary,
   truncateForLog,
 } from "./chatlog.js";
 
@@ -191,6 +194,84 @@ test("formatChatLogsText renders a readable block per interaction", () => {
 
 test("formatChatLogsText says so when nothing matches", () => {
   assert.match(formatChatLogsText([]), /no logged interactions/);
+});
+
+// ---- shellLogSummary -------------------------------------------------------
+
+test("shellLogSummary returns undefined when nothing ran", () => {
+  assert.equal(shellLogSummary([]), undefined);
+  assert.equal(shellLogSummary(null), undefined);
+  assert.equal(shellLogSummary("nope"), undefined);
+  // A transcript with only junk entries yields no tool calls → undefined.
+  assert.equal(shellLogSummary([{ command: "" }, { exitCode: 0 }, null]), undefined);
+});
+
+test("shellLogSummary keeps the exact commands, exit codes, and output", () => {
+  const out = shellLogSummary([
+    { command: "whoami", exitCode: 0, stdout: "root\n", stderr: "" },
+    { command: "false", exitCode: 1, stdout: "", stderr: "boom" },
+  ]);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out[0], { command: "whoami", exitCode: 0, stdout: "root\n", stderr: "" });
+  assert.equal(out[1].exitCode, 1);
+  assert.equal(out[1].stderr, "boom");
+});
+
+test("shellLogSummary clamps oversized output and caps command count", () => {
+  const long = "x".repeat(SHELL_LOG_CAPS.output + 500);
+  const [one] = shellLogSummary([{ command: "cat big", exitCode: 0, stdout: long, stderr: "" }]);
+  assert.match(one.stdout, /truncated/);
+  assert.ok(one.stdout.length < long.length);
+
+  const many = Array.from({ length: SHELL_LOG_CAPS.commands + 10 }, (_, i) => ({
+    command: `echo ${i}`,
+    exitCode: 0,
+    stdout: String(i),
+    stderr: "",
+  }));
+  assert.equal(shellLogSummary(many).length, SHELL_LOG_CAPS.commands);
+});
+
+test("shellLogSummary defaults a non-numeric exit code to 1 and skips blank commands", () => {
+  const out = shellLogSummary([
+    { command: "   ", exitCode: 0, stdout: "x", stderr: "" },
+    { command: "ls", exitCode: "nope", stdout: "", stderr: "" },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].command, "ls");
+  assert.equal(out[0].exitCode, 1);
+});
+
+// ---- formatShellForLog / shell in the text view ----------------------------
+
+test("formatShellForLog renders commands, exit codes, and indented output", () => {
+  const block = formatShellForLog([
+    { command: "whoami", exitCode: 0, stdout: "root\n", stderr: "" },
+    { command: "ls /nope", exitCode: 2, stdout: "", stderr: "No such file" },
+  ]);
+  assert.match(block, /TOOLS: bash-lite ran 2 commands/);
+  assert.match(block, /\$ whoami {3}\(exit 0\)/);
+  assert.match(block, /^ {4}root$/m);
+  assert.match(block, /\$ ls \/nope {3}\(exit 2\)/);
+  assert.match(block, /^ {4}\[stderr\] No such file$/m);
+});
+
+test("formatShellForLog singularizes a lone command and drops empty output", () => {
+  const block = formatShellForLog([{ command: "true", exitCode: 0, stdout: "", stderr: "" }]);
+  assert.match(block, /ran 1 command$/m);
+  // No blank indented line for a no-output command.
+  assert.doesNotMatch(block, /\n {4}\n/);
+});
+
+test("formatChatLogsText surfaces shell tool calls above the META line", () => {
+  const meta = { shell: [{ command: "whoami", exitCode: 0, stdout: "root", stderr: "" }], queries: [] };
+  const text = formatChatLogsText([
+    projectChatLog({ ...ROW, meta_json: JSON.stringify(meta) }, { full: true }),
+  ]);
+  assert.match(text, /TOOLS: bash-lite ran 1 command/);
+  assert.match(text, /\$ whoami/);
+  // The shell block precedes the raw META dump.
+  assert.ok(text.indexOf("TOOLS: bash-lite") < text.indexOf("META: "));
 });
 
 // ---- likePattern -----------------------------------------------------------

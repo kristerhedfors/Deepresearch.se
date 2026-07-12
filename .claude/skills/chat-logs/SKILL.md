@@ -87,6 +87,19 @@ chain.
   (n/title/url as numbered in the answer), `complexity`, `subquestions`,
   `conflicts`, cache counts, and `berget_cost`/`exa_cost` — enough to
   replay the research decisions without the SSE trace.
+- **Tool-call visibility — `meta.shell`.** When the bash-lite sandbox
+  ran (the one tool-calling-shaped capability; invariant 1 keeps it a
+  fenced-block convention, not a function call), `meta.shell` is the FULL
+  record: every command the browser's agentic loop ran, its `exitCode`,
+  and its clamped `stdout`/`stderr` — the same bytes the pipeline folded
+  into synthesis. `?format=text` renders it as a readable `TOOLS:
+  bash-lite ran N commands` block (the `$ cmd (exit N)` + indented
+  output) above the raw META line, so `scripts/chatlogs --id N` shows
+  exactly what the agent executed. Absent (key dropped) when nothing ran;
+  `client_diag.ran` still carries the bare count for a quick scan (and is
+  the only bash signal on chats logged before this field existed — those
+  read `ran=N` with no `shell`). Built by `shellLogSummary`
+  (`src/chatlog.js`), fed from `state.shellTranscript` in `src/chat.js`.
 - `status="disconnected"` means the client went away mid-stream but the
   pipeline finished and the answer was parked in the recovery cache — the
   logged answer is still the complete one.
