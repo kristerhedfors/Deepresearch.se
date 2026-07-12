@@ -230,6 +230,45 @@ export const bashAgentPrompt = () =>
   "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop." +
   ANTI_INJECTION_NOTE;
 
+// Introspection source-research loop (src/pipeline.js runSourceResearch, gated
+// by developer mode + no external-source intent). One turn of the agentic loop
+// that reads THIS SITE's own source: given the question, a sitemap (every file +
+// a one-line description), and the files already read, the model asks for the
+// next files to READ — or declares itself done. NO function calling (invariant
+// 1): the request is a plain JSON object ({read:[...]}), so it works on any
+// catalog model. Runs on the reliable JSON model like the other planning phases
+// (file choice must be dependable regardless of the user's answer-model pick).
+// The load-bearing instruction: investigate the CODE, never trust the repo's own
+// Markdown docs/comments as proof (the "don't take documented issues at face
+// value" requirement — SECURITY-RISKS.md etc. describe intent, not ground truth).
+/**
+ * @param {JsonPromptOpts} [opts]
+ * @returns {string}
+ */
+export const sourceAgentPrompt = ({ reinforceJsonOnly = false } = {}) =>
+  `You research the OWN SOURCE CODE of Deepresearch.se to answer a question about how this site is built or how it actually behaves. Today's date: ${today()}.\n` +
+  "You can READ any file in the project. You are given a sitemap (every file with a one-line description) and the files you have read so far. Each turn, decide which files to READ NEXT to answer the question thoroughly from the real implementation.\n" +
+  "Respond ONLY with a JSON object:\n" +
+  '{"read":["src/auth.js","src/index.js"],"reasoning":"...","done":false}\n' +
+  "- read: 1-6 file paths, exactly as they appear in the sitemap, whose contents you need to see next. Follow the code — if a file you read imports or references another that matters to the question, read that one too.\n" +
+  '- Never re-request a file already shown to you. When you have read enough of the ACTUAL code to answer well, respond {"done":true} with no read list.\n' +
+  "- reasoning: one short sentence on why these files.\n" +
+  "Base your investigation on the CODE itself. Do NOT treat the project's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills) or code comments as proof of behavior — they describe intent and may be outdated, aspirational, or wrong. A documented claim or issue is a LEAD to verify by reading the implementation it refers to, never a confirmed fact." +
+  ANTI_INJECTION_NOTE +
+  (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
+
+// Introspection final answer (src/pipeline.js runSourceResearch): write the
+// answer from the source the read loop gathered — real code, not web sources —
+// and, critically, from the IMPLEMENTATION rather than the repo's own docs.
+/** @returns {string} */
+export const sourceAnswerPrompt = () =>
+  `You are the research assistant for Deepresearch.se, answering a question about THIS SITE'S OWN implementation. Today's date: ${today()}.\n` +
+  "You are given the project's ACTUAL source code — an architecture orientation, retrieved excerpts, and the full text of the files read during this research. Answer ONLY from that real source and the conversation; this is a genuine investigation of the codebase, not a web search, so there are no external sources to cite.\n" +
+  "Ground every claim in the code you were given: quote the relevant snippet and cite its file path (e.g. `src/auth.js`). Never invent files, functions, or behavior that isn't in the provided source, and never claim you lack access to the source — you have it here.\n" +
+  "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills, code comments) describe INTENDED behavior and can be outdated, aspirational, or simply wrong. When the question is about what the code actually does — security, correctness, whether a claimed control really exists — base the answer on the IMPLEMENTATION you read, not on what a doc asserts, and explicitly call out any place the docs and the code disagree. Treat a documented issue as a lead you checked, not a fact you inherited.\n" +
+  "Format in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if answering well would need a file you did not read, say so rather than guessing." +
+  ANTI_INJECTION_NOTE;
+
 // Phase 5 — post-validation fact-check of the draft.
 /**
  * @param {JsonPromptOpts} [opts]

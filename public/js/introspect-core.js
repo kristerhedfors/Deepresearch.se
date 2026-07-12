@@ -516,6 +516,301 @@ function clip(t, max) {
   return t.length <= max ? t : t.slice(0, max) + "\n… [truncated — full file in the snapshot/sandbox]";
 }
 
+// ---- the agentic source-read loop (the "read files as it wants" tool) --------
+//
+// For an introspection question, the pipeline does REAL research in the actual
+// source instead of a single RAG-retrieved reply: the model is given a SITEMAP
+// (every file + a one-line description) and, round by round, asks to READ the
+// files it needs; the loop resolves each request against the snapshot, feeds
+// the file text back, and loops until the model has gathered enough to answer.
+// This is the source-code counterpart of the bash-lite agent (bash-core.js):
+// NO function calling (invariant 1) — the read request is a plain JSON object,
+// so it works on any catalog model — and fully fail-soft (a bad step, an empty
+// proposal, or a missing file all just end the round with what was gathered).
+//
+// Everything here is pure and I/O-free (Node-tested): WHO answers the step and
+// HOW the file bytes are fetched are injected, so the server (src/pipeline.js
+// via the snapshot the enrichment loaded) and any future client tier share one
+// driver.
+
+// Caps — the loop is bounded so a runaway (or hostile) model can't blow the
+// context window or spin forever. Sized so the gathered source fits alongside
+// the sitemap on the reliable JSON model that drives the loop.
+export const MAX_SOURCE_READ_ROUNDS = 4; // agentic read rounds before we answer regardless
+export const MAX_FILES_PER_ROUND = 6; // file paths accepted from one model turn
+export const MAX_READ_FILE_CHARS = 16_000; // one file's text kept, truncated beyond
+export const MAX_READ_TOTAL_CHARS = 60_000; // all files read together
+
+/**
+ * A one-line, human-readable description of a source file, extracted from its
+ * own leading comment (this codebase opens almost every file with a `//` or
+ * `/* *\/` header describing it) or, for Markdown, its first line. Deterministic
+ * and best-effort — "" when the file has no usable header. Powers the sitemap.
+ * @param {string} path
+ * @param {string} text
+ * @returns {string}
+ */
+export function fileSummary(path, text) {
+  const p = String(path || "");
+  const t = String(text || "");
+  if (!t) return "";
+  if (/\.md$/i.test(p)) {
+    // The first PROSE line describes the doc; a leading heading is usually just
+    // the title (often the filename) — keep it only as a fallback.
+    let fallback = "";
+    for (const line of t.split("\n")) {
+      const raw = line.trim();
+      if (!raw) continue;
+      if (raw.startsWith("#")) {
+        if (!fallback) fallback = clipSummary(raw.replace(/^#+\s*/, ""));
+        continue;
+      }
+      if (raw.startsWith(">") || raw.startsWith("<!--")) continue;
+      return clipSummary(raw);
+    }
+    return fallback;
+  }
+  const lines = t.split("\n");
+  /** @type {string[]} */
+  const parts = [];
+  let inBlock = false;
+  for (let i = 0; i < lines.length && i < 30; i++) {
+    let line = lines[i].trim();
+    if (!line) {
+      if (parts.length) break; // blank line ends the header once we have content
+      continue;
+    }
+    if (inBlock) {
+      const end = line.includes("*/");
+      const body = line.replace(/\*\//, "").replace(/^\*+\s?/, "").trim();
+      if (body && !isSeparator(body)) parts.push(body);
+      if (end) break;
+      continue;
+    }
+    if (line === "// @ts-check" || line === "/* @ts-check */" || /^\/\/\s*@ts-check/.test(line)) continue;
+    if (line.startsWith("//")) {
+      const body = line.replace(/^\/\/+/, "").trim();
+      if (!body || isSeparator(body)) {
+        if (parts.length) break;
+        continue;
+      }
+      parts.push(body);
+      continue;
+    }
+    if (line.startsWith("/*")) {
+      const oneLine = /\*\//.test(line);
+      const body = line.replace(/^\/\*+/, "").replace(/\*\/.*/, "").trim();
+      if (body && !isSeparator(body)) parts.push(body);
+      if (oneLine) break;
+      inBlock = true;
+      continue;
+    }
+    break; // first real code line — no header
+  }
+  return clipSummary(parts.join(" "));
+}
+
+/** @param {string} s @returns {boolean} a comment rule/separator line, not prose */
+function isSeparator(s) {
+  return /^[-=*_#>\s]+$/.test(s) || /^-{2,}/.test(s);
+}
+
+/** @param {string} s first sentence, collapsed and clipped to ~160 chars */
+function clipSummary(s) {
+  const clean = String(s || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  // First sentence if it ends reasonably early, else a hard clip.
+  const dot = clean.search(/[.:]\s/);
+  const first = dot > 20 && dot < 170 ? clean.slice(0, dot) : clean;
+  return first.length <= 180 ? first : first.slice(0, 177) + "…";
+}
+
+/**
+ * The SITEMAP: every file in the snapshot as `path — one-line description`, the
+ * "full list of files with brief explanations" the read loop chooses from. Files
+ * with no extractable summary list their path alone.
+ * @param {Snapshot} snapshot
+ * @returns {string}
+ */
+export function buildSourceSitemap(snapshot) {
+  const files = (snapshot && Array.isArray(snapshot.files)) ? snapshot.files : [];
+  return files
+    .map((f) => {
+      const d = fileSummary(f.p, f.t);
+      return d ? `${f.p} — ${d}` : f.p;
+    })
+    .join("\n");
+}
+
+/**
+ * The model's parsed read step: the file paths to read this round, whether it
+ * has declared itself done, and its one-line reasoning. Tolerant — never throws;
+ * an empty/absent read list means done (nothing more to read is the natural
+ * terminator, mirroring parseShellRequest).
+ * @typedef {{ read: string[], done: boolean, reasoning: string }} ReadProposal
+ */
+
+/**
+ * Normalize one raw read-step object ({read:[...], reasoning, done}) into a
+ * ReadProposal. Requesting files ALWAYS continues the loop (read them, next
+ * round decides); no files means done.
+ * @param {any} raw
+ * @returns {ReadProposal}
+ */
+export function normalizeReadStep(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const paths = (Array.isArray(r.read) ? r.read : [])
+    .filter((/** @type {any} */ x) => typeof x === "string" && x.trim())
+    .map((/** @type {string} */ x) => x.trim())
+    .slice(0, MAX_FILES_PER_ROUND);
+  const reasoning = typeof r.reasoning === "string" ? r.reasoning.replace(/\s+/g, " ").trim().slice(0, 400) : "";
+  return { read: paths, done: paths.length === 0, reasoning };
+}
+
+/**
+ * Resolve requested file paths to ACTUAL snapshot paths: exact match first
+ * (case-insensitive, leading `./` stripped), then a unique basename match
+ * ("auth.js" → "src/auth.js" when only one file has that basename). Ambiguous
+ * or unknown requests resolve to null. Returns one entry per request, in order.
+ * @param {Snapshot} snapshot
+ * @param {string[]} requested
+ * @returns {Array<{ requested: string, path: string | null }>}
+ */
+export function resolveReadPaths(snapshot, requested) {
+  const files = (snapshot && Array.isArray(snapshot.files)) ? snapshot.files : [];
+  /** @type {Map<string, string>} */
+  const byPath = new Map();
+  /** @type {Map<string, string | null>} */
+  const byBase = new Map();
+  for (const f of files) {
+    byPath.set(f.p.toLowerCase(), f.p);
+    const base = f.p.slice(f.p.lastIndexOf("/") + 1).toLowerCase();
+    byBase.set(base, byBase.has(base) ? null : f.p); // second sighting → ambiguous
+  }
+  return (Array.isArray(requested) ? requested : []).map((raw) => {
+    const norm = String(raw || "").trim().replace(/^\.?\//, "").toLowerCase();
+    let path = byPath.get(norm) || null;
+    if (!path) {
+      const base = norm.slice(norm.lastIndexOf("/") + 1);
+      const hit = byBase.get(base);
+      if (hit) path = hit;
+    }
+    return { requested: String(raw || ""), path };
+  });
+}
+
+/**
+ * Read the requested files out of the snapshot, honoring the running char
+ * budget and skipping ones already read. Each file's text is clamped to
+ * MAX_READ_FILE_CHARS, the whole gathered set to MAX_READ_TOTAL_CHARS.
+ * @param {Snapshot} snapshot
+ * @param {string[]} requested
+ * @param {Set<string>} alreadyRead file paths gathered in earlier rounds
+ * @param {{ used: number }} budget mutated: total chars gathered so far
+ * @returns {Array<{ p: string, text: string, bytes: number, truncated: boolean }>}
+ */
+export function readSnapshotFiles(snapshot, requested, alreadyRead, budget) {
+  const files = (snapshot && Array.isArray(snapshot.files)) ? snapshot.files : [];
+  const resolved = resolveReadPaths(snapshot, requested);
+  const out = [];
+  for (const r of resolved) {
+    if (!r.path || (alreadyRead && alreadyRead.has(r.path))) continue;
+    const f = files.find((x) => x.p === r.path);
+    if (!f) continue;
+    if (budget.used >= MAX_READ_TOTAL_CHARS) break; // budget spent — stop this round
+    const cap = Math.min(MAX_READ_FILE_CHARS, MAX_READ_TOTAL_CHARS - budget.used);
+    const truncated = f.t.length > cap;
+    const text = truncated ? f.t.slice(0, cap) + "\n… [truncated]" : f.t;
+    // Charge the budget by the SOURCE chars kept (the "\n… [truncated]" marker
+    // is bookkeeping, not content), so the total cap is honored exactly.
+    budget.used += truncated ? cap : f.t.length;
+    out.push({ p: r.path, text, bytes: f.s, truncated });
+  }
+  return out;
+}
+
+/**
+ * The labeled context block of the files gathered by the read loop — appended
+ * to the synthesis input as ground truth (the enrichment-block convention).
+ * Empty string when nothing was read (so the input is byte-identical to a run
+ * that only used the retrieved excerpts).
+ * @param {Array<{ p: string, text: string, truncated?: boolean }>} reads
+ * @returns {string}
+ */
+export function buildSourceResearchBlock(reads) {
+  const list = (Array.isArray(reads) ? reads : []).filter((r) => r && r.p && typeof r.text === "string");
+  if (!list.length) return "";
+  const body = list.map((r) => `# ${r.p}${r.truncated ? " (truncated)" : ""}\n${r.text}`).join("\n\n");
+  return (
+    "Source files read from the project's own code during this research (ground " +
+    "truth — quote from these and cite their file paths in the answer):\n\n" +
+    body
+  );
+}
+
+/**
+ * The per-round USER message the loop's step sees: the question, the
+ * conversation context, the sitemap to choose files from, and the files read so
+ * far (round 2+). Shared so the server and any client tier ask identically.
+ * @param {{ question: string, context: string, sitemap: string, priorBlock?: string }} params
+ * @returns {string}
+ */
+export function buildSourceStepMessage({ question, context, sitemap, priorBlock = "" }) {
+  return (
+    `Research question (latest user message):\n${question}\n\n` +
+    `Conversation context:\n${context}\n\n` +
+    `Sitemap — every file in this project's source, with a one-line description. Choose the files to READ from this list:\n${sitemap}\n\n` +
+    (priorBlock
+      ? `${priorBlock}\n\nList the NEXT files you need to read to answer thoroughly (follow imports/references you saw), or reply {"done":true} if you have read enough of the actual code.`
+      : `List the files you need to READ FIRST to research this from the actual source code, or reply {"done":true} if reading the source is not needed for this message.`)
+  );
+}
+
+/**
+ * Run the agentic source-read loop: repeatedly ask the MODEL which files to read
+ * (via the injected `step`) and resolve them from the snapshot (via the injected
+ * `read`), until the model is done or the round cap is hit. Generic over WHO
+ * answers the step and HOW bytes are read, so the server and any client tier
+ * share one driver. Never throws — a failing step or read ends the loop with
+ * whatever was gathered (fail-soft).
+ * @param {{
+ *   step: (priorReads: Array<{ p: string, text: string, truncated?: boolean }>, round: number) => Promise<any>,
+ *   read: (paths: string[], alreadyRead: Set<string>) => Promise<Array<{ p: string, text: string, truncated?: boolean }>>,
+ *   maxRounds?: number,
+ *   onRound?: (info: { round: number, reasoning: string, requested: string[], got: Array<{ p: string }> }) => void,
+ * }} params
+ * @returns {Promise<Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>>}
+ */
+export async function runSourceReadLoop({ step, read, maxRounds = MAX_SOURCE_READ_ROUNDS, onRound }) {
+  /** @type {Array<{ p: string, text: string, bytes?: number, truncated?: boolean }>} */
+  const reads = [];
+  /** @type {Set<string>} */
+  const readPaths = new Set();
+  for (let round = 1; round <= maxRounds; round++) {
+    /** @type {ReadProposal} */
+    let proposal;
+    try {
+      proposal = normalizeReadStep(await step(reads, round));
+    } catch {
+      break; // a failing step ends the loop with what we have (fail-soft)
+    }
+    if (proposal.done || !proposal.read.length) break;
+    /** @type {Array<{ p: string, text: string, truncated?: boolean }>} */
+    let got;
+    try {
+      got = await read(proposal.read, readPaths);
+    } catch {
+      got = [];
+    }
+    const fresh = (Array.isArray(got) ? got : []).filter((g) => g && g.p && !readPaths.has(g.p));
+    for (const g of fresh) readPaths.add(g.p);
+    reads.push(...fresh);
+    if (onRound) onRound({ round, reasoning: proposal.reasoning, requested: proposal.read, got: fresh });
+    if (!fresh.length) break; // nothing new resolved → stop rather than spin
+  }
+  return reads;
+}
+
 // ---- the introspection model picker (pure grouping) ---------------------------
 
 // Introspection mode lets the user choose WHO answers: their own provider key

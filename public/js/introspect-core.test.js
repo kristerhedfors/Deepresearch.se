@@ -27,6 +27,18 @@ import {
   cosineF32Int8,
   retrieveSourceChunks,
   validateRagIndex,
+  fileSummary,
+  buildSourceSitemap,
+  normalizeReadStep,
+  resolveReadPaths,
+  readSnapshotFiles,
+  buildSourceResearchBlock,
+  buildSourceStepMessage,
+  runSourceReadLoop,
+  MAX_FILES_PER_ROUND,
+  MAX_READ_FILE_CHARS,
+  MAX_READ_TOTAL_CHARS,
+  MAX_SOURCE_READ_ROUNDS,
   SOURCE_CHUNK_TARGET,
 } from "./introspect-core.js";
 
@@ -405,4 +417,229 @@ test("retrieveSourceChunks: skips a (p,ci) that no longer resolves after source 
   const top = retrieveSourceChunks(index, s, Float32Array.of(1, 0, 0), 5);
   assert.equal(top.length, 1); // the stale ci:5 is skipped, not returned as undefined
   assert.equal(top[0].text, "one");
+});
+
+// ---- the agentic source-read loop (the "read files as it wants" tool) --------
+
+const SRC_SNAPSHOT = {
+  v: 1,
+  digest: "d",
+  count: 4,
+  bytes: 0,
+  files: [
+    { p: "src/auth.js", s: 30, t: "// @ts-check\n// Identity: session cookie + break-glass admin auth.\nexport function auth() {}" },
+    { p: "src/index.js", s: 20, t: "// @ts-check\n// Entrypoint: request id, identity gate, routing.\nimport {} from './auth.js';" },
+    { p: "css/app.css", s: 10, t: "/* The main app stylesheet: floating glass chrome and waves. */\n.x{}" },
+    { p: "CLAUDE.md", s: 40, t: "# CLAUDE.md\n\nGuidance for Claude Code when working in this repository." },
+  ],
+};
+
+test("fileSummary: extracts a one-liner from //, /* */, and markdown headers", () => {
+  assert.match(fileSummary("src/auth.js", SRC_SNAPSHOT.files[0].t), /Identity: session cookie/);
+  assert.match(fileSummary("css/app.css", SRC_SNAPSHOT.files[2].t), /main app stylesheet/);
+  assert.match(fileSummary("CLAUDE.md", SRC_SNAPSHOT.files[3].t), /Guidance for Claude Code/);
+  // @ts-check preamble is skipped, not returned as the summary.
+  assert.doesNotMatch(fileSummary("src/auth.js", SRC_SNAPSHOT.files[0].t), /ts-check/);
+  // No header → empty, never a crash.
+  assert.equal(fileSummary("x.js", "const x = 1;"), "");
+  assert.equal(fileSummary("x.js", ""), "");
+});
+
+test("buildSourceSitemap: one 'path — description' line per file, falls back to bare path", () => {
+  const map = buildSourceSitemap(SRC_SNAPSHOT);
+  const lines = map.split("\n");
+  assert.equal(lines.length, 4);
+  assert.match(lines[0], /^src\/auth\.js — Identity/);
+  assert.match(lines[3], /^CLAUDE\.md — Guidance/);
+  // A file with no summary lists its path alone (no trailing dash).
+  const bare = buildSourceSitemap({ files: [{ p: "data.json", s: 1, t: "{}" }] });
+  assert.equal(bare, "data.json");
+});
+
+test("normalizeReadStep: tolerant parse; files continue the loop, empty means done", () => {
+  assert.deepEqual(normalizeReadStep({ read: ["src/auth.js", " ", 42, "src/index.js"], reasoning: "  need auth  " }), {
+    read: ["src/auth.js", "src/index.js"],
+    done: false,
+    reasoning: "need auth",
+  });
+  // No files → done, regardless of a done flag.
+  assert.equal(normalizeReadStep({ done: true }).done, true);
+  assert.equal(normalizeReadStep({}).done, true);
+  assert.equal(normalizeReadStep(null).done, true);
+  assert.equal(normalizeReadStep("junk").done, true);
+  // Capped at MAX_FILES_PER_ROUND.
+  const many = normalizeReadStep({ read: Array.from({ length: 20 }, (_, i) => `f${i}.js`) });
+  assert.equal(many.read.length, MAX_FILES_PER_ROUND);
+});
+
+test("resolveReadPaths: exact match, ./ prefix, unique basename, unknown → null", () => {
+  const r = resolveReadPaths(SRC_SNAPSHOT, ["src/auth.js", "./src/index.js", "app.css", "nope.js", "AUTH.JS"]);
+  assert.deepEqual(r.map((x) => x.path), ["src/auth.js", "src/index.js", "css/app.css", null, "src/auth.js"]);
+  // An ambiguous basename (two files share it) resolves to null, not a guess.
+  const ambiguous = {
+    files: [{ p: "a/x.js", s: 1, t: "" }, { p: "b/x.js", s: 1, t: "" }],
+  };
+  assert.equal(resolveReadPaths(ambiguous, ["x.js"])[0].path, null);
+});
+
+test("readSnapshotFiles: dedupes already-read, clamps per-file and total budget", () => {
+  const budget = { used: 0 };
+  const already = new Set();
+  const got = readSnapshotFiles(SRC_SNAPSHOT, ["src/auth.js", "src/index.js", "nope.js"], already, budget);
+  assert.deepEqual(got.map((g) => g.p), ["src/auth.js", "src/index.js"]);
+  assert.ok(budget.used > 0);
+  // Second call with the same file skipped when marked already-read.
+  for (const g of got) already.add(g.p);
+  const again = readSnapshotFiles(SRC_SNAPSHOT, ["src/auth.js"], already, budget);
+  assert.equal(again.length, 0);
+});
+
+test("readSnapshotFiles: truncates a file past MAX_READ_FILE_CHARS and stops at the total cap", () => {
+  const big = "a".repeat(MAX_READ_FILE_CHARS + 5000);
+  const snap = {
+    files: [
+      { p: "big1.js", s: big.length, t: big },
+      { p: "big2.js", s: big.length, t: big },
+      { p: "big3.js", s: big.length, t: big },
+      { p: "big4.js", s: big.length, t: big },
+      { p: "big5.js", s: big.length, t: big },
+    ],
+  };
+  const budget = { used: 0 };
+  const got = readSnapshotFiles(snap, ["big1.js", "big2.js", "big3.js", "big4.js", "big5.js"], new Set(), budget);
+  assert.ok(got[0].truncated, "a file over the per-file cap is truncated");
+  assert.ok(got[0].text.length <= MAX_READ_FILE_CHARS + 32);
+  assert.ok(budget.used <= MAX_READ_TOTAL_CHARS);
+  // The total cap stops us before all five huge files fit.
+  assert.ok(got.length < 5, "the total budget stops before all five huge files are read");
+});
+
+test("buildSourceResearchBlock: labels each file with its path; empty when nothing read", () => {
+  assert.equal(buildSourceResearchBlock([]), "");
+  assert.equal(buildSourceResearchBlock(null), "");
+  const block = buildSourceResearchBlock([
+    { p: "src/auth.js", text: "code A" },
+    { p: "src/index.js", text: "code B", truncated: true },
+  ]);
+  assert.match(block, /ground\s+truth/i);
+  assert.match(block, /# src\/auth\.js\ncode A/);
+  assert.match(block, /# src\/index\.js \(truncated\)\ncode B/);
+});
+
+test("buildSourceStepMessage: carries sitemap round 1; prior reads round 2+", () => {
+  const first = buildSourceStepMessage({ question: "assess security", context: "ctx", sitemap: "src/auth.js — auth" });
+  assert.match(first, /Research question/);
+  assert.match(first, /Sitemap/);
+  assert.match(first, /READ FIRST/);
+  const second = buildSourceStepMessage({ question: "q", context: "c", sitemap: "s", priorBlock: "already read files" });
+  assert.match(second, /already read files/);
+  assert.match(second, /NEXT files/);
+});
+
+test("runSourceReadLoop: multi-round navigation, dedup, and done terminates", async () => {
+  // A fake model that reads index.js first, then follows its import to auth.js,
+  // then declares done — exactly the "follow the code" behavior we want.
+  const rounds = [{ read: ["src/index.js"] }, { read: ["src/auth.js", "src/index.js"] }, { done: true }];
+  const seenPrior = [];
+  const budget = { used: 0 };
+  const reads = await runSourceReadLoop({
+    step: async (priorReads, round) => {
+      seenPrior.push(priorReads.map((r) => r.p));
+      return rounds[round - 1];
+    },
+    read: async (paths, already) => readSnapshotFiles(SRC_SNAPSHOT, paths, already, budget),
+  });
+  // index.js read round 1, auth.js round 2 (index.js re-request deduped), done round 3.
+  assert.deepEqual(reads.map((r) => r.p), ["src/index.js", "src/auth.js"]);
+  // The step saw the growing transcript each round.
+  assert.deepEqual(seenPrior[0], []);
+  assert.deepEqual(seenPrior[1], ["src/index.js"]);
+});
+
+test("runSourceReadLoop: a throwing step ends the loop fail-soft with what was gathered", async () => {
+  const budget = { used: 0 };
+  let n = 0;
+  const reads = await runSourceReadLoop({
+    step: async () => {
+      n++;
+      if (n === 1) return { read: ["src/auth.js"] };
+      throw new Error("model down");
+    },
+    read: async (paths, already) => readSnapshotFiles(SRC_SNAPSHOT, paths, already, budget),
+  });
+  assert.deepEqual(reads.map((r) => r.p), ["src/auth.js"]);
+});
+
+test("runSourceReadLoop: round 1 done (no files) yields an empty gather, never throws", async () => {
+  const reads = await runSourceReadLoop({
+    step: async () => ({ done: true }),
+    read: async () => {
+      throw new Error("should never be called");
+    },
+  });
+  assert.deepEqual(reads, []);
+});
+
+test("runSourceReadLoop: bounded to MAX_SOURCE_READ_ROUNDS even if the model never stops", async () => {
+  let calls = 0;
+  const snap = { files: Array.from({ length: 40 }, (_, i) => ({ p: `f${i}.js`, s: 1, t: `// file ${i}\nx` })) };
+  const budget = { used: 0 };
+  await runSourceReadLoop({
+    step: async (_prior, round) => {
+      calls++;
+      return { read: [`f${round}.js`] }; // always asks for a new file, never done
+    },
+    read: async (paths, already) => readSnapshotFiles(snap, paths, already, budget),
+  });
+  assert.equal(calls, MAX_SOURCE_READ_ROUNDS);
+});
+
+// ---- integration: the loop over the REAL committed snapshot ------------------
+// Proves the whole chain (sitemap → read request → resolve → gather) works
+// against real data — the "Make a security assessment" scenario that motivated
+// this: research the ACTUAL source, no web search, no unrelated third-party repos.
+
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+test("runSourceReadLoop over the real source snapshot reads real files with real content", async (t) => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const snapPath = join(root, "public/introspect/source-snapshot.json");
+  if (!existsSync(snapPath)) {
+    t.skip("source-snapshot.json absent");
+    return;
+  }
+  const snapshot = validateSnapshot(JSON.parse(readFileSync(snapPath, "utf8")));
+  assert.ok(snapshot && snapshot.count > 100, "the real snapshot loads and has the full tree");
+
+  // Sitemap: every file gets a line; core files carry a real description.
+  const sitemap = buildSourceSitemap(snapshot);
+  assert.equal(sitemap.split("\n").length, snapshot.count);
+  assert.match(sitemap, /src\/auth\.js — [A-Za-z]/, "auth.js has an extracted description");
+  assert.match(sitemap, /src\/index\.js — [A-Za-z]/, "index.js has an extracted description");
+
+  // A fake "security-savvy" model that navigates the source across rounds.
+  const budget = { used: 0 };
+  const plan = [
+    { read: ["src/index.js", "src/auth.js", "src/security-headers.js"], reasoning: "entry, auth, headers" },
+    { read: ["src/storage.js", "src/vault.js"], reasoning: "privacy model" },
+    { done: true },
+  ];
+  const reads = await runSourceReadLoop({
+    step: async (_prior, round) => plan[round - 1],
+    read: async (paths, already) => readSnapshotFiles(snapshot, paths, already, budget),
+  });
+
+  const paths = reads.map((r) => r.p);
+  assert.ok(paths.includes("src/auth.js") && paths.includes("src/index.js"), "read the real requested files");
+  assert.ok(budget.used > 0 && budget.used <= MAX_READ_TOTAL_CHARS, "respected the total budget");
+  // The gathered text is the ACTUAL file content, not a doc summary.
+  const auth = reads.find((r) => r.p === "src/auth.js");
+  assert.match(auth.text, /export/, "auth.js content is real source code");
+
+  // The synthesis block carries the real code, path-labeled.
+  const block = buildSourceResearchBlock(reads);
+  assert.match(block, /# src\/auth\.js/);
+  assert.match(block, /ground truth/i);
 });

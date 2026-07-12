@@ -93,6 +93,9 @@ test("runIntrospectionEnrichment: ALWAYS injects the source in dev mode — the 
     assert.match(text, /Never say you have no access to the source or that this isn't a coding tool/, ask);
     assert.equal(state.introspectionCount, 1, ask);
     assert.equal(s.done.length, 1, ask);
+    // The loaded snapshot is stashed so the pipeline's source-read loop can
+    // READ files from it without a second ASSETS fetch.
+    assert.ok(state.sourceSnapshot && state.sourceSnapshot.count === 2, ask);
   }
 });
 

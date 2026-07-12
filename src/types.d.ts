@@ -246,6 +246,13 @@ export interface RequestState {
   introspection: boolean;
   /** 1 when the source snapshot was actually folded into the conversation. */
   introspectionCount: number;
+  /**
+   * The deployed source snapshot the introspection enrichment loaded, stashed
+   * so the pipeline's source-research phase can READ files from it (the agentic
+   * read loop) without a second ASSETS fetch. Absent when dev mode is off or
+   * the snapshot was unavailable.
+   */
+  sourceSnapshot?: import("../public/js/introspect-core.js").Snapshot | null;
   googleMaps: boolean;
   /** 1 when Google Maps data was folded in. */
   mapsCount: number;
