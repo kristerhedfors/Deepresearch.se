@@ -1416,3 +1416,12 @@ se/rver and se/cure, the included slash as the distinguishing marker —
 everywhere a short name is needed (the branding rule in CLAUDE.md was
 amended, and the acronyms were swept out of /architecture/, /help/,
 /welcome/, and the /cure page's visible copy).
+
+A follow-up the same day fixed how the tier names render on the
+architecture page: the first pass had drawn them as invented solid-colour
+pills (a mustard se/cure pill read as "yellow characters with a thin dark
+edge" — nothing like the real chrome). They now reproduce each product
+header exactly — "deepresearch." in the light rounded sans, the slashed
+tail in heavy monospace, se/rver's tail golden on the app's blue field and
+se/cure's flag-blue on the /cure khaki — so a tier token on the page is
+literally its header in miniature, same font, colours and style.

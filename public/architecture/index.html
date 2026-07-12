@@ -51,13 +51,25 @@
       background: var(--panel-2); border-radius: 4px; padding: 0 .3rem;
       font-size: .85em; overflow-wrap: anywhere;
     }
-    /* Tier chips — used wherever a tier is named in running structure. */
-    .chip {
-      display: inline-block; font-weight: 700; font-size: .78rem;
-      border-radius: 999px; padding: .05rem .55rem; white-space: nowrap;
+    /* Tier wordmarks — rendered EXACTLY like the two product headers
+       (app.css's .brand and /cure/drc.css's .brand): "deepresearch." in
+       the light ROUNDED sans, the slashed tail in heavy MONOSPACE, each
+       tier's flag color on its own field — se/rver golden on the app's
+       blue, se/cure flag-blue on the /cure khaki. Same font, colors, and
+       style as the headers; no invented pill. */
+    .wm {
+      font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
+      font-weight: 300; letter-spacing: .02em; white-space: nowrap;
+      padding: .05em .42em; border-radius: 6px;
     }
-    .chip.drs { background: var(--drs); color: #fff; }
-    .chip.drc { background: var(--drc); color: #fff; }
+    .wm b {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800; font-size: 1.02em; letter-spacing: 0;
+    }
+    .wm.rver { background: #0d4fa0; color: #dceaff; }
+    .wm.rver b { color: #f5c518; text-shadow: 0 1px 2px rgba(10, 46, 92, .5); }
+    .wm.cure { background: #c3b091; color: #3d3418; }
+    .wm.cure b { color: #1a56b0; text-shadow: 0 1px 2px rgba(255, 255, 255, .45); }
     /* The paired diagrams: side by side, stacking on narrow screens.
        SVGs scale via viewBox; nothing may scroll sideways. */
     .pair { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
@@ -82,9 +94,9 @@
     th.drc-h { border-top: 3px solid var(--drc); }
     td.drs-c { background: #f4faff; }
     td.drc-c { background: #faf6e8; color: var(--drc-text); }
-    .verdict { font-weight: 700; }
-    .verdict.drs { color: var(--drs); }
-    .verdict.drc { color: var(--drc); }
+    .verdict { font-weight: 700; border-radius: 3px; padding: 0 .12em; }
+    .verdict.drs { box-shadow: inset 0 -.42em 0 rgba(13, 79, 160, .16); }
+    .verdict.drc { box-shadow: inset 0 -.42em 0 rgba(124, 106, 36, .20); }
   </style>
 </head>
 <body>
@@ -97,11 +109,11 @@
   <section>
     <h2>One product, two answers to the same question</h2>
     <p class="lead">DeepResearch.se ships the same deep-research assistant
-    twice, as a deliberate pair: deepresearch.<strong>se/rver</strong> —
-    <span class="chip drs">se/rver</span>, the signed-in tier, where a
+    twice, as a deliberate pair: <span class="wm rver">deepresearch.<b>se/rver</b></span>,
+    the signed-in tier, where a
     Cloudflare Worker orchestrates the research — and
-    deepresearch.<strong>se/cure</strong> —
-    <span class="chip drc">se/cure</span>, the public client-side tier, where <em>your browser</em> is the research
+    <span class="wm cure">deepresearch.<b>se/cure</b></span>,
+    the public client-side tier, where <em>your browser</em> is the research
     engine and the server is deliberately absent from every data path. Same
     floating glass UI (se/cure in khaki), same five-phase pipeline shape, same
     no-function-calling determinism — and opposite answers to the question
@@ -173,7 +185,7 @@
           <text x="210" y="458" text-anchor="middle" font-size="9.5" fill="#2f5d8e">never the conversation, a filename, or who asked</text>
         </svg>
         </div>
-        <figcaption><span class="chip drs">se/rver</span> — deepresearch.<strong>se/rver</strong>:
+        <figcaption><span class="wm rver">deepresearch.<b>se/rver</b></span> —
         the Worker orchestrates;
         data the server handles is encrypted at rest, and its handling is
         governed by policy.</figcaption>
@@ -219,7 +231,7 @@
           <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
         </svg>
         </div>
-        <figcaption><span class="chip drc">se/cure</span> — deepresearch.<strong>se/cure</strong>:
+        <figcaption><span class="wm cure">deepresearch.<b>se/cure</b></span> —
         the browser orchestrates;
         the server's absence from the path IS the privacy guarantee.</figcaption>
       </figure>
@@ -229,8 +241,8 @@
   <section>
     <h2>Privacy, paired</h2>
     <p class="muted">The same concerns, answered by each architecture. The
-    pattern to notice: on <span class="chip drs">se/rver</span> each row is a
-    <em>promise the code keeps</em>; on <span class="chip drc">se/cure</span>
+    pattern to notice: on <span class="wm rver">deepresearch.<b>se/rver</b></span> each row is a
+    <em>promise the code keeps</em>; on <span class="wm cure">deepresearch.<b>se/cure</b></span>
     each row is a <em>consequence of the structure</em> — there is no
     server-side behavior to trust, because there is no server-side behavior.</p>
     <table>
@@ -238,8 +250,8 @@
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h">deepresearch.<strong>se/rver</strong></th>
-          <th class="drc-h">deepresearch.<strong>se/cure</strong></th>
+          <th class="drs-h"><span class="wm rver">deepresearch.<b>se/rver</b></span></th>
+          <th class="drc-h"><span class="wm cure">deepresearch.<b>se/cure</b></span></th>
         </tr>
       </thead>
       <tbody>
@@ -292,8 +304,8 @@
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h">deepresearch.<strong>se/rver</strong></th>
-          <th class="drc-h">deepresearch.<strong>se/cure</strong></th>
+          <th class="drs-h"><span class="wm rver">deepresearch.<b>se/rver</b></span></th>
+          <th class="drc-h"><span class="wm cure">deepresearch.<b>se/cure</b></span></th>
         </tr>
       </thead>
       <tbody>
@@ -329,7 +341,7 @@
         </tr>
         <tr>
           <th>Execution sandbox</th>
-          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="chip drs">se/rver</span> the Worker's reliable model does (<code>/api/bash/step</code>); on <span class="chip drc">se/cure</span> even that decision happens client-side on your key. Execution never leaves the browser on either tier.</td>
+          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="wm rver">deepresearch.<b>se/rver</b></span> the Worker's reliable model does (<code>/api/bash/step</code>); on <span class="wm cure">deepresearch.<b>se/cure</b></span> even that decision happens client-side on your key. Execution never leaves the browser on either tier.</td>
         </tr>
       </tbody>
     </table>
@@ -413,10 +425,10 @@
     CheerpX runtime and the public disk service carry their own licensing
     terms to review before this graduates from experimental.</p>
     <p>And the pairing holds here too: the sandbox gives
-    <span class="chip drs">se/rver</span> a capability without a privacy cost
+    <span class="wm rver">deepresearch.<b>se/rver</b></span> a capability without a privacy cost
     (your files mount into a VM that lives and dies in your tab — the
     server only ever suggests the next command), and it gives
-    <span class="chip drc">se/cure</span> a capability that would otherwise be
+    <span class="wm cure">deepresearch.<b>se/cure</b></span> a capability that would otherwise be
     impossible (a no-server tier still gets code execution, because
     execution never needed the server in the first place).</p>
   </section>
@@ -430,7 +442,7 @@
     both tiers whole means every user gets to pick which trade they're
     making, and the ghost button in the main app is the door between them:
     it doesn't flip a flag anymore, it walks you to
-    deepresearch.<strong>se/cure</strong>.</p>
+    <span class="wm cure">deepresearch.<b>se/cure</b></span>.</p>
     <p class="muted">Deeper reading: the prompt-by-prompt
     <a href="/story/">build story</a>, the project's purpose and use
     restrictions on <a href="/build/">About this project</a>, and the full
