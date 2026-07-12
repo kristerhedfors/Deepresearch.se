@@ -16,12 +16,18 @@
 // variables, so the class that overrides them must sit on the same element).
 // CSS `:root.dev-mode { … }` (public/css/app.css) repaints the whole palette.
 //
-// Boot order (public/js/app.js):
-//   1. At module top, apply the CACHED value synchronously → instant, no flash,
-//      correct across a PWA relaunch even offline.
+// Boot order:
+//   0. A tiny inline `<script data-devtheme>` in index.html's <head> applies the
+//      cached value at PARSE TIME, before first paint — the ONLY point early
+//      enough that iOS honors the standalone status-bar tint for a PWA relaunch
+//      (an in-place JS change after the bar settles is ignored; the khaki /cure
+//      tint works for the same reason — it's set on a fresh page load). That
+//      inline copy is deliberately minimal; this module is the full logic.
+//   1. At app.js module top, apply the CACHED value again (class no-op if the
+//      inline script already set it; also re-asserts the status-bar tint).
 //   2. When loadSettings() resolves, reconcile with the server's AUTHORITATIVE
 //      developer_mode (a flip on another device, or an account that never had
-//      the local cache) → applyDeveloperTheme rewrites both the class and cache.
+//      the local cache) → applyDeveloperTheme rewrites the class, cache, and tint.
 // The developer knob (public/js/account-views.js wireDeveloperKnob) also calls
 // applyDeveloperTheme on toggle, so the palette flips the moment it's switched.
 //
