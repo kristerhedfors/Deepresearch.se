@@ -249,8 +249,9 @@ description: >-
     fleet of spinning logo vortices that untwist into 8-panel
     beach-umbrella tops, get contours drawn while color drains, then
     tilt to a 3D side view (shaft + J-hook fade in) where the wireframe
-    umbrellas spin, sway and sink. Skip = clock-jump to the fade phase,
-    so it always ends through the same path.
+    umbrellas spin, sway and sink. The FIRST tap stops and removes the
+    overlay immediately (straight to cleanup + onDone — no fade to wait
+    through), so it can never sit in the way of the page.
 - **History pane rows & the iOS paint constraint (2026-07-08):** each
   chat row is a swipe-to-reveal card (`history-ui.js`): swiping left
   slides the WHOLE card via inline `margin-left` (`.swiped` parks it at

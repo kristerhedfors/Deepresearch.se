@@ -181,17 +181,13 @@ export function playUmbrellaIntro(opts = {}) {
   // spin-rate ramp slows the turn without any angle jump).
   const fleet = FLEET.map((u) => ({ ...u, spin: u.phase * 1.3 }));
 
-  let start = performance.now();
+  const start = performance.now();
   let last = start;
   let raf = 0;
 
-  function skip() {
-    // Jump the clock to the fade phase instead of cutting — the fade still
-    // reveals the page underneath smoothly.
-    const t = performance.now() - start;
-    if (t < T.fadeStart) start = performance.now() - T.fadeStart;
-  }
-  canvas.addEventListener("pointerdown", skip);
+  // First tap stops and REMOVES the animation immediately — no fade-out to
+  // wait through, nothing left in the way of the page underneath.
+  canvas.addEventListener("pointerdown", cleanup);
 
   function cleanup() {
     cancelAnimationFrame(raf);
