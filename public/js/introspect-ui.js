@@ -229,7 +229,7 @@ function bubbleHtml() {
          already goes straight from this browser on <i>your</i> key — the private choice
          by default.</p>
          <p class="iui-dim" style="margin:.35rem 0 0">☁ Remote server models are a
-         deepresearch.<b>se/rver</b> feature — they run on this site's server.</p>`
+         deepresearch.<b>se<span class="sl">/</span>rver</b> feature — they run on this site's server.</p>`
       : `<b>Introspection mode.</b> I can read my own source code — ask how I'm built,
          or name a file like <code>src/pipeline.js</code>.
          <label for="iui-model">Who answers?</label>

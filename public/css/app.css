@@ -105,6 +105,9 @@ header {
   color: #f5c518; /* the logotype's golden swirl */
   text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
 }
+/* Tighten the slash so se/cure and se/rver read closer to "secure"/"server"
+   wherever a wordmark tail wraps its slash in <span class="sl">. */
+.sl { margin: 0 -.12em; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;

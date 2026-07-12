@@ -97,6 +97,8 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
+/* Tighten the slash so se/cure and se/rver read closer to "secure"/"server". */
+.sl { margin: 0 -.12em; }
 .intro-card h1 {
   font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
   font-weight: 300;

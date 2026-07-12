@@ -21,7 +21,7 @@
        DIMMED (.drs) — tapping one explains the feature and points there. -->
   <header>
     <div class="header-bar">
-      <div class="brand" id="brand" title="About se/cure">deepresearch.<b>se/cure</b><span class="brand-tier"> — client-side · <span id="stamp">d5</span></span></div>
+      <div class="brand" id="brand" title="About se/cure">deepresearch.<b>se<span class="sl">/</span>cure</b><span class="brand-tier"> — client-side · <span id="stamp">d5</span></span></div>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chats &amp; project (this browser)" aria-label="Chats and project">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -52,7 +52,7 @@
         <div id="drspop" hidden>
           <strong id="drspop-title"></strong><br>
           <span id="drspop-text"></span><br>
-          <a href="/login">Sign in — deepresearch.<b>se/rver</b> →</a>
+          <a href="/login">Sign in — deepresearch.<b>se<span class="sl">/</span>rver</b> →</a>
         </div>
         <form id="form">
           <textarea id="input" rows="1" placeholder="Ask a research question…" autofocus></textarea>
@@ -71,7 +71,7 @@
           <div id="search-row">
             <span id="budgetwrap" class="drs-wrap drs" data-feature="budget" title="Research time target — a se/rver feature">
               <input id="budget" type="range" min="0" max="100" step="1" value="28" disabled aria-label="Research time target (a se/rver feature)">
-              <span id="budgetval">se/rver</span>
+              <span id="budgetval">se<span class="sl">/</span>rver</span>
             </span>
             <label id="searchtoggle" aria-label="Research phases on/off" title="Research phases on/off — Off answers in one pass; live WEB search is a se/rver feature">
               <input id="websearch" type="checkbox" checked>
@@ -103,7 +103,7 @@
           encrypted blob stored <b>in this browser only</b>; your
           <code>/my/project-…</code> link reopens it here. Keep the secret in your
           password manager; losing it (or clearing this browser's site data) loses
-          the project. Cross-device sync is what the signed-in se/rver offers.</p>
+          the project. Cross-device sync is what the signed-in se<span class="sl">/</span>rver offers.</p>
         <!-- A real form so 1Password / Apple Passwords capture the secret as a
              site password: username = the project reference, password = the
              secret. Submit is intercepted; nothing is ever posted. -->
@@ -131,10 +131,10 @@
         <p id="gatestatus" class="muted" hidden></p>
       </details>
 
-      <p class="drawer-note">se/cure — <i>deep research secure</i> — keeps everything in this
+      <p class="drawer-note">se<span class="sl">/</span>cure — <i>deep research secure</i> — keeps everything in this
         browser and calls the model provider directly. The hosted tier with live web
         search, documents and cloud storage is
-        <a href="/login">deepresearch.<b>se/rver</b></a>.</p>
+        <a href="/login">deepresearch.<b>se<span class="sl">/</span>rver</b></a>.</p>
     </aside>
   </div>
 
@@ -146,7 +146,7 @@
         <strong>Account · this browser</strong>
         <button id="accountclose" type="button" aria-label="Close">✕</button>
       </div>
-      <p class="acct-lead">se/cure has <b>no accounts</b> and no server-side data. Your chats,
+      <p class="acct-lead">se<span class="sl">/</span>cure has <b>no accounts</b> and no server-side data. Your chats,
         projects and API keys live <b>only in this browser</b>. The one thing that ever
         leaves your device is the model call itself — sent straight to your chosen
         provider (OpenAI, Groq or Berget) on your own key. This site's server is never in the
@@ -224,7 +224,7 @@
   <!-- ---- first-visit glass pane: the landing, condensed ---- -->
   <div id="intro" hidden>
     <div class="intro-card">
-      <h1>deepresearch.<b>se/cure</b> <span class="tier">deep research secure</span></h1>
+      <h1>deepresearch.<b>se<span class="sl">/</span>cure</b> <span class="tier">deep research secure</span></h1>
       <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
         your own OpenAI, Groq or Berget API key and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
@@ -238,10 +238,10 @@
       <div class="row">
         <button type="button" id="introstart">Start chatting</button>
         <a class="btnlike" href="/welcome/">About</a>
-        <a class="btnlike" href="/login">Sign in to se/rver</a>
+        <a class="btnlike" href="/login">Sign in to se<span class="sl">/</span>rver</a>
       </div>
-      <p class="muted">The dimmed buttons you'll see are se/rver features — <i>deep research
-        server</i>, the signed-in tier at deepresearch.<b>se/rver</b>: the hosted research
+      <p class="muted">The dimmed buttons you'll see are se<span class="sl">/</span>rver features — <i>deep research
+        server</i>, the signed-in tier at deepresearch.<b>se<span class="sl">/</span>rver</b>: the hosted research
         pipeline with live web search and cited sources, documents and projects,
         cloud storage, on hosted EU models.</p>
     </div>
