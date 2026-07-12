@@ -363,7 +363,7 @@ describe("directPrompt / searchOffPrompt", () => {
       assert.match(p, /slider in the composer/);
       assert.match(p, /"Shodan host intelligence", OFF by default/);
       assert.match(p, /"Store history in the cloud", ON by default/);
-      assert.match(p, /ghost button \(upper right\) opens GHOST MODE — deepresearch\.se\/cure/);
+      assert.match(p, /ghost button \(upper right\) opens GHOST MODE — DeepResearch\.Se\/cure/);
     });
 
     test("searchOffPrompt inherits the capabilities note via directPrompt", () => {

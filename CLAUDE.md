@@ -18,16 +18,23 @@ is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 JSON planning phases always stay on Berget). Web search is **Exa**.
 
 **Branding rule (2026-07-10, amended 2026-07-12):** the two product tiers
-are ALWAYS written as their full URL without the scheme, with the wordplay
-tail in bold: deepresearch.**se/cure** (the client-side tier) and
-deepresearch.**se/rver** (the signed-in tier) — in UI text, headers,
+are ALWAYS written as their full URL without the scheme, in **CamelCase**
+(2026-07-12 directive), with the wordplay tail in bold:
+DeepResearch.**Se/cure** (the client-side tier) and
+DeepResearch.**Se/rver** (the signed-in tier) — in UI text, headers,
 docs, and prompts alike (plain text drops the bold, never the full-URL
-form). No space inside the URL. Where running copy needs a SHORT name,
-use the slashed tail alone — **se/cure** and **se/rver** — the included
-slash is the distinguishing marker. The acronyms DRC/DRS are INTERNAL
-names (code identifiers, CLAUDE.md, skills, commit messages) and must
-not appear in user-facing copy (2026-07-12 directive: having a third
-name pair confuses readers).
+form). The capital tail-S makes the wordplay read as the word it hides:
+**Se/cure** → "Secure", **Se/rver** → "Server". No space inside the URL.
+Where running copy needs a SHORT name, use the slashed tail alone —
+**Se/cure** and **Se/rver** — the included slash is the distinguishing
+marker. In the rendered UI the slash is pulled in with a `.sl` span
+(`margin: 0 -.12em`) so it reads even tighter. The CamelCase is a DISPLAY
+convention only: functional URLs, `href`s, `fetch`/route paths, publish
+slugs, and host strings stay lowercase (`/cure`, `/rver`,
+`deepresearch.se`) — the host is case-insensitive, the paths are not.
+The acronyms DRC/DRS are INTERNAL names (code identifiers, CLAUDE.md,
+skills, commit messages) and must not appear in user-facing copy
+(2026-07-12 directive: having a third name pair confuses readers).
 
 ## Git workflow
 
@@ -145,8 +152,8 @@ Server (`src/`):
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
-| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `deepresearch.se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
-| `pub.js` | Published research replays — the `deepresearch.se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
+| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
+| `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
@@ -706,7 +713,7 @@ what docs claim); and update the skill list below plus the skill's
   as the probe — plus the iOS rendering/gesture facts the method
   established.
 - **publish-research** — publishing frozen deep-research replays at
-  `deepresearch.se/cure/<slug>` ("deep research secure <slug>" — the slug
+  `DeepResearch.Se/cure/<slug>` ("deep research secure <slug>" — the slug
   must complete the phrase): sourcing a session, the frozen JSON shape,
   the admin-only `PUT /api/pub/:slug`, live verification, and the
   continue-on-own-keys handoff into the DRC app (`src/pub.js`,

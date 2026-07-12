@@ -94,13 +94,13 @@ function gateStatus(msg) {
   el.textContent = msg || "";
 }
 
-// Render prose we build for innerHTML with the se/cure & se/rver wordmark
+// Render prose we build for innerHTML with the Se/cure & Se/rver wordmark
 // slash tightened (the .sl rule) so it reads closer to "secure"/"server".
 // Escapes &<> FIRST, so any plain string stays safe as markup.
 function wmHtml(s) {
   return String(s)
     .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
-    .replace(/se\/(cure|rver)/g, 'se<span class="sl">/</span>$1');
+    .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
 }
 
 function workStatus(msg) {
@@ -240,26 +240,26 @@ function closeSettings() {
 const DRS_FEATURES = {
   ghost: {
     title: "Ghost mode — you are here",
-    text: "The ghost in the signed-in app brings you HERE: se/cure is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
+    text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
   attach: {
     title: "Attachments & documents",
-    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a se/rver feature: the hosted pipeline parses and indexes your documents for cited answers.",
+    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a Se/rver feature: the hosted pipeline parses and indexes your documents for cited answers.",
   },
   camera: {
     title: "Photos",
-    text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a se/rver feature of the hosted pipeline.",
+    text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a Se/rver feature of the hosted pipeline.",
   },
   budget: {
     title: "Research time target",
-    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. se/cure's client-side phases run without a time budget; live web search itself is also a se/rver feature.",
+    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. Se/cure's client-side phases run without a time budget; live web search itself is also a Se/rver feature.",
   },
 };
 
 function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
-  $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a se/rver feature");
+  $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a Se/rver feature");
   $("drspop-text").innerHTML = wmHtml(f.text);
   $("drspop").hidden = false;
 }
@@ -520,7 +520,7 @@ async function refreshModels() {
   // when api.berget.ai started serving browser CORS — it's a real
   // provider above now.
   groups.push(
-    '<optgroup label="se/rver only — deepresearch.se/rver">' +
+    '<optgroup label="Se/rver only — DeepResearch.Se/rver">' +
       '<option disabled>Anthropic Claude</option>' +
       "</optgroup>",
   );
@@ -711,7 +711,7 @@ async function send(ev) {
     $("keyspanel").open = true;
     $("key-input").focus();
     workStatus(
-      "One thing first: se/cure runs on YOUR API key, sent straight from this browser to the " +
+      "One thing first: Se/cure runs on YOUR API key, sent straight from this browser to the " +
         "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
         "or Berget key above (Groq has a free tier at console.groq.com; Berget is EU-hosted), press " +
         "Save keys, then send again.",
@@ -834,7 +834,7 @@ if (themeMeta) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About se/cure · d14 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d14 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }

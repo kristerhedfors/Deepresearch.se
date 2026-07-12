@@ -94,7 +94,7 @@ function phaseOf(body) {
   if (system.includes("extract research notes")) return "harvest";
   if (system.includes("audit research coverage")) return "gap";
   if (system.includes("strict reviewer")) return "validate";
-  if (system.includes("deepresearch.se/cure assistant")) return "direct";
+  if (system.includes("DeepResearch.Se/cure assistant")) return "direct";
   return "synth";
 }
 
