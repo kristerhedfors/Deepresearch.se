@@ -80,7 +80,11 @@ select orderings by different mechanisms, `order=` vs `open=1` vs `errors=1`),
 `script`, and `skill` (which skill documents the loop). The `?format=text`
 render prints, per board, the exact `scripts/<id>` and `curl` line to fetch
 its prioritized list — an agent reading only that output knows how to reach
-everything. Today's entries: **security**, **feedback**, **chatlogs**.
+everything. Today's entries: **security**, **features**, **feedback**,
+**chatlogs**. The two PRIORITY boards (security + features) both feed a Claude
+Code loop with an admin-decided work order; feedback is a dynamic-queue variant
+and chatlogs a read-only tap. Data-flow diagrams for all of them:
+`docs/DECISION-BOARD-LOOPS.md`.
 
 ## The point of all this: parallelize on the user's priority order
 
@@ -133,7 +137,11 @@ core's pure surface under its historical names rather than copying it, and
 a test pins identity (`security.validateReviewPatch === validateBoardPatch`
 in `board.test.js`).
 
-## Standing up a NEW board (the features panel walks this list)
+## Standing up a NEW board
+
+The **features board** (`src/features.js`) is the worked example — the
+**feature-board** skill walks this checklist end to end and covers running the
+build loop it feeds. Copy that board (itself copied from `security-risks.js`).
 
 1. **Catalog module** `src/<board>.js`: `<BOARD>_ITEMS` (stable ids like
    `F-1…`, array order = the doc's default order), a projection, a

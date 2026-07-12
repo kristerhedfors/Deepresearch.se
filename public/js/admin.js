@@ -52,6 +52,85 @@ async function load() {
   renderUsers();
   renderConfig();
   loadSecurity();
+  loadFeatures();
+}
+
+// ---- decision-board interaction (shared by every selection board) ---------
+// Every selection board renders its items COLLAPSED to their header row:
+// badges + title + votes only. Tapping a header opens that item's full
+// detail (summary + the review controls); in the work-order (priority) view
+// each header carries a drag GRIP, and dragging reorders the list — the new
+// top-to-bottom order is written back as the items' priority (1..N), i.e. the
+// fixed order the agent loop consumes. The mechanics below are generic
+// (`.board` / `.board-item` / `.board-detail` / `.grip`), so any future board
+// reuses them; the security board is the only client-rendered consumer today.
+
+// Tap a header (anywhere but a control or the grip) to open/close its detail.
+function wireBoardItemToggle(el) {
+  el.addEventListener("click", (e) => {
+    if (e.target.closest(".head") && !e.target.closest("button, .grip, .vote")) {
+      el.classList.toggle("open");
+    }
+  });
+}
+
+// The sibling the dragged row should sit ABOVE for a given pointer Y — the
+// nearest item whose vertical center is below the cursor (null → append last).
+function boardDropTarget(container, y) {
+  let closest = null;
+  let closestOffset = -Infinity;
+  for (const el of container.querySelectorAll(".board-item:not(.dragging)")) {
+    const box = el.getBoundingClientRect();
+    const offset = y - (box.top + box.height / 2);
+    if (offset < 0 && offset > closestOffset) {
+      closestOffset = offset;
+      closest = el;
+    }
+  }
+  return closest;
+}
+
+// Pointer-based drag reorder (works on touch, unlike native HTML5 DnD). Drag
+// starts only on a `.grip` (so the list still scrolls and headers still tap),
+// reorders the DOM live, and on drop calls onReorder with the new id order.
+function enableBoardReorder(container, onReorder) {
+  let drag = null;
+  container.addEventListener("pointerdown", (e) => {
+    if (!container.classList.contains("reorderable")) return;
+    const grip = e.target.closest(".grip");
+    if (!grip) return;
+    const item = grip.closest(".board-item");
+    if (!item) return;
+    drag = { item, pointerId: e.pointerId, startY: e.clientY, moving: false };
+    container.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  container.addEventListener("pointermove", (e) => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (!drag.moving) {
+      if (Math.abs(e.clientY - drag.startY) < 6) return;
+      drag.moving = true;
+      drag.item.classList.add("dragging");
+      container.classList.add("reordering");
+    }
+    e.preventDefault();
+    const after = boardDropTarget(container, e.clientY);
+    if (after == null) container.appendChild(drag.item);
+    else if (after !== drag.item) container.insertBefore(drag.item, after);
+  });
+  const finish = async (e) => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const d = drag;
+    drag = null;
+    container.releasePointerCapture?.(e.pointerId);
+    d.item.classList.remove("dragging");
+    container.classList.remove("reordering");
+    if (!d.moving) return; // a still tap on the grip — not a reorder
+    const ids = [...container.querySelectorAll(".board-item")].map((el) => el.dataset.id);
+    await onReorder(ids);
+  };
+  container.addEventListener("pointerup", finish);
+  container.addEventListener("pointercancel", finish);
 }
 
 // ---- security-risk review board -------------------------------------------
@@ -62,6 +141,7 @@ async function load() {
 // same ordering). Two views: fix order (priority) and documented severity.
 
 let secOrder = "priority";
+let secItems = [];
 
 async function loadSecurity() {
   let data;
@@ -72,8 +152,12 @@ async function loadSecurity() {
     $("security-sec").hidden = false;
     return;
   }
+  secItems = data.items;
   const box = $("security");
   box.innerHTML = "";
+  // Reorder is only meaningful in the work-order view (severity view is a
+  // fixed documented ranking).
+  box.className = "board" + (secOrder === "priority" ? " reorderable" : "");
   $("sec-order-priority").className = secOrder === "priority" ? "on" : "secondary";
   $("sec-order-severity").className = secOrder === "severity" ? "on" : "secondary";
 
@@ -83,9 +167,11 @@ async function loadSecurity() {
     const posLabel =
       secOrder === "priority" && open ? `<b class="muted">#${++fixPos}</b>` : "";
     const el = document.createElement("div");
-    el.className = "rowitem";
+    el.className = "rowitem board-item";
+    el.dataset.id = it.id;
     el.innerHTML = `
       <div class="head">
+        <span class="grip" title="Drag to reorder">⠿</span>
         ${posLabel}
         <span class="badge sev-${it.severity}">${it.severity}</span>
         ${open ? "" : `<span class="badge ${escapeHtml(it.status)}">${escapeHtml(it.status)}</span>`}
@@ -98,20 +184,24 @@ async function loadSecurity() {
           <b>${it.votes}</b>
           <button data-act="down" class="secondary" title="Downvote">▼</button>
         </span>
+        <span class="caret" aria-hidden="true">▸</span>
       </div>
-      <p class="muted" style="margin:.35rem 0 0">${escapeHtml(it.summary)}</p>
-      <div class="sec-review">
-        <label>Priority
-          <input type="number" min="1" max="999" step="1" data-f="priority"
-            value="${it.priority ?? ""}" placeholder="—"></label>
-        <label>Score
-          <input type="text" data-f="score" value="${escapeHtml(it.score || "")}"
-            placeholder="e.g. CVSS 6.5 / AV:N…" maxlength="120"></label>
-        <label style="flex:1">Note
-          <input type="text" data-f="note" value="${escapeHtml(it.note || "")}"
-            placeholder="suggestion / rationale" maxlength="2000"></label>
-        <button data-act="save" class="secondary">Save</button>
+      <div class="board-detail">
+        <p class="muted" style="margin:.35rem 0 0">${escapeHtml(it.summary)}</p>
+        <div class="sec-review">
+          <label>Priority
+            <input type="number" min="1" max="999" step="1" data-f="priority"
+              value="${it.priority ?? ""}" placeholder="—"></label>
+          <label>Score
+            <input type="text" data-f="score" value="${escapeHtml(it.score || "")}"
+              placeholder="e.g. CVSS 6.5 / AV:N…" maxlength="120"></label>
+          <label style="flex:1">Note
+            <input type="text" data-f="note" value="${escapeHtml(it.note || "")}"
+              placeholder="suggestion / rationale" maxlength="2000"></label>
+          <button data-act="save" class="secondary">Save</button>
+        </div>
       </div>`;
+    wireBoardItemToggle(el);
     el.addEventListener("click", async (e) => {
       const act = e.target.dataset?.act;
       if (!act) return;
@@ -136,10 +226,142 @@ async function loadSecurity() {
   $("security-sec").hidden = false;
 }
 
+// Drag-drop reorder → write the new visual order as priority 1..N (the loop's
+// fixed work order); only PATCH items whose priority actually changed.
+enableBoardReorder($("security"), async (ids) => {
+  const byId = new Map(secItems.map((it) => [it.id, it]));
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const it = byId.get(ids[i]);
+      if (it && it.priority !== i + 1) {
+        await api(`/security/${ids[i]}`, { method: "PATCH", body: { priority: i + 1 } });
+      }
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadSecurity();
+});
+
 for (const mode of ["priority", "severity"]) {
   $(`sec-order-${mode}`).addEventListener("click", () => {
     secOrder = mode;
     loadSecurity();
+  });
+}
+
+// ---- features/priority board ----------------------------------------------
+// The SECOND loop channel (see the feature-board skill): FEATURES.md §3's
+// backlog with the same board choice UX as security — votes, an EFFORT
+// estimate (the shared "score" field, relabelled), a note, and the explicit
+// PRIORITY (drag the headers) that is the build loop's fixed order. Same
+// collapse-to-header + drag mechanics; impact instead of severity, build order
+// instead of fix order. ?format=text / scripts/features reads the same order.
+
+let featOrder = "priority";
+let featItems = [];
+
+async function loadFeatures() {
+  let data;
+  try {
+    data = await api(`/features?order=${featOrder}`);
+  } catch (err) {
+    $("features").innerHTML = `<p class="err">${escapeHtml(err.message)}</p>`;
+    $("features-sec").hidden = false;
+    return;
+  }
+  featItems = data.items;
+  const box = $("features");
+  box.innerHTML = "";
+  box.className = "board" + (featOrder === "priority" ? " reorderable" : "");
+  $("feat-order-priority").className = featOrder === "priority" ? "on" : "secondary";
+  $("feat-order-impact").className = featOrder === "impact" ? "on" : "secondary";
+
+  let buildPos = 0;
+  for (const it of data.items) {
+    const open = it.status === "open";
+    const posLabel =
+      featOrder === "priority" && open ? `<b class="muted">#${++buildPos}</b>` : "";
+    const el = document.createElement("div");
+    el.className = "rowitem board-item";
+    el.dataset.id = it.id;
+    el.innerHTML = `
+      <div class="head">
+        <span class="grip" title="Drag to reorder">⠿</span>
+        ${posLabel}
+        <span class="badge imp-${it.impact}">${it.impact} impact</span>
+        ${open ? "" : `<span class="badge ${escapeHtml(it.status)}">${escapeHtml(it.status)}</span>`}
+        ${it.priority != null ? `<span class="badge prio">priority ${it.priority}</span>` : ""}
+        <b>${escapeHtml(it.id)} · ${escapeHtml(it.title)}</b>
+        <span class="spacer"></span>
+        <span class="vote">
+          <button data-act="up" class="secondary" title="Upvote">▲</button>
+          <b>${it.votes}</b>
+          <button data-act="down" class="secondary" title="Downvote">▼</button>
+        </span>
+        <span class="caret" aria-hidden="true">▸</span>
+      </div>
+      <div class="board-detail">
+        <p class="muted" style="margin:.35rem 0 0">${escapeHtml(it.summary)}</p>
+        <div class="sec-review">
+          <label>Priority
+            <input type="number" min="1" max="999" step="1" data-f="priority"
+              value="${it.priority ?? ""}" placeholder="—"></label>
+          <label>Effort
+            <input type="text" data-f="score" value="${escapeHtml(it.score || "")}"
+              placeholder="e.g. S / ~2 days" maxlength="120"></label>
+          <label style="flex:1">Note
+            <input type="text" data-f="note" value="${escapeHtml(it.note || "")}"
+              placeholder="direction / suggestion" maxlength="2000"></label>
+          <button data-act="save" class="secondary">Save</button>
+        </div>
+      </div>`;
+    wireBoardItemToggle(el);
+    el.addEventListener("click", async (e) => {
+      const act = e.target.dataset?.act;
+      if (!act) return;
+      try {
+        if (act === "up" || act === "down") {
+          await api(`/features/${it.id}/vote`, { method: "POST", body: { dir: act } });
+          await loadFeatures();
+        } else if (act === "save") {
+          const body = {};
+          for (const input of el.querySelectorAll("[data-f]")) {
+            body[input.dataset.f] = input.value === "" ? null : input.value;
+          }
+          await api(`/features/${it.id}`, { method: "PATCH", body });
+          await loadFeatures();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    box.appendChild(el);
+  }
+  $("features-sec").hidden = false;
+}
+
+// Drag-drop reorder → write the new visual order as priority 1..N (the build
+// loop's fixed order); only PATCH items whose priority actually changed.
+enableBoardReorder($("features"), async (ids) => {
+  const byId = new Map(featItems.map((it) => [it.id, it]));
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      const it = byId.get(ids[i]);
+      if (it && it.priority !== i + 1) {
+        await api(`/features/${ids[i]}`, { method: "PATCH", body: { priority: i + 1 } });
+      }
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+  await loadFeatures();
+});
+
+for (const mode of ["priority", "impact"]) {
+  $(`feat-order-${mode}`).addEventListener("click", () => {
+    featOrder = mode;
+    loadFeatures();
   });
 }
 

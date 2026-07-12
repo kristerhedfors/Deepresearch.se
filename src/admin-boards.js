@@ -58,6 +58,20 @@ export const ADMIN_BOARDS = [
     skill: "security-posture",
   },
   {
+    id: "features",
+    title: "Feature build board",
+    purpose:
+      "FEATURES.md §3's feature backlog with the admin's votes/effort/notes and the explicit priority — the feature-build loop's fixed, build-top-down order. The second loop channel next to security.",
+    feeds_loop: true,
+    api: "/api/admin/features",
+    text_query: "format=text&order=priority",
+    orderings: ["priority", "impact"],
+    order_help:
+      "order=priority (default) is the admin-decided BUILD order the loop works top-down; order=impact is the documented-impact view (votes/priority ignored). The text view always renders the build order. Add open=1 to hide shipped/dropped items.",
+    script: "scripts/features",
+    skill: "feature-board",
+  },
+  {
     id: "feedback",
     title: "Feedback queue",
     purpose:
