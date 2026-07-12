@@ -7,8 +7,12 @@
 // ENTIRELY IN THIS BROWSER — the server never runs a shell. This module owns
 // the VM lifecycle and exposes two things the rest of the app uses:
 //
-//   - a floating terminal panel (xterm.js) the user can open to watch (and
-//     type into) the live shell, and
+//   - a floating terminal panel (xterm.js) the user can OPT to open to watch
+//     (and type into) the live shell — but it NO LONGER pops up on its own when
+//     the agent runs commands. Auto-opening covered the screen and broke the
+//     prompt-first flow; instead the raw commands + output drift faintly across
+//     the page background (public/js/agent-backdrop.js, fed from execInSandbox
+//     below), and the panel stays hidden unless the user explicitly opens it.
 //   - execInSandbox(cmd) → {exitCode, stdout, stderr}: the programmatic bridge
 //     the bash-lite agent loop (public/js/bash-agent.js) drives.
 //
@@ -33,6 +37,7 @@ import {
   projHash,
   sanitizeProjName,
 } from "./sandbox-files.js";
+import { feedCommand, feedResult } from "./agent-backdrop.js";
 
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
 const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";
@@ -211,7 +216,10 @@ function readData(str) {
 /**
  * Boot the sandbox once (idempotent). Resolves true when the VM is ready to
  * exec, false if it cannot run (no cross-origin isolation) or boot failed.
- * Shows the terminal panel so the user sees progress and the live shell.
+ * The terminal panel is BUILT (so exec has a console) but deliberately left
+ * hidden — activity surfaces on the faint page-background layer instead; the
+ * user can still open the panel by hand (toggleSandbox) if they want the live
+ * shell.
  *
  * `fileProvider` (optional) supplies the user's files to mount: an async
  * function resolving to `{ session: [{name,type,bytes}], project: {name, id,
@@ -251,8 +259,10 @@ async function bootVM(fileProvider = null) {
     setStatus("error");
     return false;
   }
+  // Build the panel (exec needs the xterm console) but do NOT show it — the
+  // agent's activity is surfaced faintly on the page background instead of
+  // taking over the screen. The user can still open it by hand.
   buildPanel();
-  showSandbox();
   setStatus("booting");
 
   await Promise.all([
@@ -583,6 +593,10 @@ export async function exportFile(path) {
 export function execInSandbox(command) {
   const run = async () => {
     if (vmState !== "ready" || !cx) return { exitCode: 1, stdout: "", stderr: "sandbox not ready" };
+    // Surface the command on the faint page-background activity layer (never
+    // throws — it's decoration). "shell" is the default single-agent channel;
+    // multiple agents each pass their own id and the layer clips between them.
+    feedCommand("shell", command);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const marker = "###EXEC" + id + ":";
     const of = "/tmp/_o" + id;
@@ -624,7 +638,9 @@ export function execInSandbox(command) {
     let stderr = "";
     try { stdout = m[1] ? atob(m[1]) : ""; } catch {}
     try { stderr = m[2] ? atob(m[2]) : ""; } catch {}
-    return { exitCode: parseInt(m[3], 10), stdout, stderr };
+    const result = { exitCode: parseInt(m[3], 10), stdout, stderr };
+    feedResult("shell", result); // mirror the raw output to the background layer
+    return result;
   };
   const next = execQueue.then(run, run);
   execQueue = next.then(() => {}, () => {});

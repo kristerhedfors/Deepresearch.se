@@ -88,6 +88,12 @@ export function isPublicAsset(url, method) {
     // must be public or the /cure module graph (drc-research.js → sandbox.js)
     // fails to link.
     url.pathname === "/js/sandbox-files.js" ||
+    // sandbox.js also imports the agent activity backdrop (the faint
+    // page-background command/output layer that replaced the auto-popping
+    // terminal) and its pure core — both are in the same public graph, so both
+    // must be allowlisted or /cure goes dark.
+    url.pathname === "/js/agent-backdrop.js" ||
+    url.pathname === "/js/agent-backdrop-core.js" ||
     // Introspection (developer mode): the shared pure core (imported by
     // /cure/drc.js — same public-graph rule as the modules above) and the
     // committed source-snapshot artifact both tiers fetch. The snapshot is

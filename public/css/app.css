@@ -77,6 +77,81 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
 }
+/* Agent activity backdrop: the raw commands + output the execution sandbox
+   runs, drifting faintly across the sky-blue field BEHIND the chat instead of
+   popping the terminal open over it. A fixed, click-through layer (behind
+   content, above the wave); its overall opacity is set inline from the user's
+   transparency slider (0 hides it — public/js/agent-backdrop.js). The text is
+   already faint on its own so even "full" reads as background texture. */
+#dr-agent-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.dr-agent-backdrop-text {
+  position: absolute;
+  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
+  margin: 0;
+  max-height: 62vh;
+  overflow: hidden;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(10, 46, 92, .5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Soft top fade so lines scroll into view instead of hard-cutting, and a
+     gentle side-to-side wave across the characters (kept subtle on purpose). */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  animation: agent-wave 7.5s ease-in-out infinite;
+}
+@keyframes agent-wave {
+  0%, 100% { transform: translateX(0) skewX(0deg); }
+  50% { transform: translateX(7px) skewX(-1.1deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dr-agent-backdrop-text { animation: none; }
+}
+/* The transparency bar: a small floating glass pill that appears WHILE the
+   sandbox terminal is running (public/js/agent-backdrop.js) and auto-hides when
+   it goes quiet. It is the ONLY control for the backdrop's transparency — there
+   is no settings entry. Slide to 0 to turn the layer off. */
+.dr-backdrop-bar {
+  position: fixed;
+  top: .55rem; right: .7rem;
+  z-index: 7;
+  display: flex; align-items: center; gap: .45rem;
+  padding: .28rem .6rem;
+  background: rgba(255, 255, 255, .55);
+  border: 1px solid rgba(255, 255, 255, .6);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px rgba(4, 30, 60, .14);
+  pointer-events: auto;
+  font-size: .72rem; color: var(--muted);
+}
+.dr-backdrop-bar[hidden] { display: none; }
+.dr-backdrop-bar-icon { font-size: .9rem; line-height: 1; color: var(--accent); }
+.dr-backdrop-bar-val { min-width: 2.4em; text-align: right; font-weight: 600; }
+.dr-backdrop-range {
+  -webkit-appearance: none; appearance: none;
+  width: 96px; height: 4px; margin: 0;
+  border-radius: 999px; background: var(--border); cursor: pointer;
+}
+.dr-backdrop-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
+}
+.dr-backdrop-range::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
+}
 /* The chrome floats: header and footer are fixed, click-transparent
    strips (pointer-events: none) whose glass ITEMS re-enable pointer
    events — content scrolls beneath and stays visible between items and
@@ -1116,6 +1191,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .switch input:checked + .switch-track .switch-thumb { left: 20px; }
 .switch input:disabled + .switch-track { opacity: .45; cursor: not-allowed; }
 .setting-desc { font-size: .82em; line-height: 1.45; margin: .15rem 0 .4rem; }
+
 
 /* Projects (public/js/projects-ui.js): the panel overlay reuses the
    history drawer's glass panel, docked wider; the chip sits in the header
