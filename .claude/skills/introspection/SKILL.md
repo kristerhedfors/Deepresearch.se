@@ -126,15 +126,52 @@ no scale is stored. Retrieval RE-CHUNKS the snapshot to resolve `{p, ci}` →
 text, so the returned code is ALWAYS current even if vectors lag.
 
 Embeddings must match the model the server embeds the query with (Berget
-e5-large, 1024-d). The builder gets them via `BERGET_API_TOKEN` (direct) OR,
-when that's absent, the live `/api/embed` with the break-glass creds
-(`BASIC_AUTH_USER`/`PASS`) — production holds the key. It is RESILIENT: a
-token-dense chunk that 502s the batch is retried, then the batch is split to
-singles and any lone unembeddable chunk is skipped (logged), so one bad chunk
-never aborts the ~2100-chunk build. Test files (`*.test.js`, `tests/`) are
-excluded from the index (low value for "how does the app work"; still in the
-snapshot, so a user can name one by path for its full text). NOT part of `npm
-run bundle` (that stays pure/offline) and NOT run in CI.
+e5-large, 1024-d). The builder gets them via the raw Berget key — env
+`BERGET_API_KEY` (current name) or `BERGET_API_TOKEN` (older name), either
+works — calling Berget's `/v1/embeddings` DIRECTLY, OR, when neither key is
+set, the live `/api/embed` with the break-glass creds (`BASIC_AUTH_USER`/
+`PASS`) — production holds the key. It is RESILIENT (see the failure classes
+below): rate-limits are paced and retried, over-long chunks are shrunk in
+place, and only a persistently-failing lone chunk is ever skipped — so nothing
+aborts the ~2100-chunk build. Test files (`*.test.js`, `tests/`) are excluded
+from the
+index (low value for "how does the app work"; still in the snapshot, so a user
+can name one by path for its full text). NOT part of `npm run bundle` (that
+stays pure/offline) and NOT run in CI.
+
+**Speed & the two hard limits (2026-07-12 rebuild — full build now ~25 s / 98
+requests, 0 skipped; was 4m40s).** A full rebuild embeds ~2100 chunks. Two
+Berget facts shape the loop, both learned the hard way:
+
+1. **e5's window is 512 TOKENS, not chars.** Dense code runs ~2.4 chars/token,
+   so a full 1400-char code chunk is ~540 tokens and **400s** ("maximum context
+   length"). The builder pre-truncates every chunk to **1200 chars** before
+   embedding — the chunker's ADVANCE (target 1400 − overlap 200), so every byte
+   of source stays covered by at least one chunk's vector (no gaps) while only
+   the densest chunks lose a short tail. The retrieved TEXT is always the FULL
+   chunk (re-chunked from the snapshot), so this trims a vector's tail, never
+   what the user sees. A chunk still over 512 tokens at 1200 chars is shrunk
+   further on demand (below) — never dropped.
+2. **Berget caps at 300 requests/MINUTE.** A global min-interval GATE on request
+   starts (default 230 ms ≈ 260/min) keeps the aggregate rate under the ceiling
+   no matter how many retries/shrinks fire — single-threaded JS makes the
+   gate's read-modify-write atomic across the concurrent workers. This is the
+   correctness guard: without it, a burst of splits 429s and those chunks get
+   SKIPPED (coverage holes) — the bug behind the 4m40s attempt.
+
+Given those, the loop: pre-truncated batches (default 32) run through a
+concurrency POOL (default 8) behind the gate. Failure classes — (a) **429 /
+rate-limit** → wait 2 s and retry, NEVER skip; (b) **too-long 400** → shrink
+EVERY chunk in the batch ×0.8 and retry the batch (one dense chunk poisons the
+whole batch, and shrinking uniformly costs ~1 request vs the request-storm of
+binary-splitting a dense-file batch down to singles; dense chunks cluster in
+dense files, so the collateral trim mostly lands on already-dense chunks); (c)
+**transient 5xx/network** → 2 backoff retries, then binary split, then skip a
+lone straggler. Each chunk owns a unique `{p, ci}` slot, so parallel batches
+never collide on write-back. Net: a full rebuild is ~70–110 requests, well
+under a minute; a delta rebuild is a handful of chunks, near-instant. Tunables
+(env): `INTROSPECT_EMBED_CONCURRENCY`, `INTROSPECT_EMBED_INTERVAL_MS` (gate
+spacing; raise it if Berget's limit tightens), `INTROSPECT_EMBED_BATCH`.
 
 **DELTA rebuilds (2026-07-12).** The index carries a per-file content hash
 (`hashes: {p: sha256/16}`). A rebuild re-embeds ONLY files whose hash changed
