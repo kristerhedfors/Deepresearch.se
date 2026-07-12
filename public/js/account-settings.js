@@ -6,8 +6,7 @@
 // from account-views.js's shared settingRow/wireSettingPopovers building
 // blocks; the panel shell (showView) lives in account.js.
 
-import { renderConfigKnobs, settingRange, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
-import { backdropOpacityPct, setBackdropOpacity } from "./agent-backdrop.js";
+import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
 
@@ -52,19 +51,6 @@ const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
   to Google — never your whole question or anything about your account. It
   runs only when your message names an address or you attach a located photo,
   and independently of the web-search switch.`;
-
-const BACKDROP_INFO = `<strong>Sandbox activity backdrop</strong><br>
-  When the execution sandbox runs commands, the raw commands and their output
-  drift <b>faintly across the page background</b> instead of a terminal popping
-  open over your chat — so you keep some visibility while staying in the
-  prompt. If several agents run at once, the layer clips between them.<br>
-  Drag the slider to set how visible the layer is; <b>0 turns it off</b>
-  entirely. This is a per-browser display preference — it changes nothing that
-  runs, and needs no account.`;
-
-function backdropValueLabel(pct) {
-  return pct <= 0 ? "Off" : pct + "%";
-}
 
 /**
  * Fetches fresh settings and renders the Settings sub-view: the
@@ -139,21 +125,12 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
-    ${settingRange({
-      id: "backdropslider",
-      label: "Sandbox activity backdrop",
-      value: backdropOpacityPct(),
-      popId: "backdroppop",
-      info: BACKDROP_INFO,
-      valueLabel: backdropValueLabel(backdropOpacityPct()),
-    })}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
-  wireBackdropSlider();
 
   if (usable) wireCloudStorageKnob();
   if (shodanUsable) {
@@ -203,20 +180,6 @@ function wireCloudStorageKnob() {
     } finally {
       knob.disabled = false;
     }
-  });
-}
-
-// The agent-activity backdrop slider: a purely client-side (localStorage)
-// display preference, applied live as it's dragged. No server write, no
-// availability gate — it works for every user, break-glass sessions included.
-function wireBackdropSlider() {
-  const slider = document.getElementById("backdropslider");
-  const val = document.getElementById("backdropsliderval");
-  if (!slider) return;
-  slider.addEventListener("input", () => {
-    const pct = Number(slider.value) || 0;
-    setBackdropOpacity(pct);
-    if (val) val.textContent = backdropValueLabel(pct);
   });
 }
 

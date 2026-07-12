@@ -6,15 +6,19 @@
 //
 // Instead of popping the sandbox terminal open (which covered the screen and
 // broke the prompt-first flow), the raw commands and output the agent runs
-// drift faintly across the page's sky-blue background. The user stays in the
-// composer and still sees what's happening. A settings slider tunes the
-// transparency for every user (localStorage, so it works signed-out and on
-// /cure too); 0 turns the layer off entirely.
+// drift faintly across the page's sky-blue background, and — THIS is the whole
+// UX — a small TRANSPARENCY BAR appears while the terminal is running so the
+// user tunes how visible that layer is, right there, live. There is NO settings
+// entry: the bar IS the control, shown only during activity and auto-hidden
+// when the terminal goes quiet. When the layer is turned all the way off (0),
+// the text layer is not built or rendered at all (optimized away) — only the
+// tiny bar shows, so the user can bring it back.
 //
 // The single feed point is execInSandbox in sandbox.js, so BOTH tiers (DRS and
-// DRC) and any agent that runs commands surface here automatically — no
-// callback threading through stream.js / drc-research.js. Callers may pass a
-// channel id per agent; when several are active the layer clips between them.
+// DRC) and any agent that runs commands surface here automatically. Callers may
+// pass a channel id per agent; when several are active the layer clips between
+// them. The chosen transparency is remembered per browser (localStorage) so the
+// bar comes back where the user left it — but it is never a config screen.
 
 import {
   CHANNEL_CLIP_MS,
@@ -30,14 +34,23 @@ import {
 } from "./agent-backdrop-core.js";
 
 const STORE_KEY = "dr_agent_backdrop";
+// How long the transparency bar lingers after the last command before it
+// auto-hides (the terminal has gone quiet). Kept alive while the user is
+// touching it.
+const BAR_HIDE_MS = 6000;
 
 const model = createBackdropModel();
-let layer = null; // the fixed background element
+let layer = null; // the fixed background text element (built lazily, only when on)
 let pre = null; // the <pre> the active channel renders into
+let bar = null; // the floating transparency slider (built lazily on first activity)
+let barRange = null;
+let barVal = null;
 let clipTimer = 0; // round-robin between channels when >1 is active
+let hideTimer = 0; // auto-hide the bar after inactivity
+let interacting = false; // user is touching the bar — don't auto-hide
 let pref = null; // cached opacity percentage (lazy-read from localStorage)
 
-// ---- preference persistence -------------------------------------------------
+// ---- preference persistence (remembered position, NOT a settings screen) ----
 
 function readPref() {
   if (pref != null) return pref;
@@ -56,28 +69,32 @@ function writePref(pct) {
   } catch { /* ignore */ }
 }
 
-/** The current transparency setting (0..100). Read by the settings slider. */
+function valLabel(pct) {
+  return pct <= 0 ? "Off" : pct + "%";
+}
+
+/** The current transparency (0..100) — remembered slider position. */
 export function backdropOpacityPct() {
   return readPref();
 }
 
-/** Whether the layer is enabled (non-zero) — read by the settings label. */
+/** Whether the layer is enabled (non-zero). */
 export function backdropOn() {
   return backdropEnabled(readPref());
 }
 
 /**
- * Set the transparency (0..100) from the settings slider, persist it, and apply
- * it live. 0 removes the layer from view.
+ * Set the transparency (0..100), persist it, and apply it live. 0 removes the
+ * text layer from view (and skips building it). Used by the bar's slider.
  * @param {number} pct
  */
 export function setBackdropOpacity(pct) {
   const v = parseOpacityPref(pct);
   writePref(v);
-  applyOpacity();
+  applyPref();
 }
 
-// ---- DOM --------------------------------------------------------------------
+// ---- the background text layer ----------------------------------------------
 
 function ensureLayer() {
   if (layer || typeof document === "undefined" || !document.body) return layer;
@@ -103,6 +120,20 @@ function applyOpacity() {
   layer.style.opacity = String(opacityCss(pct));
 }
 
+// Apply the current preference to the world: build/show the text layer when on,
+// hide it when off (0) — the "if not shown at all, just optimize that case".
+function applyPref() {
+  if (backdropOn()) {
+    ensureLayer();
+    render();
+    applyOpacity();
+    syncClipTimer();
+  } else {
+    applyOpacity(); // hides the layer if it exists; nothing built if it doesn't
+    syncClipTimer();
+  }
+}
+
 function render() {
   if (!pre) return;
   // Newest at the bottom, like a real terminal tail; the CSS clips the top so
@@ -125,12 +156,83 @@ function syncClipTimer() {
   }
 }
 
-// A fresh command feeds its own channel and immediately focuses it (the model
-// makes the newest-active channel win), so live work always shows even while
-// the clip timer is mid-cycle between older channels.
+// ---- the floating transparency bar (the whole UX) ---------------------------
+
+function ensureBar() {
+  if (bar || typeof document === "undefined" || !document.body) return bar;
+  bar = document.createElement("div");
+  bar.id = "dr-backdrop-bar";
+  bar.className = "dr-backdrop-bar";
+  bar.hidden = true;
+
+  const icon = document.createElement("span");
+  icon.className = "dr-backdrop-bar-icon";
+  icon.textContent = "◐";
+  icon.title = "Sandbox terminal — background transparency";
+
+  barRange = document.createElement("input");
+  barRange.type = "range";
+  barRange.min = "0";
+  barRange.max = "100";
+  barRange.step = "1";
+  barRange.className = "dr-backdrop-range";
+  barRange.setAttribute("aria-label", "Terminal backdrop transparency");
+  barRange.value = String(readPref());
+
+  barVal = document.createElement("span");
+  barVal.className = "dr-backdrop-bar-val";
+  barVal.textContent = valLabel(readPref());
+
+  barRange.addEventListener("input", () => {
+    const pct = Number(barRange.value) || 0;
+    setBackdropOpacity(pct);
+    if (barVal) barVal.textContent = valLabel(pct);
+    interacting = true;
+    keepBarAlive();
+  });
+  barRange.addEventListener("change", () => { interacting = false; scheduleHide(); });
+  bar.addEventListener("pointerenter", () => { interacting = true; showBar(); });
+  bar.addEventListener("pointerleave", () => { interacting = false; scheduleHide(); });
+
+  bar.appendChild(icon);
+  bar.appendChild(barRange);
+  bar.appendChild(barVal);
+  document.body.appendChild(bar);
+  return bar;
+}
+
+function showBar() {
+  ensureBar();
+  if (!bar) return;
+  if (barRange) barRange.value = String(readPref());
+  if (barVal) barVal.textContent = valLabel(readPref());
+  bar.hidden = false;
+  keepBarAlive();
+}
+
+function keepBarAlive() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
+  scheduleHide();
+}
+
+function scheduleHide() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
+  if (interacting || typeof setTimeout === "undefined") return;
+  hideTimer = setTimeout(() => {
+    if (bar && !interacting) bar.hidden = true;
+  }, BAR_HIDE_MS);
+}
+
+// ---- the feed (called from execInSandbox) -----------------------------------
+
+// A command or its output arrived → the terminal is running: show the bar (the
+// control), and — only when the layer isn't turned off — build/render the faint
+// text. At 0 the bar still shows so the user can bring the layer back, but no
+// text layer is built or updated (the optimized case).
 function feed(fn, channel, payload) {
   try {
-    if (!backdropOn()) return; // layer off — don't even build the DOM
+    showBar();
+    if (!backdropOn()) return; // off — optimize: skip the text layer entirely
     ensureLayer();
     fn(model, channel || "shell", payload);
     render();
