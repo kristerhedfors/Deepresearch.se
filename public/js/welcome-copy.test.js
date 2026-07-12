@@ -39,6 +39,17 @@ test("the first-visit message states the required facts", () => {
   // The precise instructions: which button does what.
   assert.match(text, /ghost/i);
   assert.match(text, /account button/i);
+  // The tier headings wear the app headers' brand treatment (2026-07-12
+  // follow-up): the wordplay tails are the ONLY bold in the pane — the
+  // site names carry the emphasis, the bullets stay plain.
+  const bolds = pane.match(/<b[^>]*>[\s\S]*?<\/b>/g) || [];
+  assert.deepEqual(
+    bolds.map((b) => b.replace(/<[^>]+>/g, "")),
+    ["se/cure", "se/rver"],
+    "bold is reserved for the two tier tails",
+  );
+  assert.match(pane, /<h3 class="wtier">deepresearch\.<b>se\/cure<\/b><\/h3>/);
+  assert.match(pane, /<h3 class="wtier">deepresearch\.<b>se\/rver<\/b><\/h3>/);
   // The links the pane must carry.
   for (const href of ["/story/", "/build/", "/help/", "github.com/kristerhedfors/Deepresearch.se"]) {
     assert.ok(pane.includes(`href="${href}`) || pane.includes(`href="https://${href}`), "links " + href);
