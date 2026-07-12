@@ -61,7 +61,6 @@ import {
   SNAPSHOT_PATH,
   buildIntrospectionBlock,
   introspectionActive,
-  maybeRepoPathMention,
   validateSnapshot,
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
@@ -646,18 +645,24 @@ async function loadSnapshotOnce() {
 }
 
 async function introspectionContext(conv, latestText) {
+  // Developer mode on = always give the model the site's own source, so any
+  // phrasing ("code examples from the site") works — no brittle intent gate.
+  // (DRC has no dense server index; it injects the orientation + file index +
+  // named files from the snapshot the browser already fetches. The client-side
+  // provider embedder can't cheaply re-embed the whole codebase, so retrieval
+  // stays a DRS feature; the snapshot block still lets the model answer.)
   if (state.developerMode !== true) return { block: "", fileProvider: null };
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
-    if (!introspectionActive(texts) && !texts.some((t) => maybeRepoPathMention(t))) {
-      return { block: "", fileProvider: null };
-    }
-    phaseLine("Loading the source snapshot…");
+    phaseLine("Reading the site's own source…");
     const snap = await loadSnapshotOnce();
-    if (!snap || !introspectionActive(texts, snap)) return { block: "", fileProvider: null };
+    if (!snap) return { block: "", fileProvider: null };
     engageIntrospection(); // TIN slides in — the mode's visible marker
+    // The full file index is worth its tokens only for strong "how are you
+    // built / list files" asks; otherwise orientation + named files carry it.
     const block = buildIntrospectionBlock(snap, {
       latestText,
+      includeIndex: introspectionActive(texts, snap),
       sandboxMounted: state.bashLite === true,
     });
     // The sandbox boots lazily; if it does, the whole tree lands at /src.

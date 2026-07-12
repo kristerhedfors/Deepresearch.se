@@ -143,6 +143,7 @@ import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } 
  *   conversation: Conversation,
  *   reinforceJsonOnly: boolean,
  *   shellBlock: string,
+ *   hasSource: boolean,
  *   lastUser: string,
  *   convText: string,
  *   imageParts: import('./types.js').ContentPart[],
@@ -203,6 +204,11 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // byte-identical to a run without the feature. Fed into synthesis and the
     // direct/search-off replies as ground truth the assistant produced.
     shellBlock: buildShellTranscript(/** @type {any} */ (state).shellTranscript || []),
+    // Developer mode (introspection): runEnrichments above appended the site's
+    // own source to `convo` and set introspectionCount when it did, so the
+    // answer prompts flip their capabilities line (hasSource) to use that
+    // source instead of denying it — the "Code examples from site" fix.
+    hasSource: !!(/** @type {any} */ (state).introspectionCount),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
     // Image parts of the latest user message ride along into synthesis so a
@@ -292,7 +298,7 @@ async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock }) },
+    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -400,7 +406,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock }) },
+    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -679,7 +685,7 @@ async function runSynthesis(ctx) {
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock }) },
+    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

@@ -187,14 +187,17 @@ export const notesPrompt = (priorEntities = [], { reinforceJsonOnly = false } = 
 // input; default false keeps the output byte-identical to a run without the
 // experimental sandbox (prompts.test + the eval ledgers depend on that).
 /**
- * @param {{ hasShell?: boolean }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean }} [opts]
  * @returns {string}
  */
-export const synthPrompt = ({ hasShell = false } = {}) =>
+export const synthPrompt = ({ hasShell = false, hasSource = false } = {}) =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
   (hasShell
     ? "If the input includes a \"Linux sandbox session\" block, it is real output the assistant produced by running commands in an in-browser Linux VM — treat it as ground truth (no citation number needed) and use it directly in the answer, e.g. reporting a computed value or a command's result.\n"
+    : "") +
+  (hasSource
+    ? "DEVELOPER MODE: the input includes an \"Introspection: deepresearch.se source\" block — the site's OWN source code (relevant excerpts + orientation). For questions about how this site works or for code examples from this project, treat that block as ground truth: quote the real code and cite file paths (no numbered citation needed for it). Never claim you lack access to the source.\n"
     : "") +
   "Format in Markdown (the UI renders it). Use REAL line breaks: a blank line between paragraphs and before every heading, and — critically — put each table on its own lines with a blank line before it and EACH ROW ON ITS OWN LINE (header row, the |---|---| separator row, then one line per data row). Never run a heading or a table onto the end of a sentence.\n" +
   "- Start with a 1-3 sentence conclusion in bold.\n" +
@@ -357,38 +360,59 @@ const CAPABILITIES_NOTE =
   "14. Interactive quizzes. Ask to be quizzed (e.g. \"quiz me on this document\", \"quiz me on the French Revolution with 8 questions\", \"förhör mig på kapitlet\") and the answer becomes an interactive quiz: one question at a time with multiple-choice alternatives plus a free-text field to answer in your own words, immediate feedback with explanations, and a final score. Questions are built from the conversation, attached documents, project materials, or fresh web research on the topic (with web search on). Written answers are graded on meaning, not exact wording. TURN ON/OFF: triggered by asking for a quiz — no separate switch.\n";
 
 // The capabilities-note closing line, split out so it can flip when the
-// experimental execution sandbox actually ran for THIS request. Default: the
-// site does not run code. hasShell: it DID (the in-browser Linux sandbox), so
-// the model must answer from that output instead of denying the capability —
-// otherwise "run ls" answers "I can't run code" even though the sandbox just
-// ran it (the production defect this fixes; chat_logs #200/#201, 2026-07-10).
+// experimental execution sandbox actually ran for THIS request, OR when
+// introspection mode (developer mode) has put the site's OWN source in
+// context. Default: the site does not run code. hasShell: it DID (the
+// in-browser Linux sandbox), so the model must answer from that output
+// instead of denying the capability (chat_logs #200/#201, 2026-07-10).
+// hasSource: developer mode injected the deployed source (retrieved code +
+// orientation), so the model must answer implementation and code-example
+// questions FROM it and never deny having the source or claim it isn't a
+// coding tool (chat_logs #275, 2026-07-12 — "Code examples from site" was
+// refused because this tail said "does NOT run code" and no source was in
+// context; the fix is retrieval + this flip).
 /**
  * @param {boolean} hasShell
+ * @param {boolean} [hasSource]
  * @returns {string}
  */
-const capabilitiesTail = (hasShell) =>
-  hasShell
-    ? "For THIS request you DID run shell commands in the experimental in-browser Linux execution sandbox — the results are provided below as ground truth. Answer from them directly; do NOT say you cannot run code. (The site does not browse arbitrary URLs on demand, send email, or integrate with anything beyond the above and the sandbox.)"
-    : "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
+const capabilitiesTail = (hasShell, hasSource = false) => {
+  const clauses = [];
+  if (hasShell) {
+    clauses.push(
+      "For THIS request you DID run shell commands in the experimental in-browser Linux execution sandbox — the results are provided below as ground truth. Answer from them directly; do NOT say you cannot run code.",
+    );
+  }
+  if (hasSource) {
+    clauses.push(
+      "DEVELOPER MODE (introspection) is on and this site's OWN source code is provided below (the most relevant excerpts, retrieved from the project, plus an architecture orientation). When the user asks how the site works, what its code does, or for code examples FROM this project, answer from that material — quote the real code and cite file paths. Do NOT say you have no access to the source or that this isn't a coding tool: for THIS request you do have the source and you can show and explain it.",
+    );
+  }
+  if (!hasShell && !hasSource) {
+    return "It does NOT run code, browse arbitrary URLs on demand, send email, or integrate with anything beyond the above.";
+  }
+  clauses.push("(Beyond the above, the site does not browse arbitrary URLs on demand or send email.)");
+  return clauses.join(" ");
+};
 
 // Non-research replies (small talk, image analysis, search knob off).
-// `hasShell` (the bash-lite sandbox ran for this request) flips the closing
-// capabilities line so the model uses the sandbox output instead of refusing;
-// default false keeps the output byte-identical to a run without the feature.
+// `hasShell` (the bash-lite sandbox ran) and `hasSource` (introspection mode
+// put the site's own source in context) each flip the closing capabilities
+// line; both default false so a run without either feature is byte-identical.
 /**
- * @param {{ hasShell?: boolean }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean }} [opts]
  * @returns {string}
  */
-export const directPrompt = ({ hasShell = false } = {}) =>
+export const directPrompt = ({ hasShell = false, hasSource = false } = {}) =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   CAPABILITIES_NOTE +
-  capabilitiesTail(hasShell) +
+  capabilitiesTail(hasShell, hasSource) +
   ANTI_INJECTION_NOTE;
 
 /**
- * @param {{ hasShell?: boolean }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean }} [opts]
  * @returns {string}
  */
-export const searchOffPrompt = ({ hasShell = false } = {}) =>
-  directPrompt({ hasShell }) +
+export const searchOffPrompt = ({ hasShell = false, hasSource = false } = {}) =>
+  directPrompt({ hasShell, hasSource }) +
   " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed.";
