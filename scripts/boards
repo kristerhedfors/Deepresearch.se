@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# The admin-BOARDS discovery index on the LIVE site — one command that lists
+# every Claude-fetchable admin board (security, feedback, chatlogs, …) and the
+# exact line to pull each one's agent-ready text view. Wraps
+# /api/admin/boards (src/admin-boards.js) using the break-glass Basic Auth
+# credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars
+# scripts/security, scripts/feedback and scripts/chatlogs use. This is the
+# "pop up all the boards" entry point — run it first, then run the fetch line
+# it prints for whichever board (and ordering) the user picked.
+#
+# Usage:
+#   scripts/boards                          the discovery index, readable text
+#   scripts/boards --json                   JSON instead of text
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+qs=""
+[ "$format" = "text" ] && qs="?format=text"
+curl_auth "$BASE_URL/api/admin/boards$qs"

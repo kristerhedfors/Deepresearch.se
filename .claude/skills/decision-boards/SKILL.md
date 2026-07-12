@@ -12,7 +12,10 @@ description: >-
   ?format=text loop input + scripts/<board> CLI shape, and the checklist for
   standing up a NEW board (e.g. the features panel). Also load when touching
   /api/admin/security*, a *_reviews D1 table, or wiring any panel whose
-  ordering an agent loop consumes.
+  ordering an agent loop consumes. ALSO the go-to for the DISCOVERY layer —
+  the src/admin-boards.js registry + GET /api/admin/boards + scripts/boards
+  that let a session find every fetchable board in one call — and the
+  fan-out-sub-agents-by-user-selected-priority workflow it exists to enable.
 ---
 
 # Decision boards — the panel ⇄ loop mechanism
@@ -54,6 +57,59 @@ through belongs on a board.
    the new state on next deploy; the item's review row (votes/notes) stays
    as the audit trail.
 
+## Discovery — pop up every board in one call
+
+You do not have to already know a board exists to use it. Every
+Claude-fetchable admin list is registered in one place, so a session can
+discover them all and how to fetch each:
+
+```bash
+scripts/boards            # readable index of every board + its fetch line
+scripts/boards --json     # the same as JSON
+# or straight: GET /api/admin/boards?format=text  (admin-gated, break-glass creds)
+```
+
+The index is served from **`src/admin-boards.js`** — a pure static
+`ADMIN_BOARDS` registry (no D1, no secrets, so it answers even without the
+database), routed as `GET /api/admin/boards` in `admin-api.js`. Each entry is
+self-describing: `id`, `title`, `purpose` (what it is + which loop it feeds),
+`feeds_loop`, `api`, `text_query` (the query that yields the agent-ready text
+view), `orderings` (the user-selectable sort/filter options), `order_help`
+(how to pick an ordering and what each means — the important field: boards
+select orderings by different mechanisms, `order=` vs `open=1` vs `errors=1`),
+`script`, and `skill` (which skill documents the loop). The `?format=text`
+render prints, per board, the exact `scripts/<id>` and `curl` line to fetch
+its prioritized list — an agent reading only that output knows how to reach
+everything. Today's entries: **security**, **feedback**, **chatlogs**.
+
+## The point of all this: parallelize on the user's priority order
+
+The boards exist so focused work runs against the human's chosen order at
+every moment — the admin sorts in the panel, the loop executes that order,
+and wide work fans out. The standing workflow:
+
+1. **Discover** — `scripts/boards` to see every board and its orderings.
+2. **Fetch the chosen order** — run the board's `?format=text` in the
+   ordering the admin selected (`scripts/security` = the fix order;
+   `scripts/security --severity`; `scripts/feedback` = the open queue). The
+   admin's explicit priority IS the plan — you do not re-rank it.
+3. **Fan out by priority** — take the top-N open items *in that fixed order*
+   and dispatch one sub-agent per item (the Agent tool), each on a DISJOINT
+   set of files so they don't collide; keep the shared source-of-truth doc +
+   catalog edits (the mirror discipline) for the orchestrator to integrate,
+   and have agents report their status-flip rather than commit. This is how a
+   security-fix round or a feature push covers the whole top of the board at
+   once instead of walking it serially.
+4. **Integrate & close** — verify each diff, run the full suite, flip each
+   item's catalog `status` + doc tag + history entry in the same commit as
+   the work, then push. The panel reflects it next deploy; the next round
+   starts from step 1 against the admin's re-sorted board.
+
+Items the admin hasn't code-fixable-ized still surface honestly: an
+`🔁 OPERATIONAL` item (e.g. a dashboard-only provider cap) is recorded and
+reported, never silently marked done — the board is a truth surface, not a
+checkbox.
+
 ## The shared core — `src/board.js`
 
 Generic, dependency-free, Node-tested (`src/board.test.js`). A new board
@@ -92,12 +148,19 @@ in `board.test.js`).
    the three inputs + Save, the two-button sort toggle, numbered open items.
 5. **CLI** `scripts/<board>` — copy `scripts/security` (list/--json/--vote/
    --set against `/api/admin/<board>`).
-6. **Tests**: catalog-shape + mirror-discipline suite like
+6. **Register for discovery** — append ONE entry to `ADMIN_BOARDS` in
+   `src/admin-boards.js` (`id/title/purpose/feeds_loop/api/text_query/
+   orderings/order_help/script/skill`). That single append is all it takes
+   for the board to appear in `scripts/boards` / `GET /api/admin/boards` —
+   the same "register, no other change" seam as `games.js`/`search-sources.js`.
+   Fill `order_help` carefully: say HOW to pick each ordering, not just the
+   names. Add the entry to `src/admin-boards.test.js`'s expected-ids check.
+7. **Tests**: catalog-shape + mirror-discipline suite like
    `src/security-risks.test.js`; the core itself is already covered.
-7. **Docs**: CLAUDE.md table row + the source-of-truth doc's maintenance
+8. **Docs**: CLAUDE.md table row + the source-of-truth doc's maintenance
    rules (mirror-in-same-commit, priority-overrides-doc-order) + the skill
    that owns the board's loop (security-posture for the security board).
-8. **The loop side**: the consuming skill must say "read the board before
+9. **The loop side**: the consuming skill must say "read the board before
    every round" — the board is pointless if the loop doesn't start there.
 
 ## UX conventions (the panel side, from the reference implementation)
@@ -129,6 +192,7 @@ in `board.test.js`).
 
 The convention shared by ALL of them: admin-gated `/api/admin/<name>`
 endpoints, `?format=text` output written for the agent to read, a
-`scripts/<name>` wrapper on the break-glass env vars, and pure logic
-Node-tested. When a future variant needs a new choice field (e.g. an
-assignee or a tag), extend `src/board.js` once — never fork per board.
+`scripts/<name>` wrapper on the break-glass env vars, an entry in the
+`ADMIN_BOARDS` discovery registry (so `scripts/boards` surfaces them), and
+pure logic Node-tested. When a future variant needs a new choice field (e.g.
+an assignee or a tag), extend `src/board.js` once — never fork per board.

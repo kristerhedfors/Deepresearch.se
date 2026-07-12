@@ -47,11 +47,20 @@ Before starting a fix round, read the board's fix order (break-glass creds,
 same env vars as scripts/chatlogs):
 
 ```bash
+scripts/boards              # discover EVERY fetchable board first (security is one)
 scripts/security            # the work order, readable text (?format=text)
 scripts/security --json     # full JSON (also: --severity for the other view)
 scripts/security --vote P-3 up
 scripts/security --set P-3 '{"priority":1,"score":"CVSS 6.5","note":"…"}'
 ```
+
+`scripts/boards` (the `src/admin-boards.js` discovery index —
+`GET /api/admin/boards`) is the one-call entry point that lists every
+admin board and its fetch line; the security board is one of them. For a
+large round, fan out one sub-agent per top-of-board item **in the admin's
+fixed priority order**, each on disjoint files, and integrate the
+catalog/register status flips yourself (see the **decision-boards** skill's
+"parallelize on the user's priority order" workflow).
 
 Work top-down through the numbered open items. When an item is fixed, in the
 SAME commit: flip its `status` in the `SECURITY_RISK_ITEMS` catalog
@@ -63,7 +72,19 @@ register items take the next free P-n and a catalog entry in the same change.
 
 ## 1. Secret-leak scan (R-1 / P-2) — run before every push touching docs/tests/config
 
-Working tree + fetched history, one command (from repo root):
+**Now packaged as `scripts/scan-secrets`** (P-2, 2026-07-12): it runs this
+exact pattern set over the working tree (default), the staged diff
+(`--staged`), or a commit range (`--range A..B`), redacts matches, and prints
+the rotation runbook on a hit. `.githooks/pre-push` runs it over outgoing
+commits and BLOCKS a push on a match — activate it in a clone with
+`scripts/install-git-hooks` (sets `core.hooksPath`). The hook is repo-local
+and bypassable (`--no-verify`), a fast first line, not the backstop; GitHub
+secret scanning + push protection (repo Settings, still to enable) is the
+server-side backstop, and a full-history verdict still needs an unshallowed
+clone (the shallow-clone caveat below). See `docs/SECRET-SCANNING.md`.
+
+The raw scan (what `scripts/scan-secrets` automates) — working tree + fetched
+history, one command (from repo root):
 
 ```bash
 git log --all -p --unified=0 | grep -aoE \
@@ -126,8 +147,7 @@ Street View + sandbox flows.
 
 | Item | Check (repo root) | OPEN looks like |
 |---|---|---|
-| M-1 quota race | `grep -n "recordUsage\|quotaExceeded" src/chat.js src/quiz-api.js src/mcp.js src/bash-api.js` | gate at admission, record after; no reservation |
-| M-2 rate limit | `grep -rn "rate" src/index.js src/quota.js` | no limiter on chat/mcp/embed/quiz/bash-step |
+| M-1/M-2 concurrency cap (P-3, PARTIAL) | `grep -n "reserveInflight\|releaseInflight" src/chat.js src/quiz-api.js src/rag.js src/bash-api.js src/quota.js` | REGRESSED if the reserve/finally-release pair is gone from any endpoint; still-open residual = no true spend reservation (cap only), live-verify owed |
 | M-3 chat_logs drain | `grep -n "chat_logs" src/storage.js src/chatlog.js` | absent from `handleStorageDelete`; no TTL/prune |
 | M-4 plaintext convos | `grep -n "iv, ciphertext.*data\|{data" src/storage.js` | `putEncRecord` accepts `{data}` for convos |
 | M-5 unbounded fetches | `grep -n "AbortSignal" src/exa.js src/berget.js` | `webSearch` + `fetchCatalog` have none |
