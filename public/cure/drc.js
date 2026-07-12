@@ -94,10 +94,19 @@ function gateStatus(msg) {
   el.textContent = msg || "";
 }
 
+// Render prose we build for innerHTML with the se/cure & se/rver wordmark
+// slash tightened (the .sl rule) so it reads closer to "secure"/"server".
+// Escapes &<> FIRST, so any plain string stays safe as markup.
+function wmHtml(s) {
+  return String(s)
+    .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
+    .replace(/se\/(cure|rver)/g, 'se<span class="sl">/</span>$1');
+}
+
 function workStatus(msg) {
   const el = $("workstatus");
   el.hidden = !msg;
-  el.textContent = msg || "";
+  el.innerHTML = msg ? wmHtml(msg) : "";
 }
 
 function phaseLine(msg) {
@@ -250,8 +259,8 @@ const DRS_FEATURES = {
 function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
-  $("drspop-title").textContent = feature === "ghost" ? f.title : f.title + " — a se/rver feature";
-  $("drspop-text").textContent = f.text;
+  $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a se/rver feature");
+  $("drspop-text").innerHTML = wmHtml(f.text);
   $("drspop").hidden = false;
 }
 
@@ -819,14 +828,15 @@ if (themeMeta) {
   });
 }
 
-// Build stamp (on-device-trace convention): the brand line shows the DRC
-// build marker + the display mode, so any screenshot answers "which build,
-// PWA or Safari" — bump the d-number on every DRC deploy.
+// Build marker (on-device-trace convention): kept OFF the visible header —
+// carried in the brand tooltip so a long-press still answers "which build,
+// PWA or Safari" without cluttering the wordmark. Bump on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d14 · " + (standalone ? "pwa" : "browser");
+  const brand = $("brand");
+  brand.title = "About se/cure · d14 · " + (standalone ? "pwa" : "browser");
 } catch {
-  // the stamp is an instrument, never a breaker
+  // the marker is an instrument, never a breaker
 }
 
 const projectLinked = handleProjectLink();
