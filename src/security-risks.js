@@ -25,6 +25,17 @@
 //   POST  /api/admin/security/:id/vote {dir:"up"|"down"}
 //   PATCH /api/admin/security/:id      {score?, note?, priority?} (null clears)
 
+import {
+  BOARD_CAPS,
+  getBoardReview,
+  loadBoardReviews,
+  orderBoardItems,
+  patchBoardRow,
+  reviewState,
+  validateBoardPatch,
+  validateBoardVote,
+  voteBoardRow,
+} from "./board.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 
@@ -35,8 +46,9 @@ import { jsonResponse } from "./http.js";
  * @typedef {{ id: string, title: string, severity: "high" | "medium" | "low", status: "open" | "fixed" | "accepted", recurring?: boolean, summary: string }} RiskItem
  */
 /**
- * A D1 `security_reviews` row (admin-maintained state for one item).
- * @typedef {{ item_id: string, votes: number, score?: string | null, note?: string | null, priority?: number | null, updated_at: number }} ReviewRow
+ * A D1 `security_reviews` row (admin-maintained state for one item) —
+ * the shared board-review shape.
+ * @typedef {import('./board.js').BoardReviewRow} ReviewRow
  */
 
 // ---------------------------------------------------------------------------
@@ -132,7 +144,16 @@ export const SECURITY_RISK_ITEMS = [
 // Pure helpers — unit-tested in src/security-risks.test.js
 // ---------------------------------------------------------------------------
 
-export const REVIEW_CAPS = { score: 120, note: 2_000 };
+// The choice-state mechanics (caps, patch/vote validation, D1 review rows,
+// the ordering semantics) are the shared decision-board core (src/board.js —
+// see the **decision-boards** skill); this module re-exports its pure
+// surface under the board's historical names, façade-style (the bash-agent
+// precedent), and keeps only what is item-shaped: the catalog, projection,
+// the fix-order text, and the endpoint.
+export const REVIEW_CAPS = BOARD_CAPS;
+export const validateReviewPatch = validateBoardPatch;
+export const validateVote = validateBoardVote;
+
 const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 export const ORDER_MODES = ["priority", "severity"];
 
@@ -157,11 +178,7 @@ export function projectRiskItem(item, review, registerOrder) {
     recurring: !!item.recurring,
     summary: item.summary,
     register_order: registerOrder,
-    votes: review?.votes ?? 0,
-    score: review?.score ?? null,
-    note: review?.note ?? null,
-    priority: review?.priority ?? null,
-    reviewed_at: review?.updated_at ?? null,
+    ...reviewState(review),
   };
 }
 
@@ -177,75 +194,11 @@ export function projectRiskItem(item, review, registerOrder) {
  * @returns {ReturnType<typeof projectRiskItem>[]} a new sorted array
  */
 export function orderRiskItems(items, mode) {
-  /** @param {{ severity: string }} i */
-  const sevRank = (i) => SEVERITY_RANK[/** @type {"high"|"medium"|"low"} */ (i.severity)] ?? 9;
-  /** @param {{ status: string }} i */
-  const openRank = (i) => (i.status === "open" ? 0 : 1);
-  const out = [...items];
-  if (mode === "severity") {
-    out.sort(
-      (a, b) =>
-        openRank(a) - openRank(b) || sevRank(a) - sevRank(b) || a.register_order - b.register_order,
-    );
-    return out;
-  }
-  out.sort((a, b) => {
-    const d = openRank(a) - openRank(b);
-    if (d) return d;
-    const ap = a.priority, bp = b.priority;
-    if (ap != null && bp != null) return ap - bp || a.register_order - b.register_order;
-    if ((ap != null) !== (bp != null)) return ap != null ? -1 : 1;
-    return b.votes - a.votes || sevRank(a) - sevRank(b) || a.register_order - b.register_order;
-  });
-  return out;
-}
-
-/** @param {unknown} v @param {number} max */
-const cleanStr = (v, max) => {
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  return t ? t.slice(0, max) : null;
-};
-
-// PATCH body → {score?, note?, priority?} (only the fields present in the
-// body; explicit null/"" clears a field), or {error}.
-/**
- * @param {any} body
- * @returns {{ error: string } | { error?: undefined, patch: { score?: string | null, note?: string | null, priority?: number | null } }}
- */
-export function validateReviewPatch(body) {
-  if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
-  /** @type {{ score?: string | null, note?: string | null, priority?: number | null }} */
-  const patch = {};
-  if ("score" in body) patch.score = cleanStr(body.score, REVIEW_CAPS.score);
-  if ("note" in body) patch.note = cleanStr(body.note, REVIEW_CAPS.note);
-  if ("priority" in body) {
-    if (body.priority == null || body.priority === "") {
-      patch.priority = null;
-    } else {
-      const n = Number(body.priority);
-      if (!Number.isInteger(n) || n < 1 || n > 999) {
-        return { error: "priority must be an integer 1–999, or null to clear." };
-      }
-      patch.priority = n;
-    }
-  }
-  if (!Object.keys(patch).length) {
-    return { error: "Nothing to update — send score, note, and/or priority." };
-  }
-  return { patch };
-}
-
-// POST …/vote body → +1 | -1, or {error}.
-/**
- * @param {any} body
- * @returns {{ error: string } | { error?: undefined, delta: number }}
- */
-export function validateVote(body) {
-  const dir = body?.dir;
-  if (dir === "up") return { delta: 1 };
-  if (dir === "down") return { delta: -1 };
-  return { error: 'vote body must be {"dir":"up"} or {"dir":"down"}.' };
+  return orderBoardItems(
+    items,
+    mode === "severity" ? "rank" : mode,
+    (i) => SEVERITY_RANK[/** @type {"high"|"medium"|"low"} */ (i.severity)] ?? 9,
+  );
 }
 
 // Plain-text rendering (?format=text) — the fix loop's input. Always the
@@ -296,10 +249,7 @@ export async function handleAdminSecurity(request, env, url, log) {
   if (path === "" && method === "GET") {
     const p = url.searchParams;
     const mode = ORDER_MODES.includes(p.get("order") || "") ? /** @type {string} */ (p.get("order")) : "priority";
-    const { results } = await db.prepare("SELECT * FROM security_reviews").all();
-    const reviews = new Map(
-      (/** @type {ReviewRow[]} */ (results || [])).map((r) => [r.item_id, r]),
-    );
+    const reviews = await loadBoardReviews(db, "security_reviews");
     let items = SECURITY_RISK_ITEMS.map((it, idx) => projectRiskItem(it, reviews.get(it.id), idx));
     if (p.get("open") === "1") items = items.filter((i) => i.status === "open");
     const ordered = orderRiskItems(items, mode);
@@ -317,40 +267,17 @@ export async function handleAdminSecurity(request, env, url, log) {
 
   // Upsert-friendly: the review row is created on first vote/patch.
   if (m[2] && method === "POST") {
-    const v = validateVote(await request.json().catch(() => null));
+    const v = validateBoardVote(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
-    await db
-      .prepare(
-        `INSERT INTO security_reviews (item_id, votes, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(item_id) DO UPDATE SET votes = votes + ?, updated_at = ?`,
-      )
-      .bind(item.id, v.delta, Date.now(), v.delta, Date.now())
-      .run();
+    await voteBoardRow(db, "security_reviews", item.id, v.delta);
     log.info("security.vote", { item_id: item.id, delta: v.delta });
     return projectedItem(db, item);
   }
 
   if (!m[2] && method === "PATCH") {
-    const v = validateReviewPatch(await request.json().catch(() => null));
+    const v = validateBoardPatch(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
-    const sets = ["updated_at = ?"];
-    /** @type {any[]} */
-    const binds = [Date.now()];
-    for (const k of /** @type {const} */ (["score", "note", "priority"])) {
-      if (k in v.patch) { sets.push(`${k} = ?`); binds.push(v.patch[k]); }
-    }
-    await db
-      .prepare(
-        `INSERT INTO security_reviews (item_id, votes, score, note, priority, updated_at)
-         VALUES (?, 0, ?, ?, ?, ?)
-         ON CONFLICT(item_id) DO UPDATE SET ${sets.join(", ")}`,
-      )
-      .bind(
-        item.id,
-        v.patch.score ?? null, v.patch.note ?? null, v.patch.priority ?? null, Date.now(),
-        ...binds,
-      )
-      .run();
+    await patchBoardRow(db, "security_reviews", item.id, v.patch);
     log.info("security.review", { item_id: item.id, fields: Object.keys(v.patch).join(",") });
     return projectedItem(db, item);
   }
@@ -363,9 +290,7 @@ export async function handleAdminSecurity(request, env, url, log) {
  * @param {RiskItem} item
  */
 async function projectedItem(db, item) {
-  const row = /** @type {ReviewRow | null} */ (
-    await db.prepare("SELECT * FROM security_reviews WHERE item_id = ?").bind(item.id).first()
-  );
+  const row = await getBoardReview(db, "security_reviews", item.id);
   const idx = SECURITY_RISK_ITEMS.findIndex((i) => i.id === item.id);
   return jsonResponse({ item: projectRiskItem(item, row || undefined, idx) });
 }
