@@ -242,3 +242,69 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
 function clip(t, max) {
   return t.length <= max ? t : t.slice(0, max) + "\n… [truncated — full file in the snapshot/sandbox]";
 }
+
+// ---- the introspection model picker (pure grouping) ---------------------------
+
+// Introspection mode lets the user choose WHO answers: their own provider key
+// (browser-direct — the site's server never sees the conversation; the
+// private, recommended choice) or this site's server pipeline (remote). The
+// picker's grouping/labeling is pure so it's Node-tested; the DOM lives in
+// introspect-ui.js.
+
+/**
+ * @typedef {{ kind: "private", providerId: string, model: string } | { kind: "server", model: string }} IntrospectionChoice
+ */
+
+/**
+ * Group the available answer routes for the introspection picker. Private
+ * (user-key, browser-direct) options come FIRST and carry the recommendation
+ * — the privacy-obvious choice; server models are labeled as remote so
+ * nobody mistakes them for local.
+ * @param {Array<{ id: string, label: string, models: string[] }>} privateProviders configured (key present) providers
+ * @param {Array<{ id: string, name?: string, up?: boolean }>} serverModels /api/models entries ([] on DRC)
+ * @returns {{ groups: Array<{ kind: "private" | "remote", label: string, options: Array<{ value: string, label: string, disabled?: boolean }> }>, recommended: string }}
+ */
+export function groupIntrospectionModels(privateProviders, serverModels) {
+  /** @type {Array<{ kind: "private" | "remote", label: string, options: Array<{ value: string, label: string, disabled?: boolean }> }>} */
+  const groups = [];
+  const priv = (Array.isArray(privateProviders) ? privateProviders : []).flatMap((p) =>
+    (Array.isArray(p?.models) ? p.models : []).map((m) => ({
+      value: `p:${p.id}:${m}`,
+      label: `🔒 ${m} — ${p.label}, your key (private)`,
+    })),
+  );
+  if (priv.length) {
+    groups.push({ kind: "private", label: "Private — your key, straight from this browser", options: priv });
+  }
+  const remote = (Array.isArray(serverModels) ? serverModels : [])
+    .filter((m) => m && typeof m.id === "string" && m.id)
+    .map((m) => ({
+      value: `s:${m.id}`,
+      label: `☁ ${m.name || m.id} — remote (this site's server)`,
+      disabled: m.up === false,
+    }));
+  if (remote.length) {
+    groups.push({ kind: "remote", label: "Remote — this site's server pipeline", options: remote });
+  }
+  return { groups, recommended: priv.length ? priv[0].value : "" };
+}
+
+/**
+ * Parse a picker value back into a routing choice. Null for junk (callers
+ * fall back to the server default).
+ * @param {unknown} value
+ * @returns {IntrospectionChoice | null}
+ */
+export function parseIntrospectionChoice(value) {
+  const s = String(value || "");
+  if (s.startsWith("p:")) {
+    const rest = s.slice(2);
+    const colon = rest.indexOf(":");
+    if (colon > 0 && colon < rest.length - 1) {
+      return { kind: "private", providerId: rest.slice(0, colon), model: rest.slice(colon + 1) };
+    }
+    return null;
+  }
+  if (s.startsWith("s:") && s.length > 2) return { kind: "server", model: s.slice(2) };
+  return null;
+}

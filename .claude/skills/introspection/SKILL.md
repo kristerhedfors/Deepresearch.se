@@ -6,10 +6,13 @@ description: >-
   and get answered from the deployed source — or anything touching
   scripts/bundle-source.mjs, public/introspect/source-snapshot.json (the
   committed snapshot artifact), public/js/introspect-core.js (the shared pure
-  core), src/introspect.js (the DRS enrichment), the /src sandbox mount
-  (sandbox-files.js planSourceMount), or the DRC developerMode knob. ALSO
-  load when `npm test` fails on "source snapshot artifact matches the working
-  tree" — the fix is `npm run bundle`, never editing the artifact by hand.
+  core), public/js/introspect-ui.js (TIN the titanium mascot + the
+  private-vs-remote model picker), src/introspect.js (the DRS enrichment),
+  the DRS private browser-direct route (stream.js maybePrivateIntrospection),
+  the /src sandbox mount (sandbox-files.js planSourceMount), or the DRC
+  developerMode knob. ALSO load when `npm test` fails on "source snapshot
+  artifact matches the working tree" — the fix is `npm run bundle`, never
+  editing the artifact by hand.
 ---
 
 # Introspection mode (developer_mode)
@@ -97,6 +100,47 @@ Never hand-edit the artifact.
   conversation it already receives; the client mirrors the same shared gate
   only to decide the sandbox mount.
 
+## TIN — the mascot, the model picker, and the private route
+
+`public/js/introspect-ui.js` is the user-facing side (DOM/browser glue, no
+`@ts-check`, verified live — screenshot 2026-07-12). It's a self-styled
+component (injects its own scoped `#iui-*` CSS, the sandbox-panel precedent)
+served on BOTH tiers, so it's in `isPublicAsset`.
+
+- **TIN** is the introspection mascot — a **titanium-white** robot (dome +
+  antenna + visor, silver/white fills, slate strokes), deliberately its OWN
+  palette next to the blue tier and khaki DRC. Same choreography as the
+  landing ghost: slide in on the wrapper transition, dance→settle keyframes
+  on the body, a waving arm. Triggers: `noteIntrospectionText` (debounced, as
+  the user TYPES an introspection ask — so the route can be chosen before
+  send, wired in app.js/drc.js) and `engageIntrospection` (on an actual
+  engaged send). Dismiss = ✕, outside pointerdown, or `prefers-reduced-motion`
+  skips the animation.
+- **The picker (DRS)** answers "who answers?": private (the user's own
+  provider key, browser-direct) vs remote (this site's server models from
+  `/api/models`). Grouping/labeling is the PURE `groupIntrospectionModels`
+  (introspect-core.js, Node-tested): **private group FIRST, 🔒-marked, green,
+  and auto-selected as the recommendation** — the privacy-obvious choice the
+  user asked for; remote is ☁-badged "remote (this site's server)". A note
+  line under the select spells out the current choice's privacy meaning
+  (option styling is unreliable on mobile, so the note carries the
+  understanding). Keys are entered/removed inline, stored in localStorage
+  `dr_introspect_keys` (browser-only, never sent to this site's server); the
+  picked route is `dr_introspect_choice`. On DRC the panel is informational —
+  everything is already browser-direct.
+- **The private route (DRS)** — `stream.js` `maybePrivateIntrospection`:
+  when developer mode is on, the conversation is introspection-engaged, AND a
+  private model is picked (`privateIntrospectionRoute()`), the ENTIRE exchange
+  runs browser-direct through the client pipeline (`runDrcResearch` on the
+  user's key) — `/api/chat` is never called, so the server sees nothing of an
+  introspection question the user marked private. It settles entirely inside
+  `runPrivateIntrospection` (before the watchdog/recovery setup), reusing the
+  page-lifetime snapshot cache; Stop aborts the same controller. When a
+  **remote** model is picked instead, the normal server path runs but
+  `introspectionRemoteModel()` overrides the composer's model. Accessors are
+  Node-tested (`introspect-ui.test.js`, localStorage-stubbed); the DOM is
+  verified live.
+
 ## Allowlist / caching facts
 
 - `/js/introspect-core.js` and `/introspect/source-snapshot.json` are in
@@ -117,7 +161,12 @@ Never hand-edit the artifact.
 
 ## Still owed (live-verify)
 
-The /src mount readable in-guest on a real browser (the seed script's `rm
--rf /src` + per-file `cp` path), the DRS enrichment step visible on the live
-site with the knob on, and DRC introspection on a real key — same
-live-verification discipline as the rest of the sandbox work.
+Verified 2026-07-12 in a local Chromium harness: TIN renders, the picker
+groups private-first/remote-badged with the recommended private option
+auto-selected, zero console errors. Still owed on the DEPLOYED site: the /src
+mount readable in-guest on a real browser (the seed script's `rm -rf /src` +
+per-file `cp` path), the DRS enrichment step + the private browser-direct
+route end to end with a real provider key (confirm the cross-origin provider
+fetch is unaffected by COEP `require-corp` when the sandbox knob is also on —
+the skill says CORS fetch is fine, verify it), and DRC introspection on a real
+key — same live-verification discipline as the rest of the sandbox work.
