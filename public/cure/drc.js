@@ -8,7 +8,9 @@
 // DRC is modular by definition, and this page is just the wiring layer
 // over four self-contained, Node-tested modules:
 //   /js/drc-core.js      — secret → derived ids/keys, the sealed state
-//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Groq, Berget)
+//   /js/drc-providers.js — the provider registry: the tier's ONE external
+//                          dataflow (OpenAI, Berget, or the user's own
+//                          local OpenAI-compatible endpoint)
 //   /js/drc-research.js  — the client-side deep-research pipeline
 //   /js/drc-store.js     — BROWSER-LOCAL sealed-state storage (the seam)
 //
@@ -47,13 +49,14 @@ import {
   validateDrcState,
 } from "/js/drc-core.js";
 import {
-  DRC_PROVIDERS,
   configuredDrcProviders,
   detectDrcProvider,
+  drcBaseFor,
   drcEmbed,
   drcEmbedProvider,
   drcProvider,
   listDrcModels,
+  normalizeDrcBase,
 } from "/js/drc-providers.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
@@ -296,8 +299,8 @@ async function handlePublicationLink() {
     workStatus(
       "This is a published research replay" +
         (pub.description ? " — " + pub.description : "") +
-        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Groq or Berget), straight " +
-        "from this browser.",
+        ". Ask a follow-up to continue it: replies run on YOUR provider (OpenAI, Berget, or your own " +
+        "local endpoint), straight from this browser.",
     );
     return true;
   } catch {
@@ -384,7 +387,7 @@ async function unlock(ev) {
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
-    if (configuredDrcProviders(state.keys).length) await refreshModels();
+    if (configuredDrcProviders(state.keys, state.bases).length) await refreshModels();
   } catch (err) {
     gateStatus(err?.message || "Could not open the project.");
   } finally {
@@ -411,24 +414,33 @@ async function saveState() {
 // ---- provider keys ---------------------------------------------------------------------
 
 // ONE input for the key + a provider dropdown that follows the pasted
-// key's prefix automatically (sk-… OpenAI, gsk_… Groq, sk_ber_… Berget —
+// key's prefix automatically (sk-… OpenAI, sk_ber_… Berget —
 // detectDrcProvider); unknown prefixes leave the dropdown to the user.
-// Saved keys are listed below with per-provider remove buttons.
+// Picking "Local" reveals an endpoint-URL field instead: DRC's one
+// external dataflow then points at the user's OWN OpenAI-compatible
+// server (Ollama, llama.cpp, vLLM, LM Studio — the key is optional
+// there). Saved entries are listed below with per-provider remove
+// buttons.
 function renderKeysPanel() {
-  const have = DRC_PROVIDERS.filter((p) => state.keys?.[p.id]);
+  const have = configuredDrcProviders(state.keys, state.bases);
   $("keysbadge").textContent = have.length ? "— " + have.map((p) => p.label).join(", ") + " set" : "— none set yet";
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
   $("savedkeys").innerHTML = have.length
     ? have
         .map(
           (p) =>
-            `<div class="saved-key-row"><span>${p.label} <span class="muted">••••••</span></span>` +
+            `<div class="saved-key-row"><span>${p.label} <span class="muted">${
+              p.requiresBase ? esc(state.bases?.[p.id] || "") : "••••••"
+            }</span></span>` +
             `<button type="button" class="key-remove" data-provider="${p.id}">Remove</button></div>`,
         )
         .join("")
     : "";
   for (const btn of $("savedkeys").querySelectorAll(".key-remove")) {
     btn.addEventListener("click", async () => {
-      delete state.keys[/** @type {HTMLElement} */ (btn).dataset.provider];
+      const id = /** @type {HTMLElement} */ (btn).dataset.provider;
+      delete state.keys[id];
+      if (state.bases) delete state.bases[id];
       await saveState();
       renderKeysPanel();
       await refreshModels();
@@ -438,6 +450,8 @@ function renderKeysPanel() {
 
 // The dropdown follows the key as it's typed/pasted; the hint says when
 // the provider was recognized (and the choice is therefore automatic).
+// The Local choice swaps the panel into endpoint mode: URL required,
+// key optional.
 function syncKeyDetection() {
   const detected = detectDrcProvider($("key-input").value);
   if (detected) {
@@ -446,26 +460,48 @@ function syncKeyDetection() {
   } else {
     $("keydetect").textContent = "";
   }
+  syncBaseRow();
+}
+
+function syncBaseRow() {
+  const local = /** @type {HTMLSelectElement} */ ($("key-provider")).value === "local";
+  $("baserow").hidden = !local;
+  $("key-input").placeholder = local
+    ? "API key — optional for most local servers"
+    : "sk-… (OpenAI) · sk_ber_… (Berget)";
 }
 
 async function saveKeys() {
+  const providerId = /** @type {HTMLSelectElement} */ ($("key-provider")).value;
+  const provider = drcProvider(providerId);
   const v = $("key-input").value.trim();
-  if (!v) {
-    $("keysstatus").textContent = "Paste an API key first.";
-    return;
+  if (provider.requiresBase) {
+    const base = normalizeDrcBase($("key-base").value);
+    if (!base) {
+      $("keysstatus").textContent = "Enter your endpoint URL first (e.g. http://localhost:11434).";
+      return;
+    }
+    state.bases[providerId] = base;
+    if (v) state.keys[providerId] = v;
+    else delete state.keys[providerId];
+  } else {
+    if (!v) {
+      $("keysstatus").textContent = "Paste an API key first.";
+      return;
+    }
+    state.keys[providerId] = v;
   }
-  const provider = /** @type {HTMLSelectElement} */ ($("key-provider")).value;
-  state.keys[provider] = v;
   $("savekeys").disabled = true;
   $("keysstatus").textContent = "Saving…";
   try {
     await saveState();
     $("key-input").value = "";
+    if (provider.requiresBase) $("key-base").value = "";
     syncKeyDetection();
     renderKeysPanel();
     $("keysstatus").textContent =
-      drcProvider(provider).label +
-      " key " +
+      provider.label +
+      (provider.requiresBase ? " endpoint " : " key ") +
       (profile ? "saved (encrypted in this browser)." : "kept in this tab — save a project (Project panel) to store it encrypted.");
     await refreshModels();
     workStatus("");
@@ -480,18 +516,20 @@ async function saveKeys() {
 // "provider::model" so the send knows where to route.
 async function refreshModels() {
   const pick = $("model");
-  const providers = configuredDrcProviders(state.keys);
+  const providers = configuredDrcProviders(state.keys, state.bases);
   if (!providers.length) {
-    pick.innerHTML = '<option value="">— add an API key first —</option>';
+    pick.innerHTML = '<option value="">— add a provider first —</option>';
     return;
   }
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const groups = await Promise.all(
     providers.map(async (p) => {
-      const ids = await listDrcModels(p, state.keys[p.id]);
+      const ids = await listDrcModels(p, state.keys[p.id] || "", { baseUrl: drcBaseFor(p, state.bases) });
       return (
         `<optgroup label="${esc(p.label)}">` +
-        ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("") +
+        (ids.length
+          ? ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("")
+          : "<option disabled>endpoint offered no model list</option>") +
         "</optgroup>"
       );
     }),
@@ -556,7 +594,8 @@ function renderMessages() {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.textContent =
-      "Ask a research question to get started — it runs right here in your browser, on your own OpenAI, Groq or Berget API key.";
+      "Ask a research question to get started — it runs right here in your browser, against the one " +
+      "provider you choose: OpenAI, Berget, or your own local endpoint.";
     box.appendChild(empty);
     return;
   }
@@ -584,7 +623,8 @@ function newChat() {
 // ---- client-side RAG (drc-rag.js): recall before the pipeline, index after ------------
 
 // The embedding hookup, when a key that can serve embeddings is stored
-// (OpenAI today — Groq has no embeddings endpoint). Returns null otherwise:
+// (OpenAI today — Berget's and local servers' embedding wires are not
+// declared yet). Returns null otherwise:
 // every caller degrades to the plain recent-turns context, silently.
 function embedHookup() {
   const p = drcEmbedProvider(state.keys);
@@ -642,15 +682,15 @@ async function send(ev) {
 
   // The first-visit path: no key yet → a helpful pointer, never an error
   // wall. The message stays in the composer so nothing typed is lost.
-  if (!configuredDrcProviders(state.keys).length) {
+  if (!configuredDrcProviders(state.keys, state.bases).length) {
     openSettings();
     $("keyspanel").open = true;
     $("key-input").focus();
     workStatus(
-      "One thing first: DRC runs on YOUR API key, sent straight from this browser to the " +
-        "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
-        "or Berget key above (Groq has a free tier at console.groq.com; Berget is EU-hosted), press " +
-        "Save keys, then send again.",
+      "One thing first: pick where your research goes. DRC's only outbound dataflow is the model " +
+        "call from this browser to the ONE provider you configure — an OpenAI key, a Berget key " +
+        "(EU-hosted), or your own local OpenAI-compatible endpoint (Ollama, llama.cpp, LM Studio). " +
+        "Set one up above, press Save, then send again.",
     );
     return;
   }
@@ -697,8 +737,9 @@ async function send(ev) {
   try {
     result = await runDrcResearch({
       providerId,
-      apiKey: state.keys[providerId],
+      apiKey: state.keys[providerId] || "",
       model,
+      baseUrl: drcBaseFor(drcProvider(providerId), state.bases) || undefined,
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
       retrieved,
@@ -784,6 +825,18 @@ handlePublicationLink().then((opened) => {
 });
 
 $("introstart").addEventListener("click", dismissIntro);
+// The depth view (public/cure/depth.js): "this very reasoning" — the
+// trust-boundary argument — as one pinch/scroll-zoomable document at 8
+// depths. Lazy-loaded like the umbrella intro, fail-soft the same way.
+const openDepth = () => import("./depth.js").then((m) => m.openDepthView()).catch(() => {});
+$("opendepth").addEventListener("click", () => {
+  dismissIntro();
+  openDepth();
+});
+$("opendepth2").addEventListener("click", () => {
+  closeAccount();
+  openDepth();
+});
 $("brand").addEventListener("click", () => {
   $("intro").hidden = false;
 });
@@ -810,6 +863,8 @@ $("settingsview").addEventListener("click", (e) => {
 });
 $("opensettings").addEventListener("click", openSettings);
 $("key-input").addEventListener("input", syncKeyDetection);
+$("key-provider").addEventListener("change", syncBaseRow);
+syncBaseRow();
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);
 // Experimental in-browser Linux sandbox knob (client-local, persisted in the

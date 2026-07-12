@@ -18,6 +18,9 @@ import {
   FLEET,
   BASE_SPEED,
   clampAnimMult,
+  CAPTIONS,
+  CAPTION_FADE,
+  captionAt,
 } from "../cure/umbrella.js";
 
 test("timeline marks are ordered and phases overlap only as designed", () => {
@@ -155,6 +158,40 @@ test("project: top view shows the x/y plane, side view shows x/z", () => {
   const side = project(p, Math.PI / 2);
   assert.equal(side.x, 3);
   assert.ok(Math.abs(side.y - -7) < 1e-9); // world z up = screen up
+});
+
+test("captions tell the trust-boundary story, in order, without overlap", () => {
+  // The 2026-07-12 directive: the animation carries the boundary framing —
+  // one external dataflow, provider named (OpenAI/Berget/local), the rest
+  // verifiable code — not privacy superlatives.
+  const all = CAPTIONS.map((c) => c.text).join(" | ");
+  assert.match(all, /one external dataflow/);
+  assert.match(all, /OpenAI, Berget, or your own local endpoint/);
+  assert.match(all, /verifiable code/);
+  assert.match(all, /pinch the reasoning/); // the hand-off to the depth view
+  assert.equal(/private|privacy|secret/i.test(all), false, "no privacy superlatives");
+  for (let i = 0; i < CAPTIONS.length; i++) {
+    const c = CAPTIONS[i];
+    assert.ok(c.to - c.from > 2 * CAPTION_FADE, `caption ${i} has room to fade`);
+    if (i) assert.ok(c.from > CAPTIONS[i - 1].to, `caption ${i} starts after ${i - 1} ends`);
+  }
+  // All inside the visible timeline — nothing plays over the fade-out.
+  assert.ok(CAPTIONS[0].from >= 0);
+  assert.ok(CAPTIONS.at(-1).to <= T.fadeStart);
+});
+
+test("captionAt fades each line in and out, and is null between windows", () => {
+  const c0 = CAPTIONS[0];
+  assert.equal(captionAt(c0.from).alpha, 0);
+  assert.equal(captionAt(c0.from + CAPTION_FADE).alpha, 1);
+  assert.equal(captionAt(c0.to).alpha, 0);
+  assert.equal(captionAt((c0.from + c0.to) / 2).text, c0.text);
+  // Mid-fade is strictly between 0 and 1.
+  const mid = captionAt(c0.from + CAPTION_FADE / 2).alpha;
+  assert.ok(mid > 0 && mid < 1);
+  // The gap between captions 0 and 1 shows nothing.
+  assert.equal(captionAt((CAPTIONS[0].to + CAPTIONS[1].from) / 2), null);
+  assert.equal(captionAt(T.end), null);
 });
 
 test("the fleet is a real crowd: varied sizes, both spin directions", () => {

@@ -19,7 +19,8 @@
 //       BROWSER-LOCAL store, drc-store.js) and the AES-256-GCM key it is
 //       sealed with. Neither ever leaves the browser in any form.
 //
-// The provider API keys (OpenAI / Groq / Berget) live INSIDE the sealed state and
+// The provider API keys (OpenAI / Berget / a local endpoint) live INSIDE
+// the sealed state and
 // go straight from the browser to the provider (drc-providers.js) — for
 // DRC the Deepresearch server serves static files and public replay JSONs
 // and is in NO other path: it never sees a key, a message, or the state.
@@ -100,18 +101,23 @@ export async function deriveDrcProfile(secret) {
 
 // ---- the project state --------------------------------------------------------
 
-// {v, kind, updatedAt, keys: {openai?, groq?, berget?}, providerId?, model?,
+// {v, kind, updatedAt, keys: {openai?, berget?, local?},
+//  bases: {local?}, providerId?, model?,
 //  research, conversations: [{id, title, messages, createdAt, updatedAt}],
 //  rag: {embedder?, docs: []}}
 // — everything the page persists, the provider API keys AND the RAG index
 // (chunk text + vectors, drc-rag.js) included, sealed as one blob under
-// blobKey. Conversations are plain {role, content} text turns.
+// blobKey. Conversations are plain {role, content} text turns. `bases`
+// holds the user-supplied endpoint URL for the Local provider (an
+// OpenAI-compatible server the user runs) — configuration that belongs
+// inside the sealed blob like the keys it pairs with.
 export function emptyDrcState() {
   return {
     v: DRC_STATE_V,
     kind: DRC_STATE_KIND,
     updatedAt: Date.now(),
     keys: {},
+    bases: {},
     providerId: null,
     model: null,
     research: true,
@@ -143,6 +149,7 @@ export function validateDrcState(s) {
   return (
     ok &&
     (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys))) &&
+    (s.bases === undefined || (s.bases && typeof s.bases === "object" && !Array.isArray(s.bases))) &&
     (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs)))
   );
 }
@@ -151,6 +158,7 @@ export function validateDrcState(s) {
 export function migrateDrcState(s) {
   s.v = DRC_STATE_V;
   if (!s.keys || typeof s.keys !== "object") s.keys = {};
+  if (!s.bases || typeof s.bases !== "object" || Array.isArray(s.bases)) s.bases = {};
   if (s.research === undefined) s.research = true;
   if (s.providerId === undefined) s.providerId = null;
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };

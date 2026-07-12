@@ -1,15 +1,22 @@
-// Free mode's client-side LLM provider registry — the browser counterpart
-// of src/providers.js, for providers whose APIs allow DIRECT cross-origin
-// calls from JavaScript (CORS). That property is the admission ticket:
-// OpenAI and Groq (GroqCloud) both serve `Access-Control-Allow-Origin: *`
-// on their OpenAI-compatible endpoints, and Berget (api.berget.ai) serves
-// origin-reflecting CORS with POST + Authorization allowed on
-// /chat/completions and /models (probed live 2026-07-11 — it used to have
-// no browser CORS, which is why it was originally excluded here). So the
-// user's browser can call all three with the user's own API key and
-// Deepresearch's server is never in the request path at all. Providers
-// without browser CORS (Anthropic) cannot join this registry — they'd
-// need a proxy, which is exactly what DRC exists to avoid.
+// DRC's client-side LLM provider registry — the browser counterpart of
+// src/providers.js. The registry IS the tier's trust boundary, stated as
+// code: exactly one bidirectional dataflow leaves the page — the model
+// calls from this browser to the ONE provider the user configured — and
+// this file enumerates where that boundary can be placed: OpenAI, Berget,
+// or a LOCAL OpenAI-compatible endpoint the user runs themselves (Ollama,
+// llama.cpp, vLLM, LM Studio — with localhost the flow never even leaves
+// the machine). Everything else in DRC is verifiable client-side code.
+// (2026-07-12 directive: exactly these three — Groq was dropped to keep
+// the boundary choices deliberate: a big US API, an EU-hosted API, or
+// your own hardware.)
+//
+// Technical admission ticket for the hosted entries: browser CORS.
+// OpenAI serves `Access-Control-Allow-Origin: *`; Berget (api.berget.ai)
+// serves origin-reflecting CORS with POST + Authorization allowed on
+// /chat/completions and /models (probed live 2026-07-11). Providers
+// without browser CORS (Anthropic) cannot join — they'd need a proxy,
+// which would put a server back inside the boundary DRC exists to keep
+// empty.
 //
 // Same registry discipline as the server seam: one declarative entry per
 // provider (id, label, base URL, wire-param quirks, a JSON-phase default
@@ -19,12 +26,12 @@
 //
 // Import-safe outside a browser (Node-tested); network calls take an
 // optional baseUrl override so tests can point at a mock (the BERGET_URL
-// convention).
+// convention) — the same override the Local provider rides on for real.
 
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
-// (src/openai.js); Groq and Berget speak plain OpenAI chat completions
-// (Berget: the same wire src/berget.js drives server-side).
+// (src/openai.js); Berget and local servers speak plain OpenAI chat
+// completions (Berget: the same wire src/berget.js drives server-side).
 export const DRC_PROVIDERS = [
   {
     id: "openai",
@@ -54,29 +61,6 @@ export const DRC_PROVIDERS = [
     // send path, so latency and vector size beat the last few points of
     // retrieval quality text-embedding-3-large would buy.
     embed: { model: "text-embedding-3-small", dimensions: 512 },
-  },
-  {
-    id: "groq",
-    label: "Groq",
-    base: "https://api.groq.com/openai/v1",
-    keyPattern: /^gsk_/,
-    jsonModel: "llama-3.1-8b-instant",
-    fallbackModels: [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant",
-      "openai/gpt-oss-120b",
-      "openai/gpt-oss-20b",
-    ],
-    // Same curation rule: the recent flagship + fast language models one
-    // would actually pick here, not Groq's whole zoo (no whisper/tts/
-    // guard/embedding, no older generations).
-    modelFilter: (id) =>
-      /^(llama-3\.3-|llama-3\.1-8b|llama-4|openai\/gpt-oss-|moonshotai\/kimi-k2|qwen)/.test(id) &&
-      !/(whisper|tts|guard|embedding|allam)/i.test(id),
-    params: (maxTokens) => ({ max_tokens: maxTokens }),
-    // No `embed`: Groq serves no /embeddings endpoint, so a Groq-only
-    // session runs without client-side RAG (drc-rag.js degrades to the
-    // plain recent-turns context — fail-soft, never an error).
   },
   {
     id: "berget",
@@ -112,7 +96,35 @@ export const DRC_PROVIDERS = [
     // through drc-rag.js, its vectors are 1024-dim (double the sealed
     // localStorage footprint of OpenAI's 512), and the wire is unverified
     // without a live key — a deliberate later step, not an oversight.
-    // Until then a Berget-only session runs without RAG, like Groq.
+    // Until then a Berget-only session runs without RAG.
+  },
+  {
+    id: "local",
+    label: "Local",
+    // No fixed host: the user supplies the endpoint URL of their OWN
+    // OpenAI-compatible server (Ollama, llama.cpp, vLLM, LM Studio, or a
+    // self-hosted gateway). This is the boundary-collapsing option — with
+    // localhost, DRC's one external dataflow never leaves the machine.
+    base: "",
+    requiresBase: true,
+    // Most local servers ignore auth entirely; a key stays optional (some
+    // gateways do want one). No keyPattern — nothing to auto-detect.
+    keyOptional: true,
+    keyPattern: null,
+    // No fixed cheap planning model: a local server typically serves ONE
+    // model, so the split-model routing degrades to the chosen model
+    // (drc-research.js falls back when jsonModel is null).
+    jsonModel: null,
+    // Nothing sensible to offer statically — the live /models list of the
+    // user's own server is the only catalog there is.
+    fallbackModels: [],
+    // No curation either: whatever the user chose to serve, they meant.
+    modelFilter: () => true,
+    // Plain OpenAI chat-completions wire, like Berget.
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed` entry: local embedding wire shapes vary too much to
+    // assume — a Local-only session runs without client-side RAG,
+    // fail-soft, like Berget.
   },
 ];
 
@@ -122,10 +134,10 @@ export function drcProvider(id) {
 
 /**
  * Identify the provider a pasted API key belongs to by its prefix
- * (sk_ber_… → Berget, gsk_… → Groq, sk-… → OpenAI), or null for an
- * unrecognized shape — the key panel's one-field UX: the provider
- * dropdown follows the detected prefix automatically, and stays
- * user-pickable for keys no pattern knows.
+ * (sk_ber_… → Berget, sk-… → OpenAI), or null for an unrecognized
+ * shape — the key panel's one-field UX: the provider dropdown follows
+ * the detected prefix automatically, and stays user-pickable for keys
+ * no pattern knows (a Local gateway's key is always the user's call).
  * @param {string} key
  * @returns {?{id: string, label: string}}
  */
@@ -135,9 +147,52 @@ export function detectDrcProvider(key) {
   return DRC_PROVIDERS.find((p) => p.keyPattern && p.keyPattern.test(k)) || null;
 }
 
-/** The providers the user has stored a key for. */
-export function configuredDrcProviders(keys) {
-  return DRC_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
+// ---- the user-supplied endpoint (the Local provider) --------------------------
+
+/** A usable endpoint URL: http(s), no spaces. http is deliberately allowed —
+ * localhost servers rarely speak TLS, and a secure page may call
+ * http://localhost (a "potentially trustworthy origin" per the spec).
+ * @param {any} url */
+export function drcBaseValid(url) {
+  return typeof url === "string" && /^https?:\/\/\S+$/i.test(url.trim());
+}
+
+/**
+ * Forgiving endpoint normalization: trims, strips trailing slashes, and
+ * appends the conventional /v1 when the URL carries no path at all —
+ * "http://localhost:11434" means Ollama's OpenAI surface at …/v1, while
+ * an explicit path ("…/openai/v1", "…/api") is kept verbatim.
+ * @param {string} url @returns {string} "" when unusable
+ */
+export function normalizeDrcBase(url) {
+  if (!drcBaseValid(url)) return "";
+  let base = url.trim().replace(/\/+$/, "");
+  if (/^https?:\/\/[^/]+$/i.test(base)) base += "/v1";
+  return base;
+}
+
+/**
+ * The base URL a provider's calls should use: the user-supplied endpoint
+ * for entries that require one (Local), the registry's fixed host
+ * otherwise. `bases` is the sealed state's {local?: url} map.
+ * @param {any} provider @param {?object} [bases]
+ */
+export function drcBaseFor(provider, bases) {
+  const custom = bases && typeof bases[provider?.id] === "string" ? bases[provider.id] : "";
+  return provider?.requiresBase ? normalizeDrcBase(custom) : custom || provider?.base || "";
+}
+
+/**
+ * The providers the user has configured: a stored key for the hosted
+ * entries, a usable endpoint URL for the Local entry (its key is
+ * optional — most local servers ignore auth).
+ */
+export function configuredDrcProviders(keys, bases) {
+  return DRC_PROVIDERS.filter((p) =>
+    p.requiresBase
+      ? drcBaseValid(bases?.[p.id])
+      : typeof keys?.[p.id] === "string" && keys[p.id],
+  );
 }
 
 /**
@@ -147,6 +202,14 @@ export function configuredDrcProviders(keys) {
  */
 export function drcEmbedProvider(keys) {
   return DRC_PROVIDERS.find((p) => p.embed && typeof keys?.[p.id] === "string" && keys[p.id]) || null;
+}
+
+// Bearer auth only when there IS a key — the Local provider's key is
+// optional, and a bare "Bearer " header trips some local servers.
+function wireHeaders(apiKey, json = true) {
+  const h = json ? { "content-type": "application/json" } : {};
+  if (apiKey) h.authorization = "Bearer " + apiKey;
+  return h;
 }
 
 /**
@@ -160,10 +223,7 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl } = {}
     signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(30_000) : undefined);
   const res = await fetch((baseUrl || provider.base) + "/embeddings", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify({
       model: provider.embed.model,
       input: texts,
@@ -205,10 +265,7 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: true, maxTokens })),
     signal,
   });
@@ -242,10 +299,7 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
   const timeout = signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(45_000) : undefined);
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { json: true, maxTokens })),
     signal: timeout,
   });
@@ -264,7 +318,7 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
 export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
   try {
     const res = await fetch((baseUrl || provider.base) + "/models", {
-      headers: { authorization: "Bearer " + apiKey },
+      headers: wireHeaders(apiKey, false),
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();

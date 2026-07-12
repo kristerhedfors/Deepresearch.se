@@ -6,6 +6,8 @@ import {
   buildDrcPayload,
   configuredDrcProviders,
   detectDrcProvider,
+  drcBaseFor,
+  drcBaseValid,
   extractJson,
   drcChatStream,
   drcCompleteJson,
@@ -13,18 +15,34 @@ import {
   drcEmbedProvider,
   drcProvider,
   listDrcModels,
+  normalizeDrcBase,
 } from "./drc-providers.js";
 
-test("the registry holds exactly the CORS-capable providers", () => {
-  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq", "berget"]);
+test("the registry holds exactly the three boundary choices", () => {
+  // 2026-07-12 directive: OpenAI, Berget, or a user-supplied Local
+  // endpoint — the places the tier's ONE external dataflow may point.
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "berget", "local"]);
   assert.equal(drcProvider("openai").label, "OpenAI");
-  assert.equal(drcProvider("groq").label, "Groq");
   assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
+  assert.equal(drcProvider("local").label, "Local");
+  assert.equal(drcProvider("groq"), null); // dropped 2026-07-12
   assert.equal(drcProvider("anthropic"), null); // no browser CORS — not in this registry
   for (const p of DRC_PROVIDERS) {
+    if (p.requiresBase) continue; // Local: catalog and planning model come from the user's server
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
+});
+
+test("the Local entry is the user-supplied-endpoint shape", () => {
+  const local = drcProvider("local");
+  assert.equal(local.requiresBase, true);
+  assert.equal(local.keyOptional, true); // most local servers ignore auth
+  assert.equal(local.keyPattern, null); // nothing to auto-detect
+  assert.equal(local.jsonModel, null); // planning degrades to the chosen model
+  assert.deepEqual(local.fallbackModels, []); // the live /models list is the only catalog
+  assert.equal(local.base, "");
+  assert.equal(local.embed, undefined); // a Local-only session runs without RAG
 });
 
 test("detectDrcProvider identifies a pasted key by its prefix", () => {
@@ -32,13 +50,13 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
   assert.equal(detectDrcProvider("sk-abc123").id, "openai");
   assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
   assert.equal(detectDrcProvider("sk-svcacct-abc123").id, "openai");
-  // Groq: gsk_…
-  assert.equal(detectDrcProvider("gsk_abc123").id, "groq");
   // Berget: sk_ber_… (underscore — never collides with OpenAI's sk-).
   assert.equal(detectDrcProvider("sk_ber_abc123").id, "berget");
   // Whitespace from a paste is forgiven.
   assert.equal(detectDrcProvider("  sk_ber_abc123\n").id, "berget");
-  // Unknown shapes stay the user's call — no guess.
+  // Unknown shapes stay the user's call — no guess. Groq keys are one of
+  // them now (the provider left the registry 2026-07-12).
+  assert.equal(detectDrcProvider("gsk_abc123"), null);
   assert.equal(detectDrcProvider("sk_abc123"), null); // underscore but not Berget's
   assert.equal(detectDrcProvider("hf_abc123"), null);
   assert.equal(detectDrcProvider(""), null);
@@ -57,7 +75,6 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
   const openai = drcProvider("openai");
   assert.equal(openai.embed.model, "text-embedding-3-small");
   assert.equal(openai.embed.dimensions, 512);
-  assert.equal(drcProvider("groq").embed, undefined); // Groq serves no /embeddings
   // Berget serves /embeddings (e5) but joining RAG needs the passage:/query:
   // prefix convention + 1024-dim storage — deliberately not declared yet.
   assert.equal(drcProvider("berget").embed, undefined);
@@ -65,23 +82,60 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
 
 test("drcEmbedProvider: the first embeddings-capable provider with a key", () => {
   assert.equal(drcEmbedProvider({}), null);
-  assert.equal(drcEmbedProvider({ groq: "gsk" }), null); // a Groq-only session has no RAG
-  assert.equal(drcEmbedProvider({ berget: "bk" }), null); // a Berget-only session too (no embed entry yet)
+  assert.equal(drcEmbedProvider({ berget: "bk" }), null); // a Berget-only session has no RAG (no embed entry yet)
+  assert.equal(drcEmbedProvider({ local: "lk" }), null); // a Local-only session too
   assert.equal(drcEmbedProvider({ openai: "sk" }).id, "openai");
-  assert.equal(drcEmbedProvider({ openai: "sk", groq: "gsk" }).id, "openai");
+  assert.equal(drcEmbedProvider({ openai: "sk", berget: "bk" }).id, "openai");
   assert.equal(drcEmbedProvider({ openai: "" }), null);
 });
 
-test("configuredDrcProviders follows the stored keys", () => {
+test("configuredDrcProviders: keys for hosted entries, an endpoint for Local", () => {
   assert.deepEqual(configuredDrcProviders({}).map((p) => p.id), []);
-  assert.deepEqual(configuredDrcProviders({ groq: "gsk" }).map((p) => p.id), ["groq"]);
-  assert.deepEqual(configuredDrcProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(configuredDrcProviders({ openai: "sk" }).map((p) => p.id), ["openai"]);
   assert.deepEqual(
-    configuredDrcProviders({ openai: "sk", groq: "gsk", berget: "bk" }).map((p) => p.id),
-    ["openai", "groq", "berget"],
+    configuredDrcProviders({ openai: "sk", berget: "bk" }).map((p) => p.id),
+    ["openai", "berget"],
   );
   assert.deepEqual(configuredDrcProviders({ berget: "bk" }).map((p) => p.id), ["berget"]);
   assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
+  // Local is configured by its BASE URL, not a key (the key is optional).
+  assert.deepEqual(
+    configuredDrcProviders({}, { local: "http://localhost:11434/v1" }).map((p) => p.id),
+    ["local"],
+  );
+  assert.deepEqual(
+    configuredDrcProviders({ openai: "sk", local: "ignored-key" }, { local: "https://gw.example/v1" }).map((p) => p.id),
+    ["openai", "local"],
+  );
+  // A stored local KEY without an endpoint configures nothing.
+  assert.deepEqual(configuredDrcProviders({ local: "some-key" }).map((p) => p.id), []);
+  assert.deepEqual(configuredDrcProviders({}, { local: "not a url" }).map((p) => p.id), []);
+});
+
+test("endpoint validation and normalization (the Local base URL)", () => {
+  assert.equal(drcBaseValid("http://localhost:11434"), true);
+  assert.equal(drcBaseValid("https://gw.example/openai/v1"), true);
+  assert.equal(drcBaseValid("ftp://x"), false);
+  assert.equal(drcBaseValid("localhost:11434"), false); // scheme required
+  assert.equal(drcBaseValid("http://a b"), false);
+  assert.equal(drcBaseValid(""), false);
+  assert.equal(drcBaseValid(null), false);
+
+  // A bare host means the conventional /v1 surface (Ollama, LM Studio…).
+  assert.equal(normalizeDrcBase("http://localhost:11434"), "http://localhost:11434/v1");
+  assert.equal(normalizeDrcBase("http://localhost:11434/"), "http://localhost:11434/v1");
+  // An explicit path is the user's own routing — kept verbatim.
+  assert.equal(normalizeDrcBase("https://gw.example/openai/v1"), "https://gw.example/openai/v1");
+  assert.equal(normalizeDrcBase("http://192.168.1.5:8080/api/"), "http://192.168.1.5:8080/api");
+  assert.equal(normalizeDrcBase("  http://localhost:8080/v1  "), "http://localhost:8080/v1");
+  assert.equal(normalizeDrcBase("garbage"), "");
+
+  // drcBaseFor: hosted providers keep their fixed host; Local reads the
+  // sealed state's bases map.
+  assert.equal(drcBaseFor(drcProvider("openai"), {}), "https://api.openai.com/v1");
+  assert.equal(drcBaseFor(drcProvider("berget"), { local: "http://x" }), "https://api.berget.ai/v1");
+  assert.equal(drcBaseFor(drcProvider("local"), { local: "http://localhost:11434" }), "http://localhost:11434/v1");
+  assert.equal(drcBaseFor(drcProvider("local"), {}), "");
 });
 
 test("buildDrcPayload carries each provider's wire quirks", () => {
@@ -92,12 +146,6 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.deepEqual(openai.response_format, { type: "json_object" });
   assert.equal(openai.stream, false);
 
-  const groq = buildDrcPayload(drcProvider("groq"), "llama-3.3-70b-versatile", msgs, { stream: true });
-  assert.equal(groq.max_tokens, 4096);
-  assert.equal(groq.max_completion_tokens, undefined);
-  assert.equal(groq.response_format, undefined);
-  assert.equal(groq.stream, true);
-
   // Berget: the plain OpenAI wire, same params src/berget.js sends.
   const berget = buildDrcPayload(drcProvider("berget"), "mistralai/Mistral-Small-3.2-24B-Instruct-2506", msgs, {
     json: true,
@@ -107,6 +155,13 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.equal(berget.max_completion_tokens, undefined);
   assert.equal(berget.reasoning_effort, undefined);
   assert.deepEqual(berget.response_format, { type: "json_object" });
+
+  // Local: the plain OpenAI wire too — the least-assuming shape.
+  const local = buildDrcPayload(drcProvider("local"), "qwen3:8b", msgs, { stream: true });
+  assert.equal(local.max_tokens, 4096);
+  assert.equal(local.max_completion_tokens, undefined);
+  assert.equal(local.response_format, undefined);
+  assert.equal(local.stream, true);
 });
 
 test("extractJson forgives fences and prose, rejects garbage", () => {
@@ -117,7 +172,7 @@ test("extractJson forgives fences and prose, rejects garbage", () => {
   assert.equal(extractJson(""), null);
 });
 
-test("model filters are CURATED: recent language models only", () => {
+test("model filters are CURATED for hosted providers, open for Local", () => {
   const openai = drcProvider("openai");
   assert.equal(openai.modelFilter("gpt-5.6-terra"), true);
   assert.equal(openai.modelFilter("gpt-5.5"), true);
@@ -130,15 +185,6 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(openai.modelFilter("o3-mini"), false);
   assert.equal(openai.modelFilter("gpt-5.5-audio-preview"), false);
   assert.equal(openai.modelFilter("text-embedding-3-large"), false);
-  const groq = drcProvider("groq");
-  assert.equal(groq.modelFilter("llama-3.3-70b-versatile"), true);
-  assert.equal(groq.modelFilter("llama-3.1-8b-instant"), true);
-  assert.equal(groq.modelFilter("openai/gpt-oss-120b"), true);
-  assert.equal(groq.modelFilter("moonshotai/kimi-k2-instruct"), true);
-  assert.equal(groq.modelFilter("llama-3.1-70b-versatile"), false); // superseded generation
-  assert.equal(groq.modelFilter("whisper-large-v3"), false);
-  assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
-  assert.equal(groq.modelFilter("gemma2-9b-it"), false);
 
   // Berget's catalog is small and already curated — the filter's job is
   // excluding its non-chat modalities (ids from the live catalog 2026-07-11).
@@ -153,6 +199,11 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(berget.modelFilter("BAAI/bge-reranker-v2-m3"), false);
   assert.equal(berget.modelFilter("intfloat/multilingual-e5-large-instruct"), false);
   assert.equal(berget.modelFilter("intfloat/multilingual-e5-large"), false);
+
+  // Local: whatever the user chose to serve, they meant — no curation.
+  const local = drcProvider("local");
+  assert.equal(local.modelFilter("qwen3:8b"), true);
+  assert.equal(local.modelFilter("my-finetune-v2"), true);
 });
 
 describe("provider calls over mock HTTP", () => {
@@ -163,7 +214,7 @@ describe("provider calls over mock HTTP", () => {
     req.on("end", () => {
       requests.push({ url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null });
       if (req.url.endsWith("/models")) {
-        if (req.headers.authorization !== "Bearer good-key") {
+        if (req.headers.authorization && req.headers.authorization !== "Bearer good-key") {
           res.writeHead(401, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad key" }));
           return;
@@ -171,7 +222,11 @@ describe("provider calls over mock HTTP", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            data: [{ id: "llama-3.3-70b-versatile" }, { id: "whisper-large-v3" }, { id: "llama-3.1-8b-instant" }],
+            data: [
+              { id: "mistralai/Mistral-Small-3.2-24B-Instruct-2506" },
+              { id: "KBLab/kb-whisper-large" },
+              { id: "moonshotai/Kimi-K2.6" },
+            ],
           }),
         );
         return;
@@ -207,21 +262,35 @@ describe("provider calls over mock HTTP", () => {
   after(() => server.close());
 
   test("listDrcModels: live list filtered; fallback catalog on a rejected key", async () => {
-    const groq = drcProvider("groq");
-    const live = await listDrcModels(groq, "good-key", { baseUrl });
-    assert.deepEqual(live, ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]); // whisper filtered, newest first
-    const fallback = await listDrcModels(groq, "bad-key", { baseUrl });
-    assert.deepEqual(fallback, groq.fallbackModels);
+    const berget = drcProvider("berget");
+    const live = await listDrcModels(berget, "good-key", { baseUrl });
+    // whisper filtered out, remainder sorted newest-ish first
+    assert.deepEqual(live, ["moonshotai/Kimi-K2.6", "mistralai/Mistral-Small-3.2-24B-Instruct-2506"]);
+    const fallback = await listDrcModels(berget, "bad-key", { baseUrl });
+    assert.deepEqual(fallback, berget.fallbackModels);
+  });
+
+  test("Local: the live list is unfiltered and needs no key at all", async () => {
+    const local = drcProvider("local");
+    const live = await listDrcModels(local, "", { baseUrl });
+    assert.deepEqual(live, [
+      "moonshotai/Kimi-K2.6",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+      "KBLab/kb-whisper-large",
+    ]);
+    // The keyless request carried NO Authorization header — a bare
+    // "Bearer " trips some local servers.
+    assert.equal(requests.at(-1).headers.authorization, undefined);
   });
 
   test("drcCompleteJson: bearer auth, JSON mode requested, fenced JSON parsed", async () => {
-    const groq = drcProvider("groq");
-    const value = await drcCompleteJson(groq, "good-key", "llama-3.1-8b-instant", [{ role: "user", content: "x" }], { baseUrl });
+    const berget = drcProvider("berget");
+    const value = await drcCompleteJson(berget, "good-key", berget.jsonModel, [{ role: "user", content: "x" }], { baseUrl });
     assert.deepEqual(value, { ok: true });
     const req = requests.at(-1);
     assert.equal(req.headers.authorization, "Bearer good-key");
     assert.deepEqual(req.body.response_format, { type: "json_object" });
-    assert.equal(req.body.model, "llama-3.1-8b-instant");
+    assert.equal(req.body.model, berget.jsonModel);
   });
 
   test("drcEmbed: small model + dimensions on the wire, vectors back in input order", async () => {
@@ -239,34 +308,32 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(req.body.encoding_format, "float");
     assert.deepEqual(req.body.input, ["one", "two", "three"]);
     // a provider without an embed entry refuses up front
-    await assert.rejects(drcEmbed(drcProvider("groq"), "k", ["x"], { baseUrl }), /no embeddings/);
+    await assert.rejects(drcEmbed(drcProvider("berget"), "k", ["x"], { baseUrl }), /no embeddings/);
   });
 
   test("drcChatStream: returns the provider's SSE response as-is", async () => {
-    const groq = drcProvider("groq");
-    const res = await drcChatStream(groq, "good-key", "llama-3.3-70b-versatile", [{ role: "user", content: "x" }], { baseUrl });
+    const berget = drcProvider("berget");
+    const res = await drcChatStream(berget, "good-key", "moonshotai/Kimi-K2.6", [{ role: "user", content: "x" }], { baseUrl });
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     assert.equal(requests.at(-1).body.stream, true);
   });
 
-  test("Berget over mock HTTP: bearer auth + the plain OpenAI wire", async () => {
-    const berget = drcProvider("berget");
-    const res = await drcChatStream(
-      berget,
-      "good-key",
-      "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
-      [{ role: "user", content: "x" }],
-      { baseUrl },
-    );
+  test("Local over mock HTTP: keyless chat works, plain OpenAI wire", async () => {
+    const local = drcProvider("local");
+    const res = await drcChatStream(local, "", "qwen3:8b", [{ role: "user", content: "x" }], { baseUrl });
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     const req = requests.at(-1);
-    assert.equal(req.headers.authorization, "Bearer good-key");
+    assert.equal(req.headers.authorization, undefined); // no key → no header
     assert.equal(req.body.max_tokens, 4096);
     assert.equal(req.body.max_completion_tokens, undefined);
 
-    const value = await drcCompleteJson(berget, "good-key", berget.jsonModel, [{ role: "user", content: "x" }], { baseUrl });
+    // …and a gateway key IS sent when the user stored one.
+    await (await drcChatStream(local, "gw-key", "qwen3:8b", [{ role: "user", content: "x" }], { baseUrl })).text();
+    assert.equal(requests.at(-1).headers.authorization, "Bearer gw-key");
+
+    const value = await drcCompleteJson(local, "", "qwen3:8b", [{ role: "user", content: "x" }], { baseUrl });
     assert.deepEqual(value, { ok: true });
     assert.deepEqual(requests.at(-1).body.response_format, { type: "json_object" });
   });

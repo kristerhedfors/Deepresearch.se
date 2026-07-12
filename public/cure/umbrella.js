@@ -99,6 +99,50 @@ export function paramsAt(t) {
   };
 }
 
+// ---- the captions (pure) -----------------------------------------------------------
+
+// The story the animation tells, one line at a time (2026-07-12 directive):
+// not a privacy superlative but the TRUST-BOUNDARY fact — DRC has exactly
+// one external bidirectional dataflow, the model calls to the provider the
+// user chose (OpenAI, Berget, or their own local endpoint), and everything
+// else is verifiable client-side code. The last line points at the depth
+// view (drc-depth.js), where that reasoning can be pinch-zoomed to any
+// depth. Windows are disjoint and sit inside the phase timeline above.
+// Times are DESIGN-time ms like T (the caller feeds captionAt the same
+// scaled clock the phases run on), so captions ride the speed multiplier.
+// Three lines, not four: at the 2.5× base pace each window is ~1.5-2 s of
+// real time — fewer, wider windows keep them readable.
+export const CAPTION_FADE = 400; // design-time ms of fade at each caption edge
+export const CAPTIONS = [
+  { from: 700, to: T.untwistEnd - 1200, text: "deep research, running in your browser" },
+  {
+    from: T.untwistEnd - 1000,
+    to: T.tiltStart + 800,
+    text: "one external dataflow — the provider you choose: OpenAI, Berget, or your own local endpoint",
+  },
+  {
+    from: T.tiltStart + 1000,
+    to: T.fadeStart,
+    text: "everything else is verifiable code — pinch the reasoning to any depth",
+  },
+];
+
+/**
+ * The caption visible at clock time t, with its fade alpha — or null
+ * between windows.
+ * @param {number} t
+ * @returns {?{text: string, alpha: number}}
+ */
+export function captionAt(t) {
+  for (const c of CAPTIONS) {
+    if (t >= c.from && t <= c.to) {
+      const alpha = Math.min(smooth((t - c.from) / CAPTION_FADE), smooth((c.to - t) / CAPTION_FADE));
+      return { text: c.text, alpha };
+    }
+  }
+  return null;
+}
+
 // ---- the geometry (pure) -----------------------------------------------------------
 
 export const PANELS = 8; // 4 yellow + 4 blue, alternating — the untwisted logo
@@ -422,6 +466,17 @@ export function playUmbrellaIntro(opts = {}) {
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1;
+    }
+
+    // The trust-boundary story, one caption at a time.
+    const cap = captionAt(t);
+    if (cap && cap.alpha > 0.01) {
+      ctx.globalAlpha = 0.9 * cap.alpha;
+      ctx.fillStyle = INK;
+      ctx.font = `500 ${Math.max(14, Math.min(19, S * 0.03))}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(cap.text, W / 2, H - 56, W - 32);
       ctx.globalAlpha = 1;
     }
 

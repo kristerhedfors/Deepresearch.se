@@ -43,7 +43,8 @@
   </header>
 
   <div id="chat"><div class="empty">Ask a research question to get started — it runs right here
-    in your browser, on your own OpenAI, Groq or Berget API key. The first send helps you set one up.</div></div>
+    in your browser, against the one provider you choose: OpenAI, Berget, or your own local
+    endpoint. The first send helps you set one up.</div></div>
 
   <div id="footer">
     <div class="footer-slide">
@@ -147,10 +148,14 @@
         <button id="accountclose" type="button" aria-label="Close">✕</button>
       </div>
       <p class="acct-lead">DRC has <b>no accounts</b> and no server-side data. Your chats,
-        projects and API keys live <b>only in this browser</b>. The one thing that ever
-        leaves your device is the model call itself — sent straight to your chosen
-        provider (OpenAI, Groq or Berget) on your own key. This site's server is never in the
-        path, so it cannot read or log any of it.</p>
+        projects and API keys live <b>only in this browser</b>. The one bidirectional
+        dataflow that leaves your device is the model call itself — sent straight to the
+        provider you chose: OpenAI, Berget, or a local endpoint you run yourself.
+        Everything else is verifiable code running here; this site's server only hands
+        out the static files.</p>
+      <div class="row">
+        <button type="button" id="opendepth2">Zoom the reasoning behind this →</button>
+      </div>
       <p class="muted">Configuration — your API key and the execution sandbox — lives
         under <b>Settings</b> (the gear in the header).</p>
       <div class="row">
@@ -170,21 +175,30 @@
       </div>
 
       <details id="keyspanel" open>
-        <summary>Provider API keys <span id="keysbadge" class="muted"></span></summary>
-        <p class="muted">Your key goes from this browser straight to the provider — never
-          through this site's server. With a saved project it's stored only inside
+        <summary>Model provider <span id="keysbadge" class="muted"></span></summary>
+        <p class="muted">This is DRC's <b>one external dataflow</b>: model calls go from this
+          browser straight to the provider you pick — never through this site's server.
+          Place that trust boundary where you want it: OpenAI, Berget (EU-hosted), or your
+          own local endpoint. With a saved project, keys and endpoint rest only inside
           your sealed blob, in this browser.</p>
         <label for="key-input">API key</label>
         <input id="key-input" type="password" autocomplete="off"
-               placeholder="sk-… (OpenAI) · gsk_… (Groq) · sk_ber_… (Berget)">
+               placeholder="sk-… (OpenAI) · sk_ber_… (Berget)">
         <label for="key-provider">Provider <span id="keydetect" class="muted"></span></label>
         <select id="key-provider">
           <option value="openai">OpenAI (platform.openai.com)</option>
-          <option value="groq">Groq (console.groq.com — free tier available)</option>
           <option value="berget">Berget (berget.ai — EU-hosted models)</option>
+          <option value="local">Local — your own OpenAI-compatible endpoint</option>
         </select>
+        <div id="baserow" hidden>
+          <label for="key-base">Endpoint URL</label>
+          <input id="key-base" type="url" autocomplete="off" spellcheck="false"
+                 placeholder="http://localhost:11434 (Ollama) · http://localhost:1234 (LM Studio)">
+          <p class="muted">Any OpenAI-compatible server: Ollama, llama.cpp, vLLM, LM Studio, or a
+            gateway you host. On localhost the research never leaves your machine at all.</p>
+        </div>
         <div class="row">
-          <button type="button" id="savekeys">Save key</button>
+          <button type="button" id="savekeys">Save</button>
           <span id="keysstatus" class="muted"></span>
         </div>
         <div id="savedkeys"></div>
@@ -209,18 +223,19 @@
   <div id="intro" hidden>
     <div class="intro-card">
       <h1>deepresearch.<b>se/cure</b> <span class="tier">DRC — deep research secure</span></h1>
-      <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
-        your own OpenAI, Groq or Berget API key and every model call goes straight from this
-        page to the provider — this site's server is never in the path, so it could not
-        read or log your messages even if it wanted to.</p>
+      <p class="lead">Deep research that runs <b>client-side, in your browser</b>, with
+        <b>one external dataflow</b>: the model calls to the provider you choose — OpenAI,
+        Berget, or a local endpoint you run yourself. You decide where that trust boundary
+        sits; everything on this side of it is verifiable code.</p>
       <ul class="intro-points">
-        <li>🔑 <b>Your keys.</b> Stored only encrypted, in this browser only, sent only to the provider you chose.</li>
-        <li>🧭 <b>Real research flow.</b> Questions are triaged, decomposed, answered and reviewed in phases — not one bare completion.</li>
-        <li>🔒 <b>One secret, all local.</b> Chats and keys are sealed with your secret and stored in this browser alone — nothing about your projects ever leaves this machine.</li>
+        <li>🧭 <b>One boundary, your choice.</b> The only thing that leaves this page is the model call, sent straight to your provider on your own key — point it at OpenAI, at EU-hosted Berget, or at your own machine.</li>
+        <li>📖 <b>Everything else is inspectable.</b> Research phases, storage, retrieval — plain client-side code served as static files. Open devtools: the network tab is the whole story.</li>
+        <li>🔒 <b>One secret, all local.</b> Chats, keys and endpoint are sealed with your secret and stored in this browser alone.</li>
       </ul>
       <div id="introlist" hidden></div>
       <div class="row">
         <button type="button" id="introstart">Start chatting</button>
+        <button type="button" id="opendepth">Pinch the reasoning</button>
         <a class="btnlike" href="/welcome/">About</a>
         <a class="btnlike" href="/login">Sign in to DRS</a>
       </div>
@@ -229,6 +244,29 @@
         pipeline with live web search and cited sources, documents and projects,
         cloud storage, on hosted EU models.</p>
     </div>
+  </div>
+
+  <!-- ---- the depth view (depth.js): this very reasoning — the tier's
+       trust-boundary argument — as one zoomable document at 8 depths.
+       No links anywhere: scrolling/pinching compresses or expands the
+       text in place; the gauge's ticks and ± are the gesture-free path.
+       Fragments are pre-fetched by construction (hardcoded in depth.js);
+       depth.js fills #depthbody and wires the gestures on first open. -->
+  <div id="depthview" hidden>
+    <div class="depth-head">
+      <strong>The reasoning</strong>
+      <span id="depthlabel" class="muted"></span>
+      <button id="depthclose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div id="depthscroll">
+      <div id="depthbody"></div>
+    </div>
+    <div id="depthgauge">
+      <button id="depthin" type="button" aria-label="Expand — go deeper">+</button>
+      <div id="depthticks"></div>
+      <button id="depthout" type="button" aria-label="Compress — go shallower">−</button>
+    </div>
+    <p class="depth-hint">scroll or pinch to compress / expand · drag to move · no links — only depth</p>
   </div>
 
   <script type="module" src="/cure/drc.js"></script>

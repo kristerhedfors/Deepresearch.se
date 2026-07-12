@@ -23,7 +23,7 @@ opened IN PLACE by the DRC app (`public/cure/drc.js` — DRC, "deep
 research secure", the client-side tier that lives at /cure): the frozen
 messages seed a normal DRC conversation, so "continue with your own API
 keys" is just typing a follow-up, which runs client-side on the
-visitor's OpenAI/Groq/Berget key (see the storage-privacy skill's DRC
+visitor's own provider — OpenAI/Berget key or local endpoint (see the storage-privacy skill's DRC
 section). The intro glass pane doubles as the publication shelf, and
 `/?continue=<slug>` is the legacy handoff form. Publishing is therefore
 also an acquisition surface: a great answer becomes a starting point

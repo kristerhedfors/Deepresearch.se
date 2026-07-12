@@ -1,7 +1,8 @@
 // Free mode's deep-research pipeline, ported to run ENTIRELY in the
 // browser: every phase is a direct cross-origin call from the user's
-// browser to the user's own provider (drc-providers.js — OpenAI, Groq or Berget),
-// with Deepresearch's server nowhere in the path. The phase FLOW mirrors
+// browser to the user's own provider (drc-providers.js — OpenAI, Berget,
+// or a local OpenAI-compatible endpoint the user runs), with
+// Deepresearch's server nowhere in the path. The phase FLOW mirrors
 // the server pipeline (src/pipeline.js) and keeps its two load-bearing
 // rules — deterministic orchestration with NO function calling (every
 // phase is a plain JSON-mode or streamed call), and helper phases that
@@ -275,8 +276,14 @@ export async function runDrcResearch({
 }) {
   const provider = drcProvider(providerId);
   if (!provider) throw new Error("Unknown provider.");
-  if (!apiKey) throw new Error("No " + provider.label + " API key is stored.");
-  const jsonModel = provider.jsonModel;
+  // The Local provider's key is optional (most local servers ignore auth);
+  // the hosted providers reject keyless calls before any tokens are spent.
+  if (!apiKey && !provider.keyOptional) throw new Error("No " + provider.label + " API key is stored.");
+  // Split model routing, client-side: planning runs on the provider's fixed
+  // cheap jsonModel. A Local server typically serves ONE model, so a null
+  // jsonModel degrades the split to the user's chosen model — same boundary,
+  // one model doing both jobs.
+  const jsonModel = provider.jsonModel || model;
   const question = messages[messages.length - 1]?.content || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const context = drcContext(messages) + (recall ? "\n\n" + recall : "");

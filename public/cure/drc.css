@@ -533,3 +533,79 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   padding: .15rem .5rem; cursor: pointer; color: var(--muted); font-size: .75rem;
 }
 .saved-key-row .key-remove:hover { color: var(--text); }
+
+/* ---- the depth view (depth.js): this very reasoning, zoomable to 8 depths.
+   The whole interaction model is CSS-simple on purpose: depth.js sets one
+   custom property per depth level (--r2 … --r8, each 0..1) on #depthbody,
+   and each fragment's font-size scales by its depth's reveal — text
+   literally compresses to zero height instead of popping in and out. All
+   spacing inside fragments is in em so it compresses along with the text.
+   No CSS transitions here: the gestures stream continuous values, and the
+   focal-point anchor correction measures the DOM synchronously — a
+   transition would make those measurements lie. */
+#depthview {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(195, 176, 145, .97); /* the khaki, near-opaque glass */
+  display: flex; flex-direction: column;
+}
+#depthview[hidden] { display: none; }
+.depth-head {
+  display: flex; align-items: baseline; gap: .6rem;
+  padding: calc(.6rem + env(safe-area-inset-top, 0px)) 1rem .45rem;
+  border-bottom: 1px solid rgba(61, 52, 24, .18);
+}
+.depth-head strong { font-size: 1rem; }
+.depth-head .muted { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+#depthclose {
+  margin-left: auto; align-self: center;
+  background: rgba(255, 255, 255, .3); border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 10px; padding: .3rem .55rem; cursor: pointer; color: var(--text);
+}
+#depthscroll {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  /* one-finger drags pan natively; pinches reach depth.js's pointer math */
+  touch-action: pan-y;
+  padding: .8rem 3.4rem .8rem 1.2rem;
+}
+#depthbody {
+  max-width: 42rem; margin: 0 auto;
+  font-size: 1.02rem; line-height: 1.55;
+  /* generous tail so a deep focal point can still be centered */
+  padding-bottom: 45vh;
+}
+#depthbody .frag-text { margin: .55em 0; }
+#depthbody .fkids {
+  margin-left: .55em; padding-left: .8em;
+  border-left: 2px solid rgba(61, 52, 24, .18);
+}
+/* Depth 1 — the thesis — is always fully open and reads as the headline. */
+#depthbody [data-d="1"] > .frag-text { font-weight: 600; font-size: 1.08em; }
+#depthbody [data-d="2"] { font-size: calc(var(--r2, 0) * 1em); opacity: var(--r2, 0); }
+#depthbody [data-d="3"] { font-size: calc(var(--r3, 0) * 1em); opacity: var(--r3, 0); }
+#depthbody [data-d="4"] { font-size: calc(var(--r4, 0) * 1em); opacity: var(--r4, 0); }
+#depthbody [data-d="5"] { font-size: calc(var(--r5, 0) * 1em); opacity: var(--r5, 0); }
+#depthbody [data-d="6"] { font-size: calc(var(--r6, 0) * 1em); opacity: var(--r6, 0); }
+#depthbody [data-d="7"] { font-size: calc(var(--r7, 0) * 1em); opacity: var(--r7, 0); }
+#depthbody [data-d="8"] { font-size: calc(var(--r8, 0) * 1em); opacity: var(--r8, 0); }
+/* The gauge: 8 ticks (depth 1 at the top), ± steps, right edge. */
+#depthgauge {
+  position: fixed; right: .5rem; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: .45rem;
+  z-index: 41;
+}
+#depthticks { display: flex; flex-direction: column; gap: .4rem; }
+.dtick {
+  width: 13px; height: 13px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel);
+}
+.dtick.on { background: var(--accent); border-color: var(--accent); }
+#depthin, #depthout {
+  background: rgba(255, 255, 255, .3); border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 10px; width: 28px; height: 28px; cursor: pointer;
+  color: var(--text); font-size: 1rem; line-height: 1;
+}
+.depth-hint {
+  margin: 0; padding: .3rem 0 calc(.4rem + env(safe-area-inset-bottom, 0px));
+  text-align: center; font-size: .72rem; color: var(--muted);
+  pointer-events: none;
+}

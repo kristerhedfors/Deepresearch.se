@@ -47,9 +47,10 @@ test("different secrets never collide", async () => {
 test("project state round-trips sealed under the blob key — API keys inside", async () => {
   const { blobKey } = await deriveDrcProfile(generateDrcSecret());
   const state = emptyDrcState();
-  state.keys = { openai: "sk-test-openai", groq: "gsk-test-groq" };
-  state.providerId = "groq";
-  state.model = "llama-3.3-70b-versatile";
+  state.keys = { openai: "sk-test-openai", berget: "sk_ber_test" };
+  state.bases = { local: "http://localhost:11434/v1" }; // the Local endpoint seals too
+  state.providerId = "berget";
+  state.model = "moonshotai/Kimi-K2.6";
   state.conversations.push({
     id: "c1",
     title: "Test",
@@ -70,6 +71,7 @@ test("project state round-trips sealed under the blob key — API keys inside", 
   // DRS's readable-when-indexed exception — no server ever needs it).
   const stored = new TextDecoder().decode(bytes);
   assert.equal(stored.includes("sk-test-openai"), false);
+  assert.equal(stored.includes("localhost:11434"), false); // the endpoint URL is config — sealed like a key
   assert.equal(stored.includes("hi hello"), false);
   const back = await openDrcState(bytes, blobKey);
   assert.equal(validateDrcState(back), true);
@@ -87,11 +89,13 @@ test("validateDrcState accepts v1/v2/v3, rejects foreign shapes", () => {
   // …as does a v2 blob (stored before the RAG index existed)…
   const v2 = { v: 2, kind: DRC_STATE_KIND, updatedAt: 1, keys: {}, conversations: [] };
   assert.equal(validateDrcState(v2), true);
-  // …and both migrate to the current shape, gaining an empty RAG index.
+  // …and both migrate to the current shape, gaining an empty RAG index
+  // and an empty endpoint map (the Local provider's base URLs).
   for (const old of [v1, v2]) {
     const migrated = migrateDrcState({ ...old });
     assert.equal(migrated.v, DRC_STATE_V);
     assert.deepEqual(migrated.keys, {});
+    assert.deepEqual(migrated.bases, {});
     assert.equal(migrated.research, true);
     assert.deepEqual(migrated.rag, { docs: [] });
   }
