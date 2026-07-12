@@ -7,7 +7,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { isTransientConnectStatus } from "./answer-stream.js";
-import { collectConflicts } from "./pipeline.js";
+import { collectConflicts } from "./pipeline-inputs.js";
 import { normalizeTriage } from "./triage.js";
 
 describe("normalizeTriage", () => {

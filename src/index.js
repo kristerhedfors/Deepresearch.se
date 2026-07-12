@@ -34,6 +34,8 @@
 //   src/db.js        — optional D1 binding + schema
 //   src/log.js       — structured JSON logger (LOG_LEVEL var)
 //   src/http.js      — response helpers
+//   src/assets.js    — static-asset serving + the public (no-auth) allowlist
+//   src/security-headers.js — site-wide security headers + CSP policy
 
 import { handleAdminApi } from "./admin-api.js";
 import { handleAnswerAck, handleAnswerGet } from "./answers.js";
@@ -63,6 +65,8 @@ import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
 import { getConfig } from "./config.js";
+import { isPublicAsset, serveAsset } from "./assets.js";
+import { applySecurityHeaders } from "./security-headers.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -99,7 +103,7 @@ export default {
         status: response.status,
         duration_ms: Date.now() - startedAt,
       });
-      const out = withRequestId(response, requestId);
+      const out = applySecurityHeaders(response, requestId);
       // Sliding sessions: past the cookie's half-life, reissue it so active
       // PWA users never see a login screen again.
       if (identity?.refreshCookie) {
@@ -112,191 +116,13 @@ export default {
         stack: /** @type {any} */ (err)?.stack,
         duration_ms: Date.now() - startedAt,
       });
-      return withRequestId(
+      return applySecurityHeaders(
         jsonResponse({ error: "Internal server error.", request_id: requestId }, 500),
         requestId,
       );
     }
   },
 };
-
-// The public surface, served WITHOUT auth. Two kinds of things live here:
-//
-// Branding assets: iOS fetches apple-touch-icon and Chrome downloads
-// manifest icons without credentials, so behind auth home-screen/PWA
-// icons silently 401 and fall back to a generic letter.
-//
-// The promotional surface: the landing page (/welcome/, also served to
-// signed-out visitors at /), the documentation, About, and the build
-// story pages plus everything they need to render — the promo video, the
-// markdown renderer, and the vendored libs (all public on GitHub anyway).
-// The app itself and every /api/* stay gated.
-/**
- * @param {URL} url
- * @param {string} method
- * @returns {boolean}
- */
-function isPublicAsset(url, method) {
-  if (method !== "GET" && method !== "HEAD") return false;
-  return (
-    url.pathname === "/favicon.ico" ||
-    url.pathname === "/manifest.webmanifest" ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname.startsWith("/welcome/") ||
-    url.pathname.startsWith("/help/") ||
-    url.pathname.startsWith("/build/") ||
-    url.pathname.startsWith("/story/") ||
-    url.pathname.startsWith("/architecture/") ||
-    // DRC — the no-account client-side tier at /cure: the page, its
-    // modules, and the vault/SSE primitives it reuses. Only FILES (with
-    // an extension) match here: extensionless paths under /cure/ are page
-    // routes (/cure/<slug> replays) and must fall through to the wordplay
-    // routing below — without the extension check they'd 404 as missing
-    // assets (found live 2026-07-10: /cure/<slug> served the sign-in 401,
-    // then 404, until this).
-    (url.pathname.startsWith("/cure/") && /\.[a-z0-9]+$/i.test(url.pathname)) ||
-    // The vault's PURE core only — NOT /js/vault.js: that module's store/load
-    // orchestration statically imports the DRS storage stack (history-store/
-    // opfs/projects), which is deliberately not public, and any 401 inside a
-    // public module graph kills the whole /cure tier (found live 2026-07-11:
-    // /cure was dead — static "d5" stamp — because drc-core.js imported
-    // vault.js and its DRS chain 401'd; fixed by splitting vault-core.js out
-    // and importing that). If a module here ever needs vault functionality,
-    // import vault-core.js, never vault.js.
-    url.pathname === "/js/vault-core.js" ||
-    url.pathname === "/js/sse.js" ||
-    url.pathname === "/js/drc-core.js" ||
-    url.pathname === "/js/drc-providers.js" ||
-    url.pathname === "/js/drc-rag.js" ||
-    // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
-    // helpers) each import settings.js — all three must be public or the
-    // /cure module graph fails to link (the same class of breakage the
-    // extension check above fixed; found live 2026-07-10 when d6 shipped
-    // with drc-rag.js absent from this list).
-    url.pathname === "/js/rag.js" ||
-    url.pathname === "/js/chat-rag.js" ||
-    url.pathname === "/js/settings.js" ||
-    url.pathname === "/js/drc-research.js" ||
-    url.pathname === "/js/drc-store.js" ||
-    // drc-research.js statically imports the bash-lite sandbox modules (the
-    // in-browser Linux execution tier is present on DRC too): the shared pure
-    // agent core (bash-core.js — also imported by the DRS driver
-    // bash-agent.js) AND the CheerpX VM bridge. All must be public or the
-    // /cure module graph fails to link and the whole client tier's JS dies —
-    // the same breakage class as drc-rag.js above (found live 2026-07-11: the
-    // sandbox commit added the imports to drc-research.js but not to this
-    // allowlist, so /js/bash-agent.js and /js/sandbox.js 401'd and /cure went
-    // dark).
-    url.pathname === "/js/bash-core.js" ||
-    url.pathname === "/js/bash-agent.js" ||
-    url.pathname === "/js/sandbox.js" ||
-    // sandbox.js imports sandbox-files.js (the file-mounting pure core) — both
-    // must be public or the /cure module graph (drc-research.js → sandbox.js)
-    // fails to link.
-    url.pathname === "/js/sandbox-files.js" ||
-    // Introspection (developer mode): the shared pure core (imported by
-    // /cure/drc.js — same public-graph rule as the modules above) and the
-    // committed source-snapshot artifact both tiers fetch. The snapshot is
-    // the repo's own tracked text files — public on GitHub anyway — so
-    // serving it unauthenticated exposes nothing new; DRC needs it public
-    // because its server-not-in-the-path posture forbids an authed endpoint.
-    url.pathname === "/js/introspect-core.js" ||
-    // The introspection mascot/picker component (imported by /cure/drc.js —
-    // same public-graph rule; its own imports, introspect-core.js and
-    // drc-providers.js, are already above).
-    url.pathname === "/js/introspect-ui.js" ||
-    url.pathname === "/introspect/source-snapshot.json" ||
-    url.pathname === "/llm-assiterad-utveckling.mp4" ||
-    url.pathname === "/js/markdown.js" ||
-    url.pathname === "/vendor/marked.min.js" ||
-    url.pathname === "/vendor/purify.min.js"
-  );
-}
-
-// Serves a static asset with an EXPLICIT browser-caching policy. Without
-// one (the state until 2026-07-08), browsers applied HEURISTIC caching to
-// the app's ~20 unversioned ES modules — and a day with several deploys
-// that changed cross-module exports left real devices with a MIXED module
-// graph (a fresh stream.js importing a stale-cached activity.js). The
-// import linker then fails, app.js never runs, no submit handler attaches,
-// and pressing Send falls through to the browser's NATIVE form submit — a
-// full page reload that looks like the chat silently resetting to a blank
-// new conversation ("no queries work"). `no-cache` (= store but REVALIDATE
-// every use) fixes the class: the strong etags Workers assets already emit
-// make revalidation a cheap 304, and every page load links a consistent,
-// current module graph. Icons/media (not part of the module graph, rarely
-// changed) keep a short real TTL. The Cloudflare EDGE cache is unaffected
-// and safe — it is content-addressed per deploy.
-// json included (2026-07-12): the introspection source snapshot
-// (/introspect/source-snapshot.json) must track the deploy it shipped with —
-// a fixed TTL would serve a previous deploy's source for up to an hour, the
-// exact staleness class the cache-helper skill documents. Strong etags make
-// the revalidation a cheap 304.
-const ASSET_REVALIDATE = /\.(js|css|html|md|json|webmanifest)$/i;
-/**
- * @param {Request} request
- * @param {Env} env
- * @param {string | null} [overrideUrl] serve this path instead of the request's
- * @param {{ coep?: boolean }} [opts] coep: add Cross-Origin-Embedder-Policy so
- *   the served DOCUMENT becomes cross-origin isolated (with the site-wide
- *   COOP: same-origin), which SharedArrayBuffer — and thus the CheerpX
- *   execution sandbox (public/js/sandbox.js) — requires. We use `require-corp`
- *   (NOT `credentialless`): iOS Safari / WebKit does not implement
- *   `credentialless` COEP, so it silently never isolates there —
- *   `SharedArrayBuffer` stays undefined and the VM can't boot (confirmed live
- *   on iOS 18.7 Safari: header served, `crossOriginIsolated===false`,
- *   `SharedArrayBuffer` absent). `require-corp` is honored by Chrome, Firefox,
- *   AND Safari. Its cost: every cross-origin subresource must carry CORP — the
- *   sandbox's CDN loads (jsdelivr xterm, cxrtnc CheerpX) already send
- *   `Cross-Origin-Resource-Policy: cross-origin`, and the server-fetched Maps
- *   imagery is same-origin, so the only casualty is the keyless Street View
- *   Embed IFRAME (no CORP) — an acceptable trade for a sandbox that actually
- *   boots on iOS. Applied to the DRC page always and to the DRS app shell only
- *   when the caller's bash_lite knob is on (see routeAuthed).
- * @returns {Promise<Response>}
- */
-async function serveAsset(request, env, overrideUrl = null, opts = {}) {
-  // The COEP (cross-origin-isolated) shell must be served as a FRESH 200 that
-  // is never cached: the COEP header is added dynamically per the bash_lite
-  // knob, but the HTML content is identical whether the knob is on or off, so
-  // a normal `no-cache` revalidation returns a 304 and the browser reuses its
-  // stored NON-isolated response WITHOUT the COEP header — `crossOriginIsolated`
-  // never turns on and the sandbox silently can't boot (the production defect
-  // this fixes). So for the isolated shell we strip the request's conditional
-  // headers (forcing a full 200, not a 304) and mark it `no-store`.
-  const upstream = buildAssetRequest(request, overrideUrl, opts.coep);
-  const res = await env.ASSETS.fetch(upstream);
-  const pathname = new URL(overrideUrl || request.url).pathname;
-  const headers = new Headers(res.headers);
-  if (opts.coep) {
-    headers.set("cross-origin-embedder-policy", "require-corp");
-    headers.set("cache-control", "no-store");
-  } else if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
-    // Extensionless paths are HTML routes (/, /welcome/, /admin) — revalidate.
-    headers.set("cache-control", "no-cache");
-  } else {
-    headers.set("cache-control", "public, max-age=3600");
-  }
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
-}
-
-/**
- * Builds the request handed to env.ASSETS. Normally the original request (or an
- * override URL). For the isolated (coep) shell, conditional headers are
- * stripped so ASSETS returns a full 200 (never a 304 that would drop the
- * dynamic COEP header — see serveAsset).
- * @param {Request} request
- * @param {string | null} overrideUrl
- * @param {boolean | undefined} coep
- * @returns {Request}
- */
-function buildAssetRequest(request, overrideUrl, coep) {
-  if (!coep) return overrideUrl ? new Request(overrideUrl, request) : request;
-  const headers = new Headers(request.headers);
-  headers.delete("if-none-match");
-  headers.delete("if-modified-since");
-  return new Request(overrideUrl || request.url, { method: request.method, headers });
-}
 
 /**
  * Top-level routing: config sanity, the public (unauthenticated) surface,
@@ -666,92 +492,4 @@ function htmlResponse(html, status) {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
-}
-
-// Master switch for the Content-Security-Policy header (below). CSP is the
-// strongest defense here but the most brittle while the integrations are still
-// in flux — a single missed subresource host silently breaks a feature (e.g.
-// Maps/Street View), so it stays OFF until that surface stabilizes. Flip to
-// `true` to enforce; when doing so, re-verify the script-src hashes and the
-// Maps/*.googleapis/*.gstatic origins against a live page (watch the browser
-// console for CSP violations). Every OTHER security header below is safe and
-// stays on unconditionally regardless of this flag.
-const CSP_ENABLED = false;
-
-// Content-Security-Policy for every response. The app renders untrusted LLM
-// output and third-party web-search content into the DOM, so this is the
-// second line of defense behind DOMPurify (markdown.js): even a sanitizer
-// bypass or a tampered vendored purify.min.js cannot execute injected script
-// under this policy. Currently gated OFF by CSP_ENABLED above.
-//
-// script-src is a strict allowlist — 'self' (the ES-module app + vendored
-// libs), the two Google Maps hosts (the Street View SDK, loaded on demand),
-// and the sha256 hashes of the ONLY two inline scripts in the whole surface:
-// index.html's non-module boot guard and story/index.html's inline module.
-// There is NO 'unsafe-inline' and NO 'unsafe-eval', so injected inline
-// <script> / on*= handlers do not run. If either inline script is edited,
-// recompute its hash (the boot guard only loses its safety net on a mismatch;
-// the core app is external modules and is unaffected):
-//   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-// Maps pulls tiles/styles/XHR from *.googleapis.com / *.gstatic.com; if any
-// Maps subresource is ever blocked, renderStreetViewEmbed already fails soft
-// to the keyless google.com Embed iframe (frame-src), so Street View degrades
-// rather than breaking. img-src stays broad (data:/blob:/https:) for user
-// uploads, server data-URL frames, and Maps imagery.
-const BOOT_GUARD_HASH = "'sha256-w5cPLY1sDxZyXuQvRq2aJ4i2L1jyBf4ulNgTL0pzf10='";
-const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
-const CSP = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  `script-src 'self' https://maps.googleapis.com https://maps.gstatic.com ${BOOT_GUARD_HASH} ${STORY_INLINE_HASH}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "media-src 'self'",
-  "manifest-src 'self'",
-  "worker-src 'self' blob:",
-  "connect-src 'self' https://*.googleapis.com https://*.gstatic.com",
-  "frame-src https://www.google.com",
-  "upgrade-insecure-requests",
-].join("; ");
-
-// Applied to every response (see below). frame-ancestors (CSP) plus
-// X-Frame-Options both block clickjacking of the authenticated app; nosniff
-// stops MIME confusion on served/stored content; HSTS pins HTTPS; the
-// Referrer-Policy / COOP / Permissions-Policy lines minimize leakage and
-// cross-window/API exposure. All are static and carry no breakage risk.
-const SECURITY_HEADERS = {
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "DENY",
-  "referrer-policy": "strict-origin-when-cross-origin",
-  "strict-transport-security": "max-age=63072000; includeSubDomains",
-  "cross-origin-opener-policy": "same-origin",
-  // geolocation=(self): the Tokemon game (/games/tokemon/) walks the map by
-  // real GPS position; everything else stays denied.
-  "permissions-policy": "geolocation=(self), microphone=(), camera=(), payment=()",
-};
-
-// Every response carries x-request-id so a user report can be correlated
-// with the matching log entries, plus the site-wide security headers. Clone
-// first: asset responses are immutable.
-/**
- * @param {Response} response
- * @param {string} requestId
- * @returns {Response}
- */
-function withRequestId(response, requestId) {
-  const out = new Response(response.body, response);
-  out.headers.set("x-request-id", requestId);
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    // Don't clobber a header a handler set deliberately (none set these today).
-    if (!out.headers.has(name)) out.headers.set(name, value);
-  }
-  // CSP is opt-in (see CSP_ENABLED) — off while integrations are in flux.
-  if (CSP_ENABLED && !out.headers.has("content-security-policy")) {
-    out.headers.set("content-security-policy", CSP);
-  }
-  return out;
 }

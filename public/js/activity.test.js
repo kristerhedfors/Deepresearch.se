@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildResearchDebugJson, sanitizeResearchEvent } from "./activity.js";
+import {
+  buildResearchDebugJson,
+  formatStatsLine,
+  sanitizeResearchEvent,
+  searchServiceName,
+  zoomToFov,
+} from "./activity-core.js";
 
 // A turn whose researchLog mirrors what stream.js's recordResearchEvent
 // accumulates from the SSE status events, including the geocode and Shodan
@@ -185,4 +191,28 @@ test("sanitizeResearchEvent passes every other event through unchanged", () => {
   assert.equal(sanitizeResearchEvent(done), done); // same reference — untouched
   const embed = { type: "streetview_embed", lat: 59.4, lng: 17.9 };
   assert.equal(sanitizeResearchEvent(embed), embed);
+});
+
+test("zoomToFov maps SDK zoom to the Static API's fov range (10-120)", () => {
+  assert.equal(zoomToFov(0), 120); // 180/1 = 180, clamped to 120
+  assert.equal(zoomToFov(1), 90); // 180/2
+  assert.equal(zoomToFov(2), 45); // 180/4
+  assert.equal(zoomToFov(5), 10); // 180/32 ≈ 5.6, clamped up to 10
+  assert.equal(zoomToFov(undefined), 90); // non-finite defaults to zoom 1
+  assert.equal(zoomToFov("x"), 90);
+});
+
+test("searchServiceName prefers the event's service, falling back to web wording", () => {
+  assert.equal(searchServiceName({ service: "Hugging Face Hub" }), "Hugging Face Hub");
+  assert.equal(searchServiceName({}), "Web search");
+  assert.equal(searchServiceName(null), "Web search");
+});
+
+test("formatStatsLine builds the footer, omitting absent parts and pluralizing", () => {
+  assert.equal(
+    formatStatsLine({ model: "mistralai/Mistral-Small", duration_ms: 3400, prompt_tokens: 10, completion_tokens: 5, searches: 2 }),
+    "Mistral-Small · 3.4 s · 15 tokens · 2 searches",
+  );
+  assert.equal(formatStatsLine({ searches: 1 }), "1 search");
+  assert.equal(formatStatsLine({}), "");
 });

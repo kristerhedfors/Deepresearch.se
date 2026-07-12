@@ -5,6 +5,7 @@
 import { defaultModel } from "./berget.js";
 import { countImages, imagePartsOf, lastUserMessage } from "./conversation.js";
 import { getModelProfile } from "./model-profiles.js";
+import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
 
 const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 32_000;
@@ -226,4 +227,73 @@ export function resolveModel(body, catalog, env, log) {
   }
 
   return { model: activeModel };
+}
+
+/**
+ * Coerces the client's bash-lite `shell_transcript` into a clean, bounded
+ * array of runs — untrusted input, so every field is typed/clamped and the
+ * whole thing is capped (the loop runs at most MAX_SHELL_ROUNDS rounds × a few
+ * commands). Non-array or junk entries degrade to an empty transcript, so the
+ * answer path is byte-identical to a run without the sandbox.
+ * @param {any} raw
+ * @returns {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>}
+ */
+export function resolveShellTranscript(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object" || typeof r.command !== "string" || !r.command.trim()) continue;
+    out.push({
+      command: r.command,
+      exitCode: Number.isFinite(Number(r.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1,
+      stdout: typeof r.stdout === "string" ? r.stdout : "",
+      stderr: typeof r.stderr === "string" ? r.stderr : "",
+    });
+    if (out.length >= MAX_SHELL_ROUNDS * 8) break;
+  }
+  return out;
+}
+
+/**
+ * Coerces the client's diagnostic block (public/js/stream.js client_diag) to a
+ * small, whitelisted shape for the chat log — untrusted, so every field is
+ * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
+ * @param {any} d
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined) } | undefined}
+ */
+export function sanitizeClientDiag(d) {
+  if (!d || typeof d !== "object") return undefined;
+  return {
+    coi: d.coi === true ? true : d.coi === false ? false : null,
+    bl: d.bl === true,
+    sb: d.sb === true,
+    ran: Number.isFinite(d.ran) ? Math.max(0, Math.min(50, Math.trunc(d.ran))) : 0,
+    css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
+    sab: d.sab === true,
+    ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
+    // The last sandbox filesystem-mount summary (public/js/sandbox.js
+    // sandboxFsSummary): whether files mounted, how many, total bytes, a
+    // project mount, dropped count, boot ms, and any error — so a mount
+    // problem is visible in the chat log without the debug beacon.
+    fs: sanitizeFsSummary(d.fs),
+  };
+}
+
+/**
+ * Whitelist the sandbox filesystem-mount summary (untrusted, bounded).
+ * @param {any} f
+ * @returns {{ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined}
+ */
+export function sanitizeFsSummary(f) {
+  if (!f || typeof f !== "object") return undefined;
+  /** @param {any} v @param {number} max */
+  const int = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.trunc(v))) : 0);
+  return {
+    n: int(f.n, 1000),
+    b: int(f.b, 1e12),
+    proj: f.proj === true,
+    drop: int(f.drop, 1000),
+    ms: int(f.ms, 600000),
+    err: typeof f.err === "string" ? f.err.slice(0, 200) : "",
+  };
 }

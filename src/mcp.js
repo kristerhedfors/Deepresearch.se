@@ -19,6 +19,10 @@
 // test does) never pulls in pipeline.js/berget.js/etc.
 
 import { jsonResponse } from "./http.js";
+// A leaf module (imports nothing), so this static import does NOT pull the
+// pipeline graph in — the file-layout rule above (heavy deps stay dynamic) is
+// preserved. Shares the split-model-routing decision with src/chat.js.
+import { resolveJsonModel } from "./model-routing.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -470,25 +474,6 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   });
 
   return result;
-}
-
-// Which model runs the JSON planning phases — replicated from chat.js's
-// resolveJsonModel (kept inline so this module never has to import chat.js,
-// which would pull the whole handler graph in). The reliable DEFAULT_MODEL
-// unless it's explicitly down in the catalog, in which case fall back to the
-// user's model. Catalog unreachable → optimistic (fail-soft).
-/**
- * @param {import('./types.js').ModelCatalog | null} catalog
- * @param {string} userModel
- * @param {string} DEFAULT_MODEL
- * @returns {string}
- */
-function resolveJsonModel(catalog, userModel, DEFAULT_MODEL) {
-  if (userModel === DEFAULT_MODEL) return DEFAULT_MODEL;
-  if (!Array.isArray(catalog)) return DEFAULT_MODEL;
-  const entry = catalog.find((m) => m.id === DEFAULT_MODEL);
-  if (!entry) return userModel;
-  return entry.up === false ? userModel : DEFAULT_MODEL;
 }
 
 // The synthesis prompt already appends its own "Sources:" list, so only add a

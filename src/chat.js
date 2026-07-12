@@ -16,6 +16,7 @@ import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { recordChatLog } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
+import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
 import { listChatModels } from "./providers.js";
 import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
@@ -32,9 +33,16 @@ import {
   releaseInflight,
   reserveInflight,
 } from "./quota.js";
-import { resolveModel, validateImageLocations, validateMapView, validateMessages, validateStreetViewPov } from "./validation.js";
+import {
+  resolveModel,
+  resolveShellTranscript,
+  sanitizeClientDiag,
+  validateImageLocations,
+  validateMapView,
+  validateMessages,
+  validateStreetViewPov,
+} from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
-import { MAX_SHELL_ROUNDS } from "./bash-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -558,75 +566,6 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
 }
 
 /**
- * Coerces the client's bash-lite `shell_transcript` into a clean, bounded
- * array of runs — untrusted input, so every field is typed/clamped and the
- * whole thing is capped (the loop runs at most MAX_SHELL_ROUNDS rounds × a few
- * commands). Non-array or junk entries degrade to an empty transcript, so the
- * answer path is byte-identical to a run without the sandbox.
- * @param {any} raw
- * @returns {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>}
- */
-function resolveShellTranscript(raw) {
-  if (!Array.isArray(raw)) return [];
-  const out = [];
-  for (const r of raw) {
-    if (!r || typeof r !== "object" || typeof r.command !== "string" || !r.command.trim()) continue;
-    out.push({
-      command: r.command,
-      exitCode: Number.isFinite(Number(r.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1,
-      stdout: typeof r.stdout === "string" ? r.stdout : "",
-      stderr: typeof r.stderr === "string" ? r.stderr : "",
-    });
-    if (out.length >= MAX_SHELL_ROUNDS * 8) break;
-  }
-  return out;
-}
-
-/**
- * Coerces the client's diagnostic block (public/js/stream.js client_diag) to a
- * small, whitelisted shape for the chat log — untrusted, so every field is
- * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
- * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined) } | undefined}
- */
-function sanitizeClientDiag(d) {
-  if (!d || typeof d !== "object") return undefined;
-  return {
-    coi: d.coi === true ? true : d.coi === false ? false : null,
-    bl: d.bl === true,
-    sb: d.sb === true,
-    ran: Number.isFinite(d.ran) ? Math.max(0, Math.min(50, Math.trunc(d.ran))) : 0,
-    css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
-    sab: d.sab === true,
-    ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
-    // The last sandbox filesystem-mount summary (public/js/sandbox.js
-    // sandboxFsSummary): whether files mounted, how many, total bytes, a
-    // project mount, dropped count, boot ms, and any error — so a mount
-    // problem is visible in the chat log without the debug beacon.
-    fs: sanitizeFsSummary(d.fs),
-  };
-}
-
-/**
- * Whitelist the sandbox filesystem-mount summary (untrusted, bounded).
- * @param {any} f
- * @returns {{ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined}
- */
-function sanitizeFsSummary(f) {
-  if (!f || typeof f !== "object") return undefined;
-  /** @param {any} v @param {number} max */
-  const int = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.trunc(v))) : 0);
-  return {
-    n: int(f.n, 1000),
-    b: int(f.b, 1e12),
-    proj: f.proj === true,
-    drop: int(f.drop, 1000),
-    ms: int(f.ms, 600000),
-    err: typeof f.err === "string" ? f.err.slice(0, 200) : "",
-  };
-}
-
-/**
  * The request's Exa cost. The admin-configured per-search price is priced
  * for Exa's standard tier; a request whose time budget bought a costlier
  * tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its recorded
@@ -709,23 +648,17 @@ export function summarizeSpend(state, catalog) {
 
 /**
  * Which model runs the JSON planning phases (triage/gap/validate): the fixed
- * reliable DEFAULT_MODEL (Mistral Small) unless it's explicitly down in the
- * catalog, in which case fall back to the user's model rather than route JSON
- * to a model that isn't up. Catalog unreachable → optimistic (fail-soft).
- * Rationale: some capable answer models (notably reasoning models like GLM)
- * produce unreliable JSON, which was corrupting triage into echoing the raw
- * user message as the search query; Mistral Small is fast, cheap and reliable
- * at JSON mode.
+ * reliable DEFAULT_MODEL (Mistral Small), bound into the shared decision in
+ * model-routing.js (also used by src/mcp.js). Rationale for the split: some
+ * capable answer models (notably reasoning models like GLM) produce unreliable
+ * JSON, which was corrupting triage into echoing the raw user message as the
+ * search query; Mistral Small is fast, cheap and reliable at JSON mode.
  * @param {ModelCatalog | null | undefined} catalog
  * @param {string} userModel the resolved answer model
  * @returns {string}
  */
 export function resolveJsonModel(catalog, userModel) {
-  if (userModel === DEFAULT_MODEL) return DEFAULT_MODEL; // already the reliable JSON model
-  if (!Array.isArray(catalog)) return DEFAULT_MODEL;
-  const entry = catalog.find((m) => m.id === DEFAULT_MODEL);
-  if (!entry) return userModel; // this deployment doesn't offer it — don't route to a missing model
-  return entry.up === false ? userModel : DEFAULT_MODEL;
+  return resolveJsonPhaseModel(catalog, userModel, DEFAULT_MODEL);
 }
 
 // ---- per-request state -------------------------------------------------------

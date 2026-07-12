@@ -128,7 +128,9 @@ Server (`src/`):
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Entrypoint: request id, identity gate, terms + approval gates, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`, `/terms/accept`), sliding-cookie reissue, request logs |
+| `index.js` | Entrypoint: request id, identity gate, terms + approval gates, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`, `/terms/accept`), sliding-cookie reissue, request logs (static-asset serving + the public allowlist live in `assets.js`; the response security headers + CSP in `security-headers.js`) |
+| `assets.js` | Static-asset serving (`serveAsset` — the caching policy + the cross-origin-isolation COEP shell) and `isPublicAsset` (the unauthenticated allowlist, dominated by the DRC `/cure` public module graph) — split out of the router so the entrypoint stays about routing |
+| `security-headers.js` | The site-wide response security headers + the (currently opt-in) Content-Security-Policy, and `applySecurityHeaders` — the one function `index.js`'s `fetch` wraps every response with |
 | `auth.js` | Identity: session cookie (365 d, sliding) + admin-secrets break-glass Basic Auth (fail closed); OAuth state HMAC helpers |
 | `google.js` | Google OIDC sign-in: state cookie, code exchange, claims validation, auto-provisioning (`ADMIN_EMAIL` → admin) |
 | `login.js` | Sign-in, pending-approval, and one-time terms pages (PWAs can't answer a 401 challenge) |
@@ -155,6 +157,7 @@ Server (`src/`):
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
+| `pipeline-inputs.js` | The pipeline's PURE input-block builders + output parsers (`shellReplyMessages`, `notesSection`, `subquestionsSection`, `conflictsSection`, `collectConflicts`, `extractClaims`, `takeSearchBatch`) — the byte-identical-input string/data shaping split out of `pipeline.js` so the flow reads as the flow; Node-tested |
 | `triage.js` | The pipeline's JSON-hardening layer: the declared schemas for every JSON planning phase + `hardenJson`, and `normalizeTriage` (the triage-failure fallback) — pure, no I/O |
 | `answer-stream.js` | The answer-streaming internals behind synthesis/direct/search-off replies: `streamCompletion` (reliable-model failover), the per-model attempt loop (connect retries, idle guard, finish_reason detection), `emitChunked` |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
@@ -169,7 +172,8 @@ Server (`src/`):
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
 | `prompts.js` | All LLM prompt builders |
-| `validation.js` | Request validation (messages, images) + model/vision resolution |
+| `validation.js` | Request validation (messages, images) + model/vision resolution, plus the untrusted-client-input sanitizers (`resolveShellTranscript`, `sanitizeClientDiag`, `sanitizeFsSummary`) shared with `chat.js` |
+| `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
@@ -229,10 +233,14 @@ a free-text field, local multiple-choice grading, `/api/quiz/grade` for
 written answers, the score verdict/recap — answers persist via the
 embeds registry, the completed summary is appended to the assistant
 message in history; pure scoring/summary core Node-tested),
-`activity.js` (step bars, stats, collapse, and
-`buildResearchDebugJson` — the "Copy research JSON" export of a turn's
+`activity.js` (step bars, stats, collapse, and the
+Street View / map embeds; its PURE import-free logic —
+`buildResearchDebugJson` (the "Copy research JSON" export of a turn's
 COMPLETE response for pasting into Claude Code: the research process AND
 the full resulting generation AND every error, server- or client-side),
+`sanitizeResearchEvent`, `searchServiceName`, `zoomToFov`, `formatStatsLine`
+— lives in `activity-core.js`, Node-tested, and is re-exported by
+`activity.js` so importers are unchanged),
 `imagedeck.js` (the conversation-wide IMAGE DECK: every Street View/map
 frame a reply shows joins one ordered deck; clicking a thumbnail — in a
 frames strip or a waypoint miniature on the interactive map — opens the

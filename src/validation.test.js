@@ -2,7 +2,16 @@
 // resolution, and the image-location / Street View POV / map-view sanitizers.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { validateMessages, resolveModel, validateImageLocations, validateMapView, validateStreetViewPov } from "./validation.js";
+import {
+  validateMessages,
+  resolveModel,
+  validateImageLocations,
+  validateMapView,
+  validateStreetViewPov,
+  resolveShellTranscript,
+  sanitizeClientDiag,
+  sanitizeFsSummary,
+} from "./validation.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 const noopLog = { warn: () => {} };
@@ -298,5 +307,69 @@ describe("validateMapView", () => {
 
   test("defaults a missing zoom", () => {
     assert.deepEqual(validateMapView({ lat: 1, lng: 2 }), { lat: 1, lng: 2, zoom: 17 });
+  });
+});
+
+describe("resolveShellTranscript", () => {
+  test("non-array or junk degrades to an empty transcript", () => {
+    assert.deepEqual(resolveShellTranscript(undefined), []);
+    assert.deepEqual(resolveShellTranscript(null), []);
+    assert.deepEqual(resolveShellTranscript("x"), []);
+    assert.deepEqual(resolveShellTranscript([null, 3, {}, { command: "  " }]), []);
+  });
+
+  test("types and clamps each run; a bad exitCode defaults to 1", () => {
+    const out = resolveShellTranscript([
+      { command: "ls", exitCode: 0, stdout: "a", stderr: "" },
+      { command: "false", exitCode: "nope", stdout: 5, stderr: null },
+    ]);
+    assert.deepEqual(out, [
+      { command: "ls", exitCode: 0, stdout: "a", stderr: "" },
+      { command: "false", exitCode: 1, stdout: "", stderr: "" },
+    ]);
+  });
+
+  test("caps the transcript length (untrusted input bound)", () => {
+    const many = Array.from({ length: 500 }, () => ({ command: "x", exitCode: 0, stdout: "", stderr: "" }));
+    // MAX_SHELL_ROUNDS * 8 is the cap; whatever it is, the output is bounded well below 500.
+    assert.ok(resolveShellTranscript(many).length < 500);
+  });
+});
+
+describe("sanitizeClientDiag / sanitizeFsSummary", () => {
+  test("undefined for absent or non-object input", () => {
+    assert.equal(sanitizeClientDiag(undefined), undefined);
+    assert.equal(sanitizeClientDiag("x"), undefined);
+    assert.equal(sanitizeFsSummary(null), undefined);
+  });
+
+  test("whitelists and bounds the diag fields", () => {
+    const out = sanitizeClientDiag({
+      coi: true, bl: true, sb: false, ran: 999, css: "0123456789abcdefGHIJ",
+      sab: true, ua: "u".repeat(300), extra: "dropped",
+    });
+    assert.equal(out.coi, true);
+    assert.equal(out.bl, true);
+    assert.equal(out.sb, false);
+    assert.equal(out.ran, 50); // clamped to [0,50]
+    assert.equal(out.css.length, 16); // sliced to 16
+    assert.equal(out.ua.length, 140); // sliced to 140
+    assert.equal(out.extra, undefined); // not whitelisted
+  });
+
+  test("booleans coerce strictly: only === true is true", () => {
+    assert.equal(sanitizeClientDiag({ bl: 1 }).bl, false); // 1 !== true
+    assert.equal(sanitizeClientDiag({ bl: true }).bl, true);
+    assert.equal(sanitizeClientDiag({}).coi, null); // tri-state defaults to null
+  });
+
+  test("nested fs summary is bounded", () => {
+    const fs = sanitizeFsSummary({ n: 5000, b: -3, proj: true, drop: 2, ms: 1e9, err: "e".repeat(500), extra: 1 });
+    assert.equal(fs.n, 1000); // clamped to max 1000
+    assert.equal(fs.b, 0); // negative floored to 0
+    assert.equal(fs.proj, true);
+    assert.equal(fs.ms, 600000); // clamped to max
+    assert.equal(fs.err.length, 200); // sliced
+    assert.equal(fs.extra, undefined);
   });
 });
