@@ -137,6 +137,18 @@ possible pure relocation and confirm the original file still *links* in Node.
    `npm test` if the snapshot is stale. So: make ALL edits (code *and* CLAUDE.md
    *and* this skill) first, then `npm run bundle`, then the final `npm test`.
    Running bundle before a doc edit just makes it stale again.
+   **There are TWO freshness tests, not one** — and a refactor is the classic
+   way to trip the second. Besides the snapshot check, `src/introspect.test.js`
+   also enforces that the committed source-RAG index
+   (`public/introspect/source-rag.json`) has no stale chunk refs: removing a
+   file, renaming it, or shrinking one enough to shift its chunk boundaries
+   (i.e. exactly what moving function bodies OUT of an origin file does) makes an
+   indexed `(path, chunk)` stop resolving, and `npm test` goes red. Fix with
+   `npm run bundle:rag` and commit the regenerated index — but note it needs a
+   Berget key or the break-glass creds to re-embed (unlike `npm run bundle`,
+   which needs nothing), so run it after `npm run bundle` as part of the final
+   pass. If you can't re-embed in-session, at minimum surface that the index is
+   stale rather than leaving `npm test` red silently.
 
 7. **Document.** Add each new module to the CLAUDE.md **Code layout** table (and
    the client prose for client modules), and add this skill to the CLAUDE.md
@@ -160,7 +172,10 @@ possible pure relocation and confirm the original file still *links* in Node.
   ways.
 - **Don't hand-edit the snapshot JSON.** It's generated. If `npm test` fails on
   "source snapshot artifact matches the working tree", the fix is `npm run
-  bundle`, never editing the artifact.
+  bundle`, never editing the artifact. If it instead fails on "source-rag index
+  is consistent with the current snapshot", that's the SECOND freshness test —
+  the fix is `npm run bundle:rag` (needs a Berget key / break-glass creds),
+  never hand-editing `source-rag.json` either.
 
 ## Canonical worked example (2026-07-12)
 
