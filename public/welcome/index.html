@@ -17,7 +17,7 @@
     html { background: var(--bg); }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      color: var(--text); margin: 0; padding: 2rem 1rem 3rem;
+      color: var(--text); margin: 0; padding: 4.6rem 1rem 3rem;
       line-height: 1.55; background: transparent;
     }
     /* Same drifting waves as the app — one seamless 280px period per loop. */
@@ -91,9 +91,168 @@
     .links a span { font-size: .78rem; color: var(--muted); }
     footer { text-align: center; font-size: .78rem; color: var(--muted); padding-top: .4rem; }
     footer a { color: var(--accent); }
+
+    /* ---- the DRS header, mirrored (app.css's floating glass chrome):
+       the not-signed-in landing IS the front door of the DRS site, so it
+       wears the same chrome — brand line, then the (ghost, account) pair
+       docked right. Account = sign in; the ghost = the door to DRC. ---- */
+    header { position: fixed; top: 0; left: 0; right: 0; z-index: 5; pointer-events: none; }
+    .header-bar {
+      padding: calc(.45rem + env(safe-area-inset-top, 0px)) 1rem .35rem;
+      display: flex; flex-direction: column; align-items: stretch; gap: .35rem;
+    }
+    .wbrand {
+      align-self: center;
+      font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
+      font-weight: 300; font-size: .8rem; letter-spacing: .03em;
+      text-shadow: 0 1px 6px rgba(255, 255, 255, .65), 0 0 2px rgba(255, 255, 255, .5);
+    }
+    .wbrand b {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800; font-size: 1.05em; letter-spacing: 0;
+      color: #f5c518; /* the logotype's golden swirl — the blue tier's tail */
+      text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
+    }
+    .header-right { display: flex; justify-content: flex-end; gap: .5rem; pointer-events: auto; }
+    #ghostbtn, #accountbtn {
+      background: rgba(255, 255, 255, .3);
+      -webkit-backdrop-filter: blur(14px) saturate(150%);
+      backdrop-filter: blur(14px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, .55);
+      box-shadow: 0 4px 18px rgba(4, 30, 60, .10);
+      color: var(--text); border-radius: 10px;
+      padding: .4rem .55rem; line-height: 0;
+      display: inline-flex; align-items: center;
+      position: relative; cursor: pointer;
+    }
+    /* The secure-tier marker, exactly the app's: soft glow + flowing shimmer. */
+    @keyframes ghost-glow {
+      0%, 100% { box-shadow: 0 4px 18px rgba(4, 30, 60, .10), 0 0 6px 1px rgba(13, 79, 160, .30); }
+      50%      { box-shadow: 0 4px 18px rgba(4, 30, 60, .10), 0 0 14px 3px rgba(13, 79, 160, .55); }
+    }
+    @keyframes ghost-shimmer {
+      from { transform: translateX(-160%) skewX(-18deg); }
+      to   { transform: translateX(320%) skewX(-18deg); }
+    }
+    #ghostbtn { overflow: hidden; animation: ghost-glow 3.8s ease-in-out infinite; }
+    #ghostbtn::after {
+      content: ""; position: absolute; top: -20%; bottom: -20%; left: 0; width: 55%;
+      background: linear-gradient(105deg, transparent, rgba(255, 255, 255, .55), transparent);
+      transform: translateX(-160%) skewX(-18deg);
+      animation: ghost-shimmer 3.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+    /* While the mascot points: an attention ring takes over from the glow. */
+    @keyframes ghost-attn {
+      0%   { box-shadow: 0 0 0 0 rgba(13, 79, 160, .55); }
+      100% { box-shadow: 0 0 0 11px rgba(13, 79, 160, 0); }
+    }
+    #ghostbtn.ghost-attn { animation: ghost-attn 1.3s ease-out infinite; }
+
+    /* ---- first-visit overlay: what it does — and doesn't ---- */
+    #wintro {
+      position: fixed; inset: 0; z-index: 20;
+      background: rgba(10, 46, 92, .35);
+      -webkit-backdrop-filter: blur(10px) saturate(1.1); backdrop-filter: blur(10px) saturate(1.1);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem; overflow-y: auto;
+      transition: opacity .35s ease;
+    }
+    #wintro.away { opacity: 0; pointer-events: none; }
+    #wintro[hidden] { display: none; }
+    .wcard {
+      max-width: 560px; margin: auto;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 18px;
+      padding: 1.2rem 1.3rem;
+      box-shadow: 0 18px 50px rgba(4, 30, 60, .35);
+    }
+    .wcard h2 { font-size: 1.15rem; margin: .1rem 0 .6rem; }
+    .dodont { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+    @media (max-width: 480px) { .dodont { grid-template-columns: 1fr; } }
+    .dodont h3 { font-size: .85rem; margin: 0 0 .3rem; color: var(--accent); }
+    .dodont ul { margin: 0; padding-left: 1.05rem; font-size: .84rem; }
+    .dodont li { margin: .3rem 0; }
+    .wcard .tail {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800;
+    }
+    #wintrook {
+      margin-top: .9rem;
+      background: var(--accent); color: #fff; border: 0; border-radius: 12px;
+      padding: .55rem 1.3rem; font: inherit; font-weight: 600; font-size: .92rem;
+      cursor: pointer; box-shadow: 0 4px 14px rgba(13, 79, 160, .35);
+    }
+
+    /* ---- the mascot: a little ghost that dances in along the top and
+       points up at the ghost button. Travel on the wrapper (one transform
+       transition), dance on the body (keyframes), point on the arm. ---- */
+    #mascot {
+      position: fixed; left: 0; z-index: 8;
+      top: calc(4.2rem + env(safe-area-inset-top, 0px));
+      transform: translateX(-90px);
+      transition: transform 3s cubic-bezier(.45, .08, .35, 1);
+      pointer-events: none;
+      filter: drop-shadow(0 5px 10px rgba(4, 30, 60, .3));
+    }
+    #mascot[hidden] { display: none; }
+    #mascot.bye { transition: opacity .4s ease; opacity: 0; }
+    .mascot-body { animation: mdance .52s ease-in-out infinite alternate; transform-origin: 50% 90%; }
+    @keyframes mdance {
+      from { transform: translateY(0) rotate(-8deg) scale(1, .97); }
+      to   { transform: translateY(-6px) rotate(8deg) scale(1, 1.03); }
+    }
+    #mascot.pointing .mascot-body { animation: mbob 1.6s ease-in-out infinite alternate; }
+    @keyframes mbob { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+    #mascot .arm { transform-box: fill-box; transform-origin: 0 0; transition: transform .45s ease; }
+    #mascot.pointing .arm { transform: rotate(-100deg); }
+    #mbubble {
+      position: fixed; right: 12px; z-index: 8;
+      width: min(320px, calc(100vw - 24px));
+      background: rgba(255, 255, 255, .92);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, .8); border-radius: 14px 4px 14px 14px;
+      padding: .7rem .85rem; font-size: .84rem; line-height: 1.5;
+      box-shadow: 0 8px 26px rgba(4, 30, 60, .28);
+      transform: scale(.7); transform-origin: top right; opacity: 0;
+      transition: transform .3s cubic-bezier(.3, 1.4, .5, 1), opacity .3s ease;
+    }
+    #mbubble.show { transform: scale(1); opacity: 1; }
+    #mbubble[hidden] { display: none; }
+    #mbubble .tail {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800; color: var(--accent);
+    }
+    #mbubble a { color: var(--accent); font-weight: 600; }
+    @media (prefers-reduced-motion: reduce) {
+      #ghostbtn { animation: none; }
+      #ghostbtn::after { animation: none; display: none; }
+      #ghostbtn.ghost-attn { animation: none; box-shadow: 0 0 0 4px rgba(13, 79, 160, .35); }
+      #mascot { transition: none; }
+      .mascot-body, #mascot.pointing .mascot-body { animation: none; }
+      #mascot .arm { transition: none; }
+      #mbubble { transition: none; }
+      #wintro { transition: none; }
+    }
   </style>
 </head>
 <body>
+<!-- The DRS front door wears the app's own chrome: you always land on the
+     DRS site — signed out, the account button is how you sign in, and the
+     glowing ghost is the door to the no-account DRC tier at /cure. -->
+<header>
+  <div class="header-bar">
+    <div class="wbrand">deepresearch.<b>se/rver</b></div>
+    <div class="header-right">
+      <button id="ghostbtn" type="button" title="Ghost — anonymous research in your browser, no account (deepresearch.se/cure)" aria-label="Open the anonymous client-side tier">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
+      </button>
+      <button id="accountbtn" type="button" title="Sign in" aria-label="Sign in">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
 <main>
   <div class="hero">
     <img class="logo" src="/icons/icon-192.png?v=4" alt="DeepResearch.se">
@@ -139,5 +298,150 @@
     See <a href="/build/">About this project</a> for the use restrictions.
   </footer>
 </main>
+
+<!-- ---- first-visit onboarding: the what-it-does/doesn't pane, then the
+     ghost mascot dancing in to point at the ghost button. Replayable with
+     ?anim=1; skipped entirely once seen (localStorage dr_welcome_seen). ---- -->
+<div id="wintro" hidden>
+  <div class="wcard">
+    <h2>First time here? What this does — and doesn't</h2>
+    <div class="dodont">
+      <div>
+        <h3>It does</h3>
+        <ul>
+          <li>Research your question with web searches it plans itself, and
+            answer with numbered citations — within a time budget you set.</li>
+          <li>Signed in — DRS, deepresearch.<b class="tail">se/rver</b> — add
+            documents, photos, projects and cloud sync on EU-hosted models.
+            Sign in with the <b>account button</b> (top right); accounts are
+            invite-only and await approval.</li>
+          <li>Offer a no-account tier — DRC, deepresearch.<b class="tail">se/cure</b> —
+            that runs entirely in your browser on your own API key.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>It doesn't</h3>
+        <ul>
+          <li>No ads, no trackers, nothing sold — an open-source research
+            project, not a commercial product.</li>
+          <li>No open signup: new accounts wait for the operator's approval.</li>
+          <li>In the DRC tier it doesn't even see your chats — the server is
+            not in the data path at all, by construction.</li>
+        </ul>
+      </div>
+    </div>
+    <button id="wintrook" type="button">Got it</button>
+  </div>
+</div>
+
+<div id="mascot" hidden>
+  <svg class="mascot-body" viewBox="0 0 64 74" width="58" height="67" aria-hidden="true">
+    <path d="M10 32 a22 22 0 0 1 44 0 v28 l-7.3 -6 -7.3 6 -7.4 -6 -7.4 6 -7.3 -6 -7.3 6 z"
+          fill="#ffffff" fill-opacity=".96" stroke="#0a2e5c" stroke-width="2.4" stroke-linejoin="round"/>
+    <circle cx="30" cy="30" r="2.6" fill="#0a2e5c"/>
+    <circle cx="43" cy="30" r="2.6" fill="#0a2e5c"/>
+    <path d="M34.5 38 q3.5 3 7 0" fill="none" stroke="#0a2e5c" stroke-width="2" stroke-linecap="round"/>
+    <path d="M12 40 q-6 3 -7 9" fill="none" stroke="#0a2e5c" stroke-width="2.4" stroke-linecap="round"/>
+    <g class="arm">
+      <path d="M52 40 q7 3 8 9" fill="none" stroke="#0a2e5c" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="60" cy="49" r="2.4" fill="#0a2e5c"/>
+    </g>
+  </svg>
+</div>
+<div id="mbubble" hidden>
+  <b>Psst — see the glowing ghost up there?</b> That's the door to
+  deepresearch.<b class="tail">se/cure</b>: anonymous deep research that runs
+  entirely in <i>your</i> browser, no account — this site's server is never
+  in the data path, so it can't see those chats even in principle.
+  <a href="/cure">Tap the ghost to try it →</a>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var reduced = false;
+  try { reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+  var force = /[?&]anim=1\b/.test(location.search);
+  var seen = false;
+  try { seen = localStorage.getItem("dr_welcome_seen") === "1"; } catch (e) {}
+
+  var ghost = document.getElementById("ghostbtn");
+  var mascot = document.getElementById("mascot");
+  var bubble = document.getElementById("mbubble");
+  ghost.addEventListener("click", function () { location.assign("/cure"); });
+  document.getElementById("accountbtn").addEventListener("click", function () {
+    location.assign("/login");
+  });
+
+  if (seen && !force) return;
+
+  function startMascot() {
+    mascot.hidden = false;
+    var rect = ghost.getBoundingClientRect();
+    // Stop just left of the ghost button so the raised arm points at it.
+    var targetX = Math.max(40, rect.left + rect.width / 2 - 52);
+    var arrived = false;
+    function arrive() {
+      if (arrived) return;
+      arrived = true;
+      mascot.classList.add("pointing");
+      ghost.classList.add("ghost-attn");
+      bubble.style.top = (mascot.getBoundingClientRect().bottom + 10) + "px";
+      bubble.hidden = false;
+      requestAnimationFrame(function () { bubble.classList.add("show"); });
+      // Clicks anywhere else wave the mascot goodbye (the ghost button and
+      // the bubble's link keep working on their own).
+      setTimeout(function () {
+        document.addEventListener("click", dismiss, true);
+      }, 400);
+    }
+    function dismiss(e) {
+      if (e && (ghost.contains(e.target) || bubble.contains(e.target))) return;
+      document.removeEventListener("click", dismiss, true);
+      mascot.classList.add("bye");
+      bubble.classList.remove("show");
+      setTimeout(function () {
+        mascot.hidden = true;
+        bubble.hidden = true;
+        ghost.classList.remove("ghost-attn");
+      }, 450);
+    }
+    if (reduced) {
+      mascot.style.transform = "translateX(" + targetX + "px)";
+      arrive();
+    } else {
+      // Two frames so the initial off-screen transform is committed before
+      // the transition target lands — otherwise there is no travel at all.
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          mascot.style.transform = "translateX(" + targetX + "px)";
+        });
+      });
+      mascot.addEventListener("transitionend", function h(e) {
+        if (e.propertyName !== "transform") return;
+        mascot.removeEventListener("transitionend", h);
+        arrive();
+      });
+      setTimeout(arrive, 4200); // safety: transitionend can be swallowed
+    }
+  }
+
+  var intro = document.getElementById("wintro");
+  intro.hidden = false;
+  function dismissIntro() {
+    try { localStorage.setItem("dr_welcome_seen", "1"); } catch (e) {}
+    intro.classList.add("away");
+    setTimeout(function () {
+      intro.hidden = true;
+      intro.classList.remove("away");
+      startMascot();
+    }, reduced ? 0 : 380);
+  }
+  document.getElementById("wintrook").addEventListener("click", dismissIntro);
+  intro.addEventListener("click", function (e) {
+    if (e.target === intro) dismissIntro();
+  });
+})();
+</script>
 </body>
 </html>

@@ -32,8 +32,8 @@
 //   - nothing project-derived reaches the Deepresearch server, in any
 //     form. "No logging" is not a policy here — there is nothing to log.
 //   - "Lock" just drops this tab's memory — a reload does the same.
-//   (The one plain localStorage item, dr_intro_seen, is a UI flag — it
-//   carries nothing derived from secrets, keys, or content.)
+//   (The plain localStorage items, dr_intro_seen and dr_umbrella_seen, are
+//   UI flags — they carry nothing derived from secrets, keys, or content.)
 
 import {
   deriveDrcProfile,
@@ -129,6 +129,38 @@ async function loadIntroPublications() {
   } catch {
     // the shelf is decoration — the pane works without it
   }
+}
+
+// The first-visit umbrella intro (public/cure/umbrella.js): the logo vortex
+// untwisting into wireframe umbrellas. Plays ONCE, on a genuine first visit
+// (never over a deep link), before the intro pane; `?anim=1` replays it for
+// demos and on-device verification. Entirely fail-soft: any import or play
+// failure resolves straight through to the intro pane.
+function maybePlayUmbrella(deepLinked) {
+  const force = /[?&]anim=1\b/.test(location.search);
+  let seen = false;
+  try {
+    seen = localStorage.getItem("dr_umbrella_seen") === "1";
+  } catch {
+    // storage blocked — treat as unseen, the flag below just won't stick
+  }
+  let reduced = false;
+  try {
+    reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    // no matchMedia — animate
+  }
+  if (reduced || (!force && (seen || deepLinked))) return Promise.resolve();
+  try {
+    localStorage.setItem("dr_umbrella_seen", "1");
+  } catch {
+    // fine — it may play again next visit
+  }
+  return import("./umbrella.js")
+    .then((m) => new Promise((res) => m.playUmbrellaIntro({ onDone: res })))
+    .catch(() => {
+      // decoration only — never block the page over it
+    });
 }
 
 function dismissIntro() {
@@ -725,7 +757,7 @@ if (themeMeta) {
 // PWA or Safari" — bump the d-number on every DRC deploy.
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-  $("stamp").textContent = "d10 · " + (standalone ? "pwa" : "browser");
+  $("stamp").textContent = "d11 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the stamp is an instrument, never a breaker
 }
@@ -735,7 +767,12 @@ renderKeysPanel();
 renderConvPicker();
 renderMessages();
 // A replay deep link counts like a project link — no intro pane over it.
-handlePublicationLink().then((opened) => maybeShowIntro(projectLinked || opened));
+// On a genuine first visit the umbrella intro plays first (over the bare
+// page), then the intro pane appears when it finishes or is tapped away.
+handlePublicationLink().then((opened) => {
+  const deepLinked = projectLinked || opened;
+  maybePlayUmbrella(deepLinked).then(() => maybeShowIntro(deepLinked));
+});
 
 $("introstart").addEventListener("click", dismissIntro);
 $("brand").addEventListener("click", () => {

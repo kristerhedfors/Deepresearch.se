@@ -228,6 +228,29 @@ description: >-
   instead of a bare login form; `/login` remains the explicit sign-in
   page and the target for auth bounces on other paths. Signed-in users
   at `/` get the app, as always.
+- **First-visit onboarding animations (2026-07-12):** both tiers greet a
+  first-time visitor once, gated by plain localStorage UI flags and
+  replayable with `?anim=1`; both respect `prefers-reduced-motion` and
+  are pure decoration (fully fail-soft, tap-to-skip/dismiss).
+  - *Landing* (`dr_welcome_seen`, inline in `welcome/index.html`): the
+    page wears the DRS glass header (ghost + account buttons — account
+    goes to `/login`, ghost to `/cure`, with the app's glow/shimmer). A
+    what-it-does/-doesn't overlay card shows first; dismissing it sends
+    a little ghost mascot dancing in along the top (travel transition on
+    the wrapper, dance keyframes on the SVG body, arm rotate to point),
+    which points at the ghost button with a speech bubble explaining it
+    as the door to deepresearch.**se/cure**.
+  - *DRC* (`dr_umbrella_seen`, `public/cure/umbrella.js`, wired in
+    `drc.js` boot — plays BEFORE the intro pane, never over a deep
+    link): the logotype vortex → umbrella canvas animation. Pure
+    timeline/geometry core (phase ramps in `paramsAt`, orthographic
+    quarter-circle camera in `project`) is Node-tested in
+    `public/js/umbrella-intro.test.js`; the canvas layer draws the
+    fleet of spinning logo vortices that untwist into 8-panel
+    beach-umbrella tops, get contours drawn while color drains, then
+    tilt to a 3D side view (shaft + J-hook fade in) where the wireframe
+    umbrellas spin, sway and sink. Skip = clock-jump to the fade phase,
+    so it always ends through the same path.
 - **History pane rows & the iOS paint constraint (2026-07-08):** each
   chat row is a swipe-to-reveal card (`history-ui.js`): swiping left
   slides the WHOLE card via inline `margin-left` (`.swiped` parks it at

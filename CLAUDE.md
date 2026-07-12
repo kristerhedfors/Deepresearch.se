@@ -301,7 +301,13 @@ Node-tested end to end against a mock provider), and `drc-store.js`
 ciphertext keyed by blob id, injectable backend, deliberately the seam
 a future remote adapter would slot into — Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
-`drc.css`): a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
+`drc.css`, plus `umbrella.js` — the first-visit intro animation, the
+logo vortex untwisting into wireframe 3D umbrellas, pure
+timeline/geometry core Node-tested, replay with `?anim=1`; the landing
+page carries the sibling first-visit onboarding — the does/doesn't
+pane and the ghost mascot pointing out the ghost button, inline in
+`public/welcome/index.html` — see the **ui-notes** skill):
+a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
 palette (2026-07-10 directive) — the same floating glass chrome, waves,
 composer, spiderweb knob and slider shapes as `css/app.css`,
 self-contained since app.css is auth-served. DRS-only features (ghost,
@@ -447,6 +453,11 @@ clarify short-circuit, triage fail-soft, and the recall block threaded
 into triage/synthesis/validation but never harvest), `drc-store.js` (the
 browser-local storage adapter: round-trip over an injected backend,
 ciphertext-only at rest, listing, quota/corruption fail-soft),
+`public/cure/umbrella.js`'s pure core — via
+`public/js/umbrella-intro.test.js` — (the DRC first-visit intro's
+phase timeline and vortex→umbrella geometry: ramp
+ordering/monotonicity, the quarter-circle camera projection,
+twist/scallop/dome math),
 `vault-core.js` — via `vault.js`'s re-exports — (secret
 format/entropy/uniqueness, the forgiving normalization incl. misread
 mapping and prefix stripping, the Crockford codec round-trip, HKDF
