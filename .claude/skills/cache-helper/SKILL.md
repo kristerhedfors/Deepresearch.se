@@ -43,7 +43,7 @@ without device access via the `client_diag`/build-stamp trick below.
 ## The cache layers (know which one you're fighting)
 
 1. **Browser heuristic cache** — SOLVED by policy, don't regress it:
-   `serveAsset` (src/index.js) sends `cache-control: no-cache` for every
+   `serveAsset` (src/assets.js) sends `cache-control: no-cache` for every
    js/css/html/md/webmanifest and extensionless route (revalidation is a
    cheap 304 via the strong asset etags), and a short real TTL only for
    icons/media. History: the 2026-07-08 mixed-module-graph incident —

@@ -120,7 +120,7 @@ Set on the Worker (Settings → Variables and Secrets in the dashboard, or
 |---|---|
 | `BERGET_API_TOKEN` | Berget.ai API auth (sent as `Authorization: Bearer`) |
 | `EXA_API_KEY` | Exa web search (sent as `x-api-key`) |
-| `SESSION_SECRET` | HMAC key for the session cookie and OAuth-state cookie — a high-entropy random string, `openssl rand -hex 32`. Rotating it invalidates every session. If unset, the HMAC falls back to the admin-credential key, and cookies stay valid after you later add it (verified against both keys). |
+| `SESSION_SECRET` | HMAC key for the session cookie and OAuth-state cookie — a high-entropy random string, `openssl rand -hex 32`. It is the **sole** signing key: there is no fallback. If it is unset the Worker has no signing key and serves a configuration-error page instead of running any auth flow keyless (an earlier admin-credential fallback was removed — it left every session cookie offline-brute-forceable against `ADMIN_PASS`). Rotating it invalidates every session. |
 | `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — the Worker **fails closed without them**. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The OAuth client from step 4 |
 
@@ -217,7 +217,7 @@ URI from step 4. Note client-disconnect detection doesn't fire in
 
 ```bash
 npm test              # unit suite: node --test src/*.test.js public/js/*.test.js (no deps)
-npm run typecheck     # tsc --noEmit (checked JSDoc, dev-only)
+npm run typecheck     # tsc --noEmit on src/ + public/ (checked JSDoc, dev-only)
 
 cd tests && npm install && npm run fixtures   # Playwright E2E, once
 npm run test:mocked   # free — /api/chat & friends intercepted

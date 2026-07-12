@@ -6,9 +6,10 @@ system *is*; this document argues about what it should *become*, and —
 just as importantly — what it should refuse to become. Each section gives
 a verdict, the reasoning, and the honest costs.
 
-Written against the codebase as of 2026-07: ~16K lines of dependency-free
-plain JS (48 Worker modules in `src/`, 35 client modules in `public/js/`),
-no build step, deployed by `npx wrangler deploy` / git-connected push.
+Written against the codebase as of 2026-07: ~37K lines of dependency-free
+plain JS excluding tests (68 Worker modules in `src/`, 49 client modules
+in `public/js/`), no build step, deployed by `npx wrangler deploy` /
+git-connected push.
 
 > **Status update (2026-07-09).** Much of this document has since shipped
 > — per-section **Status** notes below record what, verified in code:

@@ -42,7 +42,7 @@ implemented security fix, in priority order.
    Before starting a fix round, ALWAYS read the board
    (`scripts/security`); §3's order is only the default when the board is
    silent.
-6. **This file is itself public** — see R-3. Write entries so they describe the
+8. **This file is itself public** — see R-3. Write entries so they describe the
    risk and the fix without handing over a working exploit (no PoC payloads,
    no live identifiers beyond what the source already shows).
 
@@ -334,7 +334,7 @@ estimated spend at admission, reconcile on completion) and/or Cloudflare
 rate-limiting rules remain available if the cap proves insufficient.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
-The CSP is fully authored in `src/index.js` but `CSP_ENABLED = false`
+The CSP is fully authored in `src/security-headers.js` but `CSP_ENABLED = false`
 (re-verified 2026-07-12). Until flipped, one DOMPurify bypass (or a tampered
 vendored lib) is full session-context XSS — reaching IndexedDB (history key,
 plaintext project chats) on DRS and the sealed-state/localStorage surface on
@@ -385,7 +385,7 @@ Berget), so a hung backend degrades instead of hanging, satisfying invariant
 
 ### P-9 · Low-severity backlog (imported L-1 … L-12) — 🔴 OPEN
 Re-verified still open 2026-07-12 unless noted. In rough order:
-- **L-1** `activity.js:603` — validate scheme (`https?:` only) before
+- **L-1** `activity.js:576` — validate scheme (`https?:` only) before
   `a.href = src.url` (in-origin `javascript:` executor if a search provider
   ever returns one; amplified while CSP is off).
 - **L-2** `rag.js` — add post-query `metadata.u === uid` assertion behind the

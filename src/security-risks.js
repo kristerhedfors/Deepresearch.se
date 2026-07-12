@@ -88,7 +88,7 @@ export const SECURITY_RISK_ITEMS = [
     severity: "high",
     status: "open",
     summary:
-      "The CSP is fully authored in src/index.js but CSP_ENABLED = false. Until flipped, one DOMPurify bypass is full session-context XSS reaching IndexedDB (history key, project chats) on DRS and the sealed-state surface on DRC. Re-verify inline-script hashes + Maps/sandbox origins, flip, watch a live console.",
+      "The CSP is fully authored in src/security-headers.js but CSP_ENABLED = false. Until flipped, one DOMPurify bypass is full session-context XSS reaching IndexedDB (history key, project chats) on DRS and the sealed-state surface on DRC. Re-verify inline-script hashes + Maps/sandbox origins, flip, watch a live console.",
   },
   {
     id: "P-5",

@@ -137,8 +137,10 @@ Server (`src/`):
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
-| `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording |
+| `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording, and the per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, `INFLIGHT_CAP`) |
+| `alerts.js` | Operational alerts (D1 `alerts` table): classifies caught pipeline/backend failures (Berget errors, wallet depletion) into a small stable set of alert types surfaced in the admin panel and as a notification badge — rows are upserted by `type` (a recurrence bumps `count`/`last_seen_at` and re-surfaces itself) rather than one row per occurrence; fails soft (a no-op without D1) — see the **access-control** skill |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) + `/api/client-log` (client telemetry beacon → Workers Logs; first user is the sandbox filesystem integration — see the **execution-sandbox** skill) |
+| `user-messages.js` | Per-user message center (D1 `user_messages`): account-level notices (quota exhausted/restored, sign-in approved, quota changed by an admin) — structured enums + timestamps ONLY, deliberately no content column, so the feature stays inside the same zero-retention promise the privacy notice makes for conversations; "restored" isn't a separate write, it's derived at read time from the caller's CURRENT quota state (`quota.js`). Rendered by the client's `account-messages.js` |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, `bash_lite_mcp` (experimental execution sandbox), and `developer_mode` (introspection mode) knobs — `GET/PUT /api/settings` |
 | `introspect.js` | INTROSPECTION MODE's server enrichment (the `developer_mode` knob): whenever developer mode is on it appends the site's OWN source so answers (incl. code-example requests) come from the real code, never a denial. It RETRIEVES the source chunks most relevant to the question from a committed DENSE index (`public/introspect/source-rag.json` — int8 embeddings per source chunk, `scripts/bundle-source-rag.mjs` / `npm run bundle:rag`, a per-file-hash DELTA build that only re-embeds changed files), embedding the query with Berget e5 (same model the index was built with) — so it works for ANY phrasing with NO intent regex and NO Linux VM. Plus a CLAUDE.md orientation excerpt, the full file index for strong "how are you built" asks, and named files inlined by path. Both artifacts (the source snapshot + the rag index) are COMMITTED, served by this deploy, read back through the ASSETS binding — by construction the exact source this deploy runs. `hasSource` flips the answer prompts' capabilities line (prompts.js/pipeline.js) so the model uses the source instead of saying it isn't a coding tool. Shared pure core (chunker/int8 codec/retrieval/block builder) is `public/js/introspect-core.js`; with the sandbox knob also on the tree mounts at `/src` — see the **introspection** skill |
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
@@ -156,9 +158,12 @@ Server (`src/`):
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, boards |
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
+| `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) with `chat.js` |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `pipeline-inputs.js` | The pipeline's PURE input-block builders + output parsers (`shellReplyMessages`, `notesSection`, `subquestionsSection`, `conflictsSection`, `collectConflicts`, `extractClaims`, `takeSearchBatch`) — the byte-identical-input string/data shaping split out of `pipeline.js` so the flow reads as the flow; Node-tested |
+| `notes.js` | Structured research notes — the pure representation/merge logic behind the budget-gated notes-digest phase (`pipeline.js`'s `maybeDigest`, `prompts.js`'s `notesPrompt`): each note distils one factual claim tied to numbered source ids; normalizes and MERGES notes across search waves (dedupe by claim, union ids/entities) so gap-check and synthesis reason over a compact claim set instead of re-reading every highlight. Pure and never throws — a bad note is dropped, matching the pipeline's fail-soft posture |
 | `triage.js` | The pipeline's JSON-hardening layer: the declared schemas for every JSON planning phase + `hardenJson`, and `normalizeTriage` (the triage-failure fallback) — pure, no I/O |
+| `schema.js` | A tiny, pure, dependency-free schema validator hardening the model-JSON → pipeline boundary: `validate(shape, value)` never throws — it coerces/normalizes where it safely can and returns `{ ok, value, errors }` (combinators: string/boolean/number/stringEnum/arrayOf/object/oneOf). Sits BEHIND the existing fail-soft fallbacks (`normalizeTriage` etc. stay the last-ditch net); the integration pattern is `ok ? value : original`, so a schema miss degrades exactly as before |
 | `answer-stream.js` | The answer-streaming internals behind synthesis/direct/search-off replies: `streamCompletion` (reliable-model failover), the per-model attempt loop (connect retries, idle guard, finish_reason detection), `emitChunked` |
 | `search-sources.js` | The auxiliary search-source REGISTRY (HF Hub + future sources): one declarative entry per source (intent/search/service/dedup/promptNote/diversity) — the parallel-work seam (see the **add-research-source** skill) |
 | `sources.js` | The cross-search source registry: URL dedup, arrival-order numbering, per-origin diversity cap (per-domain; per-OWNER for huggingface.co) + overflow backfill, the numbered digest |
@@ -185,6 +190,7 @@ Server (`src/`):
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
+| `geocode.js` | Reverse geocoding via OpenStreetMap Nominatim: resolves a photo's GPS EXIF coordinates (extracted client-side by `public/js/exif.js`) into a human-readable place name the model and Exa can reason and search with. Server-side like every other outbound call (so it's logged and rate-limited consistently); only the coordinates cross the wire — never the filename, question, or any account/session identity. Fail-soft (returns null on any failure/timeout) |
 | `googlemaps.js` | Google Maps Platform clients (Places, Street View, Static Maps, Routes) and the edge-cached lookup orchestration (opt-in `google_maps` knob) |
 | `googlemaps-blocks.js` | The Maps integration's pure labeled context-block builders (POV/jump/cross-barrier/nearby/map-view/lookup/journey blocks + the keyless `mapLink`/`panoLink` helpers and `compassDir`) — Node-tested; the API key never appears here |
 | `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, every intent gate (street-view, moves, here-asks, nearby/relocation, barriers, journey), locality corrections, the conversation-state recovery (`pendingRelocation`, `extractJourneyPoints`), and `pickLookup` — the ORDERED LOOKUP_MATCHERS registry (one small matcher per ask shape; the order is the spec) — all Node-tested |
@@ -202,6 +208,13 @@ interaction hooks, the persisted `embeds` list — strict-checked),
 `recovery.js` (the answer-recovery polling client for server-parked
 answers — `recoverAnswer`'s rolling-deadline poll loop + `ackAnswer`;
 delivery of a recovered answer stays in `stream.js`),
+`pending-answer.js` (the RESUME-ACROSS-RELAUNCH pointer that closes the
+gap `recovery.js` can't: iOS can discard a backgrounded PWA entirely, so
+a cold relaunch loses the in-memory request id `recovery.js` would poll
+with — this writes a metadata-ONLY marker (conversation id, request id,
+settings, timestamp; NEVER message text, and nothing for incognito
+chats) so the next launch collects the answer the server finished while
+the tab was gone),
 `sse.js` (the pure SSE line-buffer parser `stream.js`'s read loop feeds —
 Node-tested), `message-content.js` (pure builders for the outgoing
 message: labeled document / image-metadata / RAG-excerpt blocks, title
@@ -223,6 +236,11 @@ Maps knobs plus the Feedback-mode and sandbox knobs; opened from the
 summary's Settings button OR directly via the header's gear icon,
 2026-07-11 directive),
 `account-feedback.js` (the Feedback dialogue-threads view)),
+`notifications.js` (the small rendering fragments — alert severity
+badges, pending-user rows — genuinely shared between `account.js`'s
+message-center admin section and `admin.js`'s full notification center;
+their surrounding markup differs deliberately, so only the identical
+pieces live here),
 `turns.js`
 (bubbles/content/tools — incl. the per-reply Feedback button + inline
 form, present on every turn and shown via the body's `feedback-mode`
@@ -249,8 +267,17 @@ position linking to Google Maps, and a per-image chat panel whose
 question continues the conversation anchored AT that image's position
 via the map_view anchor; live-session only, pure registry core
 Node-tested),
+`introspect-ui.js` (INTROSPECTION MODE's DRS client — TIN the titanium
+mascot and the private-vs-remote model picker; its routing accessors are
+Node-tested, the DOM glue verified live) over the shared
+`introspect-core.js` pure core (the EN+SV intent gate, the sticky
+conversation-mode gate, the source-RAG chunker / int8 vector codec /
+retrieval, and the capped context-block builder — the one implementation
+behind `src/introspect.js` and both tiers' clients),
 `markdown.js`
-(sanitized rendering), `timescale.js` (slider scale), `history-store.js`
+(sanitized rendering), `report.js` (the branded PDF report export of
+an answer — lazy-injects the vendored jsPDF on first use only, so the
+normal page load never pays for it), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
 project chats which rest readable because they're RAG-indexed — now also
 dual-writing each record to the cloud while the knob is on),
@@ -358,7 +385,9 @@ replays (seeded as conversations, in place), `/my/project-<hash>` deep
 links, and the `/free*` legacy aliases (`/?continue=<slug>` is the
 legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
-only to admins). Vendored libs in `vendor/` (`marked`, `DOMPurify`).
+only to admins). Vendored libs in `vendor/` (`marked` and `DOMPurify`
+for Markdown rendering + sanitizing; `jsPDF`, lazy-loaded by `report.js`
+for the PDF report; `pdf.js` for parsing PDF attachments client-side).
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the
@@ -380,7 +409,8 @@ site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
 dependency added, matching the project's minimal-dependency stance),
-covering the pure logic that doesn't need Berget/Exa/D1: `budget.js`
+covering the pure logic and mockable seams that don't need a live
+Berget/Exa/D1: `budget.js`
 (time-tier planning, deadline grace math), `quota.js` (window
 start/reset including month-boundary wraps, quota merging/clamping,
 breach detection, cost calc), `model-profiles.js` (override merging,
@@ -437,6 +467,30 @@ villain rewards, XP/level-up/evolution, save normalization), and
 `tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
 incl. the Swedish-parity suite, geodesy round-trips, spawn projection
 geometry).
+
+Additional server suites cover the request/routing and infra seams:
+`mcp.js` (the PURE JSON-RPC / MCP protocol helpers, asserted to load
+WITHOUT pulling in the pipeline), `model-routing.js` (the shared
+`resolveJsonModel` split-routing decision `chat.js` and `mcp.js` both
+delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
+pieces — `normalizeTriage`, `collectConflicts`,
+`isTransientConnectStatus`, and the input-block builders/parsers),
+`notes.js` (note normalization + cross-wave merge + the bounded digest),
+`schema.js` (the validator combinators and the coerce-or-return-original
+contract), `assets.js` (the public no-auth allowlist, the caching
+policy, COEP request shaping) and `security-headers.js` (the site-wide
+header set + the CSP policy), `auth.js` (the session-cookie HMAC keyed
+SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
+`answers.js` (the answer-recovery cache's running/lost/done projection),
+`history-key.js` (per-user key derivation determinism + the configured
+gate), `admin-boards.js` (the boards-discovery registry shape +
+`?format=text`), `search-sources.js` (the `SEARCH_SOURCES` registry
+contract, `sourcePromptNotes`, `platformDiversityKey`), and the outbound
+clients' pure sides — `exa.js` (the normalized search cache key),
+`hf.js` (intent detection, query/attempt planning, dedup keys, item
+mappers), and `shodan.js` (target extraction + the key-gated
+availability check). On the client, `pending-answer.js` covers the
+resume-across-relaunch marker (metadata-only, incognito-suppressed).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/

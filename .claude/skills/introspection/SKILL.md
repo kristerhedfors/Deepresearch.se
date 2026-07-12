@@ -288,7 +288,7 @@ served on BOTH tiers, so it's in `isPublicAsset`.
   `isPublicAsset` (the /cure module graph imports the core; DRC fetches the
   snapshot unauthenticated). The repo is public on GitHub — serving the
   snapshot exposes nothing new.
-- `.json` was added to ASSET_REVALIDATE (src/index.js) so the snapshot
+- `.json` was added to ASSET_REVALIDATE (src/assets.js) so the snapshot
   revalidates per deploy instead of serving a previous deploy's source for
   up to an hour.
 

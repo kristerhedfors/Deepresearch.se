@@ -4,7 +4,7 @@ description: >-
   Load when verifying or updating the project's security posture — "check
   security", "any leaked keys?", "is finding X still open?", auditing the
   public-source risk list, before/after touching auth (src/auth.js), headers
-  (src/index.js withRequestId/CSP), storage privacy, quota/rate limiting, or
+  (src/security-headers.js applySecurityHeaders/CSP), storage privacy, quota/rate limiting, or
   prompts that read untrusted web content — and WHENEVER SECURITY-RISKS.md is
   edited. Companion to SECURITY-RISKS.md (the living risk register): this
   skill holds the concrete re-check procedure for every register item — the
@@ -128,8 +128,8 @@ credits. Record cap values + date in the register's History log.
 
 ## 4. Headers & CSP (H-2 follow-up / P-4)
 
-Source: `src/index.js` — `CSP_ENABLED` flag (currently `false`) and the
-always-on header set in `withRequestId` (nosniff, `X-Frame-Options: DENY`,
+Source: `src/security-headers.js` — `CSP_ENABLED` flag (currently `false`) and
+the always-on header set applied by `applySecurityHeaders` (nosniff, `X-Frame-Options: DENY`,
 Referrer-Policy, HSTS, COOP, Permissions-Policy). Live probe:
 
 ```bash

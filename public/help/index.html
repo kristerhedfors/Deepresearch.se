@@ -59,10 +59,14 @@
     <h2>What this site does</h2>
     <p>You ask a question; the site plans web searches, runs them, reads the
     results, and writes an answer with numbered citations — like a research
-    assistant on a deadline you choose. The AI models run at
+    assistant on a deadline you choose. The default AI models run at
     <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
-    (EU-hosted) and web searches go through
-    <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
+    (🇸🇪 EU-hosted); if an administrator has enabled them, you can also
+    choose 🇺🇸 Claude or GPT models, which process your conversation at
+    Anthropic or OpenAI in the US. <b>Your conversation goes wherever the
+    model you pick resides</b> — the model selector flags each choice with
+    its provider's country so you can tell at a glance. Web searches go
+    through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
     <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
     lives in your browser, encrypted (see "Chat history" below). To improve
     the service, the server keeps a log of completed research interactions —
@@ -266,7 +270,8 @@
     search queries <i>derived from</i> your question are sent to Exa (never
     your full conversation) — and <b>Exa retains those queries by
     default</b> (see the next section). With web search OFF, nothing leaves
-    except the conversation itself going to Berget.ai to generate the
+    except the conversation itself going to your chosen model's provider
+    (Berget in the EU, or Anthropic/OpenAI in the US) to generate the
     answer. Either way, our server stores no message content.</div>
   </section>
 
@@ -298,7 +303,8 @@
     <div class="privacy-flag"><b>This is semi-private, not anonymous:</b>
     your generic step-1 queries were still seen (and possibly retained) by
     Exa, and the whole conversation — including the fetched excerpts — is
-    still processed by Berget.ai (EU) on every turn. For anything truly
+    still processed by your chosen model's provider (Berget in the EU, or
+    Anthropic/OpenAI in the US) on every turn. For anything truly
     sensitive, keep identifying details out of the chat entirely.</div>
   </section>
 
@@ -356,14 +362,31 @@
         to Google, never your whole question or anything about your account, and
         only when your message actually names an address. It works whether or
         not web search is on.</li>
+      <li><b>Feedback mode</b> (off by default) — when on, a small feedback
+        button appears under every reply so you can send this site's developers
+        a note about that specific answer and see their replies back as a short
+        thread. Only what you type into the feedback form is shared, and only
+        when you submit it.</li>
+      <li><b>Execution sandbox</b> (off by default, <b>experimental</b>) — when
+        on, for questions that call for running code, a small Linux environment
+        boots inside this browser tab and the assistant can run shell commands
+        in it, folding the real output into its answer. It runs entirely on
+        your device — nothing about the commands or their output leaves the
+        browser — and being experimental, it may be rough or slow to start.</li>
+      <li><b>Developer mode</b> (off by default) — when on, the assistant can
+        answer questions about how this site itself is built, drawing on its own
+        source code, instead of declining. Handy if you're curious about the
+        implementation.</li>
     </ul>
   </section>
 
   <section>
     <h2>Privacy, in full</h2>
     <ul>
-      <li><b>Conversations</b>: processed by Berget.ai (EU) to generate
-        answers. Saved locally in your browser,
+      <li><b>Conversations</b>: processed by your chosen model's provider to
+        generate answers — Berget in the EU (🇸🇪, the default), or, if you
+        pick a Claude or GPT model, Anthropic or OpenAI in the US (🇺🇸). The
+        model selector flags each model's country. Saved locally in your browser,
         encrypted (see "Chat history" above) — erased only when you delete
         a conversation there or clear this browser's site data. Chats inside
         a <b>project</b> are the exception: they're indexed for retrieval and

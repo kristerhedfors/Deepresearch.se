@@ -19,8 +19,9 @@
 > - `ADMIN_USER`/`ADMIN_PASS` remain as break-glass Basic Auth (scripts,
 >   emergencies). The session/state HMAC is now keyed by a dedicated
 >   `SESSION_SECRET` (random, `openssl rand -hex 32`), NOT the admin
->   password — see the note in §2 — with a legacy fallback to the admin
->   key when `SESSION_SECRET` is unset.
+>   password — see the note in §2. It is the sole signing key: the old
+>   admin-key fallback was removed, so if `SESSION_SECRET` is unset the
+>   Worker serves a configuration-error page instead of signing keyless.
 >
 > §1 (console setup), §2 (secrets), §3 (flow — except step 4's "not
 > found" branch, see the inline note), and the pitfalls checklist below
@@ -69,8 +70,12 @@ show the Google button; when unset, nothing changes.
 
 **Also set `SESSION_SECRET`** (`npx wrangler secret put SESSION_SECRET`) —
 the HMAC key for the session and OAuth-state cookies, `openssl rand -hex 32`.
-`src/auth.js` prefers it and falls back to the admin-credential key when
-unset, verifying against both so existing sessions aren't logged out.
+`src/auth.js` uses it as the sole key — there is no fallback. An earlier
+design derived the key from the admin credentials when `SESSION_SECRET` was
+unset, which left every cookie offline-brute-forceable against `ADMIN_PASS`;
+that was removed. Unset now means no signing key at all, and `src/index.js`
+serves a configuration-error page rather than letting any auth flow run
+keyless. Treat `SESSION_SECRET` as required.
 
 ## 3. The flow to implement (server-side OAuth code flow + OIDC)
 

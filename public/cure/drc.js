@@ -55,6 +55,7 @@ import {
   drcProvider,
   listDrcModels,
 } from "/js/drc-providers.js";
+import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import {
@@ -499,7 +500,7 @@ async function refreshModels() {
     providers.map(async (p) => {
       const ids = await listDrcModels(p, state.keys[p.id]);
       return (
-        `<optgroup label="${esc(p.label)}">` +
+        `<optgroup label="${esc(labelWithFlag(flagForProvider(p.id), p.label))}">` +
         ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("") +
         "</optgroup>"
       );
@@ -512,7 +513,7 @@ async function refreshModels() {
   // provider above now.
   groups.push(
     '<optgroup label="se/rver only — deepresearch.se/rver">' +
-      '<option disabled>Anthropic Claude</option>' +
+      '<option disabled>🇺🇸 Anthropic Claude</option>' +
       "</optgroup>",
   );
   pick.innerHTML = groups.join("");
