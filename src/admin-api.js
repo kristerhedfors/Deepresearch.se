@@ -18,6 +18,11 @@
 //                                    (src/security-risks.js — votes/score/
 //                                    note/priority over SECURITY-RISKS.md §3;
 //                                    ?format=text is the fix loop's input)
+//   GET    /api/admin/boards         the admin-BOARDS discovery index
+//                                    (src/admin-boards.js — one entry per
+//                                    Claude-fetchable list + how to fetch its
+//                                    text view; ?format=text is the "pop up
+//                                    every board" entry point)
 //
 // Accounts are provisioned by Google sign-in (src/google.js) — there is no
 // create-user endpoint; the admin manages status, names, and quotas.
@@ -26,6 +31,7 @@ import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { handleChatLogs } from "./chatlog.js";
 import { handleAdminFeedback } from "./feedback.js";
 import { handleAdminSecurity } from "./security-risks.js";
+import { handleAdminBoards } from "./admin-boards.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -96,6 +102,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // priority order the security-fix loop works in.
     if (path === "/security" || path.startsWith("/security/")) {
       return handleAdminSecurity(request, env, url, log);
+    }
+    // The admin-BOARDS discovery index (src/admin-boards.js): one call that
+    // lists every Claude-fetchable board and how to pull its prioritized
+    // text view — the "pop up all the boards" entry point.
+    if (path === "/boards" && method === "GET") {
+      return handleAdminBoards(request, env, url, log);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

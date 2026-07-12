@@ -38,7 +38,10 @@ success and failure paths.
 
 The break-glass Basic Auth credentials are in the `BASIC_AUTH_USER` /
 `BASIC_AUTH_PASS` env vars (already set in this environment — the e2e
-suite uses the same ones). The helper script is the fastest path:
+suite uses the same ones). The chat log is one of the boards `scripts/boards`
+(the `GET /api/admin/boards` discovery index) surfaces, alongside the
+security and feedback boards — see the **decision-boards** skill. The helper
+script is the fastest path:
 
 ```bash
 scripts/chatlogs              # last 10 interactions, readable text, newest first

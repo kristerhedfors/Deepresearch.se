@@ -34,7 +34,10 @@ decides on every request; nothing ships on a user's say-so alone.
 ## CRUD — the API and the script
 
 Everything goes through `/api/admin/feedback` (break-glass Basic Auth, like
-chatlogs). `scripts/feedback` wraps it (needs `BASIC_AUTH_USER` /
+chatlogs). The feedback queue is one of the boards `scripts/boards` (the
+`GET /api/admin/boards` discovery index) surfaces — run that first if you
+don't already know the queue's fetch line; see the **decision-boards** skill.
+`scripts/feedback` wraps it (needs `BASIC_AUTH_USER` /
 `BASIC_AUTH_PASS`; `BASE_URL` overrides the target):
 
 ```bash
