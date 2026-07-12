@@ -333,6 +333,109 @@ export async function anthropicChatCompletion(env, messages, { model } = {}) {
   };
 }
 
+// Native TOOL-USE loop (the invariant-1 exception for developer mode — see
+// src/introspect-tools.js). Runs the Messages API with a `tools` array and lets
+// the model drive an agentic loop: each round it may emit tool_use blocks; we
+// execute them via the injected `execTool` and feed the results back as
+// tool_result, until the model stops calling tools (end_turn) and returns text.
+// Non-streaming (the tool rounds are request/response); the FINAL answer text is
+// returned whole for the caller to emit. Usage is summed across every round.
+//
+// Bounded: at most `maxRounds` tool rounds, after which one final tools-off call
+// forces an answer so we never loop forever or return empty. Throws only on a
+// hard HTTP failure (the caller falls back to the deterministic path).
+/**
+ * @param {import('./types.js').Env} env
+ * @param {{
+ *   model?: string,
+ *   system?: string,
+ *   userContent: any,
+ *   tools: any[],
+ *   execTool: (name: string, input: any) => (string | Promise<string>),
+ *   maxRounds?: number,
+ *   maxTokens?: number,
+ *   onToolUse?: (info: { round: number, name: string, input: any, resultChars: number }) => void,
+ * }} opts
+ * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number }>}
+ */
+export async function anthropicToolRun(env, { model, system, userContent, tools, execTool, maxRounds = 8, maxTokens = MAX_TOKENS, onToolUse }) {
+  /** @type {Array<{ role: string, content: any }>} */
+  const messages = [{ role: "user", content: userContent }];
+  const usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let toolCalls = 0;
+
+  /** @param {any} payload */
+  const call = async (payload) => {
+    const resp = await fetch(messagesUrl(env), {
+      method: "POST",
+      headers: headers(env),
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(JSON_CALL_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      throw new Error(`Anthropic tool call failed (${resp.status}): ${detail.slice(0, 200)}`);
+    }
+    const data = /** @type {any} */ (await resp.json());
+    usage.prompt_tokens += data.usage?.input_tokens || 0;
+    usage.completion_tokens += data.usage?.output_tokens || 0;
+    return data;
+  };
+
+  /** @param {any} data @returns {string} */
+  const textOfBlocks = (data) =>
+    (Array.isArray(data.content) ? data.content : [])
+      .filter((/** @type {any} */ b) => b?.type === "text" && typeof b.text === "string")
+      .map((/** @type {any} */ b) => b.text)
+      .join("");
+
+  const thinking = thinkingConfigFor(model);
+  for (let round = 1; round <= maxRounds; round++) {
+    /** @type {any} */
+    const payload = { model, max_tokens: maxTokens, messages, tools };
+    if (system) payload.system = system;
+    if (thinking) payload.thinking = thinking;
+    const data = await call(payload);
+    const blocks = Array.isArray(data.content) ? data.content : [];
+    const toolUses = blocks.filter((/** @type {any} */ b) => b?.type === "tool_use");
+    if (data.stop_reason !== "tool_use" || !toolUses.length) {
+      // The model answered (or stopped for another reason) — done.
+      return { text: textOfBlocks(data), usage, rounds: round, toolCalls };
+    }
+    // Echo the assistant's tool_use turn back, then run each tool and reply with
+    // the matching tool_result blocks (Anthropic requires them paired by id).
+    messages.push({ role: "assistant", content: blocks });
+    /** @type {any[]} */
+    const results = [];
+    for (const tu of toolUses) {
+      toolCalls++;
+      let result;
+      try {
+        result = await execTool(tu.name, tu.input || {});
+      } catch (/** @type {any} */ err) {
+        result = `Tool error: ${err?.message || String(err)}`;
+      }
+      const content = typeof result === "string" ? result : JSON.stringify(result);
+      if (onToolUse) onToolUse({ round, name: tu.name, input: tu.input, resultChars: content.length });
+      results.push({ type: "tool_result", tool_use_id: tu.id, content });
+    }
+    messages.push({ role: "user", content: results });
+  }
+
+  // Round cap reached while still calling tools: force a final answer with the
+  // tools removed so the model must write from what it gathered.
+  messages.push({
+    role: "user",
+    content: "You have gathered enough. Do NOT request more tools — write the complete final answer now from what you found.",
+  });
+  /** @type {any} */
+  const finalPayload = { model, max_tokens: maxTokens, messages };
+  if (system) finalPayload.system = system;
+  if (thinking) finalPayload.thinking = thinking;
+  const finalData = await call(finalPayload);
+  return { text: textOfBlocks(finalData), usage, rounds: maxRounds, toolCalls };
+}
+
 // Non-streaming JSON completion, same contract as berget.js's completeJson
 // ({ value, usage, diagnostics }; value null on parse failure — callers
 // fall back gracefully). Normally UNUSED: the JSON planning phases run on

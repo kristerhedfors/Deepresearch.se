@@ -91,10 +91,13 @@ import {
   searchOffPrompt,
   sourceAgentPrompt,
   sourceAnswerPrompt,
+  sourceToolAgentPrompt,
   synthPrompt,
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
+import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
+import { INTROSPECTION_TOOLS, runIntrospectionTool } from "./introspect-tools.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
   MAX_FILES_PER_ROUND,
@@ -464,6 +467,77 @@ async function runClarify(ctx, question) {
 // NO function calling (invariant 1): each read request is a JSON object on the
 // reliable JSON model. Fully fail-soft — a missing snapshot or a failing loop
 // degrades to a plain source-grounded reply from what's already in context.
+// The native-tool source-research path is available when the ANSWER model
+// supports real function calling. Today that's Claude (src/anthropic.js) with
+// its key configured; other providers keep the deterministic read loop. Text
+// only — an attached image falls back to the deterministic path (which threads
+// imageParts into synthesis).
+/** @param {PipelineCtx} ctx @returns {boolean} */
+function introspectionToolsAvailable(ctx) {
+  return isAnthropicModel(ctx.model) && anthropicConfigured(ctx.env) && !ctx.imageParts.length;
+}
+
+const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force an answer
+
+/** @param {string} name @param {any} input @returns {string} */
+function toolCallLabel(name, input) {
+  if (name === "grep_source") return `grep ${JSON.stringify(String(input?.pattern ?? "")).slice(0, 60)}`;
+  if (name === "read_file") {
+    const paths = Array.isArray(input?.paths) ? input.paths : input?.path ? [input.path] : [];
+    return `read ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", …" : ""}`;
+  }
+  if (name === "list_files") return `list ${input?.filter ? `'${input.filter}'` : "files"}`;
+  return name;
+}
+
+// Native tool-use source research (owner-authorized invariant-1 exception): the
+// ANSWER model itself drives grep_source/read_file/list_files against the
+// deployed snapshot (src/introspect-tools.js), then writes the answer. Emits an
+// activity step per tool call, bills the rounds to the answer model's bucket,
+// and emits the final answer. Throws on a hard provider failure so the caller
+// falls back to the deterministic read loop.
+/** @param {PipelineCtx} ctx @param {any} snapshot */
+async function runSourceResearchTools(ctx, snapshot) {
+  const budget = { used: 0 };
+  const sitemap = buildSourceSitemap(snapshot);
+  /** @type {string[]} */
+  const used = [];
+  ctx.step("source", "Investigating the site's own source…");
+  const userText =
+    `Question (latest user message):\n${ctx.cleanLastUser}\n\n` +
+    `Conversation context:\n${ctx.cleanConvText}\n\n` +
+    (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
+    `File index (repo paths — investigate with grep_source / read_file):\n${sitemap}\n\n` +
+    "Investigate the ACTUAL source with the tools, then write the answer.";
+  const startedAt = Date.now();
+  const result = await anthropicToolRun(ctx.env, {
+    model: ctx.model,
+    system: sourceToolAgentPrompt(),
+    userContent: userText,
+    tools: INTROSPECTION_TOOLS,
+    maxRounds: MAX_SOURCE_TOOL_ROUNDS,
+    execTool: (name, input) => runIntrospectionTool(snapshot, name, input, budget),
+    onToolUse: ({ name, input }) => {
+      used.push(toolCallLabel(name, input));
+      ctx.step("source", `Investigating — ${used.length} tool call${used.length === 1 ? "" : "s"}…`);
+    },
+  });
+  addUsage(ctx.state.totals, result.usage);
+  recordPhase(ctx.model, "synth", Date.now() - startedAt);
+  ctx.stepDone(
+    "source",
+    result.toolCalls
+      ? `Investigated the source with ${result.toolCalls} tool call${result.toolCalls === 1 ? "" : "s"}`
+      : "Answered from the source",
+    used.slice(0, 40),
+  );
+  const text = (result.text || "").trim();
+  if (!text) throw new Error("native tool run produced no answer");
+  ctx.step("synth", "Writing report…");
+  emitChunked(ctx, text);
+  ctx.stepDone("synth", "Report drafted");
+}
+
 /** @param {PipelineCtx} ctx */
 async function runSourceResearch(ctx) {
   const { state } = ctx;
@@ -475,6 +549,21 @@ async function runSourceResearch(ctx) {
     // No readable snapshot — answer from the excerpts the enrichment already
     // injected (still hasSource), exactly the pre-read-loop behavior.
     return runDirectReply(ctx);
+  }
+
+  // Native tool-use path (owner-authorized invariant-1 exception, 2026-07-12):
+  // when the ANSWER model supports real function calling (Claude), it drives the
+  // investigation ITSELF with grep_source/read_file/list_files tool calls
+  // (src/introspect-tools.js) instead of the deterministic Mistral read loop
+  // below. Fail-soft — any failure falls through to the deterministic path, so
+  // catalog models without tool use (and Claude when its API blips) still work.
+  if (introspectionToolsAvailable(ctx)) {
+    try {
+      return await runSourceResearchTools(ctx, snapshot);
+    } catch (/** @type {any} */ err) {
+      ctx.log.warn("introspect.tools_failed", { model: ctx.model, error: err?.message || String(err) });
+      // fall through to the deterministic read loop
+    }
   }
 
   const sitemap = buildSourceSitemap(snapshot);

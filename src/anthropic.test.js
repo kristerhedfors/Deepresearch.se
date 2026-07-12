@@ -1,8 +1,10 @@
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 
 import {
   anthropicModels,
+  anthropicToolRun,
   isAnthropicModel,
   oaiChunksFromEvent,
   openAiStreamFromAnthropic,
@@ -213,5 +215,87 @@ describe("oaiChunksFromEvent", () => {
 
   test("unknown future event types are ignored (forward compatibility)", () => {
     assert.deepEqual(oaiChunksFromEvent({ type: "some_future_event" }, { prompt_tokens: 0, completion_tokens: 0 }), []);
+  });
+});
+
+// The native TOOL-USE loop (anthropicToolRun) over a real node:http mock of the
+// Messages API: round 1 returns a tool_use block, we execute it, round 2 sees
+// the tool_result and returns the final text (end_turn). Verifies the loop
+// executes tools, pairs tool_result by id, sums usage across rounds, and returns
+// the answer — the invariant-1 exception path (src/introspect-tools.js).
+describe("anthropicToolRun over mock HTTP", () => {
+  const requests = [];
+  let round = 0;
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      requests.push(body);
+      round++;
+      res.writeHead(200, { "content-type": "application/json" });
+      if (round === 1) {
+        res.end(
+          JSON.stringify({
+            stop_reason: "tool_use",
+            content: [
+              { type: "text", text: "let me look" },
+              { type: "tool_use", id: "tu_1", name: "grep_source", input: { pattern: "SESSION_SECRET" } },
+            ],
+            usage: { input_tokens: 10, output_tokens: 4 },
+          }),
+        );
+      } else {
+        res.end(
+          JSON.stringify({
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "Final: SESSION_SECRET gates auth in src/auth.js." }],
+            usage: { input_tokens: 20, output_tokens: 8 },
+          }),
+        );
+      }
+    });
+  });
+  const env = { ANTHROPIC_API_KEY: "sk-ant-test" };
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    env.ANTHROPIC_URL = `http://127.0.0.1:${server.address().port}`;
+  });
+  after(() => server.close());
+
+  test("drives tool calls, feeds results back, and returns the final answer", async () => {
+    const executed = [];
+    const result = await anthropicToolRun(env, {
+      model: "claude-sonnet-5",
+      system: "investigate",
+      userContent: "assess auth",
+      tools: [{ name: "grep_source", description: "grep", input_schema: { type: "object", properties: {} } }],
+      execTool: (name, input) => {
+        executed.push({ name, input });
+        return "src/auth.js:3: if (!env.SESSION_SECRET) return [];";
+      },
+    });
+
+    // The tool was executed with the model's requested input.
+    assert.deepEqual(executed, [{ name: "grep_source", input: { pattern: "SESSION_SECRET" } }]);
+    // Final answer + counters.
+    assert.match(result.text, /SESSION_SECRET gates auth/);
+    assert.equal(result.toolCalls, 1);
+    assert.equal(result.rounds, 2);
+    // Usage summed across both rounds.
+    assert.deepEqual(result.usage, { prompt_tokens: 30, completion_tokens: 12 });
+
+    // Round 2's request echoed the assistant tool_use turn and a paired
+    // tool_result keyed by the tool_use id.
+    const second = requests.at(-1);
+    const roles = second.messages.map((m) => m.role);
+    assert.deepEqual(roles, ["user", "assistant", "user"]);
+    const toolResult = second.messages[2].content[0];
+    assert.equal(toolResult.type, "tool_result");
+    assert.equal(toolResult.tool_use_id, "tu_1");
+    assert.match(toolResult.content, /SESSION_SECRET/);
+    // Auth + system carried on every call.
+    assert.equal(requests[0].system, "investigate");
+    assert.equal(requests.at(-1).model, "claude-sonnet-5");
   });
 });
