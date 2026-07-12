@@ -426,6 +426,50 @@ Requirements (some undocumented — **verify live**):
   once Tier 1's memory ceiling bites. (WebVM mounts read-only docs via a
   `WebDevice` at `/home/user/documents`.)
 
+#### Tier 2 roadmap — what it buys, and when it's worth building
+
+Tier 2 buys exactly one thing Tier 1 fundamentally cannot do: **files bigger
+than the page can hold in memory, read lazily.** Everything else follows.
+
+**What you gain over Tier 1 (DataDevice):**
+
+| | Tier 1 (DataDevice) | Tier 2 (WebDevice + SW) |
+|---|---|---|
+| Where bytes live | whole payload in the JS heap + the cp'd copy | nothing in memory until read |
+| Size ceiling | ~page RAM (we cap 32 MB/file, 64 MB total) | bounded by the SOURCE (OPFS/R2), not RAM |
+| Read cost | every byte loaded + written at boot, used or not | only the touched bytes transfer, on demand |
+| Boot latency | pays for all files up front before ready | mounts instantly; I/O deferred to first read |
+
+Concretely it enables: large inputs (a 500 MB log / dataset / sqlite), **partial
+reads** (`head -c 1M big.csv`, `tail`, seeking, a short-circuiting `grep` — only
+the read range moves), fast boot with many/large project files (unread files
+cost nothing), and streaming a file straight from **R2** without downloading it
+whole first.
+
+**What it does NOT add** (so it isn't over-valued): still **read-only** (writing
+/executing stays the base64→overlay fallback's job); **not persistence** (that's
+the IDBDevice volumes, orthogonal to tier); and **no benefit for small files** —
+anything under the Tier-1 budget is simpler and just as fast on DataDevice.
+
+**The real wrinkle — encryption undercuts the laziness for OUR files.** OPFS
+originals rest as whole-blob AES-GCM, which is **not seekable**: a SW answering a
+`Range` would have to decrypt the *entire* file anyway, losing the lazy win —
+unless big files are re-stored in seekable, chunk-encrypted form. So Tier 2's
+payoff is cleanest for **plaintext** sources (RAG-indexed docs rest readable) or
+**R2-proxied** content, and weakest for encrypted originals. **First target when
+we build it: large plaintext files, not encrypted originals.**
+
+**Costs / prerequisites** (why it's deferred): a **Service Worker we don't have**
+(registration + lifecycle; must be active before `Linux.create`); the
+**undocumented** SW-intercepts-WebDevice behavior proven live on Chrome/Firefox/
+iOS Safari; COEP `require-corp` compliance (CORP + `octet-stream` on SW
+responses); `Range` handling in the SW; and a synthesized `index.list` for
+directory listing.
+
+**Build trigger:** only once real usage hits the Tier-1 memory ceiling
+(attachments/project files in the tens-to-hundreds of MB). Until then Tier 1
+covers the common case; do not build Tier 2 speculatively (invariant 5).
+
 ### Tier 3 — base64-through-`exec`: the small-file FALLBACK
 
 Kept only for: no Service Worker AND over the DataDevice budget, or a tiny file
