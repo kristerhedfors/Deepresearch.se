@@ -37,6 +37,8 @@ import {
   runSourceReadLoop,
   backReferenceIntent,
   resolveReferencedPaths,
+  toolStepHeadline,
+  toolResultLines,
   MAX_FILES_PER_ROUND,
   MAX_READ_FILE_CHARS,
   MAX_READ_TOTAL_CHARS,
@@ -745,4 +747,27 @@ test("runSourceReadLoop over the real source snapshot reads real files with real
   const block = buildSourceResearchBlock(reads);
   assert.match(block, /# src\/auth\.js/);
   assert.match(block, /ground truth/i);
+});
+
+test("toolStepHeadline: tool + its key argument, per tool", () => {
+  assert.equal(toolStepHeadline("grep_source", { pattern: "SESSION_SECRET" }), "grep_source  /SESSION_SECRET/");
+  assert.equal(
+    toolStepHeadline("grep_source", { pattern: "X", path_glob: "src/" }),
+    "grep_source  /X/ in src/",
+  );
+  assert.equal(toolStepHeadline("read_file", { paths: ["src/auth.js", "src/index.js"] }), "read_file  src/auth.js, src/index.js");
+  assert.equal(toolStepHeadline("read_file", { path: "src/auth.js" }), "read_file  src/auth.js");
+  assert.equal(toolStepHeadline("list_files", { filter: "src/" }), "list_files  'src/'");
+  assert.equal(toolStepHeadline("list_files", {}), "list_files  (all)");
+  assert.equal(toolStepHeadline("run_bash", { command: "grep -rn X /src" }), "run_bash  $ grep -rn X /src");
+});
+
+test("toolResultLines: first lines of the result for the expandable details", () => {
+  assert.deepEqual(toolResultLines("a\nb\nc"), ["a", "b", "c"]);
+  assert.deepEqual(toolResultLines(""), ["(no output)"]);
+  assert.deepEqual(toolResultLines("   "), ["(no output)"]);
+  const many = Array.from({ length: 20 }, (_, i) => "line" + i).join("\n");
+  const out = toolResultLines(many);
+  assert.equal(out.length, 15); // 14 lines + the "(+N more)" marker
+  assert.match(out[14], /\+6 more lines/);
 });

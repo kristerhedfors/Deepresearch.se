@@ -496,6 +496,15 @@ function makeStepDom(labelText, toggleGateClass) {
  * @param {string} label initial label text (spinner shown beside it)
  */
 export function startGenericStep(turn, id, label) {
+  // Idempotent: a repeated step_start for the same (still-running) id updates
+  // the label in place instead of appending a duplicate row — the server may
+  // re-emit a step to tick a counter (e.g. the introspection tool loop's
+  // header). A finished step with this id is left alone and a fresh one starts.
+  const existing = turn.steps[id];
+  if (existing && !existing.details.classList.contains("finished")) {
+    existing.label.textContent = label;
+    return;
+  }
   const step = makeStepDom(label, "expandable");
   turn.activity.appendChild(step.details);
   turn.steps[id] = step;

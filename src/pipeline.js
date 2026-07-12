@@ -110,6 +110,8 @@ import {
   readSnapshotFiles,
   resolveReferencedPaths,
   runSourceReadLoop,
+  toolResultLines,
+  toolStepHeadline,
 } from "../public/js/introspect-core.js";
 
 // ---- shared shapes -------------------------------------------------------
@@ -479,17 +481,6 @@ function introspectionToolsAvailable(ctx) {
 
 const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force an answer
 
-/** @param {string} name @param {any} input @returns {string} */
-function toolCallLabel(name, input) {
-  if (name === "grep_source") return `grep ${JSON.stringify(String(input?.pattern ?? "")).slice(0, 60)}`;
-  if (name === "read_file") {
-    const paths = Array.isArray(input?.paths) ? input.paths : input?.path ? [input.path] : [];
-    return `read ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", …" : ""}`;
-  }
-  if (name === "list_files") return `list ${input?.filter ? `'${input.filter}'` : "files"}`;
-  return name;
-}
-
 // Native tool-use source research (owner-authorized invariant-1 exception): the
 // ANSWER model itself drives grep_source/read_file/list_files against the
 // deployed snapshot (src/introspect-tools.js), then writes the answer. Emits an
@@ -500,8 +491,7 @@ function toolCallLabel(name, input) {
 async function runSourceResearchTools(ctx, snapshot) {
   const budget = { used: 0 };
   const sitemap = buildSourceSitemap(snapshot);
-  /** @type {string[]} */
-  const used = [];
+  let calls = 0;
   ctx.step("source", "Investigating the site's own source…");
   const userText =
     `Question (latest user message):\n${ctx.cleanLastUser}\n\n` +
@@ -517,9 +507,18 @@ async function runSourceResearchTools(ctx, snapshot) {
     tools: INTROSPECTION_TOOLS,
     maxRounds: MAX_SOURCE_TOOL_ROUNDS,
     execTool: (name, input) => runIntrospectionTool(snapshot, name, input, budget),
-    onToolUse: ({ name, input }) => {
-      used.push(toolCallLabel(name, input));
-      ctx.step("source", `Investigating — ${used.length} tool call${used.length === 1 ? "" : "s"}…`);
+    // Each tool call gets its OWN activity row: the tool + its arguments as the
+    // headline, and the actual result (grep matches / file start / output) in
+    // the expandable details — so the run is legible, not just a counter. The
+    // "source" header ticks the running count in place (startGenericStep is
+    // idempotent) and is finished below.
+    onToolUse: ({ name, input, result: out }) => {
+      calls++;
+      const id = `srctool_${calls}`;
+      const head = toolStepHeadline(name, input);
+      ctx.step(id, head);
+      ctx.stepDone(id, head, toolResultLines(out));
+      ctx.step("source", `Investigating — ${calls} tool call${calls === 1 ? "" : "s"}…`);
     },
   });
   addUsage(ctx.state.totals, result.usage);
@@ -529,7 +528,6 @@ async function runSourceResearchTools(ctx, snapshot) {
     result.toolCalls
       ? `Investigated the source with ${result.toolCalls} tool call${result.toolCalls === 1 ? "" : "s"}`
       : "Answered from the source",
-    used.slice(0, 40),
   );
   const text = (result.text || "").trim();
   if (!text) throw new Error("native tool run produced no answer");

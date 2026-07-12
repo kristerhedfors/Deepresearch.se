@@ -1110,6 +1110,36 @@ export function runIntrospectionTool(snapshot, name, input, budget) {
   }
 }
 
+// One tool call → the activity HEADLINE (tool + its key argument), so a run
+// reads as "grep_source /X/", "read_file src/auth.js", "run_bash $ …" instead of
+// a bare counter. Shared so both tiers label calls identically.
+/** @param {string} name @param {any} input @returns {string} */
+export function toolStepHeadline(name, input) {
+  if (name === "grep_source") {
+    const pat = String(input?.pattern ?? "");
+    return `grep_source  /${pat.slice(0, 80)}/${input?.path_glob ? ` in ${input.path_glob}` : ""}`;
+  }
+  if (name === "read_file") {
+    const paths = Array.isArray(input?.paths) ? input.paths : input?.path ? [input.path] : [];
+    return `read_file  ${paths.slice(0, 4).join(", ")}${paths.length > 4 ? " …" : ""}`;
+  }
+  if (name === "list_files") return `list_files  ${input?.filter ? `'${input.filter}'` : "(all)"}`;
+  if (name === "run_bash") return `run_bash  $ ${String(input?.command ?? "").slice(0, 120)}`;
+  return String(name || "tool");
+}
+
+// The first lines of a tool RESULT, for a step's expandable details — so the
+// user sees grep matches / a file's start / command output, not just a count.
+/** @param {string} result @param {number} [max] @returns {string[]} */
+export function toolResultLines(result, max = 14) {
+  const text = typeof result === "string" ? result : "";
+  if (!text.trim()) return ["(no output)"];
+  const all = text.split("\n");
+  const lines = all.slice(0, max).map((l) => l.slice(0, 200));
+  if (all.length > max) lines.push(`… (+${all.length - max} more lines)`);
+  return lines;
+}
+
 // ---- the introspection model picker (pure grouping) ---------------------------
 
 // Introspection mode lets the user choose WHO answers: their own provider key

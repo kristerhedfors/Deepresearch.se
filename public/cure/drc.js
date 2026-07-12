@@ -787,7 +787,11 @@ async function send(ev) {
       bash: state.bashLite === true,
       fileProvider: intro.fileProvider,
       onStatus: (s) => {
-        if (s.type === "phase") {
+        if (s.type === "tool") {
+          // Developer-mode native tool call — show the tool + its argument live
+          // (which file / pattern / command), not a bare counter.
+          phaseLine("🔧 " + s.headline);
+        } else if (s.type === "phase") {
           phaseLine(PHASE_LABELS[s.phase] || s.phase);
         } else if (s.type === "discard_text") {
           shown = ""; // the validated revision replaces the draft

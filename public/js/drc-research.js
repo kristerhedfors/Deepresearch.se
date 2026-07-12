@@ -41,7 +41,7 @@ import {
   runShellLoop,
 } from "./bash-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
-import { INTROSPECTION_TOOLS, buildSourceSitemap, runIntrospectionTool } from "./introspect-core.js";
+import { INTROSPECTION_TOOLS, buildSourceSitemap, runIntrospectionTool, toolResultLines, toolStepHeadline } from "./introspect-core.js";
 
 const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
@@ -356,9 +356,12 @@ export async function runDrcSourceTools({
     userContent,
     tools,
     execTool,
-    onToolUse: () => {
+    // Surface each tool call: the tool + its arguments as the headline and the
+    // first lines of the real result — so the run shows WHICH file/command and
+    // WHAT it returned, not just a counter.
+    onToolUse: ({ name, input, result: out }) => {
       calls++;
-      onStatus({ type: "phase", phase: "source", detail: calls });
+      onStatus({ type: "tool", n: calls, name, headline: toolStepHeadline(name, input), result: toolResultLines(out) });
     },
     signal,
     baseUrl,

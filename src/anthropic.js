@@ -354,7 +354,7 @@ export async function anthropicChatCompletion(env, messages, { model } = {}) {
  *   execTool: (name: string, input: any) => (string | Promise<string>),
  *   maxRounds?: number,
  *   maxTokens?: number,
- *   onToolUse?: (info: { round: number, name: string, input: any, resultChars: number }) => void,
+ *   onToolUse?: (info: { round: number, name: string, input: any, result: string }) => void,
  * }} opts
  * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number }>}
  */
@@ -416,7 +416,7 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
         result = `Tool error: ${err?.message || String(err)}`;
       }
       const content = typeof result === "string" ? result : JSON.stringify(result);
-      if (onToolUse) onToolUse({ round, name: tu.name, input: tu.input, resultChars: content.length });
+      if (onToolUse) onToolUse({ round, name: tu.name, input: tu.input, result: content });
       results.push({ type: "tool_result", tool_use_id: tu.id, content });
     }
     messages.push({ role: "user", content: results });

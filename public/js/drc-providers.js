@@ -331,12 +331,9 @@ export async function drcToolRun(
       } catch (err) {
         result = "Tool error: " + (err?.message || String(err));
       }
-      if (onToolUse) onToolUse({ round, name: c?.function?.name, input: args });
-      messages.push({
-        role: "tool",
-        tool_call_id: c?.id,
-        content: typeof result === "string" ? result : JSON.stringify(result),
-      });
+      const content = typeof result === "string" ? result : JSON.stringify(result);
+      if (onToolUse) onToolUse({ round, name: c?.function?.name, input: args, result: content });
+      messages.push({ role: "tool", tool_call_id: c?.id, content });
     }
   }
 
