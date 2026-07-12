@@ -299,12 +299,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
 
   const [
     { resolveModel, validateMessages },
-    { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER },
+    { clampBudget, planResearch },
     { adminDefaultModelValid, DEFAULT_MODEL },
     { listChatModels },
     { runPipeline },
     { getConfig },
-    { getUsage, quotaExceeded, effectiveQuota, recordUsage, bergetCost },
+    { getUsage, quotaExceeded, effectiveQuota, recordUsage },
+    { summarizeSpend, exaCost },
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
@@ -313,6 +314,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     import("./pipeline.js"),
     import("./config.js"),
     import("./quota.js"),
+    import("./billing.js"),
   ]);
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
@@ -391,24 +393,9 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     // plus live searches at their depth-tier price and the /contents fetch
     // surcharge. Fails soft: a recording error never breaks the tool result.
     try {
-      let prompt_tokens = 0;
-      let completion_tokens = 0;
-      let berget_cost = 0;
-      /** @type {Array<[string | null, import('./types.js').TokenTotals]>} */
-      const spendBuckets = [
-        [state.model, state.totals],
-        [state.jsonModel, state.jsonTotals],
-        [state.visionModel, state.visionTotals],
-      ];
-      for (const [modelId, totals] of spendBuckets) {
-        prompt_tokens += totals.prompt_tokens;
-        completion_tokens += totals.completion_tokens;
-        berget_cost += bergetCost(catalog?.find((m) => m.id === modelId), totals.prompt_tokens, totals.completion_tokens);
-      }
+      const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       const billedSearches = Math.max(0, state.searchCount - (state.cachedSearchCount || 0));
-      const exa_cost =
-        billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
-        (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER;
+      const exa_cost = exaCost(state, config, billedSearches);
       await recordUsage(env, log, {
         user_id: identity?.id,
         model,

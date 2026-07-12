@@ -17,14 +17,16 @@ import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
+import { exaCost, summarizeSpend } from "./billing.js";
+// Re-exported so chat.test.js (and any importer) keeps getting it from here.
+export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
-import { clampBudget, planResearch, CONTENTS_COST_MULTIPLIER } from "./budget.js";
+import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
 import { getConfig } from "./config.js";
 import {
-  bergetCost,
   effectiveQuota,
   getUsage,
   inflightLimitResponse,
@@ -571,28 +573,6 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
   };
 }
 
-/**
- * The request's Exa cost. The admin-configured per-search price is priced
- * for Exa's standard tier; a request whose time budget bought a costlier
- * tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its recorded
- * cost scaled by that tier's real price ratio, so a long budget's genuinely
- * higher Exa spend doesn't go under-counted against the user's opaque
- * budget bar or the admin's cost totals. Live searches at their depth-tier
- * price, PLUS the budget-gated full-content fetch (Exa /contents) priced
- * per URL at the cheaper contents rate — so the top-tier full-read spend is
- * counted too.
- * @param {ChatRequestState} state
- * @param {SiteConfig} config
- * @param {number} billedSearches live (non-cached) searches
- * @returns {number} EUR
- */
-function exaCost(state, config, billedSearches) {
-  return (
-    billedSearches * config.exa_cost_per_search_eur * (state.plan.searchDepth?.costMultiplier || 1) +
-    (state.fetchedUrls?.size || 0) * config.exa_cost_per_search_eur * CONTENTS_COST_MULTIPLIER
-  );
-}
-
 // ---- exported pure helpers (unit-tested in chat.test.js) --------------------
 
 /** @type {Record<string, string>} */
@@ -620,36 +600,6 @@ export function quotaBlockedResponse(blocked) {
       ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
       : blocked;
   return { error, quota: publicQuota };
-}
-
-/**
- * Sums the request's token totals and Berget cost across the up-to-three
- * models that ran: synthesis/direct on the user's model, the JSON planning
- * phases on jsonModel (Mistral), and the Street View vision-describe helper
- * on its own model — the split-billing design, each bucket priced at its own
- * catalog rate (tokens alone can't cap spend when models price differently).
- * Pure (state + catalog in, totals out).
- * @param {Pick<ChatRequestState, "model" | "jsonModel" | "visionModel" | "totals" | "jsonTotals" | "visionTotals">} state
- * @param {ModelCatalog | null | undefined} catalog
- * @returns {{ prompt_tokens: number, completion_tokens: number, berget_cost: number }}
- */
-export function summarizeSpend(state, catalog) {
-  /** @type {Array<[string | null, import('./types.js').TokenTotals]>} */
-  const buckets = [
-    [state.model, state.totals],
-    [state.jsonModel, state.jsonTotals],
-    [state.visionModel, state.visionTotals],
-  ];
-  let prompt_tokens = 0;
-  let completion_tokens = 0;
-  let berget_cost = 0;
-  for (const [modelId, totals] of buckets) {
-    prompt_tokens += totals.prompt_tokens;
-    completion_tokens += totals.completion_tokens;
-    const entry = catalog?.find((m) => m.id === modelId);
-    berget_cost += bergetCost(entry, totals.prompt_tokens, totals.completion_tokens);
-  }
-  return { prompt_tokens, completion_tokens, berget_cost };
 }
 
 /**

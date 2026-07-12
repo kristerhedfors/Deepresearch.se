@@ -20,7 +20,18 @@ import {
   ragExcerptBlocks,
   splitUserContent,
   stripOldImages,
+  userTexts,
 } from "./message-content.js";
+
+test("userTexts returns the text of every user turn, oldest first, skipping non-user turns", () => {
+  const msgs = [
+    { role: "user", content: "first" },
+    { role: "assistant", content: "reply" },
+    { role: "user", content: [{ type: "text", text: "second" }, { type: "image_url" }] },
+    { role: "user", content: [{ type: "image_url" }] }, // image-only turn → ""
+  ];
+  assert.deepEqual(userTexts(msgs), ["first", "second", ""]);
+});
 
 test("isStreamStale trips only when silent past the window AND in the foreground", () => {
   const t0 = 1_000_000;
