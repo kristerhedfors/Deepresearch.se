@@ -87,6 +87,67 @@ export function truncateForLog(text, max) {
   return s.slice(0, max) + `\n…[truncated ${s.length - max} chars]`;
 }
 
+// Per-item caps for the shell tool-call record. `commands` re-caps below
+// resolveShellTranscript's own MAX_SHELL_ROUNDS*8 ceiling; `output` matches
+// the sandbox's MAX_OUTPUT_CHARS so a logged call shows the same bytes the
+// pipeline actually saw, not more.
+export const SHELL_LOG_CAPS = {
+  commands: 48,
+  command: 2_000,
+  output: 4_000,
+};
+
+// The bash-lite agent's shell transcript, shaped for the interaction log: the
+// exact commands the browser's agentic loop ran, their exit codes, and their
+// (clamped) stdout/stderr. This is the ONE tool-calling-shaped capability the
+// pipeline has — invariant 1 keeps it a plain fenced-block convention, never a
+// function call, but from a visibility standpoint each command IS a tool call.
+// Until now the log kept only a COUNT (client_diag.ran); this gives shell tool
+// calls the same full visibility `queries`/`sources` give web search. Returns
+// undefined when nothing ran, so JSON.stringify drops the key for ordinary
+// chats (matching the failover_model/quiz convention in src/chat.js's meta).
+/**
+ * @param {unknown} transcript resolveShellTranscript output (src/validation.js)
+ * @returns {Array<{ command: string, exitCode: number, stdout: string, stderr: string }> | undefined}
+ */
+export function shellLogSummary(transcript) {
+  if (!Array.isArray(transcript) || !transcript.length) return undefined;
+  /** @type {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>} */
+  const out = [];
+  for (const r of transcript) {
+    if (!r || typeof r.command !== "string" || !r.command.trim()) continue;
+    out.push({
+      command: truncateForLog(r.command, SHELL_LOG_CAPS.command),
+      exitCode: Number.isFinite(r.exitCode) ? Math.trunc(r.exitCode) : 1,
+      stdout: truncateForLog(r.stdout, SHELL_LOG_CAPS.output),
+      stderr: truncateForLog(r.stderr, SHELL_LOG_CAPS.output),
+    });
+    if (out.length >= SHELL_LOG_CAPS.commands) break;
+  }
+  return out.length ? out : undefined;
+}
+
+// Renders the shell tool calls (meta.shell) as a readable block for the
+// ?format=text view — the actual commands, exit codes, and output, indented —
+// so a debugging session (human or agent) sees EXACTLY what the agent ran
+// instead of just a count. Empty output lines are dropped so a no-output
+// command reads cleanly.
+/**
+ * @param {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>} shell
+ * @returns {string}
+ */
+export function formatShellForLog(shell) {
+  const lines = [`TOOLS: bash-lite ran ${shell.length} command${shell.length === 1 ? "" : "s"}`];
+  for (const c of shell) {
+    lines.push(`  $ ${c.command}   (exit ${c.exitCode})`);
+    const body = String(c.stdout || "").replace(/\s+$/, "");
+    if (body) for (const ln of body.split("\n")) lines.push(`    ${ln}`);
+    const err = String(c.stderr || "").replace(/\s+$/, "");
+    if (err) for (const ln of err.split("\n")) lines.push(`    [stderr] ${ln}`);
+  }
+  return lines.join("\n");
+}
+
 // The conversation as sent, minus inline image payloads: base64 data URLs
 // run to megabytes and are useless in a text log — each is replaced by a
 // size-stamped placeholder. Text parts (including appended document blocks)
@@ -230,6 +291,12 @@ export function formatChatLogsText(logs) {
       const lines = [head, `Q: ${l.question || "(empty)"}`];
       if (l.error) lines.push(`ERROR: ${l.error}`);
       lines.push(`A: ${l.answer || "(no answer)"}`);
+      // Shell tool calls get their own readable block (full-view only, where
+      // meta rides along) so the commands/output aren't buried in the META
+      // one-liner — the "understand exactly what the agent ran" view.
+      if (l.meta && Array.isArray(l.meta.shell) && l.meta.shell.length) {
+        lines.push(formatShellForLog(l.meta.shell));
+      }
       if (l.meta) lines.push(`META: ${JSON.stringify(l.meta)}`);
       return lines.join("\n");
     })

@@ -271,6 +271,13 @@ path runs client-side, so it's shipped to Workers Logs two ways:
    `sandbox.` (or `"client":true`); or `scripts/chatlogs --id N --json` for the
    `client_diag.fs` summary. Server-side loop detail is `bash.step` (info) +
    `bash.step_commands` (**debug**) in `src/bash-api.js`.
+3. **`meta.shell` (the tool-call record).** The full shell transcript the
+   loop ran — each `command`, `exitCode`, clamped `stdout`/`stderr` — is
+   persisted in the `chat_logs` meta (`shellLogSummary`, `src/chatlog.js`),
+   so `scripts/chatlogs --id N` (text) prints a readable `TOOLS: bash-lite
+   ran N commands` block and you can see EXACTLY what the agent executed
+   without the debug beacon or device access. `client_diag.ran` is just the
+   count; `meta.shell` is the calls themselves.
 
 ## Live verification (DONE — 2026-07-11)
 
