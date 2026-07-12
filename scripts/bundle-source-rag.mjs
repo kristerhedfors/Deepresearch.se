@@ -15,10 +15,21 @@
 // Embeddings must match the model the SERVER embeds the query with at request
 // time — Berget intfloat/multilingual-e5-large (1024-d), passage prefix. Two
 // ways to get them:
-//   1. BERGET_API_TOKEN set → call Berget's embeddings API directly.
+//   1. BERGET_API_KEY (or the older BERGET_API_TOKEN) set → call Berget's
+//      embeddings API directly. This is the FAST path: batches are dispatched
+//      through a bounded concurrency pool (default 8 in flight) with no
+//      inter-batch throttle, so a full ~2100-chunk build finishes in ~20-30 s
+//      instead of minutes. Berget takes 8-16 concurrent embedding requests
+//      without rate-limiting (measured 2026-07-12).
 //   2. else → POST the live site's /api/embed with the break-glass creds
 //      (BASIC_AUTH_USER / BASIC_AUTH_PASS) — production holds the key. This is
 //      how the index is regenerated from an environment without the raw key.
+//      That endpoint is SHARED and throttles under bursts, so this path stays
+//      serial with a steady inter-batch delay.
+//
+// Tunables (env): INTROSPECT_EMBED_CONCURRENCY (in-flight batches; default 8
+// direct / 1 via site), INTROSPECT_EMBED_DELAY_MS (inter-batch pause; default
+// 0 direct / 700 via site), INTROSPECT_EMBED_BATCH (chunks per request).
 //
 // Run it whenever bundled source changes (after `npm run bundle`):
 //   npm run bundle:rag
@@ -48,22 +59,44 @@ const OUT = "public/introspect/source-rag.json";
 
 const EMBED_MODEL = "intfloat/multilingual-e5-large";
 const PASSAGE_PREFIX = "passage: ";
-const BATCH = 32; // ≤ the server's MAX_EMBED_TEXTS (48); smaller = safer per call
-const MAX_CHUNK_CHARS = 3800; // stay under the embed endpoint's 4000-char cap incl. prefix
-// The shared /api/embed throttles after a few hundred rapid calls (502s); a
-// steady inter-batch delay keeps a full (~2100-chunk) build under the limit so
-// it grinds through fewer retry storms. Delta rebuilds embed far fewer chunks,
-// so the pacing barely matters there. Override with INTROSPECT_EMBED_DELAY_MS.
-const BATCH_DELAY_MS = Number(process.env.INTROSPECT_EMBED_DELAY_MS) || 700;
+// Pre-truncate each chunk before embedding. e5's window is 512 TOKENS, and
+// dense code runs ~2.4 chars/token, so a full 1400-char code chunk overflows
+// (~540 tokens) and 400s. 1200 is the chunker's ADVANCE (target 1400 − overlap
+// 200): capping AT the advance keeps every byte of source covered by at least
+// one chunk's vector (no gaps) while trimming only the last ~200 chars of the
+// densest chunks. The retrieved TEXT is always the FULL chunk (re-chunked from
+// the snapshot), so this only trims a chunk's vector tail, never what the user
+// sees. The rare chunk still over 512 tokens at 1200 chars is shrunk further
+// on demand (embedResilient), so nothing is ever dropped.
+const MAX_CHUNK_CHARS = 1200;
+
+// The raw Berget key, if present (the fast direct path). Accept the current
+// env name (BERGET_API_KEY) and the older BERGET_API_TOKEN interchangeably.
+const BERGET_KEY = process.env.BERGET_API_KEY || process.env.BERGET_API_TOKEN;
+
+const BATCH = Number(process.env.INTROSPECT_EMBED_BATCH) || 32; // ≤ the server's MAX_EMBED_TEXTS (48)
+// Direct Berget serves many concurrent requests, so fan out; the shared
+// /api/embed 502s under bursts, so that path stays serial (concurrency 1).
+const CONCURRENCY = Number(process.env.INTROSPECT_EMBED_CONCURRENCY) || (BERGET_KEY ? 8 : 1);
+// Berget enforces 300 requests/MINUTE; the site /api/embed throttles under
+// bursts. A single global min-interval gate on request STARTS keeps us under
+// the ceiling no matter how many retries/shrinks a build triggers — this is
+// the correctness guarantee against 429s (which, untamed, cost skipped chunks
+// and a 4m40s build). 230ms ≈ 260 req/min, a safe margin under Berget's 300.
+const MIN_REQUEST_INTERVAL_MS =
+  process.env.INTROSPECT_EMBED_INTERVAL_MS !== undefined
+    ? Number(process.env.INTROSPECT_EMBED_INTERVAL_MS)
+    : BERGET_KEY
+      ? 230
+      : 700;
 
 const SITE = process.env.INTROSPECT_SITE || "https://deepresearch.se";
 
 /** @param {string[]} texts @returns {Promise<Float32Array[]>} */
 async function embedViaBerget(texts) {
-  const token = process.env.BERGET_API_TOKEN;
   const res = await fetch("https://api.berget.ai/v1/embeddings", {
     method: "POST",
-    headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+    headers: { authorization: "Bearer " + BERGET_KEY, "content-type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: texts.map((t) => PASSAGE_PREFIX + t) }),
   });
   if (!res.ok) throw new Error(`Berget embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -91,7 +124,7 @@ async function embedViaSite(texts) {
   });
 }
 
-const embedBatch = process.env.BERGET_API_TOKEN ? embedViaBerget : embedViaSite;
+const embedBatch = BERGET_KEY ? embedViaBerget : embedViaSite;
 
 async function main() {
   const snapshot = validateSnapshot(JSON.parse(readFileSync(join(ROOT, SNAPSHOT), "utf8")));
@@ -155,65 +188,125 @@ async function main() {
       (compatible
         ? `DELTA: reusing ${reusedFiles} files / ${reusedChunks} chunks; embedding ${toEmbed.length} chunks (${files.length - reusedFiles} changed/new files)`
         : `FULL rebuild (${prior ? "model/chunker changed" : "no prior index"}): embedding ${toEmbed.length} chunks`) +
-      ` via ${process.env.BERGET_API_TOKEN ? "Berget" : SITE + "/api/embed"} …`,
+      ` via ${BERGET_KEY ? "Berget" : SITE + "/api/embed"}` +
+      ` (batch ${BATCH}, concurrency ${CONCURRENCY}, ≤${Math.round(60000 / MIN_REQUEST_INTERVAL_MS)} req/min) …`,
   );
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // Embed `items`, returning a vector per item. Resilient to a single bad
-  // chunk (a token-dense one Berget rejects, which 502s the WHOLE batch):
-  // retry the batch a few times, then split it in half, down to singles — a
-  // single that still fails after retries is SKIPPED (returned null) with a
-  // warning, so one unembeddable chunk never aborts the whole index.
-  /** @param {{text:string}[]} items @returns {Promise<(Float32Array|null)[]>} */
+  // Global min-interval gate on request STARTS. Single-threaded JS makes the
+  // nextAt read-modify-write atomic across the concurrent workers, so this
+  // caps the aggregate request rate — every retry and shrink goes through it,
+  // which is what keeps a burst of splits from tripping Berget's 300/min 429.
+  let requests = 0;
+  let nextAt = 0;
+  async function embedGated(texts) {
+    const now = Date.now();
+    const at = Math.max(now, nextAt);
+    nextAt = at + MIN_REQUEST_INTERVAL_MS;
+    if (at > now) await sleep(at - now);
+    requests++;
+    return embedBatch(texts);
+  }
+
+  // Error classifiers. A "too long" 400 is PERMANENT — e5's 512-token window,
+  // which dense code chunks blow past even at 1200 chars; the only fix is a
+  // smaller input. A 429 is rate-limiting — always transient, so we wait and
+  // retry, NEVER skip (a skipped chunk is a coverage hole). Everything else
+  // (5xx / network) gets a couple of backoff retries.
+  const isTooLong = (msg) => /context length|too long|maximum context/i.test(String(msg));
+  const isRateLimited = (msg) => /\b429\b|rate.?limit/i.test(String(msg));
+
+  // Embed `items`, returning a vector per item.
+  //  - Too-long 400 → shrink EVERY chunk in the batch ×0.8 and retry the batch.
+  //    One dense chunk poisons the whole batch, so trimming uniformly resolves
+  //    it in ~1 extra request; the alternative (binary-split down to singles)
+  //    re-embeds good chunks O(log n) times and, on a dense-file batch, storms
+  //    Berget's 300/min limit. Dense chunks cluster in dense files, so the
+  //    collateral trim lands mostly on chunks that were code-dense anyway, and
+  //    the retrieved TEXT stays full regardless.
+  //  - 429 → wait and retry, indefinitely; the gate should prevent it, but if
+  //    one slips through we pace down, never drop the chunk.
+  //  - Transient 5xx/network → up to 2 backoff retries, then binary split so a
+  //    persistently flaky single is isolated and (last resort) skipped.
+  /** @param {{text:string,p:string}[]} items @returns {Promise<(Float32Array|null)[]>} */
   async function embedResilient(items) {
     if (!items.length) return [];
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let transientTries = 0;
+    for (;;) {
       try {
-        const vecs = await embedBatch(items.map((c) => c.text));
+        const vecs = await embedGated(items.map((c) => c.text));
         if (vecs.length === items.length) return vecs;
         throw new Error(`got ${vecs.length} vectors for ${items.length} texts`);
       } catch (err) {
-        if (attempt < 2) {
-          await sleep(1000 * 2 ** attempt);
+        const msg = String(/** @type {any} */ (err)?.message || err);
+        if (isRateLimited(msg)) {
+          await sleep(2000);
+          continue; // never counts against the chunk — just pace and retry
+        }
+        if (isTooLong(msg)) {
+          let shrunk = false;
+          for (const it of items) {
+            if (it.text.length > 400) {
+              it.text = it.text.slice(0, Math.floor(it.text.length * 0.8));
+              shrunk = true;
+            }
+          }
+          if (shrunk) continue; // retry the (now smaller) batch
+          // Already ≤400 chars yet still rejected — fall through to skip/split.
+        } else if (transientTries++ < 2) {
+          await sleep(1000 * 2 ** (transientTries - 1));
           continue;
         }
-        if (items.length === 1) {
-          console.warn(`\n  skipping unembeddable chunk (${items[0].p}): ${err.message}`);
-          return [null];
+        if (items.length > 1) {
+          const mid = Math.ceil(items.length / 2);
+          const left = await embedResilient(items.slice(0, mid));
+          const right = await embedResilient(items.slice(mid));
+          return [...left, ...right];
         }
-        const mid = Math.ceil(items.length / 2);
-        const left = await embedResilient(items.slice(0, mid));
-        const right = await embedResilient(items.slice(mid));
-        return [...left, ...right];
+        console.warn(`\n  skipping unembeddable chunk (${items[0].p}): ${msg}`);
+        return [null];
       }
     }
-    return items.map(() => null);
   }
 
   // Embed only the changed/new chunks, writing each result back into its
   // file's plan slot (by p+ci). A skipped (unembeddable) chunk stays null.
+  // Each chunk owns a unique (p, ci) slot, so parallel batches never collide —
+  // the direct-Berget path fans CONCURRENCY batches out at once; the shared
+  // /api/embed path stays serial (CONCURRENCY 1) with a pacing delay.
   const slotOf = new Map(plan.map((e) => [e.p, e]));
   let dims = compatible ? prior.dims : 0;
   let skipped = 0;
   let done = 0;
-  for (let i = 0; i < toEmbed.length; i += BATCH) {
-    const batch = toEmbed.slice(i, i + BATCH);
-    const vecs = await embedResilient(batch);
-    for (let j = 0; j < batch.length; j++) {
-      const v = vecs[j];
-      if (!v || !v.length) {
-        skipped++;
-        continue;
+
+  // Split into batches up front; a pool of CONCURRENCY workers drains them.
+  /** @type {{text:string,p:string,ci:number}[][]} */
+  const batches = [];
+  for (let i = 0; i < toEmbed.length; i += BATCH) batches.push(toEmbed.slice(i, i + BATCH));
+
+  let next = 0;
+  const startedAt = Date.now();
+  async function worker() {
+    while (next < batches.length) {
+      const batch = batches[next++];
+      const vecs = await embedResilient(batch);
+      for (let j = 0; j < batch.length; j++) {
+        const v = vecs[j];
+        if (!v || !v.length) {
+          skipped++;
+          continue;
+        }
+        dims = v.length;
+        slotOf.get(batch[j].p).vecs[batch[j].ci] = int8ToB64(quantizeInt8(v));
+        done++;
       }
-      dims = v.length;
-      slotOf.get(batch[j].p).vecs[batch[j].ci] = int8ToB64(quantizeInt8(v));
+      process.stdout.write(`\r  embedded ${done}/${toEmbed.length} (${skipped} skipped)`);
     }
-    done = Math.min(i + BATCH, toEmbed.length);
-    process.stdout.write(`\r  embedded ${done}/${toEmbed.length} (${skipped} skipped)`);
-    await sleep(BATCH_DELAY_MS); // pace under the endpoint throttle (see BATCH_DELAY_MS)
   }
-  if (toEmbed.length) process.stdout.write("\n");
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, () => worker()));
+  if (toEmbed.length)
+    process.stdout.write(`\n  embedded in ${((Date.now() - startedAt) / 1000).toFixed(1)}s across ${requests} requests\n`);
 
   // Assemble the flat arrays in stable file/ci order, dropping any null
   // (skipped) chunk so every map entry has a real vector.
