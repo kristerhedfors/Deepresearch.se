@@ -118,15 +118,24 @@ function phaseLine(msg) {
 
 // ---- the first-visit glass pane ----------------------------------------------------
 
-function maybeShowIntro(deepLinked) {
-  let seen = false;
-  try {
-    seen = localStorage.getItem("dr_intro_seen") === "1";
-  } catch {
-    // storage blocked — show it this once
-  }
-  if (!seen && !deepLinked) $("intro").hidden = false;
+// After the first-visit umbrella intro, new users go STRAIGHT to the chat
+// input (2026-07-12 onboarding directive) — the promotional glass pane no
+// longer auto-pops. It stays reachable any time by tapping the wordmark
+// (the #brand handler), and the publication shelf is still prefetched here
+// so the pane is populated whenever it IS opened. Deep links (a project or a
+// published replay) keep their own status messaging and are never touched.
+function afterUmbrella(deepLinked) {
   loadIntroPublications();
+  if (!deepLinked) {
+    $("intro").hidden = true;
+    // Mark the pane "seen" so nothing re-pops it, and land in the composer.
+    try {
+      localStorage.setItem("dr_intro_seen", "1");
+    } catch {
+      // storage blocked — nothing auto-shows the pane anyway
+    }
+    $("input").focus();
+  }
 }
 
 // The pane doubles as the publication shelf: the latest /cure/<slug>
@@ -835,7 +844,7 @@ if (themeMeta) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d14 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d15 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -844,12 +853,14 @@ const projectLinked = handleProjectLink();
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
-// A replay deep link counts like a project link — no intro pane over it.
+// A replay deep link counts like a project link — no intro over it.
 // On a genuine first visit the umbrella intro plays first (over the bare
-// page), then the intro pane appears when it finishes or is tapped away.
+// page); when it finishes, new users land straight in the chat input rather
+// than on the promotional pane (afterUmbrella), which stays a tap on the
+// wordmark away.
 handlePublicationLink().then((opened) => {
   const deepLinked = projectLinked || opened;
-  maybePlayUmbrella(deepLinked).then(() => maybeShowIntro(deepLinked));
+  maybePlayUmbrella(deepLinked).then(() => afterUmbrella(deepLinked));
 });
 
 $("introstart").addEventListener("click", dismissIntro);
