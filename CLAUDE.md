@@ -17,12 +17,17 @@ is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 `src/openai.js`; both dispatched via the `src/providers.js` registry; the
 JSON planning phases always stay on Berget). Web search is **Exa**.
 
-**Branding rule (2026-07-10):** the two product tiers are ALWAYS written
-as their full URL without the scheme, with the wordplay tail in bold:
-deepresearch.**se/cure** (DRC, the client-side tier) and
-deepresearch.**se/rver** (DRS, the signed-in tier) — in UI text, headers,
+**Branding rule (2026-07-10, amended 2026-07-12):** the two product tiers
+are ALWAYS written as their full URL without the scheme, with the wordplay
+tail in bold: deepresearch.**se/cure** (the client-side tier) and
+deepresearch.**se/rver** (the signed-in tier) — in UI text, headers,
 docs, and prompts alike (plain text drops the bold, never the full-URL
-form). No space inside the URL.
+form). No space inside the URL. Where running copy needs a SHORT name,
+use the slashed tail alone — **se/cure** and **se/rver** — the included
+slash is the distinguishing marker. The acronyms DRC/DRS are INTERNAL
+names (code identifiers, CLAUDE.md, skills, commit messages) and must
+not appear in user-facing copy (2026-07-12 directive: having a third
+name pair confuses readers).
 
 ## Git workflow
 
@@ -739,8 +744,8 @@ what docs claim); and update the skill list below plus the skill's
   commit.
 - **ui-notes** — the client UI/UX conventions: Markdown rendering, the PDF
   report, document/image attachments + metadata extraction, floating glass
-  chrome, the `/help/` `/build/` `/story/` `/welcome/` pages, the message
-  center, and the public (no-auth) surface.
+  chrome, the `/help/` `/build/` `/story/` `/architecture/` `/welcome/`
+  pages, the message center, and the public (no-auth) surface.
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated

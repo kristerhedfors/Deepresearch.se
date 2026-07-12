@@ -4,8 +4,8 @@ description: >-
   Load when changing the client UI (public/ — index.html, css/app.css, js/*.js),
   the composer/header/floating chrome, the PDF report (report.js), document/image
   attachments and metadata extraction (exif.js, docs.js), the account panel /
-  message center / privacy notice, or the /help/ /build/ /story/ /welcome/ static
-  pages and the public (no-auth) surface.
+  message center / privacy notice, or the /help/ /build/ /story/ /architecture/
+  /welcome/ static pages and the public (no-auth) surface.
 ---
 
 # UI notes
@@ -175,6 +175,25 @@ description: >-
   NEVER sideways: tables and code wrap instead of forcing width. Append
   to `history.md`, not rewrite — it's a chronological record; keep
   adding a new section per session the way earlier entries did.
+- **"The architecture story"** at `/architecture/` (public static page,
+  self-contained like /story/, added 2026-07-12): pairs the two tiers —
+  deepresearch.**se/rver** vs deepresearch.**se/cure** — on
+  privacy and capabilities, with inline-SVG visualizations: the two
+  data-path diagrams (Worker-orchestrated vs browser-orchestrated), the
+  paired privacy table (privacy by policy+encryption vs privacy by
+  structure), the paired capabilities table, and the shared execution
+  sandbox section documenting the WebVM Debian disk decision (stock
+  `debian_large_20230522` ~4.7 GiB kept AS-IS — lazy block streaming +
+  IndexedDB cache + boot avoidance beat an image diet; decision
+  2026-07-12). Each tier keeps its identity color everywhere on the page
+  (DRS flag blue, DRC dark olive from drc.css); everything is
+  direct-labeled, never color-alone. Linked from the account panel (after
+  "The build story") and the /welcome/ landing cards. In user-facing copy
+  the tiers' SHORT names are the slashed tokens **se/rver** and
+  **se/cure** — NEVER the internal DRC/DRS acronyms (2026-07-12
+  directive; the sweep that enforced it covered /architecture/, /help/,
+  /welcome/, and the /cure page + drc.js popovers — see CLAUDE.md's
+  amended branding rule).
 - **Account panel** (`public/js/account.js`) is five views: the default
   view shows only the rolling 5-hour window (the one that actually gates
   the next message) and the **Feedback mode** knob (directly on the
@@ -183,7 +202,7 @@ description: >-
   reply, existing ones included — the buttons are always in the DOM,
   `turns.js`, CSS shows them), plus navigation (Messages, Feedback, Full
   usage & history, Settings, About this project, The build story,
-  Documentation, Admin, Sign out); "Full usage & history" drills into
+  The architecture story, Documentation, Admin, Sign out); "Full usage & history" drills into
   today/this-week/this-month (reuses the cached `/api/me` response);
   "Messages" is the message center; "Feedback" lists the user's feedback
   entries as dialogue threads with the development agent — reply box,
@@ -218,7 +237,8 @@ description: >-
   auth: branding (`/favicon.ico`, `/manifest.webmanifest`, `/icons/*` —
   iOS/Chrome fetch these *without* credentials, so gating them silently
   breaks PWA icons) plus the **promotional surface**: `/welcome/` (the
-  landing page), `/help/`, `/build/`, `/story/`, the promo video
+  landing page), `/help/`, `/build/`, `/story/`, `/architecture/`, the
+  promo video
   (`/llm-assiterad-utveckling.mp4`), and the support files those pages
   render with (`/js/markdown.js`, vendored `marked`/`DOMPurify` — all
   public on GitHub anyway). The app itself and every `/api/*` stay gated.
