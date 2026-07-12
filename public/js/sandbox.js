@@ -61,6 +61,66 @@ let statusEl = null;
 let workspaceDev = null;
 let projectDev = null;
 
+// ---- client telemetry (reaches Workers Logs via /api/client-log) -----------
+// The sandbox filesystem integration runs entirely in the browser, so its
+// boot/mount/seed events are invisible to the server unless we ship them.
+// sblog() buffers structured events (and mirrors them to the devtools console);
+// flushSandboxLog() beacons the batch to /api/client-log, where the Worker
+// re-emits each through the structured logger so it lands in the log URL
+// (`wrangler tail` / Workers Logs). Levels are honored end to end: `debug`
+// events only surface when the server's LOG_LEVEL=debug. sandboxFsSummary()
+// exposes a compact last-mount summary that also rides on every /api/chat
+// client_diag (so a mount problem shows in the chat log even without debug).
+/** @type {Array<Record<string, any>>} */
+let _fsLog = [];
+let _fsSummary = null;
+
+/**
+ * @param {"debug"|"info"|"warn"|"error"} level
+ * @param {string} event dotted name, e.g. "sandbox.fs.mount"
+ * @param {Record<string, any>} [fields]
+ */
+export function sblog(level, event, fields = {}) {
+  _fsLog.push({ level, event, ...fields });
+  if (_fsLog.length > 300) _fsLog.shift();
+  try {
+    const fn = /** @type {any} */ (console)[level] || console.log;
+    fn.call(console, "[sandbox] " + event, fields);
+  } catch { /* console unavailable */ }
+}
+
+/** The compact last-mount summary folded into /api/chat client_diag. */
+export function sandboxFsSummary() {
+  return _fsSummary;
+}
+
+/** @param {Record<string, any> | null} s */
+function setFsSummary(s) {
+  _fsSummary = s;
+}
+
+// Fire-and-forget: beacon the buffered events to the Worker. Survives page
+// teardown (sendBeacon) and never throws. On /cure (no auth) the POST simply
+// fails and is swallowed — file mounting is a DRS feature.
+function flushSandboxLog() {
+  if (!_fsLog.length) return;
+  const events = _fsLog.splice(0, _fsLog.length);
+  try {
+    const ua = (() => { try { return (navigator.userAgent || "").slice(0, 140); } catch { return "" } })();
+    const body = JSON.stringify({ scope: "sandbox", ua, events });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/client-log", new Blob([body], { type: "application/json" }));
+    } else {
+      fetch("/api/client-log", {
+        method: "POST",
+        body,
+        headers: { "content-type": "application/json" },
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch { /* telemetry must never break the sandbox */ }
+}
+
 /** Whether the sandbox CAN run here: cross-origin isolation is present. */
 export function sandboxSupported() {
   return typeof window !== "undefined" && window.crossOriginIsolated === true;
@@ -164,7 +224,11 @@ function readData(str) {
 export function ensureSandboxBooted(fileProvider = null) {
   if (bootPromise) return bootPromise;
   bootPromise = bootVM(fileProvider).catch((err) => {
+    const msg = (/** @type {any} */ (err))?.message || String(err);
     console.error("[sandbox] boot failed", err);
+    sblog("error", "sandbox.boot_failed", { error: String(msg).slice(0, 200) });
+    setFsSummary({ ...(sandboxFsSummary() || {}), err: String(msg).slice(0, 200) });
+    flushSandboxLog();
     setStatus("error");
     return false;
   });
@@ -175,7 +239,14 @@ export function ensureSandboxBooted(fileProvider = null) {
  * @param {(() => Promise<any>) | null} [fileProvider]
  */
 async function bootVM(fileProvider = null) {
+  const t0 = Date.now();
+  const coi = typeof window !== "undefined" && window.crossOriginIsolated === true;
+  const sab = typeof SharedArrayBuffer !== "undefined";
+  sblog("info", "sandbox.boot_start", { coi, sab, provider: !!fileProvider });
   if (!sandboxSupported()) {
+    sblog("warn", "sandbox.boot_unsupported", { coi, sab });
+    setFsSummary({ n: 0, b: 0, proj: false, drop: 0, ms: Date.now() - t0, err: "not cross-origin isolated" });
+    flushSandboxLog();
     setStatus("error");
     return false;
   }
@@ -259,8 +330,19 @@ async function bootVM(fileProvider = null) {
       workspaceDev = wsDev;
       projectDev = projDev;
       fileMount = { plan, inSession, inProject, projMount };
+      sblog("info", "sandbox.fs.mount", {
+        workspace: "/workspace",
+        project: projMount || null,
+        ingest: inProject ? "/mnt/in-s,/mnt/in-p" : "/mnt/in-s",
+        session_files: plan.session.length,
+        project_files: plan.project ? plan.project.files.length : 0,
+        dropped: plan.dropped.length,
+        bytes: plan.bytes,
+      });
     } catch (err) {
+      const msg = (/** @type {any} */ (err))?.message || String(err);
       console.warn("[sandbox] file mount setup failed — booting without files", err);
+      sblog("warn", "sandbox.fs.mount_failed", { error: String(msg).slice(0, 200) });
       fileMount = null;
     }
   }
@@ -274,7 +356,9 @@ async function bootVM(fileProvider = null) {
       setStatus("mounting files…");
       await seedFiles(fileMount);
     } catch (err) {
+      const msg = (/** @type {any} */ (err))?.message || String(err);
       console.warn("[sandbox] file seed failed — continuing without files", err);
+      sblog("warn", "sandbox.fs.seed_failed", { error: String(msg).slice(0, 200) });
     }
   }
 
@@ -284,6 +368,38 @@ async function bootVM(fileProvider = null) {
 
   // Expose the bridge for the agent loop and any test harness.
   window.__DR_SANDBOX = { ready: true, exec: execInSandbox };
+
+  // Record the boot summary (also rides on client_diag) and, when files were
+  // mounted, a real on-disk verification listing — the definitive "did the
+  // files actually land" signal, at debug so heavy testing can see it via the
+  // log URL without noising up production. Everything here is best-effort.
+  const bootMs = Date.now() - t0;
+  const plan = fileMount && fileMount.plan;
+  setFsSummary({
+    n: plan ? plan.session.length + (plan.project ? plan.project.files.length : 0) : 0,
+    b: plan ? plan.bytes : 0,
+    proj: !!(plan && plan.project),
+    drop: plan ? plan.dropped.length : 0,
+    ms: bootMs,
+    err: "",
+  });
+  sblog("info", "sandbox.boot_done", {
+    ms: bootMs,
+    files: _fsSummary ? _fsSummary.n : 0,
+    bytes: _fsSummary ? _fsSummary.b : 0,
+    project: !!(plan && plan.project),
+  });
+  if (fileMount) {
+    try {
+      const v = await execInSandbox(
+        "echo '# /workspace'; ls -la /workspace 2>&1; echo '# project'; ls -la /workspace/*/ 2>/dev/null | head -40",
+      );
+      sblog("debug", "sandbox.fs.verify", { exit: v.exitCode, listing: String(v.stdout || "").slice(0, 1500) });
+    } catch (err) {
+      sblog("debug", "sandbox.fs.verify_failed", { error: String((/** @type {any} */ (err))?.message || err).slice(0, 200) });
+    }
+  }
+  flushSandboxLog();
 
   // Interactive login shell in a loop (re-spawns if the user types exit).
   (async () => {
@@ -312,7 +428,7 @@ async function bootVM(fileProvider = null) {
 // a bad provider payload — returns a session-only (or empty) plan.
 /**
  * @param {() => Promise<any>} fileProvider
- * @returns {Promise<{ session: any[], project: any, manifest: string, dropped: any[] }>}
+ * @returns {Promise<{ session: any[], project: any, manifest: string, dropped: any[], bytes: number }>}
  */
 async function preparePlan(fileProvider) {
   const raw = (await fileProvider()) || {};
@@ -336,7 +452,17 @@ async function preparePlan(fileProvider) {
     project: project ? { name: project.name, files: project.files } : null,
     dropped,
   });
-  return { session: sessionCap.kept, project, manifest, dropped };
+  sblog("info", "sandbox.fs.plan", {
+    session_files: sessionCap.kept.length,
+    project_files: project ? project.files.length : 0,
+    project_name: project ? project.name : null,
+    total_bytes: total,
+    dropped: dropped.length,
+  });
+  // Per-dropped-file detail at debug so a "why isn't my file there" can be
+  // answered from the log URL without a repro.
+  for (const d of dropped) sblog("debug", "sandbox.fs.dropped", { scope: d.scope, name: d.name, reason: d.reason });
+  return { session: sessionCap.kept, project, manifest, dropped, bytes: total };
 }
 
 // Write the kept bytes into the flat ingest DataDevices (files at the device
@@ -352,10 +478,12 @@ async function seedFiles(fm) {
   await inSession.writeFile("/INDEX.txt", enc.encode(plan.manifest));
   for (const f of plan.session) {
     await inSession.writeFile("/" + f.name, f.bytes);
+    sblog("debug", "sandbox.fs.write", { scope: "session", name: f.name, size: f.size });
   }
   if (plan.project && inProject) {
     for (const f of plan.project.files) {
       await inProject.writeFile("/" + f.name, f.bytes);
+      sblog("debug", "sandbox.fs.write", { scope: "project", name: f.name, size: f.size });
     }
   }
   const script = buildSeedScript({
@@ -364,11 +492,15 @@ async function seedFiles(fm) {
     projId: plan.project?.id,
     hash: plan.project?.hash,
   });
-  await cx.run("/bin/sh", ["-c", script], {
+  const r = await cx.run("/bin/sh", ["-c", script], {
     env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
     cwd: "/root",
     uid: 0,
     gid: 0,
+  });
+  sblog("info", "sandbox.fs.seed", {
+    exit: r && Number.isFinite(r.status) ? r.status : null,
+    project_mount: plan.project ? `/mnt/${plan.project.name}-${plan.project.hash}` : null,
   });
 }
 
@@ -380,18 +512,24 @@ async function seedFiles(fm) {
  * @returns {Promise<Blob | null>}
  */
 export async function exportFile(path) {
+  const p = String(path || "");
   try {
-    const p = String(path || "");
+    let blob = null;
     if (p.startsWith("/workspace/") && workspaceDev) {
-      return await workspaceDev.readFileAsBlob(p.slice("/workspace".length));
-    }
-    if (p.startsWith("/mnt/") && projectDev) {
+      blob = await workspaceDev.readFileAsBlob(p.slice("/workspace".length));
+    } else if (p.startsWith("/mnt/") && projectDev) {
       // strip the mount prefix: /mnt/<name>-<hash>/rest → /rest
       const rest = p.replace(/^\/mnt\/[^/]+/, "");
-      return await projectDev.readFileAsBlob(rest || "/");
+      blob = await projectDev.readFileAsBlob(rest || "/");
     }
+    sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: blob ? blob.size : 0, ok: !!blob });
+    flushSandboxLog();
+    return blob;
   } catch (err) {
+    const msg = (/** @type {any} */ (err))?.message || String(err);
     console.warn("[sandbox] exportFile failed", err);
+    sblog("warn", "sandbox.fs.export_failed", { path: p.slice(0, 120), error: String(msg).slice(0, 200) });
+    flushSandboxLog();
   }
   return null;
 }

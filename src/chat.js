@@ -558,7 +558,7 @@ function resolveShellTranscript(raw) {
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined) } | undefined}
  */
 function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;
@@ -570,6 +570,30 @@ function sanitizeClientDiag(d) {
     css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
     sab: d.sab === true,
     ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
+    // The last sandbox filesystem-mount summary (public/js/sandbox.js
+    // sandboxFsSummary): whether files mounted, how many, total bytes, a
+    // project mount, dropped count, boot ms, and any error — so a mount
+    // problem is visible in the chat log without the debug beacon.
+    fs: sanitizeFsSummary(d.fs),
+  };
+}
+
+/**
+ * Whitelist the sandbox filesystem-mount summary (untrusted, bounded).
+ * @param {any} f
+ * @returns {{ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined}
+ */
+function sanitizeFsSummary(f) {
+  if (!f || typeof f !== "object") return undefined;
+  /** @param {any} v @param {number} max */
+  const int = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.trunc(v))) : 0);
+  return {
+    n: int(f.n, 1000),
+    b: int(f.b, 1e12),
+    proj: f.proj === true,
+    drop: int(f.drop, 1000),
+    ms: int(f.ms, 600000),
+    err: typeof f.err === "string" ? f.err.slice(0, 200) : "",
   };
 }
 

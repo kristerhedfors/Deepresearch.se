@@ -206,6 +206,31 @@ round-trip OUT (guest-written files back to the user).
   reload; cross-mount symlink resolves; binary round-trip byte-exact. Logic is
   green in CI but unproven in a real browser.
 
+**Observability — reaching the mount telemetry through the log URL.** The mount
+path runs client-side, so it's shipped to Workers Logs two ways:
+1. **The debug beacon.** `sandbox.js` `sblog()` buffers structured events and
+   `flushSandboxLog()` beacons them to **`POST /api/client-log`**
+   (`src/user-api.js` `handleClientLog`), which re-emits each through `log.js`
+   with `client:true` + `user_id`. Events (all namespaced `sandbox.*`):
+   `sandbox.boot_start`/`boot_done`/`boot_failed`, `sandbox.fs.provider`
+   (bytes assembled, decrypt/source failures — `stream.js`), `sandbox.fs.plan`,
+   `sandbox.fs.mount`, `sandbox.fs.write` (per file, **debug**),
+   `sandbox.fs.dropped` (**debug**), `sandbox.fs.seed` (seed script exit),
+   `sandbox.fs.verify` (a real `ls -la /workspace` listing, **debug**),
+   `sandbox.fs.export`. Levels are honored end to end: **debug events only
+   surface when `LOG_LEVEL=debug`** (`wrangler.toml`) — flip it to debug for
+   heavy testing (per-file writes + the on-disk verify listing), back to info
+   for production milestones; no client redeploy.
+2. **`client_diag.fs`.** A compact last-mount summary (`sandboxFsSummary()` →
+   `{n,b,proj,drop,ms,err}`) rides on **every `/api/chat`** and lands in the
+   `chat_logs` meta + the `chat.client_diag` log line — so a mount problem is
+   visible per-exchange even without the debug beacon.
+
+   Read them: `npx wrangler tail deepresearch-se --format json` and grep for
+   `sandbox.` (or `"client":true`); or `scripts/chatlogs --id N --json` for the
+   `client_diag.fs` summary. Server-side loop detail is `bash.step` (info) +
+   `bash.step_commands` (**debug**) in `src/bash-api.js`.
+
 ## Live verification (DONE — 2026-07-11)
 
 Verified end to end on the real target device. On **iOS 18.7 Safari 26.5**,

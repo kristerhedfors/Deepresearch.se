@@ -116,6 +116,13 @@ export async function handleBashStep(request, env, log, identity) {
       commands: proposal.commands.length,
       done: proposal.done,
     });
+    // Debug: the actual proposed commands (model-generated, not user content),
+    // bounded — so heavy testing can trace exactly what the loop ran via the
+    // log URL when LOG_LEVEL=debug.
+    log.debug("bash.step_commands", {
+      user_id: identity.id,
+      commands: proposal.commands.map((c) => String(c).slice(0, 200)).slice(0, 6),
+    });
     return jsonResponse(proposal);
   } catch (err) {
     log.error("bash.step_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });

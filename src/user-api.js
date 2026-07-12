@@ -74,6 +74,70 @@ export async function handleClientError(request, log, identity) {
   return new Response(null, { status: 204 });
 }
 
+// POST /api/client-log — a general client telemetry beacon (navigator.sendBeacon
+// / keepalive fetch). Its first user is the in-browser Linux sandbox filesystem
+// integration (public/js/sandbox.js): booting, mounting user files, the seed
+// script, exports — all of which run CLIENT-side and would otherwise be
+// invisible to Workers Logs. The client batches events; the Worker re-emits each
+// through the structured logger so they reach the log URL (`wrangler tail` /
+// Workers Logs), correlated by user_id. Every event carries `client: true` so
+// it's easy to distinguish from server-originated events.
+//
+// Levels are honored: a `debug` event only surfaces when LOG_LEVEL=debug, so
+// heavy testing flips LOG_LEVEL to debug for per-file detail and back to info
+// for production-level milestones — no client redeploy. Untrusted + bounded:
+// event names and field values are clamped, the batch is capped, no message
+// content is logged (invariant 4 / the log.js privacy rules). Fail-soft: always
+// 204 so the client never blocks on telemetry.
+/**
+ * @param {Request} request
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
+export async function handleClientLog(request, log, identity) {
+  /** @type {any} */
+  let body = {};
+  try {
+    const raw = await request.text();
+    if (raw.length <= 16384) body = JSON.parse(raw);
+  } catch {
+    body = {};
+  }
+  const scope = typeof body.scope === "string" ? body.scope.slice(0, 32) : "client";
+  const ua = typeof body.ua === "string" ? body.ua.slice(0, 140) : "";
+  const events = Array.isArray(body.events) ? body.events.slice(0, 100) : [];
+  const LEVELS = new Set(["debug", "info", "warn", "error"]);
+  // Clamp one event's arbitrary extra fields into safe log values: short
+  // strings, finite numbers, booleans. Drop everything else (no nested objects,
+  // no message content). Keeps the log line bounded and injection-free.
+  /** @param {any} ev */
+  const fieldsOf = (ev) => {
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    if (!ev || typeof ev !== "object") return out;
+    let n = 0;
+    for (const [k, v] of Object.entries(ev)) {
+      if (k === "level" || k === "event") continue;
+      if (n++ >= 20) break;
+      const key = String(k).slice(0, 40);
+      if (typeof v === "string") out[key] = v.slice(0, 300);
+      else if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+      else if (typeof v === "boolean") out[key] = v;
+    }
+    return out;
+  };
+  for (const ev of events) {
+    const level = LEVELS.has(ev && ev.level) ? ev.level : "info";
+    const event = typeof (ev && ev.event) === "string" ? ev.event.slice(0, 80) : "client.event";
+    const emit = /** @type {(e: string, f: Record<string, unknown>) => void} */ (
+      (/** @type {any} */ (log))[level] || log.info
+    );
+    emit(event, { client: true, user_id: identity.id, scope, ua, ...fieldsOf(ev) });
+  }
+  return new Response(null, { status: 204 });
+}
+
 // GET /api/history-key — a per-user key (src/history-key.js) the client
 // uses to encrypt/decrypt its own locally-stored chat history
 // (public/js/history-store.js). Fails closed (503) when

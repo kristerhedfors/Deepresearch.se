@@ -47,6 +47,7 @@ import { acceptTerms } from "./accounts.js";
 import { configErrorPage, loginPage, pendingPage, termsPage } from "./login.js";
 import {
   handleClientError,
+  handleClientLog,
   handleHistoryKey,
   handleMe,
   handleMessages,
@@ -615,6 +616,12 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/client-error" && request.method === "POST") {
     return handleClientError(request, log, identity);
+  }
+  // Client telemetry beacon — first user is the in-browser sandbox filesystem
+  // integration (public/js/sandbox.js), whose boot/mount/seed events run
+  // client-side and reach Workers Logs only through this. See handleClientLog.
+  if (url.pathname === "/api/client-log" && request.method === "POST") {
+    return handleClientLog(request, log, identity);
   }
   return null;
 }

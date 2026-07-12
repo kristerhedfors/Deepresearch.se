@@ -24,7 +24,7 @@ import {
 } from "./activity.js";
 import { bashLiteOn } from "./settings.js";
 import { runShellLoop } from "./bash-agent.js";
-import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
+import { ensureSandboxBooted, execInSandbox, sandboxFsSummary, sandboxSupported, sblog } from "./sandbox.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -835,31 +835,40 @@ function buildSandboxFileProvider(opts) {
 
     // Bytes for one attachment/file: prefer already-parsed inline text, else
     // the OPFS original (decrypted when the meta row says it's encrypted).
-    const bytesFor = async (fileId, inlineText) => {
+    const bytesFor = async (fileId, inlineText, name) => {
       if (typeof inlineText === "string" && inlineText) {
         return new TextEncoder().encode(inlineText);
       }
       if (!fileId) return null;
       try {
         const file = await loadOriginal(fileId);
-        if (!file) return null;
+        if (!file) {
+          sblog("debug", "sandbox.fs.source_missing", { name: String(name || "").slice(0, 120) });
+          return null;
+        }
         const raw = new Uint8Array(await file.arrayBuffer());
         if (encById.get(fileId)) {
-          try { return await decryptBytes(raw); } catch { return null }
+          try {
+            return await decryptBytes(raw);
+          } catch {
+            sblog("warn", "sandbox.fs.decrypt_failed", { name: String(name || "").slice(0, 120) });
+            return null;
+          }
         }
         return raw;
-      } catch {
+      } catch (err) {
+        sblog("warn", "sandbox.fs.source_error", { name: String(name || "").slice(0, 120), error: String((/** @type {any} */ (err))?.message || err).slice(0, 160) });
         return null;
       }
     };
 
     const session = [];
     for (const d of (opts?.docs || [])) {
-      const b = await bytesFor(d.fileId, d.text);
+      const b = await bytesFor(d.fileId, d.text, d.name);
       if (b && b.length) session.push({ name: d.name, type: d.ext || "doc", bytes: b });
     }
     for (const im of (opts?.images || [])) {
-      const b = await bytesFor(im.fileId, null);
+      const b = await bytesFor(im.fileId, null, im.name);
       if (b && b.length) session.push({ name: im.name, type: "image", bytes: b });
     }
 
@@ -869,13 +878,18 @@ function buildSandboxFileProvider(opts) {
       if (p && Array.isArray(p.files) && p.files.length) {
         const files = [];
         for (const f of p.files) {
-          const b = await bytesFor(f.id, null);
+          const b = await bytesFor(f.id, null, f.name);
           if (b && b.length) files.push({ name: f.name, type: f.kind || f.ext || "file", bytes: b });
         }
         if (files.length) project = { name: p.name, id: p.id, files };
       }
     } catch { /* no project / not available — session-only */ }
 
+    sblog("info", "sandbox.fs.provider", {
+      session_files: session.length,
+      project: project ? project.name : null,
+      project_files: project ? project.files.length : 0,
+    });
     return { session, project };
   };
 }
@@ -953,6 +967,11 @@ export async function sendMessage(text, opts) {
       // coi:false with the header served can be pinned to browser support.
       sab: typeof SharedArrayBuffer !== "undefined",
       ua: (() => { try { return (navigator.userAgent || "").slice(0, 140); } catch { return ""; } })(),
+      // The last sandbox filesystem-mount summary (public/js/sandbox.js) — so a
+      // mount problem shows in the chat log meta (src/chatlog.js) even without
+      // the debug beacon: files mounted (n), bytes (b), a project mount (proj),
+      // dropped count (drop), boot ms, and any error.
+      fs: sandboxFsSummary() || undefined,
     };
     const res = await fetch("/api/chat", {
       method: "POST",
