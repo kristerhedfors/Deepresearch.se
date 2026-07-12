@@ -288,17 +288,29 @@ History log (values themselves are fine to publish — they are ceilings, not
 credentials). Re-verify quarterly and after adding any provider.
 **Status: 🔴 OPEN — caps unverified from this repo; needs a dashboard pass.**
 
-### P-2 · Mechanical secret-leak prevention on the repo — 🔴 OPEN
-The issue (R-1): today nothing but convention stops a secret reaching a public
-commit; detection is manual greps. Recommendation, in order of value:
-(a) enable **GitHub secret scanning + push protection** on the repo (free for
-public repos; blocks pushes containing recognised credentials);
-(b) add a **pre-push git hook** running the credential-pattern scan from the
-security-posture skill over outgoing diffs;
-(c) run one **full-history scan from an unshallowed clone** (session clones
-are shallow; the 2026-07-12 scan covered only fetched history) and record the
-result here. Rotation runbook if anything is ever found: rotate at the
-provider FIRST, then rewrite history, then log the incident here.
+### P-2 · Mechanical secret-leak prevention on the repo — 🟡 PARTIAL (2026-07-12)
+The issue (R-1): nothing but convention stops a secret reaching a public
+commit; detection was manual greps. Progress:
+- ✅ (b) **Local mechanical scan shipped.** `scripts/scan-secrets` runs the
+  credential-pattern set from the security-posture skill §1 (worktree /
+  `--staged` / `--range A..B` modes, redacted matches, rotation runbook on
+  fail), a `.githooks/pre-push` hook runs it over outgoing commits and blocks
+  a push on a match, and `scripts/install-git-hooks` activates it in a clone
+  (`git config core.hooksPath .githooks`). Verified: flags a planted fake
+  credential, passes the real working tree clean, and does not self-match.
+  Documented in `docs/SECRET-SCANNING.md`. Note the hook is repo-local and
+  bypassable (`--no-verify`) — it is a fast first line, not the backstop.
+- 🔴 (a) **GitHub secret scanning + push protection** — still to enable in the
+  repo Settings → Code security (free for public repos; the server-side
+  backstop that catches a push even without the local hook). Dashboard action,
+  not code.
+- 🔴 (c) **Full-history scan from an unshallowed clone** — still owed; session
+  clones are shallow (`--range`/history scans cover only fetched commits), so
+  a full-history verdict needs `git fetch --unshallow` first (or relies on
+  (a)). Record the result here when run.
+
+Rotation runbook if anything is ever found: rotate at the provider FIRST,
+then rewrite history, then log the incident here.
 
 ### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🟡 PARTIAL (2026-07-12)
 A per-user **concurrent-request cap** now bounds the check-then-act race: a
@@ -405,3 +417,4 @@ so the exception terminates.
 | 2026-07-12 | **Admin review board added** (product decision): the §3 backlog gets an interactive admin-panel view (`/admin` → Security risks; `src/security-risks.js`, D1 `security_reviews`, `/api/admin/security*`, `scripts/security`) with up/down votes, a manual severity-score field (CVSS or free-form), notes, and an explicit per-item **priority that is the fix loop's fixed order** (maintenance rules 6–7 added). Two orderings: admin fix order ⇄ documented severity. |
 | 2026-07-12 | **Security-fix round (admin-prioritized top items) — P-8 FIXED.** `exa.js` `webSearch` + `berget.js` `fetchCatalog` now use `AbortSignal.timeout` (15 s), degrading fail-soft on a hung backend (invariant 2). First of the round working down the admin board's fix order (`scripts/security`); P-1/P-2/P-3 addressed in the same round's following commits. |
 | 2026-07-12 | **P-3 → PARTIAL.** Per-user concurrent-request cap added (D1 `inflight` table; `reserveInflight`/`releaseInflight` in `src/quota.js`, `CAP=5`, `TTL=300 s`, fail-soft) — reserved at admission, released in a `finally` on every exit path (incl. client disconnect via `ctx.waitUntil`) on `/api/chat`, `/api/embed`, `/api/quiz/grade`, `/api/bash/step`; 429 on refusal. Bounds the ≈N× overspend race at ≈`CAP`× per user (closes the spend-abuse class with the P-1 caps). 35 unit tests over an in-memory D1 mock. Residual: not a true spend reservation; simultaneous-isolate + disconnect-release paths owed a live-verify pass. |
+| 2026-07-12 | **P-2 → PARTIAL.** Local mechanical secret-leak prevention shipped: `scripts/scan-secrets` (worktree/`--staged`/`--range` modes, redacted matches, the security-posture §1 pattern set), a `.githooks/pre-push` hook that blocks a push on a credential match, `scripts/install-git-hooks`, and `docs/SECRET-SCANNING.md`. Verified: flags a planted fake credential, passes the real tree clean, no self-match. Residual (both operational, not code): (a) enable GitHub secret scanning + push protection in repo Settings; (c) run a full-history scan from an unshallowed clone. |
