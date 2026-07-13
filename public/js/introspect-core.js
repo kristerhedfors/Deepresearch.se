@@ -340,6 +340,148 @@ export function snapshotIndex(snapshot) {
   return snapshot.files.map((f) => `${f.p}\t${f.s}`).join("\n");
 }
 
+// ---- skills catalog ----------------------------------------------------------
+//
+// The repo's institutional knowledge lives as load-on-demand PLAYBOOKS under
+// .claude/skills/<name>/SKILL.md — how recurring work is actually done here
+// (deploy, the research pipeline, the eval batteries, the decision-board loops,
+// storage/privacy, the sandbox, …). That was originally a Claude Code (the CLI
+// agent) convention, so those playbooks only helped when Claude Code was the
+// one working. But a SKILL.md is ordinary tracked Markdown, so it already rides
+// in the source snapshot like any other file and is retrievable through the
+// dense RAG index. This surfaces the whole catalog as a FIRST-CLASS section of
+// the introspection block, so ANY answer model — in EITHER tier — sees the
+// playbooks exist and can quote or read them by name. That's the same
+// institutional knowledge Claude Code gets, now available regardless of which
+// model is answering. (A vendor-neutral AGENTS.md at the repo root points
+// external coding agents at the same catalog, so the pickup is model- AND
+// harness-agnostic.)
+
+/** A skill's SKILL.md path → its slug name (the catalog key). */
+export const SKILL_PATH_RE = /^\.claude\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
+
+/** Each catalog line's description is clipped to this in the (always-on) block. */
+export const SKILL_SUMMARY_CHARS = 240;
+
+/**
+ * The first sentence of a description, clipped to `max` on a word boundary. The
+ * skill descriptions front-load their trigger ("Load when …"), so one sentence
+ * is a faithful one-line summary.
+ * @param {string} text
+ * @param {number} max
+ * @returns {string}
+ */
+function firstSentence(text, max) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  const dot = s.search(/\.\s/);
+  let out = dot > 40 ? s.slice(0, dot + 1) : s;
+  if (out.length > max) out = out.slice(0, max).replace(/\s+\S*$/, "") + "…";
+  return out;
+}
+
+/**
+ * Tolerant parse of a SKILL.md's `name`/`description` YAML frontmatter. The
+ * bundler stores raw text, so this is a tiny purpose-built parser: the
+ * frontmatter is always a leading `---` … `---` block with a `name:` line and a
+ * `description:` that is usually a folded block scalar (`>-`). Missing fields
+ * come back as "" — never throws.
+ * @param {string} text
+ * @returns {{ name: string, description: string }}
+ */
+export function parseSkillFrontmatter(text) {
+  const m = String(text || "").match(/^---\n([\s\S]*?)\n---/);
+  if (!m) return { name: "", description: "" };
+  const lines = m[1].split("\n");
+  const unquote = (/** @type {string} */ v) => v.replace(/^["']|["']$/g, "").trim();
+  let name = "";
+  let description = "";
+  for (let i = 0; i < lines.length; i++) {
+    const nameM = !name && lines[i].match(/^name:\s*(.+?)\s*$/);
+    if (nameM) {
+      name = unquote(nameM[1]);
+      continue;
+    }
+    const descM = !description && lines[i].match(/^description:\s*(.*?)\s*$/);
+    if (descM) {
+      const inline = descM[1];
+      if (inline && !/^[|>]/.test(inline)) {
+        description = unquote(inline);
+      } else {
+        // Folded/literal block scalar: gather the indented continuation lines.
+        const parts = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === "" || /^\s+\S/.test(lines[j])) parts.push(lines[j].trim());
+          else break;
+        }
+        description = parts.join(" ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+  return { name, description };
+}
+
+/**
+ * Every skill present in the snapshot as { name, path, description }, sorted by
+ * name. Pure over the snapshot the block already has — no I/O. [] when the
+ * snapshot carries no skill files (e.g. a test fixture).
+ * @param {Snapshot} snapshot
+ * @returns {Array<{ name: string, path: string, description: string }>}
+ */
+export function skillsCatalog(snapshot) {
+  const out = [];
+  for (const f of (snapshot && snapshot.files) || []) {
+    const m = SKILL_PATH_RE.exec(f.p);
+    if (!m) continue;
+    const fm = parseSkillFrontmatter(f.t);
+    out.push({ name: fm.name || m[1], path: f.p, description: fm.description });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+/**
+ * The skills catalog rendered as one `- name — one-line summary` row per skill,
+ * for the introspection block. `full: true` keeps each whole description;
+ * otherwise each is clipped to its first sentence / SKILL_SUMMARY_CHARS.
+ * @param {Snapshot} snapshot
+ * @param {{ full?: boolean }} [opts]
+ * @returns {string}
+ */
+export function skillsIndex(snapshot, opts = {}) {
+  const full = opts && opts.full === true;
+  return skillsCatalog(snapshot)
+    .map((sk) => {
+      const desc = full ? sk.description : firstSentence(sk.description, SKILL_SUMMARY_CHARS);
+      return desc ? `- ${sk.name} — ${desc}` : `- ${sk.name}`;
+    })
+    .join("\n");
+}
+
+/**
+ * The SKILL.md paths a message references BY NAME — the slash form (`/deploy`)
+ * or "<name> skill" / "skill <name>" (hyphen-or-space tolerant, so "feedback
+ * loop skill" resolves feedback-loop). Complements mentionedSnapshotPaths,
+ * which needs the literal `.claude/skills/<name>/SKILL.md` path; this lets a
+ * user name a skill the way they'd name it to Claude Code. Returns snapshot
+ * paths so the caller inlines them like any other named file.
+ * @param {unknown} text
+ * @param {Snapshot} snapshot
+ * @returns {string[]}
+ */
+export function mentionedSkills(text, snapshot) {
+  const s = String(text || "");
+  if (!s.trim()) return [];
+  const out = [];
+  for (const sk of skillsCatalog(snapshot)) {
+    const n = sk.name.replace(/[-\s]+/g, "[-\\s]");
+    const slash = new RegExp(`(?:^|\\s)/${n}\\b`, "i");
+    const named = new RegExp(`\\b(?:${n}\\s+skill|skill\\s+${n})\\b`, "i");
+    if (slash.test(s) || named.test(s)) out.push(sk.path);
+  }
+  return out;
+}
+
 // ---- source RAG: deterministic chunking + int8 vector index -----------------------
 //
 // A committed DENSE index of the source (public/introspect/source-rag.json,
@@ -592,6 +734,20 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
     lines.push(`# The full project is ${snapshot.count} files; name any file path (e.g. src/pipeline.js) and its complete contents are provided.`);
   }
 
+  // Skills — the repo's load-on-demand PLAYBOOKS (institutional knowledge:
+  // how deploys, the pipeline, the eval batteries, the board loops, storage,
+  // the sandbox, etc. are actually done here). Surfaced as a catalog so any
+  // answer model can quote or read them by name — the same knowledge Claude
+  // Code works from, now available regardless of model or tier.
+  const skills = skillsCatalog(snapshot);
+  if (skills.length) {
+    lines.push("");
+    lines.push(
+      `# Skills — the project's ${skills.length} institutional playbooks (.claude/skills/<name>/SKILL.md). These encode how recurring work is actually done here; the same catalog also guides any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill" or /deploy) for its full text, or just ask — the relevant one is retrieved into context:`,
+    );
+    lines.push(skillsIndex(snapshot));
+  }
+
   // Orientation: CLAUDE.md is the repo's own structured architecture map —
   // its opening (project description + code layout) is the best fixed-cost
   // orientation the block can carry.
@@ -602,8 +758,15 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
     lines.push(clip(claude.t, ORIENTATION_CHARS));
   }
 
-  // Named files: inline in full (capped) what the latest message points at.
-  const named = mentionedSnapshotPaths(opts.latestText, snapshot).slice(0, MAX_INLINE_FILES);
+  // Named files: inline in full (capped) what the latest message points at —
+  // by path (mentionedSnapshotPaths) OR by skill name ("the deploy skill"),
+  // deduped so naming a skill inlines its whole SKILL.md.
+  const named = [
+    ...mentionedSnapshotPaths(opts.latestText, snapshot),
+    ...mentionedSkills(opts.latestText, snapshot),
+  ]
+    .filter((p, i, a) => a.indexOf(p) === i)
+    .slice(0, MAX_INLINE_FILES);
   let inlined = 0;
   for (const p of named) {
     if (p === "CLAUDE.md") continue; // already carried above
