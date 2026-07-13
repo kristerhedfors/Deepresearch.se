@@ -807,6 +807,13 @@ what docs claim); and update the skill list below plus the skill's
   (`docs/MERGED-BRANCHES.md`) that TAGS a branch done so no agent rebuilds on
   it — plus `scripts/check-merged-branches.mjs`, the guard that NOTIFIES the
   owner when someone pushes to an already-merged branch.
+- **pr** — the one-word `pr` trigger that PREPARES the current feature branch
+  for the merge-branches ("Merger") workflow: barrier + base check / rebase
+  onto latest `origin/main`, regenerate the committed introspection artifacts
+  if source changed, `npm test` + `npm run typecheck` green gate, commit
+  pending work, push the branch, open a focused PR to `main`, and hand off to
+  the owner's merge. Prepares only — never merges. Companion to sync-main
+  (base current) and merge-branches (tag done + merge).
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
