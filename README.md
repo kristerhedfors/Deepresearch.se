@@ -1,10 +1,22 @@
 # DeepResearch.se
 
-A deep-research AI assistant on Cloudflare Workers: a static chat UI plus a
-streaming `/api/chat` endpoint that runs a Worker-orchestrated research
-pipeline (triage → search waves → gap check → cited synthesis →
-post-validation) with **no function calling** — deterministic JSON-mode and
-streamed calls only. Berget.ai's EU-hosted, OpenAI-compatible models are the
+**Innovation and research into the privacy capabilities of LLM
+applications** — how far a real, useful research assistant can be pushed
+toward *provable* privacy, and where that trades against capability. The
+proof is the site itself: a fully open-sourced, independently verifiable
+pair — **DeepResearch.Se/cure**, the public client-side tier where the
+research runs entirely in the browser and the server is absent from every
+data path, and **DeepResearch.Se/rver**, the signed-in tier where a server
+buys capability and protects what it handles with encryption and policy.
+Still experimental and nowhere near production-ready; MIT-licensed, so every
+privacy claim is yours to verify. The `/architecture/` page visualizes the
+trade.
+
+The **Se/rver** tier is a deep-research AI assistant on Cloudflare Workers: a
+static chat UI plus a streaming `/api/chat` endpoint that runs a
+Worker-orchestrated research pipeline (triage → search waves → gap check →
+cited synthesis → post-validation) with **no function calling** —
+deterministic JSON-mode and streamed calls only. Berget.ai's EU-hosted, OpenAI-compatible models are the
 primary LLM provider; Anthropic (`claude-*`) and OpenAI (`gpt-*`) are
 optional, key-gated answer-model providers behind the `src/providers.js`
 registry (the JSON planning phases always stay on Berget). Exa is the web
@@ -31,9 +43,10 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
 
 See `docs/ARCHITECTURE.md` for the full design, `CLAUDE.md` for the code
 layout and load-bearing invariants, and `.claude/skills/` for the
-per-area working guides. The complete prompt-by-prompt build history lives
-in `public/build/history.md` (rendered in-app at `/story/`; `/build/` holds
-the project purpose and EU AI Act use restrictions).
+per-area working guides. The complete prompt-by-prompt build history — the
+origin story of the first weekend, kept as the record of how it began —
+lives in `public/build/history.md` (rendered in-app at `/story/`; `/build/`
+holds the project purpose and EU AI Act use restrictions).
 
 ## Installing your own instance
 

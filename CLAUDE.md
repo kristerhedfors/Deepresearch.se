@@ -24,8 +24,9 @@ and where that trades against capability. The **proof is the site itself**:
 a fully open-sourced, independently verifiable **Se/cure + Se/rver pair**.
 It is still experimental and nowhere near production-ready (say so; do not
 frame it as a finished product). The "built over a weekend, phone-only"
-origin is kept ONLY on `/story/` (and referenced once on `/build/`) — it is
-the origin, not the identity, so don't lead with it elsewhere.
+origin is kept in FULL only on `/story/`, with brief non-leading pointers on
+`/build/`, the landing, and the README — it is the origin, not the identity,
+so don't lead with it elsewhere.
 
 **Branding rule (2026-07-10, amended 2026-07-12 and 2026-07-13):** the two
 product tiers are ALWAYS written as their full URL without the scheme, in
