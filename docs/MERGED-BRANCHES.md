@@ -41,28 +41,36 @@ These override the heuristic in the inventory table.
 | `claude/whitespace-slash-animation-juizwv` | `404e73a` | Superseded | CamelCase tier wordmarks are the current CLAUDE.md branding rule — already live. |
 | `claude/server-secure-storage-clarity-x677jc` | `5c1da8c` | Dropped | "always store in cloud, remove the storage knobs" conflicts with `main`, which deliberately keeps the `server_history` knob (invariant 4). |
 | `claude/tokemon-game-subsystem-30a8r7` | `4f677fc` | Superseded | `src/tokemon.js` / `src/tokemon-api.js` present in `main`. |
-| `claude/refactor-skill-repo-kb1c7k` | `f9ee2ab` | Review (candidate) | `src/billing.js` is **absent** from `main` — genuinely new refactor. |
-| `claude/glass-pane-close-icon-v451n4` | `189db14` | Review (candidate) | close-chevron markup **absent** from `main`. |
-| `claude/security-assessment-owasp-setup-3hznsj` | `f844788` | Review (candidate) | OWASP corpus **absent** from `main`. |
-| `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Review (candidate) | DRC land-in-chat onboarding tweak **absent** from `main`. |
+| `claude/refactor-skill-repo-kb1c7k` | `f9ee2ab` | **Merged** | `src/billing.js` extraction integrated 2026-07-13 (tests 70/70). |
+| `claude/glass-pane-close-icon-v451n4` | `189db14` | **Merged** | close chevrons integrated 2026-07-13. |
+| `claude/security-assessment-owasp-setup-3hznsj` | `f844788` | Review (deferred) | Real new work BUT a 1109-line feature (own RAG index + core-file conflicts) — needs its own dedicated PR + `bundle:owasp-rag`, not a reconciliation cherry-pick. |
+| `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Superseded | On cherry-pick the net drc.js diff vs `main` was **empty** — the land-in-chat onboarding is already in `main`. |
 
-## 2. Candidates worth an integration PR (owner to prioritise)
+## 2. Reconciliation pass 2026-07-13 (mass merge)
 
-Small, discrete, not-yet-in-`main` deltas. Each is one focused PR — see the
-skill's per-branch workflow. Verify each still applies (they touch the
-committed `source-snapshot.json` / `source-rag.json`, which WILL conflict and
-must be regenerated with `npm run bundle && npm run bundle:rag`, not merged).
+Integrated into `main` this pass (both verified, tests green):
 
-- `claude/refactor-skill-repo-kb1c7k` — extract `src/billing.js` (shared
-  split-billing math) out of `chat.js`/`mcp.js`. Pure refactor, has tests.
-- `claude/glass-pane-close-icon-v451n4` — directional close chevrons instead
-  of ✕ on glass panes. Tiny UI change.
-- `claude/security-assessment-owasp-setup-3hznsj` — OWASP Top-10 default +
-  reference corpus for introspection security assessments.
-- `claude/forbux-onboarding-flow-dsd61y` — DRC: land new users in the chat
-  input after the umbrella intro.
-- Remaining **Review** rows in §3 (ahead ≤ 5) — inspect with the skill; some
-  are already superseded (e.g. `commit-analytics-dashboard`, `admin-feature-selection-board`, panel/board work is in `main`).
+- ✅ `claude/refactor-skill-repo-kb1c7k` → **Merged** — `src/billing.js`
+  (shared split-billing math) extracted from `chat.js`/`mcp.js`. 70/70 tests.
+- ✅ `claude/glass-pane-close-icon-v451n4` → **Merged** — directional close
+  chevrons instead of ✕ on glass panes.
+
+Turned out already in `main` (Superseded) once content-checked:
+
+- `claude/forbux-onboarding-flow-dsd61y` — net drc.js diff was empty.
+
+Deferred to its OWN dedicated PR (real new work, too large for this pass):
+
+- `claude/security-assessment-owasp-setup-3hznsj` — OWASP Top-10 corpus +
+  offline retrieval: 1109 insertions across 17 files, its own committed
+  `owasp-rag.json` (needs `npm run bundle:owasp-rag`, network), and heavy
+  conflicts on diverged core files (`introspect-core.js`, `introspect.js`,
+  `pipeline.js`, `prompts.js`). Wants proper conflict resolution + live
+  verification, not a reconciliation cherry-pick.
+
+Still to inspect (Review rows, ahead ≤ 5): several are already superseded
+(e.g. `commit-analytics-dashboard`, `admin-feature-selection-board` — panel/
+board work is in `main`); vet with the skill before any further PR.
 
 ## 3. Full inventory (76 branches, 2026-07-13)
 
@@ -97,10 +105,10 @@ heuristic; the skill's content check confirms.
 | `claude/feedback-mode-account-view-1vbke8` | 496ce61 | 282 | Superseded? | Feedback mode: per-reply feedback dialogue |
 | `claude/firefox-focus-auth-redirect-u52ljv` | f0304de | 1 | Superseded | auth: force https in canonical redirect (Firefox Focus) |
 | `claude/first-login-data-scroll-hpeh3x` | 38ba773 | 153 | Superseded? | Make first-visit privacy notice scrollable |
-| `claude/forbux-onboarding-flow-dsd61y` | 1460d68 | 1 | Review | DRC onboarding: land users in chat input |
+| `claude/forbux-onboarding-flow-dsd61y` | 1460d68 | 1 | Superseded | DRC onboarding: land users in chat input (already in main) |
 | `claude/ghost-symbol-anonymous-chat-jbmgj2` | 5a4e50d | 166 | Superseded? | Ghost gives way to copy-conversation button |
 | `claude/ghost-symbol-incognito-rl705o` | 4f603fe | 148 | Superseded? | Add incognito ghost toggle |
-| `claude/glass-pane-close-icon-v451n4` | 189db14 | 1 | Review | Directional close chevrons on glass panes |
+| `claude/glass-pane-close-icon-v451n4` | 189db14 | 1 | Merged | Directional close chevrons (integrated 2026-07-13) |
 | `claude/hello-world-deploy-rubr64` | 54a66b0 | 3 | Dropped | "push straight to main" workflow — reversed to PRs 2026-07-13 |
 | `claude/inline-quiz-alternatives-80dnm0` | 69ec9f0 | 241 | Superseded? | Add inline quiz capability |
 | `claude/introspection-feature-arch-75zjlo` | 0447e9c | 69 | Superseded? | Introspection RAG: delta index builder |
@@ -116,7 +124,7 @@ heuristic; the skill's content check confirms.
 | `claude/reep-refactoring-tlfs0d` | 84713e0 | 179 | Superseded? | Refactor for modularity: split source registry |
 | `claude/refactor-clarity-modularity-1gfa5i` | 6d1e0a7 | 237 | Superseded? | Refactor for clarity: edge-cache, googlemaps split |
 | `claude/refactor-document-codebase-031nun` | f1f0c40 | 2 | Review | docs: align module tables and skills |
-| `claude/refactor-skill-repo-kb1c7k` | f9ee2ab | 1 | Review | extract split-billing math (billing.js) — NEW |
+| `claude/refactor-skill-repo-kb1c7k` | f9ee2ab | 1 | Merged | extract split-billing math (billing.js) (integrated 2026-07-13) |
 | `claude/remove-offline-privacy-4fngy5` | c46ea82 | 55 | Superseded? | Remove DRS projects + secret-keyed vault |
 | `claude/repo-setup-6x6tl1` | bf70932 | 19 | Superseded? | bash-lite: let the model decide when to use the shell |
 | `claude/research-agent-architecture-ka88w7` | 852dbe7 | 190 | Superseded? | Disable net-negative deep-tier phases |
@@ -126,7 +134,7 @@ heuristic; the skill's content check confirms.
 | `claude/sandbox-terminal-visibility-bvtt78` | b4f801a | 2 | Review | Sandbox: on-screen transparency bar |
 | `claude/secure-client-api-analysis-0twcps` | 0198c57 | 18 | Superseded? | feat(drc): client-side RAG for conversations/projects |
 | `claude/secure-providers-depth-ui-vtrlb0` | c10067d | 79 | Superseded? | Merge origin/main (DRC providers UI) |
-| `claude/security-assessment-owasp-setup-3hznsj` | f844788 | 4 | Review | OWASP Top-10 default corpus — NEW |
+| `claude/security-assessment-owasp-setup-3hznsj` | f844788 | 4 | Review (deferred) | OWASP corpus — NEW but 1109-line feature, own PR |
 | `claude/segelflygcertifikat-chat-failure-d9v3cd` | db29e9c | 240 | Superseded? | pipeline: fail over to reliable model |
 | `claude/segelflyghandboken-chapter-8zznku` | 7d49feb | 271 | Superseded? | Quiz prompt: test contained knowledge |
 | `claude/sensitive-info-audit-lc44ed` | d862bc9 | 120 | Superseded? | History sidebar: list icon, tweaks |
