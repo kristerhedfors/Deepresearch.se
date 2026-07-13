@@ -61,15 +61,27 @@ output at session start; if it printed a WARNING, rebase onto `origin/main`
 before touching code. Re-fetch before every push. Details in the
 **sync-main** skill.
 
-**Always push straight to `main` after every change.** This project does not use
-feature branches or pull requests for normal work — commit each change and push
-it directly to `main`.
+**Submit every change as a PULL REQUEST for merge — do NOT push straight to
+`main`.** (Reversed 2026-07-13: this project previously pushed directly to
+`main`; it now works through PRs so changes are reviewed and merged
+deliberately.) Cut a feature branch off the latest `origin/main`, commit there,
+push the branch, and open a PR targeting `main`. Merging is the reviewer's
+call — do not self-merge unless the owner explicitly asks.
 
 ```bash
+git fetch origin main
+git checkout -B <feature-branch> origin/main
 git add -A
 git commit -m "…"
-git push origin main
+git push -u origin <feature-branch>
+# then open a PR targeting main (see the merge-branches skill)
 ```
+
+> **`main` is merge-only now.** No feature work lands by a direct `git push
+> origin main`. Any branch whose work has been merged into `main` (via its PR)
+> is DONE — do not keep building on it; branch fresh from the updated `main`.
+> See the **merge-branches** skill for the full branch-integration + tagging
+> workflow.
 
 > **Commit signing is NOT provisioned — pushed commits show "Unverified", and
 > that is EXPECTED (TODO for the repo owner, not fixable in a session).** The
@@ -765,6 +777,13 @@ what docs claim); and update the skill list below plus the skill's
   `origin/main` before implementing (the SessionStart hook automates it),
   what to do when the branch is behind or diverged, and re-fetching before
   every push.
+- **merge-branches** — reconciling the repo's many unmerged feature branches
+  under the PR-based workflow: telling a squash-*superseded* branch (feature
+  already in `main`) from one with genuinely-new content, integrating a real
+  candidate as a focused PR, and the merged-branch LEDGER
+  (`docs/MERGED-BRANCHES.md`) that TAGS a branch done so no agent rebuilds on
+  it — plus `scripts/check-merged-branches.mjs`, the guard that NOTIFIES the
+  owner when someone pushes to an already-merged branch.
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
