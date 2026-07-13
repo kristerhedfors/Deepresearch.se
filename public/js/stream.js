@@ -782,7 +782,9 @@ async function maybeRunShellLoop(turn, opts) {
     const fileProvider = buildSandboxFileProvider(opts);
     const bootOnce = async () => {
       startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
-      booted = await ensureSandboxBooted(fileProvider);
+      // The first boot is slow (a whole Debian streams in), so entertain the
+      // step label with rotating quips (public/js/boot-messages.js) until ready.
+      booted = await ensureSandboxBooted(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
       if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
       return booted;
     };
@@ -904,7 +906,9 @@ async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
       onStatus: (s) => {
         if (gen !== generation) return;
         if (s.type === "phase") {
-          updateGenericStep(turn, "introspect", PRIVATE_PHASE_LABELS[s.phase] || "Working (browser-direct)…");
+          // `label` carries a live line (rotating sandbox-boot quips); else the
+          // phase's static browser-direct label.
+          updateGenericStep(turn, "introspect", s.label || PRIVATE_PHASE_LABELS[s.phase] || "Working (browser-direct)…");
           recordResearchEvent(turn, { event: "phase", phase: s.phase });
         } else if (s.type === "discard_text") {
           acc = "";

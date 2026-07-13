@@ -834,7 +834,9 @@ async function send(ev) {
           // (which file / pattern / command), not a bare counter.
           phaseLine("🔧 " + s.headline);
         } else if (s.type === "phase") {
-          phaseLine(PHASE_LABELS[s.phase] || s.phase);
+          // `label` carries a live line (e.g. a rotating sandbox-boot quip);
+          // otherwise fall back to the phase's static label.
+          phaseLine(s.label || PHASE_LABELS[s.phase] || s.phase);
         } else if (s.type === "discard_text") {
           shown = ""; // the validated revision replaces the draft
           live.textContent = "";
