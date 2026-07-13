@@ -32,6 +32,40 @@ shell", a real x86 Linux boots **in the browser** (CheerpX WASM), an agentic
 loop runs commands in it, and the real output feeds the answer. Present on
 **both** tiers — DRS (`DeepResearch.Se/rver`) and DRC (`DeepResearch.Se/cure`).
 
+> ## ✅ WORKING FOUNDATION — DRS verified end to end (2026-07-13)
+>
+> **DRS (Se/rver) sandbox execution is CONFIRMED WORKING on the owner's real
+> device** (iOS Safari, knob on): "list files in /" booted the VM with a live,
+> elaborating boot-progress line + rotating quips, ran `ls /`, showed the
+> commands as they executed (live `Sandbox › $ …` line) and as an expandable
+> transcript, and answered from the real output. This is the **known-good
+> baseline — treat it as a protected foundation, not experimental scaffolding to
+> freely rework.** The pieces that make it work, and MUST NOT regress:
+> - **The boot-progress sink is module-scoped and never nulled by
+>   `stopBootQuips`** (`public/js/sandbox.js` `_bootOnMessage`). Clearing it in
+>   `stopBootQuips` froze the whole boot line — see the sandbox-debug skill's
+>   LOAD-BEARING GUARD. `ensureSandboxBooted` sets the sink before `bootVM`; the
+>   ticker reads it live; a real send adopts a pre-warm's in-flight boot.
+> - **Command visibility:** the live `onExec` line + `finishSandboxStep`
+>   expandable transcript (`stream.js` / `activity.js`, from the command-metadata
+>   work). The user explicitly values this "nice elaborating" execution view.
+> - **Fail-soft boot timeout** (`BOOT_TIMEOUT_MS`, 90 s) so a wedged boot answers
+>   normally instead of freezing.
+> - **First-paint isolation self-heal** from the cached knob (`sandbox-mode.js`).
+>
+> Before changing ANY of `sandbox.js` boot/exec, `bash-core.js`, `stream.js`
+> `maybeRunShellLoop`, or `activity.js` `finishSandboxStep`: re-read this list,
+> keep the behavior, and **verify live on a real device** (this area is
+> browser/WASM glue with no Node unit test — it regressed TWICE from unverified
+> changes on 2026-07-13; the boot-progress sink-null and the pre-warm swallow).
+>
+> **Known-next fix (DRC only, NOT yet done):** on **DRC (Se/cure)** an ugly
+> **xterm terminal panel pops up covering the bottom half of the screen** during
+> sandbox use. DRS already suppresses this (the panel is built-but-hidden, 2026-
+> 07-12; activity shows on the faint backdrop instead). DRC needs the same
+> treatment — keep the terminal hidden by default and surface activity on the
+> backdrop layer. This is the next item on the fixlist; do it the DRS way.
+
 ## The load-bearing idea
 
 The sandbox executes **client-side** (the server never runs a shell), so the
@@ -320,16 +354,25 @@ path runs client-side, so it's shipped to Workers Logs two ways:
    without the debug beacon or device access. `client_diag.ran` is just the
    count; `meta.shell` is the calls themselves.
 
-## Live verification (DONE — 2026-07-11)
+## Live verification (DONE — 2026-07-11, re-confirmed 2026-07-13)
 
 Verified end to end on the real target device. On **iOS 18.7 Safari 26.5**,
 knob ON, `/rver` serving `require-corp`: the live `client_diag` flipped to
 `{coi:true, sab:true, sb:true, ran:1}` and `/api/bash/step` returned
 `ls /` → `SHELL_DONE`; the answer listed the real Debian root. Also verified
 from a fresh Chromium context (Playwright) and the break-glass admin session.
+
+**Re-confirmed 2026-07-13** on iOS Safari after the boot-progress + command-
+visibility work landed and its regressions were fixed (see the WORKING
+FOUNDATION note at the top): "list files in /" showed the live elaborating
+boot-progress line, the executing commands, and the expandable transcript, then
+answered — the owner's words: *"Now it works!!! The nice elaborating sandbox
+execution!!"* This is the protected DRS baseline.
+
 Two things to still spot-check when you touch this: the keyless Street View
 Embed **iframe** (the one casualty of `require-corp`), and DRC `/cure` on the
-user's own provider key.
+user's own provider key — **DRC still has the ugly bottom-half terminal popup
+(the next fixlist item; DRS already hides it).**
 
 ## Debugging playbook — "the sandbox refuses on a real device"
 
