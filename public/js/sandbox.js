@@ -59,6 +59,12 @@ let fitAddon = null;
 let cxReadFunc = null;
 /** @type {Promise<boolean> | null} */
 let bootPromise = null;
+// Whether the CURRENT boot mounted no user files (bare VM) — set in bootVM once
+// the plan is known. A bare boot is the only kind a pre-warm produces (it runs
+// before a message exists, so it can't know the files/project/source to mount);
+// resetSandboxIfBare() uses it to discard a pre-warm when a real send needs
+// mounts a bare VM can't carry (mounts are fixed at Linux.create).
+let _bootBare = false;
 let execQueue = Promise.resolve();
 let panel = null;
 let statusEl = null;
@@ -358,6 +364,43 @@ export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
   return bootPromise;
 }
 
+/** Whether no VM is booting or booted (a pre-warm may start). */
+export function sandboxIdle() {
+  return vmState === "off";
+}
+
+/**
+ * Tear the sandbox back down to idle so the NEXT ensureSandboxBooted re-boots
+ * from scratch. State-only + best-effort: the old CheerpX instance (and its
+ * parked interactive shell) is abandoned to GC — CheerpX exposes no clean
+ * dispose, and a fresh Linux.create makes a new VM. Used to discard a bare
+ * pre-warm that a real send needs to replace with a file-mounting boot.
+ */
+export function resetSandbox() {
+  try { stopBootWatchdog(); } catch { /* ignore */ }
+  try { stopBootQuips(); } catch { /* ignore */ }
+  vmState = "off";
+  bootPromise = null;
+  cx = null;
+  _bootBare = false;
+  try { if (typeof window !== "undefined") /** @type {any} */ (window).__DR_SANDBOX = null; } catch { /* ignore */ }
+  sblog("info", "sandbox.reset", {});
+  flushSandboxLog();
+}
+
+/**
+ * If the current (or in-flight) boot is a BARE pre-warm, discard it so the
+ * caller can re-boot with a file-mounting provider. Awaits any in-flight boot
+ * to settle FIRST — resetting mid-boot would race the running bootVM against a
+ * fresh one. A no-op when idle, or when the live VM already mounted files (a
+ * real boot, not a pre-warm). Never throws.
+ */
+export async function resetSandboxIfBare() {
+  if (vmState === "off") return;
+  try { if (bootPromise) await bootPromise; } catch { /* settle regardless */ }
+  if (_bootBare) resetSandbox();
+}
+
 /**
  * @param {(() => Promise<any>) | null} [fileProvider]
  * @param {((msg: string) => void) | null} [onBootMessage]
@@ -490,6 +533,15 @@ async function bootVM(fileProvider = null, onBootMessage = null) {
       fileMount = null;
     }
   }
+
+  // Record whether this boot is bare (no user files/project/source mounted) —
+  // a pre-warm always is. See _bootBare / resetSandboxIfBare.
+  _bootBare = !fileMount || !!(
+    fileMount.plan &&
+    fileMount.plan.session.length === 0 &&
+    !fileMount.plan.project &&
+    !fileMount.plan.source
+  );
 
   setStatus("starting Linux…");
   cx = await CheerpX.Linux.create({ mounts });
