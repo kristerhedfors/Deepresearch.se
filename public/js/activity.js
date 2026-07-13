@@ -20,6 +20,7 @@ import {
   shellRunOutputText,
   zoomToFov,
 } from "./activity-core.js";
+import { mountUmbrellaSpinner } from "./umbrella-spinner.js";
 
 // Re-exported so importers of activity.js (stream.js, the unit tests) keep
 // their existing import paths; the implementations live in activity-core.js.
@@ -474,6 +475,12 @@ export function renderStreetViewFrames(turn, s) {
 // blocked until `toggleGateClass` appears on the element (generic steps
 // unlock via "expandable", search steps via "finished") — before that there
 // is nothing inside to show.
+// Rotates the umbrella STYLE across the research step spinners so two waiting
+// symbols side by side wear two different canopies (color + shape), just like
+// the intro's varied fleet. A module-level counter — plain per-step increment
+// is all the "adjacent ones differ" guarantee needs.
+let stepSpinnerSeq = 0;
+
 function makeStepDom(labelText, toggleGateClass) {
   const details = document.createElement("details");
   details.className = "step";
@@ -484,6 +491,10 @@ function makeStepDom(labelText, toggleGateClass) {
   label.textContent = labelText;
   summary.append(spin, label);
   details.appendChild(summary);
+  // Each in-progress step plays the intro in miniature, fixed in its slot;
+  // best-effort, and stops itself when markFinished/settlePendingSteps removes
+  // the `.spin` element. Odd offset so consecutive styles are visibly apart.
+  mountUmbrellaSpinner(spin, { style: (stepSpinnerSeq++ * 3) % 6, size: 34 });
   details.addEventListener("click", (e) => {
     if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });

@@ -6,6 +6,7 @@ import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
+import { mountUmbrellaSpinner } from "./umbrella-spinner.js";
 
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -419,6 +420,10 @@ function showTyping(content) {
   const icon = document.createElement("span");
   icon.className = "typing-icon";
   content.appendChild(icon);
+  // The single waiting spinner: play the intro in miniature, fixed in place.
+  // Best-effort — falls back to the CSS twirly logo on reduced-motion/no-canvas.
+  // The animation stops itself when setText/resetForRevision clears the icon.
+  mountUmbrellaSpinner(icon, { style: 0, size: 72 });
 }
 
 /**
