@@ -38,6 +38,7 @@ import {
   sanitizeProjName,
 } from "./sandbox-files.js";
 import { feedCommand, feedResult } from "./agent-backdrop.js";
+import { createBootMessageRotator, BOOT_MESSAGE_INTERVAL_MS } from "./boot-messages.js";
 
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
 const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";
@@ -66,6 +67,26 @@ let statusEl = null;
 // supplied; null otherwise.
 let workspaceDev = null;
 let projectDev = null;
+// The boot-quip ticker (see boot-messages.js): a setInterval that rotates an
+// entertaining "still booting a whole Linux" line onto the caller's
+// notification surface while the slow first boot runs. Module-level so both the
+// success path and the error handler can stop it.
+let bootQuipTimer = null;
+
+/** Start rotating boot quips through `onBootMessage` (no-op without one). */
+function startBootQuips(onBootMessage) {
+  stopBootQuips();
+  if (typeof onBootMessage !== "function") return;
+  const rotator = createBootMessageRotator();
+  const tick = () => { try { onBootMessage(rotator.next()); } catch { /* decoration */ } };
+  tick(); // show the first quip immediately, don't wait a full interval
+  bootQuipTimer = setInterval(tick, BOOT_MESSAGE_INTERVAL_MS);
+}
+
+/** Stop the boot-quip ticker (idempotent). */
+function stopBootQuips() {
+  if (bootQuipTimer) { clearInterval(bootQuipTimer); bootQuipTimer = null; }
+}
 
 // ---- client telemetry (reaches Workers Logs via /api/client-log) -----------
 // The sandbox filesystem integration runs entirely in the browser, so its
@@ -310,12 +331,21 @@ function readData(str) {
  * `/workspace` volume is mounted and the files are seeded into `/workspace` +
  * `/mnt/<projname>-<hash>` before the VM is marked ready. Fully fail-soft — a
  * provider that throws, or any mount/seed error, never blocks the boot.
+ *
+ * `onBootMessage` (optional) is called with a fresh entertaining quip roughly
+ * every couple seconds while the (slow) first boot runs — the caller routes it
+ * to whatever notification surface it owns (the DRS activity step, the DRC
+ * phase line) so a long boot reads as alive, not frozen. Fully decorative and
+ * fail-soft; the boot is idempotent, so it only ticks on the genuine first
+ * boot and never for a warm re-request.
  * @param {(() => Promise<any>) | null} [fileProvider]
+ * @param {((msg: string) => void) | null} [onBootMessage]
  * @returns {Promise<boolean>}
  */
-export function ensureSandboxBooted(fileProvider = null) {
+export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
   if (bootPromise) return bootPromise;
-  bootPromise = bootVM(fileProvider).catch((err) => {
+  bootPromise = bootVM(fileProvider, onBootMessage).catch((err) => {
+    stopBootQuips();
     const msg = (/** @type {any} */ (err))?.message || String(err);
     console.error("[sandbox] boot failed", err);
     stopBootWatchdog();
@@ -330,8 +360,9 @@ export function ensureSandboxBooted(fileProvider = null) {
 
 /**
  * @param {(() => Promise<any>) | null} [fileProvider]
+ * @param {((msg: string) => void) | null} [onBootMessage]
  */
-async function bootVM(fileProvider = null) {
+async function bootVM(fileProvider = null, onBootMessage = null) {
   const t0 = Date.now();
   _bootT0 = t0;
   _bootStage = "boot_start";
@@ -350,6 +381,8 @@ async function bootVM(fileProvider = null) {
   // taking over the screen. The user can still open it by hand.
   buildPanel();
   setStatus("booting");
+  // Keep the notification bar lively while the disk streams and Linux comes up.
+  startBootQuips(onBootMessage);
   // Arm the stall watchdog now — everything after this point is an await that
   // can hang (CDN scripts, disk fetch, Linux.create). If any never resolves, the
   // watchdog still names the stuck stage and flushes it.
@@ -474,6 +507,7 @@ async function bootVM(fileProvider = null) {
   }
 
   cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
+  stopBootQuips(); // booted — hand the notification bar back to the real steps
   setStatus("ready");
   vmState = "ready";
   // Boot resolved — silence the stall watchdog before the (forever) shell loop.
