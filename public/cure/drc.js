@@ -165,9 +165,13 @@ async function loadIntroPublications() {
 
 // The first-visit umbrella intro (public/cure/umbrella.js): the logo vortex
 // untwisting into wireframe umbrellas. Plays ONCE, on a genuine first visit
-// (never over a deep link), before the intro pane; `?anim=1` replays it for
-// demos and on-device verification. Entirely fail-soft: any import or play
-// failure resolves straight through to the intro pane.
+// (never over a deep link, and never when the OS asks to reduce motion),
+// before the intro pane. `?anim=1` is the explicit REPLAY/verification path:
+// it forces the intro through EVERY gate — the seen flag, a deep link, AND
+// prefers-reduced-motion — so "just show me the animation" always works (the
+// automatic first-visit play still honors reduce-motion; only this explicit
+// opt-in overrides it). Entirely fail-soft: any import or play failure
+// resolves straight through to the intro pane.
 function maybePlayUmbrella(deepLinked) {
   const force = /[?&]anim=1\b/.test(location.search);
   let seen = false;
@@ -182,7 +186,9 @@ function maybePlayUmbrella(deepLinked) {
   } catch {
     // no matchMedia — animate
   }
-  if (reduced || (!force && (seen || deepLinked))) return Promise.resolve();
+  // `force` (the explicit ?anim=1 replay) wins over all three gates; without
+  // it, reduce-motion / already-seen / a deep link each suppress the intro.
+  if (!force && (reduced || seen || deepLinked)) return Promise.resolve();
   try {
     localStorage.setItem("dr_umbrella_seen", "1");
   } catch {
