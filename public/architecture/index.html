@@ -9,11 +9,11 @@
   <style>
     /* Same visual family as /story/ and /build/ — the blue docs surface.
        The two tiers keep their identity colors EVERYWHERE on this page:
-       Se/rver = flag blue (the app), Se/cure = dark olive (the khaki
-       /cure tier) — always the slashed short tokens, never acronyms
-       (2026-07-12 naming directive; see CLAUDE.md's branding rule).
-       Every colored element is also direct-labeled — identity is never
-       color-alone. */
+       Se/cure = dark olive (the khaki /cure tier), Se/rver = flag blue
+       (the app) — always the slashed short tokens, never acronyms, and
+       always named secure-first (2026-07-12 + 2026-07-13 naming directives;
+       see CLAUDE.md's branding rule). Every colored element is also
+       direct-labeled — identity is never color-alone. */
     :root {
       --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
       --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
@@ -54,8 +54,8 @@
     /* Tier wordmarks — rendered EXACTLY like the two product headers
        (app.css's .brand and /cure/drc.css's .brand): "deepresearch." in
        the light ROUNDED sans, the slashed tail in heavy MONOSPACE, each
-       tier's flag color on its own field — Se/rver golden on the app's
-       blue, Se/cure flag-blue on the /cure khaki. Same font, colors, and
+       tier's flag color on its own field — Se/cure flag-blue on the /cure
+       khaki, Se/rver golden on the app's blue. Same font, colors, and
        style as the headers; no invented pill. */
     .wm {
       font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
@@ -111,29 +111,75 @@
 
   <section>
     <h2>One product, two answers to the same question</h2>
-    <p class="lead">DeepResearch.se ships the same deep-research assistant
-    twice, as a deliberate pair: <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span>,
-    the signed-in tier, where a
-    Cloudflare Worker orchestrates the research — and
+    <p class="lead">DeepResearch.se is a research project on the privacy
+    capabilities of LLM applications, and this pair is the proof. It ships
+    the same deep-research assistant twice, as a deliberate pair:
     <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span>,
     the public client-side tier, where <em>your browser</em> is the research
-    engine and the server is deliberately absent from every data path. Same
-    floating glass UI (Se<span class="sl">/</span>cure in khaki), same five-phase pipeline shape, same
+    engine and the server is deliberately absent from every data path — and
+    <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span>,
+    the signed-in tier, where a Cloudflare Worker orchestrates the research.
+    Same floating glass UI (Se<span class="sl">/</span>cure in khaki), same five-phase pipeline shape, same
     no-function-calling determinism — and opposite answers to the question
     <em>"where is the user's data allowed to exist?"</em>.</p>
     <p>The short version of the trade this page visualizes:
-    <span class="verdict drs">Se<span class="sl">/</span>rver buys capability</span> — live web search,
-    maps, host intelligence, attachments, accounts — by having a server, and
-    protects the data that server handles with encryption and policy.
     <span class="verdict drc">Se<span class="sl">/</span>cure buys privacy</span> structurally — the
     server <em>cannot</em> log, leak, or be compelled to reveal what never
     reaches it — and pays for that with the capabilities only a server can
-    hold keys for.</p>
+    hold keys for.
+    <span class="verdict drs">Se<span class="sl">/</span>rver buys capability</span> — live web search,
+    maps, host intelligence, attachments, accounts — by having a server, and
+    protects the data that server handles with encryption and policy.</p>
   </section>
 
   <section>
     <h2>The two data paths</h2>
     <div class="pair">
+      <figure>
+        <div class="diagram">
+        <svg viewBox="0 0 420 470" role="img" aria-label="The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
+          <!-- Browser: the engine -->
+          <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
+          <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
+          <text x="210" y="57" text-anchor="middle" font-size="10.5" fill="#f0e9d2">the pipeline runs HERE</text>
+          <text x="210" y="75" text-anchor="middle" font-size="10" fill="#f0e9d2">triage → knowledge harvest → gap → synthesis → validation</text>
+          <rect x="60" y="90" width="300" height="54" rx="8" fill="#8d7a33" stroke="#f0e9d2" stroke-width="0.8"/>
+          <text x="210" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">sealed project state (browser-local storage)</text>
+          <text x="210" y="125" text-anchor="middle" font-size="9" fill="#f0e9d2">chats · RAG index · YOUR provider API keys — AES-256-GCM</text>
+          <text x="210" y="137" text-anchor="middle" font-size="9" fill="#f0e9d2">under a secret only you hold</text>
+          <!-- direct provider arrows -->
+          <line x1="110" y1="160" x2="72" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
+          <polygon points="69,242 68,232 76,236" fill="#7c6a24"/>
+          <line x1="210" y1="160" x2="210" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
+          <polygon points="210,242 206,233 214,233" fill="#7c6a24"/>
+          <line x1="310" y1="160" x2="348" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
+          <polygon points="351,242 344,236 352,232" fill="#7c6a24"/>
+          <text x="210" y="222" text-anchor="middle" font-size="9.5" fill="#75683f">direct CORS calls, on YOUR keys</text>
+          <rect x="8" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+          <text x="72" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">OpenAI</text>
+          <text x="72" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
+          <text x="72" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
+          <rect x="146" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+          <text x="210" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Groq</text>
+          <text x="210" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
+          <text x="210" y="291" text-anchor="middle" font-size="9" fill="#75683f">(no embeddings → no RAG)</text>
+          <rect x="284" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+          <text x="348" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Berget.ai</text>
+          <text x="348" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
+          <text x="348" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
+          <!-- the absent server -->
+          <rect x="60" y="330" width="300" height="72" rx="10" fill="none" stroke="#b3a06e" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="210" y="354" text-anchor="middle" font-size="12" font-weight="700" fill="#75683f">The server (not in the data path)</text>
+          <text x="210" y="372" text-anchor="middle" font-size="9.5" fill="#75683f">serves the static page + public research replays — nothing else.</text>
+          <text x="210" y="386" text-anchor="middle" font-size="9.5" fill="#75683f">No accounts. It could not log content or keys even in principle.</text>
+          <text x="210" y="434" text-anchor="middle" font-size="9.5" fill="#75683f">no web search either: the "harvest" phase draws on the model's own</text>
+          <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
+        </svg>
+        </div>
+        <figcaption><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> —
+        the browser orchestrates;
+        the server's absence from the path IS the privacy guarantee.</figcaption>
+      </figure>
       <figure>
         <div class="diagram">
         <svg viewBox="0 0 420 470" role="img" aria-label="The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
@@ -193,105 +239,61 @@
         data the server handles is encrypted at rest, and its handling is
         governed by policy.</figcaption>
       </figure>
-      <figure>
-        <div class="diagram">
-        <svg viewBox="0 0 420 470" role="img" aria-label="The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
-          <!-- Browser: the engine -->
-          <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
-          <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
-          <text x="210" y="57" text-anchor="middle" font-size="10.5" fill="#f0e9d2">the pipeline runs HERE</text>
-          <text x="210" y="75" text-anchor="middle" font-size="10" fill="#f0e9d2">triage → knowledge harvest → gap → synthesis → validation</text>
-          <rect x="60" y="90" width="300" height="54" rx="8" fill="#8d7a33" stroke="#f0e9d2" stroke-width="0.8"/>
-          <text x="210" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">sealed project state (browser-local storage)</text>
-          <text x="210" y="125" text-anchor="middle" font-size="9" fill="#f0e9d2">chats · RAG index · YOUR provider API keys — AES-256-GCM</text>
-          <text x="210" y="137" text-anchor="middle" font-size="9" fill="#f0e9d2">under a secret only you hold</text>
-          <!-- direct provider arrows -->
-          <line x1="110" y1="160" x2="72" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="69,242 68,232 76,236" fill="#7c6a24"/>
-          <line x1="210" y1="160" x2="210" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="210,242 206,233 214,233" fill="#7c6a24"/>
-          <line x1="310" y1="160" x2="348" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="351,242 344,236 352,232" fill="#7c6a24"/>
-          <text x="210" y="222" text-anchor="middle" font-size="9.5" fill="#75683f">direct CORS calls, on YOUR keys</text>
-          <rect x="8" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="72" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">OpenAI</text>
-          <text x="72" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="72" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-          <rect x="146" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="210" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Groq</text>
-          <text x="210" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="210" y="291" text-anchor="middle" font-size="9" fill="#75683f">(no embeddings → no RAG)</text>
-          <rect x="284" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="348" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Berget.ai</text>
-          <text x="348" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="348" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-          <!-- the absent server -->
-          <rect x="60" y="330" width="300" height="72" rx="10" fill="none" stroke="#b3a06e" stroke-width="1.5" stroke-dasharray="6 4"/>
-          <text x="210" y="354" text-anchor="middle" font-size="12" font-weight="700" fill="#75683f">The server (not in the data path)</text>
-          <text x="210" y="372" text-anchor="middle" font-size="9.5" fill="#75683f">serves the static page + public research replays — nothing else.</text>
-          <text x="210" y="386" text-anchor="middle" font-size="9.5" fill="#75683f">No accounts. It could not log content or keys even in principle.</text>
-          <text x="210" y="434" text-anchor="middle" font-size="9.5" fill="#75683f">no web search either: the "harvest" phase draws on the model's own</text>
-          <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
-        </svg>
-        </div>
-        <figcaption><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> —
-        the browser orchestrates;
-        the server's absence from the path IS the privacy guarantee.</figcaption>
-      </figure>
     </div>
   </section>
 
   <section>
     <h2>Privacy, paired</h2>
     <p class="muted">The same concerns, answered by each architecture. The
-    pattern to notice: on <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> each row is a
-    <em>promise the code keeps</em>; on <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span>
+    pattern to notice: on <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span>
     each row is a <em>consequence of the structure</em> — there is no
-    server-side behavior to trust, because there is no server-side behavior.</p>
+    server-side behavior to trust, because there is no server-side behavior;
+    on <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> each row is a
+    <em>promise the code keeps</em>.</p>
     <table>
       <colgroup><col class="concern"><col><col></colgroup>
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h"><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span></th>
           <th class="drc-h"><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span></th>
+          <th class="drs-h"><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span></th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <th>Identity</th>
-          <td class="drs-c">Google sign-in, invite-only approval, quotas per account.</td>
           <td class="drc-c">No accounts at all. Nothing to sign in to; nothing to attribute a question to.</td>
+          <td class="drs-c">Google sign-in, invite-only approval, quotas per account.</td>
         </tr>
         <tr>
           <th>Conversations at rest</th>
-          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — only if the cloud knob is on — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
           <td class="drc-c">One sealed archive in the browser's own storage: chats, the RAG index (chunk text <em>and</em> vectors), and your provider API keys, AES-256-GCM under a secret only you hold. Stricter than Se<span class="sl">/</span>rver's RAG exception — even indexed material rests as ciphertext.</td>
+          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — only if the cloud knob is on — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
         </tr>
         <tr>
           <th>Interaction log</th>
-          <td class="drs-c">A full-visibility chat log (complete question, answer, research metadata) in D1 — an explicit product decision (2026-07-08) that powers the agentic debugging and feedback loops. Suppressed for any request carrying the <code>incognito</code> flag — the API promise the ghost feature made stays honored.</td>
           <td class="drc-c">Structurally impossible. The question and answer travel browser → provider on your key; the server never carries either, so there is nothing it could log.</td>
+          <td class="drs-c">A full-visibility chat log (complete question, answer, research metadata) in D1 — an explicit product decision (2026-07-08) that powers the agentic debugging and feedback loops. Suppressed for any request carrying the <code>incognito</code> flag — the API promise the ghost feature made stays honored.</td>
         </tr>
         <tr>
           <th>API keys</th>
-          <td class="drs-c">Server-side secrets (Berget, Anthropic, OpenAI, Exa, Maps, Shodan). Users never handle a key; keys never appear in any log.</td>
           <td class="drc-c">Your own keys, pasted once, living <em>inside</em> the sealed state in your browser. Each key is sent only to its own provider, straight from the browser.</td>
+          <td class="drs-c">Server-side secrets (Berget, Anthropic, OpenAI, Exa, Maps, Shodan). Users never handle a key; keys never appear in any log.</td>
         </tr>
         <tr>
           <th>What third parties see</th>
-          <td class="drs-c">The minimum for the job: a search query, a coordinate, a hostname — never the conversation, a filename, or the account identity.</td>
           <td class="drc-c">The provider you chose sees your questions (that's inherent to using any model API) — under <em>your</em> account and data-processing terms with them, not ours.</td>
+          <td class="drs-c">The minimum for the job: a search query, a coordinate, a hostname — never the conversation, a filename, or the account identity.</td>
         </tr>
         <tr>
           <th>The strictest tier</th>
-          <td class="drs-c">The secret-keyed project vault: a whole project archived server-side as ciphertext under a user-held secret the server never sees and cannot derive. One feature with the structural property.</td>
           <td class="drc-c">The whole tier <em>is</em> that property. The vault's crypto core (<code>vault-core.js</code>) is literally the foundation Se<span class="sl">/</span>cure's sealed state is built on.</td>
+          <td class="drs-c">The secret-keyed project vault: a whole project archived server-side as ciphertext under a user-held secret the server never sees and cannot derive. One feature with the structural property.</td>
         </tr>
         <tr>
           <th>In one line</th>
-          <td class="drs-c"><span class="verdict drs">Privacy by encryption and policy</span> — auditable promises.</td>
           <td class="drc-c"><span class="verdict drc">Privacy by structure</span> — no promise needed.</td>
+          <td class="drs-c"><span class="verdict drs">Privacy by encryption and policy</span> — auditable promises.</td>
         </tr>
       </tbody>
     </table>
@@ -307,44 +309,44 @@
       <thead>
         <tr>
           <th></th>
-          <th class="drs-h"><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span></th>
           <th class="drc-h"><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span></th>
+          <th class="drs-h"><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span></th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <th>Research pipeline</th>
-          <td class="drs-c">Triage → search → gap check → synthesis → validation, orchestrated by the Worker. Deterministic, no function calling, every helper phase fail-soft.</td>
           <td class="drc-c">The same five-phase shape, ported to the browser — with the search wave replaced by an offline <em>knowledge harvest</em>. Same determinism, same fail-soft invariants, verified end to end in tests.</td>
+          <td class="drs-c">Triage → search → gap check → synthesis → validation, orchestrated by the Worker. Deterministic, no function calling, every helper phase fail-soft.</td>
         </tr>
         <tr>
           <th>Sources</th>
-          <td class="drs-c">Live Exa web search waves with a numbered, domain-diverse source registry; Hugging Face Hub joins as citable sources when asked.</td>
           <td class="drc-c">No web search (no server to hold the Exa key). The harvest phase pools the model's own knowledge, and the prompts force honesty about that limit.</td>
+          <td class="drs-c">Live Exa web search waves with a numbered, domain-diverse source registry; Hugging Face Hub joins as citable sources when asked.</td>
         </tr>
         <tr>
           <th>Models</th>
-          <td class="drs-c">The full Berget catalog plus key-gated Claude and GPT answer models; JSON planning phases always on the fixed reliable model (split routing).</td>
           <td class="drc-c">The CORS-capable providers only — OpenAI, Groq, Berget — because the browser must be able to call them directly. Split routing survives: JSON phases run on each provider's fixed cheap JSON model.</td>
+          <td class="drs-c">The full Berget catalog plus key-gated Claude and GPT answer models; JSON planning phases always on the fixed reliable model (split routing).</td>
         </tr>
         <tr>
           <th>Documents &amp; RAG</th>
-          <td class="drs-c">Attachments (pdf/docx/images with metadata extraction), project files, chat RAG — embeddings via the Worker's <code>/api/embed</code> proxy.</td>
           <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a Groq-only session simply runs without RAG — fail-soft).</td>
+          <td class="drs-c">Attachments (pdf/docx/images with metadata extraction), project files, chat RAG — embeddings via the Worker's <code>/api/embed</code> proxy.</td>
         </tr>
         <tr>
           <th>Enrichments</th>
-          <td class="drs-c">Google Maps / Street View scenes, Shodan host intelligence, reverse geocoding, the image deck — all opt-in knobs, all server-keyed.</td>
           <td class="drc-c">None. These are exactly the capabilities that exist only because a server holds the keys and takes the minimal-disclosure role.</td>
+          <td class="drs-c">Google Maps / Street View scenes, Shodan host intelligence, reverse geocoding, the image deck — all opt-in knobs, all server-keyed.</td>
         </tr>
         <tr>
           <th>Accounts &amp; continuity</th>
-          <td class="drs-c">Quotas, usage windows, cloud sync (knob-gated, ciphertext), cross-device projects, the message center, feedback mode, quizzes, games.</td>
           <td class="drc-c">Browser-local projects with save-as-project and <code>/my/project-&lt;hash&gt;</code> deep links; published research replays open in place and continue on your own keys. No accounts to sync.</td>
+          <td class="drs-c">Quotas, usage windows, cloud sync (knob-gated, ciphertext), cross-device projects, the message center, feedback mode, quizzes, games.</td>
         </tr>
         <tr>
           <th>Execution sandbox</th>
-          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> the Worker's reliable model does (<code>/api/bash/step</code>); on <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> even that decision happens client-side on your key. Execution never leaves the browser on either tier.</td>
+          <td class="drs-c" colspan="2" style="text-align:center; background: linear-gradient(90deg, #f4faff, #faf6e8);"><strong>Shared — and identical.</strong> The same x86 Linux VM boots in the browser tab on both tiers (next section). The only difference is who picks the next command: on <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> even that decision happens client-side on your key; on <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> the Worker's reliable model does (<code>/api/bash/step</code>). Execution never leaves the browser on either tier.</td>
         </tr>
       </tbody>
     </table>
@@ -428,12 +430,12 @@
     CheerpX runtime and the public disk service carry their own licensing
     terms to review before this graduates from experimental.</p>
     <p>And the pairing holds here too: the sandbox gives
-    <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> a capability without a privacy cost
-    (your files mount into a VM that lives and dies in your tab — the
-    server only ever suggests the next command), and it gives
     <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> a capability that would otherwise be
     impossible (a no-server tier still gets code execution, because
-    execution never needed the server in the first place).</p>
+    execution never needed the server in the first place), and it gives
+    <span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> a capability without a privacy cost
+    (your files mount into a VM that lives and dies in your tab — the
+    server only ever suggests the next command).</p>
   </section>
 
   <section>
