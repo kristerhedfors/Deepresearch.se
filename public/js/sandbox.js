@@ -112,9 +112,15 @@ function startBootQuips() {
   bootQuipTimer = setInterval(tick, 1000);
 }
 
-/** Stop the boot-quip ticker (idempotent) and drop the live sink. */
+/** Stop the boot-quip ticker (idempotent). Does NOT clear _bootOnMessage: the
+ * sink is set by ensureSandboxBooted BEFORE bootVM calls startBootQuips (which
+ * calls this first to clear any prior timer), so clearing it here nulled the
+ * sink before the first tick could ever paint — the whole boot line stayed
+ * frozen on the caller's initial "Booting…" string (the 2026-07-13 regression
+ * this comment now guards against). The sink is harmless to leave: a warm
+ * re-request never ticks, and the next boot overwrites it. resetSandbox clears
+ * it on a full teardown. */
 function stopBootQuips() {
-  _bootOnMessage = null;
   if (bootQuipTimer) { clearInterval(bootQuipTimer); bootQuipTimer = null; }
 }
 
@@ -448,6 +454,7 @@ export function sandboxIdle() {
 export function resetSandbox() {
   try { stopBootWatchdog(); } catch { /* ignore */ }
   try { stopBootQuips(); } catch { /* ignore */ }
+  _bootOnMessage = null; // full teardown — drop the sink (stopBootQuips no longer does)
   vmState = "off";
   bootPromise = null;
   cx = null;
