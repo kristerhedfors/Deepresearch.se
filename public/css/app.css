@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h31;
+  --css-version: h32;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1498,3 +1498,94 @@ body.feedback-mode .feedback-btn { display: inline-block; }
 }
 .dr-sandbox-close:hover { color: #d6d6e6; }
 .dr-sandbox-term { flex: 1; min-height: 0; padding: .3rem; }
+
+/* ---- Testable interaction points — the try-it queue -------------------- */
+/* public/js/testpoints.js. The queue overlay reuses the account-card look;
+   the banner is a fixed bottom sheet (like the privacy notice, but pinned to
+   the bottom so it never covers the header). Admin-only — the launcher only
+   appears when the /api/admin/testpoints probe succeeds. */
+#tryqueue {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(10, 46, 92, .45);
+  display: grid; place-items: center;
+  padding: 1rem;
+}
+#tryqueue[hidden] { display: none; }
+.tryqueue-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1rem 1.2rem 1.2rem;
+  width: min(460px, 94vw); max-height: 86vh; overflow-y: auto;
+  font-size: .88rem; line-height: 1.5;
+  box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+}
+.tryqueue-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.tryqueue-head button {
+  background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem; cursor: pointer;
+}
+.tryqueue-item {
+  display: flex; flex-direction: column; gap: .1rem; width: 100%;
+  text-align: left; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .55rem .7rem; margin: .35rem 0; font: inherit; cursor: pointer;
+}
+.tryqueue-item:hover { border-color: var(--accent); }
+.tryqueue-item-label { font-weight: 600; font-size: .86rem; }
+.tryqueue-item-target { font-size: .72rem; overflow-wrap: anywhere; }
+
+#trybanner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 12;
+  width: min(560px, 94vw);
+}
+#trybanner[hidden] { display: none; }
+.trybanner-inner {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: .75rem .9rem .85rem;
+  box-shadow: 0 10px 34px rgba(4, 30, 60, .38);
+  font-size: .86rem; line-height: 1.5;
+}
+.trybanner-top { display: flex; align-items: center; gap: .5rem; }
+.trybanner-tag {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: .12rem .45rem; border-radius: 8px;
+  background: var(--accent); color: #fff;
+}
+.trybanner-label { font-weight: 600; flex: 1; overflow-wrap: anywhere; }
+.trybanner-x {
+  background: none; border: 0; color: var(--muted); font-size: .9rem; cursor: pointer; padding: .1rem .3rem;
+}
+.trybanner-summary { margin: .45rem 0 .3rem; overflow-wrap: anywhere; }
+.trybanner-warn {
+  margin: .3rem 0; font-size: .78rem;
+  padding: .35rem .55rem; border-radius: 8px;
+  background: #fff3d6; border: 1px solid #e3c576; color: #7a5b12;
+}
+.trybanner-ref { font-size: .74rem; margin: .1rem 0 .3rem; }
+.trybanner-verdict { display: flex; gap: .5rem; margin: .3rem 0; }
+.trybanner-verdict button {
+  flex: 1; padding: .45rem .6rem; font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.trybanner-up.chosen { background: rgba(21, 122, 75, .16); border-color: var(--ok); color: var(--ok); }
+.trybanner-down.chosen { background: rgba(192, 57, 43, .14); border-color: #c0392b; color: #c0392b; }
+.trybanner-note {
+  width: 100%; margin: .35rem 0 0; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .4rem .55rem; font: inherit; font-size: .82rem; resize: none;
+  background: var(--panel-2); color: var(--text);
+}
+.trybanner-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .5rem; }
+.trybanner-actions button {
+  padding: .4rem .9rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+.trybanner-submit:not([disabled]) { background: var(--accent); color: #fff; border-color: var(--accent); }
+.trybanner-submit[disabled] { opacity: .5; cursor: default; }
+
+/* Pulse-highlight an element an action points the tester at. */
+.try-pulse { animation: try-pulse 1.2s ease-out 2; border-radius: 8px; }
+@keyframes try-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 79, 160, .5); }
+  100% { box-shadow: 0 0 0 10px rgba(13, 79, 160, 0); }
+}

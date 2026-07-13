@@ -150,6 +150,21 @@ CREATE TABLE IF NOT EXISTS feedback_messages (
   read_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_messages_fb ON feedback_messages(feedback_id, id);
+CREATE TABLE IF NOT EXISTS test_points (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  label TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  target TEXT NOT NULL,
+  actions_json TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  result TEXT,
+  result_note TEXT,
+  result_at INTEGER,
+  ref TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_test_points_status ON test_points(status, id DESC);
 `;
 
 // Additive migrations for databases created before the column existed.
