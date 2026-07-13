@@ -201,6 +201,25 @@ const WHERE_AM_I_RE =
 // isHereAsk gate in src/googlemaps-text.js — reported verbatim 2026-07-09:
 // "Where am i now" → "Street view" → "My location" never requested the
 // device location because the old prefilter needed street-view word +
+// The typed text of every user turn, oldest first (string or multimodal
+// parts) — the device-location prefilter needs the EARLIER turns too: a
+// short "My location" only reads as a here-ask because an earlier turn
+// said "street view" (see asksDeviceLocation below).
+/**
+ * @param {Array<{ role?: string, content?: unknown }>} msgs
+ * @returns {string[]}
+ */
+export function userTexts(msgs) {
+  return msgs
+    .filter((m) => m?.role === "user")
+    .map((m) => {
+      const c = m.content;
+      if (typeof c === "string") return c;
+      if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
+      return "";
+    });
+}
+
 // here-word in ONE message). True when the LATEST user turn asks
 // street-view-here outright, is a plain where-am-I ask, or is a short
 // here-fragment ("My location", "här", "min plats") answering an EARLIER

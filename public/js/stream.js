@@ -61,6 +61,7 @@ import {
   splitUserContent,
   stripOldImages,
   STREAM_STALL_MS,
+  userTexts,
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
@@ -665,19 +666,8 @@ async function buildOutgoingUserContent(text, opts) {
   return content;
 }
 
-// The typed text of every user turn, oldest first (string or multimodal
-// parts) — the device-location prefilter needs the EARLIER turns too: a
-// short "My location" only reads as a here-ask because an earlier turn
-// said "street view" (see asksDeviceLocation in message-content.js).
-const userTexts = (msgs) =>
-  msgs
-    .filter((m) => m?.role === "user")
-    .map((m) => {
-      const c = m.content;
-      if (typeof c === "string") return c;
-      if (Array.isArray(c)) return c.find((p) => p?.type === "text")?.text || "";
-      return "";
-    });
+// userTexts (the typed text of every user turn, oldest first) now lives in
+// message-content.js next to its consumer asksDeviceLocation.
 
 // One-shot device geolocation for "street view here" asks: resolves null
 // on any failure (no API, permission denied, timeout) — never throws, so

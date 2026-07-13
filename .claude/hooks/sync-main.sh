@@ -37,3 +37,10 @@ else
   echo "sync-main: WARNING — $current is $behind commit(s) BEHIND origin/main (and $ahead ahead)."
   echo "sync-main: rebase before implementing: git rebase origin/main"
 fi
+
+# Guard the "don't build on a merged branch" rule (merge-branches skill +
+# docs/MERGED-BRANCHES.md): shout if anyone pushed to a branch already tagged
+# done. Fail-soft — a non-zero exit here must never block the session.
+if [ -f scripts/check-merged-branches.mjs ] && command -v node >/dev/null 2>&1; then
+  node scripts/check-merged-branches.mjs 2>/dev/null | grep -A100 "NOTIFY OWNER" || true
+fi

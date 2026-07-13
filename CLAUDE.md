@@ -61,15 +61,43 @@ output at session start; if it printed a WARNING, rebase onto `origin/main`
 before touching code. Re-fetch before every push. Details in the
 **sync-main** skill.
 
-**Always push straight to `main` after every change.** This project does not use
-feature branches or pull requests for normal work — commit each change and push
-it directly to `main`.
+**BOTH merge styles are supported (2026-07-13).** A change may land EITHER by a
+pull request merged into `main`, OR by a direct branch merge / push to `main`.
+Pick whichever fits — PRs when the change wants review, a direct branch merge
+for routine work. Always cut work on a feature branch off the latest
+`origin/main` first; a merged branch is DONE (do not keep building on it —
+branch fresh from the updated `main`). See the **merge-branches** skill.
 
 ```bash
-git add -A
-git commit -m "…"
-git push origin main
+git fetch origin main
+git checkout -B <feature-branch> origin/main
+git add -A && git commit -m "…"
+git push -u origin <feature-branch>
+# then EITHER open a PR targeting main, OR merge the branch into main directly
 ```
+
+> ### MERGE BARRIER — check on EVERY prompt, before any change
+>
+> A one-time **mass-reconciliation merge** flag lives in
+> **`docs/MERGE-STATUS.json`** (`active: true/false`). It is the signal to
+> ALL clients that the many pre-existing branches have been merged into `main`
+> and are now stale. **Before making any change (every prompt), check it** —
+> the `merge-barrier` hook does this automatically and prints a notice, but the
+> rule stands regardless:
+>
+> **If the barrier is `active` AND your current branch does not contain the
+> recorded `main_sha` (i.e. you're not following the reconciled `main`), then:
+> sync to `main` and CREATE A NEW BRANCH before doing any work — do not
+> continue on your old (now-merged) branch.**
+>
+> ```bash
+> git fetch origin main
+> git checkout -B <fresh-branch> origin/main   # start clean off reconciled main
+> ```
+>
+> A session already branched off the reconciled `main` contains `main_sha`, so
+> the hook stays silent for it. The owner clears the barrier by setting
+> `active: false` once the fleet has reset. See the **merge-branches** skill.
 
 > **Commit signing is NOT provisioned — pushed commits show "Unverified", and
 > that is EXPECTED (TODO for the repo owner, not fixable in a session).** The
@@ -214,8 +242,8 @@ Server (`src/`):
 | `panels.js` | The panel-SELECTION board (D1 `panels_reviews`) — a THIRD `board.js` consumer but a different KIND of loop (the ATTENTION loop, not a backlog). Its catalog items ARE the admin panels themselves; it has NO board widget — each panel header on `/admin` carries ▲/▼ thumbs and voting reshapes the admin view in place (up floats to top, net-negative collapses + sinks). Reshapes PURELY on votes: no drag, no explicit priority (reuses the core's `"priority"` ordering with none ever set → votes-desc). The votes-driven focus order (`/api/admin/panels*`, `?format=text` = the attention loop's input; `scripts/panels`) tells a Claude Code session which admin surface the owner is working on now — read it, then read that surface's own board. See the **feature-board** skill §6 |
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, boards |
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
-| `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (`summarizeSpend` — the split-billing totals) |
-| `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) with `chat.js` |
+| `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
+| `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) and the split-billing spend math (`billing.js`) with `chat.js` |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
 | `pipeline-inputs.js` | The pipeline's PURE input-block builders + output parsers (`shellReplyMessages`, `notesSection`, `subquestionsSection`, `conflictsSection`, `collectConflicts`, `extractClaims`, `takeSearchBatch`) — the byte-identical-input string/data shaping split out of `pipeline.js` so the flow reads as the flow; Node-tested |
 | `notes.js` | Structured research notes — the pure representation/merge logic behind the budget-gated notes-digest phase (`pipeline.js`'s `maybeDigest`, `prompts.js`'s `notesPrompt`): each note distils one factual claim tied to numbered source ids; normalizes and MERGES notes across search waves (dedupe by claim, union ids/entities) so gap-check and synthesis reason over a compact claim set instead of re-reading every highlight. Pure and never throws — a bad note is dropped, matching the pipeline's fail-soft posture |
@@ -236,6 +264,7 @@ Server (`src/`):
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution, plus the untrusted-client-input sanitizers (`resolveShellTranscript`, `sanitizeClientDiag`, `sanitizeFsSummary`) shared with `chat.js` |
 | `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
+| `billing.js` | The shared split-billing spend math for a completed request (`summarizeSpend` — the up-to-three-model-bucket token/cost totals, each priced at its own catalog rate; `exaCost` — searches at their depth-tier price plus the `/contents` fetch surcharge): a leaf module (only the pure cost primitives from `quota.js`/`budget.js`) so `chat.js` and `mcp.js` share ONE implementation instead of both re-inlining it (`mcp.js` pulls it in via its dynamic-import block so the pipeline still stays out of `mcp.test.js`) |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
@@ -483,7 +512,11 @@ clone-not-share of nested fields), `alerts.js` (error classification),
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`
-(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend`), `berget.js`
+(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend` via its
+`billing.js` re-export), `billing.js` (the shared split-billing spend
+math directly: `summarizeSpend`'s three model buckets each at their own
+catalog rate, `exaCost`'s depth-tier scaling + `/contents` surcharge),
+`berget.js`
 (`consumeChatStream`: SSE parsing + the opt-in idle/total stream guards),
 `anthropic.js` (payload conversion incl. system/image handling, the
 Anthropic→OpenAI SSE adapter composed through the real `consumeChatStream`,
@@ -576,7 +609,9 @@ ids, the appended-block-stripping turn-text extraction, the
 sibling-chat scope picker), `message-content.js` (the
 outgoing-message block builders — inline document, image-metadata, and
 RAG-excerpt blocks incl. the project-chat variant — plus `deriveTitle`,
-`stripOldImages`, `splitUserContent`, and `conversationCopyText` (the
+`stripOldImages`, `splitUserContent`, `userTexts` (the text of every user
+turn, oldest first — moved here next to its consumer `asksDeviceLocation`),
+and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
 core extracted out of `stream.js`'s send path), `imagedeck.js`'s pure
@@ -765,6 +800,13 @@ what docs claim); and update the skill list below plus the skill's
   `origin/main` before implementing (the SessionStart hook automates it),
   what to do when the branch is behind or diverged, and re-fetching before
   every push.
+- **merge-branches** — reconciling the repo's many unmerged feature branches
+  under the PR-based workflow: telling a squash-*superseded* branch (feature
+  already in `main`) from one with genuinely-new content, integrating a real
+  candidate as a focused PR, and the merged-branch LEDGER
+  (`docs/MERGED-BRANCHES.md`) that TAGS a branch done so no agent rebuilds on
+  it — plus `scripts/check-merged-branches.mjs`, the guard that NOTIFIES the
+  owner when someone pushes to an already-merged branch.
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the

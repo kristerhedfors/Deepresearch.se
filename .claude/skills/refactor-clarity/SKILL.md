@@ -186,3 +186,26 @@ sanitizers → `validation.js`; `resolveJsonModel` dup → `model-routing.js`;
 `pipeline.js` (1148→1031) pure builders → `pipeline-inputs.js`; `activity.js`
 pure fns → import-free `activity-core.js`. Each new module shipped with its own
 test file, adding coverage to logic that previously had none.
+
+## Second worked example (2026-07-12) — the de-dup pass
+
+A follow-up pass after the survey showed `pipeline.js` was already fully
+extracted (no residual pure helpers) and `stream.js` was mostly irreducible
+orchestration. Two clean moves survived that scrutiny — the point being that a
+"run the skill on the whole repo" job often yields **fewer** cuts than expected,
+and that's correct, not a shortfall:
+- **`billing.js`** (server, flagship de-dup): `summarizeSpend` (the
+  three-model-bucket split-billing totals) + `exaCost` (depth-tier + `/contents`
+  surcharge) were defined in `chat.js` and **re-inlined verbatim** in `mcp.js`.
+  Moved both to a new leaf module (imports only `bergetCost`/
+  `CONTENTS_COST_MULTIPLIER`); `chat.js` re-exports `summarizeSpend` so
+  `chat.test.js` is unchanged; `mcp.js` pulls `billing.js` into its **dynamic**
+  import block (not the top) so the pipeline stays out of `mcp.test.js`. New
+  `billing.test.js` adds the `exaCost` coverage that never existed.
+- **`userTexts` → `message-content.js`** (client, smallest-possible relocation):
+  a pure arrow fn moved verbatim into the import-free core `stream.js` already
+  imports from, right next to its consumer `asksDeviceLocation`; a
+  `message-content.test.js` case added.
+The near-duplicate `newRequestState` (chat.js vs mcp.js) was deliberately NOT
+unified — the two objects are different shapes, so sharing them needs a
+base+extend split, which is a feature-shaped change, not a byte-identical move.
