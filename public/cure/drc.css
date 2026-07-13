@@ -339,11 +339,11 @@ header {
    Background only; the khaki field is unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(196, 30, 32, .74) 0%, rgba(134, 10, 14, .84) 100%),
-    rgba(166, 20, 22, .64);
-  border: 1px solid rgba(202, 40, 40, .74);
+    linear-gradient(180deg, rgba(208, 26, 28, .80) 0%, rgba(124, 6, 10, .90) 100%),
+    rgba(174, 16, 18, .70);
+  border: 1px solid rgba(214, 38, 38, .80);
   box-shadow:
-    0 7px 26px rgba(104, 4, 6, .44),
+    0 7px 28px rgba(92, 2, 4, .48),
     inset 0 1px 0 rgba(255, 255, 255, .55),
     inset 0 13px 26px rgba(255, 168, 156, .16);
 }
