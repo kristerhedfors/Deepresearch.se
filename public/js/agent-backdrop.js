@@ -6,23 +6,15 @@
 //
 // Instead of popping the sandbox terminal open (which covered the screen and
 // broke the prompt-first flow), the raw commands and output the agent runs
-// drift faintly across the page's sky-blue background, and a small TRANSPARENCY
-// BAR appears while the terminal is running so the user tunes how visible that
-// layer is, right there, live. The bar is shown only during activity and
-// auto-hidden when the terminal goes quiet. When the layer is turned all the
-// way off (0), the text layer is not built or rendered at all (optimized away)
-// — only the tiny bar shows, so the user can bring it back.
-//
-// The Settings view (account-settings.js) also carries the SAME control — a
-// slider grayed out until the execution sandbox is on — so the preference is
-// discoverable when the terminal isn't running; both write the one per-browser
-// value below (setBackdropOpacity), so they stay in lockstep.
+// drift faintly across the page's sky-blue background. The layer's transparency
+// is FIXED at its fullest (the faint ceiling): the tuning slider — both the
+// floating bar and the Settings-view mirror — was removed (2026-07-13
+// directive), so there is one hardcoded value and no per-browser preference.
 //
 // The single feed point is execInSandbox in sandbox.js, so BOTH tiers (DRS and
 // DRC) and any agent that runs commands surface here automatically. Callers may
 // pass a channel id per agent; when several are active the layer clips between
-// them. The chosen transparency is remembered per browser (localStorage) so the
-// bar comes back where the user left it.
+// them.
 //
 // SCROLLING: the log is no longer a fixed tail. A wheel/drag over the empty page
 // field pages BACK through the command history (the conversation bubbles keep
@@ -41,30 +33,22 @@ import {
   createBackdropModel,
   opacityCss,
   parallaxNudge,
-  parseOpacityPref,
   pushCommand,
   pushResult,
   scrollStep,
 } from "./agent-backdrop-core.js";
 
-const STORE_KEY = "dr_agent_backdrop";
-// How long the transparency bar lingers after the last command before it
-// auto-hides (the terminal has gone quiet). Kept alive while the user is
-// touching it.
-const BAR_HIDE_MS = 6000;
+// The transparency slider was removed (2026-07-13 directive): the layer is
+// always shown at its fullest (100 → the faint 0.55 CSS ceiling). One fixed
+// value, no per-browser preference, no floating bar.
+const OPACITY_PCT = 100;
 
 const model = createBackdropModel();
 let layer = null; // the fixed background layer (built lazily, only when on)
 let view = null; // the clipped viewport window (sizes/positions the text)
 let scroller = null; // the inner element we translate to scroll the log
 let pre = null; // the <pre> the active channel renders into
-let bar = null; // the floating transparency slider (built lazily on first activity)
-let barRange = null;
-let barVal = null;
 let clipTimer = 0; // round-robin between channels when >1 is active
-let hideTimer = 0; // auto-hide the bar after inactivity
-let interacting = false; // user is touching the bar — don't auto-hide
-let pref = null; // cached opacity percentage (lazy-read from localStorage)
 
 // Backdrop scroll state: bgOffset px scrolled back into the log (0 = pinned to
 // the live tail), bgPinned tracks whether we're still following the newest.
@@ -73,49 +57,16 @@ let bgPinned = true;
 let scrollWired = false; // wheel/touch listeners attached once
 let parallaxTimer = 0; // springs the conversation's opposite lean back to zero
 
-// ---- preference persistence (one per-browser value; the floating bar AND the
-//      Settings-view slider both read/write it) ----
+// ---- fixed transparency ----
 
-function readPref() {
-  if (pref != null) return pref;
-  let raw = null;
-  try {
-    if (typeof localStorage !== "undefined") raw = localStorage.getItem(STORE_KEY);
-  } catch { /* private mode / disabled storage */ }
-  pref = parseOpacityPref(raw);
-  return pref;
-}
-
-function writePref(pct) {
-  pref = pct;
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(STORE_KEY, String(pct));
-  } catch { /* ignore */ }
-}
-
-function valLabel(pct) {
-  return pct <= 0 ? "Off" : pct + "%";
-}
-
-/** The current transparency (0..100) — remembered slider position. */
+/** The current transparency (0..100) — hardcoded at the max. */
 export function backdropOpacityPct() {
-  return readPref();
+  return OPACITY_PCT;
 }
 
-/** Whether the layer is enabled (non-zero). */
+/** Whether the layer is enabled — always, now the value is fixed non-zero. */
 export function backdropOn() {
-  return backdropEnabled(readPref());
-}
-
-/**
- * Set the transparency (0..100), persist it, and apply it live. 0 removes the
- * text layer from view (and skips building it). Used by the bar's slider.
- * @param {number} pct
- */
-export function setBackdropOpacity(pct) {
-  const v = parseOpacityPref(pct);
-  writePref(v);
-  applyPref();
+  return backdropEnabled(OPACITY_PCT);
 }
 
 // ---- the background text layer ----------------------------------------------
@@ -145,27 +96,8 @@ function ensureLayer() {
 
 function applyOpacity() {
   if (!layer) return;
-  const pct = readPref();
-  if (!backdropEnabled(pct)) {
-    layer.style.display = "none";
-    return;
-  }
   layer.style.display = "";
-  layer.style.opacity = String(opacityCss(pct));
-}
-
-// Apply the current preference to the world: build/show the text layer when on,
-// hide it when off (0) — the "if not shown at all, just optimize that case".
-function applyPref() {
-  if (backdropOn()) {
-    ensureLayer();
-    render();
-    applyOpacity();
-    syncClipTimer();
-  } else {
-    applyOpacity(); // hides the layer if it exists; nothing built if it doesn't
-    syncClipTimer();
-  }
+  layer.style.opacity = String(opacityCss(OPACITY_PCT));
 }
 
 function render() {
@@ -297,83 +229,12 @@ function syncClipTimer() {
   }
 }
 
-// ---- the floating transparency bar (the whole UX) ---------------------------
-
-function ensureBar() {
-  if (bar || typeof document === "undefined" || !document.body) return bar;
-  bar = document.createElement("div");
-  bar.id = "dr-backdrop-bar";
-  bar.className = "dr-backdrop-bar";
-  bar.hidden = true;
-
-  const icon = document.createElement("span");
-  icon.className = "dr-backdrop-bar-icon";
-  icon.textContent = "◐";
-  icon.title = "Sandbox terminal — background transparency";
-
-  barRange = document.createElement("input");
-  barRange.type = "range";
-  barRange.min = "0";
-  barRange.max = "100";
-  barRange.step = "1";
-  barRange.className = "dr-backdrop-range";
-  barRange.setAttribute("aria-label", "Terminal backdrop transparency");
-  barRange.value = String(readPref());
-
-  barVal = document.createElement("span");
-  barVal.className = "dr-backdrop-bar-val";
-  barVal.textContent = valLabel(readPref());
-
-  barRange.addEventListener("input", () => {
-    const pct = Number(barRange.value) || 0;
-    setBackdropOpacity(pct);
-    if (barVal) barVal.textContent = valLabel(pct);
-    interacting = true;
-    keepBarAlive();
-  });
-  barRange.addEventListener("change", () => { interacting = false; scheduleHide(); });
-  bar.addEventListener("pointerenter", () => { interacting = true; showBar(); });
-  bar.addEventListener("pointerleave", () => { interacting = false; scheduleHide(); });
-
-  bar.appendChild(icon);
-  bar.appendChild(barRange);
-  bar.appendChild(barVal);
-  document.body.appendChild(bar);
-  return bar;
-}
-
-function showBar() {
-  ensureBar();
-  if (!bar) return;
-  if (barRange) barRange.value = String(readPref());
-  if (barVal) barVal.textContent = valLabel(readPref());
-  bar.hidden = false;
-  keepBarAlive();
-}
-
-function keepBarAlive() {
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
-  scheduleHide();
-}
-
-function scheduleHide() {
-  if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; }
-  if (interacting || typeof setTimeout === "undefined") return;
-  hideTimer = setTimeout(() => {
-    if (bar && !interacting) bar.hidden = true;
-  }, BAR_HIDE_MS);
-}
-
 // ---- the feed (called from execInSandbox) -----------------------------------
 
-// A command or its output arrived → the terminal is running: show the bar (the
-// control), and — only when the layer isn't turned off — build/render the faint
-// text. At 0 the bar still shows so the user can bring the layer back, but no
-// text layer is built or updated (the optimized case).
+// A command or its output arrived → the terminal is running: build/render the
+// faint text at the fixed transparency.
 function feed(fn, channel, payload) {
   try {
-    showBar();
-    if (!backdropOn()) return; // off — optimize: skip the text layer entirely
     ensureLayer();
     fn(model, channel || "shell", payload);
     render();

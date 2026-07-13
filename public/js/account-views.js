@@ -61,31 +61,6 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
     </div>`;
 }
 
-// One settings SLIDER row — the same frame as settingRow (a label + its
-// press-and-hold info popover) but the control is a 0..100 range instead of a
-// switch, with a small live value label beside it. Used by the terminal
-// backdrop transparency control, which is only meaningful while the execution
-// sandbox is running — so like the switch rows it renders disabled (grayed,
-// the whole control faded) rather than hidden when it doesn't apply, keeping
-// the state explainable. The value id is `${id}val` so the wiring can update
-// the label in place.
-export function settingSliderRow({ id, label, value, disabled, popId, info, valueLabel }) {
-  const plainLabel = escapeHtml(String(label).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
-  return `
-    <div class="settings-item">
-      <div class="settings-row">
-        <span class="settings-label">${label}
-          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${plainLabel}”">ⓘ</button>
-        </span>
-        <span class="settings-slider${disabled ? " is-disabled" : ""}">
-          <input type="range" id="${id}" class="setting-range" min="0" max="100" step="1" value="${Number(value) || 0}"${disabled ? " disabled" : ""} aria-label="${plainLabel}">
-          <span class="setting-range-val" id="${id}val">${escapeHtml(String(valueLabel))}</span>
-        </span>
-      </div>
-      <div class="setting-pop" id="${popId}" hidden>${info}</div>
-    </div>`;
-}
-
 // Feedback mode's knob lives in the Settings view with every other
 // configuration knob (2026-07-11 directive: ALL configuration under the
 // header's gear icon).
