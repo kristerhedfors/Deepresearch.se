@@ -33,7 +33,8 @@ describe("isPublicAsset", () => {
       "/js/vault-core.js", "/js/sse.js", "/js/drc-core.js", "/js/drc-providers.js",
       "/js/drc-rag.js", "/js/rag.js", "/js/chat-rag.js", "/js/settings.js",
       "/js/drc-research.js", "/js/drc-store.js", "/js/bash-core.js", "/js/bash-agent.js",
-      "/js/sandbox.js", "/js/sandbox-files.js", "/js/introspect-core.js",
+      "/js/sandbox.js", "/js/sandbox-files.js", "/js/agent-backdrop.js",
+      "/js/agent-backdrop-core.js", "/js/boot-messages.js", "/js/introspect-core.js",
       "/js/introspect-ui.js", "/introspect/source-snapshot.json", "/js/markdown.js",
       "/js/canned-faq.js",
     ]) {
