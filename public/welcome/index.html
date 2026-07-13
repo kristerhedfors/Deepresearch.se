@@ -277,6 +277,10 @@
        closer to "secure"/"server" — the monospace glyph carries wide
        side-bearings. Applies to every wordmark tail on the page. */
     .sl { margin: 0 -.12em; }
+    /* The bubble's tail is heavier (font-weight 800), so the shared tight
+       negative margin makes the slash touch the letters — relax it here so
+       Se/cure reads clearly in the fat font. */
+    #mbubble .sl { margin: 0 .02em; }
     #mbubble a { color: var(--accent); font-weight: 600; }
     @media (prefers-reduced-motion: reduce) {
       #ghostbtn { animation: none; }
