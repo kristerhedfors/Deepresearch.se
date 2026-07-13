@@ -45,6 +45,13 @@ export const MAX_SHELL_ROUNDS = 6; // agentic iterations before we synthesize re
 export const MAX_COMMANDS_PER_ROUND = 6; // commands accepted from one model turn
 export const MAX_OUTPUT_CHARS = 4000; // per-command stdout/stderr kept in the transcript
 export const MAX_COMMAND_CHARS = 2000; // a single command line is clamped to this
+// Total wall-clock budget for the WHOLE loop (the lazy first boot — a ~25 s cold
+// Debian stream, slower still on iOS where the persistent /workspace IndexedDB
+// mount alone can take 20–30 s — plus every round's model call and command). A
+// backstop against a slow-but-not-wedged run piling rounds up until the client
+// gives the connection up for stalled (the 2026-07-13 iOS "stream stalled"
+// failure); a single wedged command is caught faster by the teardown check below.
+export const MAX_SHELL_WALL_MS = 120000;
 
 // ---- intent gate ----------------------------------------------------------
 
@@ -331,6 +338,22 @@ export function buildStepUserMessage({ task, context, priorBlock = "" }) {
 
 // ---- the agentic loop driver ------------------------------------------------
 
+/** Wall-clock reader for the loop budget; injectable so tests stay deterministic. */
+const defaultNow = () => Date.now();
+
+/**
+ * Does a command result mean the sandbox VM is GONE (not merely that the command
+ * failed)? Two signals, both produced by the browser executor (public/js/sandbox.js):
+ * exit 124 is the EXEC_TIMEOUT fail-soft, which discards the wedged, unabortable
+ * VM; "sandbox not ready" is what every exec returns once the VM is torn down or
+ * never booted. Either way the loop must stop — see the call site. Exported for tests.
+ * @param {{ exitCode?: number, stderr?: string }} [run]
+ * @returns {boolean}
+ */
+export function sandboxTornDown(run) {
+  return !!run && (run.exitCode === 124 || run.stderr === "sandbox not ready");
+}
+
 /**
  * Run the agentic shell loop: repeatedly ask the MODEL what to run next (via
  * the injected `step`) and execute it in the sandbox, until the model is done
@@ -359,15 +382,21 @@ export function buildStepUserMessage({ task, context, priorBlock = "" }) {
  *   onExec?: (command: string, info: { round: number, index: number }) => void,
  *   onResult?: (run: ShellRun) => void,
  *   maxRounds?: number,
+ *   maxWallMs?: number,
+ *   now?: () => number,
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export async function runShellLoop({ step, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS }) {
+export async function runShellLoop({ step, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, maxWallMs = MAX_SHELL_WALL_MS, now = defaultNow }) {
   /** @type {ShellRun[]} */
   const transcript = [];
   // null = not yet booted; true/false = boot outcome. No ensureReady → ready.
   let ready = ensureReady ? null : true;
+  const startedAt = now();
   for (let round = 1; round <= maxRounds; round++) {
+    // Total wall-clock spent (boot + every prior round) — stop before the client
+    // decides the connection stalled rather than grinding out more slow rounds.
+    if (maxWallMs && now() - startedAt >= maxWallMs) break;
     /** @type {ShellProposal} */
     let proposal;
     try {
@@ -404,6 +433,12 @@ export async function runShellLoop({ step, exec, ensureReady, onStep, onExec, on
       };
       transcript.push(run);
       if (onResult) { try { onResult(run); } catch { /* ignore */ } }
+      // The VM tore itself down (an exec timeout discards the wedged instance)
+      // or was already gone: every command after this one would only return the
+      // same dead-VM error. Stop the whole loop — running out the rest of the
+      // round/maxRounds produced the 2026-07-13 iOS cascade of "6 commands, all
+      // sandbox not ready". Synthesis still runs with the transcript so far.
+      if (sandboxTornDown(run)) return transcript;
     }
   }
   return transcript;

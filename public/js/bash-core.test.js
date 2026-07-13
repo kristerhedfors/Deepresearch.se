@@ -18,6 +18,7 @@ import {
   normalizeExecResult,
   parseShellRequest,
   runShellLoop,
+  sandboxTornDown,
   shellCommandLabel,
 } from "./bash-core.js";
 
@@ -422,5 +423,76 @@ describe("runShellLoop (generic driver)", () => {
       exec: async (cmd) => ({ exitCode: 0, stdout: cmd, stderr: "" }),
     });
     assert.deepEqual(transcript.map((r) => r.command), ["ok"]);
+  });
+
+  // The 2026-07-13 iOS cascade: an exec timeout (exit 124) discards the wedged
+  // VM, so every command after it returns "sandbox not ready". The loop must
+  // STOP on the first teardown rather than run the rest of the round/maxRounds.
+  test("stops the WHOLE loop on an exec-timeout teardown (exit 124), skipping the rest of the round", async () => {
+    let execCalls = 0;
+    const cmds = ["ls /workspace", "ls /workspace", "ls /workspace"];
+    const transcript = await runShellLoop({
+      // one round proposing three commands; the first wedges
+      step: async () => ({ commands: cmds, done: false, reasoning: "" }),
+      exec: async () => {
+        execCalls++;
+        return { exitCode: 124, stdout: "", stderr: "command timed out after 30s" };
+      },
+    });
+    assert.equal(execCalls, 1); // stopped after the first, did not run cmds 2 & 3
+    assert.equal(transcript.length, 1);
+    assert.equal(transcript[0].exitCode, 124);
+  });
+
+  test("stops on a 'sandbox not ready' result (VM already torn down)", async () => {
+    let rounds = 0;
+    const transcript = await runShellLoop({
+      step: async () => { rounds++; return { commands: ["ls /"], done: false, reasoning: "" }; },
+      exec: async () => ({ exitCode: 1, stdout: "", stderr: "sandbox not ready" }),
+      ensureReady: async () => true,
+    });
+    assert.equal(rounds, 1); // did not spin all six rounds emitting dead-VM errors
+    assert.equal(transcript.length, 1);
+    assert.match(transcript[0].stderr, /sandbox not ready/);
+  });
+
+  test("an ordinary non-zero exit is NOT a teardown — the loop continues", async () => {
+    const steps = [
+      { commands: ["false"], done: false, reasoning: "" },
+      { commands: ["echo ok"], done: false, reasoning: "" },
+      { commands: [], done: true, reasoning: "" },
+    ];
+    let i = 0;
+    const transcript = await runShellLoop({
+      step: async () => steps[i++],
+      exec: async (cmd) => (cmd === "false"
+        ? { exitCode: 1, stdout: "", stderr: "" }
+        : { exitCode: 0, stdout: cmd, stderr: "" }),
+    });
+    assert.deepEqual(transcript.map((r) => r.command), ["false", "echo ok"]);
+  });
+
+  test("stops once the total wall-clock budget is spent (injected clock)", async () => {
+    let clock = 0;
+    const now = () => clock;
+    let rounds = 0;
+    const transcript = await runShellLoop({
+      step: async () => { rounds++; return { commands: ["sleep"], done: false, reasoning: "" }; },
+      exec: async () => { clock += 40000; return { exitCode: 0, stdout: "", stderr: "" }; }, // 40 s each
+      maxWallMs: 90000, // budget: round 1 (t=0) runs, round 2 (t=40k) runs, round 3 (t=80k<90k) runs, round 4 (t=120k) stops
+      now,
+    });
+    assert.equal(rounds, 3);
+    assert.equal(transcript.length, 3);
+  });
+});
+
+describe("sandboxTornDown", () => {
+  test("true for our timeout sentinel and the not-ready guard, false otherwise", () => {
+    assert.equal(sandboxTornDown({ exitCode: 124, stdout: "", stderr: "command timed out after 30s" }), true);
+    assert.equal(sandboxTornDown({ exitCode: 1, stdout: "", stderr: "sandbox not ready" }), true);
+    assert.equal(sandboxTornDown({ exitCode: 0, stdout: "ok", stderr: "" }), false);
+    assert.equal(sandboxTornDown({ exitCode: 1, stdout: "", stderr: "grep: no match" }), false);
+    assert.equal(sandboxTornDown(undefined), false);
   });
 });
