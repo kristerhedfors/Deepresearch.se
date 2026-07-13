@@ -43,6 +43,22 @@ export function searchServiceName(info) {
   return (info && info.service) || "Web search";
 }
 
+// ---- bash-lite sandbox step -------------------------------------------------
+
+// The output body shown when a sandbox command row is expanded: stdout and/or
+// stderr (labeled only when BOTH are present), trailing whitespace trimmed, or
+// "(no output)" when the command printed nothing. The exit code is rendered
+// separately (as a badge), so it isn't part of this text. Pure; never throws.
+export function shellRunOutputText(run) {
+  const r = run && typeof run === "object" ? run : {};
+  const out = typeof r.stdout === "string" ? r.stdout.replace(/\s+$/, "") : "";
+  const err = typeof r.stderr === "string" ? r.stderr.replace(/\s+$/, "") : "";
+  if (out && err) return "stdout:\n" + out + "\n\nstderr:\n" + err;
+  if (out) return out;
+  if (err) return err;
+  return "(no output)";
+}
+
 // The stats footer text from the `done` event (model, duration, tokens,
 // searches). Pure string builder; renderStats writes it into the DOM.
 export function formatStatsLine(s) {

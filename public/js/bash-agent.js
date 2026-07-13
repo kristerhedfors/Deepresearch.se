@@ -34,6 +34,7 @@ export {
   parseShellRequest,
   normalizeExecResult,
   formatShellResult,
+  shellCommandLabel,
   buildShellTranscript,
   buildStepUserMessage,
 } from "./bash-core.js";
@@ -80,18 +81,20 @@ export async function fetchShellStep(messages, transcript, fetchImpl = fetch) {
  *   exec: (command: string) => Promise<{ exitCode: number, stdout: string, stderr: string }>,
  *   ensureReady?: () => Promise<boolean>,
  *   onStep?: (info: { round: number, reasoning: string, commands: string[] }) => void,
+ *   onExec?: (command: string, info: { round: number, index: number }) => void,
  *   onResult?: (run: ShellRun) => void,
  *   maxRounds?: number,
  *   fetchImpl?: typeof fetch,
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export function runShellLoop({ messages, exec, ensureReady, onStep, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch }) {
+export function runShellLoop({ messages, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch }) {
   return coreRunShellLoop({
     step: (transcript) => fetchShellStep(messages, transcript, fetchImpl),
     exec,
     ensureReady,
     onStep,
+    onExec,
     onResult,
     maxRounds,
   });

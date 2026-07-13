@@ -17,6 +17,7 @@ import {
   formatStatsLine,
   sanitizeResearchEvent,
   searchServiceName,
+  shellRunOutputText,
   zoomToFov,
 } from "./activity-core.js";
 
@@ -547,6 +548,60 @@ export function finishGenericStep(turn, s) {
     }
     step.details.appendChild(ul);
   }
+}
+
+// The bash-lite sandbox step: an expandable transcript of every command the
+// agent ran in the in-browser Linux VM. Unlike finishGenericStep's one-line
+// bullets, each command is shown IN FULL with its exit code and (clamped)
+// output — the user asked to see exactly what executed inside the sandbox, not
+// just "ran N commands". Dedicated renderer (mirroring finishSearchStep), fed
+// the ShellRun[] transcript (public/js/bash-core.js) by stream.js.
+/**
+ * @param {object} turn
+ * @param {Array<{command: string, exitCode: number, stdout: string, stderr: string}>} runs
+ */
+export function finishSandboxStep(turn, runs) {
+  const step = turn.steps.sandbox;
+  if (!step) return;
+  markFinished(step);
+  const list = Array.isArray(runs) ? runs.filter((r) => r && r.command) : [];
+  step.label.textContent =
+    "Ran " + list.length + " command" + (list.length === 1 ? "" : "s") + " in the Linux sandbox";
+  if (!list.length) return;
+  step.details.classList.add("expandable");
+  const wrap = document.createElement("div");
+  wrap.className = "shell-runs";
+  for (const run of list) wrap.appendChild(renderShellRun(run));
+  step.details.appendChild(wrap);
+}
+
+// One command row inside the expanded sandbox step: the full command line, an
+// exit-code badge (only when non-zero), and the output in a monospace block.
+// textContent throughout — command and output are untrusted, never HTML.
+function renderShellRun(run) {
+  const row = document.createElement("div");
+  row.className = "shell-run";
+  const cmd = document.createElement("div");
+  cmd.className = "shell-cmd";
+  const prompt = document.createElement("span");
+  prompt.className = "shell-prompt";
+  prompt.textContent = "$";
+  const text = document.createElement("span");
+  text.className = "shell-cmd-text";
+  text.textContent = String(run.command || "");
+  cmd.append(prompt, text);
+  const exit = Number.isFinite(Number(run.exitCode)) ? Math.trunc(Number(run.exitCode)) : 1;
+  if (exit !== 0) {
+    const badge = document.createElement("span");
+    badge.className = "shell-exit";
+    badge.textContent = "exit " + exit;
+    cmd.appendChild(badge);
+  }
+  const out = document.createElement("pre");
+  out.className = "shell-out";
+  out.textContent = shellRunOutputText(run);
+  row.append(cmd, out);
+  return row;
 }
 
 // "Searching the web: …" with a spinner.
