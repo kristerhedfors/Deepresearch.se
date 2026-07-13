@@ -27,7 +27,8 @@ import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNA
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop } from "./bash-agent.js";
-import { ensureSandboxBooted, execInSandbox, sandboxFsSummary, sandboxSupported, sblog } from "./sandbox.js";
+import { ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -755,6 +756,40 @@ async function buildChatPayload(opts) {
 // call and never boots the VM. Returns the transcript for stream.js to attach
 // as `shell_transcript`; the pipeline folds it into the answer as ground truth.
 // Fully fail-soft: any problem returns [] and the answer proceeds normally.
+// Whether a send needs the sandbox to mount anything a BARE pre-warm can't
+// carry: session attachments, an active project, or the introspection /src
+// source (dev mode). Session ingest is technically always mounted, but its
+// files are seeded once at boot — so an attachment added after a bare pre-warm
+// still needs a re-boot. Conservative by design: a false positive only costs a
+// re-boot (today's behavior), never a wrong mount.
+/** @param {SendOpts} opts */
+function sendWantsMounts(opts) {
+  return !!(
+    (opts?.docs && opts.docs.length) ||
+    (opts?.images && opts.images.length) ||
+    activeProject() ||
+    developerModeOn()
+  );
+}
+
+// PRE-WARM: boot a bare Linux VM as soon as the user focuses the composer, so
+// the unavoidable ~25s CheerpX cold start elapses while they type instead of
+// after they hit send. Idempotent (gated on sandboxIdle) and strictly best-
+// effort. Only fires for the case a bare VM fully serves — no pending
+// attachments, no active project, dev mode off — so it can never mount the
+// wrong thing; any of those, or an attachment added later, is handled by
+// resetSandboxIfBare at send time. A bare send (e.g. "list files in /") then
+// finds the VM already warm and answers immediately.
+export function prewarmSandbox() {
+  try {
+    if (!bashLiteOn() || !sandboxSupported()) return;
+    if (!sandboxIdle()) return; // already booting or booted — nothing to do
+    if (hasPending() || activeProject() || developerModeOn()) return; // would need real mounts
+    ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
+    sblog("info", "sandbox.prewarm", {});
+  } catch { /* best-effort — never disturb the composer */ }
+}
+
 /**
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
@@ -773,6 +808,14 @@ async function maybeRunShellLoop(turn, opts) {
       });
       return [];
     }
+
+    // A pre-warm (prewarmSandbox) boots a BARE VM on composer focus so the slow
+    // ~25s cold start elapses while the user types. But a bare VM can't carry
+    // mounts (they're fixed at Linux.create), so if THIS send needs files /
+    // project / source, discard the bare pre-warm and re-boot with the real
+    // provider below. Awaits any in-flight pre-warm to settle first; a no-op
+    // when nothing was pre-warmed or the live VM already mounted files.
+    if (sendWantsMounts(opts)) await resetSandboxIfBare();
 
     let booted = false;
     let ran = 0;

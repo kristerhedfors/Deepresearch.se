@@ -37,6 +37,7 @@ import {
   conversationStarted,
   initStream,
   isStreaming,
+  prewarmSandbox,
   resumePendingAnswer,
   sendMessage,
   stopGeneration,
@@ -393,6 +394,12 @@ const autogrow = () => {
   input.style.height = input.scrollHeight + "px";
 };
 input.addEventListener("input", autogrow);
+
+// Pre-warm the execution sandbox the moment the composer is focused (knob on +
+// isolated + no attachments/project/dev-mode → a bare boot). The ~25s CheerpX
+// cold start then elapses while the user types, so a shell ask answers without
+// the wait. Strictly best-effort and idempotent (see prewarmSandbox).
+input.addEventListener("focus", prewarmSandbox);
 
 // Introspection mode's mascot (developer mode): as soon as what the user is
 // TYPING reads as an ask about this site's own implementation, TIN — the
