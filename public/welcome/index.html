@@ -97,6 +97,49 @@
     footer { text-align: center; font-size: .78rem; color: var(--muted); padding-top: .4rem; }
     footer a { color: var(--accent); }
 
+    /* ---- the "ask before you sign in" demo: a prepackaged, NON-LLM helper
+       (js/canned-faq.js) so a signed-out visitor can ask the common questions
+       and get an honest, prewritten answer that points them to sign in. Every
+       reply is badged as canned, never the model. ---- */
+    #askdemo .askhint { font-size: .82rem; color: var(--muted); margin: 0 0 .6rem; }
+    #askmsgs { display: flex; flex-direction: column; gap: .55rem; margin-bottom: .7rem; }
+    #askmsgs:empty { display: none; }
+    .askmsg { font-size: .9rem; border-radius: 12px; padding: .5rem .75rem; max-width: 92%; overflow-wrap: anywhere; }
+    .askmsg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+    .askmsg.bot {
+      align-self: flex-start; background: rgba(255, 255, 255, .6);
+      border: 1px dashed var(--border); color: var(--text);
+    }
+    .askmsg.bot .askbadge {
+      font-size: .68rem; font-weight: 700; color: var(--muted); letter-spacing: .01em;
+      margin-bottom: .4rem; padding-bottom: .35rem; border-bottom: 1px dashed var(--border);
+    }
+    .askmsg.bot p { margin: .4em 0; }
+    .askmsg.bot :first-child { margin-top: 0; }
+    .askmsg.bot :last-child { margin-bottom: 0; }
+    .askmsg.bot a { color: var(--accent); font-weight: 600; }
+    .askmsg.bot code {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 4px; padding: .05em .3em; font-size: .9em;
+    }
+    .askchips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .7rem; }
+    .askchip {
+      font: inherit; font-size: .78rem; cursor: pointer; color: var(--accent);
+      background: rgba(255, 255, 255, .55); border: 1px solid var(--border);
+      border-radius: 999px; padding: .28rem .7rem;
+    }
+    #askform { display: flex; gap: .5rem; }
+    #askinput {
+      flex: 1; min-width: 0; font: inherit; font-size: .9rem; color: var(--text);
+      background: rgba(255, 255, 255, .7); border: 1px solid var(--border);
+      border-radius: 12px; padding: .5rem .75rem;
+    }
+    #askform button {
+      background: var(--accent); color: #fff; border: 0; border-radius: 12px;
+      padding: .5rem 1rem; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    #askform button:disabled { opacity: .5; cursor: default; }
+
     /* ---- the DRS header, mirrored (app.css's floating glass chrome):
        the not-signed-in landing IS the front door of the DRS site, so it
        wears the same chrome — brand line, then the (ghost, account) pair
@@ -298,6 +341,24 @@
     Claude Code iPhone app, kept in <a href="/story/">the build story</a>.</p>
   </div>
 
+  <div class="card" id="askdemo">
+    <h2>Questions before you sign in?</h2>
+    <p class="askhint">Ask away — these are quick <b>prepackaged answers</b> (not the AI
+      model, which needs sign-in) to help you get your bearings.</p>
+    <div class="askchips" id="askchips">
+      <button type="button" class="askchip">What is this?</button>
+      <button type="button" class="askchip">Is it private?</button>
+      <button type="button" class="askchip">How is it built?</button>
+      <button type="button" class="askchip">What does it cost?</button>
+      <button type="button" class="askchip">How do I sign in?</button>
+    </div>
+    <div id="askmsgs" aria-live="polite"></div>
+    <form id="askform" autocomplete="off">
+      <input id="askinput" type="text" placeholder="Ask a question…" aria-label="Ask a question">
+      <button type="submit">Ask</button>
+    </form>
+  </div>
+
   <div class="links">
     <a href="/cure"><b>Try it now — no account</b><span>DeepResearch.<b>Se<span class="sl">/</span>cure</b> — runs in your browser, on your own OpenAI, Groq or Berget API key</span></a>
     <a href="/story/"><b>The build story</b><span>Every prompt, verbatim, with its commit</span></a>
@@ -484,6 +545,53 @@
     if (e.target === intro) dismissIntro();
   });
 })();
+</script>
+
+<!-- The "ask before you sign in" demo: the shared prepackaged non-LLM helper
+     (js/canned-faq.js), tier "drs", rendering answers that point a signed-out
+     visitor to sign-in. Module script so it can import the shared core and the
+     sanitizing markdown renderer; both are public assets. -->
+<script type="module">
+  import { matchCanned } from "/js/canned-faq.js";
+  import { renderMarkdownInto } from "/js/markdown.js";
+
+  const msgs = document.getElementById("askmsgs");
+  const form = document.getElementById("askform");
+  const input = document.getElementById("askinput");
+
+  function bubble(cls) {
+    const el = document.createElement("div");
+    el.className = "askmsg " + cls;
+    msgs.appendChild(el);
+    return el;
+  }
+
+  function answer(text) {
+    const q = text.trim();
+    if (!q) return;
+    bubble("user").textContent = q;
+    const reply = matchCanned(q, { tier: "drs" });
+    const bot = bubble("bot");
+    const badge = document.createElement("div");
+    badge.className = "askbadge";
+    badge.textContent = "🤖 " + reply.label;
+    bot.appendChild(badge);
+    const body = document.createElement("div");
+    renderMarkdownInto(body, reply.answer);
+    bot.appendChild(body);
+    bot.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    answer(input.value);
+    input.value = "";
+    input.focus();
+  });
+  document.getElementById("askchips").addEventListener("click", function (e) {
+    const chip = e.target.closest(".askchip");
+    if (chip) answer(chip.textContent);
+  });
 </script>
 </body>
 </html>
