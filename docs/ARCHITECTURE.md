@@ -681,7 +681,7 @@ the architectural highlights:
 |---|---|---|
 | Send loop & streaming | `app.js`, `stream.js`, `embeds.js`, `recovery.js`, `sse.js`, `message-content.js` | Conversation history + `/api/chat` SSE loop; the embeds registry and answer-recovery poll client are split-out collaborators; the pure SSE line-buffer parser and outgoing-message block builders are Node-tested |
 | Turn rendering | `turns.js`, `activity.js`, `markdown.js`, `quiz.js`, `imagedeck.js` | Bubbles, live step bars, sanitized Markdown (`<img>` forbidden), the interactive quiz card, the conversation-wide image deck for Street View/map frames |
-| History & storage | `history-store.js`, `history-ui.js`, `sync.js`, `settings.js`, `opfs.js` | **Encrypted local history** (IndexedDB + AES-256-GCM under the `/api/history-key` key), the history sidebar, cloud dual-write/sync when the `server_history` knob is on, original file bytes in OPFS |
+| History & storage | `history-store.js`, `history-ui.js`, `sync.js`, `settings.js`, `opfs.js` | **Encrypted local history** (IndexedDB + AES-256-GCM under the `/api/history-key` key), the history sidebar, cloud dual-write/sync always on when the server can back it (R2 binding + a real account — no knob), original file bytes in OPFS |
 | RAG & projects | `rag.js`, `chat-rag.js`, `projects.js`, `project-context.js`, `projects-ui.js` | Client-side chunking/embedding (`POST /api/embed`), local or server vector index, project records and project-chat retrieval |
 | Attachments | `attachments.js`, `exif.js`, `docs.js`, `report.js` | Image downscaling, EXIF/GPS extraction, docx/pdf parsing, the PDF report export |
 | Account & misc | `account.js` + `account-views.js`/`account-messages.js`/`account-settings.js`/`account-feedback.js`, `models.js`, `notifications.js`, `timescale.js` | The account panel shell + its split-out views (summary/usage/games, message center, settings knobs, Feedback threads); model dropdown; the budget slider's quadratic scale |
@@ -695,8 +695,9 @@ Client-side behaviors that matter architecturally:
   images are stripped from all but the latest message when resending
   history — together staying under Berget's ~1 MB body limit.
 - **Persistence**: conversations persist in the **encrypted local
-  history** (IndexedDB, AES-256-GCM) and — when the cloud knob is on — as
-  the *same ciphertext* in R2 (§9). Project chats rest readable because
+  history** (IndexedDB, AES-256-GCM) and — on Se/rver, always, whenever
+  storage is available — as the *same ciphertext* in R2 (§9). Project
+  chats rest readable because
   they are RAG-indexed. Model selection and budget position in
   `localStorage`; session auth in the `dr_session` cookie.
 - **Reading-safe streaming**: scrolling up during generation detaches
@@ -761,10 +762,15 @@ EN+SV parity). See the **tokemon-game** skill.
 The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
 
 > Conversations and attached-file originals rest as **ciphertext** in BOTH
-> the browser and (if the cloud knob is on) R2 — the ONLY readable
-> exceptions are RAG-indexed material and project chats, because retrieval
-> needs plaintext. The encryption key is derived server-side and held only
-> in memory, never at rest beside the ciphertext.
+> the browser and — on Se/rver, always, whenever the server can back it
+> (no knob) — R2, the ONLY readable exceptions being RAG-indexed material
+> and project chats, because retrieval needs plaintext. The encryption key
+> is derived server-side and held only in memory, never at rest beside the
+> ciphertext (so an at-rest theft of the R2 bucket ALONE yields only
+> ciphertext) — but because the running server CAN re-derive that key and
+> now always holds the encrypted copy, a FULL server compromise could read
+> Se/rver history. The "not even a full compromise" guarantee belongs to
+> Se/cure (nothing reaches the server) and the project vault (below).
 
 - **Encrypted local history**: conversations persist client-side in
   IndexedDB as AES-256-GCM ciphertext under a per-user key served by
@@ -773,21 +779,29 @@ The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
   endpoint 503s and the client hides history rather than storing
   plaintext. The server can *re-derive* the key but never stores it beside
   the ciphertext (compromise of the R2 bucket alone reveals nothing).
-- **The `server_history` knob** (`src/settings.js`, default ON, per-user
-  opt-out): with it on, the client dual-writes each record to R2 via
-  `src/storage.js` — `convos/{uid}/…` and `projects/{uid}/…` as the same
-  encrypted `{iv, ciphertext}` blobs the browser holds (project chats as
-  readable records, since they're RAG-indexed), `files/{uid}/…` as
-  original attached-file bytes (readable — the server must serve them back
-  and index document text; disclosed in the settings UI), and
-  `rag/{uid}/…` as exportable RAG index copies. Flipping the knob off
-  pulls everything down and the client wipes the server copies;
-  `DELETE /api/storage` is the full drain-wipe.
+- **Cloud storage — always on, no knob** (`src/settings.js`): on Se/rver
+  the client dual-writes each record to R2 via `src/storage.js` whenever
+  the server can back it (R2 binding + a real account) — there is no
+  per-account `server_history` opt-out and no per-project knob anymore.
+  `convos/{uid}/…` and `projects/{uid}/…` hold the same encrypted
+  `{iv, ciphertext}` blobs the browser holds (project chats as readable
+  records, since they're RAG-indexed), `files/{uid}/…` the original
+  attached-file bytes (readable — the server must serve them back and
+  index document text; disclosed in the UI), and `rag/{uid}/…` the
+  exportable RAG index copies. When storage is unavailable (break-glass,
+  no R2 binding) it degrades to browser-only — infrastructure, not a
+  choice; a user who wants browser-only storage uses Se/cure instead.
+  `serverHistoryEnabled` is now pure storage AVAILABILITY, not a setting.
+  A quiet boot reconcile (`public/js/sync.js`: `syncToServer()` push +
+  `pullNewer()`) keeps the copies aligned; there is no off-drain.
+  `DELETE /api/storage` still exists as an explicit full drain-wipe (the
+  vault excluded).
 - **Document RAG** (`src/rag.js`): embeddings always come from Berget via
-  `POST /api/embed` (the API token is a Worker secret); the *index* lives
-  in the browser (IndexedDB, local cosine top-k) with the knob off, or in
-  Vectorize (+R2 export copies) with it on. The index is necessarily NOT
-  encrypted — retrieval needs readable chunk text.
+  `POST /api/embed` (the API token is a Worker secret); the *index* always
+  lives in the browser (IndexedDB, local cosine top-k) and — whenever cloud
+  storage is available (always, on Se/rver) — ALSO in Vectorize (+R2 export
+  copies). The index is necessarily NOT encrypted — retrieval needs readable
+  chunk text.
 - **The chat interaction log** (`src/chatlog.js`, D1 `chat_logs`) — an
   explicit product decision (2026-07-08): every completed `/api/chat` and
   `/mcp` exchange is logged **with full visibility** — the complete
@@ -836,11 +850,15 @@ originals, and the RAG index with vectors — into ONE blob the server only
 ever sees as ciphertext. Both the R2 object id AND the AES-256-GCM key are
 derived in the browser (HKDF) from a copy-safe 160-bit secret the user
 holds; the server never receives it and cannot derive either value
-(`public/js/vault-core.js`). So a local-only project gains backup and
-cross-device transport as pure ciphertext. Unlike cloud history it is NOT
-gated on the `server_history` knob — each store is its own explicit
-consent — and it is excluded from the drain-wipe. Endpoints:
-`PUT/GET/DELETE /api/vault/:id`, R2 `vault/{uid}/{id}`.
+(`public/js/vault-core.js`). It is the ONE Se/rver copy a full server
+compromise still can't read: where the always-on cloud history rests as
+ciphertext the running server COULD decrypt (it derives the history key),
+a vault archive rests under a secret the server never sees. Any project
+gains backup and cross-device transport as pure ciphertext this way.
+Unlike the always-on cloud copy, a vault store is its own explicit
+consent act (not tied to storage availability alone) and it is excluded
+from the drain-wipe. Endpoints: `PUT/GET/DELETE /api/vault/:id`, R2
+`vault/{uid}/{id}`.
 
 ### DeepResearch.Se/cure — the client-side tier
 

@@ -1145,7 +1145,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .privacy-card a { color: var(--accent); }
 .privacy-card button { margin-top: .35rem; padding: .45rem 1.1rem; }
 
-/* Account settings — the cloud-storage knob (public/js/account.js) */
+/* Account settings — the knob rows (public/js/account.js) */
 /* Settings sub-view rows: label left, slide switch right. The switch is
    the ORIGINAL toggle design the composer's web-search knob had before it
    became the spiderweb — kept here as generic classes so every future

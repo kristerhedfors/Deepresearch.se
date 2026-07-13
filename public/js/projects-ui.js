@@ -22,11 +22,9 @@ import {
   removeFileFromProject,
   renameProject,
   setActiveProject,
-  setProjectCloud,
 } from "./projects.js";
 import { storageAvailable } from "./settings.js";
 import { applyLoadedConversation } from "./stream.js";
-import { drainProjectScope, pushProjectScope } from "./sync.js";
 import { loadProjectFromVault, storeProjectToVault, vaultSecretValid } from "./vault.js";
 
 let onLoad = () => {};
@@ -215,7 +213,7 @@ export async function renderProjectsList() {
     <div class="history-item${p.id === activeProjectId() ? " active" : ""}">
       <button type="button" class="history-open" data-id="${p.id}">
         <span class="history-title">📁 ${escapeHtml(p.name)}</span>
-        <span class="history-when">${(p.files || []).length} file(s)${p.serverStorage === false ? " · local only" : ""}</span>
+        <span class="history-when">${(p.files || []).length} file(s)</span>
       </button>
     </div>`,
     )
@@ -312,22 +310,13 @@ async function renderPanel() {
   const ADD_ICON =
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
 
-  // The knob sits AT THE TOP of the open project — the same slide switch
-  // as the account setting, scoped to this project. Below it, icon-only
-  // controls: a speech bubble with a plus starts a chat in the project,
-  // the trashcan (confirmed) deletes it; renaming is a double-tap on the
-  // title in the header — no button.
+  // Icon-only controls at the top: a speech bubble with a plus starts a chat
+  // in the project, the trashcan (confirmed) deletes it; renaming is a
+  // double-tap on the title in the header — no button. This project (like
+  // everything on Se/rver) is always stored in the cloud, so there is no
+  // per-project storage knob; the encrypted-vault copy below is the one way
+  // to keep a copy the server can't read.
   body.innerHTML = `
-    <div class="settings-item project-knob">
-      <div class="settings-row">
-        <span class="settings-label">Store this project in the cloud</span>
-        <label class="switch">
-          <input type="checkbox" id="projectcloud"${p.serverStorage !== false ? " checked" : ""}${cloudUsable ? "" : " disabled"}>
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-        </label>
-      </div>
-      <p id="projectsyncstatus" class="muted setting-desc"${cloudUsable ? " hidden" : ""}>${cloudUsable ? "" : "Cloud storage isn't available on this account, so this project stays in this browser."}</p>
-    </div>
     <div class="settings-item project-vault"${cloudUsable ? "" : " hidden"}>
       <div class="settings-row">
         <span class="settings-label">Encrypted copy, keyed by a secret</span>
@@ -335,7 +324,7 @@ async function renderPanel() {
       </div>
       <p class="muted setting-desc">Packs this project — chats, files, and its search index — and encrypts
         everything in this browser with a new one-time secret before storing the unreadable archive in the
-        cloud. Works even while this project (or the whole account) keeps cloud storage off.${p.vaultId ? " Storing again replaces the copy — the previous secret stops working." : ""}</p>
+        cloud. The server can't read it, and the secret loads it on any device.${p.vaultId ? " Storing again replaces the copy — the previous secret stops working." : ""}</p>
       <div id="pvaultsecret" hidden>
         <p class="muted setting-desc vault-warn">Copy the secret now — it is shown only this once and is the
           ONLY way to load this copy. Anyone holding it (on this account) can load the project.</p>
@@ -389,40 +378,6 @@ function status(msg) {
 
 function wirePanel(p) {
   const body = document.getElementById("projectbody");
-
-  // ---- the per-project cloud knob -------------------------------------
-  const knob = document.getElementById("projectcloud");
-  const kstatus = document.getElementById("projectsyncstatus");
-  knob?.addEventListener("change", async () => {
-    const on = knob.checked;
-    knob.disabled = true;
-    kstatus.hidden = false;
-    const progress = (m) => { kstatus.textContent = m; };
-    try {
-      await setProjectCloud(p.id, on);
-      if (on) {
-        const r = await pushProjectScope(p.id, progress);
-        kstatus.textContent =
-          `This project is stored in the cloud — ${r.pushed} item(s) uploaded.` +
-          (r.errors.length ? ` ${r.errors.length} failed (will retry on the next sync).` : "");
-      } else {
-        const r = await drainProjectScope(p.id, progress);
-        kstatus.textContent = r.drained
-          ? `This project now lives only in this browser — ${r.removed} cloud object(s) removed.`
-          : "Some items couldn't be confirmed locally — their cloud copies were kept. Toggle again to retry.";
-        if (!r.drained) {
-          await setProjectCloud(p.id, true); // don't pretend it's local-only
-          knob.checked = true;
-        }
-      }
-      renderProjectsList();
-    } catch (err) {
-      knob.checked = !on;
-      kstatus.textContent = err?.message || "Could not update the project setting.";
-    } finally {
-      knob.disabled = false;
-    }
-  });
 
   // ---- the encrypted vault copy (public/js/vault.js) --------------------
   const vaultBtn = document.getElementById("pvaultstore");

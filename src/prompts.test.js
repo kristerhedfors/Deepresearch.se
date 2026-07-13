@@ -435,13 +435,14 @@ describe("directPrompt / searchOffPrompt", () => {
     });
 
     test("states where each toggleable feature is turned on or off", () => {
-      // web search knob, time slider, Shodan setting, cloud-storage setting,
-      // plus the ghost — since 2026-07-10 the DOOR TO DRC (ghost mode = the
-      // client-side tier at /cure), not an in-app toggle.
+      // web search knob, time slider, Shodan setting, plus the ghost — since
+      // 2026-07-10 the DOOR TO DRC (ghost mode = the client-side tier at
+      // /cure), not an in-app toggle. Cloud storage is no longer a toggle
+      // (Se/rver always stores in the cloud), so it's stated as always-on.
       assert.match(p, /spiderweb knob in the composer/);
       assert.match(p, /slider in the composer/);
       assert.match(p, /"Shodan host intelligence", OFF by default/);
-      assert.match(p, /"Store history in the cloud", ON by default/);
+      assert.match(p, /ALWAYS kept in the site's storage/);
       assert.match(p, /ghost button \(upper right\) opens GHOST MODE — DeepResearch\.Se\/cure/);
     });
 

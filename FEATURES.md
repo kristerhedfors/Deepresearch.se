@@ -136,8 +136,9 @@ storage — the server in no data path. See the **storage-privacy** skill.
 ### F-9 · The secret-keyed project vault — ✅ SHIPPED (medium)
 
 One client-encrypted project archive per user-held secret, stored server-side
-as ciphertext the server can never read — backup/cross-device transport for a
-local-only project (`src/vault.js` + `public/js/vault-core.js`).
+as ciphertext the server can never read — backup/cross-device transport for any
+project, and the one Se/rver copy a full server compromise still can't read
+(`src/vault.js` + `public/js/vault-core.js`).
 
 ### F-10 · Published research replays (/cure/<slug>) — ✅ SHIPPED (medium)
 

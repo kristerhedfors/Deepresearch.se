@@ -130,7 +130,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "shipped",
     summary:
-      "One client-encrypted project archive per user-held secret, stored server-side as ciphertext the server can never read — backup/cross-device transport for a local-only project (src/vault.js + public/js/vault-core.js).",
+      "One client-encrypted project archive per user-held secret, stored server-side as ciphertext the server can never read — the strictest tier and the one Se/rver copy a full server compromise can't read, for backup/cross-device transport of any project (src/vault.js + public/js/vault-core.js).",
   },
   {
     id: "F-10",

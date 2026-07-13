@@ -134,10 +134,10 @@ export function siblingChatDocs(conversations, projectId, currentConvId) {
  * every persisted exchange; fail-soft by contract of the caller (a thrown
  * error just means the same turns are retried on the next persist, because
  * srcMsgs only advances on success).
- * @param {{convId?: string, title?: string, messages?: ChatMessage[], cloud?: boolean}} args
+ * @param {{convId?: string, title?: string, messages?: ChatMessage[]}} args
  * @returns {Promise<{chunkCount: number, appended: number} | null>} null when there was nothing new to index
  */
-export async function indexChatTurns({ convId, title, messages, cloud = true }) {
+export async function indexChatTurns({ convId, title, messages }) {
   if (!convId || !messages?.length) return null;
   const docId = chatDocId(convId);
   const doc = await getDoc(docId);
@@ -146,7 +146,6 @@ export async function indexChatTurns({ convId, title, messages, cloud = true }) 
   const text = chatIndexText(messages, fromMsg, title);
   if (!text) return null;
   return appendToDoc(docId, String(title || "").trim() || "Untitled chat", text, {
-    cloud,
     meta: { kind: "chat", srcMsgs: messages.length },
   });
 }

@@ -1,12 +1,13 @@
 // @ts-check
 // Per-account settings (GET/PUT /api/settings — src/settings.js): the
-// server_history (cloud storage), shodan_mcp (Shodan host-intel),
-// google_maps, and feedback_mode knobs. The cached copy answers the
-// hot-path question every storage-touching module asks — "is cloud storage
-// on?" — without a fetch per call; the answer only ever changes through
-// updateSetting below (this tab) or on the next page load (another tab or
-// device flipped it — an accepted, self-healing staleness window: the
-// server rejects writes that its own copy of the knob forbids).
+// shodan_mcp (Shodan host-intel), google_maps, feedback_mode, bash_lite_mcp,
+// and developer_mode knobs. Cloud storage is NOT a knob — Se/rver always
+// stores in the cloud (Se/cure is the client-side tier) — so `server_history`
+// is a read-only availability signal here, answering the hot-path question
+// every storage-touching module asks: "should I dual-write to the cloud?"
+// (yes whenever the server can back it). The cached copy answers without a
+// fetch per call; it only changes through updateSetting below (this tab) or
+// on the next page load.
 
 /**
  * The server's effective-settings response: the per-user knobs plus which
@@ -53,8 +54,11 @@ export function loadSettings(force = false) {
 }
 
 // Synchronous view for hot paths (persist-after-every-turn, retrieval
-// backend choice). False until loadSettings has resolved — the safe
-// default: local-only behavior.
+// backend choice): is cloud storage active for this account? Cloud storage
+// is always on when the server can back it (no user knob) — this is that
+// availability signal. False until loadSettings has resolved and false when
+// the server can't store (break-glass, no R2 binding) — the safe default:
+// browser-only behavior.
 export function serverHistoryOn() {
   return settings?.server_history === true;
 }
@@ -119,11 +123,6 @@ async function updateSetting(patch) {
   settings = data;
   loadPromise = Promise.resolve(data);
   return data;
-}
-
-/** @param {boolean} on */
-export function setServerHistory(on) {
-  return updateSetting({ server_history: on });
 }
 
 /** @param {boolean} on */

@@ -8,7 +8,6 @@ import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
 import { archiveFile } from "./opfs.js";
-import { activeProjectCloudOn } from "./projects.js";
 import { indexDocument } from "./rag.js";
 
 const MAX_IMAGES = 4;
@@ -99,11 +98,10 @@ export function indexingBusy() {
 }
 
 // Archival of originals lives in opfs.js's archiveFile (encrypted except
-// RAG-indexed docs). Attachments made inside a project chat inherit that
-// project's cloud opt-out — a cloud-off project's attachments never reach
-// R2, matching the per-project knob's promise.
+// RAG-indexed docs; mirrored to the cloud whenever cloud storage is
+// available — always, on Se/rver).
 function archiveOriginal(fileId, file, { plaintext = false } = {}) {
-  return archiveFile(fileId, file, { plaintext, cloud: activeProjectCloudOn() });
+  return archiveFile(fileId, file, { plaintext });
 }
 
 /**
@@ -306,7 +304,6 @@ async function addDocFile(file) {
     renderPending();
     try {
       const { chunkCount } = await indexDocument(fileId, file.name, text, {
-        cloud: activeProjectCloudOn(),
         onProgress: (done, total) => {
           att.progress = Math.round((100 * done) / total);
           renderPending();

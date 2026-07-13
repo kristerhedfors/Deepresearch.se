@@ -267,10 +267,20 @@ plaintext, readable by any admin via `GET /api/admin/chatlogs`.
 
 Aggravating: **`DELETE /api/storage` (the drain) does not touch `chat_logs`** — it
 wipes only convos/projects/files/rag. There is **no endpoint that deletes
-`chat_logs` rows at all**; the table is append-only and never pruned. A user who
-turns the cloud knob off and drains everything still leaves a permanent,
+`chat_logs` rows at all**; the table is append-only and never pruned. A Se/rver
+user who runs the account drain (`DELETE /api/storage`) still leaves a permanent,
 un-wipeable plaintext copy of all prior conversations server-side. An incognito
 choice also cannot be applied retroactively.
+
+Note the always-cloud posture (there is no longer a "store history in the cloud"
+knob — Se/rver keeps an encrypted R2 copy whenever storage is available) does not
+change this finding: the R2 copy is ciphertext, but `chat_logs` is the plaintext
+one. Two honest exposure tiers now stand side by side — the encrypted R2 history,
+which an at-rest bucket theft alone can't read but a FULL server compromise
+(key-derivation secret + stored copy) could, and the plaintext `chat_logs`, which
+any admin or D1 compromise can read directly. The strong "not even a full
+compromise" guarantee belongs only to Se/cure (nothing reaches the server) and
+the secret-keyed vault.
 
 **Remediation:** encrypt `question`/`answer`/`conversation_json`/`meta_json` at
 rest, and/or add a retention/TTL policy, and include `chat_logs` in the user

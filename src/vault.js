@@ -10,18 +10,19 @@
 // the same secret (HKDF, separate info string), so knowing the secret is
 // both the locator and the key — the server stores unlabeled ciphertext.
 //
-// This is what lets a LOCAL-ONLY project (per-project cloud knob off, or
-// the whole account knob off) still be backed up / moved across devices
-// through the server without giving up the local-only privacy posture:
-// nothing readable — no project name, no file names, no text, no index —
-// ever leaves the browser. For that reason the endpoints are NOT gated on
-// the `server_history` knob (unlike src/storage.js): each PUT is its own
-// explicit, user-initiated act of consent, and the knob governs the
-// readable-adjacent knob-driven store, not this ciphertext-only one. For
-// the same reason the account-wide drain (DELETE /api/storage, flipping
-// the knob off) deliberately does NOT touch vault objects — they were
-// stored by explicit action while the knob may well have been off, and
-// wiping them would destroy the very backups the user made on purpose.
+// This is the strictest storage tier — the one Se/rver copy a FULL server
+// compromise still can't read. Se/rver already keeps an encrypted copy of a
+// project in R2 (always, via src/storage.js) that the running server COULD
+// decrypt by re-deriving the history key; the vault stores a copy under a
+// secret the server never sees and cannot derive, so nothing readable — no
+// project name, no file names, no text, no index — is ever recoverable
+// server-side. It doubles as backup / cross-device transport. The endpoints
+// are NOT gated on storage availability the way src/storage.js is beyond
+// needing the R2 binding + a real account: each PUT is its own explicit,
+// user-initiated act of consent. For the same reason the account-wide drain
+// (DELETE /api/storage) deliberately does NOT touch vault objects — they
+// were stored by explicit action, and wiping them would destroy the very
+// backups the user made on purpose.
 //
 // Object lifecycle: the client keeps the current vault id inside the
 // (encrypted) project record and re-stores by PUT-ting the new blob under

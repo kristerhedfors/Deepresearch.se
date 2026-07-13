@@ -319,10 +319,9 @@ MCP server exposes (host lookup, DNS resolve, ports/services/vulns),
 delivered through Shodan's REST API and folded into the pipeline as
 context every phase can use.
 
-- **The knob** (`src/settings.js`): a second key alongside `server_history`
-  in the same `users.settings_json` column. **Default OFF** (only an
-  explicit stored `true` enables it — the mirror of `server_history`'s
-  default-on/explicit-false) because enriching a query sends the host/IP
+- **The knob** (`src/settings.js`): a key in the `users.settings_json`
+  column (`shodan_mcp`). **Default OFF** (only an explicit stored `true`
+  enables it) because enriching a query sends the host/IP
   to a third party, an opt-in a security-minded user should choose
   deliberately. `/api/settings` reports the EFFECTIVE state: it reads off
   unless the `SHODAN_API_KEY` secret is set AND the caller has a real D1
@@ -389,8 +388,8 @@ extraction, the intent gates, `pickLookup` — lives in `src/googlemaps-text.js`
 `src/enrichment.js`'s `runGoogleMapsEnrichment` wires it (before any model
 call, alongside the Shodan enrichment).
 
-- **The knob** (`src/settings.js`): a third key alongside `server_history`
-  and `shodan_mcp` in `users.settings_json`. **Default OFF** (only an explicit
+- **The knob** (`src/settings.js`): a key alongside `shodan_mcp` in
+  `users.settings_json`. **Default OFF** (only an explicit
   stored `true` enables it — the mirror of `shodan_mcp`) because a lookup
   sends the address/coordinates to a third party and the imagery fetches are
   billed. `/api/settings` reports the EFFECTIVE state via `featureAvailability`:

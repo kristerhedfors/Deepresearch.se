@@ -14,9 +14,10 @@
 // calling in; `meta.enc` records which form a file is in). RAG-indexed
 // documents are the ONE class stored readable — their search index needs
 // readable text anyway, and that asymmetry is disclosed in the settings
-// UI. What's stored here never leaves the browser unless the user's
-// cloud-storage knob is ON (public/js/sync.js mirrors the same stored
-// bytes, encrypted or not, to R2).
+// UI. What's stored here is also mirrored to R2 whenever cloud storage is
+// available — always, on Se/rver (public/js/sync.js moves the same stored
+// bytes, encrypted or not); only a deploy that can't store at all keeps it
+// browser-only.
 //
 // Fails soft everywhere: no OPFS (older Safari) just means originals
 // aren't archived — attachments keep working exactly as before.
@@ -102,7 +103,7 @@ export async function listOriginals() {
 }
 
 // One-stop archival used by attachments.js AND projects.js: original bytes
-// → OPFS (and, when both the account knob and the caller's scope allow it,
+// → OPFS (and, whenever cloud storage is available — always, on Se/rver —
 // mirrored to R2). Pure archival — never blocks or fails the caller.
 //
 // Everything is AES-GCM ENCRYPTED under the same never-persisted history
@@ -111,9 +112,9 @@ export async function listOriginals() {
 // search index needs readable text anyway (disclosed in the settings UI).
 // Images especially always take the encrypted path. If the key is
 // unavailable, the encrypted class stores NOTHING at all — never a
-// plaintext fallback. `cloud: false` skips the R2 mirror even when the
-// account knob is on (the per-project storage opt-out).
-export async function archiveFile(fileId, file, { plaintext = false, cloud = true } = {}) {
+// plaintext fallback. The R2 mirror runs whenever cloud storage is available
+// (always, on Se/rver).
+export async function archiveFile(fileId, file, { plaintext = false } = {}) {
   try {
     let stored = file;
     let enc = false;
@@ -130,7 +131,7 @@ export async function archiveFile(fileId, file, { plaintext = false, cloud = tru
     if (await opfsAvailable()) {
       await saveOriginal(fileId, stored, { name: file.name, type: file.type, enc });
     }
-    if (cloud && serverHistoryOn()) {
+    if (serverHistoryOn()) {
       fetch("/api/files/" + encodeURIComponent(fileId), {
         method: "PUT",
         headers: {
@@ -147,8 +148,8 @@ export async function archiveFile(fileId, file, { plaintext = false, cloud = tru
   }
 }
 
-// Remove a file everywhere it can rest: OPFS + meta row, and (when the
-// account knob is on) the R2 copy. Used by projects.js when a file is
+// Remove a file everywhere it can rest: OPFS + meta row, and (when cloud
+// storage is available) the R2 copy. Used by projects.js when a file is
 // removed from a project or the project is deleted.
 export async function purgeFile(fileId) {
   await deleteOriginal(fileId);

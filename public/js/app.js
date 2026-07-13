@@ -10,7 +10,7 @@
 //   stream.js         — conversation history + /api/chat SSE send loop
 //   history-ui.js     — the encrypted local-history drawer
 //   projects.js/-ui   — project records, panel, header chip
-//   settings.js       — cached /api/settings (cloud/feedback knob state)
+//   settings.js       — cached /api/settings (feedback/sandbox/dev knob state + cloud availability)
 //   sync.js           — boot-time cloud reconcile (push diff + pullNewer)
 //   imagedeck.js      — the conversation-wide image deck (onDeckAsk hook)
 //   pending-answer.js — the resume-across-relaunch pointer
@@ -101,11 +101,12 @@ initAttachments(
   document.getElementById("camerafile"),
 );
 initAccountPanel();
-// Account settings (the cloud-storage knob): fetched once at boot so the
-// storage modules' synchronous serverHistoryOn() checks have an answer.
-// Cloud storage is ON by default — most accounts never touch the knob —
-// so boot also runs a quiet background reconcile: push anything local the
-// cloud doesn't have yet (diff-only; skips up-to-date items) and pull
+// Account settings: fetched once at boot so the storage modules'
+// synchronous serverHistoryOn() checks have an answer. On Se/rver cloud
+// storage is always on (whenever the server can back it — `server_history`
+// in the payload is that availability signal, no longer a knob), so boot
+// also runs a quiet background reconcile: push anything local the cloud
+// doesn't have yet (diff-only; skips up-to-date items) and pull
 // conversations written from other devices. Entirely fail-soft and
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
@@ -338,7 +339,7 @@ const historySidebar = initHistorySidebar({
   onLoad: applyRecordSettings,
 });
 // Projects (public/js/projects.js + projects-ui.js): collections of chats
-// and files with their own cloud knob and retrieval scope.
+// and files with their own retrieval scope (always cloud-stored, no knob).
 initProjectsUi({ onNew: newChat, onLoad: applyRecordSettings });
 refreshProjects().catch(() => {});
 initStream(scrollDown, { onHistoryChange: () => historySidebar.onSaved() });

@@ -169,11 +169,15 @@ table).
 
 ### 7. Optional: cloud storage + document RAG (R2 + Vectorize)
 
-Enables the per-account **"Store history in the cloud"** knob (account
-panel → Settings) and server-side retrieval for large attached documents.
-Entirely optional — without these resources the knob never appears and
-everything stays client-side (large-document RAG still works locally via
-OPFS/IndexedDB, using `POST /api/embed` for embeddings only):
+Backs **Se/rver's always-on cloud storage** (encrypted conversation and
+project copies in R2, plus the Vectorize document index) and server-side
+retrieval for large attached documents. There is NO user knob for it —
+cloud storage is simply on whenever these resources are bound AND the
+caller is a real signed-in account (a user who wants browser-only storage
+uses **Se/cure**, the client-side tier). Entirely optional at DEPLOY time
+— without these resources everything stays client-side/browser-only, and
+large-document RAG still works locally via OPFS/IndexedDB, using
+`POST /api/embed` for embeddings only:
 
 ```bash
 npx wrangler r2 bucket create deepresearch-se-storage

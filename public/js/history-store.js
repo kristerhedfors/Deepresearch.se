@@ -19,12 +19,13 @@
 // attached images — can be large, and its async, structured API is the
 // modern standard for exactly this amount of client-side data.
 
-// Cloud copies (opt-in): when the account's server_history knob is ON
-// (settings.js), every locally-saved record is ALSO mirrored — as the
-// same opaque {iv, ciphertext} blob, still unreadable without the key —
-// to the server's R2 store (src/storage.js), and deletes propagate. The
-// local IndexedDB copy always stays (lazy cache + the only copy when the
-// knob is off). Bulk moves in either direction live in sync.js; this
+// Cloud copies: Se/rver always stores in the cloud, so whenever cloud
+// storage is available (settings.js serverHistoryOn — R2 binding present, a
+// real account) every locally-saved record is ALSO mirrored — as the same
+// opaque {iv, ciphertext} blob, still unreadable without the key — to the
+// server's R2 store (src/storage.js), and deletes propagate. The local
+// IndexedDB copy always stays (lazy cache + the only copy when the server
+// can't store — break-glass, no binding). Bulk moves live in sync.js; this
 // module only dual-writes the record it just touched.
 //
 // THE ONE EXCEPTION — project chats rest READABLE, in both locations.
@@ -216,18 +217,15 @@ export async function loadConversation(id) {
 // ragDocs, projectId}. The row keeps projectId OUTSIDE the ciphertext —
 // LOCALLY ONLY (never uploaded; the cloud body below carries just the
 // stored form + timestamps): it's a random uuid revealing grouping, not
-// content, and sync needs it to honor a project's cloud-off knob without
-// decrypting every record. A conversation WITH a projectId is a project
-// chat — RAG-indexed for cross-chat retrieval, so its record rests
-// readable ({data}) instead of encrypted (the header explains the rule).
-// opts.cloud=false skips the cloud mirror even when the account knob is
-// on — that's the per-project opt-out (public/js/projects.js decides).
+// content, and sync needs it to group records without decrypting every one.
+// A conversation WITH a projectId is a project chat — RAG-indexed for
+// cross-chat retrieval, so its record rests readable ({data}) instead of
+// encrypted (the header explains the rule).
 /**
  * @param {string} id
  * @param {object} data  the conversation record (stream.js ConversationRecord)
- * @param {{cloud?: boolean}} [opts]
  */
-export async function saveConversation(id, data, { cloud = true } = {}) {
+export async function saveConversation(id, data) {
   const db = await openDb();
   let stored;
   let body;
@@ -251,7 +249,7 @@ export async function saveConversation(id, data, { cloud = true } = {}) {
   );
   // Cloud mirror (fire-and-forget): a failed push must never surface as a
   // chat error — sync.js reconciles by updatedAt on the next opportunity.
-  if (serverHistoryOn() && cloud) {
+  if (serverHistoryOn()) {
     fetch("/api/convos/" + encodeURIComponent(id), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -331,10 +329,10 @@ export async function importEncryptedRecord(id, record) {
 
 // ---- project records (public/js/projects.js owns the shape) ----------------
 // Same encrypted-record pattern as conversations, in their own store and
-// their own R2 family. `data`: {name, files, notes?, serverStorage,
-// createdAt, updatedAt} — everything, name included, inside the ciphertext.
+// their own R2 family. `data`: {name, files, notes?, createdAt, updatedAt} —
+// everything, name included, inside the ciphertext.
 
-export async function saveProjectRecord(id, data, { cloud = true } = {}) {
+export async function saveProjectRecord(id, data) {
   const key = await historyKey();
   const db = await openDb();
   const enc = await encryptRecord(key, data);
@@ -344,7 +342,7 @@ export async function saveProjectRecord(id, data, { cloud = true } = {}) {
       .objectStore(PROJECTS)
       .put({ id, updatedAt: data.updatedAt, iv: enc.iv, ciphertext: enc.ciphertext }),
   );
-  if (serverHistoryOn() && cloud) {
+  if (serverHistoryOn()) {
     fetch("/api/projects/" + encodeURIComponent(id), {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -376,10 +374,10 @@ export async function listProjectRecords() {
   return items;
 }
 
-export async function deleteProjectRecord(id, { cloud = true } = {}) {
+export async function deleteProjectRecord(id) {
   const db = await openDb();
   await reqToPromise(db.transaction(PROJECTS, "readwrite").objectStore(PROJECTS).delete(id));
-  if (serverHistoryOn() && cloud) {
+  if (serverHistoryOn()) {
     fetch("/api/projects/" + encodeURIComponent(id), { method: "DELETE" }).catch(() => {});
   }
 }

@@ -476,9 +476,9 @@ export function initHistorySidebar(opts = {}) {
     // .open in the same frame would skip the transition entirely.
     requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("open")));
     refresh();
-    // Cloud-storage accounts: fetch anything newer written from another
-    // device (no-op while the knob is off) and re-render if it actually
-    // brought something down. Visible while it runs — a device restoring
+    // Cloud storage (always on when available): fetch anything newer written
+    // from another device (no-op when storage is unavailable) and re-render if
+    // it actually brought something down. Visible while it runs — a device restoring
     // its whole history pulls for several seconds and must not read as
     // "no saved conversations" meanwhile.
     lastPull = null;

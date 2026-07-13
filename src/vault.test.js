@@ -117,8 +117,11 @@ test("an over-cap declared content-length is rejected without reading the body",
   assert.equal(res.status, 413);
 });
 
-test("the vault works with the server_history knob OFF — that is the point", async () => {
+test("the vault is not gated on any per-account setting — only R2 + a real account", async () => {
   const env = makeEnv();
+  // A legacy stored server_history:false is now a meaningless/unknown key; the
+  // vault must work regardless — it gates only on storage availability, which
+  // is the whole point of the strictest tier.
   const identity = identityFor(JSON.stringify({ server_history: false }));
   const put = await call(env, identity, "PUT", VALID_ID, new Uint8Array(64));
   assert.equal(put.status, 200);

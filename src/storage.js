@@ -1,15 +1,16 @@
 // @ts-check
-// Opt-in server-side storage (R2 binding `STORAGE`) for the per-user
-// `server_history` knob (src/settings.js). Three key families, all
-// namespaced per user id:
+// Server-side storage (R2 binding `STORAGE`). Se/rver always stores here when
+// the binding is present and the caller is a real account — cloud storage is
+// no longer a user knob (src/settings.js: `serverHistoryEnabled` is now pure
+// availability). Three key families, all namespaced per user id:
 //
 //   projects/{uid}/{projectId} — one PROJECT record as JSON, same encrypted
 //       {iv, ciphertext} shape as a conversation: the project's name, file
-//       inventory (incl. extracted image metadata), notes, and per-project
-//       cloud knob all live inside the ciphertext. Which files/convos
-//       belong to a project is therefore invisible server-side — the
-//       per-project drain is client-driven (it knows the ids and deletes
-//       them individually through the endpoints below).
+//       inventory (incl. extracted image metadata), and notes all live
+//       inside the ciphertext. Which files/convos belong to a project is
+//       therefore invisible server-side — a project's deletion is
+//       client-driven (it knows the ids and deletes them individually
+//       through the endpoints below).
 //   convos/{uid}/{convId} — one conversation record as JSON. Two stored
 //       forms, chosen by the client the same way it chooses a file's
 //       x-file-enc: {iv, ciphertext, updatedAt, createdAt} — the SAME
@@ -40,10 +41,11 @@
 // not R2 (src/rag.js), because similarity search inside the Worker would
 // burn CPU-time budget the pipeline already competes for.
 //
-// Write access (PUT) requires the knob to be ON. Read + delete stay
-// allowed while it's OFF — that is exactly the drain path: flipping the
-// knob off makes the client pull everything down and then delete the
-// server-side copies (public/js/sync.js).
+// Write access (PUT) requires cloud storage to be available
+// (serverHistoryEnabled — R2 binding + a real account). Read + delete stay
+// allowed even when it isn't, so the account-wide drain (DELETE /api/storage,
+// below) remains a usable "delete my server-side data" path independent of
+// availability.
 
 import { jsonResponse } from "./http.js";
 import { serverHistoryEnabled, storageAvailability } from "./settings.js";
@@ -64,8 +66,8 @@ const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
 
 // Two families share the encrypted-record shape and handlers below:
 // "convos" (one conversation each) and "projects" (one project's metadata
-// record each — name, file inventory, notes, per-project knob — all inside
-// the ciphertext; the server can't tell them apart and doesn't need to).
+// record each — name, file inventory, notes — all inside the ciphertext;
+// the server can't tell them apart and doesn't need to).
 /** @type {Record<string, string>} family -> the list response's key */
 const ENC_FAMILIES = { convos: "conversations", projects: "projects" };
 /** @param {string} family @param {number | string} uid @param {string} id */
@@ -308,8 +310,8 @@ async function deleteObject(env, key) {
 async function wipeAll(env, log, identity, uid) {
   // vault/{uid}/ (src/vault.js) is deliberately NOT in this list: vault
   // objects are secret-encrypted archives stored by explicit user action —
-  // often made precisely BECAUSE the knob is going off — so the knob-driven
-  // drain must never destroy them.
+  // the strictest tier, kept on purpose — so this account-wide drain must
+  // never destroy them.
   const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
   for (const prefix of prefixes) {

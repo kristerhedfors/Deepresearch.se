@@ -1,8 +1,9 @@
-// Projects: collections of chats and files with their own retrieval scope
-// and per-project cloud knob. Everything mocked (/api/embed, /api/chat,
-// and — for the knob test — the whole storage surface), exercising the
-// real UI, the real chunk/index/retrieve pipeline, and the real EXIF
-// extraction.
+// Projects: collections of chats and files with their own retrieval scope.
+// A project is ALWAYS stored in the cloud (like everything on Se/rver —
+// there is no per-project storage knob). Everything mocked (/api/embed,
+// /api/chat, and — for the always-cloud test — the whole storage surface),
+// exercising the real UI, the real chunk/index/retrieve pipeline, and the
+// real EXIF extraction.
 
 import { expect, test } from "@playwright/test";
 import { fx, mockChat, mockEmbed, openApp, send, SENTINEL, textOfMessage, waitForDone } from "./helpers.js";
@@ -120,7 +121,7 @@ test("a chat inside a project retrieves the project's material, carries image EX
   expect(plain).not.toContain(NOTE_A);
 });
 
-test("the per-project cloud knob pushes and drains exactly that project's cloud objects", async ({ page }) => {
+test("a project is always stored in the cloud — record, file, and index all mirror; no storage knob", async ({ page }) => {
   const calls = [];
   const json = (b, s = 200) => ({ status: s, headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
   const track = (route) => calls.push(route.request().method() + " " + new URL(route.request().url()).pathname);
@@ -163,32 +164,15 @@ test("the per-project cloud knob pushes and drains exactly that project's cloud 
 
   await createProject(page, "CloudProj");
   await addNote(page, "Cloud note", "Content that gets indexed and mirrored.");
-  // While the knob is on: record + file + index all reached the cloud.
+  // Record + file + index all reach the cloud automatically — no toggle.
   await expect
     .poll(() => calls.filter((c) => c.startsWith("PUT /api/projects/")).length, { timeout: 15_000 })
     .toBeGreaterThan(0);
   await expect.poll(() => calls.filter((c) => c.startsWith("PUT /api/files/")).length).toBeGreaterThan(0);
   await expect.poll(() => calls.filter((c) => c === "POST /api/rag/index").length).toBeGreaterThan(0);
 
-  // Knob OFF → drain: exactly this project's objects deleted.
-  calls.length = 0;
-  await page.click("#projectpanel .switch-track");
-  await expect(page.locator("#projectsyncstatus")).toContainText("only in this browser", { timeout: 20_000 });
-  expect(calls.some((c) => c.startsWith("DELETE /api/files/"))).toBeTruthy();
-  expect(calls.some((c) => c.startsWith("DELETE /api/rag/docs/"))).toBeTruthy();
-  expect(calls.some((c) => c.startsWith("DELETE /api/projects/"))).toBeTruthy();
-  expect(calls.some((c) => c === "DELETE /api/storage")).toBeFalsy(); // never the account-wide wipe
-
-  // While OFF: new material stays local — nothing new reaches the cloud.
-  calls.length = 0;
-  await addNote(page, "Local-only note", "This one must not be uploaded.");
-  expect(calls.filter((c) => c.startsWith("PUT /api/") || c === "POST /api/rag/index")).toEqual([]);
-
-  // Knob ON again → push: everything (both notes) goes up.
-  calls.length = 0;
-  await page.click("#projectpanel .switch-track");
-  await expect(page.locator("#projectsyncstatus")).toContainText("stored in the cloud", { timeout: 20_000 });
-  expect(calls.some((c) => c.startsWith("PUT /api/projects/"))).toBeTruthy();
-  expect(calls.filter((c) => c.startsWith("PUT /api/files/")).length).toBeGreaterThanOrEqual(2);
-  expect(calls.filter((c) => c === "POST /api/rag/index").length).toBeGreaterThanOrEqual(2);
+  // There is NO per-project storage knob in the panel (only the vault's
+  // "Store" button remains as a storage-related control).
+  await expect(page.locator("#projectcloud")).toHaveCount(0);
+  await expect(page.locator("#projectpanel")).not.toContainText("Store this project in the cloud");
 });

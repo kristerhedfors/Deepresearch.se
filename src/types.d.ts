@@ -25,7 +25,7 @@ export interface Env {
   ASSETS: Fetcher;
   /** D1 database — optional; absent means break-glass-auth-only, no quotas. */
   DB?: D1Database;
-  /** R2 bucket for cloud conversation/file/RAG storage (the server_history knob). */
+  /** R2 bucket for cloud conversation/file/RAG storage. Present ⇒ Se/rver's always-on cloud storage is active; absent ⇒ browser-only. */
   STORAGE?: R2Bucket;
   /** Vectorize index for server-side RAG retrieval. */
   RAG_INDEX?: VectorizeIndex;

@@ -8,14 +8,13 @@
 // stored there), and indexed. Each question then retrieves only the most
 // relevant excerpts into the outgoing message (stream.js).
 //
-// Where the index lives follows the account's cloud-storage knob
-// (settings.js):
-//   OFF (default) — IndexedDB in this browser (database `dr_rag`):
-//     chunk text + Float32Array vectors, cosine top-k computed right here.
-//     Nothing is stored server-side.
-//   ON — ALSO pushed to the server (Vectorize + an exportable R2 copy,
-//     src/rag.js), and queries prefer the server index (works across
-//     devices); the local copy stays as a lazy cache and fallback.
+// The index always lives in IndexedDB in this browser (database `dr_rag`):
+// chunk text + Float32Array vectors, cosine top-k computed right here. On
+// Se/rver, where cloud storage is always available (settings.js), it is ALSO
+// pushed to the server (Vectorize + an exportable R2 copy, src/rag.js) and
+// queries prefer the server index (works across devices); the local copy
+// stays as a lazy cache and fallback. Only a deploy that can't store at all
+// (break-glass, no binding) runs local-only.
 //
 // The RAG index is NOT encrypted (in either location): retrieval needs
 // readable chunk text. Conversations outside projects stay encrypted
@@ -342,17 +341,16 @@ export async function pushDocToServer(docId) {
 }
 
 /**
- * Chunk + embed + store one document. opts.cloud=false skips the server
- * mirror even when the account knob is on — the per-project storage opt-out
- * (public/js/projects.js decides).
+ * Chunk + embed + store one document. Mirrored to the server index whenever
+ * cloud storage is available (always, on Se/rver).
  * @param {string} docId
  * @param {string} name display name
  * @param {string} fullText
- * @param {{onProgress?: (done: number, total: number) => void, cloud?: boolean}} [opts]
+ * @param {{onProgress?: (done: number, total: number) => void}} [opts]
  *   onProgress drives the attachment card's indexing badge
  * @returns {Promise<{chunkCount: number, truncated: boolean}>}
  */
-export async function indexDocument(docId, name, fullText, { onProgress, cloud = true } = {}) {
+export async function indexDocument(docId, name, fullText, { onProgress } = {}) {
   const chunks = chunkText(fullText);
   if (!chunks.length) throw new Error("No indexable text.");
   const truncated = chunks.length >= MAX_CHUNKS; // chunker stops there — tail unindexed
@@ -372,9 +370,9 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
     addedAt: Date.now(),
   };
   await putDocLocally(doc, chunks, vectors);
-  // Mirror to the server index when cloud storage is on — fail-soft: a
+  // Mirror to the server index when cloud storage is available — fail-soft: a
   // hiccup here leaves a perfectly working local index (sync.js re-pushes).
-  if (cloud && serverHistoryOn() && serverRagAvailable()) {
+  if (serverHistoryOn() && serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
@@ -395,10 +393,10 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
  * @param {string} docId
  * @param {string} name display name
  * @param {string} text the NEW text only
- * @param {{meta?: object, cloud?: boolean}} [opts]
+ * @param {{meta?: object}} [opts]
  * @returns {Promise<{chunkCount: number, appended: number}>}
  */
-export async function appendToDoc(docId, name, text, { meta = {}, cloud = true } = {}) {
+export async function appendToDoc(docId, name, text, { meta = {} } = {}) {
   const existing = await getDoc(docId);
   const startSeq = existing?.chunkCount || 0;
   const pieces = chunkText(text)
@@ -421,7 +419,7 @@ export async function appendToDoc(docId, name, text, { meta = {}, cloud = true }
     ...meta,
   };
   await putDocLocally(doc, pieces, vectors);
-  if (cloud && serverHistoryOn() && serverRagAvailable()) {
+  if (serverHistoryOn() && serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
@@ -466,9 +464,9 @@ async function retrieveServer(docIds, queryText, topK) {
 
 /**
  * The most relevant chunks for this question across the given documents.
- * Prefers the server index when cloud storage is on (it may hold documents
- * indexed on ANOTHER device); falls back to — and merges nothing from —
- * the local index when the server comes up empty or errors.
+ * Prefers the server index when cloud storage is available (it may hold
+ * documents indexed on ANOTHER device); falls back to — and merges nothing
+ * from — the local index when the server comes up empty or errors.
  * @param {string[]} docIds
  * @param {string} queryText
  * @param {number} [topK]

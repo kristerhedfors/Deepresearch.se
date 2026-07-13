@@ -106,14 +106,27 @@ git push origin main
    model — regardless of which PROVIDER serves that model (an Anthropic answer
    model still gets Berget-Mistral JSON phases). Token accounting, budgeting,
    and profiles are all split accordingly.
-4. **The privacy split.** Conversations and attached-file originals rest as
-   ciphertext in BOTH the browser and (if the cloud knob is on) R2 — the ONLY
-   readable exceptions are RAG-indexed material and project chats, because
-   retrieval needs plaintext. The encryption key is derived server-side and
-   held only in memory, never at rest beside the ciphertext. The
-   secret-keyed project vault (`src/vault.js` + `public/js/vault.js`) is
-   the strictest tier: archives rest server-side as ciphertext under a
-   user-held secret the server never sees and cannot derive. Since 2026-07-08
+4. **The privacy split — and the storage tier is the choice, not a knob
+   (2026-07-13 directive).** On DRS (Se/rver) cloud storage is ALWAYS on
+   whenever the server can back it — there is NO per-account `server_history`
+   opt-out and NO per-project knob anymore. Conversations, projects, files,
+   and the index always rest in BOTH the browser and R2. A user who wants
+   browser-only storage uses DRC (Se/cure), where the server is in no data
+   path at all; the two tiers ARE the storage choice, and a redundant knob on
+   DRS only blurred it. `serverHistoryEnabled` (`src/settings.js`) is now pure
+   storage AVAILABILITY (R2 binding + a real account; break-glass and a
+   binding-less deploy degrade to browser-only — infrastructure, not a
+   choice). Conversations and attached-file originals rest as ciphertext in
+   both locations — the ONLY readable exceptions are RAG-indexed material and
+   project chats, because retrieval needs plaintext. The encryption key is
+   derived server-side and held only in memory, never at rest beside the
+   ciphertext (so an at-rest theft of the R2 bucket alone yields only
+   ciphertext) — but because the running server CAN derive that key and now
+   always holds the encrypted copy, a full server compromise could read DRS
+   history; the strictest tier is the secret-keyed project vault
+   (`src/vault.js` + `public/js/vault.js`): archives rest server-side as
+   ciphertext under a user-held secret the server never sees and cannot derive
+   — the one DRS copy a full compromise still can't read. Since 2026-07-08
    (explicit product decision) the server ALSO keeps a full-visibility
    interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
    exchange's complete question, answer, and research metadata — UNLESS the
@@ -181,12 +194,12 @@ Server (`src/`):
 | `alerts.js` | Operational alerts (D1 `alerts` table): classifies caught pipeline/backend failures (Berget errors, wallet depletion) into a small stable set of alert types surfaced in the admin panel and as a notification badge — rows are upserted by `type` (a recurrence bumps `count`/`last_seen_at` and re-surfaces itself) rather than one row per occurrence; fails soft (a no-op without D1) — see the **access-control** skill |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) + `/api/client-log` (client telemetry beacon → Workers Logs; first user is the sandbox filesystem integration — see the **execution-sandbox** skill) |
 | `user-messages.js` | Per-user message center (D1 `user_messages`): account-level notices (quota exhausted/restored, sign-in approved, quota changed by an admin) — structured enums + timestamps ONLY, deliberately no content column, so the feature stays inside the same zero-retention promise the privacy notice makes for conversations; "restored" isn't a separate write, it's derived at read time from the caller's CURRENT quota state (`quota.js`). Rendered by the client's `account-messages.js` |
-| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, `bash_lite_mcp` (experimental execution sandbox), and `developer_mode` (introspection mode) knobs — `GET/PUT /api/settings` |
+| `settings.js` | Per-user settings (`users.settings_json`, additive column): the `shodan_mcp`, `google_maps`, `feedback_mode`, `bash_lite_mcp` (experimental execution sandbox), and `developer_mode` (introspection mode) knobs — `GET/PUT /api/settings`. Cloud storage is NOT a knob (Se/rver always stores in the cloud; Se/cure is the client-side tier): `serverHistoryEnabled` is pure storage availability, and the payload's `server_history` is that availability signal, not a setting |
 | `introspect.js` | INTROSPECTION MODE's server enrichment (the `developer_mode` knob): whenever developer mode is on it appends the site's OWN source so answers (incl. code-example requests) come from the real code, never a denial. It RETRIEVES the source chunks most relevant to the question from a committed DENSE index (`public/introspect/source-rag.json` — int8 embeddings per source chunk, `scripts/bundle-source-rag.mjs` / `npm run bundle:rag`, a per-file-hash DELTA build that only re-embeds changed files), embedding the query with Berget e5 (same model the index was built with) — so it works for ANY phrasing with NO intent regex and NO Linux VM. Plus a CLAUDE.md orientation excerpt, the full file index for strong "how are you built" asks, and named files inlined by path. Both artifacts (the source snapshot + the rag index) are COMMITTED, served by this deploy, read back through the ASSETS binding — by construction the exact source this deploy runs. `hasSource` flips the answer prompts' capabilities line (prompts.js/pipeline.js) so the model uses the source instead of saying it isn't a coding tool. Shared pure core (chunker/int8 codec/retrieval/block builder) is `public/js/introspect-core.js`; with the sandbox knob also on the tree mounts at `/src` — see the **introspection** skill |
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
-| `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
-| `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
+| `storage.js` | R2 cloud storage — always-on for Se/rver, writes gated only on availability (R2 binding + a real account): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded; no longer knob-driven, an explicit "delete my server data" path) |
+| `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`); the strictest tier — the one DRS copy the server can't read even in principle — for backup/cross-device transport as pure ciphertext; each store is its own explicit consent act and it is excluded from the drain-wipe |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
@@ -322,10 +335,12 @@ an answer — lazy-injects the vendored jsPDF on first use only, so the
 normal page load never pays for it), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
 project chats which rest readable because they're RAG-indexed — now also
-dual-writing each record to the cloud while the knob is on),
+dual-writing each record to the cloud whenever cloud storage is available —
+always, on Se/rver),
 `history-ui.js` (the left history sidebar: list/rename/delete/load),
-`settings.js` (cached `/api/settings` client; `serverHistoryOn()` is the
-synchronous question every storage-touching module asks), `dev-mode.js`
+`settings.js` (cached `/api/settings` client; `serverHistoryOn()` — now the
+"is cloud storage available?" availability signal, no longer a user knob — is
+the synchronous question every storage-touching module asks), `dev-mode.js`
 (developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`
 class on the ROOT element re-pointing the nine palette variables, `:root.dev-mode`
 in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
@@ -338,14 +353,15 @@ toggle — Node-tested), `opfs.js`
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental
 turn indexing as a conversation grows, the `chat-<convId>` doc ids, the
 sibling-chat retrieval scope, index deletion — pure text-extraction core
-Node-tested), `sync.js` (bulk sync when the account knob
-flips, either direction, + `pullNewer` reconciliation + the per-project
-`pushProjectScope`/`drainProjectScope`), `projects.js` (project records,
-file/note ingestion + indexing, the per-project knob, scope helpers),
+Node-tested), `sync.js` (the boot `syncToServer` push that lifts anything the
+cloud is missing + `pullNewer` reconciliation — cloud is always on, so there's
+no off-drain and no per-project scoping), `projects.js` (project records,
+file/note ingestion + indexing, scope helpers — always cloud-stored, no knob),
 `project-context.js` (pure builders: the project-materials block,
 `projectDocIds` — Node-testable), `projects-ui.js` (the project panel:
-knob at top, the vault store-with-secret section, dropzone, add-text
-form, file/chat lists, header chip; plus the sidebar's
+the vault store-with-secret section, dropzone, add-text
+form, file/chat lists, header chip — no storage knob, projects are always
+cloud-stored; plus the sidebar's
 load-project-from-secret form), `vault-core.js` (the project vault's
 dependency-free PURE core: the copy-safe 160-bit Crockford-base32
 secret — generation, forgiving normalization — HKDF id+key derivation,
@@ -777,7 +793,8 @@ what docs claim); and update the skill list below plus the skill's
   ledger, deciding evidence-driven `model-profiles.js` entries, and
   don't-commit-mid-battery.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
-  `server_history` cloud knob, RAG documents, projects, the secret-keyed
+  always-cloud Se/rver posture (no `server_history` or per-project knob),
+  RAG documents, projects, the secret-keyed
   project vault, and the encryption-asymmetry rule (`storage.js`,
   `vault.js`, `settings.js`, `rag.js`, `history-store.js`, `sync.js`,
   `projects.js`, `public/js/vault.js`).

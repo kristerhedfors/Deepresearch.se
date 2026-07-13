@@ -1275,6 +1275,11 @@ from the phone: a per-account **"Store history in the cloud"** setting
 (default off), and retrieval-augmented handling of large attached
 documents.
 
+> **Later superseded (2026-07-13):** the on/off knob was removed —
+> DeepResearch.**Se/rver** now *always* stores in the cloud, and the
+> client-side **Se/cure** tier is the way to keep everything in the
+> browser. The description below is how the feature originally shipped.
+
 - **The knob** (`/api/settings`, account panel → Settings): off keeps
   the original posture — encrypted conversations only in this browser.
   On mirrors them to Cloudflare **R2 still encrypted with the same

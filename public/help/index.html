@@ -125,18 +125,25 @@
         or cloned device, a forensic disk image — the attacker finds only
         ciphertext. The key that would unlock it was never written down in
         that browser to begin with.</li>
-      <li><b>If our server is ever compromised</b>, the attacker could
-        recover the secret the key derives from and compute your key — but
-        would still have no ciphertext to decrypt with it, because your
-        conversations never leave your browser in the first place.</li>
+      <li><b>If only the stored data is obtained</b> — a leaked copy of the
+        storage bucket holding the encrypted cloud copies (see Settings
+        below) — it is likewise just ciphertext: the key isn't stored beside
+        it, it's derived on demand by the running server.</li>
     </ul>
-    <div class="privacy-flag"><b>Honest limitation:</b> only the
-    <i>combination</i> of both — someone who has compromised the server
-    (able to derive your key) <i>and</i> has separately obtained your
-    browser's stored data — could decrypt your history. That is a
-    materially higher bar than either alone, which is the actual promise
-    here; we're not claiming a single compromise is impossible to build
-    into a bigger attack, only that it isn't sufficient by itself.</div>
+    <div class="privacy-flag"><b>Honest limitation — and why the tiers
+    exist:</b> DeepResearch.<b>Se<span class="sl">/</span>rver</b> (this
+    signed-in tier) always keeps an encrypted copy of your history in the
+    site's storage so it follows your account across devices, and the same
+    server can derive your key. So a <i>full</i> compromise of this running
+    server — both its key-derivation secret <i>and</i> that stored copy —
+    could read your Se/rver history. The encryption still defeats an
+    at-rest theft of either half alone, but it is not a claim that the
+    operator can never read your history. For history that not even a full
+    server compromise can read, use
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b> (the /cure tier —
+    nothing reaches this server at all) or, for a single project, its
+    secret-keyed <b>vault</b> (stored as ciphertext under a secret the
+    server never sees and cannot derive).</div>
     <h3>What this means day to day</h3>
     <ul>
       <li><b>It's this browser only.</b> History doesn't sync between
@@ -157,15 +164,15 @@
     keeps growing as the conversation does: each new exchange is added to
     it. Because a search index needs readable text, indexed material is
     stored <b>readable, not encrypted</b> — and that includes project chats
-    themselves, in this browser and (when cloud storage is on) in the cloud
-    copy. Chats outside projects are not indexed and stay encrypted exactly
+    themselves, in this browser and in the cloud copy (Se/rver always keeps
+    one). Chats outside projects are not indexed and stay encrypted exactly
     as described above. If a conversation shouldn't be readable at rest —
     or retrievable from your other chats — keep it outside projects, or
     take it to ghost mode (the ghost button → DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
     where nothing reaches this server at
     all).</p>
     <h3>Backing up or moving a project with a secret</h3>
-    <p>A project — even one kept out of the cloud — can be stored as
+    <p>Any project can also be stored as
     <b>one encrypted archive</b> keyed by a secret: open the project and
     press <b>Store</b> next to "Encrypted copy, keyed by a secret". Your
     browser packs the project's chats, files, and search index, encrypts
@@ -333,14 +340,19 @@
       your account. Each is a single line; press and hold (or click) the
       <b>ⓘ</b> next to a switch for the full explanation.</p>
     <ul>
-      <li><b>Store history in the cloud</b> (on by default) — keeps a copy of
-        your conversations, files and search index in this site's storage so
-        your history follows your account across devices. Conversations and
-        files are stored encrypted; indexed material — large documents,
-        project files and notes, project chats, and the search index itself —
-        is stored readable, since retrieval needs readable text. Switching it
-        off downloads everything to this browser and deletes the cloud copies.
-        See "Chat history" above for how the encryption works.</li>
+      <li><b>Cloud storage is always on here</b> (no switch) — on
+        DeepResearch.<b>Se/rver</b> (the signed-in tier you're using now) your
+        conversations, files and search index are always kept in this site's
+        storage, so your history follows your account across devices.
+        Conversations and files are stored encrypted; indexed material — large
+        documents, project files and notes, project chats, and the search index
+        itself — is stored readable, since retrieval needs readable text (see
+        "Chat history" above for how the encryption works). If you'd rather keep
+        everything in your browser and out of any server, use
+        DeepResearch.<b>Se/cure</b> (the /cure tier) instead — there the server
+        is in no data path at all. For a single project you want the server
+        unable to read even in encrypted form, use a project's <b>Encrypted
+        copy, keyed by a secret</b> (the vault).</li>
       <li><b>Shodan host intelligence</b> (off by default) — when on, if a
         question mentions an IP address or hostname, the site looks it up on
         <a href="https://www.shodan.io" target="_blank" rel="noopener">Shodan</a>
@@ -407,8 +419,8 @@
       <li><b>Project vault copies</b>: made only when you press <b>Store</b>
         on a project's "Encrypted copy, keyed by a secret". The archive is
         encrypted in your browser under a secret only you hold — the server
-        stores unreadable bytes it has no key for (not even derivable), and
-        switching cloud storage off never touches these copies. Load one
+        stores unreadable bytes it has no key for (not even derivable) —
+        the one copy a full server compromise still can't read. Load one
         back with 🔑 Load project from secret in the History panel.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.

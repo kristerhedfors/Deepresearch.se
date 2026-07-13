@@ -265,7 +265,7 @@
         </tr>
         <tr>
           <th>Conversations at rest</th>
-          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — only if the cloud knob is on — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
+          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) <em>and</em> — always, this is Se<span class="sl">/</span>rver — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The key is derived server-side and held only in memory, never at rest beside the ciphertext — so an at-rest theft of the R2 bucket alone yields only ciphertext, but the running server can derive the key, so a full server compromise could read it. The one Se<span class="sl">/</span>rver copy it can't read is a project's secret-keyed vault. Want nothing server-side at all? That's Se<span class="sl">/</span>cure.</td>
           <td class="drc-c">One sealed archive in the browser's own storage: chats, the RAG index (chunk text <em>and</em> vectors), and your provider API keys, AES-256-GCM under a secret only you hold. Stricter than Se<span class="sl">/</span>rver's RAG exception — even indexed material rests as ciphertext.</td>
         </tr>
         <tr>
@@ -339,7 +339,7 @@
         </tr>
         <tr>
           <th>Accounts &amp; continuity</th>
-          <td class="drs-c">Quotas, usage windows, cloud sync (knob-gated, ciphertext), cross-device projects, the message center, feedback mode, quizzes, games.</td>
+          <td class="drs-c">Quotas, usage windows, always-on cloud sync (ciphertext), cross-device projects, the message center, feedback mode, quizzes, games.</td>
           <td class="drc-c">Browser-local projects with save-as-project and <code>/my/project-&lt;hash&gt;</code> deep links; published research replays open in place and continue on your own keys. No accounts to sync.</td>
         </tr>
         <tr>

@@ -6,18 +6,20 @@
 // chunked and embedded, and each question retrieves only the most relevant
 // excerpts. Embeddings come from Berget's embedding model in BOTH storage
 // modes (the API token is a Worker secret, so the client always embeds
-// through POST /api/embed here); where the INDEX lives follows the
-// per-user `server_history` knob (src/settings.js):
+// through POST /api/embed here); the browser index is ALWAYS present, and
+// where it ALSO lives follows storage availability (src/settings.js —
+// `serverHistoryEnabled`, now availability, not a knob):
 //
-//   knob OFF (default) — the index lives in the browser (IndexedDB,
-//     public/js/rag.js does its own cosine top-k). This endpoint file only
-//     supplies the embedding proxy.
-//   knob ON — the index ALSO lives here: vectors in Vectorize (binding
-//     `RAG_INDEX` — similarity search runs off-Worker instead of burning
-//     the isolate's CPU budget), chunk text riding in vector metadata, and
-//     one exportable JSON copy per document in R2 (`rag/{uid}/{docId}`,
-//     chunks + vectors) so flipping the knob off can drain the whole index
-//     back to the client without re-embedding (and re-paying).
+//   storage unavailable (break-glass, no R2 binding) — the index lives only
+//     in the browser (IndexedDB, public/js/rag.js does its own cosine
+//     top-k). This endpoint file only supplies the embedding proxy.
+//   storage available (the normal Se/rver case) — the index ALSO lives here:
+//     vectors in Vectorize (binding `RAG_INDEX` — similarity search runs
+//     off-Worker instead of burning the isolate's CPU budget), chunk text
+//     riding in vector metadata, and one exportable JSON copy per document
+//     in R2 (`rag/{uid}/{docId}`, chunks + vectors) so the account-wide
+//     drain (DELETE /api/storage) can pull the whole index back to the
+//     client without re-embedding (and re-paying).
 //
 // The RAG index is NOT encrypted — retrieval needs readable chunk text —
 // which is why conversations (encrypted, src/storage.js) and the index are
@@ -466,8 +468,9 @@ async function ragList(env, uid) {
 }
 
 // GET /api/rag/docs/:id — the full exportable copy (chunks + vectors), used
-// by the knob-off drain so the client can rebuild its local index without
-// re-embedding. Allowed while the knob is off — that IS the drain.
+// by the account-wide drain (DELETE /api/storage) so the client can rebuild
+// its local index without re-embedding. Stays readable regardless of storage
+// availability — that IS the drain path.
 /** @param {Env} env @param {number | string} uid @param {string} docId */
 async function ragExport(env, uid, docId) {
   const obj = await bucket(env).get(ragKey(uid, docId));

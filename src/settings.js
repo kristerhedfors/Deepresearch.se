@@ -1,29 +1,32 @@
 // @ts-check
-// Per-user settings (users.settings_json, additive D1 column) — four knobs
-// today (see DEFAULTS below). The founding knob is `server_history`, default
-// ON (a product decision made as the feature shipped: cloud history is the
-// normal mode, switching it OFF is the explicit per-account opt-out).
+// Per-user settings (users.settings_json, additive D1 column). Cloud storage
+// is NOT a knob here anymore (2026-07-13 directive): DeepResearch.Se/rver, the
+// signed-in tier, ALWAYS stores everything in the cloud — conversations,
+// projects, files, the document index — the same way it always logs an
+// exchange. There is no per-account opt-out; a user who wants everything to
+// stay in the browser uses DeepResearch.Se/cure (the client-side tier at
+// /cure), where the server is in no data path at all. That tier split IS the
+// storage choice; keeping a "store in the cloud?" toggle on Se/rver only
+// blurred it.
 //
-// OFF is the original local-only posture: conversations live only in the
-// browser's encrypted IndexedDB, attached files in its OPFS, the RAG index
-// in its IndexedDB — nothing conversation-derived is stored server-side.
+// So `server_history` survives only as an internal EFFECTIVE-availability
+// signal, not a user setting: cloud storage is active whenever the server can
+// back it (the R2 binding is present AND the caller is a real account — the
+// break-glass admin and a binding-less deploy have nowhere to store, so they
+// degrade to browser-only; that's infrastructure, not a choice). See
+// serverHistoryEnabled / settingsPayload below.
 //
-// ON is Cloudflare-side storage
-// (src/storage.js + src/rag.js): conversation records are stored in R2
-// STILL ENCRYPTED with the same client-held AES-GCM key mechanism (the
-// server stores ciphertext it cannot read without also deriving the key —
-// the same combination-required threat model as src/history-key.js
-// documents), attached original files land in R2 as-is, and the document
-// RAG index lives in Vectorize + R2. Files and the RAG index are
-// necessarily NOT encrypted (the server must read file bytes and chunk
-// text to index and retrieve) — that asymmetry is deliberate and disclosed
-// in the UI, not hidden.
-//
-// The knob itself is remembered server-side so it follows the account, and
-// flipping it drives a client-side sync in each direction
-// (public/js/sync.js): on → push everything up (and keep lazy local
-// copies); off → pull everything down, then the client wipes the
-// server-side copies.
+// Cloudflare-side storage (src/storage.js + src/rag.js): conversation records
+// are stored in R2 STILL ENCRYPTED with the same client-held AES-GCM key
+// mechanism (the server stores ciphertext it cannot read without also
+// deriving the key — the same combination-required threat model as
+// src/history-key.js documents), attached original files land in R2 as-is,
+// and the document RAG index lives in Vectorize + R2. Files and the RAG index
+// are necessarily NOT encrypted (the server must read file bytes and chunk
+// text to index and retrieve) — that asymmetry is deliberate and disclosed in
+// the UI, not hidden. The strictest tier, the secret-keyed project vault
+// (src/vault.js), remains the one way to keep a Se/rver project's contents
+// unreadable to the server.
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -45,16 +48,19 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
  * @typedef {{ id: string, role: "admin" | "user", email: string | null, name: string | null, pending?: boolean, isSecretAdmin?: boolean, user?: UserRow | null }} Identity
  */
 /**
- * The effective per-account knob state parseSettings coerces to.
- * @typedef {{ server_history: boolean, shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
+ * The effective per-account knob state parseSettings coerces to. (Cloud
+ * storage is no longer a knob — it's always on when the server can back it,
+ * see serverHistoryEnabled — so `server_history` is absent here.)
+ * @typedef {{ shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability).
  * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean, bash_lite: boolean, developer: boolean }} FeatureAvailability
  */
 
-// Four knobs today:
-//  - server_history: default ON  (only an explicit stored `false` opts out).
+// Five knobs today (cloud storage is deliberately NOT among them — see the
+// header: Se/rver always stores in the cloud, Se/cure is the client-side
+// tier):
 //  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
 //    sends the host/IP to a third party, so it stays off until asked for;
 //    only an explicit stored `true` enables it).
@@ -81,14 +87,13 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    source is public on GitHub anyway; the knob keeps the mode out of
 //    ordinary users' way, not out of reach. No server secret; only an
 //    explicit stored `true` enables it).
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
+const DEFAULTS = { shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
 
-// Tolerant parse of a stored settings_json value: unknown keys are dropped,
-// known keys are coerced to their expected type, anything unreadable means
-// defaults. server_history is on unless an explicit stored `false` says
-// otherwise; shodan_mcp and google_maps are off unless an explicit stored
-// `true` enables them (their opposite defaults are why each tests against its
-// own literal). Exported for unit tests.
+// Tolerant parse of a stored settings_json value: unknown keys are dropped
+// (a legacy stored `server_history` is one such — cloud storage is no longer
+// a setting), known keys are coerced to their expected type, anything
+// unreadable means defaults. Every knob here is off unless an explicit stored
+// `true` enables it. Exported for unit tests.
 /**
  * @param {unknown} json the stored settings_json string (or a pre-parsed object)
  * @returns {Settings}
@@ -103,7 +108,6 @@ export function parseSettings(json) {
     raw = {};
   }
   return {
-    server_history: raw.server_history !== false,
     shodan_mcp: raw.shodan_mcp === true,
     google_maps: raw.google_maps === true,
     feedback_mode: raw.feedback_mode === true,
@@ -173,16 +177,18 @@ export function getSettings(identity) {
   return parseSettings(identity.user.settings_json);
 }
 
-// Convenience for gating the storage/RAG endpoints: the caller's current
-// server_history state, availability included (a knob left on in D1 after
-// the R2 binding was removed must read as off).
+// Convenience for gating the storage/RAG endpoints. Cloud storage is no
+// longer a user choice — it's on whenever the server can actually back it, so
+// this is exactly storage availability (R2 binding present AND a real account
+// to hang it on; the break-glass admin and a binding-less deploy read as off
+// and degrade to browser-only).
 /**
  * @param {Env} env
  * @param {Identity} identity
  * @returns {boolean}
  */
 export function serverHistoryEnabled(env, identity) {
-  return storageAvailability(env, identity).storage && getSettings(identity).server_history;
+  return storageAvailability(env, identity).storage;
 }
 
 // The effective Shodan-MCP state for a request: the knob must be on AND the
@@ -268,13 +274,14 @@ async function saveSettings(env, userId, settings) {
     .run();
 }
 
-// The payload reports the EFFECTIVE state, not the raw stored flags: with
-// the default ON for server_history, an identity that can't actually use
-// cloud storage (break-glass, or a server without the R2 binding) must read
-// as off — otherwise every such client would dutifully dual-write into
-// 503s. shodan_mcp is likewise forced off when the feature is unavailable
-// (no SHODAN_API_KEY / break-glass), so the UI never shows a knob that
-// would do nothing.
+// The payload reports the EFFECTIVE state, not the raw stored flags. Cloud
+// storage isn't a knob the client toggles — the client reads `server_history`
+// only to answer "should I dual-write to the cloud?", so it's reported as
+// pure availability (on whenever storage can be backed; off for break-glass
+// or a binding-less deploy, so those clients never dual-write into 503s).
+// shodan_mcp etc. are likewise forced off when their feature is unavailable
+// (no secret / break-glass), so the UI never shows a knob that would do
+// nothing.
 /**
  * @param {Env} env
  * @param {Identity} identity
@@ -283,7 +290,7 @@ async function saveSettings(env, userId, settings) {
 function settingsPayload(env, identity, settings) {
   const available = featureAvailability(env, identity);
   return {
-    server_history: available.storage && settings.server_history,
+    server_history: available.storage,
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
     feedback_mode: available.feedback && settings.feedback_mode,
@@ -310,11 +317,12 @@ export async function handleSettingsGet(env, identity) {
 }
 
 // PUT /api/settings — body may carry any knob (partial updates allowed):
-// {server_history?, shodan_mcp?, google_maps?, feedback_mode?}. Turning a
-// knob ON requires its backing to actually exist — cloud storage needs the
-// R2 binding, Shodan needs the SHODAN_API_KEY secret, feedback needs D1 —
-// so a knob can't be switched on with nothing behind it (which would
-// silently lose data or do nothing).
+// {shodan_mcp?, google_maps?, feedback_mode?, bash_lite_mcp?,
+// developer_mode?}. Cloud storage is NOT settable here (Se/rver always stores
+// in the cloud) — a legacy `server_history` in the body is ignored. Turning a
+// knob ON requires its backing to actually exist — Shodan needs the
+// SHODAN_API_KEY secret, feedback needs D1 — so a knob can't be switched on
+// with nothing behind it (which would silently do nothing).
 /**
  * @param {Request} request
  * @param {Env} env
@@ -333,23 +341,19 @@ export async function handleSettingsPut(request, env, log, identity) {
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
-  const hasHistory = body?.server_history !== undefined;
   const hasShodan = body?.shodan_mcp !== undefined;
   const hasGoogleMaps = body?.google_maps !== undefined;
   const hasFeedback = body?.feedback_mode !== undefined;
   const hasBashLite = body?.bash_lite_mcp !== undefined;
   const hasDeveloper = body?.developer_mode !== undefined;
-  if (!hasHistory && !hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite && !hasDeveloper) {
+  if (!hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite && !hasDeveloper) {
     return jsonResponse(
       {
         error:
-          "Expected {server_history?: boolean, shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
+          "Expected {shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
       },
       400,
     );
-  }
-  if (hasHistory && typeof body.server_history !== "boolean") {
-    return jsonResponse({ error: "server_history must be a boolean." }, 400);
   }
   if (hasShodan && typeof body.shodan_mcp !== "boolean") {
     return jsonResponse({ error: "shodan_mcp must be a boolean." }, 400);
@@ -367,12 +371,6 @@ export async function handleSettingsPut(request, env, log, identity) {
     return jsonResponse({ error: "developer_mode must be a boolean." }, 400);
   }
   const available = featureAvailability(env, identity);
-  if (hasHistory && body.server_history && !available.storage) {
-    return jsonResponse(
-      { error: "Cloud storage is not configured on this server (R2 binding missing)." },
-      503,
-    );
-  }
   if (hasShodan && body.shodan_mcp && !available.shodan) {
     return jsonResponse(
       { error: "Shodan is not configured on this server (SHODAN_API_KEY missing)." },
@@ -408,7 +406,6 @@ export async function handleSettingsPut(request, env, log, identity) {
     );
   }
   const settings = { ...getSettings(identity) };
-  if (hasHistory) settings.server_history = body.server_history;
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   if (hasGoogleMaps) settings.google_maps = body.google_maps;
   if (hasFeedback) settings.feedback_mode = body.feedback_mode;
@@ -417,7 +414,6 @@ export async function handleSettingsPut(request, env, log, identity) {
   await saveSettings(env, identity.user.id, settings);
   log.info("settings.updated", {
     user_id: identity.id,
-    server_history: settings.server_history,
     shodan_mcp: settings.shodan_mcp,
     google_maps: settings.google_maps,
     feedback_mode: settings.feedback_mode,

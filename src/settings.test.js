@@ -15,9 +15,11 @@ import {
   storageAvailability,
 } from "./settings.js";
 
-const DEFAULTS = { server_history: true, shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
+// Cloud storage is no longer a knob (Se/rver always stores in the cloud), so
+// server_history is absent from the parsed settings.
+const DEFAULTS = { shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
 
-test("parseSettings defaults: history on, shodan off, google_maps off, feedback off", () => {
+test("parseSettings defaults: shodan off, google_maps off, feedback off (no server_history knob)", () => {
   assert.deepEqual(parseSettings(null), DEFAULTS);
   assert.deepEqual(parseSettings(undefined), DEFAULTS);
   assert.deepEqual(parseSettings(""), DEFAULTS);
@@ -29,12 +31,9 @@ test("parseSettings survives malformed JSON (falls back to defaults)", () => {
   assert.deepEqual(parseSettings('"a string"'), DEFAULTS);
 });
 
-test("parseSettings: only an explicit stored false opts out of history", () => {
-  assert.equal(parseSettings('{"server_history":true}').server_history, true);
-  assert.equal(parseSettings('{"server_history":false}').server_history, false);
-  // Non-boolean junk means the default (on), not off.
-  assert.equal(parseSettings('{"server_history":0}').server_history, true);
-  assert.equal(parseSettings('{"server_history":"false"}').server_history, true);
+test("parseSettings ignores a legacy stored server_history (cloud storage is no longer a knob)", () => {
+  assert.equal(parseSettings('{"server_history":false}').server_history, undefined);
+  assert.equal(parseSettings('{"server_history":true}').server_history, undefined);
 });
 
 test("parseSettings: only an explicit stored true enables shodan", () => {
@@ -53,19 +52,21 @@ test("parseSettings: only an explicit stored true enables google_maps", () => {
   assert.equal(parseSettings('{"google_maps":"true"}').google_maps, false);
 });
 
-test("serverHistoryEnabled is the effective state: binding AND user AND setting", () => {
+test("serverHistoryEnabled is pure storage availability: binding AND user, no knob", () => {
   const env = { STORAGE: {} };
-  const optedOut = { user: { id: 1, settings_json: '{"server_history":false}' } };
+  // A legacy stored server_history:false no longer opts out — cloud storage is
+  // always on when the server can back it.
+  const legacyOptOut = { user: { id: 1, settings_json: '{"server_history":false}' } };
   const fresh = { user: { id: 2, settings_json: null } };
-  assert.equal(serverHistoryEnabled(env, fresh), true); // default on
-  assert.equal(serverHistoryEnabled(env, optedOut), false); // explicit opt-out
+  assert.equal(serverHistoryEnabled(env, fresh), true); // available → on
+  assert.equal(serverHistoryEnabled(env, legacyOptOut), true); // legacy knob ignored
   assert.equal(serverHistoryEnabled({}, fresh), false); // no R2 binding
   assert.equal(serverHistoryEnabled(env, {}), false); // break-glass: no user row
 });
 
-test("parseSettings drops unknown keys", () => {
+test("parseSettings drops unknown keys (server_history among them now)", () => {
   const s = parseSettings('{"server_history":true,"evil":"x"}');
-  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "developer_mode", "feedback_mode", "google_maps", "server_history", "shodan_mcp"]);
+  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "developer_mode", "feedback_mode", "google_maps", "shodan_mcp"]);
 });
 
 test("parseSettings: only an explicit stored true enables feedback_mode", () => {

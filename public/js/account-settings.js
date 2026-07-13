@@ -1,30 +1,22 @@
 // The account panel's "settings" view — ALL configuration in one place
 // (2026-07-11 directive; also opened straight from the header's gear
-// icon): the cloud-storage / Shodan / Google Maps knobs, each disabled
-// (with a note) when the server can't back it, plus the Feedback-mode and
-// execution-sandbox knobs (rows + wiring from account-views.js). Built
-// from account-views.js's shared settingRow/wireSettingPopovers building
-// blocks; the panel shell (showView) lives in account.js.
+// icon): the Shodan / Google Maps knobs, each disabled (with a note) when
+// the server can't back it, plus the Feedback-mode and execution-sandbox
+// knobs (rows + wiring from account-views.js). Built from account-views.js's
+// shared settingRow/wireSettingPopovers building blocks; the panel shell
+// (showView) lives in account.js.
+//
+// There is deliberately NO cloud-storage knob (2026-07-13 directive):
+// DeepResearch.Se/rver always stores everything in the cloud; a user who
+// wants browser-only storage uses DeepResearch.Se/cure (the /cure tier). The
+// tier IS the storage choice.
 
 import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
-import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
-import { syncToClient, syncToServer } from "./sync.js";
+import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
 // ---- setting-knob info popover texts ----------------------------------------
-
-const CLOUD_INFO = `<strong>Store history in the cloud</strong><br>
-  <b>On (default):</b> conversations, attached files and the document index are
-  kept in this site's Cloudflare storage, so your history follows your account
-  across devices. Conversations <b>and</b> attached files (images included) stay
-  <b>encrypted</b> with the same key mechanism they have in this browser; the
-  readable exceptions are what's indexed for search — large documents, project
-  files and notes, and chats inside a project (indexed so the project's other
-  chats can draw on them) — plus the search index itself, since retrieval
-  needs readable text.<br>
-  <b>Off:</b> everything lives only in this browser — switching off downloads it
-  all here and deletes the cloud copies.`;
 
 const SHODAN_INFO = `<strong>Shodan host intelligence (MCP)</strong><br>
   <b>On:</b> when a question mentions an IP address or hostname, the site looks it
@@ -53,9 +45,9 @@ const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
   and independently of the web-search switch.`;
 
 /**
- * Fetches fresh settings and renders the Settings sub-view: the
- * cloud-storage, Shodan, and Google Maps knobs, each disabled (with a
- * note) when the server can't back it.
+ * Fetches fresh settings and renders the Settings sub-view: the Shodan and
+ * Google Maps knobs, each disabled (with a note) when the server can't back
+ * it. (Cloud storage has no knob — Se/rver always stores in the cloud.)
  * @param {PanelCtx} ctx
  */
 export async function loadSettingsView(ctx) {
@@ -68,12 +60,11 @@ export async function loadSettingsView(ctx) {
   let s = null;
   if (ctx.me?.email) {
     try {
-      s = await loadSettings(true); // fresh — another device may have flipped it
+      s = await loadSettings(true); // fresh — another device may have flipped a knob
     } catch {
       s = null;
     }
   }
-  const usable = !!s?.available?.storage;
   const shodanUsable = !!s?.available?.shodan;
   const googleMapsUsable = !!s?.available?.google_maps;
   const note = !ctx.me?.email
@@ -81,9 +72,6 @@ export async function loadSettingsView(ctx) {
     : s === null
       ? "Could not load settings — try again in a moment."
       : "";
-  const cloudNote = usable
-    ? ""
-    : `<p class="muted setting-note">Cloud storage isn't configured on this server, so history stays in this browser only.</p>`;
   const shodanNote = shodanUsable
     ? ""
     : `<p class="muted setting-note">Shodan isn't configured on this server (no API key), so this stays off.</p>`;
@@ -94,16 +82,6 @@ export async function loadSettingsView(ctx) {
   ctx.body.innerHTML = `
     <button id="settingsbackbtn" type="button" class="back-link">← Back</button>
     <p class="section-lbl">Settings</p>
-    ${settingRow({
-      id: "cloudknob",
-      label: "Store history in the cloud",
-      checked: usable && s?.server_history,
-      disabled: !usable,
-      popId: "cloudpop",
-      info: CLOUD_INFO,
-    })}
-    ${cloudNote}
-    <p id="syncstatus" class="muted setting-note" hidden></p>
     ${settingRow({
       id: "shodanknob",
       label: "Shodan host intelligence",
@@ -132,7 +110,6 @@ export async function loadSettingsView(ctx) {
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
 
-  if (usable) wireCloudStorageKnob();
   if (shodanUsable) {
     wireSimpleKnob("shodanknob", "shodanstatus", setShodanMcp, {
       on: "Shodan is on — IPs and hostnames you mention are looked up during research.",
@@ -145,42 +122,6 @@ export async function loadSettingsView(ctx) {
       off: "Google Maps is off — nothing is sent to Google.",
     });
   }
-}
-
-// The cloud knob is the one setting whose flip triggers a bulk move
-// (sync.js): ON pushes everything local up, OFF drains everything down and
-// wipes the cloud — the status line narrates progress and the outcome.
-function wireCloudStorageKnob() {
-  const knob = document.getElementById("cloudknob");
-  const status = document.getElementById("syncstatus");
-  const progress = (msg) => { status.textContent = msg; };
-  knob.addEventListener("change", async () => {
-    const on = knob.checked;
-    knob.disabled = true;
-    status.hidden = false;
-    try {
-      await setServerHistory(on);
-      if (on) {
-        const r = await syncToServer(progress);
-        status.textContent =
-          `Cloud storage is on — ${r.pushed} item(s) uploaded.` +
-          (r.errors.length ? ` ${r.errors.length} item(s) failed and will retry on the next sync.` : "");
-      } else {
-        const r = await syncToClient(progress);
-        status.textContent = r.wiped
-          ? r.checked
-            ? `Cloud storage is off — all ${r.checked} cloud item(s) are in this browser` +
-              ` (${r.pulled} newly downloaded, the rest were already here); cloud copies removed.`
-            : "Cloud storage is off — the cloud held nothing to download; cloud copies removed."
-          : "Downloaded what was reachable, but some items failed — the cloud copies were kept. Toggle again to retry.";
-      }
-    } catch (err) {
-      knob.checked = !on; // the setting didn't change server-side
-      status.textContent = err?.message || "Could not update the setting.";
-    } finally {
-      knob.disabled = false;
-    }
-  });
 }
 
 /**

@@ -44,7 +44,6 @@ import {
   activeProject,
   activeProjectId,
   getProject,
-  projectCloudOn,
   setActiveProject,
 } from "./projects.js";
 import { listOriginals, loadOriginal } from "./opfs.js";
@@ -128,9 +127,8 @@ initEmbeds({ history, persist: () => persistConversation(lastSendOpts) });
 // The project this conversation belongs to (null = none): adopted from the
 // active project on the FIRST send of a fresh conversation, persisted in
 // the encrypted record, restored on load. Project scope means: retrieval
-// runs across the project's indexed docs too, the project-materials block
-// (inventory + image EXIF) rides in each message, and persistence honors
-// the project's cloud knob.
+// runs across the project's indexed docs too, and the project-materials
+// block (inventory + image EXIF) rides in each message.
 let convProjectId = null;
 
 // The most recent send's persistence options (model/budget/webSearch) — a
@@ -273,7 +271,6 @@ async function persistConversation(opts) {
         createdAt: convCreatedAt,
         updatedAt: now,
       },
-      { cloud: projectCloudOn(convProjectId) },
     );
     onHistoryChange(currentId);
   } catch {
@@ -290,7 +287,6 @@ async function persistConversation(opts) {
       convId: currentId,
       title: convTitle,
       messages: history.slice(),
-      cloud: projectCloudOn(convProjectId),
     }).catch(() => {});
   }
 }

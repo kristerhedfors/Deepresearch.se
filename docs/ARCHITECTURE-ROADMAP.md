@@ -120,7 +120,9 @@ class of bug this codebase is now *growing into* as it scales:
   `jsonTotals`, `visionTotals`, `shodanCount`, `mapsCount`,
   `cachedSearchCount`, …); the SSE event vocabulary that client
   `activity.js`/`turns.js` must stay in sync with; the settings JSON
-  (`server_history` / `shodan_mcp` / `google_maps`) parsed in three
+  (`shodan_mcp` / `google_maps` / `developer_mode` — the user knobs;
+  `server_history` is no longer one, just a storage-availability signal)
+  parsed in three
   places. These are exactly the seams where a 16K-line two-sided codebase
   starts leaking, and exactly what structural typing catches.
 - **Refactoring confidence** for the pipeline changes in §5.
