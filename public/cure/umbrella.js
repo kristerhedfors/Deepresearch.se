@@ -171,22 +171,33 @@ export function project(p, cam) {
 // their appearance at the start. The revival dresses each one in a
 // WHITE-AND-PINK scheme — `col` is its canopy, `alt` the alternating gore,
 // `border` the contrasting rim band (all kept in the pink/white family so the
-// crowd stays on-palette) — and a distinct SHAPE: `dome` is the canopy height
-// (fraction of radius), `pagoda` blends a rounded dome (0) toward a pointed
-// pagoda (1), and `scallop` is how deeply its edge frills.
+// crowd stays on-palette) — a distinct SHAPE (`dome` is the canopy height as a
+// fraction of radius, `pagoda` blends a rounded dome (0) toward a pointed
+// pagoda (1), `scallop` is how deeply its edge frills), and — appearing as it
+// regains color from the wireframe — its own DECORATIONS: `motif` is the
+// pattern across the canopy (dots/rings/scales/chevron/stars) and `edge` is
+// the thick trim style hung along the rim (beads/scallops/points/swags).
+export const EDGE_STYLES = ["beads", "scallops", "points", "swags"];
+export const MOTIFS = ["dots", "rings", "scales", "chevron", "stars"];
 export const FLEET = [
   { fx: 0.30, fy: 0.34, s: 0.335, speed: 1.0, dir: 1, phase: 0.0, zLift: 0.55, delay: 0,
-    col: "#e06c8c", alt: "#f3aec1", border: "#fff2f6", dome: 0.50, pagoda: 0.15, scallop: 0.20 }, // deep rose, white rim
+    col: "#e06c8c", alt: "#f3aec1", border: "#fff2f6", dome: 0.50, pagoda: 0.15, scallop: 0.20,
+    motif: "dots", edge: "scallops" }, // deep rose, white rim
   { fx: 0.72, fy: 0.24, s: 0.215, speed: 1.35, dir: -1, phase: 1.7, zLift: 0.95, delay: 260,
-    col: "#fff8fb", alt: "#f6bfd0", border: "#e5789a", dome: 0.34, pagoda: 0.00, scallop: 0.10 }, // white, flat dome
+    col: "#fff8fb", alt: "#f6bfd0", border: "#e5789a", dome: 0.34, pagoda: 0.00, scallop: 0.10,
+    motif: "rings", edge: "beads" }, // white, flat dome
   { fx: 0.55, fy: 0.64, s: 0.42, speed: 0.8, dir: 1, phase: 3.1, zLift: 0.18, delay: 520,
-    col: "#f7c6d6", alt: "#ffffff", border: "#d15c7e", dome: 0.58, pagoda: 0.55, scallop: 0.16 }, // blush, tall pagoda
+    col: "#f7c6d6", alt: "#ffffff", border: "#d15c7e", dome: 0.58, pagoda: 0.55, scallop: 0.16,
+    motif: "scales", edge: "points" }, // blush, tall pagoda
   { fx: 0.15, fy: 0.74, s: 0.175, speed: 1.6, dir: -1, phase: 4.2, zLift: 1.25, delay: 780,
-    col: "#ea9bb2", alt: "#fde4ec", border: "#ffffff", dome: 0.44, pagoda: 0.30, scallop: 0.24 }, // rose, deeply frilled
+    col: "#ea9bb2", alt: "#fde4ec", border: "#ffffff", dome: 0.44, pagoda: 0.30, scallop: 0.24,
+    motif: "chevron", edge: "swags" }, // rose, deeply frilled
   { fx: 0.87, fy: 0.68, s: 0.26, speed: 1.15, dir: 1, phase: 2.3, zLift: 0.75, delay: 1040,
-    col: "#f4b8c8", alt: "#fff9fc", border: "#df6e8e", dome: 0.40, pagoda: 0.70, scallop: 0.13 }, // pale pink, pointed
+    col: "#f4b8c8", alt: "#fff9fc", border: "#df6e8e", dome: 0.40, pagoda: 0.70, scallop: 0.13,
+    motif: "stars", edge: "scallops" }, // pale pink, pointed
   { fx: 0.43, fy: 0.11, s: 0.145, speed: 1.8, dir: -1, phase: 5.0, zLift: 1.6, delay: 1300,
-    col: "#ffffff", alt: "#efa8bd", border: "#e56d94", dome: 0.38, pagoda: 0.10, scallop: 0.18 }, // white, pink rim
+    col: "#ffffff", alt: "#efa8bd", border: "#e56d94", dome: 0.38, pagoda: 0.10, scallop: 0.18,
+    motif: "dots", edge: "points" }, // white, pink rim
 ];
 
 // ---- the DOM layer (browser only) --------------------------------------------------
@@ -211,6 +222,14 @@ function lerpCol(c1, c2, t) {
     b = hex(c2);
   return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
 }
+/** Rough perceived lightness 0..255. @param {string} c */
+function lum(c) {
+  const [r, g, b] = hex(c);
+  return 0.3 * r + 0.59 * g + 0.11 * b;
+}
+/** A decoration color that reads on a given canopy: cream on a deep canopy,
+ * the canopy's own deeper trim on a pale/white one. @param {{col:string,border:string}} u */
+const decoInk = (u) => (lum(u.col) > 210 ? u.border : CREAM);
 
 let playing = false;
 
@@ -402,13 +421,93 @@ export function playUmbrellaIntro(opts = {}) {
       if (P.revive > 0.01) {
         const rv = smooth(P.revive) * appear;
         // Alive: this umbrella's own pink/white canopy, gored two-tone.
-        fillPanels(smooth(P.revive) * appear, (i) => (i % 2 ? u.alt : u.col));
+        fillPanels(rv, (i) => (i % 2 ? u.alt : u.col));
 
-        // -- the thick decorated border ring round the whole rim -----------
-        // A contrasting band from rFrac 0.82 out to the scalloped edge, then
-        // a row of picot beads sitting on it — "a decoration along the outer
-        // border of the circle".
-        const seg = PANELS * 14;
+        const ink = decoInk(u); // a mark color that reads on this canopy
+        // An accent that reads on the border BAND (cream on a pink band, a
+        // pink on a white band) for the rim trim below.
+        const accent = lum(u.border) > 210 ? "#e07a99" : CREAM;
+
+        // -- the canopy's own DECORATION, revealed as it regains color ------
+        // One motif per umbrella (dots/rings/scales/chevron/stars), so the
+        // crowd's tops are all different.
+        ctx.globalAlpha = rv;
+        ctx.fillStyle = ink;
+        ctx.strokeStyle = ink;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        const motif = u.motif || "dots";
+        if (motif === "dots") {
+          for (const [ring, n, dr] of [[0.34, 8, 0.021], [0.56, 12, 0.021], [0.78, 16, 0.018]]) {
+            for (let k = 0; k < n; k++) {
+              const p = pt(ring, (k / n) * 2 * Math.PI + ring * 5);
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, Math.max(1, R * dr), 0, 2 * Math.PI);
+              ctx.fill();
+            }
+          }
+        } else if (motif === "rings") {
+          ctx.lineWidth = Math.max(1.4, R * 0.03);
+          for (const ring of [0.42, 0.66]) {
+            ctx.beginPath();
+            for (let k = 0; k <= 60; k++) {
+              const p = pt(ring, (k / 60) * 2 * Math.PI);
+              if (k === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+          }
+        } else if (motif === "scales") {
+          ctx.lineWidth = Math.max(1, R * 0.012);
+          for (const ring of [0.4, 0.6, 0.8]) {
+            const n = Math.round(ring * 22);
+            for (let k = 0; k < n; k++) {
+              const a = (k / n) * 2 * Math.PI + ring * 7;
+              const c0 = pt(ring, a - Math.PI / n);
+              const top = pt(ring - 0.07, a);
+              const c1 = pt(ring, a + Math.PI / n);
+              ctx.beginPath();
+              ctx.moveTo(c0.x, c0.y);
+              ctx.quadraticCurveTo(top.x, top.y, c1.x, c1.y);
+              ctx.stroke();
+            }
+          }
+        } else if (motif === "chevron") {
+          ctx.lineWidth = Math.max(1.2, R * 0.016);
+          for (let i = 0; i < PANELS; i++) {
+            const mid = i * panelA + panelA / 2;
+            for (const ring of [0.4, 0.62]) {
+              const l = pt(ring, mid - panelA * 0.32);
+              const apex = pt(ring - 0.09, mid);
+              const rr = pt(ring, mid + panelA * 0.32);
+              ctx.beginPath();
+              ctx.moveTo(l.x, l.y);
+              ctx.lineTo(apex.x, apex.y);
+              ctx.lineTo(rr.x, rr.y);
+              ctx.stroke();
+            }
+          }
+        } else {
+          // stars — little 3-armed asterisks scattered in two rings
+          ctx.lineWidth = Math.max(1, R * 0.013);
+          for (const [ring, n] of [[0.4, 6], [0.66, 10]]) {
+            for (let k = 0; k < n; k++) {
+              const c = pt(ring, (k / n) * 2 * Math.PI + ring * 3);
+              const s = R * 0.035;
+              for (let arm = 0; arm < 3; arm++) {
+                const aa = (arm / 3) * Math.PI;
+                ctx.beginPath();
+                ctx.moveTo(c.x - Math.cos(aa) * s, c.y - Math.sin(aa) * s);
+                ctx.lineTo(c.x + Math.cos(aa) * s, c.y + Math.sin(aa) * s);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+
+        // -- the THICK decorated border band + its varying rim trim --------
+        // A wide contrasting band from rFrac 0.74 out to the scalloped edge…
+        const seg = PANELS * 16;
         ctx.globalAlpha = rv;
         ctx.fillStyle = u.border;
         ctx.beginPath();
@@ -421,22 +520,86 @@ export function playUmbrellaIntro(opts = {}) {
         }
         for (let k = seg; k >= 0; k--) {
           const ang = (k / seg) * 2 * Math.PI;
-          const p = pt(0.82, ang);
+          const p = pt(0.74, ang);
           ctx.lineTo(p.x, p.y);
         }
         ctx.closePath();
         ctx.fill();
-        // Picot beads studding the band (only once it reads in 3D).
+
+        // …then a trim hung along the very rim, its style varying per
+        // umbrella (only once it reads in the tilted 3D view).
         if (P.shaft > 0.12) {
-          const beads = PANELS * 3;
-          const beadR = Math.max(1.3, R * 0.02);
-          ctx.fillStyle = CREAM;
-          for (let k = 0; k < beads; k++) {
-            const ang = (k / beads) * 2 * Math.PI;
-            const p = pt(0.91, ang);
+          // A screen point at the scalloped rim for `ang`, dropped `dz` (world
+          // units) below it — the trim hangs just under the hem.
+          const rimPt = (/** @type {number} */ ang, /** @type {number} */ dz) => {
+            const frac = (((ang / panelA) % 1) + 1) % 1;
+            const rr = R * scallopFactor(frac, P.scallop, sc);
+            const a = ang + u.spin;
+            return toScreen({ x: rr * Math.cos(a), y: rr * Math.sin(a), z: -dz }, f);
+          };
+          const N = PANELS * 4;
+          const drop = 0.075 * R;
+          const beadR = Math.max(1.4, R * 0.022);
+          const style = u.edge || "beads";
+          if (style === "beads") {
+            ctx.fillStyle = accent;
+            for (let k = 0; k < N; k++) {
+              const p = rimPt((k / N) * 2 * Math.PI, drop * 0.7);
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, beadR, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+          } else if (style === "scallops") {
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = Math.max(1.4, R * 0.02);
             ctx.beginPath();
-            ctx.arc(p.x, p.y, beadR, 0, 2 * Math.PI);
-            ctx.fill();
+            for (let k = 0; k <= N; k++) {
+              const a0 = (k / N) * 2 * Math.PI;
+              const a1 = ((k + 1) / N) * 2 * Math.PI;
+              const p0 = rimPt(a0, 0);
+              const midp = rimPt((a0 + a1) / 2, drop * 1.2);
+              const p1 = rimPt(a1, 0);
+              if (k === 0) ctx.moveTo(p0.x, p0.y);
+              ctx.quadraticCurveTo(midp.x, midp.y, p1.x, p1.y);
+            }
+            ctx.stroke();
+          } else if (style === "points") {
+            ctx.fillStyle = accent;
+            for (let k = 0; k < N; k++) {
+              const a0 = (k / N) * 2 * Math.PI;
+              const a1 = ((k + 1) / N) * 2 * Math.PI;
+              const p0 = rimPt(a0, 0);
+              const tip = rimPt((a0 + a1) / 2, drop * 1.5);
+              const p1 = rimPt(a1, 0);
+              ctx.beginPath();
+              ctx.moveTo(p0.x, p0.y);
+              ctx.lineTo(tip.x, tip.y);
+              ctx.lineTo(p1.x, p1.y);
+              ctx.closePath();
+              ctx.fill();
+            }
+          } else {
+            // swags — draped arcs with a bead at each vertex
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = Math.max(1.2, R * 0.014);
+            ctx.beginPath();
+            for (let k = 0; k <= N; k++) {
+              const a0 = (k / N) * 2 * Math.PI;
+              const a1 = ((k + 1) / N) * 2 * Math.PI;
+              const p0 = rimPt(a0, drop * 0.25);
+              const midp = rimPt((a0 + a1) / 2, drop * 1.3);
+              const p1 = rimPt(a1, drop * 0.25);
+              if (k === 0) ctx.moveTo(p0.x, p0.y);
+              ctx.quadraticCurveTo(midp.x, midp.y, p1.x, p1.y);
+            }
+            ctx.stroke();
+            ctx.fillStyle = accent;
+            for (let k = 0; k < N; k++) {
+              const p = rimPt((k / N) * 2 * Math.PI, drop * 0.25);
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, beadR * 0.8, 0, 2 * Math.PI);
+              ctx.fill();
+            }
           }
         }
       }

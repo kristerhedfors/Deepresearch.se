@@ -18,6 +18,8 @@ import {
   canopyZ,
   project,
   FLEET,
+  EDGE_STYLES,
+  MOTIFS,
   BASE_SPEED,
   clampAnimMult,
 } from "../cure/umbrella.js";
@@ -138,6 +140,18 @@ test("revived crowd is white-and-pink only, in varied shapes", () => {
     assert.ok(u.pagoda >= 0 && u.pagoda <= 1, "pagoda in [0,1]");
     assert.ok(u.dome > 0 && u.scallop > 0);
   }
+});
+
+test("varying decorations: each umbrella a known motif + rim-trim style", () => {
+  // Every umbrella declares a canopy motif and an edge-trim style, each drawn
+  // from the known set — so a typo can't silently fall through to a default.
+  for (const u of FLEET) {
+    assert.ok(MOTIFS.includes(u.motif), `known motif: ${u.motif}`);
+    assert.ok(EDGE_STYLES.includes(u.edge), `known edge style: ${u.edge}`);
+  }
+  // And the crowd is genuinely mixed — not every top and every hem the same.
+  assert.ok(new Set(FLEET.map((u) => u.motif)).size >= 3, "motifs vary");
+  assert.ok(new Set(FLEET.map((u) => u.edge)).size >= 3, "edge styles vary");
 });
 
 test("tilt: camera sweeps exactly a quarter circle, shaft fades in", () => {
