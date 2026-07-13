@@ -20,6 +20,7 @@ describe("DRS driver re-exports the shared core", () => {
       "parseShellRequest",
       "normalizeExecResult",
       "formatShellResult",
+      "shellCommandLabel",
       "buildShellTranscript",
       "buildStepUserMessage",
     ]) {

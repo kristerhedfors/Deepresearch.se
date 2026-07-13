@@ -1,0 +1,180 @@
+---
+name: sandbox-debug
+description: >-
+  Load when the in-browser Linux sandbox HANGS or misbehaves at boot — the UI
+  stuck on "booting sandbox" / "loading CheerpX…" / "connecting disk…" /
+  "starting Linux…", the VM never reaching ready, or any "the sandbox spins
+  forever" report — and you need the full boot timeline. Covers turning verbose
+  sandbox debugging ON/OFF (the client `dr_sandbox_debug` toggle + the server
+  `LOG_LEVEL=debug` knob), the `sandbox.boot_*` event vocabulary and what each
+  boot stage means, the stall watchdog (`sandbox.boot_stalled`) that reports a
+  hang's exact stage even when nothing else flushes, and the read-the-timeline
+  playbook (`wrangler tail` / `scripts/chatlogs`). Companion to the
+  execution-sandbox skill (which covers the sandbox itself); this one is
+  specifically the debug/observability switch and the boot-hang diagnosis.
+---
+
+# Sandbox boot debugging — full-coverage timeline
+
+The execution sandbox (CheerpX WASM Linux) boots **in the browser**, so a boot
+that HANGS ("booting sandbox" spinner that never finishes) is invisible
+server-side unless the boot timeline is shipped out. This skill is the switch
+that makes the whole boot timeline visible, and the playbook for reading it.
+
+Everything here is in `public/js/sandbox.js` (the browser VM glue — NOT
+`@ts-check`, NOT Node-unit-tested; verified live). The server side is the
+existing `POST /api/client-log` beacon (`src/user-api.js handleClientLog`) →
+`log.js` → Workers Logs, exactly as the file-mount telemetry uses (see the
+**execution-sandbox** skill's Observability section).
+
+## The problem this solves
+
+Before this instrumentation there were two blind spots on a boot hang:
+
+1. **No per-stage record.** The boot advances through cosmetic `setStatus(...)`
+   strings — `booting` → `loading CheerpX…` → `connecting disk…` →
+   `preparing files…` → `starting Linux…` → `mounting files…` → `ready` — but
+   only `boot_start` / `boot_done` / `boot_failed` were ever logged. A hang
+   between two awaits left no breadcrumb of WHICH stage died.
+2. **The buffer only flushed on a terminal state.** `sblog()` buffers events;
+   `flushSandboxLog()` beacons them. It was only called on `boot_done` /
+   `boot_failed`. A genuine hang — an `await` that never resolves (disk fetch,
+   `Linux.create`) — reaches neither, so **nothing was ever beaconed**, not even
+   `boot_start`. Total silence.
+
+Both are now closed: every stage is logged (`sandbox.boot_stage`), and a
+**stall watchdog** flushes from a timer that runs independently of the hung
+await-chain.
+
+## Turning debugging ON / OFF
+
+There are TWO independent switches. For a live boot-hang investigation you
+usually want **the client toggle** (no redeploy, and it self-flushes).
+
+### 1. Client verbose toggle — `dr_sandbox_debug` (the main one)
+
+When ON: every `sblog` event — including the debug-level `boot_stage`
+breadcrumbs — is **promoted to info** (so it surfaces even when the server is
+NOT on `LOG_LEVEL=debug`) AND the buffer is **flushed after every event** (so a
+hang loses nothing). When OFF it is byte-identical to the old buffered behavior.
+
+Three ways to flip it, all persist in `localStorage.dr_sandbox_debug`:
+
+- **From the device console** (the operator's phone, remote-debugging):
+  `window.__DR_SANDBOX_DEBUG(true)` → returns `true`, logs+flushes a
+  `sandbox.debug_toggle` line so you can confirm the exact moment it turned on.
+  `window.__DR_SANDBOX_DEBUG()` (no arg) reads the current state;
+  `window.__DR_SANDBOX_DEBUG(false)` turns it off.
+- **URL param** — append `?sbdebug=1` to the page URL (survives into the session
+  even without console access; handy to hand a user a link). Read once at module
+  load.
+- **localStorage directly** — `localStorage.dr_sandbox_debug = "1"` then reload.
+
+Turn it OFF when done (`window.__DR_SANDBOX_DEBUG(false)`) so production isn't
+beaconing a flush per event.
+
+### 2. Server `LOG_LEVEL=debug` (the other half)
+
+`handleClientLog` re-emits each event at its own level, and `log.js` drops
+`debug` lines unless `LOG_LEVEL=debug` (`wrangler.toml`). So the debug-level
+`boot_stage` / `fs.write` / `fs.verify` events ONLY surface server-side when
+either (a) the client toggle promoted them to info, or (b) the server is on
+`LOG_LEVEL=debug`. For a one-off remote hang, prefer (a) — no redeploy. For a
+sustained testing session on your own device, (b) is fine too. Flip
+`wrangler.toml` `[vars] LOG_LEVEL = "debug"` → deploy → and remember to flip it
+back to `info` for production (per the execution-sandbox skill's note).
+
+**Why both exist:** the client toggle needs no deploy and captures hangs (eager
+flush); the server knob captures the debug stream for ALL users at once without
+each of them flipping a client flag. They compose — either surfaces the debug
+events.
+
+## The boot-stage vocabulary
+
+Each stage is the `stage` field on `sandbox.boot_stage` (and the `stage` a stall
+or failure reports). In order:
+
+| stage | what is awaiting — where a hang here points |
+|---|---|
+| `boot_start` | entered `bootVM`; isolation checked next |
+| `booting` | panel built; about to load the xterm CDN scripts |
+| `loading CheerpX…` | `import(CHEERPX_CDN)` — the CheerpX module fetch (cxrtnc CDN) |
+| `connecting disk…` | `CloudDevice.create(DISK_URL)` + IDB cache + overlay — the **Debian disk image fetch**, the most common slow/hang stage on a cold cache or flaky network |
+| `preparing files…` | building the file-mount plan from the provider (only with attachments/project/source) |
+| `starting Linux…` | `CheerpX.Linux.create({mounts})` — the actual VM bring-up |
+| `mounting files…` | seeding `/workspace` + project + `/src` from the ingest devices |
+| `ready` | booted; exec available. Watchdog stopped here |
+
+## The events to grep for
+
+All namespaced `sandbox.*`, shipped via `/api/client-log` (so `"client":true`,
+with `user_id`, `ua`):
+
+- `sandbox.boot_start` `{coi, sab, provider, debug}` — boot began. `debug:true`
+  confirms the verbose toggle is on for this session.
+- `sandbox.boot_stage` `{stage, ms}` — **the timeline.** One per stage entered,
+  `ms` since boot start. Debug-level (promoted to info when verbose).
+- `sandbox.boot_stalled` `{stage, ms}` — **the hang signal.** Emitted by the
+  watchdog every `BOOT_STALL_MS` (12 s) while the boot has not resolved, naming
+  the last stage entered. **warn-level → always surfaces, even with verbose
+  OFF**, and always flushes. Repeated lines = still stuck; the `stage` is where.
+- `sandbox.boot_failed` `{error, stage}` — boot threw; `stage` is where.
+- `sandbox.boot_unsupported` `{coi, sab}` — not cross-origin isolated (can't
+  boot here at all — an isolation problem, not a boot hang; see the
+  execution-sandbox skill's COEP section).
+- `sandbox.boot_done` `{ms, files, bytes, project}` — success.
+- `sandbox.debug_toggle` `{on}` — the verbose switch flipped.
+- `sandbox.fs.*` — the file-mount events (see the execution-sandbox skill).
+
+## Reading the timeline
+
+```bash
+# Live, from the repo root (or pass the worker name):
+npx wrangler tail deepresearch-se --format json | grep -E 'sandbox\.(boot|debug)'
+
+# After the fact, per exchange — the compact summary that always rides along:
+scripts/chatlogs --id N --json      # client_diag.fs = last-mount summary
+```
+
+`client_diag` (on every `/api/chat`) still carries the coarse signal —
+`{coi, sab, sb, bl, ran}` — read it FIRST (see the execution-sandbox debugging
+playbook): if `coi:false`/`sab:false` the page never isolated and the VM could
+never boot (an isolation/COEP problem, not a boot hang — do not chase the boot
+timeline). Only once `coi:true` does the boot timeline matter, and that's when
+`sandbox.boot_stalled` tells you the stuck stage.
+
+## Diagnosing a "booting sandbox" hang — the steps
+
+1. Confirm isolation is fine: `client_diag` shows `coi:true, sab:true`. If not,
+   it's a COEP/isolation problem — go to the execution-sandbox skill, not here.
+2. Turn verbose on for the affected session: hand the user a `?sbdebug=1` link,
+   or `window.__DR_SANDBOX_DEBUG(true)` on their device.
+3. Reproduce the boot; watch `wrangler tail` for `sandbox.boot_stage` lines. The
+   **last** `boot_stage` before the trail goes quiet — and the `stage` on the
+   repeating `sandbox.boot_stalled` — is exactly where it hangs.
+4. Map the stage via the table above to the awaiting call:
+   - stuck at `connecting disk…` → the Debian disk image fetch (`DISK_URL`,
+     cxrtnc CDN); check the CDN/network, a cold IDB cache, or a CORP header on
+     the disk host.
+   - stuck at `loading CheerpX…` → the CheerpX module fetch (blocked script /
+     CDN miss / CORP).
+   - stuck at `starting Linux…` → `Linux.create`; usually a bad mount config
+     from a partial file-mount (though those are staged fail-soft) or a CheerpX
+     version issue.
+5. Fix at that layer, redeploy, re-verify the timeline reaches `boot_done`.
+
+## Caveats
+
+- **A synchronous WASM busy-loop would starve the watchdog timer.** The realistic
+  "booting sandbox" spinner is an unresolved network/await (disk fetch, module
+  import), which yields the main thread and lets the timer fire. A hard
+  CPU-spin inside CheerpX would not — but that presents as a frozen tab, not a
+  spinner, and is out of scope here.
+- **Turn verbose OFF when done** — it flushes a beacon per event.
+- Editing `sandbox.js` changes a bundled source file: after any change run
+  `npm run bundle` + `npm run bundle:rag` and commit all three (the introspection
+  snapshot freshness test fails otherwise — see the **introspection** skill).
+- `sandbox.js` is not `@ts-check`'d and not Node-unit-tested (browser/WASM glue);
+  it IS import-safe in Node (drc-research.test.js pulls it in), so keep the new
+  code guarded behind `typeof window/localStorage/location` checks and Node-safe
+  globals (`setInterval`/`clearInterval`).

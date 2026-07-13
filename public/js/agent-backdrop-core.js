@@ -221,3 +221,67 @@ export function backdropEnabled(pct) {
 export function opacityCss(pct) {
   return +(clampOpacityPct(pct) / 100 * 0.55).toFixed(3);
 }
+
+// ---- scrolling the backdrop -------------------------------------------------
+// The command log is no longer just a pinned tail: the user can scroll BACK into
+// it (over the empty page field — the conversation bubbles keep their own
+// scroll). These pure helpers own the offset math so the DOM glue
+// (agent-backdrop.js) stays a thin wiring layer and the behavior is testable.
+
+/** Coerce to a finite number, 0 on garbage. @param {unknown} x */
+function num(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// How much the conversation leans OPPOSITE the backdrop as it scrolls, and the
+// hard cap on that lean (px). "Ever so slightly, only for feel" — a small,
+// springy nudge, never a persistent displacement (the DOM glue eases it back to
+// zero so it can't drift the gap the user is reading in).
+export const PARALLAX_FACTOR = 0.22;
+export const PARALLAX_CAP_PX = 14;
+
+/**
+ * Clamp a backdrop scroll offset to the scrollable range. Offset 0 pins the
+ * newest lines at the bottom (a live tail); the maximum reveals the oldest line
+ * still buffered. Never negative, never past the top.
+ * @param {unknown} offset
+ * @param {unknown} contentHeight full height of the rendered text
+ * @param {unknown} viewportHeight visible window height
+ * @returns {number}
+ */
+export function clampScrollOffset(offset, contentHeight, viewportHeight) {
+  const max = Math.max(0, num(contentHeight) - num(viewportHeight));
+  return Math.max(0, Math.min(max, num(offset)));
+}
+
+/**
+ * One wheel/drag step of the backdrop scroll. A positive delta (wheel down /
+ * finger up) walks TOWARD the newest lines (offset → 0); a negative delta walks
+ * back into history (offset grows, clamped to the buffered range).
+ * @param {unknown} current current offset
+ * @param {unknown} deltaY the gesture delta (wheel deltaY, or drag start−now)
+ * @param {unknown} contentHeight
+ * @param {unknown} viewportHeight
+ * @returns {{ offset: number, pinned: boolean }} pinned = following the tail
+ */
+export function scrollStep(current, deltaY, contentHeight, viewportHeight) {
+  const next = clampScrollOffset(num(current) - num(deltaY), contentHeight, viewportHeight);
+  return { offset: next, pinned: next <= 0.5 };
+}
+
+/**
+ * The conversation's opposite-direction parallax nudge for one backdrop scroll
+ * step: a small displacement opposing the gesture, clamped to ±cap. Purely for
+ * feel — the caller springs it back to zero.
+ * @param {unknown} deltaY
+ * @param {number} [factor]
+ * @param {number} [cap]
+ * @returns {number} px, in [-cap, cap]
+ */
+export function parallaxNudge(deltaY, factor = PARALLAX_FACTOR, cap = PARALLAX_CAP_PX) {
+  const c = Math.abs(num(cap));
+  const n = -num(deltaY) * num(factor);
+  const r = Math.max(-c, Math.min(c, n));
+  return r === 0 ? 0 : r; // normalize -0 → 0
+}

@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h29;
+  --css-version: h32;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -20,11 +20,11 @@
 /* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
    element (public/js/dev-mode.js) does NOT re-skin the background or palette —
    the sky-blue field and every chrome surface stay as they are. The ONLY
-   change is the composer input pane, which picks up an AMETHYST glass tint
-   with extra shine (see `:root.dev-mode #composer` below), so introspection is
-   recognizable without the whole app changing color. The Se/cure tier gets a
-   RUBY glass pane the same way (public/cure/drc.css); titanium is reserved for
-   TIN the mascot. */
+   change is the composer input pane, which picks up a WHITE TITANIUM glass
+   tint with extra shine (see `:root.dev-mode #composer` below), plus the small
+   "introspection" wordmark tag, so the mode is recognizable without the whole
+   app changing color. The Se/cure tier gets the SAME white-titanium pane
+   (public/cure/drc.css). */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -74,22 +74,34 @@ body::before {
   pointer-events: none;
   overflow: hidden;
 }
+/* The viewport: a fixed-height window bottom-anchored ABOVE the composer (the
+   newest command line clears the input pane instead of hiding behind it). Its
+   child sticks to the bottom (justify-content:flex-end) so the tail shows; the
+   agent-backdrop.js glue translates the scroller to page back through history.
+   Soft top fade so lines scroll into view instead of hard-cutting. */
 .dr-agent-backdrop-text {
   position: absolute;
-  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
-  margin: 0;
-  max-height: 62vh;
+  left: 1.5rem; right: 1.5rem; bottom: 9.5rem;
+  height: 60vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+}
+/* The scrolled element: agent-backdrop.js sets translateY here to page the log
+   (kept off the animated <pre> so the two transforms don't collide). */
+.dr-agent-backdrop-scroll { will-change: transform; }
+.dr-agent-backdrop-pre {
+  margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
   color: rgba(10, 46, 92, .5);
   white-space: pre-wrap;
   word-break: break-word;
-  /* Soft top fade so lines scroll into view instead of hard-cutting, and a
-     gentle side-to-side wave across the characters (kept subtle on purpose). */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  /* A gentle side-to-side wave across the characters (kept subtle on purpose). */
   animation: agent-wave 7.5s ease-in-out infinite;
 }
 @keyframes agent-wave {
@@ -97,7 +109,7 @@ body::before {
   50% { transform: translateX(7px) skewX(-1.1deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-text { animation: none; }
+  .dr-agent-backdrop-pre { animation: none; }
 }
 /* The transparency bar: a small floating glass pill that appears WHILE the
    sandbox terminal is running (public/js/agent-backdrop.js) and auto-hides when
@@ -192,19 +204,21 @@ header {
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — the quiet label that
-   names the mode the amethyst skin puts you in. Only present while the
-   introspection theme is active (root carries `dev-mode`); a no-op otherwise. */
+   names the mode the white-titanium skin puts you in. Only present while the
+   introspection theme is active (root carries `dev-mode`); a no-op otherwise.
+   Plain TITANIUM WHITE: a solid near-white fill (no gradient clip — the clipped
+   version muddied the mid-glyphs and read as unreadable grey) with a soft dark
+   shadow so it stays crisp and legible over the scrolling sky field. */
 .introspection-tag {
   display: none;
   align-self: center;
-  margin-top: -.15rem;
-  font-size: .58rem;
+  margin-top: -.1rem;
+  font-size: .68rem;
   font-weight: 600;
-  letter-spacing: .18em;
+  letter-spacing: .16em;
   text-transform: lowercase;
-  color: #5b3fa0; /* amethyst — ties the marker to the purple composer pane */
-  opacity: .9;
-  text-shadow: 0 1px 5px rgba(255, 255, 255, .6);
+  color: #f6f8fa;
+  text-shadow: 0 1px 2px rgba(30, 50, 78, .55), 0 0 1px rgba(30, 50, 78, .4);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
@@ -368,6 +382,46 @@ header {
 .step li { margin: .15rem 0; }
 .step a { color: var(--accent); text-decoration: none; }
 .step a:hover { text-decoration: underline; }
+/* bash-lite sandbox step: the expandable transcript of the commands the agent
+   ran in the in-browser Linux VM — each command in full with its output. */
+.shell-runs { margin: .45rem 0 .1rem; display: flex; flex-direction: column; gap: .5rem; }
+.shell-run {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.shell-cmd {
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  padding: .35rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem;
+  border-bottom: 1px solid var(--border);
+}
+.shell-prompt { color: var(--accent); flex: none; font-weight: 600; }
+.shell-cmd-text { color: var(--text); overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.shell-exit {
+  flex: none;
+  color: #c0392b;
+  font-size: .72rem;
+  padding: .05rem .35rem;
+  border: 1px solid #c0392b;
+  border-radius: 999px;
+  opacity: .85;
+}
+.shell-out {
+  margin: 0;
+  padding: .4rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .8rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 15rem;
+  overflow-y: auto;
+}
 /* "Copy research JSON" — a debug affordance at the top of the expanded
    step list; only shown once a research run has collapsed. */
 .activity-debug { display: flex; justify-content: flex-end; }
@@ -578,30 +632,25 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the info popover */
 }
-/* Introspection mode: the composer becomes a saturated, glossy AMETHYST glass
-   pane (the Se/rver tier's introspection cue) — strong enough to clearly stand
-   apart from the plain frosted composer. A rich, fairly UNIFORM violet (slight
-   top→bottom deepen), the shine carried by a bright specular top edge + a soft
-   internal gloss, a violet edge (no white border), and a coloured drop shadow.
-   Because the fill is saturated, the pane's own text goes LIGHT for contrast
-   (below). Background only; the sky-blue field is unchanged. */
+/* Introspection mode: the composer becomes a brushed WHITE TITANIUM glass pane
+   (the Se/rver tier's introspection cue) — a cool silvery-white metal that
+   stands clearly apart from the plain frosted composer without shouting a hue.
+   The metal read comes from a light top→bottom sheen (near-white crown, a
+   faint pewter waist, a lighter foot), a bright specular top edge, and a soft
+   cool drop shadow. The fill is LIGHT, so the pane keeps its ordinary dark
+   text (no foreground override needed). Background only; the sky-blue field is
+   unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(140, 108, 216, .74) 0%, rgba(92, 58, 176, .84) 100%),
-    rgba(120, 88, 202, .64);
-  border: 1px solid rgba(148, 116, 222, .74);
+    linear-gradient(180deg, rgba(252, 253, 254, .9) 0%, rgba(214, 219, 226, .92) 55%, rgba(232, 236, 241, .9) 100%),
+    rgba(233, 236, 241, .72);
+  border: 1px solid rgba(255, 255, 255, .9);
   box-shadow:
-    0 7px 26px rgba(52, 24, 108, .44),
-    inset 0 1px 0 rgba(255, 255, 255, .55),
-    inset 0 13px 26px rgba(216, 200, 255, .18);
+    0 7px 26px rgba(70, 80, 96, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 14px 26px rgba(255, 255, 255, .4),
+    inset 0 -10px 20px rgba(150, 160, 175, .12);
 }
-/* Light foreground so the input text, placeholder and control-row labels stay
-   legible on the saturated amethyst (the #model / attach / camera chips keep
-   their own light backgrounds, so their dark text is fine). */
-:root.dev-mode #composer textarea { color: #fff; }
-:root.dev-mode #composer textarea::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }
-:root.dev-mode #composer #composer-row,
-:root.dev-mode #composer #search-row { color: rgba(255, 255, 255, .92); }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
   /* Textareas won't shrink below their cols-based intrinsic width unless
@@ -1501,3 +1550,94 @@ body.feedback-mode .feedback-btn { display: inline-block; }
 }
 .dr-sandbox-close:hover { color: #d6d6e6; }
 .dr-sandbox-term { flex: 1; min-height: 0; padding: .3rem; }
+
+/* ---- Testable interaction points — the try-it queue -------------------- */
+/* public/js/testpoints.js. The queue overlay reuses the account-card look;
+   the banner is a fixed bottom sheet (like the privacy notice, but pinned to
+   the bottom so it never covers the header). Admin-only — the launcher only
+   appears when the /api/admin/testpoints probe succeeds. */
+#tryqueue {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(10, 46, 92, .45);
+  display: grid; place-items: center;
+  padding: 1rem;
+}
+#tryqueue[hidden] { display: none; }
+.tryqueue-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1rem 1.2rem 1.2rem;
+  width: min(460px, 94vw); max-height: 86vh; overflow-y: auto;
+  font-size: .88rem; line-height: 1.5;
+  box-shadow: 0 8px 30px rgba(4, 30, 60, .3);
+}
+.tryqueue-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+.tryqueue-head button {
+  background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem; cursor: pointer;
+}
+.tryqueue-item {
+  display: flex; flex-direction: column; gap: .1rem; width: 100%;
+  text-align: left; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .55rem .7rem; margin: .35rem 0; font: inherit; cursor: pointer;
+}
+.tryqueue-item:hover { border-color: var(--accent); }
+.tryqueue-item-label { font-weight: 600; font-size: .86rem; }
+.tryqueue-item-target { font-size: .72rem; overflow-wrap: anywhere; }
+
+#trybanner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 12;
+  width: min(560px, 94vw);
+}
+#trybanner[hidden] { display: none; }
+.trybanner-inner {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: .75rem .9rem .85rem;
+  box-shadow: 0 10px 34px rgba(4, 30, 60, .38);
+  font-size: .86rem; line-height: 1.5;
+}
+.trybanner-top { display: flex; align-items: center; gap: .5rem; }
+.trybanner-tag {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: .12rem .45rem; border-radius: 8px;
+  background: var(--accent); color: #fff;
+}
+.trybanner-label { font-weight: 600; flex: 1; overflow-wrap: anywhere; }
+.trybanner-x {
+  background: none; border: 0; color: var(--muted); font-size: .9rem; cursor: pointer; padding: .1rem .3rem;
+}
+.trybanner-summary { margin: .45rem 0 .3rem; overflow-wrap: anywhere; }
+.trybanner-warn {
+  margin: .3rem 0; font-size: .78rem;
+  padding: .35rem .55rem; border-radius: 8px;
+  background: #fff3d6; border: 1px solid #e3c576; color: #7a5b12;
+}
+.trybanner-ref { font-size: .74rem; margin: .1rem 0 .3rem; }
+.trybanner-verdict { display: flex; gap: .5rem; margin: .3rem 0; }
+.trybanner-verdict button {
+  flex: 1; padding: .45rem .6rem; font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.trybanner-up.chosen { background: rgba(21, 122, 75, .16); border-color: var(--ok); color: var(--ok); }
+.trybanner-down.chosen { background: rgba(192, 57, 43, .14); border-color: #c0392b; color: #c0392b; }
+.trybanner-note {
+  width: 100%; margin: .35rem 0 0; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .4rem .55rem; font: inherit; font-size: .82rem; resize: none;
+  background: var(--panel-2); color: var(--text);
+}
+.trybanner-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .5rem; }
+.trybanner-actions button {
+  padding: .4rem .9rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+.trybanner-submit:not([disabled]) { background: var(--accent); color: #fff; border-color: var(--accent); }
+.trybanner-submit[disabled] { opacity: .5; cursor: default; }
+
+/* Pulse-highlight an element an action points the tester at. */
+.try-pulse { animation: try-pulse 1.2s ease-out 2; border-radius: 8px; }
+@keyframes try-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 79, 160, .5); }
+  100% { box-shadow: 0 0 0 10px rgba(13, 79, 160, 0); }
+}

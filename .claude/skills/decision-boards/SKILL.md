@@ -8,9 +8,11 @@ description: >-
   Claude Code loop as its fixed work order. Covers the shared core
   src/board.js (choice-state validation, the priority-vs-rank orderings, the
   D1 review-row helpers), the catalog/façade conventions, the admin-panel UX
-  patterns (public/js/admin.js's security section is the reference), the
-  ?format=text loop input + scripts/<board> CLI shape, and the checklist for
-  standing up a NEW board (e.g. the features panel). Also load when touching
+  patterns (public/js/admin.js's security section is the reference), and the
+  ?format=text loop input + scripts/<board> CLI shape. (The step-by-step
+  checklist for STANDING UP a new board lives in the feature-board skill §5 —
+  the priority-board runbook; this skill owns the mechanism it builds on.)
+  Also load when touching
   /api/admin/security*, a *_reviews D1 table, or wiring any panel whose
   ordering an agent loop consumes. ALSO the go-to for the DISCOVERY layer —
   the src/admin-boards.js registry + GET /api/admin/boards + scripts/boards
@@ -137,39 +139,19 @@ core's pure surface under its historical names rather than copying it, and
 a test pins identity (`security.validateReviewPatch === validateBoardPatch`
 in `board.test.js`).
 
-## Standing up a NEW board
+## Standing up a NEW board → see the **feature-board** skill (§5)
 
-The **features board** (`src/features.js`) is the worked example — the
-**feature-board** skill walks this checklist end to end and covers running the
-build loop it feeds. Copy that board (itself copied from `security-risks.js`).
+**The step-by-step checklist for building a new board lives in ONE place: the
+feature-board skill, §5 "Implementing a NEW loop (priority board)."** It is the
+priority-board runbook — the fuller, authoritative nine steps (source-of-truth
+doc → catalog module → D1 table → route → panel section → CLI → discovery
+registration → tests → docs → loop side), verified against `src/features.js`
+and `src/security-risks.js` as the worked examples. Don't duplicate it here.
 
-1. **Catalog module** `src/<board>.js`: `<BOARD>_ITEMS` (stable ids like
-   `F-1…`, array order = the doc's default order), a projection, a
-   `format<Board>Text`, and the endpoint handler — copy
-   `src/security-risks.js` (~150 lines of board-specific code) and swap the
-   item shape. Re-export the core's validators façade-style.
-2. **D1 table** `<board>_reviews` in `src/db.js`'s SCHEMA (same 6 columns).
-3. **Route** in `src/admin-api.js`: `/<board>` + `/<board>/…` →
-   the handler (admin gate is already upstream).
-4. **Panel section** in `public/admin/index.html` + a render fn in
-   `public/js/admin.js` — copy the security section: badges, vote arrows,
-   the three inputs + Save, the two-button sort toggle, numbered open items.
-5. **CLI** `scripts/<board>` — copy `scripts/security` (list/--json/--vote/
-   --set against `/api/admin/<board>`).
-6. **Register for discovery** — append ONE entry to `ADMIN_BOARDS` in
-   `src/admin-boards.js` (`id/title/purpose/feeds_loop/api/text_query/
-   orderings/order_help/script/skill`). That single append is all it takes
-   for the board to appear in `scripts/boards` / `GET /api/admin/boards` —
-   the same "register, no other change" seam as `games.js`/`search-sources.js`.
-   Fill `order_help` carefully: say HOW to pick each ordering, not just the
-   names. Add the entry to `src/admin-boards.test.js`'s expected-ids check.
-7. **Tests**: catalog-shape + mirror-discipline suite like
-   `src/security-risks.test.js`; the core itself is already covered.
-8. **Docs**: CLAUDE.md table row + the source-of-truth doc's maintenance
-   rules (mirror-in-same-commit, priority-overrides-doc-order) + the skill
-   that owns the board's loop (security-posture for the security board).
-9. **The loop side**: the consuming skill must say "read the board before
-   every round" — the board is pointless if the loop doesn't start there.
+This skill (decision-boards) owns the parts that checklist BUILDS ON: the
+shared core (`src/board.js`, above), the panel UX conventions (below), and the
+discovery layer (`src/admin-boards.js`, the "pop up every board" section). Load
+this for the mechanism; load **feature-board** to actually stand a board up.
 
 ## UX conventions (the panel side, from the reference implementation)
 

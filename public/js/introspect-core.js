@@ -25,6 +25,14 @@ import { regionForModelEntry, regionForProvider } from "./provider-region.js";
 export const SNAPSHOT_PATH = "/introspect/source-snapshot.json";
 // The committed DENSE source-RAG index (scripts/bundle-source-rag.mjs).
 export const RAG_PATH = "/introspect/source-rag.json";
+// The committed OWASP reference corpus + its dense index (scripts/fetch-owasp.mjs,
+// scripts/bundle-owasp-rag.mjs) — the OWASP Top 10 for LLM Applications 2025 and
+// for Web Applications 2021 full text, grounding introspection security
+// assessments so findings quote the actual OWASP wording. The corpus is
+// snapshot-shaped and the index shares the source-RAG format, so both reuse the
+// chunker / int8 codec / retrieval below.
+export const OWASP_CORPUS_PATH = "/introspect/owasp-corpus.json";
+export const OWASP_RAG_PATH = "/introspect/owasp-rag.json";
 
 // ---- caps -------------------------------------------------------------------
 
@@ -151,6 +159,50 @@ const EXTERNAL_SOURCE_PATTERNS = [
 export function externalSourceIntent(text) {
   const s = String(text || "");
   return EXTERNAL_SOURCE_PATTERNS.some((re) => re.test(s));
+}
+
+// ---- security-assessment intent (EN + SV, deterministic) ---------------------
+
+// Whether a message asks for a SECURITY ASSESSMENT (audit / review / pentest /
+// threat model / "how secure is this"). In introspection mode this gate decides
+// whether to ALSO inject the OWASP Top 10 reference block (src/introspect.js):
+// the retrieved OWASP paragraphs the model quotes and classifies findings
+// against. Anchored to security specifically so an ordinary "review this code"
+// or "audit the logic" doesn't trip it — the word "security"/"säkerhet" (or a
+// security-specific term like pentest / OWASP / threat model) must be present.
+// Swedish forms carry the same breadth as English (invariant 6).
+const SECURITY_ASSESSMENT_PATTERNS = [
+  // "security assessment/audit/review/analysis/posture/evaluation" (any order).
+  /\bsecurity\s+(?:assessment|audit|review|analysis|posture|evaluation|appraisal|examination)\b/i,
+  /\b(?:assessment|audit|review|analysis|evaluation)\s+of\s+(?:the\s+)?security\b/i,
+  // "assess/audit/evaluate/review/analyse … security" within a short span.
+  /\b(?:assess|audit|evaluate|review|analy[sz]e|examine|check|test)\b(?:\s+\S+){0,6}?\s+(?:the\s+)?security\b/i,
+  // security-specific vulnerability wording.
+  /\bsecurity\s+(?:vulnerabilit(?:y|ies)|weakness(?:es)?|flaws?|holes?|issues?|risks?|threats?)\b/i,
+  /\bvulnerabilit(?:y|ies)\s+(?:assessment|analysis|scan|review|audit)\b/i,
+  /\bthreat\s*model(?:l?ing)?\b/i,
+  /\bpen(?:etration)?[\s-]?test(?:ing|s|er)?\b/i,
+  /\bhow\s+secure\b/i,
+  /\bowasp\b/i,
+  // Swedish parity.
+  /\bsäkerhets(?:bedömning|granskning|analys|revision|utvärdering|genomgång|översyn|test(?:ning)?|brist(?:er)?|hål|risk(?:er)?|sårbarhet(?:er)?)(?:en|ar|arna)?\b/i,
+  /\b(?:bedöm|granska|utvärdera|analysera|se\s+över|testa|kontrollera)\b(?:\s+\S+){0,6}?\s+säkerheten?\b/i,
+  /\bsårbarhets(?:analys|bedömning|skanning|granskning|revision)\b/i,
+  /\bhot(?:modell(?:ering)?|bild)\b/i,
+  /\bpenetrationstest(?:a|ning|er|are)?\b/i,
+  /\bpentest(?:a|ning|er)?\b/i,
+  /\bhur\s+säker\b/i,
+];
+
+/**
+ * Deterministic "asks for a security assessment" gate for ONE message (EN+SV) —
+ * the switch that adds the OWASP Top 10 reference block in introspection mode.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function securityAssessmentIntent(text) {
+  const s = String(text || "");
+  return SECURITY_ASSESSMENT_PATTERNS.some((re) => re.test(s));
 }
 
 // ---- snapshot validation -------------------------------------------------------
@@ -286,6 +338,148 @@ export function resolveReferencedPaths(priorTexts, snapshot, cap = 8) {
  */
 export function snapshotIndex(snapshot) {
   return snapshot.files.map((f) => `${f.p}\t${f.s}`).join("\n");
+}
+
+// ---- skills catalog ----------------------------------------------------------
+//
+// The repo's institutional knowledge lives as load-on-demand PLAYBOOKS under
+// .claude/skills/<name>/SKILL.md — how recurring work is actually done here
+// (deploy, the research pipeline, the eval batteries, the decision-board loops,
+// storage/privacy, the sandbox, …). That was originally a Claude Code (the CLI
+// agent) convention, so those playbooks only helped when Claude Code was the
+// one working. But a SKILL.md is ordinary tracked Markdown, so it already rides
+// in the source snapshot like any other file and is retrievable through the
+// dense RAG index. This surfaces the whole catalog as a FIRST-CLASS section of
+// the introspection block, so ANY answer model — in EITHER tier — sees the
+// playbooks exist and can quote or read them by name. That's the same
+// institutional knowledge Claude Code gets, now available regardless of which
+// model is answering. (A vendor-neutral AGENTS.md at the repo root points
+// external coding agents at the same catalog, so the pickup is model- AND
+// harness-agnostic.)
+
+/** A skill's SKILL.md path → its slug name (the catalog key). */
+export const SKILL_PATH_RE = /^\.claude\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
+
+/** Each catalog line's description is clipped to this in the (always-on) block. */
+export const SKILL_SUMMARY_CHARS = 240;
+
+/**
+ * The first sentence of a description, clipped to `max` on a word boundary. The
+ * skill descriptions front-load their trigger ("Load when …"), so one sentence
+ * is a faithful one-line summary.
+ * @param {string} text
+ * @param {number} max
+ * @returns {string}
+ */
+function firstSentence(text, max) {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  const dot = s.search(/\.\s/);
+  let out = dot > 40 ? s.slice(0, dot + 1) : s;
+  if (out.length > max) out = out.slice(0, max).replace(/\s+\S*$/, "") + "…";
+  return out;
+}
+
+/**
+ * Tolerant parse of a SKILL.md's `name`/`description` YAML frontmatter. The
+ * bundler stores raw text, so this is a tiny purpose-built parser: the
+ * frontmatter is always a leading `---` … `---` block with a `name:` line and a
+ * `description:` that is usually a folded block scalar (`>-`). Missing fields
+ * come back as "" — never throws.
+ * @param {string} text
+ * @returns {{ name: string, description: string }}
+ */
+export function parseSkillFrontmatter(text) {
+  const m = String(text || "").match(/^---\n([\s\S]*?)\n---/);
+  if (!m) return { name: "", description: "" };
+  const lines = m[1].split("\n");
+  const unquote = (/** @type {string} */ v) => v.replace(/^["']|["']$/g, "").trim();
+  let name = "";
+  let description = "";
+  for (let i = 0; i < lines.length; i++) {
+    const nameM = !name && lines[i].match(/^name:\s*(.+?)\s*$/);
+    if (nameM) {
+      name = unquote(nameM[1]);
+      continue;
+    }
+    const descM = !description && lines[i].match(/^description:\s*(.*?)\s*$/);
+    if (descM) {
+      const inline = descM[1];
+      if (inline && !/^[|>]/.test(inline)) {
+        description = unquote(inline);
+      } else {
+        // Folded/literal block scalar: gather the indented continuation lines.
+        const parts = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === "" || /^\s+\S/.test(lines[j])) parts.push(lines[j].trim());
+          else break;
+        }
+        description = parts.join(" ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+  return { name, description };
+}
+
+/**
+ * Every skill present in the snapshot as { name, path, description }, sorted by
+ * name. Pure over the snapshot the block already has — no I/O. [] when the
+ * snapshot carries no skill files (e.g. a test fixture).
+ * @param {Snapshot} snapshot
+ * @returns {Array<{ name: string, path: string, description: string }>}
+ */
+export function skillsCatalog(snapshot) {
+  const out = [];
+  for (const f of (snapshot && snapshot.files) || []) {
+    const m = SKILL_PATH_RE.exec(f.p);
+    if (!m) continue;
+    const fm = parseSkillFrontmatter(f.t);
+    out.push({ name: fm.name || m[1], path: f.p, description: fm.description });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+/**
+ * The skills catalog rendered as one `- name — one-line summary` row per skill,
+ * for the introspection block. `full: true` keeps each whole description;
+ * otherwise each is clipped to its first sentence / SKILL_SUMMARY_CHARS.
+ * @param {Snapshot} snapshot
+ * @param {{ full?: boolean }} [opts]
+ * @returns {string}
+ */
+export function skillsIndex(snapshot, opts = {}) {
+  const full = opts && opts.full === true;
+  return skillsCatalog(snapshot)
+    .map((sk) => {
+      const desc = full ? sk.description : firstSentence(sk.description, SKILL_SUMMARY_CHARS);
+      return desc ? `- ${sk.name} — ${desc}` : `- ${sk.name}`;
+    })
+    .join("\n");
+}
+
+/**
+ * The SKILL.md paths a message references BY NAME — the slash form (`/deploy`)
+ * or "<name> skill" / "skill <name>" (hyphen-or-space tolerant, so "feedback
+ * loop skill" resolves feedback-loop). Complements mentionedSnapshotPaths,
+ * which needs the literal `.claude/skills/<name>/SKILL.md` path; this lets a
+ * user name a skill the way they'd name it to Claude Code. Returns snapshot
+ * paths so the caller inlines them like any other named file.
+ * @param {unknown} text
+ * @param {Snapshot} snapshot
+ * @returns {string[]}
+ */
+export function mentionedSkills(text, snapshot) {
+  const s = String(text || "");
+  if (!s.trim()) return [];
+  const out = [];
+  for (const sk of skillsCatalog(snapshot)) {
+    const n = sk.name.replace(/[-\s]+/g, "[-\\s]");
+    const slash = new RegExp(`(?:^|\\s)/${n}\\b`, "i");
+    const named = new RegExp(`\\b(?:${n}\\s+skill|skill\\s+${n})\\b`, "i");
+    if (slash.test(s) || named.test(s)) out.push(sk.path);
+  }
+  return out;
 }
 
 // ---- source RAG: deterministic chunking + int8 vector index -----------------------
@@ -540,6 +734,20 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
     lines.push(`# The full project is ${snapshot.count} files; name any file path (e.g. src/pipeline.js) and its complete contents are provided.`);
   }
 
+  // Skills — the repo's load-on-demand PLAYBOOKS (institutional knowledge:
+  // how deploys, the pipeline, the eval batteries, the board loops, storage,
+  // the sandbox, etc. are actually done here). Surfaced as a catalog so any
+  // answer model can quote or read them by name — the same knowledge Claude
+  // Code works from, now available regardless of model or tier.
+  const skills = skillsCatalog(snapshot);
+  if (skills.length) {
+    lines.push("");
+    lines.push(
+      `# Skills — the project's ${skills.length} institutional playbooks (.claude/skills/<name>/SKILL.md). These encode how recurring work is actually done here; the same catalog also guides any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill" or /deploy) for its full text, or just ask — the relevant one is retrieved into context:`,
+    );
+    lines.push(skillsIndex(snapshot));
+  }
+
   // Orientation: CLAUDE.md is the repo's own structured architecture map —
   // its opening (project description + code layout) is the best fixed-cost
   // orientation the block can carry.
@@ -550,8 +758,15 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
     lines.push(clip(claude.t, ORIENTATION_CHARS));
   }
 
-  // Named files: inline in full (capped) what the latest message points at.
-  const named = mentionedSnapshotPaths(opts.latestText, snapshot).slice(0, MAX_INLINE_FILES);
+  // Named files: inline in full (capped) what the latest message points at —
+  // by path (mentionedSnapshotPaths) OR by skill name ("the deploy skill"),
+  // deduped so naming a skill inlines its whole SKILL.md.
+  const named = [
+    ...mentionedSnapshotPaths(opts.latestText, snapshot),
+    ...mentionedSkills(opts.latestText, snapshot),
+  ]
+    .filter((p, i, a) => a.indexOf(p) === i)
+    .slice(0, MAX_INLINE_FILES);
   let inlined = 0;
   for (const p of named) {
     if (p === "CLAUDE.md") continue; // already carried above
@@ -578,6 +793,180 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
 /** @param {string} t @param {number} max */
 function clip(t, max) {
   return t.length <= max ? t : t.slice(0, max) + "\n… [truncated — full file in the snapshot/sandbox]";
+}
+
+// ---- the OWASP Top 10 reference block ----------------------------------------
+//
+// When an introspection conversation asks for a SECURITY ASSESSMENT
+// (securityAssessmentIntent), src/introspect.js retrieves the OWASP paragraphs
+// most relevant to the question from the committed OWASP corpus/index (via the
+// SAME retrieveSourceChunks used for source) and appends this labeled block, so
+// the model can classify findings against the real OWASP categories and quote
+// the actual OWASP wording rather than paraphrasing from memory. The block
+// carries the default-framework + CVSS-with-uncertainty instruction so the
+// behavior holds even when the answer path's system prompt is terse.
+
+/**
+ * @param {Array<{ p: string, text: string, score?: number }>} retrieved OWASP chunks (retrieveSourceChunks output; p is the doc id)
+ * @param {Record<string, { cat?: string, family?: string, year?: string, title?: string, url?: string }>} [sources] per-doc citation metadata (owasp-corpus.json `sources`)
+ * @returns {string} the labeled reference block ("" when nothing was retrieved)
+ */
+export function buildOwaspReferenceBlock(retrieved, sources = {}) {
+  const list = (Array.isArray(retrieved) ? retrieved : []).filter((r) => r && r.p && typeof r.text === "string" && r.text);
+  if (!list.length) return "";
+  const lines = [];
+  lines.push("--- OWASP Top 10 reference (for this security assessment) ---");
+  lines.push(
+    "This is a SECURITY ASSESSMENT. Unless the user named a different standard, organize and classify every finding using the OWASP Top 10 for LLM Applications (2025) and the OWASP Top 10 for Web Applications (2021): map each finding to the most relevant OWASP category and cite its identifier (e.g. LLM01:2025 Prompt Injection, A01:2021 Broken Access Control). Give each finding a CVSS v3.1 base-score estimate (with the vector string where you can) and STATE THE UNCERTAINTY EXPLICITLY — flag when a score is a rough estimate or hinges on deployment factors or code you could not see. The verbatim OWASP passages below were retrieved for THIS question: quote them directly and attribute them to their category id and URL.",
+  );
+  lines.push(
+    "Structure the report in this order, each under its own heading: (1) `## Executive Summary` FIRST — a few plain-language sentences facing the reader immediately: overall posture, the most serious issues and their risk, and finding counts by severity (no file paths or CVSS vectors here). (2) `## Scope` — what was assessed and what was not, plus assumptions and limitations. (3) `## Findings` — the technical detail, one per finding (OWASP category id, CVSS score+vector+uncertainty, affected file path/function, evidence, remediation), highest severity first. The Executive Summary replaces the usual one-line conclusion.",
+  );
+  for (const r of list) {
+    const meta = (sources && sources[r.p]) || {};
+    const cite = meta.url ? `${r.p} — ${meta.url}` : r.p;
+    lines.push("");
+    lines.push(`## ${cite}`);
+    lines.push("```");
+    lines.push(r.text);
+    lines.push("```");
+  }
+  lines.push("");
+  lines.push("--- End of OWASP Top 10 reference ---");
+  return "\n\n" + lines.join("\n");
+}
+
+// ---- OWASP retrieval: category diversity + an OFFLINE lexical path ------------
+//
+// A security assessment should quote MULTIPLE different OWASP vulnerabilities,
+// not cluster on the single closest one — so retrieval caps how many chunks it
+// takes per category and backfills, guaranteeing breadth. And because the whole
+// point of the committed corpus is to work SELF-CONTAINED, there's an
+// embedding-FREE lexical retrieval (TF-IDF over the corpus) so the OWASP block
+// is available with NO embedder at all — that's the path DRC (the client-side
+// Se/cure tier, no Berget e5) uses, and the fallback DRS uses when the query
+// embed is unavailable. Both are pure and Node-tested.
+
+/**
+ * The OWASP category id of a corpus key ("LLM01:2025 Prompt Injection" →
+ * "LLM01:2025"). The corpus key is `<id> <title>`, so it's the leading token.
+ * @param {string} p
+ * @returns {string}
+ */
+export function owaspCategoryOf(p) {
+  const s = String(p || "");
+  const i = s.indexOf(" ");
+  return i > 0 ? s.slice(0, i) : s;
+}
+
+/**
+ * Take the top-k chunks while capping how many come from any ONE OWASP category
+ * (greedy over the already-score-sorted list; backfill from the remainder if the
+ * per-category cap left fewer than k). Guarantees the returned set spans several
+ * categories when the corpus has them — the "multiple different vulnerabilities"
+ * requirement — instead of k near-duplicate chunks from the closest doc.
+ * @template {{ p: string }} T
+ * @param {T[]} scored chunks sorted by descending relevance
+ * @param {number} [k]
+ * @param {number} [perCat]
+ * @returns {T[]}
+ */
+export function diversifyByCategory(scored, k = 8, perCat = 2) {
+  const list = Array.isArray(scored) ? scored : [];
+  /** @type {Map<string, number>} */
+  const seen = new Map();
+  /** @type {T[]} */
+  const picked = [];
+  /** @type {T[]} */
+  const overflow = [];
+  for (const c of list) {
+    if (picked.length >= k) break;
+    const cat = owaspCategoryOf(c.p);
+    const n = seen.get(cat) || 0;
+    if (n < perCat) {
+      seen.set(cat, n + 1);
+      picked.push(c);
+    } else {
+      overflow.push(c);
+    }
+  }
+  // Backfill (still score order) if the cap starved us below k.
+  for (const c of overflow) {
+    if (picked.length >= k) break;
+    picked.push(c);
+  }
+  return picked;
+}
+
+// Words too common to help lexical ranking (EN + a little SV). Kept small — the
+// corpus is domain text, so ordinary content words ARE the signal.
+const OWASP_STOPWORDS = new Set(
+  ("the a an and or of to in on for with is are be been being this that these those it its as at by from into over under " +
+    "can could should would may might will shall do does did has have had not no nor but if then else when where which who whom " +
+    "you your yours we our us they their them he she his her out up down off about than so such very more most other some any all " +
+    "att och en ett som det den de för med av till på är var det här den där inte kan ska att om men eller vad vem vilka hur")
+    .split(/\s+/),
+);
+
+/** @param {string} s @returns {string[]} content terms, lowercased, ≥3 chars, no stopwords */
+function owaspTerms(s) {
+  return String(s || "")
+    .toLowerCase()
+    .split(/[^a-z0-9åäöé]+/i)
+    .filter((w) => w.length >= 3 && !OWASP_STOPWORDS.has(w));
+}
+
+/**
+ * OFFLINE lexical retrieval over the OWASP corpus — NO embeddings. Scores each
+ * corpus chunk by TF-IDF overlap with the query's content terms (df computed
+ * across the corpus's own chunks), then applies the category-diversity cap. This
+ * is what lets the OWASP grounding work fully self-contained: DRC uses it (no
+ * Berget e5 in the browser), and DRS falls back to it when the query embed is
+ * unavailable. Deterministic and never throws.
+ * @param {Snapshot} corpus the OWASP corpus (snapshot-shaped: files:[{p,s,t}])
+ * @param {string} query
+ * @param {{ k?: number, perCat?: number }} [opts]
+ * @returns {Array<{ p: string, ci: number, text: string, score: number }>}
+ */
+export function lexicalRetrieveOwasp(corpus, query, opts = {}) {
+  const k = opts.k || 8;
+  const perCat = opts.perCat || 2;
+  const chunks = snapshotChunks(corpus); // [{p,ci,text}]
+  if (!chunks.length) return [];
+  const qTerms = [...new Set(owaspTerms(query))];
+  if (!qTerms.length) return [];
+  // Per-chunk term sets + document frequency of each query term.
+  const chunkTerms = chunks.map((c) => owaspTerms(c.text));
+  const df = new Map();
+  for (const t of qTerms) {
+    let d = 0;
+    for (const terms of chunkTerms) if (terms.includes(t)) d++;
+    df.set(t, d);
+  }
+  const N = chunks.length;
+  const scored = chunks.map((c, i) => {
+    const terms = chunkTerms[i];
+    /** @type {Map<string, number>} */
+    const tf = new Map();
+    for (const w of terms) tf.set(w, (tf.get(w) || 0) + 1);
+    let score = 0;
+    for (const t of qTerms) {
+      const f = tf.get(t) || 0;
+      if (!f) continue;
+      const d = df.get(t) || 0;
+      const idf = Math.log((N + 1) / (d + 0.5)); // smoothed, always > 0
+      score += (1 + Math.log(f)) * idf;
+    }
+    // Normalize by chunk length so long chunks don't dominate on raw counts.
+    const norm = score / Math.sqrt(Math.max(1, terms.length));
+    return { p: c.p, ci: c.ci, text: c.text, score: norm };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return diversifyByCategory(
+    scored.filter((c) => c.score > 0),
+    k,
+    perCat,
+  );
 }
 
 // ---- the agentic source-read loop (the "read files as it wants" tool) --------

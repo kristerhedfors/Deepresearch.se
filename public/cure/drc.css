@@ -20,11 +20,10 @@
 /* Introspection mode's cue (the Se/cure tier). drc.js toggles `dev-mode` on the
    ROOT element when the introspection knob is on. Like the Se/rver twin it does
    NOT re-skin the khaki background or palette — the ONLY change is the composer
-   input pane (plus the wordmark), which picks up a PURPLE (amethyst) glass tint
-   with extra shine (see `:root.dev-mode #composer` below). PURPLE is the shared
-   introspection cue across BOTH tiers — the same amethyst the Se/rver tier
-   uses; each tier just shifts to it from its own base. Titanium is reserved for
-   TIN the mascot. */
+   input pane, which picks up a WHITE TITANIUM glass tint with extra shine (see
+   `:root.dev-mode #composer` below), plus the small "introspection" wordmark
+   tag. White titanium is the shared introspection cue across BOTH tiers — the
+   same pane the Se/rver tier uses (public/css/app.css). */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -73,20 +72,30 @@ body::before {
   pointer-events: none;
   overflow: hidden;
 }
+/* Viewport bottom-anchored ABOVE the composer so the newest command line clears
+   the input pane; the child sticks to the bottom (tail) and agent-backdrop.js
+   translates the scroller to page back through history. See app.css for the
+   full note — this mirror styles it on /cure since drc.css is self-contained. */
 .dr-agent-backdrop-text {
   position: absolute;
-  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
-  margin: 0;
-  max-height: 62vh;
+  left: 1.5rem; right: 1.5rem; bottom: 9.5rem;
+  height: 60vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+}
+.dr-agent-backdrop-scroll { will-change: transform; }
+.dr-agent-backdrop-pre {
+  margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
   color: rgba(61, 52, 24, .55);
   white-space: pre-wrap;
   word-break: break-word;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
   animation: agent-wave 7.5s ease-in-out infinite;
 }
 @keyframes agent-wave {
@@ -94,7 +103,7 @@ body::before {
   50% { transform: translateX(7px) skewX(-1.1deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-text { animation: none; }
+  .dr-agent-backdrop-pre { animation: none; }
 }
 /* The transparency bar: a small floating glass pill that appears WHILE the
    sandbox terminal runs and auto-hides when quiet — the only control for the
@@ -180,26 +189,22 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
-/* Introspection mode: the wordmark tail joins the purple cue — the logo turns
-   amethyst to match the composer pane + tag, instead of its usual flag blue.
-   Scoped to `dev-mode`, so the tier's default blue branding is unchanged when
-   introspection is off. */
-:root.dev-mode .brand b { color: #5b3fa0; }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — only present while the
-   purple introspection cue is active (root carries `dev-mode`). */
+   introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
+   (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
+   tag — the clipped gradient read as unreadable grey. */
 .introspection-tag {
   display: none;
   align-self: center;
-  margin-top: -.15rem;
-  font-size: .58rem;
+  margin-top: -.1rem;
+  font-size: .68rem;
   font-weight: 600;
-  letter-spacing: .18em;
+  letter-spacing: .16em;
   text-transform: lowercase;
-  color: #5b3fa0; /* amethyst — the shared introspection purple, ties to the pane */
-  opacity: .9;
-  text-shadow: 0 1px 5px rgba(255, 255, 255, .55);
+  color: #f6f8fa;
+  text-shadow: 0 1px 2px rgba(30, 50, 78, .55), 0 0 1px rgba(30, 50, 78, .4);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
@@ -348,32 +353,24 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }
-/* Introspection mode: the composer becomes a saturated, glossy AMETHYST glass
-   pane — the SAME purple the Se/rver tier uses (public/css/app.css). PURPLE is
-   the shared "you're in introspection" cue across BOTH tiers; each tier just
-   shifts to it from its own base (khaki here, sky blue there). A rich, fairly
-   UNIFORM violet (slight top→bottom deepen), the shine carried by a bright
-   specular top edge + a soft internal gloss, a violet edge (no white border),
-   and a coloured drop shadow. Because the fill is saturated, the pane's own
-   text goes LIGHT for contrast (below). Background only; the khaki field is
-   unchanged. */
+/* Introspection mode: the composer becomes a brushed WHITE TITANIUM glass pane
+   — the SAME cool silvery-white metal the Se/rver tier uses (public/css/app.css).
+   White titanium is the shared "you're in introspection" cue across BOTH tiers.
+   The metal read comes from a light top→bottom sheen (near-white crown, a faint
+   pewter waist, a lighter foot), a bright specular top edge, and a soft cool
+   drop shadow. The fill is LIGHT, so the pane keeps its ordinary dark text (no
+   foreground override needed). Background only; the khaki field is unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(140, 108, 216, .74) 0%, rgba(92, 58, 176, .84) 100%),
-    rgba(120, 88, 202, .64);
-  border: 1px solid rgba(148, 116, 222, .74);
+    linear-gradient(180deg, rgba(252, 253, 254, .9) 0%, rgba(214, 219, 226, .92) 55%, rgba(232, 236, 241, .9) 100%),
+    rgba(233, 236, 241, .72);
+  border: 1px solid rgba(255, 255, 255, .9);
   box-shadow:
-    0 7px 26px rgba(52, 24, 108, .44),
-    inset 0 1px 0 rgba(255, 255, 255, .55),
-    inset 0 13px 26px rgba(216, 200, 255, .18);
+    0 7px 26px rgba(70, 80, 96, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 14px 26px rgba(255, 255, 255, .4),
+    inset 0 -10px 20px rgba(150, 160, 175, .12);
 }
-/* Light foreground so the input text, placeholder and control-row labels stay
-   legible on the saturated amethyst (the #model / attach / camera chips keep their
-   own light backgrounds, so their dark text is fine). */
-:root.dev-mode #composer textarea#input { color: #fff; }
-:root.dev-mode #composer textarea#input::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }
-:root.dev-mode #composer #composer-row,
-:root.dev-mode #composer #search-row { color: rgba(255, 255, 255, .92); }
 #form { display: flex; flex-direction: column; gap: .35rem; }
 textarea#input {
   width: 100%;
@@ -623,8 +620,8 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   color: var(--accent);
   border: 1px solid rgba(124, 106, 36, .4);
 }
-#keyspanel, #sandboxpanel { margin-top: .4rem; }
-#keyspanel summary, #sandboxpanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
+#keyspanel { margin-top: .4rem; }
+#keyspanel summary { cursor: pointer; font-weight: 600; font-size: .88rem; }
 
 /* The account and settings views: RIGHT-side drawers (mirrors of the
    left #drawer). The settings view (the gear) holds ALL configuration —
@@ -650,23 +647,53 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 #accountview button, #settingsview button { padding: .45rem .8rem; font-size: .82rem; }
 .acct-lead { font-size: .82rem; line-height: 1.5; margin: .1rem 0 .3rem; }
 
-/* A plain toggle (no spiderweb) for the sandbox knob. Scoped to the view
-   so it beats the `label` block rule above (ID+class > ID+type). */
-#accountview label.knob-row, #settingsview label.knob-row {
-  display: flex; align-items: center; gap: .6rem;
-  margin: .5rem 0 .3rem; font-size: .85rem; cursor: pointer; font-weight: 500;
+/* The configuration knobs (introspection, sandbox) reuse the Se/rver settings
+   pane's component (public/css/app.css): a label + ⓘ info-popover on the left,
+   a compact toggle switch on the right. Ported here 1:1 (drc.css is
+   self-contained) so the Se/cure settings drawer matches Se/rver. The switch
+   is generic (works for ANY input id), which also fixes the old #devmode knob —
+   its checked state was never wired under the previous .toggle-track rules. The
+   `#settingsview` scope keeps the label reset above (`#settingsview label`)
+   from overriding these. */
+#settingsview .settings-item { margin: .3rem 0 .5rem; position: relative; }
+#settingsview .settings-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .3rem 0; }
+#settingsview .settings-label { font-size: .9rem; font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; margin: 0; }
+#settingsview .setting-info {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--muted); font-size: .95em; line-height: 1;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
-.knob-row input[type="checkbox"] { position: absolute; opacity: 0; width: 0; height: 0; }
-.toggle-track {
-  flex: none; width: 40px; height: 24px; border-radius: 12px;
-  background: rgba(124, 106, 36, .3); position: relative; transition: background .15s ease;
+#settingsview .setting-info:hover { color: var(--accent); }
+#settingsview .setting-pop {
+  margin: .1rem 0 .4rem; z-index: 5;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .6rem .75rem; font-size: .8rem; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(60, 50, 10, .22);
 }
-.toggle-dot {
-  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 2px rgba(60, 50, 10, .35); transition: left .15s ease;
+#settingsview .setting-pop[hidden] { display: none; }
+#settingsview .setting-pop a { color: var(--accent); }
+#settingsview .setting-note { display: block; font-size: .8rem; margin: .1rem 0 .4rem; }
+/* Raised to #settingsview specificity so the drawer's `#settingsview label`
+   block-reset (display:block, margin, font) doesn't reflow the switch. */
+#settingsview label.switch { cursor: pointer; display: inline-flex; flex: none; margin: 0; font-size: inherit; font-weight: inherit; -webkit-user-select: none; user-select: none; }
+.switch input { position: absolute; opacity: 0; pointer-events: none; }
+.switch-track {
+  width: 40px; height: 22px; border-radius: 11px;
+  background: rgba(124, 106, 36, .3);
+  position: relative; flex: none;
+  transition: background .15s ease;
 }
-#bashlite:checked + .toggle-track { background: var(--accent); }
-#bashlite:checked + .toggle-track .toggle-dot { left: 18px; }
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(60, 50, 10, .35);
+  transition: left .15s ease;
+}
+.switch input:checked + .switch-track .switch-thumb { left: 20px; }
+.switch input:disabled + .switch-track { opacity: .45; cursor: not-allowed; }
 
 /* Saved keys, one row per provider, with a remove button. */
 .saved-key-row {

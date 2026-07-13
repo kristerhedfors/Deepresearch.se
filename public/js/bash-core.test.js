@@ -18,6 +18,7 @@ import {
   normalizeExecResult,
   parseShellRequest,
   runShellLoop,
+  shellCommandLabel,
 } from "./bash-core.js";
 
 // ---- bashIntent ---------------------------------------------------------
@@ -193,6 +194,28 @@ describe("formatShellResult", () => {
   });
 });
 
+describe("shellCommandLabel", () => {
+  test("passes short commands through, collapsing whitespace", () => {
+    assert.equal(shellCommandLabel("ls -la"), "ls -la");
+    assert.equal(shellCommandLabel("grep  foo\n  bar"), "grep foo bar");
+    assert.equal(shellCommandLabel("  trimmed  "), "trimmed");
+  });
+
+  test("clips long commands to one line with an ellipsis", () => {
+    const long = "python3 -c '" + "x".repeat(200) + "'";
+    const out = shellCommandLabel(long, 40);
+    assert.equal(out.length, 40); // 39 chars + the ellipsis
+    assert.ok(out.endsWith("…"));
+    assert.ok(long.startsWith(out.slice(0, -1)));
+  });
+
+  test("is safe on junk input", () => {
+    assert.equal(shellCommandLabel(null), "");
+    assert.equal(shellCommandLabel(undefined), "");
+    assert.equal(shellCommandLabel(""), "");
+  });
+});
+
 describe("buildShellTranscript", () => {
   test("empty runs produce an empty block (synthesis input unchanged)", () => {
     assert.equal(buildShellTranscript([]), "");
@@ -349,6 +372,43 @@ describe("runShellLoop (generic driver)", () => {
     assert.equal(stepEvents[0].reasoning, "why");
     assert.deepEqual(stepEvents[0].commands, ["echo a", "echo b"]);
     assert.deepEqual(results, ["echo a", "echo b"]);
+  });
+
+  test("onExec fires BEFORE each command runs, in order, with the command + position", async () => {
+    const steps = [
+      { commands: ["echo a", "echo b"], done: false, reasoning: "" },
+      { commands: ["echo c"], done: false, reasoning: "" },
+      { commands: [], done: true, reasoning: "" },
+    ];
+    let i = 0;
+    const order = [];
+    await runShellLoop({
+      step: async () => steps[i++],
+      // Record the exec call itself so we can assert onExec ran BEFORE it.
+      exec: async (cmd) => { order.push("run:" + cmd); return { exitCode: 0, stdout: cmd, stderr: "" }; },
+      onExec: (command, info) => order.push(`exec:${command}#${info.round}.${info.index}`),
+    });
+    assert.deepEqual(order, [
+      "exec:echo a#1.0", "run:echo a",
+      "exec:echo b#1.1", "run:echo b",
+      "exec:echo c#2.0", "run:echo c",
+    ]);
+  });
+
+  test("a throwing onExec/onStep/onResult never breaks the loop (fail-soft decoration)", async () => {
+    const steps = [
+      { commands: ["echo a"], done: false, reasoning: "" },
+      { commands: [], done: true, reasoning: "" },
+    ];
+    let i = 0;
+    const transcript = await runShellLoop({
+      step: async () => steps[i++],
+      exec: async (cmd) => ({ exitCode: 0, stdout: cmd, stderr: "" }),
+      onStep: () => { throw new Error("boom-step"); },
+      onExec: () => { throw new Error("boom-exec"); },
+      onResult: () => { throw new Error("boom-result"); },
+    });
+    assert.deepEqual(transcript.map((r) => r.command), ["echo a"]);
   });
 
   test("junk proposals (non-string commands, missing fields) never throw", async () => {

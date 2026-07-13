@@ -3,7 +3,9 @@ name: access-control
 description: >-
   Load when touching auth (src/auth.js, google.js, login.js, accounts.js),
   quotas (src/quota.js), the admin API/UI (src/admin-api.js, public/admin),
-  alerts (src/alerts.js), or D1 setup (src/db.js). Covers Google OIDC sign-in,
+  alerts (src/alerts.js, its shared render fragments public/js/notifications.js,
+  the per-user message-center view public/js/account-messages.js), or D1 setup
+  (src/db.js). Covers Google OIDC sign-in,
   terms + approval gates, sessions/PWA longevity, break-glass Basic Auth, the
   four-window quota model, the admin interface, the notification/alerts center,
   and one-time D1 setup + secrets.

@@ -43,8 +43,11 @@ These override the heuristic in the inventory table.
 | `claude/tokemon-game-subsystem-30a8r7` | `4f677fc` | Superseded | `src/tokemon.js` / `src/tokemon-api.js` present in `main`. |
 | `claude/refactor-skill-repo-kb1c7k` | `f9ee2ab` | **Merged** | `src/billing.js` extraction integrated 2026-07-13 (tests 70/70). |
 | `claude/glass-pane-close-icon-v451n4` | `189db14` | **Merged** | close chevrons integrated 2026-07-13. |
-| `claude/security-assessment-owasp-setup-3hznsj` | `f844788` | Review (deferred) | Real new work BUT a 1109-line feature (own RAG index + core-file conflicts) — needs its own dedicated PR + `bundle:owasp-rag`, not a reconciliation cherry-pick. |
+| `claude/security-assessment-owasp-setup-3hznsj` | `bef0451` | **Merged** | OWASP Top-10 corpus + offline retrieval integrated 2026-07-13 via 3-way merge (only source-snapshot/rag conflicted; 1222/1222 tests, typecheck clean). |
 | `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Superseded | On cherry-pick the net drc.js diff vs `main` was **empty** — the land-in-chat onboarding is already in `main`. |
+| `claude/admin-feature-selection-board-9zva2a` | `9084844` | Superseded | The whole selection-board / decision-board system is in `main`: `panels.js` (attention loop), `board.js`, `admin-boards.js`, `features.js`, `security-risks.js`, `panels_reviews`/`security_reviews`/`features_reviews`, `scripts/{boards,panels,features,security}`, the decision-boards + feature-board skills, `docs/DECISION-BOARD-LOOPS.md`. Branch is ~5200 lines behind main. |
+| `claude/selection-boards-headers-v9xhgp` | `7c11c47` | Superseded | Landed in `main` earlier via PR #6 (collapse-to-headers + features board); not in the unmerged set. |
+| `claude/victorian-umbrella-animation-vooqu6` | `6a10191` | **Merged** | DRC umbrella intro: Victorian umbrellas revive from wire into colour. Merged 2026-07-13; only source-snapshot/rag conflicted (regenerated). 1224/1224 tests. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 
@@ -59,14 +62,15 @@ Turned out already in `main` (Superseded) once content-checked:
 
 - `claude/forbux-onboarding-flow-dsd61y` — net drc.js diff was empty.
 
-Deferred to its OWN dedicated PR (real new work, too large for this pass):
+Also merged this pass (2026-07-13, follow-up):
 
-- `claude/security-assessment-owasp-setup-3hznsj` — OWASP Top-10 corpus +
-  offline retrieval: 1109 insertions across 17 files, its own committed
-  `owasp-rag.json` (needs `npm run bundle:owasp-rag`, network), and heavy
-  conflicts on diverged core files (`introspect-core.js`, `introspect.js`,
-  `pipeline.js`, `prompts.js`). Wants proper conflict resolution + live
-  verification, not a reconciliation cherry-pick.
+- ✅ `claude/security-assessment-owasp-setup-3hznsj` → **Merged** — OWASP
+  Top-10 corpus + offline retrieval (~1100 lines / 17 files). The branch had
+  already merged recent `main`, so a 3-way `git merge` applied cleanly except
+  the two generated introspection artifacts (regenerated: `source-snapshot`
+  via `npm run bundle`, `source-rag` via `bundle:rag`). Its committed
+  `owasp-corpus.json` / `owasp-rag.json` came in as-is. 1222/1222 tests pass,
+  typecheck clean.
 
 Still to inspect (Review rows, ahead ≤ 5): several are already superseded
 (e.g. `commit-analytics-dashboard`, `admin-feature-selection-board` — panel/
@@ -80,7 +84,7 @@ heuristic; the skill's content check confirms.
 
 | Branch | tip | ahead | Verdict | Subject |
 |---|---|---|---|---|
-| `claude/admin-feature-selection-board-9zva2a` | 9084844 | 1 | Review | Add panel-selection board (attention loop) + fold usage |
+| `claude/admin-feature-selection-board-9zva2a` | 9084844 | 1 | Superseded | Panel-selection board (attention loop) — `src/panels.js` + `panels_reviews` + `scripts/panels` all in main (verified 2026-07-13) |
 | `claude/anon-chat-copy-ui-rk0k0j` | 7a30685 | 226 | Superseded? | Header: ghost moves beside the account button copy-conv |
 | `claude/anthropic-llm-provider-3ojvsm` | 5f07008 | 284 | Superseded? | eval: Round 10 ledger first Anthropic battery (opus/son |
 | `claude/anthropic-llm-provider-d3iapt` | 24579aa | 284 | Superseded? | Add the model-tuning skill: per-use-case adaptation play |
@@ -134,7 +138,7 @@ heuristic; the skill's content check confirms.
 | `claude/sandbox-terminal-visibility-bvtt78` | b4f801a | 2 | Review | Sandbox: on-screen transparency bar |
 | `claude/secure-client-api-analysis-0twcps` | 0198c57 | 18 | Superseded? | feat(drc): client-side RAG for conversations/projects |
 | `claude/secure-providers-depth-ui-vtrlb0` | c10067d | 79 | Superseded? | Merge origin/main (DRC providers UI) |
-| `claude/security-assessment-owasp-setup-3hznsj` | f844788 | 4 | Review (deferred) | OWASP corpus — NEW but 1109-line feature, own PR |
+| `claude/security-assessment-owasp-setup-3hznsj` | bef0451 | 4 | Merged | OWASP corpus + offline retrieval (integrated 2026-07-13) |
 | `claude/segelflygcertifikat-chat-failure-d9v3cd` | db29e9c | 240 | Superseded? | pipeline: fail over to reliable model |
 | `claude/segelflyghandboken-chapter-8zznku` | 7d49feb | 271 | Superseded? | Quiz prompt: test contained knowledge |
 | `claude/sensitive-info-audit-lc44ed` | d862bc9 | 120 | Superseded? | History sidebar: list icon, tweaks |

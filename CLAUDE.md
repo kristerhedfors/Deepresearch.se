@@ -225,7 +225,7 @@ Server (`src/`):
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) + `/api/client-log` (client telemetry beacon → Workers Logs; first user is the sandbox filesystem integration — see the **execution-sandbox** skill) |
 | `user-messages.js` | Per-user message center (D1 `user_messages`): account-level notices (quota exhausted/restored, sign-in approved, quota changed by an admin) — structured enums + timestamps ONLY, deliberately no content column, so the feature stays inside the same zero-retention promise the privacy notice makes for conversations; "restored" isn't a separate write, it's derived at read time from the caller's CURRENT quota state (`quota.js`). Rendered by the client's `account-messages.js` |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, `bash_lite_mcp` (experimental execution sandbox), and `developer_mode` (introspection mode) knobs — `GET/PUT /api/settings` |
-| `introspect.js` | INTROSPECTION MODE's server enrichment (the `developer_mode` knob): whenever developer mode is on it appends the site's OWN source so answers (incl. code-example requests) come from the real code, never a denial. It RETRIEVES the source chunks most relevant to the question from a committed DENSE index (`public/introspect/source-rag.json` — int8 embeddings per source chunk, `scripts/bundle-source-rag.mjs` / `npm run bundle:rag`, a per-file-hash DELTA build that only re-embeds changed files), embedding the query with Berget e5 (same model the index was built with) — so it works for ANY phrasing with NO intent regex and NO Linux VM. Plus a CLAUDE.md orientation excerpt, the full file index for strong "how are you built" asks, and named files inlined by path. Both artifacts (the source snapshot + the rag index) are COMMITTED, served by this deploy, read back through the ASSETS binding — by construction the exact source this deploy runs. `hasSource` flips the answer prompts' capabilities line (prompts.js/pipeline.js) so the model uses the source instead of saying it isn't a coding tool. Shared pure core (chunker/int8 codec/retrieval/block builder) is `public/js/introspect-core.js`; with the sandbox knob also on the tree mounts at `/src` — see the **introspection** skill |
+| `introspect.js` | INTROSPECTION MODE's server enrichment (the `developer_mode` knob): whenever developer mode is on it appends the site's OWN source so answers (incl. code-example requests) come from the real code, never a denial. It RETRIEVES the source chunks most relevant to the question from a committed DENSE index (`public/introspect/source-rag.json` — int8 embeddings per source chunk, `scripts/bundle-source-rag.mjs` / `npm run bundle:rag`, a per-file-hash DELTA build that only re-embeds changed files), embedding the query with Berget e5 (same model the index was built with) — so it works for ANY phrasing with NO intent regex and NO Linux VM. Plus a CLAUDE.md orientation excerpt, the full file index for strong "how are you built" asks, named files inlined by path, and the **skills catalog** — the repo's `.claude/skills/*/SKILL.md` playbooks surfaced as a first-class listing (`skillsCatalog`/`skillsIndex`/`mentionedSkills`) so ANY answer model in EITHER tier can quote or inline a playbook by name, the same institutional knowledge Claude Code works from (the vendor-neutral root `AGENTS.md` points external agents at the same catalog). Both artifacts (the source snapshot + the rag index) are COMMITTED, served by this deploy, read back through the ASSETS binding — by construction the exact source this deploy runs. `hasSource` flips the answer prompts' capabilities line (prompts.js/pipeline.js) so the model uses the source instead of saying it isn't a coding tool. Shared pure core (chunker/int8 codec/retrieval/block builder) is `public/js/introspect-core.js`; with the sandbox knob also on the tree mounts at `/src` — see the **introspection** skill |
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
@@ -240,7 +240,8 @@ Server (`src/`):
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
 | `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
 | `panels.js` | The panel-SELECTION board (D1 `panels_reviews`) — a THIRD `board.js` consumer but a different KIND of loop (the ATTENTION loop, not a backlog). Its catalog items ARE the admin panels themselves; it has NO board widget — each panel header on `/admin` carries ▲/▼ thumbs and voting reshapes the admin view in place (up floats to top, net-negative collapses + sinks). Reshapes PURELY on votes: no drag, no explicit priority (reuses the core's `"priority"` ordering with none ever set → votes-desc). The votes-driven focus order (`/api/admin/panels*`, `?format=text` = the attention loop's input; `scripts/panels`) tells a Claude Code session which admin surface the owner is working on now — read it, then read that surface's own board. See the **feature-board** skill §6 |
-| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, boards |
+| `testpoints.js` | The testable-interaction-points queue (D1 `test_points`): declared, linkable "try-it" points — each a `label` + a "what was fixed" `summary` + a same-origin `target` path + an ordered list of client ACTIONS (the deep-link reachability grammar: open a panel/settings-knob, prefill the composer, flip search, set the budget, pick a model, highlight an element) — plus the 👍/👎 verdict. Pure core (validation/projection/`?format=text`/`deepLink`) + `handleAdminTestpoints` (CRUD + result, admin-gated, `/api/admin/testpoints*`) + `handleTryRedirect` (the `/try/:id` deep link → 302 to `<target>?try=<id>`, home-on-miss). The banner + queue UI live in `public/js/testpoints.js` over the pure `public/js/testpoints-core.js`; `scripts/testpoints` is the producer/reader CLI — see the **testable-interaction-points** skill |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, testpoints, boards |
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
 | `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) and the split-billing spend math (`billing.js`) with `chat.js` |
@@ -286,7 +287,11 @@ Server (`src/`):
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
-search knob, composer), `stream.js` (conversation history + `/api/chat`
+search knob, composer; also wires the test-queue client
+`testpoints.js` — the try-it banner + queue over the pure
+`testpoints-core.js`, fed the app-specific action hooks so it never
+reaches into `app.js` internals — see the
+**testable-interaction-points** skill), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn),
 `embeds.js` (the conversation embeds registry stream.js wires via
 `initEmbeds`: record/prune/size-cap of pipeline-embedded elements, quiz
@@ -588,13 +593,20 @@ SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 `answers.js` (the answer-recovery cache's running/lost/done projection),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
-`?format=text`), `search-sources.js` (the `SEARCH_SOURCES` registry
+`?format=text`), `testpoints.js` (the try-it queue's pure logic:
+`cleanTarget` same-origin validation, the action-grammar `cleanAction`/
+`validateActions` incl. unknown-drop + count cap, create/patch/result
+validation, `deepLink` query/hash preservation, projection + the
+`?format=text` render), `search-sources.js` (the `SEARCH_SOURCES` registry
 contract, `sourcePromptNotes`, `platformDiversityKey`), and the outbound
 clients' pure sides — `exa.js` (the normalized search cache key),
 `hf.js` (intent detection, query/attempt planning, dedup keys, item
 mappers), and `shodan.js` (target extraction + the key-gated
 availability check). On the client, `pending-answer.js` covers the
-resume-across-relaunch marker (metadata-only, incognito-suppressed).
+resume-across-relaunch marker (metadata-only, incognito-suppressed), and
+`testpoints-core.js` covers the try-it queue's client pure core
+(`parseTryId`/`stripTryParam`/`deepLink`, `partitionActions` known-vs-unknown
+against the client grammar, `nextOpenPoint` oldest-open selection).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
@@ -807,6 +819,13 @@ what docs claim); and update the skill list below plus the skill's
   (`docs/MERGED-BRANCHES.md`) that TAGS a branch done so no agent rebuilds on
   it — plus `scripts/check-merged-branches.mjs`, the guard that NOTIFIES the
   owner when someone pushes to an already-merged branch.
+- **pr** — the one-word `pr` trigger that PREPARES the current feature branch
+  for the merge-branches ("Merger") workflow: barrier + base check / rebase
+  onto latest `origin/main`, regenerate the committed introspection artifacts
+  if source changed, `npm test` + `npm run typecheck` green gate, commit
+  pending work, push the branch, open a focused PR to `main`, and hand off to
+  the owner's merge. Prepares only — never merges. Companion to sync-main
+  (base current) and merge-branches (tag done + merge).
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
@@ -862,6 +881,13 @@ what docs claim); and update the skill list below plus the skill's
   (unit tests → live probes → bench A/B → ledger).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
+- **mcp-server** — the outbound MCP surface (`POST /mcp`, `src/mcp.js`): the
+  site exposed AS a `deep_research` tool other agents (Claude, Cursor) call.
+  The hand-rolled JSON-RPC 2.0 / Streamable-HTTP protocol, the pure-helpers-
+  static / pipeline-dynamic-import file-layout rule, how a tool call reuses
+  `chat.js`'s quota gate + split model routing + usage/billing recording,
+  adding/changing a tool, and the validation ladder (`mcp.test.js` → live
+  JSON-RPC probe). The strategic outbound edge from `docs/ARCHITECTURE-ROADMAP.md` §3.
 - **cache-helper** — every cache layer (browser no-cache policy, the
   CSS↔JS handshake, build stamps, Cloudflare edge propagation, the
   /api/pub 60s TTL, the Workers result cache, PWA staleness) and the
@@ -948,6 +974,17 @@ what docs claim); and update the skill list below plus the skill's
   `wireSettingPopovers` (`account-views.js`), the web-search popover
   (`app.js`), the `#drspop` DRS explainer (`cure/drc.js`), and the TIN mascot
   bubble (`introspect-ui.js`).
+- **testable-interaction-points** — the try-it queue: declaring linkable
+  "test points" the moment a fix ships (a `label` + a "what was fixed"
+  summary + a `target` path + deep-link ACTIONS that set the scene), running
+  them from the DRS queue/banner, and recording a 👍/👎 verdict that feeds the
+  next fix round (`src/testpoints.js`, `public/js/testpoints.js` +
+  `testpoints-core.js`, `scripts/testpoints`, the `/try/:id` route, D1
+  `test_points`). Owns the ACTION GRAMMAR — the exact boundary of what
+  "reachable" means (open a panel/knob, prefill the composer, flip search, set
+  the budget, pick a model, highlight an element) — and where it ends
+  (navigate-then-do-by-hand; full banner on `/rver` only; admin-only). Load
+  when queuing a fix for testing or touching any of those files.
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated
@@ -965,6 +1002,14 @@ what docs claim); and update the skill list below plus the skill's
   ingest, overlay persistence, and the `fileProvider` seam
   (`stream.js` `buildSandboxFileProvider`). Full design +
   research: `docs/SANDBOX-HOST-COMMANDS.md`.
+- **sandbox-debug** — the DEBUG SWITCH and boot-hang playbook for the execution
+  sandbox: when the UI hangs on "booting sandbox"/"connecting disk…", how to turn
+  verbose sandbox debugging on/off (the client `dr_sandbox_debug` toggle /
+  `?sbdebug=1` / `window.__DR_SANDBOX_DEBUG`, and the server `LOG_LEVEL=debug`
+  knob), the `sandbox.boot_stage` timeline vocabulary, the stall watchdog
+  (`sandbox.boot_stalled`, warn-level, flushes a hang the buffered path can't),
+  and reading it back via `wrangler tail` / `scripts/chatlogs`. Companion to
+  execution-sandbox (the sandbox itself); this one is the observability switch.
 - **introspection** — INTROSPECTION MODE and the `developer_mode` knob (both
   tiers): the committed source-snapshot artifact
   (`scripts/bundle-source.mjs` → `public/introspect/source-snapshot.json`,

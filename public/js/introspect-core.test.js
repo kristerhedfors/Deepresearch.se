@@ -13,11 +13,21 @@ import {
   MAX_INLINE_TOTAL_CHARS,
   ORIENTATION_CHARS,
   buildIntrospectionBlock,
+  buildOwaspReferenceBlock,
+  diversifyByCategory,
+  lexicalRetrieveOwasp,
+  owaspCategoryOf,
   externalSourceIntent,
+  securityAssessmentIntent,
   introspectionActive,
   introspectionIntent,
   mentionedSnapshotPaths,
   snapshotIndex,
+  parseSkillFrontmatter,
+  skillsCatalog,
+  skillsIndex,
+  mentionedSkills,
+  SKILL_SUMMARY_CHARS,
   validateSnapshot,
   chunkSourceText,
   snapshotChunks,
@@ -149,6 +159,131 @@ test("externalSourceIntent: Swedish parity — same breadth as English", () => {
   ]) {
     assert.equal(externalSourceIntent(s), true, s);
   }
+});
+
+test("securityAssessmentIntent: English request forms", () => {
+  for (const s of [
+    "do a security assessment of this site",
+    "conduct a proper security assessment",
+    "security audit please",
+    "can you review the security of the pipeline?",
+    "assess the security of the auth flow",
+    "audit this codebase for security issues",
+    "what security vulnerabilities does this have?",
+    "run a vulnerability assessment",
+    "do a threat model of the app",
+    "penetration test the login",
+    "pentest this endpoint",
+    "how secure is the session cookie?",
+    "classify the findings against OWASP",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), true, s);
+  }
+});
+
+test("securityAssessmentIntent: Swedish parity — same breadth as English", () => {
+  for (const s of [
+    "gör en säkerhetsbedömning av sajten",
+    "genomför en säkerhetsgranskning",
+    "kan du göra en säkerhetsanalys?",
+    "bedöm säkerheten i autentiseringen",
+    "granska säkerheten i pipelinen",
+    "vilka säkerhetsbrister finns här?",
+    "kör en sårbarhetsanalys",
+    "gör en hotmodell av appen",
+    "penetrationstesta inloggningen",
+    "pentesta den här endpointen",
+    "hur säker är sessionskakan?",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), true, s);
+  }
+});
+
+test("securityAssessmentIntent: ordinary (non-security) asks never trigger it", () => {
+  for (const s of [
+    "review this function",
+    "assess the code quality",
+    "audit the logging output for typos",
+    "how does the current pipeline work?",
+    "explain the architecture",
+    "granska den här funktionen",
+    "hur fungerar pipelinen?",
+    "bedöm kodkvaliteten",
+    "",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), false, s);
+  }
+});
+
+test("buildOwaspReferenceBlock: cites categories with URLs, quotes text, carries the CVSS+uncertainty instruction", () => {
+  const retrieved = [
+    { p: "LLM01:2025 Prompt Injection", text: "A Prompt Injection Vulnerability occurs when user prompts alter the LLM's behavior.", score: 0.9 },
+    { p: "A01:2021 Broken Access Control", text: "Access control enforces policy such that users cannot act outside of their intended permissions.", score: 0.8 },
+  ];
+  const sources = {
+    "LLM01:2025 Prompt Injection": { url: "https://genai.owasp.org/llmrisk/llm01-prompt-injection/" },
+    "A01:2021 Broken Access Control": { url: "https://owasp.org/Top10/A01_2021-Broken_Access_Control/" },
+  };
+  const block = buildOwaspReferenceBlock(retrieved, sources);
+  assert.match(block, /OWASP Top 10 reference/);
+  assert.match(block, /LLM01:2025 Prompt Injection — https:\/\/genai\.owasp\.org/);
+  assert.match(block, /A01:2021 Broken Access Control — https:\/\/owasp\.org/);
+  assert.match(block, /Prompt Injection Vulnerability occurs/); // verbatim quote
+  assert.match(block, /CVSS/);
+  assert.match(block, /uncertaint/i);
+  // Report structure: Executive Summary → Scope → Findings.
+  assert.match(block, /Executive Summary/);
+  assert.match(block, /## Scope/);
+  assert.match(block, /## Findings/);
+  // Empty retrieval → empty block (byte-identical to a run without OWASP).
+  assert.equal(buildOwaspReferenceBlock([], sources), "");
+  assert.equal(buildOwaspReferenceBlock(null), "");
+});
+
+test("owaspCategoryOf: leading token is the category id", () => {
+  assert.equal(owaspCategoryOf("LLM01:2025 Prompt Injection"), "LLM01:2025");
+  assert.equal(owaspCategoryOf("A01:2021 Broken Access Control"), "A01:2021");
+  assert.equal(owaspCategoryOf(""), "");
+});
+
+test("diversifyByCategory: caps per category, spans multiple, backfills to k", () => {
+  const scored = [
+    { p: "LLM01:2025 x", s: 9 }, { p: "LLM01:2025 x", s: 8 }, { p: "LLM01:2025 x", s: 7 }, // 3 from LLM01
+    { p: "A01:2021 y", s: 6 }, { p: "A01:2021 y", s: 5 }, // 2 from A01
+    { p: "LLM10:2025 z", s: 4 },
+  ];
+  // k=5, perCat=2 → 2 LLM01 + 2 A01 + 1 LLM10 = 3 categories (the cap forces
+  // the 3rd category in rather than a 3rd LLM01).
+  const out = diversifyByCategory(scored, 5, 2);
+  assert.equal(out.length, 5);
+  const cats = out.map((c) => owaspCategoryOf(c.p));
+  assert.ok(cats.filter((c) => c === "LLM01:2025").length <= 2, "LLM01 capped at 2");
+  assert.ok(new Set(cats).size >= 3, "spans ≥3 categories: " + cats.join(","));
+  // Backfill: k=6 exhausts the input — the capped-out 3rd LLM01 fills the slot.
+  const full = diversifyByCategory(scored, 6, 2);
+  assert.equal(full.length, 6);
+  assert.equal(full.filter((c) => owaspCategoryOf(c.p) === "LLM01:2025").length, 3);
+});
+
+test("lexicalRetrieveOwasp: offline retrieval surfaces the right categories across docs", () => {
+  // A tiny 3-doc corpus (snapshot-shaped) — no embeddings, pure TF-IDF.
+  const corpus = {
+    v: 1, digest: "d", count: 3, bytes: 0,
+    files: [
+      { p: "LLM01:2025 Prompt Injection", s: 0, t: "Prompt injection occurs when user prompts manipulate the model and override the system instructions. ".repeat(4) },
+      { p: "A01:2021 Broken Access Control", s: 0, t: "Broken access control lets users act outside intended permissions, accessing admin endpoints and other accounts. ".repeat(4) },
+      { p: "LLM10:2025 Unbounded Consumption", s: 0, t: "Unbounded consumption is excessive resource use — token cost, denial of wallet, and rate-limit exhaustion. ".repeat(4) },
+    ],
+  };
+  const inj = lexicalRetrieveOwasp(corpus, "the model prompt is manipulated by injected user instructions", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(inj[0].p), "LLM01:2025", "prompt-injection query → LLM01 top");
+  const acc = lexicalRetrieveOwasp(corpus, "admin access control on user accounts and permissions", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(acc[0].p), "A01:2021", "access-control query → A01 top");
+  const con = lexicalRetrieveOwasp(corpus, "excessive token cost and denial of wallet, rate limit", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(con[0].p), "LLM10:2025", "consumption query → LLM10 top");
+  // No content terms / empty corpus → [] (fail-soft, no throw).
+  assert.deepEqual(lexicalRetrieveOwasp(corpus, "the a of to", { k: 4 }), []);
+  assert.deepEqual(lexicalRetrieveOwasp({ v: 1, count: 0, files: [] }, "anything", { k: 4 }), []);
 });
 
 test("externalSourceIntent: pure introspection asks never trigger it (search stays off)", () => {
@@ -283,6 +418,85 @@ test("buildIntrospectionBlock: per-file and total inline caps truncate honestly"
 
 test("snapshotIndex: one row per file", () => {
   assert.equal(snapshotIndex(snap()).split("\n").length, 4);
+});
+
+// ---- skills catalog ---------------------------------------------------------
+
+/** A snapshot fixture that also carries a couple of SKILL.md playbooks. */
+const skillSnap = () =>
+  /** @type {any} */ (
+    validateSnapshot({
+      v: 1,
+      digest: "s",
+      files: [
+        { p: "CLAUDE.md", s: 1, t: "# CLAUDE.md\n\norientation" },
+        { p: "src/pipeline.js", s: 1, t: "// pipeline" },
+        {
+          p: ".claude/skills/deploy/SKILL.md",
+          s: 1,
+          t: "---\nname: deploy\ndescription: >-\n  Load when deploying to production. Covers the push-to-main auto-deploy\n  and wrangler.\n---\n\n# Deployment\n\nbody",
+        },
+        {
+          p: ".claude/skills/feedback-loop/SKILL.md",
+          s: 1,
+          t: '---\nname: feedback-loop\ndescription: "Process user feedback from the live site."\n---\n\n# Feedback',
+        },
+      ],
+    })
+  );
+
+test("parseSkillFrontmatter: folded (>-), inline-quoted, and missing frontmatter", () => {
+  const folded = parseSkillFrontmatter(
+    "---\nname: deploy\ndescription: >-\n  Load when deploying to production.\n  Covers wrangler.\n---\nbody",
+  );
+  assert.equal(folded.name, "deploy");
+  assert.equal(folded.description, "Load when deploying to production. Covers wrangler.");
+
+  const inline = parseSkillFrontmatter('---\nname: x\ndescription: "One line."\n---');
+  assert.equal(inline.description, "One line.");
+
+  const none = parseSkillFrontmatter("# just markdown, no frontmatter");
+  assert.deepEqual(none, { name: "", description: "" });
+});
+
+test("skillsCatalog: one entry per SKILL.md, sorted by name, non-skill files ignored", () => {
+  const cat = skillsCatalog(skillSnap());
+  assert.deepEqual(cat.map((s) => s.name), ["deploy", "feedback-loop"]);
+  assert.equal(cat[0].path, ".claude/skills/deploy/SKILL.md");
+  assert.match(cat[0].description, /Load when deploying/);
+  // A snapshot with no skills yields an empty catalog (no throw).
+  assert.deepEqual(skillsCatalog(snap()), []);
+});
+
+test("skillsIndex: '- name — summary' rows, clipped to the summary cap", () => {
+  const idx = skillsIndex(skillSnap());
+  assert.match(idx, /^- deploy — Load when deploying to production\./m);
+  assert.match(idx, /^- feedback-loop — Process user feedback/m);
+  for (const line of idx.split("\n")) assert.ok(line.length <= SKILL_SUMMARY_CHARS + 40);
+  // full: true keeps the whole description.
+  assert.match(skillsIndex(skillSnap(), { full: true }), /Covers the push-to-main auto-deploy and wrangler\./);
+});
+
+test("mentionedSkills: slash form and '<name> skill' (hyphen/space tolerant)", () => {
+  const s = skillSnap();
+  assert.deepEqual(mentionedSkills("run /deploy now", s), [".claude/skills/deploy/SKILL.md"]);
+  assert.deepEqual(mentionedSkills("explain the deploy skill", s), [".claude/skills/deploy/SKILL.md"]);
+  assert.deepEqual(mentionedSkills("open the feedback loop skill", s), [".claude/skills/feedback-loop/SKILL.md"]);
+  // A bare mention that isn't the skill form doesn't match (no false positives).
+  assert.deepEqual(mentionedSkills("how do I deploy the worker?", s), []);
+  assert.deepEqual(mentionedSkills("", s), []);
+});
+
+test("buildIntrospectionBlock: surfaces the skills catalog and inlines a named skill", () => {
+  const block = buildIntrospectionBlock(skillSnap(), { latestText: "show me the deploy skill" });
+  assert.match(block, /# Skills — the project's 2 institutional playbooks/);
+  assert.match(block, /guides any coding agent via the repo's AGENTS\.md/);
+  assert.match(block, /^- deploy — Load when deploying/m);
+  // Naming a skill inlines its full SKILL.md body.
+  assert.match(block, /# \.claude\/skills\/deploy\/SKILL\.md \(1 bytes\)/);
+  assert.match(block, /# Deployment/);
+  // A snapshot with no skills simply omits the section.
+  assert.doesNotMatch(buildIntrospectionBlock(snap(), {}), /# Skills — the project's/);
 });
 
 // ---- the model picker grouping ---------------------------------------------------

@@ -59,9 +59,13 @@ import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import {
+  OWASP_CORPUS_PATH,
   SNAPSHOT_PATH,
   buildIntrospectionBlock,
+  buildOwaspReferenceBlock,
   introspectionActive,
+  lexicalRetrieveOwasp,
+  securityAssessmentIntent,
   validateSnapshot,
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
@@ -690,6 +694,38 @@ async function loadSnapshotOnce() {
   return snapshotCache;
 }
 
+// The OWASP Top 10 reference corpus, fetched once per page load as a PUBLIC
+// static file (server still in no data path). It grounds a security assessment
+// so DRC can quote the actual OWASP text — retrieved OFFLINE with the
+// embedding-free lexical path (the browser has no Berget e5), which is why no
+// dense index is needed here. Fail-soft: any problem → no OWASP block, and the
+// prompt-level default (buildIntrospectionBlock / research prompts) still holds.
+let owaspCorpusCache = null;
+async function loadOwaspCorpusOnce() {
+  if (!owaspCorpusCache) {
+    owaspCorpusCache = fetch(OWASP_CORPUS_PATH)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const raw = await res.json();
+        const snapshot = validateSnapshot(raw);
+        return snapshot ? { snapshot, sources: raw && raw.sources ? raw.sources : {} } : null;
+      })
+      .catch(() => null);
+  }
+  return owaspCorpusCache;
+}
+
+// Build the OWASP reference block for a security-assessment conversation
+// (lexical retrieval over the corpus → several categories). "" when not a
+// security assessment or the corpus is unavailable.
+async function owaspBlockFor(texts, latestText) {
+  if (!texts.some((t) => securityAssessmentIntent(t))) return "";
+  const corpus = await loadOwaspCorpusOnce();
+  if (!corpus) return "";
+  const hits = lexicalRetrieveOwasp(corpus.snapshot, latestText, { k: 8, perCat: 2 });
+  return buildOwaspReferenceBlock(hits, corpus.sources);
+}
+
 async function introspectionContext(conv, latestText) {
   // Developer mode on = always give the model the site's own source, so any
   // phrasing ("code examples from the site") works — no brittle intent gate.
@@ -706,11 +742,16 @@ async function introspectionContext(conv, latestText) {
     engageIntrospection(); // TIN slides in — the mode's visible marker
     // The full file index is worth its tokens only for strong "how are you
     // built / list files" asks; otherwise orientation + named files carry it.
-    const block = buildIntrospectionBlock(snap, {
+    let block = buildIntrospectionBlock(snap, {
       latestText,
       includeIndex: introspectionActive(texts, snap),
       sandboxMounted: state.bashLite === true,
     });
+    // Security assessment: also append the OWASP Top 10 reference (retrieved
+    // OFFLINE via lexical TF-IDF over the committed corpus), so DRC classifies
+    // findings against — and quotes — the real OWASP text with no server call.
+    const owasp = await owaspBlockFor(texts, latestText);
+    if (owasp) block += owasp;
     // The sandbox boots lazily; if it does, the whole tree lands at /src.
     const fileProvider = async () => ({ session: [], project: null, source: { files: snap.files } });
     // The snapshot itself rides along: with a tool-capable provider, DRC drives
@@ -822,7 +863,9 @@ async function send(ev) {
           // (which file / pattern / command), not a bare counter.
           phaseLine("🔧 " + s.headline);
         } else if (s.type === "phase") {
-          phaseLine(PHASE_LABELS[s.phase] || s.phase);
+          // `label` carries a live line (e.g. a rotating sandbox-boot quip);
+          // otherwise fall back to the phase's static label.
+          phaseLine(s.label || PHASE_LABELS[s.phase] || s.phase);
         } else if (s.type === "discard_text") {
           shown = ""; // the validated revision replaces the draft
           live.textContent = "";
@@ -878,13 +921,14 @@ if (themeMeta) {
   });
 }
 
-// Introspection cue: toggle `dev-mode` on the root so the composer pane + logo
-// pick up the PURPLE (amethyst) glass tint (drc.css `:root.dev-mode #composer`)
-// — the shared introspection colour across both tiers. The khaki background and
-// the iOS status-bar tint are deliberately left alone — only the input pane and
-// wordmark change, matching the Se/rver twin. developerMode lives in the sealed
-// project state, so the tint settles once that state loads (no PWA cold-relaunch
-// flash — a DRC session always opens its project first).
+// Introspection cue: toggle `dev-mode` on the root so the composer pane picks
+// up the WHITE TITANIUM glass tint (drc.css `:root.dev-mode #composer`) and the
+// small "introspection" wordmark tag appears — the shared introspection cue
+// across both tiers. The khaki background and the iOS status-bar tint are
+// deliberately left alone — only the input pane and the tag change, matching
+// the Se/rver twin. developerMode lives in the sealed project state, so the
+// tint settles once that state loads (no PWA cold-relaunch flash — a DRC
+// session always opens its project first).
 function applyIntrospectionTheme(on) {
   document.documentElement.classList.toggle("dev-mode", !!on);
 }
@@ -895,7 +939,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d21 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d23 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -940,6 +984,37 @@ $("settingsview").addEventListener("click", (e) => {
   if (e.target === $("settingsview")) closeSettings();
 });
 $("opensettings").addEventListener("click", openSettings);
+// The settings knobs' ⓘ info popovers (the Se/rver settings-pane component,
+// ported here). Click or press-and-hold a ⓘ to open that knob's detail
+// popover; opening one closes the others, and any click outside a popover or
+// its ⓘ closes them all — the shared bubble-dismissal behaviour (UX-1).
+(() => {
+  const view = $("settingsview");
+  const closeAllPops = () => view.querySelectorAll(".setting-pop").forEach((p) => (p.hidden = true));
+  view.querySelectorAll(".setting-info").forEach((btn) => {
+    const pop = view.querySelector(`#${btn.dataset.pop}`);
+    if (!pop) return;
+    let holdTimer = 0;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasHidden = pop.hidden;
+      closeAllPops();
+      pop.hidden = !wasHidden;
+    });
+    btn.addEventListener("pointerdown", () => {
+      holdTimer = setTimeout(() => {
+        closeAllPops();
+        pop.hidden = false;
+      }, 500);
+    });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+      btn.addEventListener(ev, () => clearTimeout(holdTimer));
+    }
+  });
+  view.addEventListener("click", (e) => {
+    if (!e.target.closest(".setting-pop") && !e.target.closest(".setting-info")) closeAllPops();
+  });
+})();
 $("key-input").addEventListener("input", syncKeyDetection);
 $("clearbtn").addEventListener("click", newChat);
 $("newchatbtn").addEventListener("click", newChat);
@@ -969,8 +1044,8 @@ $("input").addEventListener("input", () => {
 });
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the
-// composer pane + logo PURPLE (drc.css :root.dev-mode #composer) so the tier's
-// mode is unmistakable — the same shared introspection purple the Se/rver twin
+// composer pane WHITE TITANIUM (drc.css :root.dev-mode #composer) so the tier's
+// mode is unmistakable — the same shared introspection cue the Se/rver twin
 // uses.
 $("devmode").checked = state.developerMode === true;
 applyIntrospectionTheme(state.developerMode === true);
@@ -979,7 +1054,7 @@ $("devmode").addEventListener("change", () => {
   applyIntrospectionTheme(state.developerMode === true);
   const st = $("devmodestatus");
   st.textContent = state.developerMode
-    ? "Introspection is on — the composer pane turns purple; ask about this site's own source code to answer from the deployed source."
+    ? "Introspection is on — the composer pane turns white titanium; ask about this site's own source code to answer from the deployed source."
     : "Introspection is off.";
   saveState().catch(() => {});
 });

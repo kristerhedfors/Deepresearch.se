@@ -37,12 +37,14 @@ import {
   conversationStarted,
   initStream,
   isStreaming,
+  prewarmSandbox,
   resumePendingAnswer,
   sendMessage,
   stopGeneration,
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { applyFeedbackMode, clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
+import { initTestpoints } from "./testpoints.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -100,7 +102,7 @@ initAttachments(
   document.getElementById("camera"),
   document.getElementById("camerafile"),
 );
-initAccountPanel();
+const account = initAccountPanel();
 // Account settings (the cloud-storage knob): fetched once at boot so the
 // storage modules' synchronous serverHistoryOn() checks have an answer.
 // Cloud storage is ON by default — most accounts never touch the knob —
@@ -394,6 +396,12 @@ const autogrow = () => {
 };
 input.addEventListener("input", autogrow);
 
+// Pre-warm the execution sandbox the moment the composer is focused (knob on +
+// isolated + no attachments/project/dev-mode → a bare boot). The ~25s CheerpX
+// cold start then elapses while the user types, so a shell ask answers without
+// the wait. Strictly best-effort and idempotent (see prewarmSandbox).
+input.addEventListener("focus", prewarmSandbox);
+
 // Introspection mode's mascot (developer mode): as soon as what the user is
 // TYPING reads as an ask about this site's own implementation, TIN — the
 // titanium robot — slides in with the answer-route picker, so the private
@@ -462,7 +470,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h29";
+const CSS_VERSION = "h32";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -476,6 +484,41 @@ try {
 } catch {
   // never let the freshness probe break boot
 }
+
+// Testable interaction points (public/js/testpoints.js): the try-it queue.
+// On landing with ?try=<id> (a shared /try link) this opens the banner and
+// runs the point's declared ACTIONS to set the scene; the header launcher
+// opens the queue. Admin-only end to end — the fetches 403 for everyone
+// else, so nothing renders. The hooks are the app-specific side effects an
+// action triggers, so testpoints.js never reaches into this file's internals.
+initTestpoints({
+  hooks: {
+    openAccountView: (view) => account.open(view),
+    // The left drawer holds both chat history and the projects list.
+    openHistory: () => document.getElementById("historybtn")?.click(),
+    openProjects: () => document.getElementById("historybtn")?.click(),
+    newChat: () => newChat(),
+    compose: (text, sendNow) => {
+      input.value = text;
+      autogrow();
+      if (sendNow) form.requestSubmit();
+      else input.focus();
+    },
+    setSearch: (on) => {
+      webSearchBox.checked = !!on;
+      localStorage.setItem("web_search", on ? "on" : "off");
+      syncSearchToggle();
+    },
+    setBudget: (sec) => {
+      if (!Number.isFinite(sec)) return;
+      budgetS = Math.min(Math.max(sec, BUDGET_MIN_S), BUDGET_MAX_S);
+      budgetSlider.value = secondsToPos(budgetS);
+      updateBudgetVal();
+      localStorage.setItem("budget_s", String(budgetS));
+    },
+    selectModel: (m) => selectModel(m),
+  },
+});
 
 // Boot completed: every module linked and every handler above is attached.
 // index.html's inline boot guard blocks native form submits until this flag

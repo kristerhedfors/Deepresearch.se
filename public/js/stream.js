@@ -8,6 +8,7 @@
 import {
   collapseActivity,
   finishGenericStep,
+  finishSandboxStep,
   finishSearchStep,
   getMapView,
   getStreetViewPov,
@@ -26,8 +27,9 @@ import { bashLiteOn, developerModeOn } from "./settings.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
-import { runShellLoop } from "./bash-agent.js";
-import { ensureSandboxBooted, execInSandbox, sandboxFsSummary, sandboxSupported, sblog } from "./sandbox.js";
+import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
+import { ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -755,6 +757,48 @@ async function buildChatPayload(opts) {
 // call and never boots the VM. Returns the transcript for stream.js to attach
 // as `shell_transcript`; the pipeline folds it into the answer as ground truth.
 // Fully fail-soft: any problem returns [] and the answer proceeds normally.
+// Whether a send needs the sandbox to mount anything a BARE pre-warm can't
+// carry: session attachments, an active project, or the introspection /src
+// source (dev mode). Session ingest is technically always mounted, but its
+// files are seeded once at boot — so an attachment added after a bare pre-warm
+// still needs a re-boot. Conservative by design: a false positive only costs a
+// re-boot (today's behavior), never a wrong mount.
+/** @param {SendOpts} opts */
+function sendWantsMounts(opts) {
+  // Dev mode only needs the /src source mount when the message is actually
+  // introspection-active — the same condition buildSandboxFileProvider uses to
+  // decide `source`. Checking the flag alone would discard the pre-warm on
+  // EVERY send for a dev-mode user (e.g. a bare "ls /"), forcing a needless
+  // re-boot; mirroring the real condition keeps the pre-warm for bare sends.
+  const texts = userTexts(history);
+  const wantsSource =
+    developerModeOn() && (introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t)));
+  return !!(
+    (opts?.docs && opts.docs.length) ||
+    (opts?.images && opts.images.length) ||
+    activeProject() ||
+    wantsSource
+  );
+}
+
+// PRE-WARM: boot a bare Linux VM as soon as the user focuses the composer, so
+// the unavoidable ~25s CheerpX cold start elapses while they type instead of
+// after they hit send. Idempotent (gated on sandboxIdle) and strictly best-
+// effort. Only fires for the case a bare VM fully serves — no pending
+// attachments, no active project, dev mode off — so it can never mount the
+// wrong thing; any of those, or an attachment added later, is handled by
+// resetSandboxIfBare at send time. A bare send (e.g. "list files in /") then
+// finds the VM already warm and answers immediately.
+export function prewarmSandbox() {
+  try {
+    if (!bashLiteOn() || !sandboxSupported()) return;
+    if (!sandboxIdle()) return; // already booting or booted — nothing to do
+    if (hasPending() || activeProject() || developerModeOn()) return; // would need real mounts
+    ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
+    sblog("info", "sandbox.prewarm", {});
+  } catch { /* best-effort — never disturb the composer */ }
+}
+
 /**
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
@@ -774,6 +818,14 @@ async function maybeRunShellLoop(turn, opts) {
       return [];
     }
 
+    // A pre-warm (prewarmSandbox) boots a BARE VM on composer focus so the slow
+    // ~25s cold start elapses while the user types. But a bare VM can't carry
+    // mounts (they're fixed at Linux.create), so if THIS send needs files /
+    // project / source, discard the bare pre-warm and re-boot with the real
+    // provider below. Awaits any in-flight pre-warm to settle first; a no-op
+    // when nothing was pre-warmed or the live VM already mounted files.
+    if (sendWantsMounts(opts)) await resetSandboxIfBare();
+
     let booted = false;
     let ran = 0;
     // Boot the VM the first (and only the first) time the model asks to run
@@ -782,7 +834,9 @@ async function maybeRunShellLoop(turn, opts) {
     const fileProvider = buildSandboxFileProvider(opts);
     const bootOnce = async () => {
       startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
-      booted = await ensureSandboxBooted(fileProvider);
+      // The first boot is slow (a whole Debian streams in), so entertain the
+      // step label with rotating quips (public/js/boot-messages.js) until ready.
+      booted = await ensureSandboxBooted(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
       if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
       return booted;
     };
@@ -790,19 +844,20 @@ async function maybeRunShellLoop(turn, opts) {
       messages: stripOldImages(history),
       exec: execInSandbox,
       ensureReady: bootOnce,
-      onResult: () => {
+      // Surface WHICH command is running, live — the user asked to see the
+      // actual command, not just "executing command". onExec fires just before
+      // each command runs (`$ ls -la /workspace`), clipped to one line.
+      onExec: (command) => {
         ran++;
-        updateGenericStep(turn, "sandbox", `Running in sandbox — ${ran} command${ran === 1 ? "" : "s"}…`);
+        updateGenericStep(turn, "sandbox", `Sandbox › $ ${shellCommandLabel(command)}`);
       },
     });
     // Only report a finished step if we actually booted and ran (a message the
-    // model judged not to need a shell shows no sandbox activity at all).
+    // model judged not to need a shell shows no sandbox activity at all). The
+    // finished step is EXPANDABLE: every command in full with its exit code and
+    // output (finishSandboxStep), so the run stays inspectable after it ends.
     if (booted && transcript.length) {
-      finishGenericStep(turn, {
-        id: "sandbox",
-        label: `Ran ${transcript.length} command${transcript.length === 1 ? "" : "s"} in the Linux sandbox`,
-        details: transcript.map((r) => `$ ${r.command}`),
-      });
+      finishSandboxStep(turn, transcript);
     }
     return transcript;
   } catch (err) {
@@ -904,7 +959,9 @@ async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
       onStatus: (s) => {
         if (gen !== generation) return;
         if (s.type === "phase") {
-          updateGenericStep(turn, "introspect", PRIVATE_PHASE_LABELS[s.phase] || "Working (browser-direct)…");
+          // `label` carries a live line (rotating sandbox-boot quips); else the
+          // phase's static browser-direct label.
+          updateGenericStep(turn, "introspect", s.label || PRIVATE_PHASE_LABELS[s.phase] || "Working (browser-direct)…");
           recordResearchEvent(turn, { event: "phase", phase: s.phase });
         } else if (s.type === "discard_text") {
           acc = "";

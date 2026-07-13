@@ -6,7 +6,9 @@ description: >-
   no log, no repro steps. The workflow that turns a keyword into a verified
   fix: chatlogs keyword search → read the meta counters → replay the exact
   logged message through the deterministic gates → fix at the right layer
-  with the verbatim message as a unit test (Swedish parity included) →
+  with the verbatim message as a unit test (Swedish parity included — the
+  gates most often at fault are the maps/street-view intents in
+  googlemaps-text.js and the src/quiz.js quizIntent gate) →
   verify. Canonical example: the Rosa Pantern street-view miss (chat_logs
   #47, 2026-07-09).
 ---
