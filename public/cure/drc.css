@@ -191,7 +191,7 @@ header {
   font-weight: 600;
   letter-spacing: .18em;
   text-transform: lowercase;
-  color: #9e1414; /* blood red — ties the marker to the ruby composer pane */
+  color: #9c1450; /* purpur — ties the marker to the crimson-purple composer pane */
   opacity: .9;
   text-shadow: 0 1px 5px rgba(255, 255, 255, .55);
   pointer-events: none;
@@ -329,23 +329,24 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }
-/* Introspection mode: the composer becomes a deep, glossy BLOOD-RED glass pane
-   (the Se/cure tier's introspection cue) that pops against the muted khaki. A
-   saturated, fairly UNIFORM blood red (only a slight top→bottom deepen) so the
-   whole pane reads as a rich red rather than a pink/rose, with the shine carried
-   by a bright specular top edge + a soft internal top gloss (not a big light
-   band), a red edge (no white border), and a deep drop shadow. Because the fill
-   is saturated and dark, the pane's own text goes LIGHT for contrast (below).
-   Background only; the khaki field is unchanged. */
+/* Introspection mode: the composer becomes a deep, glossy PURPUR glass pane
+   (the Se/cure tier's introspection cue) — a rich crimson-purple (blood red
+   with a purple undertone) that pops against the muted khaki and stays clearly
+   distinct from the Se/rver tier's blue-violet amethyst. Saturated and fairly
+   UNIFORM (slight top→bottom deepen), the shine carried by a bright specular
+   top edge + a soft internal gloss, a crimson-purple edge (no white border),
+   and a deep drop shadow. Because the fill is saturated and dark, the pane's
+   own text goes LIGHT for contrast (below). Background only; the khaki field is
+   unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(208, 26, 28, .80) 0%, rgba(124, 6, 10, .90) 100%),
-    rgba(174, 16, 18, .70);
-  border: 1px solid rgba(214, 38, 38, .80);
+    linear-gradient(180deg, rgba(200, 30, 80, .80) 0%, rgba(116, 8, 54, .90) 100%),
+    rgba(164, 18, 64, .70);
+  border: 1px solid rgba(208, 42, 96, .80);
   box-shadow:
-    0 7px 28px rgba(92, 2, 4, .48),
+    0 7px 28px rgba(84, 2, 40, .48),
     inset 0 1px 0 rgba(255, 255, 255, .55),
-    inset 0 13px 26px rgba(255, 168, 156, .16);
+    inset 0 13px 26px rgba(255, 172, 196, .16);
 }
 /* Light foreground so the input text, placeholder and control-row labels stay
    legible on the saturated ruby (the #model / attach / camera chips keep their
