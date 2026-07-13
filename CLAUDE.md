@@ -17,13 +17,27 @@ is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 `src/openai.js`; both dispatched via the `src/providers.js` registry; the
 JSON planning phases always stay on Berget). Web search is **Exa**.
 
-**Branding rule (2026-07-10, amended 2026-07-12):** the two product tiers
-are ALWAYS written as their full URL without the scheme, in **CamelCase**
-(2026-07-12 directive), with the wordplay tail in bold:
+**Mission (2026-07-13):** the project is framed as **innovation and
+research on the privacy capabilities of LLM applications** — how far a
+real, useful research assistant can be pushed toward *provable* privacy,
+and where that trades against capability. The **proof is the site itself**:
+a fully open-sourced, independently verifiable **Se/cure + Se/rver pair**.
+It is still experimental and nowhere near production-ready (say so; do not
+frame it as a finished product). The "built over a weekend, phone-only"
+origin is kept ONLY on `/story/` (and referenced once on `/build/`) — it is
+the origin, not the identity, so don't lead with it elsewhere.
+
+**Branding rule (2026-07-10, amended 2026-07-12 and 2026-07-13):** the two
+product tiers are ALWAYS written as their full URL without the scheme, in
+**CamelCase** (2026-07-12 directive), with the wordplay tail in bold:
 DeepResearch.**Se/cure** (the client-side tier) and
 DeepResearch.**Se/rver** (the signed-in tier) — in UI text, headers,
 docs, and prompts alike (plain text drops the bold, never the full-URL
-form). The capital tail-S makes the wordplay read as the word it hides:
+form). **Whenever the two are named together — a sentence, a list, table
+columns, paired diagrams — ALWAYS put Se/cure FIRST, then Se/rver
+(secure-first, 2026-07-13 directive).** A single tier named in its own
+context (the app's own header, a /cure page pointing at /rver) is exempt;
+the rule governs the PAIR's order. The capital tail-S makes the wordplay read as the word it hides:
 **Se/cure** → "Secure", **Se/rver** → "Server". No space inside the URL.
 Where running copy needs a SHORT name, use the slashed tail alone —
 **Se/cure** and **Se/rver** — the included slash is the distinguishing
