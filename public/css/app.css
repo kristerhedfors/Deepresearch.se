@@ -370,6 +370,46 @@ header {
 .step li { margin: .15rem 0; }
 .step a { color: var(--accent); text-decoration: none; }
 .step a:hover { text-decoration: underline; }
+/* bash-lite sandbox step: the expandable transcript of the commands the agent
+   ran in the in-browser Linux VM — each command in full with its output. */
+.shell-runs { margin: .45rem 0 .1rem; display: flex; flex-direction: column; gap: .5rem; }
+.shell-run {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.shell-cmd {
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  padding: .35rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem;
+  border-bottom: 1px solid var(--border);
+}
+.shell-prompt { color: var(--accent); flex: none; font-weight: 600; }
+.shell-cmd-text { color: var(--text); overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.shell-exit {
+  flex: none;
+  color: #c0392b;
+  font-size: .72rem;
+  padding: .05rem .35rem;
+  border: 1px solid #c0392b;
+  border-radius: 999px;
+  opacity: .85;
+}
+.shell-out {
+  margin: 0;
+  padding: .4rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .8rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 15rem;
+  overflow-y: auto;
+}
 /* "Copy research JSON" — a debug affordance at the top of the expanded
    step list; only shown once a research run has collapsed. */
 .activity-debug { display: flex; justify-content: flex-end; }
