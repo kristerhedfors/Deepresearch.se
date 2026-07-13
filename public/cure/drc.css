@@ -143,6 +143,55 @@ body::before {
   box-shadow: 0 1px 2px rgba(30, 24, 8, .35);
 }
 
+/* The floating in-browser Linux sandbox terminal (public/js/sandbox.js). Built
+   but kept HIDDEN by default on BOTH tiers — activity surfaces on the backdrop
+   above, not this panel. drc.css is self-contained, so without this mirror the
+   `hidden` class had no rule on /cure and the built panel rendered in-flow,
+   covering the bottom half of the screen (the DRC-terminal-popup bug). The dark
+   terminal chrome is kept as-is (a terminal reads as a terminal); only the
+   `.hidden` display:none is load-bearing. */
+.dr-sandbox {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 60;
+  width: min(560px, calc(100vw - 24px));
+  height: min(340px, 45vh);
+  display: flex;
+  flex-direction: column;
+  background: #101014;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .35);
+  overflow: hidden;
+  resize: both;
+}
+.dr-sandbox.hidden { display: none; }
+.dr-sandbox-bar {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .35rem .6rem;
+  background: #17171d;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  color: #d6d6e6;
+  font-size: .8rem;
+  cursor: default;
+}
+.dr-sandbox-title { font-weight: 600; }
+.dr-sandbox-status { margin-left: auto; font-size: .7rem; color: #8a8aa0; }
+.dr-sandbox-close {
+  background: none;
+  border: none;
+  color: #8a8aa0;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 .2rem;
+}
+.dr-sandbox-close:hover { color: #d6d6e6; }
+.dr-sandbox-term { flex: 1; min-height: 0; padding: .3rem; }
+
 /* Floating click-transparent chrome, exactly the app's pattern. */
 header {
   position: fixed;
