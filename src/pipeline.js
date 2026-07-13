@@ -493,10 +493,17 @@ async function runSourceResearchTools(ctx, snapshot) {
   const sitemap = buildSourceSitemap(snapshot);
   let calls = 0;
   ctx.step("source", "Investigating the site's own source…");
+  // The OWASP Top 10 reference block (retrieved for a security-assessment ask by
+  // the introspection enrichment). This path reads the CLEAN pre-enrichment
+  // conversation, so the block — appended to the DIRTY conversation — must be
+  // injected explicitly here or the tool-driven answer would lose the OWASP
+  // grounding the deterministic path gets for free.
+  const owaspBlock = /** @type {any} */ (ctx.state).owaspBlock || "";
   const userText =
     `Question (latest user message):\n${ctx.cleanLastUser}\n\n` +
     `Conversation context:\n${ctx.cleanConvText}\n\n` +
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
+    (owaspBlock ? `${owaspBlock}\n\n` : "") +
     `File index (repo paths — investigate with grep_source / read_file):\n${sitemap}\n\n` +
     "Investigate the ACTUAL source with the tools, then write the answer.";
   const startedAt = Date.now();

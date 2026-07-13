@@ -264,6 +264,48 @@ cheap DELTA that only re-embeds the changed files) → commit all three. Doing
 rag before the final snapshot leaves the index chunk-map misaligned and trips
 the consistency check.
 
+## The OWASP Top 10 reference corpus (security assessments)
+
+A dev-mode conversation that asks for a **security assessment** (audit / review
+/ pentest / threat model / "how secure is X", `securityAssessmentIntent` in
+introspect-core.js — EN+SV parity per invariant 6) gets the OWASP Top 10 text
+injected alongside the site's own source, so findings are classified against —
+and quote — the actual OWASP wording. Owner directive (2026-07-13): with no
+framework named, DEFAULT to the **OWASP Top 10 for LLM Applications (2025)** +
+the **OWASP Top 10 for Web Applications (2021)** for structure, terminology, and
+classification, plus **CVSS estimates with the uncertainty stated explicitly**.
+
+Two committed artifacts, mirroring the source snapshot/index pair (both under
+the ASSETS-excluded `public/introspect/`, server-only — DRC doesn't use them):
+
+- **`owasp-corpus.json`** (`scripts/fetch-owasp.mjs`, `npm run fetch:owasp`) —
+  the full Markdown text of all 20 categories (LLM01…LLM10 + A01…A10), fetched
+  from the projects' OWN Markdown source of record (github.com/OWASP: the
+  `www-project-top-10-for-large-language-model-applications` `2_0_vulns/` files
+  and `Top10` `2021/docs/en/`). It is **snapshot-shaped** (`{v,digest,count,
+  bytes,files:[{p,s,t}]}`, `p` = the citation id like `LLM01:2025 Prompt
+  Injection`) plus a parallel `sources` map (cat/family/year/title/url) — so it
+  reuses `validateSnapshot`, the chunker, and `retrieveSourceChunks` verbatim.
+- **`owasp-rag.json`** (`scripts/bundle-owasp-rag.mjs`, `npm run
+  bundle:owasp-rag`) — int8 vectors per `{p,ci}`, the SAME format as
+  source-rag.json (Berget e5, 1024-d). Small corpus (~20 docs / ~150 chunks) →
+  a single fast full build, no delta. Needs `BERGET_API_KEY`.
+
+Wiring: `src/introspect.js` embeds the query ONCE (`embedQuery`) and reuses it
+for both the source retrieval and — when `securityAssessmentIntent` fires
+(sticky over the conversation) — the OWASP retrieval (`retrieveOwasp` →
+`buildOwaspReferenceBlock`). The OWASP block is appended to the conversation
+(so the deterministic read-loop synthesis sees it via the DIRTY convText) AND
+stashed in `state.owaspBlock`, which `pipeline.js runSourceResearchTools`
+injects explicitly (the native-tool path reads the CLEAN pre-enrichment text).
+The `OWASP_ASSESSMENT_NOTE` in `prompts.js` (spliced into `sourceAnswerPrompt` +
+`sourceToolAgentPrompt`) keeps the default even when retrieval is unavailable.
+
+Refresh: `npm run fetch:owasp` → `npm run bundle:owasp-rag` → commit both. The
+freshness test in `src/introspect.test.js` (mirrors the source-rag one) enforces
+every owasp-rag `{p,ci}` still resolves against the corpus chunking and all 20
+docs are covered. Not part of `npm run bundle`, not run in CI (network / key).
+
 ## Freshness discipline
 
 `src/introspect.test.js` enforces two things and **fails `npm test`** on

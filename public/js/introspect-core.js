@@ -25,6 +25,14 @@ import { regionForModelEntry, regionForProvider } from "./provider-region.js";
 export const SNAPSHOT_PATH = "/introspect/source-snapshot.json";
 // The committed DENSE source-RAG index (scripts/bundle-source-rag.mjs).
 export const RAG_PATH = "/introspect/source-rag.json";
+// The committed OWASP reference corpus + its dense index (scripts/fetch-owasp.mjs,
+// scripts/bundle-owasp-rag.mjs) — the OWASP Top 10 for LLM Applications 2025 and
+// for Web Applications 2021 full text, grounding introspection security
+// assessments so findings quote the actual OWASP wording. The corpus is
+// snapshot-shaped and the index shares the source-RAG format, so both reuse the
+// chunker / int8 codec / retrieval below.
+export const OWASP_CORPUS_PATH = "/introspect/owasp-corpus.json";
+export const OWASP_RAG_PATH = "/introspect/owasp-rag.json";
 
 // ---- caps -------------------------------------------------------------------
 
@@ -151,6 +159,50 @@ const EXTERNAL_SOURCE_PATTERNS = [
 export function externalSourceIntent(text) {
   const s = String(text || "");
   return EXTERNAL_SOURCE_PATTERNS.some((re) => re.test(s));
+}
+
+// ---- security-assessment intent (EN + SV, deterministic) ---------------------
+
+// Whether a message asks for a SECURITY ASSESSMENT (audit / review / pentest /
+// threat model / "how secure is this"). In introspection mode this gate decides
+// whether to ALSO inject the OWASP Top 10 reference block (src/introspect.js):
+// the retrieved OWASP paragraphs the model quotes and classifies findings
+// against. Anchored to security specifically so an ordinary "review this code"
+// or "audit the logic" doesn't trip it — the word "security"/"säkerhet" (or a
+// security-specific term like pentest / OWASP / threat model) must be present.
+// Swedish forms carry the same breadth as English (invariant 6).
+const SECURITY_ASSESSMENT_PATTERNS = [
+  // "security assessment/audit/review/analysis/posture/evaluation" (any order).
+  /\bsecurity\s+(?:assessment|audit|review|analysis|posture|evaluation|appraisal|examination)\b/i,
+  /\b(?:assessment|audit|review|analysis|evaluation)\s+of\s+(?:the\s+)?security\b/i,
+  // "assess/audit/evaluate/review/analyse … security" within a short span.
+  /\b(?:assess|audit|evaluate|review|analy[sz]e|examine|check|test)\b(?:\s+\S+){0,6}?\s+(?:the\s+)?security\b/i,
+  // security-specific vulnerability wording.
+  /\bsecurity\s+(?:vulnerabilit(?:y|ies)|weakness(?:es)?|flaws?|holes?|issues?|risks?|threats?)\b/i,
+  /\bvulnerabilit(?:y|ies)\s+(?:assessment|analysis|scan|review|audit)\b/i,
+  /\bthreat\s*model(?:l?ing)?\b/i,
+  /\bpen(?:etration)?[\s-]?test(?:ing|s|er)?\b/i,
+  /\bhow\s+secure\b/i,
+  /\bowasp\b/i,
+  // Swedish parity.
+  /\bsäkerhets(?:bedömning|granskning|analys|revision|utvärdering|genomgång|översyn|test(?:ning)?|brist(?:er)?|hål|risk(?:er)?|sårbarhet(?:er)?)(?:en|ar|arna)?\b/i,
+  /\b(?:bedöm|granska|utvärdera|analysera|se\s+över|testa|kontrollera)\b(?:\s+\S+){0,6}?\s+säkerheten?\b/i,
+  /\bsårbarhets(?:analys|bedömning|skanning|granskning|revision)\b/i,
+  /\bhot(?:modell(?:ering)?|bild)\b/i,
+  /\bpenetrationstest(?:a|ning|er|are)?\b/i,
+  /\bpentest(?:a|ning|er)?\b/i,
+  /\bhur\s+säker\b/i,
+];
+
+/**
+ * Deterministic "asks for a security assessment" gate for ONE message (EN+SV) —
+ * the switch that adds the OWASP Top 10 reference block in introspection mode.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function securityAssessmentIntent(text) {
+  const s = String(text || "");
+  return SECURITY_ASSESSMENT_PATTERNS.some((re) => re.test(s));
 }
 
 // ---- snapshot validation -------------------------------------------------------
@@ -578,6 +630,44 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
 /** @param {string} t @param {number} max */
 function clip(t, max) {
   return t.length <= max ? t : t.slice(0, max) + "\n… [truncated — full file in the snapshot/sandbox]";
+}
+
+// ---- the OWASP Top 10 reference block ----------------------------------------
+//
+// When an introspection conversation asks for a SECURITY ASSESSMENT
+// (securityAssessmentIntent), src/introspect.js retrieves the OWASP paragraphs
+// most relevant to the question from the committed OWASP corpus/index (via the
+// SAME retrieveSourceChunks used for source) and appends this labeled block, so
+// the model can classify findings against the real OWASP categories and quote
+// the actual OWASP wording rather than paraphrasing from memory. The block
+// carries the default-framework + CVSS-with-uncertainty instruction so the
+// behavior holds even when the answer path's system prompt is terse.
+
+/**
+ * @param {Array<{ p: string, text: string, score?: number }>} retrieved OWASP chunks (retrieveSourceChunks output; p is the doc id)
+ * @param {Record<string, { cat?: string, family?: string, year?: string, title?: string, url?: string }>} [sources] per-doc citation metadata (owasp-corpus.json `sources`)
+ * @returns {string} the labeled reference block ("" when nothing was retrieved)
+ */
+export function buildOwaspReferenceBlock(retrieved, sources = {}) {
+  const list = (Array.isArray(retrieved) ? retrieved : []).filter((r) => r && r.p && typeof r.text === "string" && r.text);
+  if (!list.length) return "";
+  const lines = [];
+  lines.push("--- OWASP Top 10 reference (for this security assessment) ---");
+  lines.push(
+    "This is a SECURITY ASSESSMENT. Unless the user named a different standard, organize and classify every finding using the OWASP Top 10 for LLM Applications (2025) and the OWASP Top 10 for Web Applications (2021): map each finding to the most relevant OWASP category and cite its identifier (e.g. LLM01:2025 Prompt Injection, A01:2021 Broken Access Control). Give each finding a CVSS v3.1 base-score estimate (with the vector string where you can) and STATE THE UNCERTAINTY EXPLICITLY — flag when a score is a rough estimate or hinges on deployment factors or code you could not see. The verbatim OWASP passages below were retrieved for THIS question: quote them directly and attribute them to their category id and URL.",
+  );
+  for (const r of list) {
+    const meta = (sources && sources[r.p]) || {};
+    const cite = meta.url ? `${r.p} — ${meta.url}` : r.p;
+    lines.push("");
+    lines.push(`## ${cite}`);
+    lines.push("```");
+    lines.push(r.text);
+    lines.push("```");
+  }
+  lines.push("");
+  lines.push("--- End of OWASP Top 10 reference ---");
+  return "\n\n" + lines.join("\n");
 }
 
 // ---- the agentic source-read loop (the "read files as it wants" tool) --------
