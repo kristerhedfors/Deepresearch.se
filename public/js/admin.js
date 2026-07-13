@@ -585,14 +585,17 @@ function renderUsers() {
         <span class="muted">ADMIN_USER secrets · legacy sessions · never blocked</span>
         <span class="badge admin">admin</span>
       </div>
-      <div class="quota-bars">
-        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, a[`${p}_berget_cost`] || 0, defaults[p].budget_eur, euro)).join("")}
-        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, a[`${p}_searches`] || 0, defaults[p].searches, count)).join("")}
-      </div>
-      <p class="muted" style="margin:.45rem 0 0">
-        Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(a[`${p}_tokens`] || 0)}`).join(" · ")}<br>
-        Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((a[`${p}_berget_cost`] || 0) + (a[`${p}_exa_cost`] || 0))}`).join(" · ")}
-      </p>`;
+      <details class="fold usage-fold">
+        <summary>Show usage</summary>
+        <div class="quota-bars">
+          ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, a[`${p}_berget_cost`] || 0, defaults[p].budget_eur, euro)).join("")}
+          ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, a[`${p}_searches`] || 0, defaults[p].searches, count)).join("")}
+        </div>
+        <p class="muted" style="margin:.45rem 0 0">
+          Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(a[`${p}_tokens`] || 0)}`).join(" · ")}<br>
+          Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((a[`${p}_berget_cost`] || 0) + (a[`${p}_exa_cost`] || 0))}`).join(" · ")}
+        </p>
+      </details>`;
     box.appendChild(el);
   }
   for (const u of overview.users) {
@@ -622,14 +625,17 @@ function renderUsers() {
         ${u.status === "pending" ? "" : `<button data-act="toggle-status" class="secondary">${u.status === "disabled" ? "Enable" : "Disable"}</button>`}
         <button data-act="delete" class="danger">Delete</button>
       </div>
-      <div class="quota-bars">
-        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, usage[`${p}_berget_cost`] || 0, q[p].budget_eur, euro)).join("")}
-        ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, usage[`${p}_searches`] || 0, q[p].searches, count)).join("")}
-      </div>
-      <p class="muted" style="margin:.45rem 0 0">
-        Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(usage[`${p}_tokens`] || 0)}`).join(" · ")}<br>
-        Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((usage[`${p}_berget_cost`] || 0) + (usage[`${p}_exa_cost`] || 0))}`).join(" · ")}
-      </p>
+      <details class="fold usage-fold">
+        <summary>Show usage</summary>
+        <div class="quota-bars">
+          ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} budget`, usage[`${p}_berget_cost`] || 0, q[p].budget_eur, euro)).join("")}
+          ${PERIODS.map((p) => quotaBar(`${PERIOD_LABEL[p]} searches`, usage[`${p}_searches`] || 0, q[p].searches, count)).join("")}
+        </div>
+        <p class="muted" style="margin:.45rem 0 0">
+          Tokens: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${count(usage[`${p}_tokens`] || 0)}`).join(" · ")}<br>
+          Total cost incl. Exa: ${PERIODS.map((p) => `${PERIOD_LABEL[p].toLowerCase()} ${euro((usage[`${p}_berget_cost`] || 0) + (usage[`${p}_exa_cost`] || 0))}`).join(" · ")}
+        </p>
+      </details>
       <div class="quota-edit">
         <p class="muted">Per-user quota override — blank fields inherit the global defaults
         (${PERIODS.map((p) => `${PERIOD_LABEL[p]}: ${euro(defaults[p].budget_eur)} / ${defaults[p].searches} searches`).join(" · ")}). 0 = uncapped.
@@ -680,6 +686,8 @@ function renderUsers() {
     });
     box.appendChild(el);
   }
+  const summary = document.querySelector("#users-fold > summary");
+  if (summary) summary.textContent = `Show users (${overview.users.length})`;
   $("users-sec").hidden = false;
 }
 
