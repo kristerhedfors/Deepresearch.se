@@ -240,6 +240,10 @@ header {
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
+/* In the ghost speech bubble and the DRS explainer popup the wordmarks sit in
+   heavier/running body text where the tight negative margin crowds the slash —
+   give it a touch more room in just those two surfaces. */
+#ghostsay .sl, #drspop .sl { margin: 0 -.04em; }
 /* The small "introspection" marker under the wordmark — only present while the
    introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
    (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
