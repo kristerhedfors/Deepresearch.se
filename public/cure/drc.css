@@ -182,22 +182,19 @@ header {
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — only present while the
-   introspection cue is active (root carries `dev-mode`). Brushed WHITE TITANIUM
-   (a silvery gradient clipped to the glyphs), matching the Se/rver tag. */
+   introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
+   (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
+   tag — the clipped gradient read as unreadable grey. */
 .introspection-tag {
   display: none;
   align-self: center;
-  margin-top: -.15rem;
-  font-size: .58rem;
-  font-weight: 700;
-  letter-spacing: .2em;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
   text-transform: lowercase;
-  background: linear-gradient(180deg, #ffffff 0%, #cbd2db 36%, #828b98 58%, #e0e5eb 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: #8a919e; /* fallback where background-clip:text is unsupported */
-  filter: drop-shadow(0 1px 1.5px rgba(70, 80, 95, .55));
+  color: #f6f8fa;
+  text-shadow: 0 1px 2px rgba(30, 50, 78, .55), 0 0 1px rgba(30, 50, 78, .4);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }

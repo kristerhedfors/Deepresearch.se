@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h30;
+  --css-version: h31;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -194,23 +194,19 @@ header {
 /* The small "introspection" marker under the wordmark — the quiet label that
    names the mode the white-titanium skin puts you in. Only present while the
    introspection theme is active (root carries `dev-mode`); a no-op otherwise.
-   Rendered as brushed WHITE TITANIUM: a silvery gradient clipped to the glyphs
-   with a faint drop shadow so the near-white metal stays legible over the
-   scrolling field. */
+   Plain TITANIUM WHITE: a solid near-white fill (no gradient clip — the clipped
+   version muddied the mid-glyphs and read as unreadable grey) with a soft dark
+   shadow so it stays crisp and legible over the scrolling sky field. */
 .introspection-tag {
   display: none;
   align-self: center;
-  margin-top: -.15rem;
-  font-size: .58rem;
-  font-weight: 700;
-  letter-spacing: .2em;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
   text-transform: lowercase;
-  background: linear-gradient(180deg, #ffffff 0%, #cbd2db 36%, #828b98 58%, #e0e5eb 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: #8a919e; /* fallback where background-clip:text is unsupported */
-  filter: drop-shadow(0 1px 1.5px rgba(70, 80, 95, .55));
+  color: #f6f8fa;
+  text-shadow: 0 1px 2px rgba(30, 50, 78, .55), 0 0 1px rgba(30, 50, 78, .4);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
