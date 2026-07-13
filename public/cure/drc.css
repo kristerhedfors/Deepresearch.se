@@ -299,6 +299,19 @@ header {
 }
 .msg.assistant.streaming { white-space: pre-wrap; }
 
+/* The prepackaged, non-LLM helper reply (canned-faq.js): a dashed, muted
+   frame + a small badge, so it reads unmistakably as canned onboarding help
+   rather than the research model's answer. */
+.msg.assistant.canned {
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+.msg.assistant.canned .canned-label {
+  font-size: .72rem; font-weight: 600; color: var(--muted);
+  letter-spacing: .01em; margin-bottom: .5rem;
+  padding-bottom: .4rem; border-bottom: 1px dashed var(--border);
+}
+
 /* Rendered markdown — the app's rules, khaki-toned via the vars. */
 .msg.assistant :is(p, ul, ol) { margin: .5em 0; }
 .msg.assistant ul, .msg.assistant ol { padding-left: 1.4em; }
