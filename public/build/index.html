@@ -49,6 +49,13 @@
     }
     .not-allowed li { margin: .5rem 0; }
     .not-allowed b { color: #7a1414; }
+    /* Tier wordmark tails — heavy mono with the slash tightened, matching
+       the site's branding convention. */
+    .tail {
+      font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-weight: 800; color: var(--accent);
+    }
+    .sl { margin: 0 -.12em; }
   </style>
 </head>
 <body>
@@ -60,27 +67,41 @@
 
   <section>
     <h2>What this site is</h2>
-    <p>DeepResearch.se is a working deep-research assistant — but the
-    product is a side effect. The actual subject is a build methodology:
-    an entire SaaS-style application (Google sign-in, real-cost quotas, a
-    five-phase research pipeline, an admin console, a PWA, disconnect
-    recovery, all of it) built <b>over a weekend</b>, <b>entirely through
-    the Claude Code iPhone app</b> — prompt by prompt, including purchasing
-    the domain, every deployment, and configuring every service (Cloudflare,
-    Berget.ai, Exa, Google OAuth) — without the source code or any
-    configuration file ever being viewed directly on any other device. The
-    one exception: the Cloudflare D1 database UUID had to be copied by hand
-    from the dashboard URL in a mobile browser, since the mobile UI had no
-    other way to surface it — see
-    <a href="/story/">The build story</a> for that moment and everything
-    else, verbatim. The source code is public (MIT license) at
-    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>.</p>
+    <p>DeepResearch.se is an innovation-and-research project into the
+    <b>privacy capabilities of LLM applications</b> — how far a real,
+    useful research assistant can be pushed toward provable privacy, and
+    where that trades against capability. The site itself is the proof, and
+    the goal is to take that proof as far as possible: a fully open-sourced,
+    independently verifiable pair —
+    DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b>, the public
+    client-side tier where the research runs entirely in your browser and
+    the server is absent from every data path, and
+    DeepResearch.<b class="tail">Se<span class="sl">/</span>rver</b>, the signed-in
+    tier where a server buys capability (live web search, maps, accounts)
+    and protects what it handles with encryption and policy. The two are a
+    deliberate pair; the <a href="/architecture/">architecture story</a>
+    visualizes the trade.</p>
+    <p>It works today — a five-phase research pipeline, an admin console, a
+    PWA, disconnect recovery, an in-browser Linux sandbox, and more — but it
+    is still experimental and nowhere near production-ready; treat it as a
+    live workbench, not a polished tool. The source code is public (MIT
+    license) at
+    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>,
+    so every privacy claim is yours to verify, and you're free to use it and
+    harden the pieces you need for your own environment.</p>
+    <p>It started as a weekend experiment built <b>entirely through the
+    Claude Code iPhone app</b> — every prompt, the domain purchase, every
+    deployment, without the source or any config ever being viewed directly
+    on another device (the one exception: the Cloudflare D1 database UUID had
+    to be copied by hand from the dashboard URL). That origin is kept,
+    verbatim, in <a href="/story/">The build story</a>; it's the beginning
+    of the project, not the whole of it — development has continued in many
+    directions since.</p>
     <div class="callout"><b>Access:</b> this site is invite-only and
     approval-gated. It is not marketed, not sold, and not intended for the
-    general public — it exists to let people interested in the underlying
-    question ("how far can a fully phone-only, agentic coding workflow go")
-    see and use the result, not to acquire a commercial research tool. The
-    operator does not intend to place it on the market.</div>
+    general public — the hosted tier exists to let interested people see and
+    use the result, not to acquire a commercial research tool. The operator
+    does not intend to place it on the market.</div>
   </section>
 
   <section>
@@ -95,11 +116,10 @@
     <ul>
       <li><b>Article 2(6)</b> exempts AI systems "specifically developed
         and put into service for the <i>sole</i> purpose of scientific
-        research and development." This site's build <i>process</i> is a
-        genuine subject of research (the LinkedIn-documented question of
-        fully phone-only, agentic software development), but the assistant
-        itself is put into service to answer real questions for real
-        invited users — not solely to study AI. The exemption's "sole
+        research and development." This project is genuinely experimental —
+        an open exploration of AI-assisted software development — but the
+        assistant itself is put into service to answer real questions for
+        real invited users, not solely to study AI. The exemption's "sole
         purpose" test is a hard one, and this project doesn't cleanly
         pass it.</li>
       <li><b>Article 2(8)</b> excludes R&D activity "prior to" placing an

@@ -70,14 +70,18 @@
     model you pick resides</b> — the model selector flags each choice with
     its provider's country so you can tell at a glance. Web searches go
     through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
-    <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
-    lives in your browser, encrypted (see "Chat history" below). To improve
-    the service, the server keeps a log of completed research interactions —
-    the question, the answer, and the research steps. For chats that should
-    leave <b>no trace on this server at all</b>, the <b>ghost button</b>
-    (upper right) opens ghost mode — DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
-    the client-side twin of this app where the server is never in the data
-    path (your own API key, browser-local storage).</div>
+    <div class="privacy-flag"><b>Privacy in one line:</b> your chat history is
+    encrypted and kept both in your browser and in the site's cloud storage so
+    it follows your account — but because the server holds no user-managed key
+    and can derive the one it uses, it is <b>not private from the service
+    itself</b> (the honest details are under "Chat history" below). To improve
+    the service, the server also keeps a log of completed research
+    interactions — the question, the answer, and the research steps. For chats
+    that should leave <b>no trace on this server at all</b>, the <b>ghost
+    button</b> (upper right) opens ghost mode —
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b>, the client-side twin of
+    this app where the server is never in the data path (your own API key,
+    browser-local storage).</div>
   </section>
 
   <section>
@@ -141,22 +145,34 @@
         below) — it is likewise just ciphertext: the key isn't stored beside
         it, it's derived on demand by the running server.</li>
     </ul>
-    <div class="privacy-flag"><b>The honest trade — and why the tiers
-    exist:</b> because the running server can derive your key <i>and</i> holds
-    the encrypted cloud copy, the service itself — and anyone who fully
-    compromises it — <i>can</i> read your Se<span class="sl">/</span>rver
-    history. That is the deliberate price of not making you manage a key, and
-    of letting your history live in the cloud and work with cloud features. We
-    say so plainly rather than imply the operator can never see it. The
-    encryption is still doing real work (an at-rest theft of the storage
+    <div class="privacy-flag"><b>Say it plainly: Se<span class="sl">/</span>rver
+    cloud storage is NOT perfectly private.</b> There is no external key
+    management here — <i>you</i> hold no key — so the running service holds
+    everything needed to read your Se<span class="sl">/</span>rver history: it
+    can derive your key <i>and</i> it keeps the encrypted copy. The service
+    itself, and anyone who fully compromises it, <i>can</i> read that history.
+    The encryption still does real work — an at-rest theft of the storage
     bucket <i>alone</i>, without the running server to derive the key, is only
-    ciphertext) — but if you want history that <b>not even the service</b> can
-    read, that's what the other tiers are for:
-    DeepResearch.<b>Se<span class="sl">/</span>cure</b> (the /cure tier —
-    nothing reaches this server at all), or, for a single project, its
-    secret-keyed <b>vault</b> — there the key is one only <i>you</i> hold, so
-    the service can't read it and, yes, you're back to managing that one
-    secret yourself (lose it, lose that copy).</div>
+    ciphertext — and holding the key for you is the deliberate price of
+    letting your history live in the cloud, sync across devices, and work with
+    cloud features without a key for you to lose. But it is not, and we won't
+    call it, private-from-us. For history that <b>not even the service</b> can
+    read, use the tiers built for exactly that:
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b> (nothing reaches this
+    server at all), or, for a single project, its secret-keyed <b>vault</b> —
+    there the key is one only <i>you</i> hold (and yes, you're back to
+    managing that one secret: lose it, lose that copy).</div>
+    <div class="privacy-flag"><b>Open source — a strength <i>and</i> a
+    weakness, honestly.</b> The whole stack, client and server, is open source,
+    and what runs is what you can read: you can verify for yourself that this
+    disclosure is truthful and that there's no hidden path siphoning your data
+    — no "trust us" required. That is a real strength. The honest flip side:
+    an attacker can read the same code, and this is still ordinary software
+    that can carry bugs — if a vulnerability exists and we haven't found it,
+    someone else might. The architecture is kept deliberately modular so
+    individual parts can be removed or swapped without the rest breaking,
+    which also makes it possible to lift out and reuse pieces, and to audit it
+    one part at a time.</div>
     <h3>What this means day to day</h3>
     <ul>
       <li><b>Your history follows your account.</b> Because the encrypted

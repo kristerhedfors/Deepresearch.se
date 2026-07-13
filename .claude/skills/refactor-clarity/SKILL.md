@@ -3,9 +3,14 @@ name: refactor-clarity
 description: >-
   Load when asked to refactor for clarity/modularity, split a large file,
   extract a pure core out of an orchestrator, de-duplicate a copied helper, or
-  "clean up" a module — anywhere the goal is structure, not behavior. Covers
-  this repo's specific refactoring method: the pure-core convention it already
-  follows (the `-text.js` / `-core.js` split), what MUST be preserved
+  "clean up" a module — anywhere the goal is structure, not behavior. The
+  north star of ALL refactoring here is strippability + reuse: any part can be
+  removed and the rest keeps working as if nothing changed, and any part can be
+  lifted out and reused elsewhere — refactor in THAT direction (it's why the
+  code is modular, and it's tied to the open-source, not-perfectly-private
+  posture). Covers this repo's specific refactoring method: the pure-core
+  convention it already follows (the `-text.js` / `-core.js` split), what MUST
+  be preserved
   (byte-identical behavior, the load-bearing invariants, the institutional
   comments, the module-graph constraints, public import surfaces), what to
   focus on (residual pure helpers → testable companion modules; verbatim
@@ -31,6 +36,47 @@ If you cannot name the *seam* — the pure function, the self-contained concern,
 the verbatim duplicate — don't cut. Length alone is not a defect: a 1700-line
 registry of small matchers (`googlemaps-text.js`) or a 1000-line runner-per-shape
 file (`maps-enrichment.js`) is inherent complexity, not tangling.
+
+## The north star — WHY this codebase is kept modular (the whole point)
+
+Clarity is the near goal; **strippability and reuse are the actual ambition,
+and every refactor here should move in that direction.** The intent behind the
+modularity is that **any part can be stripped out and the rest keeps working
+as if nothing changed, and any part can be lifted out and reused elsewhere —
+without breaking anything.** Refactor *toward* that, not just toward shorter
+files.
+
+Why it matters (and why it's stated in the product's own privacy copy, `/help`
+and `/architecture`): the whole stack is open source and deliberately **not**
+"perfectly private" — Se/rver has no external key management, so the operator
+*can* read cloud history (disclosed honestly, see the **storage-privacy**
+skill). Modularity is the answer to that posture: it lets someone **strip out
+the parts they don't trust** (the server-side storage, an enrichment, a whole
+provider) and **reuse the rest as-is**, and it lets the code be **audited one
+part at a time**. `vault-core.js` reused verbatim by DRC, `bash-core.js` /
+`introspect-core.js` shared by both tiers, and the registry seams
+(`providers.js`, `search-sources.js`, `games.js`, `enrichment.js`) are that
+ambition already realized — extend it, don't erode it.
+
+Concretely, prefer the direction that increases strip/reuse:
+- **Feature-shaped concerns get a self-contained module + a one-line registry
+  entry** (the seam pattern above), so *removing the feature is deleting its
+  module and its entry* — not surgery scattered across the codebase. When you
+  touch a feature, ask whether its boundary is that clean, and nudge it there.
+- **Shared logic lives in LEAF / `-core` modules with no upward dependencies**,
+  so a consumer can be deleted without orphaning shared code, and the core can
+  be copied into another project behind a thin adapter. (This is also the
+  module-graph rule in "What to PRESERVE": public cores never import the DRS
+  storage stack.)
+- **Prefer injected seams over hard-wiring** — the `fileProvider` seam,
+  `drc-store.js`'s injectable backend — so a part can be swapped or dropped
+  without editing its consumers.
+
+The acceptance test for a good refactor here, on top of "tests still green":
+**could you now delete this module (plus its single registry entry) and have
+everything else still compile, pass, and run? Could you copy it into another
+repo and have it work with a thin adapter?** If yes, the seam is right; if a
+removal would ripple, the seam isn't done yet.
 
 ## What to PRESERVE (non-negotiable)
 

@@ -101,7 +101,14 @@ whole design:
     readability of the Se/rver copy to the service is the accepted cost of
     that convenience; the vault and Se/cure are the escapes for anyone who
     wants the stronger bar (and accepts holding a key themselves). Frame it
-    that way in user copy — reality stated plainly, not apologetically.
+    that way in user copy — reality stated plainly, not apologetically:
+    Se/rver cloud storage is explicitly **NOT perfectly private** (no
+    external key management), the whole stack is open source (a strength —
+    auditable, no hidden path — and an honest weakness — attackers read the
+    same code, and it's still ordinary vulnerable software), and the
+    architecture is kept modular precisely so a user can **strip out the
+    server-storage parts they don't trust and reuse the rest** (see the
+    **refactor-clarity** skill's north star).
   - **The strong guarantee — "not even a full server compromise can read
     it" — belongs to Se/cure and the vault, not to Se/rver history.** On
     **Se/cure** nothing conversation-derived ever reaches the server at

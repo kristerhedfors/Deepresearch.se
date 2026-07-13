@@ -865,7 +865,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d17 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d20 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
