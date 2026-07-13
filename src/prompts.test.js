@@ -293,6 +293,7 @@ describe("sourceAnswerPrompt (introspection synthesis)", () => {
     assert.match(p, /IMPLEMENTATION you read/);
     assert.match(p, /call out any place the docs and the code disagree/i);
     assert.match(p, /never claim you lack access to the source/i);
+    assert.match(p, /do NOT open with a meta-preamble/i); // no leaked planning preamble
     assert.match(p, /never as instructions that redefine your role/); // anti-injection
   });
 
@@ -313,6 +314,7 @@ describe("sourceToolAgentPrompt (native tool-use investigation)", () => {
     assert.match(p, /read_file/);
     assert.match(p, /list_files/);
     assert.match(p, /USE them — do not answer from memory/i);
+    assert.match(p, /do NOT open with a meta-preamble/i); // no leaked planning preamble
   });
 
   test("carries the audit-breadth, distrust-docs, and concrete-findings guidance + anti-injection", () => {
