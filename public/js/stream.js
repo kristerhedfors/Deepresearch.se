@@ -8,6 +8,7 @@
 import {
   collapseActivity,
   finishGenericStep,
+  finishSandboxStep,
   finishSearchStep,
   getMapView,
   getStreetViewPov,
@@ -26,7 +27,7 @@ import { bashLiteOn, developerModeOn } from "./settings.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
-import { runShellLoop } from "./bash-agent.js";
+import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
 import {
@@ -843,19 +844,20 @@ async function maybeRunShellLoop(turn, opts) {
       messages: stripOldImages(history),
       exec: execInSandbox,
       ensureReady: bootOnce,
-      onResult: () => {
+      // Surface WHICH command is running, live — the user asked to see the
+      // actual command, not just "executing command". onExec fires just before
+      // each command runs (`$ ls -la /workspace`), clipped to one line.
+      onExec: (command) => {
         ran++;
-        updateGenericStep(turn, "sandbox", `Running in sandbox — ${ran} command${ran === 1 ? "" : "s"}…`);
+        updateGenericStep(turn, "sandbox", `Sandbox › $ ${shellCommandLabel(command)}`);
       },
     });
     // Only report a finished step if we actually booted and ran (a message the
-    // model judged not to need a shell shows no sandbox activity at all).
+    // model judged not to need a shell shows no sandbox activity at all). The
+    // finished step is EXPANDABLE: every command in full with its exit code and
+    // output (finishSandboxStep), so the run stays inspectable after it ends.
     if (booted && transcript.length) {
-      finishGenericStep(turn, {
-        id: "sandbox",
-        label: `Ran ${transcript.length} command${transcript.length === 1 ? "" : "s"} in the Linux sandbox`,
-        details: transcript.map((r) => `$ ${r.command}`),
-      });
+      finishSandboxStep(turn, transcript);
     }
     return transcript;
   } catch (err) {

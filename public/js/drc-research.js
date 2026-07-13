@@ -39,6 +39,7 @@ import {
   normalizeExecResult,
   parseShellRequest,
   runShellLoop,
+  shellCommandLabel,
 } from "./bash-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 import { INTROSPECTION_TOOLS, buildSourceSitemap, runIntrospectionTool, toolResultLines, toolStepHeadline } from "./introspect-core.js";
@@ -273,6 +274,9 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
       return sb.boot(fileProvider || null, (msg) => onStatus({ type: "phase", phase: "sandbox", label: msg }));
     },
     onStep: ({ commands }) => onStatus({ type: "phase", phase: "sandbox", detail: commands.length }),
+    // Surface the actual command as it starts (not just a counter), so the
+    // sandbox phase line shows WHICH command is running.
+    onExec: (command) => onStatus({ type: "phase", phase: "sandbox", label: `$ ${shellCommandLabel(command)}` }),
   });
 }
 
