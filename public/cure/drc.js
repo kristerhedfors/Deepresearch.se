@@ -175,7 +175,11 @@ async function loadIntroPublications() {
 // opt-in overrides it). Entirely fail-soft: any import or play failure
 // resolves straight through to the intro pane.
 function maybePlayUmbrella(deepLinked) {
-  const force = /[?&]anim=1\b/.test(location.search);
+  // `?anim=rev` forces the REVERSE easter-egg play (which normally fires once
+  // every 40 plays on its own); like `?anim=1` it also forces through every
+  // suppression gate so "show me the backwards one" always works.
+  const rev = /[?&]anim=rev\b/.test(location.search);
+  const force = rev || /[?&]anim=1\b/.test(location.search);
   let seen = false;
   try {
     seen = localStorage.getItem("dr_umbrella_seen") === "1";
@@ -206,7 +210,11 @@ function maybePlayUmbrella(deepLinked) {
     new Promise((res) => setTimeout(() => res(1), 900)),
   ]).catch(() => 1);
   return Promise.all([import("./umbrella.js"), speedFetch])
-    .then(([m, speed]) => new Promise((res) => m.playUmbrellaIntro({ onDone: res, speed })))
+    .then(([m, speed]) =>
+      new Promise((res) =>
+        m.playUmbrellaIntro({ onDone: res, speed, reverse: rev ? true : undefined })
+      )
+    )
     .catch(() => {
       // decoration only — never block the page over it
     });

@@ -41,17 +41,21 @@ import {
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
 
-/** The looping clock: real elapsed ms → design-time t in [0, cycle), sped up
- * by clockRate. One cycle is the whole intro timeline, so the spinner replays
- * swirl→revive→dangle→fade forever while the host stays mounted.
+/** The BOOMERANG clock: real elapsed ms → design-time t that ramps 0→cycle
+ * then back cycle→0, forever — a triangle wave. So the spinner plays the intro
+ * (vortex→untwist→wire→camera→bloom) FORWARD, then rewinds it BACKWARD, over
+ * and over: the loading symbol "goes back and forth" like a boomerang while the
+ * host stays mounted. The default cycle is T.fadeStart, so the apex is the
+ * fully-bloomed, fringed umbrella (never the timeline's own fade-out) — the
+ * turn is a clean reversal, not a blink.
  * @param {number} elapsedReal  ms since mount (real time)
  * @param {number} clockRate    design-ms per real-ms (BASE_SPEED × admin mult)
- * @param {number} cycle        design-ms in one loop (defaults to T.end)
+ * @param {number} cycle        design-ms of one one-way sweep (half the period)
  * @returns {number} */
-export function loopedDesignTime(elapsedReal, clockRate, cycle = T.end) {
-  const scaled = Math.max(0, elapsedReal) * clockRate;
-  const c = cycle > 0 ? cycle : T.end;
-  return scaled % c;
+export function boomerangDesignTime(elapsedReal, clockRate, cycle = T.fadeStart) {
+  const c = cycle > 0 ? cycle : T.fadeStart;
+  const pos = (Math.max(0, elapsedReal) * clockRate) % (2 * c);
+  return pos <= c ? pos : 2 * c - pos;
 }
 
 /** The style for the i-th loading slot on screen: one of the intro fleet's
@@ -160,8 +164,8 @@ export function mountUmbrellaSpinner(host, opts = {}) {
 
     let spin = 0; // integrated so the spin-rate ramp never jumps the angle
     let raf = 0;
-    let last = 0;
     let start = 0;
+    let lastT = 0; // previous boomerang design-time — its signed delta drives spin
     let stopped = false;
 
     function stop() {
@@ -191,23 +195,32 @@ export function mountUmbrellaSpinner(host, opts = {}) {
       if (!canvas.isConnected) return stop();
       if (!start) {
         start = now;
-        last = now;
+        lastT = 0;
       }
-      const dt = Math.min(50, now - last) * clockRate;
-      last = now;
-      const t = loopedDesignTime(now - start, clockRate);
+      const t = boomerangDesignTime(now - start, clockRate);
       const P = paramsAt(t);
 
-      // Fade in over the first 500 design-ms and out at the tail, so the loop
-      // seam (fade→0 then swirl-in) crossfades instead of popping.
-      const appear = smooth(t / 500);
-      const alpha = appear * P.fade;
+      // Signed design-time delta: it's POSITIVE on the forward sweep and
+      // NEGATIVE on the rewind, so the spin — the only separately-integrated
+      // quantity — reverses with the timeline and the whole thing truly
+      // "goes back and forth". Clamped so a backgrounded tab's time jump
+      // (or the triangle-wave apex) can't fling the angle.
+      let dtd = t - lastT;
+      lastT = t;
+      const cap = 60 * clockRate;
+      if (dtd > cap) dtd = cap;
+      else if (dtd < -cap) dtd = -cap;
+
+      // One-time fade-in over the first ~250 ms so the mount doesn't pop; after
+      // that the umbrella stays fully visible and just morphs vortex↔bloom (no
+      // blink at the boomerang turnarounds). P.fade stays 1 (cycle < fadeStart).
+      const alpha = smooth((now - start) / 250) * P.fade;
 
       ctx.clearRect(0, 0, size, size);
-      spin += style.dir * (style.speed || 1) * P.spinRate * 0.0016 * dt;
+      spin += style.dir * (style.speed || 1) * P.spinRate * 0.0016 * dtd;
 
       const pulse = 1 + 0.1 * P.pulse * Math.sin(t * 0.0023 + style.phase);
-      const rad = R * (0.7 + 0.3 * appear) * pulse;
+      const rad = R * pulse;
       const domeH = domeFrac * rad;
       const domeZ = (/** @type {number} */ r) =>
         domeH * ((1 - pg) * (1 - r * r) + pg * (1 - r) * (1 - r));
