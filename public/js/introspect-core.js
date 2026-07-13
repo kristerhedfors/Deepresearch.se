@@ -656,6 +656,9 @@ export function buildOwaspReferenceBlock(retrieved, sources = {}) {
   lines.push(
     "This is a SECURITY ASSESSMENT. Unless the user named a different standard, organize and classify every finding using the OWASP Top 10 for LLM Applications (2025) and the OWASP Top 10 for Web Applications (2021): map each finding to the most relevant OWASP category and cite its identifier (e.g. LLM01:2025 Prompt Injection, A01:2021 Broken Access Control). Give each finding a CVSS v3.1 base-score estimate (with the vector string where you can) and STATE THE UNCERTAINTY EXPLICITLY — flag when a score is a rough estimate or hinges on deployment factors or code you could not see. The verbatim OWASP passages below were retrieved for THIS question: quote them directly and attribute them to their category id and URL.",
   );
+  lines.push(
+    "Structure the report in this order, each under its own heading: (1) `## Executive Summary` FIRST — a few plain-language sentences facing the reader immediately: overall posture, the most serious issues and their risk, and finding counts by severity (no file paths or CVSS vectors here). (2) `## Scope` — what was assessed and what was not, plus assumptions and limitations. (3) `## Findings` — the technical detail, one per finding (OWASP category id, CVSS score+vector+uncertainty, affected file path/function, evidence, remediation), highest severity first. The Executive Summary replaces the usual one-line conclusion.",
+  );
   for (const r of list) {
     const meta = (sources && sources[r.p]) || {};
     const cite = meta.url ? `${r.p} — ${meta.url}` : r.p;

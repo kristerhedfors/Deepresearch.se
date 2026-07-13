@@ -274,6 +274,10 @@ and quote — the actual OWASP wording. Owner directive (2026-07-13): with no
 framework named, DEFAULT to the **OWASP Top 10 for LLM Applications (2025)** +
 the **OWASP Top 10 for Web Applications (2021)** for structure, terminology, and
 classification, plus **CVSS estimates with the uncertainty stated explicitly**.
+The report leads with an **Executive Summary** (user-facing, plain language),
+then **Scope**, then **Findings** (the technical per-finding detail) — that
+fixed order is carried by both `OWASP_ASSESSMENT_NOTE` (prompts.js) and the
+injected block (`buildOwaspReferenceBlock`).
 
 Two committed artifacts, mirroring the source snapshot/index pair (both under
 the ASSETS-excluded `public/introspect/`, server-only — DRC doesn't use them):

@@ -223,6 +223,10 @@ test("buildOwaspReferenceBlock: cites categories with URLs, quotes text, carries
   assert.match(block, /Prompt Injection Vulnerability occurs/); // verbatim quote
   assert.match(block, /CVSS/);
   assert.match(block, /uncertaint/i);
+  // Report structure: Executive Summary → Scope → Findings.
+  assert.match(block, /Executive Summary/);
+  assert.match(block, /## Scope/);
+  assert.match(block, /## Findings/);
   // Empty retrieval → empty block (byte-identical to a run without OWASP).
   assert.equal(buildOwaspReferenceBlock([], sources), "");
   assert.equal(buildOwaspReferenceBlock(null), "");
