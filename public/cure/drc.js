@@ -410,6 +410,7 @@ async function unlock(ev) {
     $("websearch").checked = state.research !== false;
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
+    applyIntrospectionTheme(state.developerMode === true);
     renderKeysPanel();
     renderConvPicker();
     renderMessages();
@@ -848,6 +849,30 @@ if (themeMeta) {
   });
 }
 
+// The two Se/cure bar tints: the ruby introspection field (matches --bg in
+// drc.css :root.dev-mode) and the ordinary khaki. Kept beside the boot tint.
+const DRC_THEME_INTROSPECT = "#b06a78";
+const DRC_THEME_DEFAULT = "#c3b091";
+
+// Paint (or clear) the ruby introspection skin: toggle `dev-mode` on the root
+// (drc.css re-points the palette variables) and re-tint the iOS status bar to
+// match. WebKit pins the bar tint and ignores a plain content swap, so nudge
+// the meta to a near value then to the target across two frames — the same
+// trick the boot tint and dev-mode.js use. Unlike DRS this has no first-paint
+// cache: developerMode lives in the sealed project state, so the skin settles
+// once that state is loaded, which is soon enough (no PWA cold-relaunch flash
+// because a DRC session always opens its project first).
+function applyIntrospectionTheme(on) {
+  document.documentElement.classList.toggle("dev-mode", !!on);
+  if (!themeMeta) return;
+  const target = on ? DRC_THEME_INTROSPECT : DRC_THEME_DEFAULT;
+  const nudged = target.slice(0, -1) + (target.endsWith("e") ? "d" : "e");
+  requestAnimationFrame(() => {
+    themeMeta.setAttribute("content", nudged);
+    requestAnimationFrame(() => themeMeta.setAttribute("content", target));
+  });
+}
+
 // Build marker (on-device-trace convention): kept OFF the visible header —
 // carried in the brand tooltip so a long-press still answers "which build,
 // PWA or Safari" without cluttering the wordmark. Bump on every DRC deploy.
@@ -926,15 +951,19 @@ $("input").addEventListener("input", () => {
     if (state.developerMode === true) noteIntrospectionText($("input").value);
   }, 350);
 });
-// Developer-mode knob (client-local, persisted in the sealed project state):
-// unlocks introspection mode for this browser's conversations.
+// Introspection knob (client-local, persisted in the sealed project state):
+// unlocks introspection mode for this browser's conversations, and paints the
+// page in its RUBY introspection skin (drc.css :root.dev-mode) so the tier's
+// mode is unmistakable — the Se/rver twin wears AMETHYST for the same purpose.
 $("devmode").checked = state.developerMode === true;
+applyIntrospectionTheme(state.developerMode === true);
 $("devmode").addEventListener("change", () => {
   state.developerMode = $("devmode").checked;
+  applyIntrospectionTheme(state.developerMode === true);
   const st = $("devmodestatus");
   st.textContent = state.developerMode
-    ? "Developer mode is on — ask about this site's own source code to enter introspection mode."
-    : "Developer mode is off.";
+    ? "Introspection is on — the ruby skin is on; ask about this site's own source code to answer from the deployed source."
+    : "Introspection is off.";
   saveState().catch(() => {});
 });
 // Dimmed DRS-feature buttons: the tap explains and points to /rver.

@@ -22,6 +22,7 @@
   <header>
     <div class="header-bar">
       <div class="brand" id="brand" title="About Se/cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b><span class="brand-tier"> — client-side</span></div>
+      <div class="introspection-tag">introspection</div>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chats &amp; project (this browser)" aria-label="Chats and project">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -204,17 +205,17 @@
       </details>
 
       <details id="devpanel">
-        <summary>Developer mode</summary>
-        <p class="muted">Unlocks <b>introspection mode</b>: ask about this site's own
-          implementation (“how are you built?”, “show me src/pipeline.js”) and the
-          assistant answers from a snapshot of the exact source code this deployment
-          runs — fetched as a public static file, so the server still sees none of
-          your conversation. With the sandbox also on, the whole source tree is
-          mounted at <code>/src</code> in the Linux VM for real shell exploration.</p>
+        <summary>Introspection</summary>
+        <p class="muted">Ask about this site's own implementation (“how are you built?”,
+          “show me src/pipeline.js”) and the assistant answers from a snapshot of the
+          exact source code this deployment runs — fetched as a public static file, so
+          the server still sees none of your conversation. The page wears its ruby
+          introspection skin while it's on. With the sandbox also on, the whole source
+          tree is mounted at <code>/src</code> in the Linux VM for real shell exploration.</p>
         <label class="knob-row">
           <input id="devmode" type="checkbox">
           <span class="toggle-track"><span class="toggle-dot"></span></span>
-          <span>Enable developer mode (introspection)</span>
+          <span>Enable introspection</span>
         </label>
         <span id="devmodestatus" class="muted"></span>
       </details>

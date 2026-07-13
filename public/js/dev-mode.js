@@ -1,20 +1,22 @@
 // @ts-check
-// Developer mode's CLIENT presentation + persistence — the titanium-gray theme.
+// Introspection mode's CLIENT presentation + persistence — the amethyst theme.
 //
-// Developer mode (the introspection gate, src/settings.js `developer_mode`) is
-// remembered SERVER-SIDE per account, so the mode itself already follows the
-// account across devices. But the server's answer only arrives after
-// /api/settings resolves — one round-trip into the page load — and an installed
-// PWA relaunches from a device-cached shell that may paint before that answer
-// comes back. So the THEME (titanium gray) needs a local, synchronous source of
-// truth to apply at first paint, or a returning developer-mode user would flash
-// the ordinary blue palette on every cold relaunch.
+// Introspection mode (the `developer_mode` knob, src/settings.js) is remembered
+// SERVER-SIDE per account, so the mode itself already follows the account
+// across devices. But the server's answer only arrives after /api/settings
+// resolves — one round-trip into the page load — and an installed PWA
+// relaunches from a device-cached shell that may paint before that answer comes
+// back. So the THEME (amethyst) needs a local, synchronous source of truth to
+// apply at first paint, or a returning introspection-mode user would flash the
+// ordinary blue palette on every cold relaunch.
 //
 // This module is that local cache. It mirrors the server knob into
 // localStorage (`dr_dev_mode`) and toggles a `dev-mode` class on the ROOT
 // element (documentElement, not body — the html background reads the palette
 // variables, so the class that overrides them must sit on the same element).
 // CSS `:root.dev-mode { … }` (public/css/app.css) repaints the whole palette.
+// (The class/key names keep the historical `dev` token — internal identifiers,
+// not user-facing copy; the mode is named "Introspection" in the UI.)
 //
 // Boot order:
 //   0. A tiny inline `<script data-devtheme>` in index.html's <head> applies the
@@ -41,10 +43,10 @@ export const DEV_MODE_CLASS = "dev-mode";
 
 // The iOS status-bar / theme-color tint. On an iPhone the strip behind the
 // status bar is painted from the `theme-color` meta, NOT from CSS — so the
-// palette swap alone leaves a blue bar above a titanium page (reported live).
-// These are the two target tints: the titanium field (matches --bg in dev
-// mode) and the original sky blue when dev mode is off.
-const THEME_COLOR_DEV = "#8b9299";
+// palette swap alone leaves a blue bar above an amethyst page (reported live).
+// These are the two target tints: the amethyst field (matches --bg in
+// introspection mode) and the original sky blue when it is off.
+const THEME_COLOR_DEV = "#8a7fb8"; // the amethyst introspection field (--bg in dev mode)
 const THEME_COLOR_DEFAULT = "#6fc3fd"; // must match the static meta in index.html
 
 /**
@@ -109,7 +111,7 @@ export function storeDeveloperMode(on) {
 }
 
 /**
- * Apply (or clear) the titanium-gray theme: toggle the root class and, unless
+ * Apply (or clear) the amethyst introspection theme: toggle the root class and, unless
  * told otherwise, persist the value so the next load paints it immediately.
  * The boot-time cached apply passes { persist: false } — it is READING the
  * cache, not making a new decision.

@@ -102,7 +102,7 @@ test("applyDeveloperTheme: re-tints the iOS theme-color meta to match the palett
   globalThis.requestAnimationFrame = (cb) => cb();
   assert.equal(meta.content, "#6fc3fd"); // starts at the default sky blue
   applyDeveloperTheme(true);
-  assert.equal(meta.content, "#8b9299"); // settles on the titanium tint
+  assert.equal(meta.content, "#8a7fb8"); // settles on the amethyst tint
   applyDeveloperTheme(false);
   assert.equal(meta.content, "#6fc3fd"); // and back to the default when off
   reset();

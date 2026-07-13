@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h25;
+  --css-version: h26;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -17,29 +17,33 @@
   --ok: #157a4b;
   --user: #d8edff;
 }
-/* Developer mode's titanium-gray palette. Applied by toggling `dev-mode` on the
-   ROOT element (public/js/dev-mode.js) — it must sit on :root because the html
-   background reads --bg, so the class that overrides the palette variables has
-   to be on the same element (a body class couldn't repaint html). Every chrome
-   surface already draws from these nine variables, so re-pointing them here
-   re-skins the whole app in one place — a cool brushed-metal neutral (a faint
-   blue undertone keeps it "titanium", not flat gray) that reads as a distinct,
-   quieter "you're in developer mode" surface without touching any component
-   rule. The one non-variable touch is a subtle metallic sheen on the html
-   background so the field itself looks like brushed titanium, not paper. */
+/* Introspection mode's AMETHYST palette (the Se/rver tier's introspection
+   skin). Applied by toggling `dev-mode` on the ROOT element
+   (public/js/dev-mode.js) — it must sit on :root because the html background
+   reads --bg, so the class that overrides the palette variables has to be on
+   the same element (a body class couldn't repaint html). Every chrome surface
+   already draws from these nine variables, so re-pointing them here re-skins
+   the whole app in one place — a jewel-toned violet that reads as a distinct,
+   quieter "you're in introspection mode" surface without touching any
+   component rule. It is DELIBERATELY purple (a cousin of the tier's sky
+   blue), NOT titanium: titanium is now reserved for TIN the mascot, and the
+   Se/cure tier gets a RUBY skin (public/cure/drc.css), so the two tiers'
+   introspection modes are distinguishable at a glance. The one non-variable
+   touch is a subtle sheen on the html background so the field itself looks
+   like polished amethyst, not paper. */
 :root.dev-mode {
-  --bg: #8b9299;
-  --panel: #f3f4f6;
-  --panel-2: #e4e7ea;
-  --border: #b6bcc4;
-  --text: #1b2127;
-  --muted: #55606b;
-  --accent: #4a5967;
+  --bg: #8a7fb8;
+  --panel: #f4f1fb;
+  --panel-2: #e8e2f6;
+  --border: #b9aede;
+  --text: #241a3d;
+  --muted: #5b4f7d;
+  --accent: #5b3fa0;
   --ok: #2f7d59;
-  --user: #dee2e7;
+  --user: #e5def5;
 }
 html.dev-mode {
-  background-image: linear-gradient(155deg, #969ca3 0%, #868d95 45%, #7c848c 100%);
+  background-image: linear-gradient(155deg, #9186bd 0%, #837ab0 45%, #786fa6 100%);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -207,6 +211,22 @@ header {
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
+/* The small "introspection" marker under the wordmark — the quiet label that
+   names the mode the amethyst skin puts you in. Only present while the
+   introspection theme is active (root carries `dev-mode`); a no-op otherwise. */
+.introspection-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.15rem;
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: lowercase;
+  color: var(--accent);
+  opacity: .85;
+  pointer-events: none;
+}
+:root.dev-mode .introspection-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;

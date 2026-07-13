@@ -86,16 +86,17 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 // The developer-mode knob unlocks introspection: ask the assistant about the
 // site's own implementation and it answers from the deployed source snapshot
 // (and can explore the tree at /src when the sandbox is also enabled).
-const DEVELOPER_INFO = `<strong>Developer mode</strong><br>
-  <b>On:</b> unlocks <b>introspection mode</b> — ask about this site's own
-  implementation (“how are you built?”, “show me src/pipeline.js”) and the
-  assistant answers from a snapshot of the exact source code this deployment
-  runs. With the execution sandbox also on, the whole source tree is mounted
-  at <code>/src</code> inside the in-browser Linux VM so the assistant can
-  explore it with real shell commands.<br>
+const DEVELOPER_INFO = `<strong>Introspection</strong><br>
+  <b>On:</b> ask about this site's own implementation (“how are you built?”,
+  “show me src/pipeline.js”) and the assistant answers from a snapshot of the
+  exact source code this deployment runs — and the app wears its amethyst
+  introspection skin so you know you're in it. With the execution sandbox also
+  on, the whole source tree is mounted at <code>/src</code> inside the
+  in-browser Linux VM so the assistant can explore it with real shell
+  commands.<br>
   <b>Off (default):</b> implementation questions are answered like any other
   research question.<br>
-  The source is public on GitHub; this knob is about keeping developer
+  The source is public on GitHub; this knob is about keeping the source
   tooling out of the way, not secrecy.`;
 
 /**
@@ -128,13 +129,13 @@ export function renderConfigKnobs(me) {
       }) +
       settingRow({
         id: "devknob",
-        label: "Developer mode",
+        label: "Introspection",
         checked: true,
         disabled: true,
         popId: "devpop",
         info: DEVELOPER_INFO,
       }) +
-      `<p class="muted setting-note">Admin session: the execution sandbox and developer (introspection) mode are on by default. Sign in with a Google account to switch these per account.</p>`
+      `<p class="muted setting-note">Admin session: the execution sandbox and introspection mode are on by default. Sign in with a Google account to switch these per account.</p>`
     );
   }
   return (
@@ -158,7 +159,7 @@ export function renderConfigKnobs(me) {
     '<p id="sbstatus" class="muted setting-note" hidden></p>' +
     settingRow({
       id: "devknob",
-      label: "Developer mode",
+      label: "Introspection",
       checked: developerModeAvailable() && developerModeOn(),
       disabled: !developerModeAvailable(),
       popId: "devpop",
@@ -346,8 +347,8 @@ export function wireDeveloperKnob(ctx) {
       // write, so a rejected save leaves the palette untouched.
       applyDeveloperTheme(on);
       status.textContent = on
-        ? "Developer mode is on — the titanium theme is on, and asking about this site's own source code enters introspection mode."
-        : "Developer mode is off.";
+        ? "Introspection is on — the amethyst skin is on, and asking about this site's own source code answers from the deployed source."
+        : "Introspection is off.";
     } catch (err) {
       knob.checked = !on;
       status.textContent = err?.message || "Could not update the setting.";

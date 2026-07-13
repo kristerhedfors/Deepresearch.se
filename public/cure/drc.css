@@ -17,6 +17,28 @@
   --ok: #157a4b;
   --user: #ece1bd;
 }
+/* Introspection mode's RUBY palette (the Se/cure tier's introspection skin).
+   drc.js toggles `dev-mode` on the ROOT element when the developer/introspection
+   knob is on; re-pointing the nine palette variables here re-skins the whole
+   /cure page in one place. DELIBERATELY ruby/rose, NOT titanium and NOT the
+   Se/rver tier's amethyst (public/css/app.css) — the two tiers' introspection
+   modes must be distinguishable at a glance, and titanium is now reserved for
+   TIN the mascot. A subtle sheen on the html background so the field reads as
+   polished ruby, not paper. */
+:root.dev-mode {
+  --bg: #b06a78;
+  --panel: #fbf0f2;
+  --panel-2: #f4dfe4;
+  --border: #d09aa6;
+  --text: #3d1620;
+  --muted: #7d4650;
+  --accent: #9c2f45;
+  --ok: #157a4b;
+  --user: #f0d8dd;
+}
+html.dev-mode {
+  background-image: linear-gradient(155deg, #bd7684 0%, #b06a78 45%, #a55f6d 100%);
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -174,6 +196,21 @@ header {
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
+/* The small "introspection" marker under the wordmark — only present while the
+   ruby introspection skin is active (root carries `dev-mode`). */
+.introspection-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.15rem;
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: lowercase;
+  color: var(--accent);
+  opacity: .85;
+  pointer-events: none;
+}
+:root.dev-mode .introspection-tag { display: block; }
 .intro-card h1 {
   font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
   font-weight: 300;
