@@ -1,4 +1,4 @@
-// Developer-mode theme + persistence (public/js/dev-mode.js). Runs in Node
+// Introspection-mode cue + persistence (public/js/dev-mode.js). Runs in Node
 // with tiny localStorage / documentElement stubs — the module is written to be
 // import-safe outside a browser (every DOM/storage access is guarded).
 
@@ -95,16 +95,16 @@ test("applyDeveloperTheme: { persist: false } applies the class without writing 
   reset();
 });
 
-test("applyDeveloperTheme: re-tints the iOS theme-color meta to match the palette", () => {
+test("applyDeveloperTheme: leaves the iOS theme-color meta UNTOUCHED (background unchanged)", () => {
   stubStorage();
-  const { meta } = stubDocument({ withMeta: true });
-  // Run rAF callbacks synchronously so we can observe the settled value.
+  const { classes, meta } = stubDocument({ withMeta: true });
   globalThis.requestAnimationFrame = (cb) => cb();
-  assert.equal(meta.content, "#6fc3fd"); // starts at the default sky blue
+  assert.equal(meta.content, "#6fc3fd"); // the site's sky-blue bar tint
   applyDeveloperTheme(true);
-  assert.equal(meta.content, "#8a7fb8"); // settles on the amethyst tint
+  assert.equal(classes.has(DEV_MODE_CLASS), true); // the cue is the class (composer tint) …
+  assert.equal(meta.content, "#6fc3fd"); // … NOT a status-bar re-tint — the field stays blue
   applyDeveloperTheme(false);
-  assert.equal(meta.content, "#6fc3fd"); // and back to the default when off
+  assert.equal(meta.content, "#6fc3fd");
   reset();
 });
 

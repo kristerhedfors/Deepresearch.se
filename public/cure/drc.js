@@ -849,28 +849,14 @@ if (themeMeta) {
   });
 }
 
-// The two Se/cure bar tints: the ruby introspection field (matches --bg in
-// drc.css :root.dev-mode) and the ordinary khaki. Kept beside the boot tint.
-const DRC_THEME_INTROSPECT = "#b06a78";
-const DRC_THEME_DEFAULT = "#c3b091";
-
-// Paint (or clear) the ruby introspection skin: toggle `dev-mode` on the root
-// (drc.css re-points the palette variables) and re-tint the iOS status bar to
-// match. WebKit pins the bar tint and ignores a plain content swap, so nudge
-// the meta to a near value then to the target across two frames — the same
-// trick the boot tint and dev-mode.js use. Unlike DRS this has no first-paint
-// cache: developerMode lives in the sealed project state, so the skin settles
-// once that state is loaded, which is soon enough (no PWA cold-relaunch flash
-// because a DRC session always opens its project first).
+// Introspection cue: toggle `dev-mode` on the root so the composer pane picks
+// up its RUBY glass tint (drc.css `:root.dev-mode #composer`). The khaki
+// background and the iOS status-bar tint are deliberately left alone — only
+// the input pane changes, matching the Se/rver twin. developerMode lives in
+// the sealed project state, so the tint settles once that state loads (no PWA
+// cold-relaunch flash — a DRC session always opens its project first).
 function applyIntrospectionTheme(on) {
   document.documentElement.classList.toggle("dev-mode", !!on);
-  if (!themeMeta) return;
-  const target = on ? DRC_THEME_INTROSPECT : DRC_THEME_DEFAULT;
-  const nudged = target.slice(0, -1) + (target.endsWith("e") ? "d" : "e");
-  requestAnimationFrame(() => {
-    themeMeta.setAttribute("content", nudged);
-    requestAnimationFrame(() => themeMeta.setAttribute("content", target));
-  });
 }
 
 // Build marker (on-device-trace convention): kept OFF the visible header —
@@ -952,9 +938,9 @@ $("input").addEventListener("input", () => {
   }, 350);
 });
 // Introspection knob (client-local, persisted in the sealed project state):
-// unlocks introspection mode for this browser's conversations, and paints the
-// page in its RUBY introspection skin (drc.css :root.dev-mode) so the tier's
-// mode is unmistakable — the Se/rver twin wears AMETHYST for the same purpose.
+// unlocks introspection mode for this browser's conversations, and tints the
+// composer pane RUBY (drc.css :root.dev-mode #composer) so the tier's mode is
+// unmistakable — the Se/rver twin turns its pane AMETHYST for the same purpose.
 $("devmode").checked = state.developerMode === true;
 applyIntrospectionTheme(state.developerMode === true);
 $("devmode").addEventListener("change", () => {
@@ -962,7 +948,7 @@ $("devmode").addEventListener("change", () => {
   applyIntrospectionTheme(state.developerMode === true);
   const st = $("devmodestatus");
   st.textContent = state.developerMode
-    ? "Introspection is on — the ruby skin is on; ask about this site's own source code to answer from the deployed source."
+    ? "Introspection is on — the composer pane turns ruby; ask about this site's own source code to answer from the deployed source."
     : "Introspection is off.";
   saveState().catch(() => {});
 });

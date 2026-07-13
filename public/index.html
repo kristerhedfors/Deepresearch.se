@@ -15,17 +15,14 @@
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
   <meta name="theme-color" content="#6fc3fd">
   <link rel="stylesheet" href="/css/app.css">
-  <script data-devtheme>/* Introspection-mode amethyst theme, applied at PARSE TIME (before first
-     paint) from the local cache. A PWA relaunch reads the device-cached shell
-     — often offline, before /api/settings answers — and iOS fixes the
-     standalone status-bar tint at load, ignoring a later in-place JS change
-     (the reason the khaki /cure tint is set on its own fresh page load).
-     Setting the class AND the theme-color meta here, during head parse, paints
-     both the amethyst palette and the status bar with no blue flash.
-     In-session toggle/reconcile is public/js/dev-mode.js. If this script
-     changes, recompute its CSP hash (THEME_BOOT_HASH in
-     src/security-headers.js). */
-try{if(localStorage.getItem("dr_dev_mode")==="1"){document.documentElement.classList.add("dev-mode");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#8a7fb8");}}catch(e){}</script>
+  <script data-devtheme>/* Introspection-mode cue, applied at PARSE TIME (before first paint) from the
+     local cache: add the `dev-mode` class so the composer pane is tinted
+     amethyst from the first frame on a PWA relaunch (the device-cached shell
+     paints before /api/settings answers). Background and status bar are
+     unchanged — only the class is set here. In-session toggle/reconcile is
+     public/js/dev-mode.js. If this script changes, recompute its CSP hash
+     (THEME_BOOT_HASH in src/security-headers.js). */
+try{if(localStorage.getItem("dr_dev_mode")==="1"){document.documentElement.classList.add("dev-mode");}}catch(e){}</script>
 </head>
 <body>
   <header>

@@ -17,28 +17,13 @@
   --ok: #157a4b;
   --user: #ece1bd;
 }
-/* Introspection mode's RUBY palette (the Se/cure tier's introspection skin).
-   drc.js toggles `dev-mode` on the ROOT element when the developer/introspection
-   knob is on; re-pointing the nine palette variables here re-skins the whole
-   /cure page in one place. DELIBERATELY ruby/rose, NOT titanium and NOT the
-   Se/rver tier's amethyst (public/css/app.css) — the two tiers' introspection
-   modes must be distinguishable at a glance, and titanium is now reserved for
-   TIN the mascot. A subtle sheen on the html background so the field reads as
-   polished ruby, not paper. */
-:root.dev-mode {
-  --bg: #b06a78;
-  --panel: #fbf0f2;
-  --panel-2: #f4dfe4;
-  --border: #d09aa6;
-  --text: #3d1620;
-  --muted: #7d4650;
-  --accent: #9c2f45;
-  --ok: #157a4b;
-  --user: #f0d8dd;
-}
-html.dev-mode {
-  background-image: linear-gradient(155deg, #bd7684 0%, #b06a78 45%, #a55f6d 100%);
-}
+/* Introspection mode's cue (the Se/cure tier). drc.js toggles `dev-mode` on the
+   ROOT element when the introspection knob is on. Like the Se/rver twin it does
+   NOT re-skin the khaki background or palette — the ONLY change is the composer
+   input pane, which picks up a RUBY glass tint with extra shine (see
+   `:root.dev-mode #composer` below). Ruby vs the Se/rver tier's amethyst keeps
+   the two tiers' introspection modes distinguishable; titanium is reserved for
+   TIN the mascot. */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -206,8 +191,9 @@ header {
   font-weight: 600;
   letter-spacing: .18em;
   text-transform: lowercase;
-  color: var(--accent);
-  opacity: .85;
+  color: #9c2f45; /* ruby — ties the marker to the ruby composer pane */
+  opacity: .9;
+  text-shadow: 0 1px 5px rgba(255, 255, 255, .55);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
@@ -342,6 +328,20 @@ header {
   margin: .35rem auto calc(.85rem + env(safe-area-inset-bottom, 0px));
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
+}
+/* Introspection mode: the composer becomes a RUBY glass pane (the Se/cure
+   tier's introspection cue) with more shine than the plain frosted pane — a
+   diagonal light-to-ruby sheen, a bright specular top edge, and a deeper
+   coloured drop shadow. Background only; the khaki field is unchanged. */
+:root.dev-mode #composer {
+  background:
+    linear-gradient(157deg, rgba(255, 255, 255, .55) 0%, rgba(246, 196, 208, .30) 34%, rgba(180, 60, 90, .34) 100%),
+    rgba(190, 104, 124, .30);
+  border: 1px solid rgba(255, 255, 255, .7);
+  box-shadow:
+    0 6px 26px rgba(120, 30, 55, .30),
+    inset 0 1px 0 rgba(255, 255, 255, .75),
+    inset 0 -9px 22px rgba(160, 52, 82, .18);
 }
 #form { display: flex; flex-direction: column; gap: .35rem; }
 textarea#input {

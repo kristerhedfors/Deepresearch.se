@@ -89,11 +89,10 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 const DEVELOPER_INFO = `<strong>Introspection</strong><br>
   <b>On:</b> ask about this site's own implementation (“how are you built?”,
   “show me src/pipeline.js”) and the assistant answers from a snapshot of the
-  exact source code this deployment runs — and the app wears its amethyst
-  introspection skin so you know you're in it. With the execution sandbox also
-  on, the whole source tree is mounted at <code>/src</code> inside the
-  in-browser Linux VM so the assistant can explore it with real shell
-  commands.<br>
+  exact source code this deployment runs — and the composer pane turns
+  amethyst so you know you're in it. With the execution sandbox also on, the
+  whole source tree is mounted at <code>/src</code> inside the in-browser Linux
+  VM so the assistant can explore it with real shell commands.<br>
   <b>Off (default):</b> implementation questions are answered like any other
   research question.<br>
   The source is public on GitHub; this knob is about keeping the source
@@ -347,7 +346,7 @@ export function wireDeveloperKnob(ctx) {
       // write, so a rejected save leaves the palette untouched.
       applyDeveloperTheme(on);
       status.textContent = on
-        ? "Introspection is on — the amethyst skin is on, and asking about this site's own source code answers from the deployed source."
+        ? "Introspection is on — the composer pane turns amethyst, and asking about this site's own source code answers from the deployed source."
         : "Introspection is off.";
     } catch (err) {
       knob.checked = !on;
