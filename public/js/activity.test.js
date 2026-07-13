@@ -6,6 +6,7 @@ import {
   formatStatsLine,
   sanitizeResearchEvent,
   searchServiceName,
+  shellRunOutputText,
   zoomToFov,
 } from "./activity-core.js";
 
@@ -200,6 +201,29 @@ test("zoomToFov maps SDK zoom to the Static API's fov range (10-120)", () => {
   assert.equal(zoomToFov(5), 10); // 180/32 ≈ 5.6, clamped up to 10
   assert.equal(zoomToFov(undefined), 90); // non-finite defaults to zoom 1
   assert.equal(zoomToFov("x"), 90);
+});
+
+// ---- shellRunOutputText (the expanded sandbox command's output body) --------
+
+test("shellRunOutputText returns stdout alone when there's no stderr", () => {
+  assert.equal(shellRunOutputText({ stdout: "bin\nboot\n", stderr: "" }), "bin\nboot");
+});
+
+test("shellRunOutputText returns stderr alone when there's no stdout", () => {
+  assert.equal(shellRunOutputText({ stdout: "", stderr: "No such file\n" }), "No such file");
+});
+
+test("shellRunOutputText labels both streams when both are present", () => {
+  assert.equal(
+    shellRunOutputText({ stdout: "ok\n", stderr: "warn\n" }),
+    "stdout:\nok\n\nstderr:\nwarn",
+  );
+});
+
+test("shellRunOutputText reports no output explicitly, and is safe on junk", () => {
+  assert.equal(shellRunOutputText({ stdout: "", stderr: "" }), "(no output)");
+  assert.equal(shellRunOutputText(null), "(no output)");
+  assert.equal(shellRunOutputText({}), "(no output)");
 });
 
 test("searchServiceName prefers the event's service, falling back to web wording", () => {
