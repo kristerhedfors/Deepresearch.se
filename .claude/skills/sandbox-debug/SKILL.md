@@ -130,6 +130,19 @@ with `user_id`, `ua`):
   boot here at all — an isolation problem, not a boot hang; see the
   execution-sandbox skill's COEP section).
 - `sandbox.boot_done` `{ms, files, bytes, project}` — success.
+- `sandbox.exec_timeout` `{ms, command}` — a boot SUCCEEDED but a single guest
+  command ran past `EXEC_TIMEOUT_MS` (30 s) and was treated as wedged. Distinct
+  from a boot hang: the VM is up, the label sits on `Sandbox › $ <command>` (the
+  command was fed to the backdrop but never returned its output). Cause is a
+  guest read that blocks forever — a mount/device stall on some environments
+  (seen as a `cat` on a file whose backing device never returns, sometimes with
+  inconsistent FS metadata: link count 0, a regular file matched by a `*/`
+  glob). CheerpX can't kill a process, so `execInSandbox` **fails soft**: the VM
+  is discarded (`resetSandbox`), the command returns exit 124, the shell loop
+  ends, and synthesis still runs with the transcript so far — never leaving the
+  request hung with no answer. warn-level → always surfaces. `command` is the
+  wedged command (clipped). Added 2026-07-13 to close the "stuck at $ cat …"
+  wedge (the exec path had no ceiling; only the boot did).
 - `sandbox.debug_toggle` `{on}` — the verbose switch flipped.
 - `sandbox.fs.*` — the file-mount events (see the execution-sandbox skill).
 
