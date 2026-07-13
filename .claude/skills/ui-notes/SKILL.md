@@ -3,9 +3,11 @@ name: ui-notes
 description: >-
   Load when changing the client UI (public/ — index.html, css/app.css, js/*.js),
   the composer/header/floating chrome, the PDF report (report.js), document/image
-  attachments and metadata extraction (exif.js, docs.js), the account panel /
-  message center / privacy notice, or the /help/ /build/ /story/ /architecture/
-  /welcome/ static pages and the public (no-auth) surface.
+  attachments and metadata extraction (exif.js, docs.js), the conversation
+  embeds registry (embeds.js) and the time-budget slider scale (timescale.js),
+  the account panel / message center / privacy notice, or the /help/ /build/
+  /story/ /architecture/ /welcome/ static pages and the public (no-auth)
+  surface.
 ---
 
 # UI notes

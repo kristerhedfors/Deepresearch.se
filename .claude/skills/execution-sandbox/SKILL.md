@@ -5,8 +5,9 @@ description: >-
   the bash-lite agent — the `bash_lite_mcp` knob (DRS) / `bashLite` (DRC) — or
   anything touching public/js/bash-core.js (the shared pure core),
   src/bash-agent.js (its server façade), src/bash-api.js,
-  public/js/sandbox.js, public/js/bash-agent.js (the DRS driver), the
-  /api/bash/step endpoint, the shell transcript in the pipeline/synthesis, the
+  public/js/sandbox.js, public/js/boot-messages.js (the rotating boot-bar
+  quips shown while the VM boots), public/js/bash-agent.js (the DRS driver),
+  the /api/bash/step endpoint, the shell transcript in the pipeline/synthesis, the
   cross-origin-isolation (COEP) headers, or the CheerpX WASM Linux VM. Covers
   the client-orchestrated agentic loop, the fenced-block (no-function-calling)
   convention, the fail-soft contract, EN+SV intent parity, and the live
