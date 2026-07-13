@@ -4,11 +4,14 @@
 // sizes — untwists into umbrella canopies, gets its contours drawn and its
 // color removed until only a wire drawing remains. The camera then swings a
 // quarter circle down from the top view while the now-3D wireframe umbrellas
-// hang in the sky — and THEN they turn to life: rich, wildly varying
-// VICTORIAN colors flood back into each canopy (every umbrella its own hue),
-// gilt ribs gleam over deep gored panels, and beaded fringe unspools and
-// dangles, swaying, from every scalloped rim. The umbrella is the tier's own
-// symbol: DRC is the sheltered, all-client-side side of the site.
+// hang in the sky — and THEN they turn to life: soft color floods back into
+// each canopy in a WHITE-AND-PINK palette (every umbrella its own shade), the
+// crowd deliberately varied in SHAPE (flat domes, tall pagodas, shallow or
+// deeply frilled edges), each finished with a THICK DECORATED BORDER ringing
+// the rim — a contrasting band studded with picot beads — and beaded fringe
+// that unspools and dangles, swaying, from the scalloped edge. The umbrella
+// is the tier's own symbol: DRC is the sheltered, all-client-side side of
+// the site.
 //
 // Structured like every DRC module: a PURE core (the timeline parameters and
 // the 3D geometry — everything below `playUmbrellaIntro`) that runs in Node
@@ -162,19 +165,28 @@ export function project(p, cam) {
 }
 
 // The fleet: a handful of umbrellas in deliberately different sizes, spins
-// and directions ("a bunch of them, in different sizes"). fx/fy are
-// viewport fractions of the top-view scatter; zLift is how high each one
-// hangs in the sky once the camera drops (fraction of the viewport height);
-// delay staggers their appearance at the start; `col` is the deep Victorian
-// canopy color it wakes up into during the revival — deliberately far apart
-// on the wheel so the crowd reads as "very, very varying colors".
+// and directions ("a bunch of them, in different sizes"). fx/fy are viewport
+// fractions of the top-view scatter; zLift is how high each one hangs in the
+// sky once the camera drops (fraction of the viewport height); delay staggers
+// their appearance at the start. The revival dresses each one in a
+// WHITE-AND-PINK scheme — `col` is its canopy, `alt` the alternating gore,
+// `border` the contrasting rim band (all kept in the pink/white family so the
+// crowd stays on-palette) — and a distinct SHAPE: `dome` is the canopy height
+// (fraction of radius), `pagoda` blends a rounded dome (0) toward a pointed
+// pagoda (1), and `scallop` is how deeply its edge frills.
 export const FLEET = [
-  { fx: 0.30, fy: 0.34, s: 0.335, speed: 1.0, dir: 1, phase: 0.0, zLift: 0.55, delay: 0, col: "#9e1f3d" }, // crimson
-  { fx: 0.72, fy: 0.24, s: 0.215, speed: 1.35, dir: -1, phase: 1.7, zLift: 0.95, delay: 260, col: "#136b4a" }, // emerald
-  { fx: 0.55, fy: 0.64, s: 0.42, speed: 0.8, dir: 1, phase: 3.1, zLift: 0.18, delay: 520, col: "#5a2b86" }, // royal purple
-  { fx: 0.15, fy: 0.74, s: 0.175, speed: 1.6, dir: -1, phase: 4.2, zLift: 1.25, delay: 780, col: "#0f5f6e" }, // peacock teal
-  { fx: 0.87, fy: 0.68, s: 0.26, speed: 1.15, dir: 1, phase: 2.3, zLift: 0.75, delay: 1040, col: "#6b1226" }, // oxblood
-  { fx: 0.43, fy: 0.11, s: 0.145, speed: 1.8, dir: -1, phase: 5.0, zLift: 1.6, delay: 1300, col: "#28356f" }, // indigo
+  { fx: 0.30, fy: 0.34, s: 0.335, speed: 1.0, dir: 1, phase: 0.0, zLift: 0.55, delay: 0,
+    col: "#e06c8c", alt: "#f3aec1", border: "#fff2f6", dome: 0.50, pagoda: 0.15, scallop: 0.20 }, // deep rose, white rim
+  { fx: 0.72, fy: 0.24, s: 0.215, speed: 1.35, dir: -1, phase: 1.7, zLift: 0.95, delay: 260,
+    col: "#fff8fb", alt: "#f6bfd0", border: "#e5789a", dome: 0.34, pagoda: 0.00, scallop: 0.10 }, // white, flat dome
+  { fx: 0.55, fy: 0.64, s: 0.42, speed: 0.8, dir: 1, phase: 3.1, zLift: 0.18, delay: 520,
+    col: "#f7c6d6", alt: "#ffffff", border: "#d15c7e", dome: 0.58, pagoda: 0.55, scallop: 0.16 }, // blush, tall pagoda
+  { fx: 0.15, fy: 0.74, s: 0.175, speed: 1.6, dir: -1, phase: 4.2, zLift: 1.25, delay: 780,
+    col: "#ea9bb2", alt: "#fde4ec", border: "#ffffff", dome: 0.44, pagoda: 0.30, scallop: 0.24 }, // rose, deeply frilled
+  { fx: 0.87, fy: 0.68, s: 0.26, speed: 1.15, dir: 1, phase: 2.3, zLift: 0.75, delay: 1040,
+    col: "#f4b8c8", alt: "#fff9fc", border: "#df6e8e", dome: 0.40, pagoda: 0.70, scallop: 0.13 }, // pale pink, pointed
+  { fx: 0.43, fy: 0.11, s: 0.145, speed: 1.8, dir: -1, phase: 5.0, zLift: 1.6, delay: 1300,
+    col: "#ffffff", alt: "#efa8bd", border: "#e56d94", dome: 0.38, pagoda: 0.10, scallop: 0.18 }, // white, pink rim
 ];
 
 // ---- the DOM layer (browser only) --------------------------------------------------
@@ -183,8 +195,8 @@ const YELLOW = "#f5c518"; // the logotype's golden swirl
 const BLUE = "#1a56b0"; // the logotype's flag-blue field
 const INK = "#3d3418"; // drc.css --text: the wire drawing's ink
 const KHAKI = "#c3b091"; // drc.css --bg
-const GOLD = "#e3c26a"; // gilt rib / brass fringe trim of the revived canopy
-const WOOD = "#5b3a1e"; // the handle's polished-wood shaft, once alive
+const CREAM = "#fff4f8"; // the picot beads & fringe tassels of the revived rim
+const HANDLE = "#9c6472"; // the handle's dusty-rose shaft, once alive (on-palette)
 
 /** "#rrggbb" → [r,g,b]. @param {string} c */
 function hex(c) {
@@ -198,11 +210,6 @@ function lerpCol(c1, c2, t) {
   const a = hex(c1),
     b = hex(c2);
   return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
-}
-/** Darken (f<1) / lighten (f>1) a hex color. @param {string} c @param {number} f */
-function shade(c, f) {
-  const a = hex(c);
-  return rgb([Math.min(255, a[0] * f), Math.min(255, a[1] * f), Math.min(255, a[2] * f)]);
 }
 
 let playing = false;
@@ -317,7 +324,16 @@ export function playUmbrellaIntro(opts = {}) {
 
       const pulse = 1 + 0.14 * P.pulse * Math.sin(t * 0.0023 * u.speed + u.phase);
       const R = u.s * S * 0.55 * (0.6 + 0.4 * appear) * pulse;
-      const domeH = DOME_FRAC * R;
+      // Per-umbrella shape: canopy height, edge frill depth, and how far the
+      // profile leans from a rounded dome toward a pointed pagoda.
+      const domeH = (u.dome ?? DOME_FRAC) * R;
+      const sc = u.scallop ?? SCALLOP_DEPTH;
+      const pg = clamp01(u.pagoda ?? 0);
+      // Blended dome height at radius r: rounded (1-r²) ↔ pointed (1-r)²;
+      // apex = domeH at r=0, rim = 0 at r=1 for both, so the fringe still
+      // hangs from z=0 whatever the shape.
+      const domeZ = (/** @type {number} */ r) =>
+        domeH * ((1 - pg) * (1 - r * r) + pg * (1 - r) * (1 - r));
       const swayAmp = 0.11 * P.camP;
       const rx = swayAmp * Math.sin(t * 0.0011 + u.phase);
       const ry = 0.8 * swayAmp * Math.cos(t * 0.0009 + u.phase * 1.4);
@@ -341,7 +357,7 @@ export function playUmbrellaIntro(opts = {}) {
         const a = theta + twistOffset(rFrac, P.twist) + u.spin;
         const r = rFrac * R * (edgeF ?? 1);
         return toScreen(
-          { x: r * Math.cos(a), y: r * Math.sin(a), z: canopyZ(rFrac, domeH) },
+          { x: r * Math.cos(a), y: r * Math.sin(a), z: domeZ(rFrac) },
           f
         );
       };
@@ -366,7 +382,7 @@ export function playUmbrellaIntro(opts = {}) {
           }
           for (let k = 0; k <= 10; k++) {
             const fr = k / 10;
-            const p = pt(1, a0 + fr * panelA, scallopFactor(fr, P.scallop, SCALLOP_DEPTH));
+            const p = pt(1, a0 + fr * panelA, scallopFactor(fr, P.scallop, sc));
             ctx.lineTo(p.x, p.y);
           }
           for (let k = 8; k >= 0; k--) {
@@ -384,10 +400,45 @@ export function playUmbrellaIntro(opts = {}) {
         fillPanels(P.fill * appear, (i) => (i % 2 ? BLUE : YELLOW));
       }
       if (P.revive > 0.01) {
-        // Alive: this umbrella's own deep hue, gored two-tone (a darker
-        // alternate panel) — the classic Victorian gored canopy.
-        const dark = shade(u.col, 0.72);
-        fillPanels(smooth(P.revive) * appear, (i) => (i % 2 ? dark : u.col));
+        const rv = smooth(P.revive) * appear;
+        // Alive: this umbrella's own pink/white canopy, gored two-tone.
+        fillPanels(smooth(P.revive) * appear, (i) => (i % 2 ? u.alt : u.col));
+
+        // -- the thick decorated border ring round the whole rim -----------
+        // A contrasting band from rFrac 0.82 out to the scalloped edge, then
+        // a row of picot beads sitting on it — "a decoration along the outer
+        // border of the circle".
+        const seg = PANELS * 14;
+        ctx.globalAlpha = rv;
+        ctx.fillStyle = u.border;
+        ctx.beginPath();
+        for (let k = 0; k <= seg; k++) {
+          const ang = (k / seg) * 2 * Math.PI;
+          const frac = (ang / panelA) % 1;
+          const p = pt(1, ang, scallopFactor(frac, P.scallop, sc));
+          if (k === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        for (let k = seg; k >= 0; k--) {
+          const ang = (k / seg) * 2 * Math.PI;
+          const p = pt(0.82, ang);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Picot beads studding the band (only once it reads in 3D).
+        if (P.shaft > 0.12) {
+          const beads = PANELS * 3;
+          const beadR = Math.max(1.3, R * 0.02);
+          ctx.fillStyle = CREAM;
+          for (let k = 0; k < beads; k++) {
+            const ang = (k / beads) * 2 * Math.PI;
+            const p = pt(0.91, ang);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, beadR, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }
       }
 
       // -- the wire drawing (contours) — gilds as the canopy comes alive ---
@@ -397,10 +448,10 @@ export function playUmbrellaIntro(opts = {}) {
         const ribP = clamp01(P.wire / 0.45);
         const ringP = clamp01((P.wire - 0.25) / 0.45);
         const edgeP = clamp01((P.wire - 0.5) / 0.5);
-        // Ink while it is only a wire drawing; warms to gilt (thicker) as
-        // the Victorian color floods in over it.
+        // Ink while it is only a wire drawing; warms (and thickens) toward
+        // this canopy's own trim color as the pink/white floods in over it.
         const gild = smooth(P.revive);
-        const trim = lerpCol(INK, GOLD, gild);
+        const trim = lerpCol(INK, u.border, gild);
         ctx.globalAlpha = appear;
         ctx.strokeStyle = trim;
         ctx.lineWidth = Math.max(1, R * (0.014 + 0.009 * gild));
@@ -443,12 +494,12 @@ export function playUmbrellaIntro(opts = {}) {
           const total = PANELS * perPanel;
           const steps = Math.ceil(total * edgeP);
           ctx.beginPath();
-          const p0 = pt(1, 0, scallopFactor(0, P.scallop, SCALLOP_DEPTH));
+          const p0 = pt(1, 0, scallopFactor(0, P.scallop, sc));
           ctx.moveTo(p0.x, p0.y);
           for (let k = 1; k <= steps; k++) {
             const panel = Math.floor((k - 1) / perPanel);
             const fr = (k - panel * perPanel) / perPanel;
-            const p = pt(1, (panel + fr) * panelA, scallopFactor(fr, P.scallop, SCALLOP_DEPTH));
+            const p = pt(1, (panel + fr) * panelA, scallopFactor(fr, P.scallop, sc));
             ctx.lineTo(p.x, p.y);
           }
           ctx.stroke();
@@ -457,8 +508,8 @@ export function playUmbrellaIntro(opts = {}) {
         // -- shaft, finial and crook handle: the third dimension -----------
         if (P.shaft > 0) {
           ctx.globalAlpha = appear * P.shaft;
-          // A stout Victorian shaft that warms to polished wood when alive.
-          ctx.strokeStyle = lerpCol(INK, WOOD, gild);
+          // A stout shaft that warms to a dusty-rose handle when alive.
+          ctx.strokeStyle = lerpCol(INK, HANDLE, gild);
           ctx.lineWidth = Math.max(1.4, R * (0.022 + 0.008 * gild));
           const axis = (/** @type {number} */ z) =>
             toScreen({ x: 0, y: 0, z }, f);
@@ -471,15 +522,15 @@ export function playUmbrellaIntro(opts = {}) {
           ctx.moveTo(apex.x, apex.y);
           ctx.lineTo(bottom.x, bottom.y);
           ctx.stroke();
-          // A brass finial knob at the very top, once gilded.
+          // A finial knob at the very top, in this canopy's trim, once alive.
           if (gild > 0.05) {
-            ctx.fillStyle = lerpCol(INK, GOLD, gild);
+            ctx.fillStyle = lerpCol(INK, u.border, gild);
             ctx.globalAlpha = appear * P.shaft * gild;
             ctx.beginPath();
             ctx.arc(tip.x, tip.y, Math.max(1.4, R * 0.028), 0, 2 * Math.PI);
             ctx.fill();
             ctx.globalAlpha = appear * P.shaft;
-            ctx.strokeStyle = lerpCol(INK, WOOD, gild);
+            ctx.strokeStyle = lerpCol(INK, HANDLE, gild);
           }
           // The J-crook handle, in the plane the spin carries around.
           const hr = 0.13 * R;
@@ -513,14 +564,14 @@ export function playUmbrellaIntro(opts = {}) {
           const maxLen = 0.2 * R;
           const len = maxLen * P.deco;
           ctx.lineCap = "round";
-          ctx.strokeStyle = lerpCol(shade(u.col, 0.55), GOLD, 0.55); // brass thread
+          ctx.strokeStyle = u.border; // fringe thread in the rim's trim color
           ctx.lineWidth = Math.max(1, R * 0.012);
           const tasselR = Math.max(1.4, R * 0.024);
           for (let i = 0; i < PANELS; i++) {
             for (let j = 0; j < strandsPerPanel; j++) {
               const fr = (j + 0.5) / strandsPerPanel;
               const a = (i + fr) * panelA + u.spin;
-              const edgeF = scallopFactor(fr, P.scallop, SCALLOP_DEPTH);
+              const edgeF = scallopFactor(fr, P.scallop, sc);
               const rr = R * edgeF;
               const bx = rr * Math.cos(a);
               const by = rr * Math.sin(a);
@@ -528,7 +579,7 @@ export function playUmbrellaIntro(opts = {}) {
               const swing = 0.4 * Math.sin(t * 0.004 + a * 2.6 + u.phase * 1.3);
               const tx = -Math.sin(a); // tangential unit (x)
               const ty = Math.cos(a); // tangential unit (y)
-              const rimZ = canopyZ(1, domeH); // 0 — the rim
+              const rimZ = domeZ(1); // 0 — the rim
               const rim = toScreen({ x: bx, y: by, z: rimZ }, f);
               const mid = toScreen(
                 { x: bx + swing * len * 0.5 * tx, y: by + swing * len * 0.5 * ty, z: rimZ - len * 0.5 },
@@ -544,7 +595,7 @@ export function playUmbrellaIntro(opts = {}) {
               ctx.quadraticCurveTo(mid.x, mid.y, tip.x, tip.y);
               ctx.stroke();
               // The tassel bead at the tip.
-              ctx.fillStyle = GOLD;
+              ctx.fillStyle = CREAM;
               ctx.beginPath();
               ctx.arc(tip.x, tip.y, tasselR, 0, 2 * Math.PI);
               ctx.fill();
