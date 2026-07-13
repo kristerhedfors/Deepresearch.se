@@ -46,21 +46,33 @@ git log --oneline origin/main..HEAD    # what this PR will actually contain
   branch is dead. Branch fresh off `main` and move the work there (merge-branches
   Step 5 rule). The `check-merged-branches.mjs` guard also catches this.
 
-## Step 1 — regenerate committed artifacts IF source changed (maybe)
+## Step 1 — regenerate committed artifacts IF tracked text changed (maybe)
 
-If the diff touches `src/` or `public/` source that the introspection snapshot
-indexes, the committed artifacts must be rebuilt IN THE SAME PR or
-`src/introspect.test.js`'s freshness checks fail:
+The introspection snapshot walks **every git-tracked text file** (`bundle-source.mjs`
+runs `git ls-files`), not just `src/`/`public/` — so a change to `CLAUDE.md`,
+a `.claude/skills/*` file, or a `docs/*` file makes it stale just as a code
+change does. If the diff touches ANY tracked text file (i.e. almost always,
+excluding a pure binary/artifact-only change), rebuild both committed artifacts
+IN THE SAME PR or `src/introspect.test.js`'s freshness checks fail:
 
 ```bash
-git diff --name-only origin/main...HEAD | grep -qE '^(src/|public/)' && {
-  npm run bundle && npm run bundle:rag   # source-snapshot.json + source-rag.json
-}
+# rebuild whenever any tracked text file changed (the common case).
+# The snapshot excludes only lockfiles, generated fixtures, binaries, and
+# itself — see bundle-source.mjs — so a code-free docs/skill edit still needs it.
+npm run bundle && npm run bundle:rag   # source-snapshot.json + source-rag.json
 ```
 
 Order matters: `bundle` first (snapshot), then `bundle:rag` (index refs the
-snapshot). Never hand-edit those two JSON files. If nothing under `src/`/`public/`
-changed, skip.
+snapshot). Never hand-edit those two JSON files. `bundle:rag` re-embeds only the
+changed files' chunks via Berget, so it needs network + the embedding key; if
+that's unavailable, the snapshot check still gates and the rag ref-check passes,
+but flag it. The ONLY time you can skip Step 1 is a diff that touches no tracked
+text file the snapshot indexes (e.g. binary assets only) — when unsure, rebuild:
+it's cheap and the Step 2 freshness check will fail you if you guessed wrong.
+
+> Editing this skill (or any tracked text) in Step 1 itself changes a snapshotted
+> file — so run the bundle AFTER your last content edit, then commit the artifacts
+> alongside it in Step 3.
 
 ## Step 2 — the green gate (never skip)
 
