@@ -81,18 +81,51 @@ let projectDev = null;
 let _fsLog = [];
 let _fsSummary = null;
 
+// Verbose boot-timeline debugging (see the sandbox-debug skill). OFF by default
+// (byte-identical to the old buffered behavior). When ON: every sblog event —
+// including the debug-level boot-stage breadcrumbs — is promoted to info so it
+// surfaces in Workers Logs even when the server is NOT running LOG_LEVEL=debug,
+// AND the buffer is flushed after each event so a boot HANG (an await that never
+// resolves, so boot_done/boot_failed never flush) still ships every breadcrumb
+// it reached. Toggle: localStorage dr_sandbox_debug="1", the ?sbdebug=1 URL
+// param, or window.__DR_SANDBOX_DEBUG(true|false) from the device console.
+let _sbDebug = false;
+try {
+  if (typeof localStorage !== "undefined" && localStorage.getItem("dr_sandbox_debug") === "1") _sbDebug = true;
+  if (typeof location !== "undefined" && /[?&]sbdebug=1(&|$)/.test(location.search || "")) _sbDebug = true;
+} catch { /* storage/location unavailable */ }
+
+// Boot-stage tracking for the stall watchdog: the last stage entered, the boot
+// start time, and the interval handle that heartbeats a stalled boot.
+let _bootStage = "";
+let _bootT0 = 0;
+/** @type {any} */
+let _bootWatch = null;
+// How long a boot may sit in one stage before the watchdog reports it stalled
+// (and keeps reporting, every interval, until the boot resolves). Deliberately
+// short relative to a real boot's a-few-seconds so a genuine hang surfaces fast.
+const BOOT_STALL_MS = 12000;
+
 /**
  * @param {"debug"|"info"|"warn"|"error"} level
  * @param {string} event dotted name, e.g. "sandbox.fs.mount"
  * @param {Record<string, any>} [fields]
  */
 export function sblog(level, event, fields = {}) {
-  _fsLog.push({ level, event, ...fields });
+  // Verbose mode promotes debug breadcrumbs to info so they surface without the
+  // server running LOG_LEVEL=debug (the boot-stage timeline is otherwise silent
+  // in production). Off, this is a no-op — lvl === level.
+  const lvl = _sbDebug && level === "debug" ? "info" : level;
+  _fsLog.push({ level: lvl, event, ...fields });
   if (_fsLog.length > 300) _fsLog.shift();
   try {
     const fn = /** @type {any} */ (console)[level] || console.log;
     fn.call(console, "[sandbox] " + event, fields);
   } catch { /* console unavailable */ }
+  // Verbose mode flushes eagerly: a boot HANG never reaches boot_done/boot_failed
+  // (the only buffered-mode flush points), so without this its breadcrumbs would
+  // die in the browser. Beacons are fail-soft and coalesce server-side.
+  if (_sbDebug) flushSandboxLog();
 }
 
 /** The compact last-mount summary folded into /api/chat client_diag. */
@@ -125,6 +158,49 @@ function flushSandboxLog() {
       }).catch(() => {});
     }
   } catch { /* telemetry must never break the sandbox */ }
+}
+
+/**
+ * Turn verbose sandbox debugging on/off (persists in localStorage). Call with
+ * no argument to read the current state. Exposed as window.__DR_SANDBOX_DEBUG so
+ * the operator can flip it from a real device's console. See the sandbox-debug
+ * skill.
+ * @param {boolean} [on]
+ * @returns {boolean}
+ */
+export function sandboxDebug(on) {
+  if (on === undefined) return _sbDebug;
+  _sbDebug = !!on;
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem("dr_sandbox_debug", _sbDebug ? "1" : "0");
+  } catch { /* storage unavailable */ }
+  // Emit + flush the toggle itself so the log URL shows exactly when it flipped.
+  sblog("info", "sandbox.debug_toggle", { on: _sbDebug });
+  flushSandboxLog();
+  return _sbDebug;
+}
+if (typeof window !== "undefined") {
+  try { /** @type {any} */ (window).__DR_SANDBOX_DEBUG = sandboxDebug; } catch { /* ignore */ }
+}
+
+// The stall watchdog: fires on a timer INDEPENDENT of the boot await-chain, so a
+// boot that never resolves still ships a signal naming the exact stage it stuck
+// on (warn-level → always surfaces, even with verbose mode off) and flushes it —
+// the buffered path structurally cannot flush a hang. Re-arms every interval so
+// a long hang produces repeated heartbeats, not one lost line. Caveat: a
+// synchronous WASM busy-loop would starve the timer; a network/await hang (the
+// realistic "booting sandbox" spinner) lets it fire.
+function startBootWatchdog() {
+  stopBootWatchdog();
+  try {
+    _bootWatch = setInterval(() => {
+      sblog("warn", "sandbox.boot_stalled", { stage: _bootStage, ms: _bootT0 ? Date.now() - _bootT0 : 0 });
+      flushSandboxLog();
+    }, BOOT_STALL_MS);
+  } catch { /* timers unavailable */ }
+}
+function stopBootWatchdog() {
+  try { if (_bootWatch) { clearInterval(_bootWatch); _bootWatch = null; } } catch { /* ignore */ }
 }
 
 /** Whether the sandbox CAN run here: cross-origin isolation is present. */
@@ -183,6 +259,13 @@ function buildPanel() {
 function setStatus(s) {
   vmState = s === "ready" || s === "booting" || s === "error" ? s : vmState;
   if (statusEl) statusEl.textContent = s;
+  // Boot-timeline breadcrumb: which stage we ENTERED, and how long since boot
+  // began. Debug-level so it's silent in production; the stall watchdog reports
+  // whichever stage is the last one recorded here. This is the record that
+  // turns a "booting sandbox" hang from a mystery into "stuck at connecting
+  // disk…".
+  _bootStage = s;
+  sblog("debug", "sandbox.boot_stage", { stage: s, ms: _bootT0 ? Date.now() - _bootT0 : 0 });
 }
 
 export function showSandbox() {
@@ -235,7 +318,8 @@ export function ensureSandboxBooted(fileProvider = null) {
   bootPromise = bootVM(fileProvider).catch((err) => {
     const msg = (/** @type {any} */ (err))?.message || String(err);
     console.error("[sandbox] boot failed", err);
-    sblog("error", "sandbox.boot_failed", { error: String(msg).slice(0, 200) });
+    stopBootWatchdog();
+    sblog("error", "sandbox.boot_failed", { error: String(msg).slice(0, 200), stage: _bootStage });
     setFsSummary({ ...(sandboxFsSummary() || {}), err: String(msg).slice(0, 200) });
     flushSandboxLog();
     setStatus("error");
@@ -249,9 +333,11 @@ export function ensureSandboxBooted(fileProvider = null) {
  */
 async function bootVM(fileProvider = null) {
   const t0 = Date.now();
+  _bootT0 = t0;
+  _bootStage = "boot_start";
   const coi = typeof window !== "undefined" && window.crossOriginIsolated === true;
   const sab = typeof SharedArrayBuffer !== "undefined";
-  sblog("info", "sandbox.boot_start", { coi, sab, provider: !!fileProvider });
+  sblog("info", "sandbox.boot_start", { coi, sab, provider: !!fileProvider, debug: _sbDebug });
   if (!sandboxSupported()) {
     sblog("warn", "sandbox.boot_unsupported", { coi, sab });
     setFsSummary({ n: 0, b: 0, proj: false, drop: 0, ms: Date.now() - t0, err: "not cross-origin isolated" });
@@ -264,6 +350,10 @@ async function bootVM(fileProvider = null) {
   // taking over the screen. The user can still open it by hand.
   buildPanel();
   setStatus("booting");
+  // Arm the stall watchdog now — everything after this point is an await that
+  // can hang (CDN scripts, disk fetch, Linux.create). If any never resolves, the
+  // watchdog still names the stuck stage and flushes it.
+  startBootWatchdog();
 
   await Promise.all([
     // The xterm stylesheet is purely cosmetic terminal styling — exec needs
@@ -386,6 +476,8 @@ async function bootVM(fileProvider = null) {
   cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
   setStatus("ready");
   vmState = "ready";
+  // Boot resolved — silence the stall watchdog before the (forever) shell loop.
+  stopBootWatchdog();
 
   // Expose the bridge for the agent loop and any test harness.
   window.__DR_SANDBOX = { ready: true, exec: execInSandbox };
