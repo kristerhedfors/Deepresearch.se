@@ -20,9 +20,10 @@
 /* Introspection mode's cue (the Se/cure tier). drc.js toggles `dev-mode` on the
    ROOT element when the introspection knob is on. Like the Se/rver twin it does
    NOT re-skin the khaki background or palette — the ONLY change is the composer
-   input pane, which picks up a RUBY glass tint with extra shine (see
-   `:root.dev-mode #composer` below). Ruby vs the Se/rver tier's amethyst keeps
-   the two tiers' introspection modes distinguishable; titanium is reserved for
+   input pane (plus the wordmark), which picks up a PURPLE (amethyst) glass tint
+   with extra shine (see `:root.dev-mode #composer` below). PURPLE is the shared
+   introspection cue across BOTH tiers — the same amethyst the Se/rver tier
+   uses; each tier just shifts to it from its own base. Titanium is reserved for
    TIN the mascot. */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -179,15 +180,15 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
-/* Introspection mode: the wordmark tail joins the purpur cue — the logo turns
-   crimson-purple to match the composer pane + tag, instead of its usual flag
-   blue. Scoped to `dev-mode`, so the tier's default blue branding is unchanged
-   when introspection is off. */
-:root.dev-mode .brand b { color: #9c1450; }
+/* Introspection mode: the wordmark tail joins the purple cue — the logo turns
+   amethyst to match the composer pane + tag, instead of its usual flag blue.
+   Scoped to `dev-mode`, so the tier's default blue branding is unchanged when
+   introspection is off. */
+:root.dev-mode .brand b { color: #5b3fa0; }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — only present while the
-   purpur introspection cue is active (root carries `dev-mode`). */
+   purple introspection cue is active (root carries `dev-mode`). */
 .introspection-tag {
   display: none;
   align-self: center;
@@ -196,7 +197,7 @@ header {
   font-weight: 600;
   letter-spacing: .18em;
   text-transform: lowercase;
-  color: #9c1450; /* purpur — ties the marker to the crimson-purple composer pane */
+  color: #5b3fa0; /* amethyst — the shared introspection purple, ties to the pane */
   opacity: .9;
   text-shadow: 0 1px 5px rgba(255, 255, 255, .55);
   pointer-events: none;
@@ -334,27 +335,27 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }
-/* Introspection mode: the composer becomes a deep, glossy PURPUR glass pane
-   (the Se/cure tier's introspection cue) — a rich crimson-purple (blood red
-   with a purple undertone) that pops against the muted khaki and stays clearly
-   distinct from the Se/rver tier's blue-violet amethyst. Saturated and fairly
-   UNIFORM (slight top→bottom deepen), the shine carried by a bright specular
-   top edge + a soft internal gloss, a crimson-purple edge (no white border),
-   and a deep drop shadow. Because the fill is saturated and dark, the pane's
-   own text goes LIGHT for contrast (below). Background only; the khaki field is
+/* Introspection mode: the composer becomes a saturated, glossy AMETHYST glass
+   pane — the SAME purple the Se/rver tier uses (public/css/app.css). PURPLE is
+   the shared "you're in introspection" cue across BOTH tiers; each tier just
+   shifts to it from its own base (khaki here, sky blue there). A rich, fairly
+   UNIFORM violet (slight top→bottom deepen), the shine carried by a bright
+   specular top edge + a soft internal gloss, a violet edge (no white border),
+   and a coloured drop shadow. Because the fill is saturated, the pane's own
+   text goes LIGHT for contrast (below). Background only; the khaki field is
    unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(200, 30, 80, .80) 0%, rgba(116, 8, 54, .90) 100%),
-    rgba(164, 18, 64, .70);
-  border: 1px solid rgba(208, 42, 96, .80);
+    linear-gradient(180deg, rgba(140, 108, 216, .74) 0%, rgba(92, 58, 176, .84) 100%),
+    rgba(120, 88, 202, .64);
+  border: 1px solid rgba(148, 116, 222, .74);
   box-shadow:
-    0 7px 28px rgba(84, 2, 40, .48),
+    0 7px 26px rgba(52, 24, 108, .44),
     inset 0 1px 0 rgba(255, 255, 255, .55),
-    inset 0 13px 26px rgba(255, 172, 196, .16);
+    inset 0 13px 26px rgba(216, 200, 255, .18);
 }
 /* Light foreground so the input text, placeholder and control-row labels stay
-   legible on the saturated ruby (the #model / attach / camera chips keep their
+   legible on the saturated amethyst (the #model / attach / camera chips keep their
    own light backgrounds, so their dark text is fine). */
 :root.dev-mode #composer textarea#input { color: #fff; }
 :root.dev-mode #composer textarea#input::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }

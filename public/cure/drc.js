@@ -849,12 +849,13 @@ if (themeMeta) {
   });
 }
 
-// Introspection cue: toggle `dev-mode` on the root so the composer pane picks
-// up its RUBY glass tint (drc.css `:root.dev-mode #composer`). The khaki
-// background and the iOS status-bar tint are deliberately left alone — only
-// the input pane changes, matching the Se/rver twin. developerMode lives in
-// the sealed project state, so the tint settles once that state loads (no PWA
-// cold-relaunch flash — a DRC session always opens its project first).
+// Introspection cue: toggle `dev-mode` on the root so the composer pane + logo
+// pick up the PURPLE (amethyst) glass tint (drc.css `:root.dev-mode #composer`)
+// — the shared introspection colour across both tiers. The khaki background and
+// the iOS status-bar tint are deliberately left alone — only the input pane and
+// wordmark change, matching the Se/rver twin. developerMode lives in the sealed
+// project state, so the tint settles once that state loads (no PWA cold-relaunch
+// flash — a DRC session always opens its project first).
 function applyIntrospectionTheme(on) {
   document.documentElement.classList.toggle("dev-mode", !!on);
 }
@@ -865,7 +866,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d20 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d21 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -939,8 +940,9 @@ $("input").addEventListener("input", () => {
 });
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the
-// composer pane RUBY (drc.css :root.dev-mode #composer) so the tier's mode is
-// unmistakable — the Se/rver twin turns its pane AMETHYST for the same purpose.
+// composer pane + logo PURPLE (drc.css :root.dev-mode #composer) so the tier's
+// mode is unmistakable — the same shared introspection purple the Se/rver twin
+// uses.
 $("devmode").checked = state.developerMode === true;
 applyIntrospectionTheme(state.developerMode === true);
 $("devmode").addEventListener("change", () => {
@@ -948,7 +950,7 @@ $("devmode").addEventListener("change", () => {
   applyIntrospectionTheme(state.developerMode === true);
   const st = $("devmodestatus");
   st.textContent = state.developerMode
-    ? "Introspection is on — the composer pane turns ruby; ask about this site's own source code to answer from the deployed source."
+    ? "Introspection is on — the composer pane turns purple; ask about this site's own source code to answer from the deployed source."
     : "Introspection is off.";
   saveState().catch(() => {});
 });
