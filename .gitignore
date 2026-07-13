@@ -230,3 +230,6 @@ tests/playwright-report/
 tests/model-eval-results/
 tests/eval-bench-results/
 tests/hf-bench-results/
+
+# Local scratch / one-off verification files (should live in the scratchpad dir)
+/scratch_*
