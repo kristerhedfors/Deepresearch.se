@@ -869,6 +869,13 @@ what docs claim); and update the skill list below plus the skill's
   (unit tests → live probes → bench A/B → ledger).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
+- **mcp-server** — the outbound MCP surface (`POST /mcp`, `src/mcp.js`): the
+  site exposed AS a `deep_research` tool other agents (Claude, Cursor) call.
+  The hand-rolled JSON-RPC 2.0 / Streamable-HTTP protocol, the pure-helpers-
+  static / pipeline-dynamic-import file-layout rule, how a tool call reuses
+  `chat.js`'s quota gate + split model routing + usage/billing recording,
+  adding/changing a tool, and the validation ladder (`mcp.test.js` → live
+  JSON-RPC probe). The strategic outbound edge from `docs/ARCHITECTURE-ROADMAP.md` §3.
 - **cache-helper** — every cache layer (browser no-cache policy, the
   CSS↔JS handshake, build stamps, Cloudflare edge propagation, the
   /api/pub 60s TTL, the Workers result cache, PWA staleness) and the

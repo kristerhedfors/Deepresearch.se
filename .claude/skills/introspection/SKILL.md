@@ -7,7 +7,9 @@ description: >-
   scripts/bundle-source.mjs, public/introspect/source-snapshot.json (the
   committed snapshot artifact), public/js/introspect-core.js (the shared pure
   core), public/js/introspect-ui.js (TIN the titanium mascot + the
-  private-vs-remote model picker), src/introspect.js (the DRS enrichment),
+  private-vs-remote model picker), public/js/dev-mode.js (the client
+  titanium-palette theme + the dr_dev_mode first-paint cache),
+  src/introspect.js (the DRS enrichment),
   the DRS private browser-direct route (stream.js maybePrivateIntrospection),
   the /src sandbox mount (sandbox-files.js planSourceMount), or the DRC
   developerMode knob. ALSO load when `npm test` fails on "source snapshot

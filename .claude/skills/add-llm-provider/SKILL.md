@@ -8,10 +8,11 @@ description: >-
   registry seam (src/providers.js), the catalog contract, the two worked
   examples (src/anthropic.js — adapt-at-the-wire SSE; src/openai.js —
   native wire, params-only), the split-model-routing constraint, secrets
-  and feature gating, and the validation ladder (unit tests → mock-HTTP
-  smoke → live probe → bench A/B). Also load when debugging why a
-  provider's models don't appear in the dropdown or answers fail on only
-  one provider.
+  and feature gating, the client dropdown (public/js/models.js) and its
+  country-of-processing flags (public/js/provider-region.js), and the
+  validation ladder (unit tests → mock-HTTP smoke → live probe → bench A/B).
+  Also load when debugging why a provider's models don't appear in the
+  dropdown or answers fail on only one provider.
 ---
 
 # Adding an LLM provider (or new models)
