@@ -43,6 +43,18 @@ export function clampAnimMult(v) {
   return Math.min(4, Math.max(0.25, n));
 }
 
+// The reverse-playback EASTER EGG: once every EASTER_EGG_EVERY times the intro
+// plays, it runs the WHOLE timeline backwards (bloomed umbrellas rewind down to
+// the logo vortex) instead of forwards. A counter in localStorage
+// (`dr_intro_plays`) drives it; this pure predicate is the trigger, split out
+// so it's Node-tested. NOTE this is the /cure INTRO only — the loading-symbol
+// spinners always boomerang (forward-then-back), a separate behavior.
+export const EASTER_EGG_EVERY = 40;
+/** @param {number} playCount */
+export function easterEggReverse(playCount) {
+  return Number.isInteger(playCount) && playCount > 0 && playCount % EASTER_EGG_EVERY === 0;
+}
+
 // Phase boundaries in ms of DESIGN time (divide by BASE_SPEED × multiplier
 // for wall-clock). One shared clock; every visual parameter below is
 // a ramp between two of these marks, so the phases overlap smoothly instead
@@ -233,13 +245,32 @@ const decoInk = (u) => (lum(u.col) > 210 ? u.border : CREAM);
 
 let playing = false;
 
+/** Resolve whether THIS play runs backwards. An explicit `opts.reverse`
+ * boolean wins (the `?anim=rev` verification path) and leaves the counter
+ * untouched; otherwise bump the persistent play counter and fire the egg on
+ * every EASTER_EGG_EVERY-th play. Fail-soft: storage blocked → forwards.
+ * @param {{ reverse?: boolean }} opts */
+function resolveReverse(opts) {
+  if (typeof opts.reverse === "boolean") return opts.reverse;
+  try {
+    const KEY = "dr_intro_plays";
+    const n = (parseInt(localStorage.getItem(KEY) || "0", 10) || 0) + 1;
+    localStorage.setItem(KEY, String(n));
+    return easterEggReverse(n);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Plays the intro once over the whole viewport. Resolves the caller via
  * onDone when finished or skipped (tap anywhere). Never throws into the
  * caller — animation failure must not cost a chat. `speed` is the admin
  * multiplier from /api/anim (1 = default; the 2.5× BASE_SPEED is applied
- * here on top of it).
- * @param {{ onDone?: () => void, speed?: number }} [opts]
+ * here on top of it). `reverse` forces the direction (else the easter-egg
+ * counter decides): a REVERSE play rewinds the whole timeline — bloomed
+ * umbrellas fold back down into the spinning logo vortex.
+ * @param {{ onDone?: () => void, speed?: number, reverse?: boolean }} [opts]
  */
 export function playUmbrellaIntro(opts = {}) {
   const onDone = opts.onDone || (() => {});
@@ -249,6 +280,8 @@ export function playUmbrellaIntro(opts = {}) {
     return;
   }
   playing = true;
+  // Once every 40 plays the whole intro runs backwards (easter egg).
+  const reverse = resolveReverse(opts);
 
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
@@ -312,12 +345,15 @@ export function playUmbrellaIntro(opts = {}) {
   function frame(now) {
     if (!ctx) return cleanup();
     // Design-time clock: real elapsed ms × the speed (BASE_SPEED × the
-    // admin multiplier). dt drives the spin integration, so it scales too.
-    const dt = Math.min(50, now - last) * clockRate;
+    // admin multiplier). `prog` is the one-way playback progress; on a REVERSE
+    // play the timeline t counts DOWN from the end, so the whole thing rewinds.
+    // dt (spin integration) carries the reverse sign, so the spin unwinds too.
+    const prog = (now - start) * clockRate;
+    if (prog >= T.end) return cleanup();
+    const dt = Math.min(50, now - last) * clockRate * (reverse ? -1 : 1);
     last = now;
-    const t = (now - start) * clockRate;
+    const t = reverse ? T.end - prog : prog;
     const P = paramsAt(t);
-    if (P.done) return cleanup();
 
     const W = window.innerWidth;
     const H = window.innerHeight;
@@ -777,7 +813,10 @@ export function playUmbrellaIntro(opts = {}) {
     ctx.fillText("tap to skip", W / 2, H - 18);
     ctx.globalAlpha = 1;
 
-    canvas.style.opacity = String(P.fade);
+    // Forward: the timeline's own tail fade (P.fade). Reverse: P.fade doubles
+    // as the fade-IN (t starts at the faded end) and we add a fade-OUT as the
+    // rewind lands back on the vortex, so both ends resolve cleanly.
+    canvas.style.opacity = String(reverse ? Math.min(P.fade, smooth(t / 700)) : P.fade);
     raf = requestAnimationFrame(frame);
   }
 

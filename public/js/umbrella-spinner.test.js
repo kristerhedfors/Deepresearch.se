@@ -5,29 +5,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loopedDesignTime, spinnerStyle } from "./umbrella-spinner.js";
+import { boomerangDesignTime, spinnerStyle } from "./umbrella-spinner.js";
 import { T, FLEET, BASE_SPEED } from "../cure/umbrella.js";
 
-test("loopedDesignTime wraps the clock into [0, cycle)", () => {
-  const rate = BASE_SPEED; // design-ms per real-ms
-  // A tiny elapsed stays in the swirl phase.
-  const early = loopedDesignTime(100, rate);
-  assert.ok(early >= 0 && early < T.end);
-  assert.ok(early < T.swirlEnd, "the first moments are still the swirl");
-  // Exactly one design cycle of real time wraps back near 0.
-  const oneCycleReal = T.end / rate;
-  const wrapped = loopedDesignTime(oneCycleReal, rate);
-  assert.ok(wrapped < 1e-6 || Math.abs(wrapped - T.end) < 1e-6);
-  // Well past several cycles still lands inside the range.
-  const late = loopedDesignTime(oneCycleReal * 3.5 + 123, rate);
-  assert.ok(late >= 0 && late < T.end);
+test("boomerangDesignTime ramps 0→cycle→0 (a triangle wave)", () => {
+  const c = 1000;
+  // Rises linearly on the forward sweep.
+  assert.equal(boomerangDesignTime(0, 1, c), 0);
+  assert.equal(boomerangDesignTime(250, 1, c), 250);
+  // Apex at the half-period.
+  assert.equal(boomerangDesignTime(1000, 1, c), 1000);
+  // Falls back on the rewind sweep — same design-time as on the way up.
+  assert.equal(boomerangDesignTime(1250, 1, c), 750);
+  assert.equal(boomerangDesignTime(1750, 1, c), 250);
+  // Full period returns to 0, then repeats.
+  assert.equal(boomerangDesignTime(2000, 1, c), 0);
+  assert.equal(boomerangDesignTime(2250, 1, c), 250);
 });
 
-test("loopedDesignTime clamps negatives and honors a custom cycle", () => {
-  assert.equal(loopedDesignTime(-500, BASE_SPEED), 0);
-  const t = loopedDesignTime(1000, 1, 400); // real 1000ms, rate 1 → 1000 design
-  assert.ok(t >= 0 && t < 400);
-  assert.equal(t, 1000 % 400);
+test("boomerangDesignTime stays within [0, cycle] and honors clockRate", () => {
+  const c = T.fadeStart;
+  for (let ms = 0; ms < 30000; ms += 137) {
+    const t = boomerangDesignTime(ms, BASE_SPEED, c);
+    assert.ok(t >= 0 && t <= c, `t=${t} out of [0, ${c}] at ${ms}ms`);
+  }
+  // clockRate scales the real→design mapping.
+  assert.equal(boomerangDesignTime(100, 2, 1000), 200);
+});
+
+test("boomerangDesignTime clamps negatives", () => {
+  assert.equal(boomerangDesignTime(-500, BASE_SPEED), 0);
 });
 
 test("spinnerStyle cycles the fleet so adjacent slots differ", () => {

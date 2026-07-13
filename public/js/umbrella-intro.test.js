@@ -22,6 +22,8 @@ import {
   MOTIFS,
   BASE_SPEED,
   clampAnimMult,
+  EASTER_EGG_EVERY,
+  easterEggReverse,
 } from "../cure/umbrella.js";
 
 test("timeline marks are ordered and phases overlap only as designed", () => {
@@ -261,4 +263,23 @@ test("the fleet is a real crowd: varied sizes, both spin directions", () => {
     assert.ok(u.delay >= 0 && u.delay < T.swirlEnd / 2, "appears during swirl");
   }
   assert.equal(PANELS % 2, 0, "panels must alternate two colors evenly");
+});
+
+test("the reverse easter egg fires once every 40 plays", () => {
+  assert.equal(EASTER_EGG_EVERY, 40);
+  // Only exact multiples of 40 reverse; everything else plays forward.
+  assert.equal(easterEggReverse(40), true);
+  assert.equal(easterEggReverse(80), true);
+  assert.equal(easterEggReverse(1200), true);
+  for (const n of [1, 2, 39, 41, 79, 81]) {
+    assert.equal(easterEggReverse(n), false, `play ${n} is forward`);
+  }
+  // The count of reverse plays over a long run is exactly 1/40.
+  let rev = 0;
+  for (let n = 1; n <= 4000; n++) if (easterEggReverse(n)) rev++;
+  assert.equal(rev, 100);
+  // Defensive about junk (0, negatives, non-integers never reverse).
+  for (const bad of [0, -40, 40.5, NaN, Infinity]) {
+    assert.equal(easterEggReverse(bad), false);
+  }
 });
