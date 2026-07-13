@@ -840,6 +840,18 @@ export async function exportFile(path) {
 
 // ---- exec bridge (marker protocol) -----------------------------------------
 
+// A single guest command that outlives this ceiling is treated as WEDGED. The
+// VM is offline (no network egress) so real commands are local and fast; a
+// command that never returns is a mount/device read that blocks forever (seen
+// on privacy browsers / flaky links, e.g. a `cat` on a file whose backing
+// device stalls) — and CheerpX offers no way to kill a running process. Without
+// this ceiling that wedge is fatal: cx.run never resolves, so execInSandbox
+// never resolves, so runShellLoop's `await exec(command)` never returns and the
+// whole request hangs with no answer and nothing logged (the "stuck at
+// $ cat …" symptom). Kept well under a typical request budget so a hung command
+// fails soft with room left for synthesis. Mirrors the boot's withBootTimeout.
+const EXEC_TIMEOUT_MS = 30000;
+
 // Run one command and capture {exitCode, stdout, stderr}. Serialized through
 // execQueue so concurrent calls don't stomp the shared custom console. Uses a
 // unique marker + base64 so the captured output survives any stray banner the
@@ -878,10 +890,32 @@ export function execInSandbox(command) {
     };
     const chunks = [];
     cx.setCustomConsole((buf) => chunks.push(new Uint8Array(buf)), 1024, 24);
-    try {
-      await cx.run("/bin/sh", ["-c", wrapped], env);
-    } finally {
-      if (term) cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
+    // Race the command against EXEC_TIMEOUT_MS. On timeout tear the (wedged,
+    // single-threaded) VM down so the next exec can't run on a corrupt state,
+    // and return a fail-soft result so runShellLoop ends and synthesis still
+    // runs with the transcript gathered so far — never leave the request hung.
+    let timedOut = false;
+    const running = (async () => {
+      try {
+        await cx.run("/bin/sh", ["-c", wrapped], env);
+      } finally {
+        // Restore the interactive console only if we didn't time out (a timeout
+        // resets cx to null); guard on cx so the abandoned promise can't throw.
+        if (!timedOut && term && cx) cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
+      }
+    })();
+    const outcome = await Promise.race([
+      running.then(() => "ok", () => "ok"),
+      new Promise((resolve) => setTimeout(() => { timedOut = true; resolve("timeout"); }, EXEC_TIMEOUT_MS)),
+    ]);
+    if (outcome === "timeout") {
+      sblog("warn", "sandbox.exec_timeout", { ms: EXEC_TIMEOUT_MS, command: String(command).slice(0, 120) });
+      flushSandboxLog();
+      // CheerpX has no abort — discard the wedged instance so a later send re-boots.
+      try { resetSandbox(); } catch { /* ignore */ }
+      const timeoutRes = { exitCode: 124, stdout: "", stderr: `command timed out after ${Math.round(EXEC_TIMEOUT_MS / 1000)}s` };
+      try { feedResult("shell", timeoutRes); } catch { /* decoration */ }
+      return timeoutRes;
     }
     let total = 0;
     for (const c of chunks) total += c.length;
