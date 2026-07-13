@@ -70,6 +70,7 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
+import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 
 const $ = (id) => document.getElementById(id);
@@ -608,6 +609,30 @@ function messageEl(role, content) {
   return el;
 }
 
+// The prepackaged NON-LLM helper (canned-faq.js): before any provider key is
+// configured there is no model to answer, so instead of a dead composer a
+// visitor gets a short, honest, prewritten reply to the common questions. It
+// is rendered EPHEMERALLY (never pushed into a conversation or the sealed
+// state — these are onboarding help, not research) and carries a visible
+// "canned, not the AI" badge so it can't be mistaken for the model. The user's
+// message shows as a normal bubble above it.
+function renderCannedExchange(userText, reply) {
+  const box = $("chat");
+  box.querySelector(".empty")?.remove();
+  box.appendChild(messageEl("user", userText));
+  const el = document.createElement("div");
+  el.className = "msg assistant canned";
+  const badge = document.createElement("div");
+  badge.className = "canned-label";
+  badge.textContent = "🤖 " + reply.label;
+  el.appendChild(badge);
+  const body = document.createElement("div");
+  renderMarkdownInto(body, reply.answer);
+  el.appendChild(body);
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
 function newChat() {
   convId = null;
   renderConvPicker();
@@ -761,18 +786,22 @@ async function send(ev) {
   const text = $("input").value.trim();
   if (!text) return;
 
-  // The first-visit path: no key yet → a helpful pointer, never an error
-  // wall. The message stays in the composer so nothing typed is lost.
+  // The first-visit path: no key yet → the prepackaged non-LLM helper answers
+  // the common get-started questions right in the chat (clearly badged as
+  // canned, not the model), never an error wall. The question is echoed as a
+  // normal bubble; nothing typed is lost. For an explicit get-started ask (or
+  // an unrecognized one) also surface the key panel so setup is one tap away.
   if (!configuredDrcProviders(state.keys).length) {
-    openSettings();
-    $("keyspanel").open = true;
-    $("key-input").focus();
-    workStatus(
-      "One thing first: Se/cure runs on YOUR API key, sent straight from this browser to the " +
-        "provider — this site's server never sees your key or your messages. Paste an OpenAI, Groq " +
-        "or Berget key above (Groq has a free tier at console.groq.com; Berget is EU-hosted), press " +
-        "Save keys, then send again.",
-    );
+    const reply = matchCanned(text, { tier: "drc" });
+    renderCannedExchange(text, reply);
+    $("input").value = "";
+    if (!reply.matched || reply.id === "apikey" || reply.id === "access") {
+      openSettings();
+      $("keyspanel").open = true;
+      $("key-input").focus();
+    } else {
+      workStatus("Prepackaged help shown above. Add your own API key under the gear (Settings) to research for real.");
+    }
     return;
   }
   const picked = $("model").value;

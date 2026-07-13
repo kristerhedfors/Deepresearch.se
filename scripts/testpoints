@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# The testable-interaction-points queue on the LIVE site — the producer +
+# reader side of the try-it queue. Wraps /api/admin/testpoints
+# (src/testpoints.js) using the break-glass Basic Auth credentials, the same
+# BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/feedback and
+# scripts/security use. See .claude/skills/testable-interaction-points/SKILL.md
+# for the loop this is the CRUD layer of.
+#
+# Declaring a point (do this the moment a fix is testable):
+#   scripts/testpoints --add '{"label":"Maps knob toggles","summary":"The Google Maps setting now flips and persists.","target":"/rver","actions":[{"type":"openSettings","knob":"google_maps"}],"ref":"PR #21"}'
+#
+# Reading the queue:
+#   scripts/testpoints                      open points (the queue), readable text
+#   scripts/testpoints --all                every point, any status
+#   scripts/testpoints --status passed      filter by status (open|passed|failed|archived)
+#   scripts/testpoints --id 7               one point
+#   scripts/testpoints --q "maps"           substring match on label OR summary
+#   scripts/testpoints --json               JSON instead of text
+#
+# Editing / lifecycle:
+#   scripts/testpoints --set 7 '{"status":"open"}'    re-open a fixed point for re-test
+#   scripts/testpoints --set 7 '{"summary":"…","actions":[…]}'
+#   scripts/testpoints --result 7 pass "looks good"   record a verdict yourself
+#   scripts/testpoints --delete 7
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+open="1"
+status=""
+id=""
+query=""
+action=""
+arg=""
+arg2=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --all) open="" ;;
+    --status) open=""; status="$2"; shift ;;
+    --id) id="$2"; shift ;;
+    --q) query="$2"; shift ;;
+    --add) action="add"; arg="$2"; shift ;;
+    --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
+    --result) action="result"; id="$2"; arg="$3"; arg2="${4:-}"; shift 3 ;;
+    --delete) action="delete"; id="$2"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+case "$action" in
+  add)
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$arg" "$BASE_URL/api/admin/testpoints"
+    exit 0 ;;
+  set)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$arg" "$BASE_URL/api/admin/testpoints/$id"
+    exit 0 ;;
+  result)
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg r "$arg" --arg n "$arg2" '{result:$r} + (if $n=="" then {} else {note:$n} end)')" \
+      "$BASE_URL/api/admin/testpoints/$id/result"
+    exit 0 ;;
+  delete)
+    curl_auth -X DELETE "$BASE_URL/api/admin/testpoints/$id"
+    exit 0 ;;
+esac
+
+if [ -n "$id" ]; then
+  url="$BASE_URL/api/admin/testpoints/$id"
+  [ "$format" = "text" ] && url="$url?format=text"
+  curl_auth "$url"
+  exit 0
+fi
+
+qs="limit=100"
+[ "$format" = "text" ] && qs="$qs&format=text"
+[ -n "$open" ] && qs="$qs&open=1"
+[ -n "$status" ] && qs="$qs&status=$status"
+[ -n "$query" ] && qs="$qs&q=$(printf %s "$query" | jq -sRr @uri)"
+
+curl_auth "$BASE_URL/api/admin/testpoints?$qs"

@@ -35,6 +35,7 @@ describe("isPublicAsset", () => {
       "/js/drc-research.js", "/js/drc-store.js", "/js/bash-core.js", "/js/bash-agent.js",
       "/js/sandbox.js", "/js/sandbox-files.js", "/js/introspect-core.js",
       "/js/introspect-ui.js", "/introspect/source-snapshot.json", "/js/markdown.js",
+      "/js/canned-faq.js",
     ]) {
       assert.equal(isPublicAsset(u(p), "GET"), true, p);
     }

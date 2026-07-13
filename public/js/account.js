@@ -42,7 +42,8 @@ import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSum
  * Wires the account panel once at boot: the eager /api/me fetch that feeds
  * the header's notification badge, and the open/close handlers on the
  * header button and overlay.
- * @returns {void}
+ * @returns {{ open: (view: string) => Promise<void> }} an API to open the
+ *   panel to a named view (used by the test-queue deep-link executor).
  */
 export function initAccountPanel() {
   const ctx = {
@@ -92,6 +93,8 @@ export function initAccountPanel() {
   ctx.overlay.addEventListener("click", (e) => {
     if (e.target === ctx.overlay) ctx.overlay.hidden = true;
   });
+
+  return { open: openPanel };
 }
 
 /**

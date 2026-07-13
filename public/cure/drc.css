@@ -72,20 +72,30 @@ body::before {
   pointer-events: none;
   overflow: hidden;
 }
+/* Viewport bottom-anchored ABOVE the composer so the newest command line clears
+   the input pane; the child sticks to the bottom (tail) and agent-backdrop.js
+   translates the scroller to page back through history. See app.css for the
+   full note — this mirror styles it on /cure since drc.css is self-contained. */
 .dr-agent-backdrop-text {
   position: absolute;
-  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
-  margin: 0;
-  max-height: 62vh;
+  left: 1.5rem; right: 1.5rem; bottom: 9.5rem;
+  height: 60vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+}
+.dr-agent-backdrop-scroll { will-change: transform; }
+.dr-agent-backdrop-pre {
+  margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
   color: rgba(61, 52, 24, .55);
   white-space: pre-wrap;
   word-break: break-word;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
   animation: agent-wave 7.5s ease-in-out infinite;
 }
 @keyframes agent-wave {
@@ -93,7 +103,7 @@ body::before {
   50% { transform: translateX(7px) skewX(-1.1deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-text { animation: none; }
+  .dr-agent-backdrop-pre { animation: none; }
 }
 /* The transparency bar: a small floating glass pill that appears WHILE the
    sandbox terminal runs and auto-hides when quiet — the only control for the
@@ -288,6 +298,19 @@ header {
   max-width: 100%;
 }
 .msg.assistant.streaming { white-space: pre-wrap; }
+
+/* The prepackaged, non-LLM helper reply (canned-faq.js): a dashed, muted
+   frame + a small badge, so it reads unmistakably as canned onboarding help
+   rather than the research model's answer. */
+.msg.assistant.canned {
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+.msg.assistant.canned .canned-label {
+  font-size: .72rem; font-weight: 600; color: var(--muted);
+  letter-spacing: .01em; margin-bottom: .5rem;
+  padding-bottom: .4rem; border-bottom: 1px dashed var(--border);
+}
 
 /* Rendered markdown — the app's rules, khaki-toned via the vars. */
 .msg.assistant :is(p, ul, ol) { margin: .5em 0; }

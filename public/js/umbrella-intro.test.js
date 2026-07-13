@@ -18,6 +18,8 @@ import {
   canopyZ,
   project,
   FLEET,
+  EDGE_STYLES,
+  MOTIFS,
   BASE_SPEED,
   clampAnimMult,
 } from "../cure/umbrella.js";
@@ -101,16 +103,55 @@ test("revival: wire-only beat, then color floods back and fringe dangles", () =>
   }
 });
 
-test("Victorian canopy constants: deep scallop, tall dome, varied hues", () => {
+test("canopy constants: deep scallop and tall dome as the baselines", () => {
   // Deeper than the default subtle scallop the logo eases through.
   assert.ok(SCALLOP_DEPTH > 0.085);
-  // A domed pagoda silhouette, not a flat parasol.
+  // A domed silhouette, not a flat parasol, as the fallback dome.
   assert.ok(DOME_FRAC > 0.34);
-  // Every umbrella wakes into its own hue, and they are genuinely spread out
-  // (no two canopies share a color).
-  const cols = FLEET.map((u) => u.col);
-  assert.ok(cols.every((c) => /^#[0-9a-f]{6}$/i.test(c)), "well-formed hex");
-  assert.equal(new Set(cols).size, cols.length, "all distinct");
+});
+
+test("revived crowd is white-and-pink only, in varied shapes", () => {
+  const hex6 = /^#[0-9a-f]{6}$/i;
+  const toRGB = (/** @type {string} */ c) => [
+    parseInt(c.slice(1, 3), 16),
+    parseInt(c.slice(3, 5), 16),
+    parseInt(c.slice(5, 7), 16),
+  ];
+  for (const u of FLEET) {
+    for (const c of [u.col, u.alt, u.border]) {
+      assert.ok(hex6.test(c), `well-formed hex: ${c}`);
+      const [r, g, b] = toRGB(c);
+      // Pink or white, never a saturated non-pink hue: red leads (or ties,
+      // for white/near-white), the color is not dark, and it keeps enough
+      // blue to stay in the pink/white family (excludes red/orange/brown as
+      // much as green/blue/purple).
+      assert.ok(r >= g && r >= b, `red-led (pink/white): ${c}`);
+      assert.ok(r >= 200, `not dark: ${c}`);
+      assert.ok(b >= 90, `pink/white, not a warm non-pink: ${c}`);
+    }
+  }
+  // Genuinely varying SHAPES: dome height, pagoda-ness and frill depth each
+  // take a spread of values across the fleet (not one uniform silhouette).
+  const spread = (/** @type {number[]} */ xs) => Math.max(...xs) - Math.min(...xs);
+  assert.ok(spread(FLEET.map((u) => u.dome)) > 0.15, "dome heights vary");
+  assert.ok(spread(FLEET.map((u) => u.pagoda)) > 0.4, "pagoda-ness varies");
+  assert.ok(spread(FLEET.map((u) => u.scallop)) > 0.08, "frill depth varies");
+  for (const u of FLEET) {
+    assert.ok(u.pagoda >= 0 && u.pagoda <= 1, "pagoda in [0,1]");
+    assert.ok(u.dome > 0 && u.scallop > 0);
+  }
+});
+
+test("varying decorations: each umbrella a known motif + rim-trim style", () => {
+  // Every umbrella declares a canopy motif and an edge-trim style, each drawn
+  // from the known set — so a typo can't silently fall through to a default.
+  for (const u of FLEET) {
+    assert.ok(MOTIFS.includes(u.motif), `known motif: ${u.motif}`);
+    assert.ok(EDGE_STYLES.includes(u.edge), `known edge style: ${u.edge}`);
+  }
+  // And the crowd is genuinely mixed — not every top and every hem the same.
+  assert.ok(new Set(FLEET.map((u) => u.motif)).size >= 3, "motifs vary");
+  assert.ok(new Set(FLEET.map((u) => u.edge)).size >= 3, "edge styles vary");
 });
 
 test("tilt: camera sweeps exactly a quarter circle, shaft fades in", () => {

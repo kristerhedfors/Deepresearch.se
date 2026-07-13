@@ -108,6 +108,11 @@ export function isPublicAsset(url, method) {
     // Provider country-of-processing flags — a leaf pure module imported by
     // /cure/drc.js and by introspect-core.js (both in the public graph).
     url.pathname === "/js/provider-region.js" ||
+    // The prepackaged non-LLM helper (canned-faq.js): a leaf pure module
+    // imported by /cure/drc.js (the public DRC graph) AND loaded directly by
+    // the promotional landing (/welcome/) so a signed-out visitor can ask the
+    // common questions before signing in. Static content, no secrets.
+    url.pathname === "/js/canned-faq.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
     // data path) can fetch it and ground a security assessment OFFLINE, quoting

@@ -19,6 +19,14 @@
 // pass a channel id per agent; when several are active the layer clips between
 // them. The chosen transparency is remembered per browser (localStorage) so the
 // bar comes back where the user left it — but it is never a config screen.
+//
+// SCROLLING: the log is no longer a fixed tail. A wheel/drag over the empty page
+// field pages BACK through the command history (the conversation bubbles keep
+// their own native scroll — touching a bubble scrolls the convo, not the
+// backdrop). While the backdrop scrolls, the conversation leans the opposite way
+// ever so slightly and springs back — purely for feel; it never fights the
+// user's own message scrolling. The newest command line sits ABOVE the composer
+// (the CSS raises the viewport) so it's visible, not hidden behind the input.
 
 import {
   CHANNEL_CLIP_MS,
@@ -28,9 +36,11 @@ import {
   clipToNextChannel,
   createBackdropModel,
   opacityCss,
+  parallaxNudge,
   parseOpacityPref,
   pushCommand,
   pushResult,
+  scrollStep,
 } from "./agent-backdrop-core.js";
 
 const STORE_KEY = "dr_agent_backdrop";
@@ -40,7 +50,9 @@ const STORE_KEY = "dr_agent_backdrop";
 const BAR_HIDE_MS = 6000;
 
 const model = createBackdropModel();
-let layer = null; // the fixed background text element (built lazily, only when on)
+let layer = null; // the fixed background layer (built lazily, only when on)
+let view = null; // the clipped viewport window (sizes/positions the text)
+let scroller = null; // the inner element we translate to scroll the log
 let pre = null; // the <pre> the active channel renders into
 let bar = null; // the floating transparency slider (built lazily on first activity)
 let barRange = null;
@@ -49,6 +61,13 @@ let clipTimer = 0; // round-robin between channels when >1 is active
 let hideTimer = 0; // auto-hide the bar after inactivity
 let interacting = false; // user is touching the bar — don't auto-hide
 let pref = null; // cached opacity percentage (lazy-read from localStorage)
+
+// Backdrop scroll state: bgOffset px scrolled back into the log (0 = pinned to
+// the live tail), bgPinned tracks whether we're still following the newest.
+let bgOffset = 0;
+let bgPinned = true;
+let scrollWired = false; // wheel/touch listeners attached once
+let parallaxTimer = 0; // springs the conversation's opposite lean back to zero
 
 // ---- preference persistence (remembered position, NOT a settings screen) ----
 
@@ -101,11 +120,21 @@ function ensureLayer() {
   layer = document.createElement("div");
   layer.id = "dr-agent-backdrop";
   layer.setAttribute("aria-hidden", "true");
+  // viewport (clips + positions) → scroller (translated to scroll) → pre (text +
+  // the drift animation). Splitting scroll from the animated <pre> keeps the two
+  // transforms from fighting over one element.
+  view = document.createElement("div");
+  view.className = "dr-agent-backdrop-text";
+  scroller = document.createElement("div");
+  scroller.className = "dr-agent-backdrop-scroll";
   pre = document.createElement("pre");
-  pre.className = "dr-agent-backdrop-text";
-  layer.appendChild(pre);
+  pre.className = "dr-agent-backdrop-pre";
+  scroller.appendChild(pre);
+  view.appendChild(scroller);
+  layer.appendChild(view);
   document.body.appendChild(layer);
   applyOpacity();
+  wireScroll();
   return layer;
 }
 
@@ -139,6 +168,113 @@ function render() {
   // Newest at the bottom, like a real terminal tail; the CSS clips the top so
   // the visible window is always the most recent work.
   pre.textContent = activeLines(model).join("\n");
+  // Fresh output re-pins to the live tail unless the user has scrolled back to
+  // read history; either way keep the offset inside the (now-changed) range.
+  if (bgPinned) bgOffset = 0;
+  applyBgScroll();
+}
+
+// ---- scrolling the command log ----------------------------------------------
+// The log can be scrolled BACK over the empty page field, while the
+// conversation bubbles keep their own native scroll. Scrolling the backdrop
+// also nudges the messages the opposite way, ever so slightly, for feel.
+
+// How far the log can scroll back from the live tail (px). Measured from the
+// live DOM so it tracks the current line count / viewport height.
+function maxBgOffset() {
+  if (!pre || !view) return 0;
+  return Math.max(0, pre.scrollHeight - view.clientHeight);
+}
+
+function applyBgScroll() {
+  if (!scroller) return;
+  bgOffset = Math.min(bgOffset, maxBgOffset());
+  // translateY down pushes the tail below the window and reveals older lines
+  // fading in from the top.
+  scroller.style.transform = "translateY(" + bgOffset + "px)";
+}
+
+// Conversation bubbles / interactive chrome — a wheel or drag over any of these
+// scrolls the CONVERSATION (native), never the backdrop.
+const CONVO_SEL =
+  ".msg, .step, .activity, #jumpdown, header, #footer, #composer, " +
+  ".history, #account, .account-card, .project-panel, #drspop, #intro, #drawer";
+
+function onConvo(target) {
+  return !!(target && target.closest && target.closest(CONVO_SEL));
+}
+
+// A tiny, springy opposite lean applied to the conversation while the backdrop
+// scrolls — purely for feel, eased back to zero so it never displaces the gap
+// the user is reading in (public/js/agent-backdrop-core.js parallaxNudge).
+function nudgeConversation(deltaY) {
+  const chat = typeof document !== "undefined" ? document.getElementById("chat") : null;
+  if (!chat) return;
+  chat.style.transform = "translateY(" + parallaxNudge(deltaY) + "px)";
+  chat.style.transition = "transform .08s ease-out";
+  if (parallaxTimer) clearTimeout(parallaxTimer);
+  parallaxTimer = setTimeout(() => {
+    chat.style.transition = "transform .5s ease-out";
+    chat.style.transform = "translateY(0)";
+  }, 110);
+}
+
+// Apply one scroll gesture to the backdrop; returns true if we took it over
+// (so the caller can preventDefault). We only take over when there is history
+// to reveal (or we're already scrolled back) — otherwise the page behaves
+// normally over its empty field.
+function scrollBackdrop(deltaY) {
+  if (!backdropOn() || !scroller) return false;
+  if (maxBgOffset() <= 0 && bgOffset <= 0) return false;
+  const step = scrollStep(bgOffset, deltaY, pre.scrollHeight, view.clientHeight);
+  bgOffset = step.offset;
+  bgPinned = step.pinned;
+  applyBgScroll();
+  nudgeConversation(deltaY);
+  return true;
+}
+
+let touchY = 0;
+let touchActive = false;
+
+function wireScroll() {
+  if (scrollWired || typeof window === "undefined") return;
+  scrollWired = true;
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      try {
+        if (onConvo(e.target)) return; // over a bubble → let the conversation scroll
+        if (scrollBackdrop(e.deltaY)) e.preventDefault();
+      } catch { /* decoration — never break the page */ }
+    },
+    { passive: false },
+  );
+  window.addEventListener(
+    "touchstart",
+    (e) => {
+      touchActive = false;
+      if (!backdropOn() || !e.touches || e.touches.length !== 1) return;
+      if (onConvo(e.target)) return; // finger started on a bubble → its scroll wins
+      touchY = e.touches[0].clientY;
+      touchActive = true;
+    },
+    { passive: true },
+  );
+  window.addEventListener(
+    "touchmove",
+    (e) => {
+      try {
+        if (!touchActive || !e.touches || e.touches.length !== 1) return;
+        const y = e.touches[0].clientY;
+        const dy = touchY - y; // finger up → toward newest, matching wheel deltaY>0
+        touchY = y;
+        if (scrollBackdrop(dy)) e.preventDefault();
+      } catch { /* decoration — never break the page */ }
+    },
+    { passive: false },
+  );
+  window.addEventListener("touchend", () => { touchActive = false; }, { passive: true });
 }
 
 // Start/stop the round-robin that clips between agents. Only runs when more

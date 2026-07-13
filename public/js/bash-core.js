@@ -272,6 +272,20 @@ export function formatShellResult(run) {
   return parts.join("\n");
 }
 
+// Shorten a command to a single line fit for a live activity label — both
+// tiers surface WHICH command is running (not just a count), so a long command
+// is collapsed to one line and clipped with an ellipsis. Pure; never throws.
+/**
+ * @param {string} command
+ * @param {number} [max]
+ * @returns {string}
+ */
+export function shellCommandLabel(command, max = 72) {
+  const one = String(command == null ? "" : command).replace(/\s+/g, " ").trim();
+  if (one.length <= max) return one;
+  return one.slice(0, Math.max(1, max - 1)).replace(/\s+$/, "") + "…";
+}
+
 // ---- the transcript block synthesis reads ---------------------------------
 
 // The labeled context block appended to the synthesis input (pipeline.js
@@ -331,17 +345,24 @@ export function buildStepUserMessage({ task, context, priorBlock = "" }) {
  * only once the model actually proposes a command, so a message that needs no
  * shell never boots the (expensive) VM. Never throws — a failing step or exec
  * ends the loop with whatever was gathered so far.
+ *
+ * The optional callbacks report progress for the activity UI: `onStep` fires
+ * once per round with the model's reasoning + the whole batch; `onExec` fires
+ * just before each individual command runs (the live "$ command" line); and
+ * `onResult` fires after each command with the full ShellRun (command + exit +
+ * output). All three are wrapped fail-soft so decoration can't break the loop.
  * @param {{
  *   step: (transcript: ShellRun[], round: number) => Promise<ShellProposal>,
  *   exec: (command: string) => Promise<{ exitCode: number, stdout: string, stderr: string }>,
  *   ensureReady?: () => Promise<boolean>,
  *   onStep?: (info: { round: number, reasoning: string, commands: string[] }) => void,
+ *   onExec?: (command: string, info: { round: number, index: number }) => void,
  *   onResult?: (run: ShellRun) => void,
  *   maxRounds?: number,
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export async function runShellLoop({ step, exec, ensureReady, onStep, onResult, maxRounds = MAX_SHELL_ROUNDS }) {
+export async function runShellLoop({ step, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS }) {
   /** @type {ShellRun[]} */
   const transcript = [];
   // null = not yet booted; true/false = boot outcome. No ensureReady → ready.
@@ -362,8 +383,13 @@ export async function runShellLoop({ step, exec, ensureReady, onStep, onResult, 
     // boot, stop with whatever we have rather than looping on failures.
     if (ready === null && ensureReady) ready = await ensureReady();
     if (!ready) break;
-    if (onStep) onStep({ round, reasoning: typeof proposal.reasoning === "string" ? proposal.reasoning : "", commands });
-    for (const command of commands) {
+    if (onStep) { try { onStep({ round, reasoning: typeof proposal.reasoning === "string" ? proposal.reasoning : "", commands }); } catch { /* ignore */ } }
+    for (let index = 0; index < commands.length; index++) {
+      const command = commands[index];
+      // Surface WHICH command is about to run (before it does) so the UI can
+      // show the live command, not just a counter. Fail-soft — a decoration
+      // callback must never break execution.
+      if (onExec) { try { onExec(command, { round, index }); } catch { /* ignore */ } }
       let res;
       try {
         res = await exec(command);
@@ -377,7 +403,7 @@ export async function runShellLoop({ step, exec, ensureReady, onStep, onResult, 
         stderr: typeof res?.stderr === "string" ? res.stderr : "",
       };
       transcript.push(run);
-      if (onResult) onResult(run);
+      if (onResult) { try { onResult(run); } catch { /* ignore */ } }
     }
   }
   return transcript;
