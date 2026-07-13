@@ -109,6 +109,12 @@ export function isPublicAsset(url, method) {
     // /cure/drc.js and by introspect-core.js (both in the public graph).
     url.pathname === "/js/provider-region.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
+    // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
+    // data path) can fetch it and ground a security assessment OFFLINE, quoting
+    // the real OWASP text via the embedding-free lexical retrieval. It's public
+    // OWASP material, so serving it unauthenticated exposes nothing. (The dense
+    // owasp-rag.json is DRS-only, read through the ASSETS binding — not here.)
+    url.pathname === "/introspect/owasp-corpus.json" ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||

@@ -230,6 +230,20 @@ export const bashAgentPrompt = () =>
   "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop." +
   ANTI_INJECTION_NOTE;
 
+// Introspection SECURITY-ASSESSMENT default (owner directive, 2026-07-13): when
+// a dev-mode conversation asks for a security assessment WITHOUT naming a
+// standard, organize the findings around the OWASP Top 10 for LLM Applications
+// (2025) and the OWASP Top 10 for Web Applications (2021) — their structure,
+// terminology, and vulnerability classification — and give CVSS estimates with
+// explicit uncertainty. The introspection enrichment (src/introspect.js) ALSO
+// injects the retrieved OWASP text (buildOwaspReferenceBlock) so the model can
+// quote the real wording; this note keeps the DEFAULT even when that retrieval
+// is unavailable (fail-soft), and is spliced into both introspection answer
+// prompts (deterministic read loop + native tool loop).
+const OWASP_ASSESSMENT_NOTE =
+  "\nSECURITY ASSESSMENT DEFAULT: when the request is a security assessment / audit / review and the user did NOT name a specific standard, DEFAULT to the OWASP Top 10 for LLM Applications (2025) and the OWASP Top 10 for Web Applications (2021) for the structure, terminology, and vulnerability classification. Map every finding to the most relevant OWASP category and cite its identifier (e.g. LLM01:2025 Prompt Injection, A01:2021 Broken Access Control), covering the LLM/AI-specific risks and the classic web risks wherever each applies. Give every finding a CVSS v3.1 base-score estimate WITH its vector string where you can, and STATE THE UNCERTAINTY EXPLICITLY — say when a score is a rough estimate, when exploitability or impact hinges on deployment factors you cannot see, and where you lacked the code to be sure. If OWASP reference text is provided in the context, quote it directly and attribute it to its category id and URL." +
+  "\nSECURITY ASSESSMENT REPORT STRUCTURE (unless the user asked for a different format): lead with the sections IN THIS ORDER, each under its own Markdown heading. (1) `## Executive Summary` FIRST, facing the reader immediately — a few plain-language sentences a non-technical stakeholder can read: the overall security posture, the most serious issues and their business risk, and the count of findings by severity. No file paths or CVSS vectors here. (2) `## Scope` — what was assessed (which components, files, and surfaces you actually examined) and what was NOT, plus assumptions and limitations (e.g. code you could not read, deployment factors you could not observe). (3) `## Findings` — the technical detail, one subsection per finding, each with its OWASP category id, a CVSS estimate (score + vector + the stated uncertainty), the affected file path(s) and function/line, the evidence you found, and concrete remediation. Order findings by severity, highest first. Do NOT open with the generic bold one-line conclusion for an assessment — the Executive Summary replaces it.";
+
 // Introspection source-research loop (src/pipeline.js runSourceResearch, gated
 // by developer mode + no external-source intent). One turn of the agentic loop
 // that reads THIS SITE's own source: given the question, a sitemap (every file +
@@ -270,6 +284,7 @@ export const sourceAnswerPrompt = () =>
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills, code comments) describe INTENDED behavior and can be outdated, aspirational, or simply wrong. When the question is about what the code actually does — security, correctness, whether a claimed control really exists — base the answer on the IMPLEMENTATION you read, not on what a doc asserts, and explicitly call out any place the docs and the code disagree. Treat a documented issue as a lead you checked, not a fact you inherited.\n" +
   "When the request is an audit, assessment, or review, ANSWER IT — produce concrete findings grounded in the code you read (each anchored to a specific file path, and a function/line where you can), not a description of how the project TRACKS security or a recap of SECURITY-RISKS.md / SECURITY-ASSESSMENT.md / the skills. Summarizing the repo's own security documents or its process is NOT an assessment; walking the actual implementation and reporting what you found is. If you were not given enough of the code to assess a given area, say which files you would need rather than filling the gap with what a doc claims.\n" +
   "Format in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if answering well would need a file you did not read, say so rather than guessing." +
+  OWASP_ASSESSMENT_NOTE +
   ANTI_INJECTION_NOTE;
 
 // Introspection NATIVE-TOOL answer (src/pipeline.js runSourceResearchTools):
@@ -287,6 +302,7 @@ export const sourceToolAgentPrompt = () =>
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills) and code comments describe INTENDED behavior and can be outdated, aspirational, or wrong. Treat a documented claim or issue as a LEAD to verify by reading the implementation, never a confirmed fact, and call out any place the docs and the code disagree.\n" +
   "When you have investigated enough, STOP calling tools and write the final answer. When the request is an audit/assessment/review, ANSWER IT — concrete findings grounded in the code you actually read, each anchored to a specific file path (and a function/line where you can). Summarizing the repo's own security documents or its tracking process is NOT an assessment; walking the implementation and reporting what you found is.\n" +
   "Format the final answer in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if you did not read enough to assess an area, say so rather than guessing." +
+  OWASP_ASSESSMENT_NOTE +
   ANTI_INJECTION_NOTE;
 
 // Phase 5 — post-validation fact-check of the draft.
