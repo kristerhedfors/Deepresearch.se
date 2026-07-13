@@ -1,5 +1,5 @@
 // @ts-check
-// Introspection mode's CLIENT presentation + persistence — the amethyst cue.
+// Introspection mode's CLIENT presentation + persistence — the white-titanium cue.
 //
 // Introspection mode (the `developer_mode` knob, src/settings.js) is remembered
 // SERVER-SIDE per account, so the mode itself already follows the account
@@ -8,13 +8,13 @@
 // relaunches from a device-cached shell that may paint before that answer comes
 // back. So the CUE needs a local, synchronous source of truth to apply at first
 // paint, or a returning introspection-mode user would flash the ordinary
-// composer pane on every cold relaunch before the amethyst tint settles.
+// composer pane on every cold relaunch before the white-titanium tint settles.
 //
 // This module is that local cache. It mirrors the server knob into
 // localStorage (`dr_dev_mode`) and toggles a `dev-mode` class on the ROOT
 // element. The cue is DELIBERATELY narrow: the sky-blue background and the
-// whole palette are unchanged — only the composer input pane picks up an
-// amethyst glass tint (CSS `:root.dev-mode #composer` in public/css/app.css),
+// whole palette are unchanged — only the composer input pane picks up a
+// white-titanium glass tint (CSS `:root.dev-mode #composer` in public/css/app.css),
 // so introspection is recognizable without re-skinning the app or the iOS
 // status bar. (The class/key names keep the historical `dev` token — internal
 // identifiers, not user-facing copy; the mode is named "Introspection" in the
@@ -74,7 +74,7 @@ export function storeDeveloperMode(on) {
 }
 
 /**
- * Apply (or clear) the amethyst introspection cue: toggle the root class and,
+ * Apply (or clear) the white-titanium introspection cue: toggle the root class and,
  * unless told otherwise, persist the value so the next load paints it
  * immediately. The boot-time cached apply passes { persist: false } — it is
  * READING the cache, not making a new decision. The class alone drives the
