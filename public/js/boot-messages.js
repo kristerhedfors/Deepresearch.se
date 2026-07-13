@@ -63,3 +63,40 @@ export function createBootMessageRotator({ messages = BOOT_MESSAGES, rng = Math.
     },
   };
 }
+
+// The boot advances through these labeled stages (public/js/sandbox.js
+// setStatus). Mapping each to an ordered step lets the boot line render a REAL
+// progress indicator — a bar, step N/total, and elapsed seconds — instead of
+// only quips, so a slow-but-alive boot is visibly moving and the user knows
+// roughly how long is left. iOS needs this most: there's no console, and a
+// dead-looking label is what drives the reload/background that wedges the boot.
+// "preparing files…" and "starting Linux…" share a step (they interleave); an
+// unknown/early stage holds at step 1 so the bar never runs backwards.
+export const BOOT_STAGE_STEPS = {
+  booting: 1,
+  "loading CheerpX…": 2,
+  "connecting disk…": 3,
+  "preparing files…": 4,
+  "starting Linux…": 4,
+  "mounting files…": 5,
+  ready: 6,
+};
+export const BOOT_STAGE_COUNT = 6;
+
+/**
+ * PURE: render one boot progress line for a stage + elapsed time — e.g.
+ * "Booting Linux · connecting disk… ▮▮▮▯▯▯ 3/6 · 7s". Node-tested. The DOM
+ * ticker that calls this each second lives in the boot owner (sandbox.js),
+ * matching the quip-ticker pattern.
+ * @param {string} stage the current setStatus stage
+ * @param {number} elapsedMs milliseconds since boot start
+ * @returns {string}
+ */
+export function formatBootProgress(stage, elapsedMs) {
+  const step = BOOT_STAGE_STEPS[stage] || 1;
+  const secs = Math.max(0, Math.round((Number(elapsedMs) || 0) / 1000));
+  const filled = Math.max(0, Math.min(BOOT_STAGE_COUNT, step));
+  const bar = "▮".repeat(filled) + "▯".repeat(BOOT_STAGE_COUNT - filled);
+  const label = stage && stage !== "booting" ? stage : "starting up…";
+  return `Booting Linux · ${label} ${bar} ${step}/${BOOT_STAGE_COUNT} · ${secs}s`;
+}

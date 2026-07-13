@@ -38,7 +38,7 @@ import {
   sanitizeProjName,
 } from "./sandbox-files.js";
 import { feedCommand, feedResult } from "./agent-backdrop.js";
-import { createBootMessageRotator, BOOT_MESSAGE_INTERVAL_MS } from "./boot-messages.js";
+import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
 const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";
@@ -84,9 +84,22 @@ function startBootQuips(onBootMessage) {
   stopBootQuips();
   if (typeof onBootMessage !== "function") return;
   const rotator = createBootMessageRotator();
-  const tick = () => { try { onBootMessage(rotator.next()); } catch { /* decoration */ } };
-  tick(); // show the first quip immediately, don't wait a full interval
-  bootQuipTimer = setInterval(tick, BOOT_MESSAGE_INTERVAL_MS);
+  // Tick every second so the elapsed counter visibly moves (a frozen label is
+  // what reads as "hung" on iOS). Each tick shows the live progress line
+  // (stage + bar + N/6 + seconds) with a quip trailing, swapped every ~3s so it
+  // still entertains without churning.
+  let quip = rotator.next();
+  let n = 0;
+  const tick = () => {
+    try {
+      if (n > 0 && n % 3 === 0) quip = rotator.next();
+      n += 1;
+      const elapsed = _bootT0 ? Date.now() - _bootT0 : 0;
+      onBootMessage(`${formatBootProgress(_bootStage, elapsed)} — ${quip}`);
+    } catch { /* decoration — never break the boot */ }
+  };
+  tick(); // paint immediately, don't wait a full second
+  bootQuipTimer = setInterval(tick, 1000);
 }
 
 /** Stop the boot-quip ticker (idempotent). */

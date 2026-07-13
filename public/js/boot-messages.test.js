@@ -8,7 +8,10 @@ import assert from "node:assert/strict";
 import {
   BOOT_MESSAGES,
   BOOT_MESSAGE_INTERVAL_MS,
+  BOOT_STAGE_COUNT,
+  BOOT_STAGE_STEPS,
   createBootMessageRotator,
+  formatBootProgress,
 } from "./boot-messages.js";
 
 test("BOOT_MESSAGES is a non-empty list of short, unique strings", () => {
@@ -67,4 +70,32 @@ test("degrades safely for an empty/invalid message list", () => {
   assert.ok(BOOT_MESSAGES.includes(r2.next()), "null list falls back to BOOT_MESSAGES");
   const r3 = createBootMessageRotator({ messages: /** @type {any} */ ("nope"), rng: () => 0 });
   assert.ok(BOOT_MESSAGES.includes(r3.next()), "non-array falls back to BOOT_MESSAGES");
+});
+
+test("formatBootProgress: stage → step, bar fill, elapsed seconds", () => {
+  // The bar has BOOT_STAGE_COUNT cells; filled equals the stage's step.
+  const line = formatBootProgress("connecting disk…", 7400);
+  assert.match(line, /connecting disk…/);
+  assert.match(line, /3\/6/, "connecting disk is step 3 of 6");
+  assert.match(line, /· 7s$/, "elapsed rounds to whole seconds");
+  assert.equal((line.match(/▮/g) || []).length, 3, "three filled cells");
+  assert.equal((line.match(/▯/g) || []).length, BOOT_STAGE_COUNT - 3, "rest empty");
+});
+
+test("formatBootProgress: monotonic across the real stage order", () => {
+  const order = ["booting", "loading CheerpX…", "connecting disk…", "starting Linux…", "mounting files…", "ready"];
+  let last = 0;
+  for (const s of order) {
+    const step = BOOT_STAGE_STEPS[s];
+    assert.ok(step >= last, `step for ${s} does not go backwards`);
+    last = step;
+  }
+  assert.equal(BOOT_STAGE_STEPS["ready"], BOOT_STAGE_COUNT, "ready is the final step");
+});
+
+test("formatBootProgress: unknown/early stage holds at step 1, never negative time", () => {
+  const line = formatBootProgress("", -50);
+  assert.match(line, /1\/6/, "unknown stage holds at step 1");
+  assert.match(line, /· 0s/, "negative elapsed clamps to 0s");
+  assert.match(line, /starting up…/, "empty stage gets a friendly label");
 });
