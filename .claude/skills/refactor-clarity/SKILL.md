@@ -209,3 +209,34 @@ and that's correct, not a shortfall:
 The near-duplicate `newRequestState` (chat.js vs mcp.js) was deliberately NOT
 unified — the two objects are different shapes, so sharing them needs a
 base+extend split, which is a feature-shaped change, not a byte-identical move.
+
+## Third worked example (2026-07-13) — the relocate-to-the-owner pass
+
+Another whole-repo survey (three `Explore` fan-outs: pipeline.js, chat.js +
+index.js, and an all-of-`src` duplicate sweep). `pipeline.js` (now 1290, grown
+from the 2026-07-12 pass purely by introspection tool-calling *orchestration*,
+not pure logic) confirmed **nothing left to extract** — the pure-core split is
+complete. Four clean moves survived, all "relocate an already-pure helper to
+the module that should own it," none new-extraction:
+- **`quotaBlockedResponse` (+`PERIOD_NAMES`) → `quota.js`** (flagship): the 429
+  quota-window payload builder lived in `chat.js` but sits naturally next to its
+  sibling `inflightLimitResponse` in `quota.js` (whose comment already named it).
+  `chat.js` imports it back for internal use AND re-exports it (the billing.js
+  pattern) so `chat.test.js` is unchanged; the three handlers that imported ONLY
+  this from `chat.js` (`quiz-api.js`, `bash-api.js`, `rag.js`) were **repointed
+  to `quota.js`, dropping their whole `chat.js` dependency** — the decoupling
+  win, not just tidiness.
+- **`htmlResponse` (index.js) + `textResponse` (×3 verbatim: testpoints.js,
+  chatlog.js, feedback.js) → `http.js`** — completes the response-helper set
+  (`jsonResponse`/`sseResponse`/`htmlResponse`/`textResponse`) in the module
+  whose header comment already claims that role. `htmlResponse` gained a
+  `status = 200` default to match its siblings (behavior-neutral; every caller
+  passed status explicitly).
+- **`cleanStr` (×2 verbatim: testpoints.js, feedback.js) → `chatlog.js`** next to
+  `truncateForLog` (which it wraps and both files already imported) — so the
+  now-unused `truncateForLog` import dropped from both. New `chatlog.test.js`
+  cases cover it directly.
+As before, the point is that a "refactor the whole repo" job on an
+already-modular codebase yields a **short** list of relocations, and that is the
+correct outcome — 1318 logic tests green throughout, typecheck clean, zero
+behavior change.

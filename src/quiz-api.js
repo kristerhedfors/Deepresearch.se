@@ -13,7 +13,7 @@
 // score with a visible note) rather than breaking the quiz.
 
 import { completeJson, DEFAULT_MODEL, listModels } from "./berget.js";
-import { quotaBlockedResponse } from "./chat.js";
+import { quotaBlockedResponse } from "./quota.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import { quizGradePrompt } from "./prompts.js";

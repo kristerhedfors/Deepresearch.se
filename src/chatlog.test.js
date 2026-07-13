@@ -9,6 +9,7 @@ import {
   LOG_CAPS,
   SHELL_LOG_CAPS,
   buildChatLogEntry,
+  cleanStr,
   formatChatLogsText,
   formatShellForLog,
   likePattern,
@@ -34,6 +35,26 @@ test("truncateForLog coerces null/undefined/non-strings", () => {
   assert.equal(truncateForLog(null, 10), "");
   assert.equal(truncateForLog(undefined, 10), "");
   assert.equal(truncateForLog(42, 10), "42");
+});
+
+// ---- cleanStr (shared by the testpoints/feedback board validators) --------
+
+test("cleanStr returns a trimmed string for non-blank input", () => {
+  assert.equal(cleanStr("  hi there  ", 100), "hi there");
+});
+
+test("cleanStr returns null for absent/blank/non-string input", () => {
+  assert.equal(cleanStr("   ", 100), null);
+  assert.equal(cleanStr("", 100), null);
+  assert.equal(cleanStr(null, 100), null);
+  assert.equal(cleanStr(undefined, 100), null);
+  assert.equal(cleanStr(42, 100), null);
+});
+
+test("cleanStr truncates past the cap with truncateForLog's marker", () => {
+  const out = cleanStr("a".repeat(120), 100);
+  assert.ok(out && out.startsWith("a".repeat(100)));
+  assert.match(out, /…\[truncated 20 chars\]$/);
 });
 
 // ---- sanitizeConversationForLog -------------------------------------------

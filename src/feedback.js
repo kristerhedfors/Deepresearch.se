@@ -28,8 +28,8 @@
 // "new") so the open list stays the loop's single work queue.
 
 import { getDb } from "./db.js";
-import { jsonResponse } from "./http.js";
-import { likePattern, truncateForLog } from "./chatlog.js";
+import { jsonResponse, textResponse } from "./http.js";
+import { cleanStr, likePattern } from "./chatlog.js";
 import { feedbackEnabled } from "./settings.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -78,10 +78,6 @@ export function isOpenStatus(status) {
 export function normalizeStatus(value) {
   return typeof value === "string" && FEEDBACK_STATUSES.includes(value) ? value : null;
 }
-
-/** @param {unknown} v @param {number} max */
-const cleanStr = (v, max) =>
-  typeof v === "string" && v.trim() ? truncateForLog(v.trim(), max) : null;
 
 // POST /api/feedback body → row fields, or {error}. Only `comment` is
 // required — the reply context (question/answer/model) rides along when the
@@ -467,10 +463,3 @@ export async function handleAdminFeedback(request, env, url, log) {
   return jsonResponse({ error: "Not found." }, 404);
 }
 
-/** @param {string} text */
-function textResponse(text) {
-  return new Response(text, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
-}

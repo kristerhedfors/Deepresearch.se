@@ -43,7 +43,7 @@ import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
 import { handleChat } from "./chat.js";
 import { handleMcp } from "./mcp.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
-import { jsonResponse } from "./http.js";
+import { htmlResponse, jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
 import { acceptTerms } from "./accounts.js";
 import { configErrorPage, loginPage, pendingPage, termsPage } from "./login.js";
@@ -503,16 +503,4 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
     return handleClientLog(request, log, identity);
   }
   return null;
-}
-
-/**
- * @param {string} html
- * @param {number} status
- * @returns {Response}
- */
-function htmlResponse(html, status) {
-  return new Response(html, {
-    status,
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
 }

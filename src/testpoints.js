@@ -40,8 +40,8 @@
 //                     picks the point up); non-admin / missing → /rver.
 
 import { getDb } from "./db.js";
-import { jsonResponse } from "./http.js";
-import { likePattern, truncateForLog } from "./chatlog.js";
+import { jsonResponse, textResponse } from "./http.js";
+import { cleanStr, likePattern } from "./chatlog.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -105,10 +105,6 @@ export const ACTION_TYPES = [
 ];
 
 const ACCOUNT_VIEWS = ["summary", "full", "messages", "settings", "feedback", "games", "docs"];
-
-/** @param {unknown} v @param {number} max */
-const cleanStr = (v, max) =>
-  typeof v === "string" && v.trim() ? truncateForLog(v.trim(), max) : null;
 
 /** @param {unknown} v */
 const asBool = (v) => v === true || v === "true" || v === 1 || v === "1";
@@ -562,10 +558,3 @@ export async function handleTryRedirect(env, id, identity) {
   return new Response(null, { status: 302, headers: { Location: deepLink(point.target, id) } });
 }
 
-/** @param {string} text */
-function textResponse(text) {
-  return new Response(text, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
-}
