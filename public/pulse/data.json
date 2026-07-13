@@ -1,423 +1,21 @@
 {
-  "generated": "2026-07-12T15:33:55.223Z",
+  "generated": "2026-07-13T10:40:55.666Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
-    "from": "2026-07-10",
-    "to": "2026-07-12"
+    "from": "2026-07-12",
+    "to": "2026-07-13"
   },
   "totals": {
-    "commits": 80,
-    "added": 146312,
-    "removed": 3713,
-    "features": 13
+    "commits": 71,
+    "added": 89071,
+    "removed": 2119,
+    "features": 8
   },
   "commits": [
-    {
-      "t": "2026-07-10T19:57:20+00:00",
-      "a": 61369,
-      "r": 0,
-      "f": 1
-    },
-    {
-      "t": "2026-07-10T20:32:59+00:00",
-      "a": 33,
-      "r": 3,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T20:39:29+00:00",
-      "a": 30,
-      "r": 5,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T20:46:31+00:00",
-      "a": 28,
-      "r": 19,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T20:52:00+00:00",
-      "a": 44,
-      "r": 5,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T20:54:12+00:00",
-      "a": 31,
-      "r": 9,
-      "f": 1
-    },
-    {
-      "t": "2026-07-10T21:00:38+00:00",
-      "a": 88,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T21:26:31+00:00",
-      "a": 740,
-      "r": 38,
-      "f": 1
-    },
-    {
-      "t": "2026-07-10T21:30:42+00:00",
-      "a": 10,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-10T22:28:41+00:00",
-      "a": 2155,
-      "r": 34,
-      "f": 1
-    },
-    {
-      "t": "2026-07-10T22:43:29+00:00",
-      "a": 58,
-      "r": 5,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T05:57:16+00:00",
-      "a": 159,
-      "r": 100,
-      "f": 1
-    },
-    {
-      "t": "2026-07-11T06:54:33+00:00",
-      "a": 64514,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T07:02:25+00:00",
-      "a": 52,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T07:16:56+00:00",
-      "a": 20,
-      "r": 2,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T07:32:18+00:00",
-      "a": 10,
-      "r": 3,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T08:13:13+00:00",
-      "a": 16,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T10:17:33+00:00",
-      "a": 12,
-      "r": 2,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T11:39:17+00:00",
-      "a": 8,
-      "r": 2,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T12:01:47+00:00",
-      "a": 7,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T12:02:09+00:00",
-      "a": 1,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T12:07:55+00:00",
-      "a": 32,
-      "r": 16,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T15:07:04+00:00",
-      "a": 163,
-      "r": 25,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T15:07:29+00:00",
-      "a": 131,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T15:15:24+00:00",
-      "a": 139,
-      "r": 33,
-      "f": 1
-    },
-    {
-      "t": "2026-07-11T15:38:42+00:00",
-      "a": 328,
-      "r": 118,
-      "f": 1
-    },
-    {
-      "t": "2026-07-11T15:45:39+00:00",
-      "a": 7,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T16:18:32+00:00",
-      "a": 1016,
-      "r": 843,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T16:38:18+00:00",
-      "a": 298,
-      "r": 208,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T16:39:48+00:00",
-      "a": 15,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T17:29:45+00:00",
-      "a": 352,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T18:02:35+00:00",
-      "a": 187,
-      "r": 9,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T18:10:36+00:00",
-      "a": 121,
-      "r": 95,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T18:22:15+00:00",
-      "a": 225,
-      "r": 123,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T19:02:08+00:00",
-      "a": 189,
-      "r": 147,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T19:10:42+00:00",
-      "a": 102,
-      "r": 90,
-      "f": 0
-    },
-    {
-      "t": "2026-07-11T19:33:06+00:00",
-      "a": 489,
-      "r": 17,
-      "f": 1
-    },
-    {
-      "t": "2026-07-12T05:50:04+00:00",
-      "a": 96,
-      "r": 3,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T06:29:47+00:00",
-      "a": 44,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T06:41:45+00:00",
-      "a": 302,
-      "r": 18,
-      "f": 1
-    },
-    {
-      "t": "2026-07-12T06:45:27+00:00",
-      "a": 1,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T08:04:10+00:00",
-      "a": 499,
-      "r": 6,
-      "f": 1
-    },
-    {
-      "t": "2026-07-12T08:04:10+00:00",
-      "a": 499,
-      "r": 6,
-      "f": 1
-    },
-    {
-      "t": "2026-07-12T08:16:12+00:00",
-      "a": 953,
-      "r": 6,
-      "f": 1
-    },
-    {
-      "t": "2026-07-12T08:28:41+00:00",
-      "a": 509,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T08:37:24+00:00",
-      "a": 7,
-      "r": 10,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T08:43:38+00:00",
-      "a": 842,
-      "r": 7,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:09:51+00:00",
-      "a": 121,
-      "r": 10,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:18:04+00:00",
-      "a": 44,
-      "r": 38,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:19:13+00:00",
-      "a": 6,
-      "r": 2,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:23:55+00:00",
-      "a": 4,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:29:19+00:00",
-      "a": 84,
-      "r": 0,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:43:35+00:00",
-      "a": 598,
-      "r": 117,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:52:01+00:00",
-      "a": 88,
-      "r": 68,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:52:57+00:00",
-      "a": 1403,
-      "r": 38,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T09:59:23+00:00",
-      "a": 10,
-      "r": 10,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T10:19:55+00:00",
-      "a": 46,
-      "r": 25,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T10:20:57+00:00",
-      "a": 885,
-      "r": 14,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T10:45:31+00:00",
-      "a": 30,
-      "r": 1,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:01:53+00:00",
-      "a": 879,
-      "r": 149,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:13:01+00:00",
-      "a": 136,
-      "r": 30,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:13:43+00:00",
-      "a": 26,
-      "r": 8,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:18:27+00:00",
-      "a": 342,
-      "r": 17,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:19:24+00:00",
-      "a": 263,
-      "r": 12,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:24:13+00:00",
-      "a": 412,
-      "r": 14,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T12:33:40+00:00",
-      "a": 0,
-      "r": 0,
-      "f": 0
-    },
     {
       "t": "2026-07-12T12:54:05+00:00",
       "a": 183,
       "r": 53,
-      "f": 0
-    },
-    {
-      "t": "2026-07-12T14:08:45+00:00",
-      "a": 1150,
-      "r": 632,
       "f": 0
     },
     {
@@ -428,7 +26,7 @@
     },
     {
       "t": "2026-07-12T14:15:42+00:00",
-      "a": 184,
+      "a": 75484,
       "r": 0,
       "f": 0
     },
@@ -491,75 +89,386 @@
       "a": 251,
       "r": 187,
       "f": 0
+    },
+    {
+      "t": "2026-07-12T15:54:01+00:00",
+      "a": 151,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:56:09+00:00",
+      "a": 16,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T15:57:57+00:00",
+      "a": 107,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T16:07:25+00:00",
+      "a": 787,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T16:08:20+00:00",
+      "a": 1383,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T16:14:32+00:00",
+      "a": 208,
+      "r": 152,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T16:31:49+00:00",
+      "a": 240,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T16:33:02+00:00",
+      "a": 789,
+      "r": 31,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T18:43:42+00:00",
+      "a": 67,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:20:04+00:00",
+      "a": 40,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:29:49+00:00",
+      "a": 10,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:41:59+00:00",
+      "a": 28,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:50:34+00:00",
+      "a": 198,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:55:30+00:00",
+      "a": 655,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T19:57:10+00:00",
+      "a": 23,
+      "r": 12,
+      "f": 1
+    },
+    {
+      "t": "2026-07-12T20:06:25+00:00",
+      "a": 22,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T20:07:01+00:00",
+      "a": 9,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T20:09:29+00:00",
+      "a": 175,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T20:27:07+00:00",
+      "a": 697,
+      "r": 238,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T20:34:01+00:00",
+      "a": 81,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T20:43:33+00:00",
+      "a": 95,
+      "r": 29,
+      "f": 0
+    },
+    {
+      "t": "2026-07-12T21:03:56+00:00",
+      "a": 16,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:23:11+00:00",
+      "a": 40,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:27:35+00:00",
+      "a": 166,
+      "r": 74,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:34:51+00:00",
+      "a": 29,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:37:33+00:00",
+      "a": 117,
+      "r": 178,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:48:14+00:00",
+      "a": 721,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:48:14+00:00",
+      "a": 721,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T05:49:59+00:00",
+      "a": 20,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:03:03+00:00",
+      "a": 23,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:03:25+00:00",
+      "a": 13,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:07:47+00:00",
+      "a": 16,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:20:41+00:00",
+      "a": 48,
+      "r": 42,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:23:50+00:00",
+      "a": 28,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:29:12+00:00",
+      "a": 16,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:34:20+00:00",
+      "a": 156,
+      "r": 112,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:34:52+00:00",
+      "a": 7,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:44:08+00:00",
+      "a": 24,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:44:29+00:00",
+      "a": 38,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:50:55+00:00",
+      "a": 382,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T06:59:37+00:00",
+      "a": 505,
+      "r": 4,
+      "f": 1
+    },
+    {
+      "t": "2026-07-13T07:10:15+00:00",
+      "a": 103,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:11:26+00:00",
+      "a": 208,
+      "r": 90,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:13:58+00:00",
+      "a": 34,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:14:38+00:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:20:50+00:00",
+      "a": 203,
+      "r": 145,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:30:00+00:00",
+      "a": 186,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:33:10+00:00",
+      "a": 137,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-13T07:37:48+00:00",
+      "a": 21,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:45:16+00:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:55:16+00:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T07:57:10+00:00",
+      "a": 226,
+      "r": 43,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T08:01:47+00:00",
+      "a": 21,
+      "r": 28,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T08:11:34+00:00",
+      "a": 4,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T08:21:25+00:00",
+      "a": 290,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T08:31:03+00:00",
+      "a": 403,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T10:14:54+00:00",
+      "a": 190,
+      "r": 18,
+      "f": 1
+    },
+    {
+      "t": "2026-07-13T10:21:39+00:00",
+      "a": 18,
+      "r": 36,
+      "f": 1
     }
   ],
   "days": [
     {
-      "date": "2026-07-10",
-      "commits": 11,
-      "added": 64586,
-      "removed": 119,
-      "features": 4,
-      "subjects": [
-        "bash-lite: fix the sandbox never becoming cross-origin isolated",
-        "Add experimental in-browser Linux execution sandbox + bash-lite agent",
-        "fix(drc): allowlist drc-rag.js and its import chain as public assets — d6 shipped with a broken /cure module graph",
-        "feat(drc): client-side RAG for conversations and projects — browser-direct OpenAI embeddings, index sealed in the state",
-        "docs: cache-helper skill — every cache layer + the Development Mode reminder",
-        "feat(drc): curated model dropdown — recent language models only, newest first",
-        "style(brand): two-font URL wordmark matched to the logotype",
-        "style(branding): the tiers are always deepresearch.se/cure and deepresearch.se/rver, wordplay tail in bold",
-        "fix(ghost): standalone-aware ghost navigation + DRC build stamp",
-        "fix(drc): khaki iOS bar tint when arriving via the ghost",
-        "feat(ghost): the ghost symbol's new meaning — it takes you to DRC"
-      ],
-      "summary": "Shipped the experimental in-browser Linux execution sandbox and its bash-lite agent, and added client-side RAG for se/cure conversations and projects (browser-direct OpenAI embeddings, sealed in local state). The ghost button was repurposed as the door to the /cure client tier. Plus two-font URL branding and iOS/ghost-navigation fixes.",
-      "curated": true
-    },
-    {
-      "date": "2026-07-11",
-      "commits": 26,
-      "added": 68593,
-      "removed": 1836,
-      "features": 4,
-      "subjects": [
-        "feat(sandbox): mount chat + project files into the Linux VM (part B, Tier 1)",
-        "docs: project mounts at /mnt/<projname>-<hash> with no-hash /workspace symlink",
-        "docs: concrete VM mount layout — /workspace (session) + /projects/<name> + symlink",
-        "docs: real device mounts (tiered) for large files + overlay persistence",
-        "docs: adopt aisecurityliteracy.dev's proven file-into-VM mechanism",
-        "docs: design for mounting chat & project files into the Linux sandbox",
-        "docs: research + design for fast host-JS commands inside the Linux sandbox",
-        "docs(skills): the anonymous-verification lesson — authed probes mask public-graph 401s; the build stamp is the liveness check",
-        "fix(drc): /cure was dead for anonymous visitors — split vault-core.js out so the public graph sheds the DRS storage chain",
-        "refactor(bash-lite): one shared pure core — public/js/bash-core.js replaces the hand-mirrored copies",
-        "fix(ui): sandbox setting row leaked markup fragments — strip tags from the aria-label",
-        "feat(ui): settings gear in both tiers, one-field key form with provider auto-detect, shimmering ghost",
-        "feat(drc): Berget joins deepresearch.se/cure as the third client-side provider",
-        "chore(workflow): sync-with-latest-main rule — SessionStart hook + sync-main skill",
-        "docs(skills): capture the CheerpX bash-sandbox debugging saga + working fix",
-        "bash-lite: COEP require-corp so iOS Safari actually isolates (was credentialless)",
-        "fix(types): include sab/ua in sanitizeClientDiag return type",
-        "diag: capture SharedArrayBuffer availability + user-agent in client_diag",
-        "bash-lite: self-heal via fresh-URL navigation, not reload (iOS PWA shell)",
-        "diag: log request host + the OAuth redirect_uri/client_id for live tracing",
-        "auth: canonicalize www -> apex so Google OAuth redirect_uri matches",
-        "bash-lite: log the received client_diag for live request-level tracing",
-        "bash-lite: auto-evict a stale sandbox client's cache so the fix can load",
-        "bash-lite: chat-log client diagnostic + bfcache isolation self-heal",
-        "bash-lite: admin sandbox access, non-fatal xterm CSS, fix STOP_ICON TDZ crash",
-        "sandbox UI: move the knob under the account view, drop the spiderweb, add a DRC account view"
-      ],
-      "summary": "Extended the sandbox to mount chat and project files into the Linux VM, gave both tiers a unified settings gear with a one-field API-key form (provider auto-detect), and brought Berget in as a third client-side se/cure provider. A large day of sandbox research and design docs, plus the anonymous-visitor /cure fix (splitting vault-core out of the public graph) and COEP/iOS cross-origin-isolation fixes.",
-      "curated": true
-    },
-    {
       "date": "2026-07-12",
-      "commits": 43,
-      "added": 13133,
-      "removed": 1758,
-      "features": 5,
+      "commits": 35,
+      "added": 83951,
+      "removed": 1061,
+      "features": 4,
       "subjects": [
+        "refactor-clarity skill: document the second freshness test (bundle:rag)",
+        "Tool-call activity: show WHICH tool, args, and result per call",
+        "skills: document the native tool-calling paths (introspection + execution-sandbox)",
+        "DRC onboarding: land new users straight in the chat input after the umbrella intro",
+        "Se/cure developer mode: client-side native tool-calling over the source",
+        "chatlog: record bash-lite shell tool calls in interaction log",
+        "auth: force https in the canonical redirect so Firefox Focus OAuth stops on redirect_uri_mismatch",
+        "introspect: log the native-tool gate decision (observability)",
+        "Se/rver developer mode: native tool-calling investigation on the answer model",
+        "Introspection: resolve \"read those\" / \"do that\" back-references to real file reads",
+        "Developer mode: set the titanium status-bar tint at parse time (iOS PWA fix)",
+        "Developer mode: re-tint the iOS status bar to titanium (fix blue strip at top)",
+        "Developer mode: titanium-gray theme + PWA-persistent apply, roomier source exploration",
+        "Developer mode: route the assessment ask to the source read loop, not triage-direct",
+        "Developer mode: make source-research actually read the code, not summarize the docs",
+        "Add panel-selection board (attention loop) + fold usage tables",
+        "Sandbox: make the transparency control an on-screen bar during terminal activity, drop the config setting",
+        "Sandbox: replace the auto-popping terminal with a faint page-background activity layer",
+        "features board: stand up the second loop-feeding priority channel",
+        "Add ux-conventions skill: registry of codified UX interaction rules",
+        "welcome: make the page inert behind the mascot bubble while it shows",
+        "admin boards: collapse items to headers; tap to open, drag grip to reorder",
         "pulse: zoom the graphs into one period (hours/days/weeks) with a navigator",
         "welcome: reframe the first-visit pane around features and the project idea",
         "branding: render the tier wordmarks in CamelCase (DeepResearch.Se/cure, DeepResearch.Se/rver)",
@@ -572,40 +481,57 @@
         "welcome: tighten space around the slash in se/cure so it reads more like 'secure'",
         "Introspection mode: answer from own source by default, skip web/HF search",
         "Build introspection source-RAG index; make the builder much faster",
-        "docs: add the refactor-clarity skill",
-        "refactor: extract focused modules from the largest orchestrators for clarity",
-        "chore: regenerate introspection source snapshot after the security-fix round",
-        "boards: unified discovery index so Claude can fetch every board + fan out by priority",
-        "security: mechanical secret-leak prevention — scanner + pre-push hook (P-2)",
-        "security: per-user in-flight concurrency cap on expensive endpoints (P-3 / M-1+M-2)",
-        "security: bound the two unbounded outbound fetches (P-8 / M-5)",
-        "Introspection RAG: delta (incremental) index builder + pacing + docs",
-        "Introspection: retrieval-based source injection — fix \"Code examples from site\"",
-        "Fix: introspection/developer knob absent in the break-glass admin Settings",
-        "Introspection UX: TIN the titanium mascot + private-vs-remote model picker",
-        "Introspection mode: developer_mode knob + deployed-source snapshot on both tiers",
-        "Architecture page: render tier tokens exactly like the two product headers",
-        "Sweep DRC/DRS out of model-facing prompt text too — models echo it to users",
-        "Drop DRC/DRS acronyms from user-facing copy — the slashed tails are the names",
-        "Add /architecture/ — the architecture story pairing DRS and DRC",
-        "refactor(boards): extract the decision-board core + package the panel⇄loop mechanism as a skill",
-        "chore(hooks): SessionStart SSH commit-signing setup from environment secrets",
-        "Landing mascot: tapping the speech bubble dismisses it too",
-        "Docs: describe the per-tier ghost markers accurately in CLAUDE.md",
-        "Ghost buttons: once-a-minute glow on the blue tier, glowing contours on DRC",
-        "Umbrella intro: 2.5x default pace + admin speed slider (anim_speed)",
-        "feat(admin): security-risk review board — votes, manual scores, and the fix loop's priority order",
-        "security: living public-source risk register + security-posture verification skill",
-        "Umbrella intro: first tap stops and removes the animation immediately",
-        "Add first-visit onboarding animations to the landing page and DRC",
-        "Add /architecture/ — the architecture story pairing DRS and DRC",
-        "chore: set LOG_LEVEL=debug in prod for sandbox-filesystem heavy testing",
-        "feat(sandbox): production + debug logging for the VM filesystem integration",
-        "docs: persist the Tier 2 (WebDevice+SW) roadmap for VM file mounting",
-        "docs(skill): bundle VM file-mounting into the execution-sandbox skill"
+        "docs: add the refactor-clarity skill"
       ],
-      "summary": "43 commits, +13133/−1758 lines. New: pulse: add the Project pulse commit-analytics dashboard + update skill; Add /architecture/ — the architecture story pairing DRS and DRC; Add first-visit onboarding animations to the landing page and DRC.",
-      "curated": false
+      "summary": "Developer/introspection mode grew up: a titanium-gray theme (with iOS PWA status-bar tint fixes), native tool-calling that agentically reads the site's own source on both tiers, and a committed source-RAG index behind it. Two admin decision boards landed — the features priority channel and the votes-only panel-attention board — alongside this Project pulse dashboard itself. Branding moved to the CamelCase wordmarks (DeepResearch.Se/cure and DeepResearch.Se/rver) with tightened slashes, the sandbox's auto-popping terminal became a faint background activity layer, and the welcome page was reframed around features.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-13",
+      "commits": 36,
+      "added": 5120,
+      "removed": 1058,
+      "features": 4,
+      "subjects": [
+        "Resolve board-skill ambiguity: feature-board §5 owns the new-board checklist",
+        "Skills assessment: add mcp-server skill, fold orphan modules into existing skills",
+        "Surface the skills catalog in introspection mode (any model, both tiers)",
+        "Sandbox: full boot-timeline debug coverage for the \"booting sandbox\" hang",
+        "Introspection: stop leaking the model's planning preamble into the answer",
+        "Introspection tag: plain legible titanium white (drop the muddy gradient clip)",
+        "DRC intro: Victorian umbrellas that revive from wire into color",
+        "Ledger: confirm the selection-board system is already in main (superseded)",
+        "Introspection: white titanium cue (drop purple); Se/cure knob reuses the Se/rver switch pane",
+        "Ledger: record OWASP's actual merged tip (bef0451, not f844788)",
+        "pr skill: rebuild introspection artifacts; broaden Step 1 trigger",
+        "Add pr skill: one-word trigger to prep a branch for the Merger workflow",
+        "Entertain the notification bar while the Linux sandbox boots",
+        "Activate the merge barrier: finalize main_sha for MERGE-STATUS.json",
+        "Ledger + regenerated introspection artifacts for the reconciliation pass",
+        "Integrate shared split-billing math (billing.js) from refactor-skill-repo",
+        "Merge barrier + both merge styles; integrate glass-pane close chevrons",
+        "Add merge-branches skill + branch ledger; switch CLAUDE.md to PR workflow",
+        "Introspection OWASP: offline retrieval, multi-category breadth, DRC grounding, live verification",
+        "Introspection: unify on PURPLE — Se/cure now uses the Se/rver amethyst",
+        "Integrate the privacy-capabilities mission into the README + CLAUDE.md note",
+        "Reframe mission to LLM-privacy-capabilities research; enforce secure-first pairing",
+        "Se/cure introspection: recolour the logo wordmark to the purpur cue",
+        "Se/cure introspection: shift the pane to purpur (crimson-purple)",
+        "Introspection: make the composer tint stand out ~2x more from the plain pane",
+        "Reframe site from \"built over a weekend\" to an ongoing experiment",
+        "Se/cure introspection: blood-red composer (deeper, purer red than the rose ruby)",
+        "Introspection OWASP: lead security-assessment reports with Executive Summary → Scope → Findings",
+        "Se/cure introspection: vivid shiny ruby composer (was too dark to stand out)",
+        "Introspection: OWASP Top 10 default + reference corpus for security assessments",
+        "Introspection composer: even top→bottom tint, drop the white border",
+        "Introspection: OWASP Top 10 default + reference corpus for security assessments",
+        "Introspection: tint only the composer pane (amethyst/ruby), leave the background",
+        "Admin Users: fold the list, and each user's usage, behind expandables",
+        "Introspection: distinct amethyst (Se/rver) & ruby (Se/cure) skins; rename knob to \"Introspection\"",
+        "Account menu: gather documentation links under a Documentation view"
+      ],
+      "summary": "Introspection mode gained an OWASP Top 10 default with a security-assessment reference corpus and an executive-summary report format, surfaced the skills catalog to any model, and settled its per-tier skins (amethyst Se/rver, ruby Se/cure). The repo's git workflow was reconciled: the merge barrier was activated, both PR and direct-merge styles were adopted, and the merge-branches and pr skills plus their branch ledger were added. The project's mission was reframed around LLM-privacy-capabilities research (secure-first pairing), the DRC intro got its Victorian umbrellas reviving from wireframe into color, and the sandbox picked up full boot-timeline debug coverage.",
+      "curated": true
     }
   ]
 }
