@@ -78,32 +78,43 @@ let projectDev = null;
 // notification surface while the slow first boot runs. Module-level so both the
 // success path and the error handler can stop it.
 let bootQuipTimer = null;
+// The LIVE progress sink the quip ticker writes to. Held at module scope (not
+// captured by startBootQuips) so a caller that JOINS an already-running boot can
+// adopt it — the pre-warm (composer focus) starts the boot with a no-op sink, so
+// when the real send reuses that in-flight boot, ensureSandboxBooted swaps in
+// the send's real sink here and the ticker immediately drives the visible
+// activity label. Without this, a pre-warmed boot showed the caller's initial
+// "Booting…" string frozen, with no progress bar or quips (the 2026-07-13
+// regression: the boot looked hung even while it was making progress).
+let _bootOnMessage = null;
 
-/** Start rotating boot quips through `onBootMessage` (no-op without one). */
-function startBootQuips(onBootMessage) {
+/** Start the boot ticker; it writes to the live _bootOnMessage sink each tick. */
+function startBootQuips() {
   stopBootQuips();
-  if (typeof onBootMessage !== "function") return;
   const rotator = createBootMessageRotator();
   // Tick every second so the elapsed counter visibly moves (a frozen label is
   // what reads as "hung" on iOS). Each tick shows the live progress line
   // (stage + bar + N/6 + seconds) with a quip trailing, swapped every ~3s so it
-  // still entertains without churning.
+  // still entertains without churning. Reads _bootOnMessage LIVE, so a sink
+  // adopted mid-boot (a real send joining a pre-warm) takes effect next tick.
   let quip = rotator.next();
   let n = 0;
   const tick = () => {
     try {
+      if (typeof _bootOnMessage !== "function") return; // no sink yet — skip
       if (n > 0 && n % 3 === 0) quip = rotator.next();
       n += 1;
       const elapsed = _bootT0 ? Date.now() - _bootT0 : 0;
-      onBootMessage(`${formatBootProgress(_bootStage, elapsed)} — ${quip}`);
+      _bootOnMessage(`${formatBootProgress(_bootStage, elapsed)} — ${quip}`);
     } catch { /* decoration — never break the boot */ }
   };
   tick(); // paint immediately, don't wait a full second
   bootQuipTimer = setInterval(tick, 1000);
 }
 
-/** Stop the boot-quip ticker (idempotent). */
+/** Stop the boot-quip ticker (idempotent) and drop the live sink. */
 function stopBootQuips() {
+  _bootOnMessage = null;
   if (bootQuipTimer) { clearInterval(bootQuipTimer); bootQuipTimer = null; }
 }
 
@@ -362,8 +373,13 @@ function readData(str) {
  * @returns {Promise<boolean>}
  */
 export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
+  // Adopt this caller's progress sink even for an ALREADY in-flight boot — a
+  // pre-warm starts the boot with a no-op sink, so the real send that reuses it
+  // must still get the live progress line + quips (else the activity label
+  // sticks on the caller's initial "Booting…" string).
+  if (typeof onBootMessage === "function") _bootOnMessage = onBootMessage;
   if (bootPromise) return bootPromise;
-  bootPromise = bootVM(fileProvider, onBootMessage).catch((err) => {
+  bootPromise = withBootTimeout(bootVM(fileProvider)).catch((err) => {
     stopBootQuips();
     const msg = (/** @type {any} */ (err))?.message || String(err);
     console.error("[sandbox] boot failed", err);
@@ -375,6 +391,46 @@ export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
     return false;
   });
   return bootPromise;
+}
+
+// A cold Debian boot can legitimately take ~30 s (disk streamed block by
+// block), so the timeout is generous — but a boot that NEVER resolves (a disk/
+// CDN fetch that hangs, e.g. a privacy browser that blocks the CDN or clears
+// the disk cache every session) must not wedge the send forever with no answer.
+// Past this ceiling the boot fails soft: resolve false so maybeRunShellLoop
+// answers normally, and discard the wedged VM so a later send can retry fresh.
+const BOOT_TIMEOUT_MS = 90000;
+
+/**
+ * Race a boot against BOOT_TIMEOUT_MS. On timeout, log it, tear down the wedged
+ * boot, and resolve false (the fail-soft outcome). A real boot rejection still
+ * propagates to ensureSandboxBooted's catch. Never rejects on timeout.
+ * @param {Promise<boolean>} boot
+ * @returns {Promise<boolean>}
+ */
+function withBootTimeout(boot) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer = null;
+    try {
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        sblog("warn", "sandbox.boot_timeout", { stage: _bootStage, ms: _bootT0 ? Date.now() - _bootT0 : 0 });
+        setFsSummary({ ...(sandboxFsSummary() || {}), err: "boot timed out at " + _bootStage });
+        flushSandboxLog();
+        try { stopBootQuips(); } catch { /* ignore */ }
+        try { stopBootWatchdog(); } catch { /* ignore */ }
+        // CheerpX has no abort — discard the wedged instance so a retry re-boots.
+        try { resetSandbox(); } catch { /* ignore */ }
+        resolve(false);
+      }, BOOT_TIMEOUT_MS);
+    } catch { /* timers unavailable — no timeout, just await the boot */ }
+    boot.then(
+      (v) => { if (!settled) { settled = true; if (timer) clearTimeout(timer); resolve(v); } },
+      (e) => { if (!settled) { settled = true; if (timer) clearTimeout(timer); reject(e); } },
+    );
+  });
 }
 
 /** Whether no VM is booting or booted (a pre-warm may start). */
@@ -415,10 +471,12 @@ export async function resetSandboxIfBare() {
 }
 
 /**
+ * The boot progress sink is the module-level _bootOnMessage (set by
+ * ensureSandboxBooted), so the ticker can be adopted by a caller that joins an
+ * in-flight boot — see startBootQuips.
  * @param {(() => Promise<any>) | null} [fileProvider]
- * @param {((msg: string) => void) | null} [onBootMessage]
  */
-async function bootVM(fileProvider = null, onBootMessage = null) {
+async function bootVM(fileProvider = null) {
   const t0 = Date.now();
   _bootT0 = t0;
   _bootStage = "boot_start";
@@ -438,7 +496,9 @@ async function bootVM(fileProvider = null, onBootMessage = null) {
   buildPanel();
   setStatus("booting");
   // Keep the notification bar lively while the disk streams and Linux comes up.
-  startBootQuips(onBootMessage);
+  // The ticker reads the live _bootOnMessage sink (adopted by ensureSandboxBooted),
+  // so a real send that joins a pre-warm's boot still lights up the progress line.
+  startBootQuips();
   // Arm the stall watchdog now — everything after this point is an await that
   // can hang (CDN scripts, disk fetch, Linux.create). If any never resolves, the
   // watchdog still names the stuck stage and flushes it.

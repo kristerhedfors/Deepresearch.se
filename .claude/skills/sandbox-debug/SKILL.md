@@ -119,6 +119,13 @@ with `user_id`, `ua`):
   the last stage entered. **warn-level → always surfaces, even with verbose
   OFF**, and always flushes. Repeated lines = still stuck; the `stage` is where.
 - `sandbox.boot_failed` `{error, stage}` — boot threw; `stage` is where.
+- `sandbox.boot_timeout` `{stage, ms}` — the boot exceeded `BOOT_TIMEOUT_MS`
+  (90 s) without resolving — a genuine hang (a disk/CDN fetch that never
+  returns, e.g. a privacy browser like **Firefox Focus** that blocks the CheerpX
+  CDN or clears the disk cache every session). The boot then **fails soft**:
+  the wedged VM is discarded (`resetSandbox`) and the send answers normally
+  instead of freezing forever. `stage` names where it wedged (usually
+  `connecting disk…`). warn-level → always surfaces.
 - `sandbox.boot_unsupported` `{coi, sab}` — not cross-origin isolated (can't
   boot here at all — an isolation problem, not a boot hang; see the
   execution-sandbox skill's COEP section).
@@ -162,6 +169,22 @@ timeline). Only once `coi:true` does the boot timeline matter, and that's when
      from a partial file-mount (though those are staged fail-soft) or a CheerpX
      version issue.
 5. Fix at that layer, redeploy, re-verify the timeline reaches `boot_done`.
+
+## "The boot label is frozen and the quips vanished" (2026-07-13)
+
+A distinct symptom from a true hang: the activity label sticks on the caller's
+initial `Booting Linux sandbox…` string with **no progress bar and no rotating
+quips**, even while the boot is actually advancing. Root cause was the
+**pre-warm**: `prewarmSandbox` (composer focus) starts the boot with a NO-OP
+message sink; when the real send reuses that in-flight boot,
+`ensureSandboxBooted` returned early (`if (bootPromise) return bootPromise`) and
+**dropped the send's real sink**, so the ticker kept writing to the pre-warm's
+no-op. Fixed by holding the sink at module scope (`_bootOnMessage`) and having
+`ensureSandboxBooted` ADOPT the latest caller's sink even for an in-flight boot,
+so the ticker (`startBootQuips` reads it live) lights up the moment the real
+send joins. If you see a frozen boot label, confirm the sink is being adopted —
+don't chase the disk fetch; the boot may be fine, only its progress was
+invisible.
 
 ## Caveats
 
