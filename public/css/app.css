@@ -74,22 +74,34 @@ body::before {
   pointer-events: none;
   overflow: hidden;
 }
+/* The viewport: a fixed-height window bottom-anchored ABOVE the composer (the
+   newest command line clears the input pane instead of hiding behind it). Its
+   child sticks to the bottom (justify-content:flex-end) so the tail shows; the
+   agent-backdrop.js glue translates the scroller to page back through history.
+   Soft top fade so lines scroll into view instead of hard-cutting. */
 .dr-agent-backdrop-text {
   position: absolute;
-  left: 1.5rem; right: 1.5rem; bottom: 6.5rem;
-  margin: 0;
-  max-height: 62vh;
+  left: 1.5rem; right: 1.5rem; bottom: 9.5rem;
+  height: 60vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+}
+/* The scrolled element: agent-backdrop.js sets translateY here to page the log
+   (kept off the animated <pre> so the two transforms don't collide). */
+.dr-agent-backdrop-scroll { will-change: transform; }
+.dr-agent-backdrop-pre {
+  margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.55;
   color: rgba(10, 46, 92, .5);
   white-space: pre-wrap;
   word-break: break-word;
-  /* Soft top fade so lines scroll into view instead of hard-cutting, and a
-     gentle side-to-side wave across the characters (kept subtle on purpose). */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 100%);
+  /* A gentle side-to-side wave across the characters (kept subtle on purpose). */
   animation: agent-wave 7.5s ease-in-out infinite;
 }
 @keyframes agent-wave {
@@ -97,7 +109,7 @@ body::before {
   50% { transform: translateX(7px) skewX(-1.1deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-text { animation: none; }
+  .dr-agent-backdrop-pre { animation: none; }
 }
 /* The transparency bar: a small floating glass pill that appears WHILE the
    sandbox terminal is running (public/js/agent-backdrop.js) and auto-hides when
