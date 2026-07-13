@@ -3,9 +3,10 @@
 // sign-out. Opened from the header's account button.
 //
 // This file is the panel SHELL: initAccountPanel (the boot wiring), the
-// shared PanelCtx, and the showView dispatcher. The six views' renderers
+// shared PanelCtx, and the showView dispatcher. The views' renderers
 // live in their own modules:
-// - "summary" (default), "full", and "games" — plus the shared building
+// - "summary" (default), "full", "games", and "docs" (the documentation
+//   links gathered under one heading) — plus the shared building
 //   blocks (settingRow, the info popovers, the notification badge, the
 //   summary's Feedback-mode knob): account-views.js.
 // - "messages" (the message center): account-messages.js.
@@ -21,7 +22,7 @@
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadSettingsView } from "./account-settings.js";
-import { loadGamesView, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
+import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
 
 /**
  * The panel context shared by every view function in the account-* view
@@ -98,7 +99,7 @@ export function initAccountPanel() {
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
- * @param {"summary"|"full"|"messages"|"settings"|"feedback"|"games"} view
+ * @param {"summary"|"full"|"messages"|"settings"|"feedback"|"games"|"docs"} view
  */
 function showView(ctx, view) {
   if (view === "messages") {
@@ -117,6 +118,11 @@ function showView(ctx, view) {
     loadGamesView(ctx);
     return;
   }
+  if (view === "docs") {
+    ctx.body.innerHTML = renderDocs();
+    document.getElementById("docsbackbtn").addEventListener("click", () => ctx.show("summary"));
+    return;
+  }
   ctx.body.innerHTML = view === "full" ? renderFullUsage(ctx.me) : renderSummary(ctx.me);
   if (view === "full") {
     document.getElementById("usagebackbtn").addEventListener("click", () => ctx.show("summary"));
@@ -126,6 +132,7 @@ function showView(ctx, view) {
     document.getElementById("settingsbtn")?.addEventListener("click", () => ctx.show("settings"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
+    document.getElementById("docsbtn")?.addEventListener("click", () => ctx.show("docs"));
     document.getElementById("logoutbtn").addEventListener("click", async () => {
       await fetch("/logout", { method: "POST" });
       location.href = "/login";

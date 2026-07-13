@@ -386,11 +386,7 @@ export function renderSummary(me) {
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
       <button id="gamesbtn" type="button">Games</button>
-      <a href="/build/" target="_blank" rel="noopener">About this project</a>
-      <a href="/story/" target="_blank" rel="noopener">The build story</a>
-      <a href="/architecture/" target="_blank" rel="noopener">The architecture story</a>
-      <a href="/pulse/" target="_blank" rel="noopener">Project pulse</a>
-      <a href="/help/" target="_blank" rel="noopener">Documentation</a>
+      <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
     </div>`;
@@ -409,6 +405,34 @@ export function renderFullUsage(me) {
     <button id="usagebackbtn" type="button" class="back-link">← Back</button>
     <p class="section-lbl">Full usage history</p>
     ${blocks}`;
+}
+
+// The "documentation" view — every project-info / help page gathered under one
+// heading instead of loose in the summary's button row. Each opens a NEW TAB
+// (same-tab navigation would abort an in-flight research request), and each
+// carries a one-line description so a first-time reader knows where to go.
+// Static list; the pages themselves are served from public/ (see the ui-notes
+// skill).
+const DOC_LINKS = [
+  ["/help/", "Documentation", "How to use the site — features, privacy, and the deep-research pipeline."],
+  ["/build/", "About this project", "What DeepResearch is and the ideas behind it."],
+  ["/story/", "The build story", "How the site was built, session by session."],
+  ["/architecture/", "The architecture story", "How the Worker, pipeline, and privacy split fit together."],
+  ["/pulse/", "Project pulse", "Live charts of commits, lines, and new features over the repo's history."],
+];
+
+export function renderDocs() {
+  const rows = DOC_LINKS.map(
+    ([href, label, desc]) =>
+      `<div class="account-actions">
+         <a href="${href}" target="_blank" rel="noopener">${label}</a>
+       </div>
+       <p class="muted">${desc}</p>`,
+  ).join("");
+  return `
+    <button id="docsbackbtn" type="button" class="back-link">← Back</button>
+    <p class="section-lbl">Documentation</p>
+    ${rows}`;
 }
 
 // Users see: an OPAQUE research-budget bar (cost-backed server-side, but
