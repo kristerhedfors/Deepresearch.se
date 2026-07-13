@@ -25,6 +25,7 @@ import {
 } from "./settings.js";
 import { applyFeedbackMode } from "./turns.js";
 import { applyDeveloperTheme } from "./dev-mode.js";
+import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -312,9 +313,17 @@ export function wireSandboxKnob(ctx) {
     status.textContent = "Saving…";
     try {
       await setBashLiteMcp(on);
+      // Seed the local cache so the NEXT load's synchronous boot self-heal
+      // (app.js via sandbox-mode.js) reflects this flip without waiting on
+      // /api/settings.
+      storeSandboxMode(on);
       if (on) {
         status.textContent = "Sandbox enabled — reloading so it can start…";
-        setTimeout(() => location.reload(), 800);
+        // NOT location.reload() (re-serves the device-cached non-isolated
+        // shell on iOS): navigate to a fresh ?_coep= URL so the now-COEP /rver
+        // is really fetched and the page comes back isolated. Guarded + deduped
+        // in isolateForSandbox; falls back to a plain reload if it can't.
+        setTimeout(() => { if (!isolateForSandbox(true, { resetGuard: true })) location.reload(); }, 800);
       } else {
         status.textContent = "Sandbox disabled.";
         knob.disabled = false;

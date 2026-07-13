@@ -381,7 +381,14 @@ in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
 relaunch paints the titanium palette at first paint before `/api/settings`
 answers; `app.js` applies the cache synchronously at boot then reconciles with
 the server's authoritative `developer_mode`, and the developer knob flips it on
-toggle — Node-tested), `opfs.js`
+toggle — Node-tested), `sandbox-mode.js` (the SANDBOX counterpart of
+`dev-mode.js`: a `dr_bash_lite` localStorage mirror of the `bash_lite_mcp` knob
+so the cross-origin-isolation self-heal fires SYNCHRONOUSLY at first paint from
+the cache — closing the 2026-07-13 boot-race where a send before `/api/settings`
+resolved fell back to a plain web answer with no sandbox activity, chat_logs
+#306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
+self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
+all route through; Node-tested), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental

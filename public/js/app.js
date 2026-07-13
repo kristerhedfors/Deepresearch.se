@@ -24,6 +24,7 @@ import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
 import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
+import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
@@ -60,6 +61,21 @@ const send = document.getElementById("send");
 // reconciles this below once loadSettings() resolves. { persist: false }: this
 // is reading the cache, not making a new decision.
 applyDeveloperTheme(cachedDeveloperMode(), { persist: false });
+
+// Execution-sandbox isolation self-heal — fired SYNCHRONOUSLY at first paint
+// from the cached knob (sandbox-mode.js), BEFORE loadSettings() resolves. The
+// sandbox needs the page cross-origin isolated (COEP), which the server only
+// sends when the bash_lite knob is on; if a returning sandbox user's page
+// loaded non-isolated (a bfcache/device-cached shell, or a tab opened before
+// the knob was flipped), waiting for /api/settings to fire the reload left a
+// window where a send silently fell back to a plain web answer with NO sandbox
+// activity (observed live: chat_logs #306 — coi/sab/bl all false on the same
+// build that worked once isolated). Firing from the local cache closes that
+// window; if it navigates, the rest of boot is abandoned for the fresh load.
+// A no-op for everyone who never enabled the sandbox (no cache → want=false).
+// If it navigates, the current boot is abandoned for the fresh isolated load;
+// otherwise clear the guard so a later loss of isolation can self-heal again.
+if (!isolateForSandbox(cachedSandboxMode())) clearIsolationGuard();
 
 // ---- Auto-follow scrolling ---------------------------------------------
 // Streaming pins the view to the bottom ONLY while the user is already
@@ -120,25 +136,18 @@ loadSettings()
     // elsewhere, or if the account had developer mode on but no local cache
     // yet (first load on a new device). A no-op when the cache already agreed.
     applyDeveloperTheme(s?.developer_mode === true);
-    // Experimental execution sandbox self-heal: the sandbox needs the page to
-    // be cross-origin isolated (COEP), which the server only sends when the
-    // bash_lite knob is on. If the knob is on but THIS page loaded without
-    // isolation (a tab open from before the knob was flipped, or a stale
-    // cache), the sandbox silently can't boot. Reload ONCE to fetch the
-    // now-isolated shell — guarded by sessionStorage so a server that never
-    // sends COEP can't cause a reload loop.
-    if (s?.bash_lite_mcp === true && !window.crossOriginIsolated && !sessionStorage.getItem("dr_coep_reload")) {
-      sessionStorage.setItem("dr_coep_reload", "1");
-      // NOT location.reload(): an installed iOS PWA relaunches from a shell
-      // cached ON THE DEVICE that predates the COEP header, and reload() keeps
-      // returning that same non-isolated copy (observed live: fresh JS but
-      // client_diag.coi=false). Navigate to a FRESH URL instead — a distinct
-      // path forces a real network fetch of /rver (which the server sends with
-      // COEP), which no on-device or bfcache copy can satisfy.
-      location.replace(location.pathname + "?_coep=" + Date.now());
-      return;
-    }
-    if (window.crossOriginIsolated) sessionStorage.removeItem("dr_coep_reload");
+    // Reconcile the local sandbox-knob cache with the server's authoritative
+    // value (sandbox-mode.js), so the NEXT load's synchronous boot self-heal
+    // above reflects a flip made on another device — and so a first-ever enable
+    // on this device seeds the cache.
+    const sandboxOn = s?.bash_lite_mcp === true;
+    storeSandboxMode(sandboxOn);
+    // The self-heal for the FIRST-EVER enable (no cache existed at boot, so the
+    // synchronous pass above ran with want=false): now that the server confirms
+    // the knob is on, navigate to the isolated shell. Same guarded, fresh-URL
+    // navigation as the boot pass — deduped in isolateForSandbox.
+    if (isolateForSandbox(sandboxOn)) return;
+    clearIsolationGuard();
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});
@@ -153,10 +162,10 @@ loadSettings()
 // reload to fetch the now-isolated shell. `persisted` is true only for an
 // actual bfcache restore, so a normal navigation never triggers this.
 window.addEventListener("pageshow", (e) => {
-  if (e.persisted && bashLiteOn() && !window.crossOriginIsolated) {
-    sessionStorage.removeItem("dr_coep_reload");
-    location.replace(location.pathname + "?_coep=" + Date.now());
-  }
+  // A bfcache restore is a fresh chance to isolate, so reset the one-shot guard
+  // first (resetGuard). Use the cache too, not just the live setting: a cold
+  // restore may reach here before /api/settings has repopulated bashLiteOn().
+  if (e.persisted) isolateForSandbox(cachedSandboxMode() || bashLiteOn(), { resetGuard: true });
 });
 
 // ---- Research time-target slider ----------------------------------------

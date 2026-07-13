@@ -73,7 +73,7 @@ denies the capability even with a transcript in front of it.
 | The CheerpX VM + terminal + exec bridge | `public/js/sandbox.js` (NOT `@ts-check` — browser/WASM glue). Since 2026-07-12 the terminal panel is **built but NOT auto-shown** — activity surfaces on the backdrop layer instead (see below); the panel stays hidden unless the user opens it |
 | Agent activity backdrop (the faint page-background command/output layer) | `public/js/agent-backdrop.js` (DOM glue, NOT `@ts-check`) over the pure core `public/js/agent-backdrop-core.js` (+ `.test.js`) — fed from `execInSandbox` so BOTH tiers + any agent surface automatically. Both allowlisted in `assets.js` (sandbox.js is in the /cure graph). Styled in `css/app.css` (DRS) AND `cure/drc.css` (DRC self-contained) under `#dr-agent-backdrop` |
 | DRS send integration | `public/js/stream.js` (`maybeRunShellLoop` before `/api/chat`, attaches `shell_transcript` + the `client_diag` probe) |
-| Isolation self-heal | `public/js/app.js` (knob-on + `!crossOriginIsolated` → **navigate to a fresh `?_coep=<ts>` URL**, NOT `location.reload()`; plus a `pageshow(persisted)` bfcache handler) |
+| Isolation self-heal | `public/js/sandbox-mode.js` (the pure logic: `cachedSandboxMode`/`storeSandboxMode` — a localStorage mirror of the knob like `dev-mode.js` — plus `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`), driven by `public/js/app.js`. Fires **SYNCHRONOUSLY at first paint from the cached knob** (not only after `/api/settings` resolves — that lag was the 2026-07-13 boot-race defect, chat_logs #306), navigating to a fresh `?_coep=<ts>` URL (NOT `location.reload()`); the `dr_coep_reload` sessionStorage one-shot prevents a loop, `loadSettings()` reconciles the cache + handles a first-ever enable, and the `pageshow(persisted)` bfcache handler retries with the guard reset |
 | Live diagnostic | `client_diag` `{coi,sab,sb,bl,ran,css,ua}` — `stream.js` attaches it to every `/api/chat`; `chat.js` `sanitizeClientDiag` records it in the `chat_logs` meta and logs `chat.client_diag`. The one window into the real browser (see the playbook below) |
 | Stale-client rescue | `src/chat.js`: a knob-on request with **no `client_diag`** = a pre-fix cached bundle → responds `Clear-Site-Data: "cache"` (self-limiting) |
 | DRS settings UI (Experimental knob) | in the Settings view (`public/js/account-settings.js` renders it via account-views.js's `renderConfigKnobs`/`wireSandboxKnob`), next to Feedback mode — since 2026-07-11 ALL configuration lives under Settings, opened from the summary's Settings button or the header's gear icon; `public/js/settings.js` accessors |
@@ -439,7 +439,39 @@ code"), but there were SEVEN distinct causes stacked. In rough order found:
   `credentialless`/Safari gap is invisible on Chromium. Verify
   `SharedArrayBuffer` on the actual failing browser.
 
-**Related (not sandbox, surfaced during the same session):** Google OAuth
+## Incident — the boot-race intermittent failure (2026-07-13)
+
+**Symptom:** "list files in /" answered from a web search (generic textbook `ls`
+output) instead of running the sandbox — intermittently. The user swore it had
+worked before.
+
+**How the logs cracked it:** two `chat_logs` rows, same iPhone, **same client
+build (css h32)**, 23 s apart — `scripts/chatlogs --id N --json` → `meta.client_diag`:
+- #306 (failed): `{coi:false, sab:false, bl:false, ran:0}` → page NOT isolated,
+  knob read off, no shell → web fallback.
+- #307 (worked): `{coi:true, sab:true, bl:true, ran:1}` + a real `meta.shell`
+  transcript (`ls /` → the Debian root).
+
+Same code both worked and failed → **not a code regression**; the variable was
+cross-origin isolation. The load-bearing commit that made execution work on iOS
+at all is still `ea1e190` ("COEP require-corp so iOS Safari actually isolates").
+
+**Root cause:** the isolation self-heal fired only AFTER `/api/settings`
+resolved. On a cold load that left a window where the knob is really on, the
+page isn't yet isolated, and `bashLiteOn()` still reads false — a send in that
+window silently fell back with NO sandbox activity. #307 worked because the
+self-heal's `?_coep=` navigation had by then landed an isolated shell.
+
+**Fix:** `public/js/sandbox-mode.js` — mirror the knob into localStorage
+(`dr_bash_lite`, like `dev-mode.js`) so the self-heal fires **synchronously at
+first paint from the cache**, before settings resolves and before a send can
+land non-isolated. `loadSettings()` reconciles the cache (cross-device flips,
+first-ever enable). The knob toggle and `pageshow` bfcache handler also route
+through the single `isolateForSandbox` helper. Still owed: live confirmation on
+the real device that the boot-race window is actually closed (the diagnosis is
+from logs; the fix is unit-tested but the iOS timing is unproven in-session).
+
+**Related (not sandbox, surfaced during an earlier session):** Google OAuth
 `redirect_uri_mismatch` — the Worker is routed on both apex and `www`, and
 `redirect_uri` is built from the request host, so a `www` sign-in sent Google a
 `www` callback that only a (non-matching) wildcard covered. Fixed by
