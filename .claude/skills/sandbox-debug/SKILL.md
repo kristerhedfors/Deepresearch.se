@@ -170,21 +170,35 @@ timeline). Only once `coi:true` does the boot timeline matter, and that's when
      version issue.
 5. Fix at that layer, redeploy, re-verify the timeline reaches `boot_done`.
 
-## "The boot label is frozen and the quips vanished" (2026-07-13)
+## "The boot label is frozen and the quips vanished" (2026-07-13, RESOLVED — verified working)
 
 A distinct symptom from a true hang: the activity label sticks on the caller's
 initial `Booting Linux sandbox…` string with **no progress bar and no rotating
-quips**, even while the boot is actually advancing. Root cause was the
-**pre-warm**: `prewarmSandbox` (composer focus) starts the boot with a NO-OP
-message sink; when the real send reuses that in-flight boot,
-`ensureSandboxBooted` returned early (`if (bootPromise) return bootPromise`) and
-**dropped the send's real sink**, so the ticker kept writing to the pre-warm's
-no-op. Fixed by holding the sink at module scope (`_bootOnMessage`) and having
-`ensureSandboxBooted` ADOPT the latest caller's sink even for an in-flight boot,
-so the ticker (`startBootQuips` reads it live) lights up the moment the real
-send joins. If you see a frozen boot label, confirm the sink is being adopted —
-don't chase the disk fetch; the boot may be fine, only its progress was
-invisible.
+quips**, even while the boot is actually advancing. Two stacked causes, both now
+fixed and **verified working live on DRS (Se/rver)** — see the working-foundation
+note in the execution-sandbox skill:
+
+1. **Pre-warm swallowed the real sink.** `prewarmSandbox` (composer focus) starts
+   the boot with a NO-OP message sink; when the real send reused that in-flight
+   boot, `ensureSandboxBooted` returned early (`if (bootPromise) return
+   bootPromise`) and dropped the send's real sink. Fixed by holding the sink at
+   module scope (`_bootOnMessage`) so `ensureSandboxBooted` can ADOPT the latest
+   caller's sink even for an in-flight boot.
+2. **The adopt fix nulled its own sink (the worse regression).** `startBootQuips`
+   calls `stopBootQuips` on its first line to clear any prior timer, and the
+   first cut of the adopt fix made `stopBootQuips` set `_bootOnMessage = null`.
+   So the sink `ensureSandboxBooted` had just set was wiped BEFORE the ticker's
+   first tick could paint — frozen label in EVERY case. Fixed: `stopBootQuips`
+   only stops the timer; the sink is cleared solely on a full `resetSandbox`.
+
+> **LOAD-BEARING GUARD — do not reintroduce.** `stopBootQuips` MUST NOT clear
+> `_bootOnMessage`, and the ticker MUST read the sink at module scope (never a
+> captured param), or the boot line freezes again. `ensureSandboxBooted` sets the
+> sink BEFORE `bootVM` runs; that ordering is the contract.
+
+If you see a frozen boot label, confirm the sink survives `startBootQuips`'s
+internal `stopBootQuips()` — don't chase the disk fetch; the boot may be fine,
+only its progress invisible.
 
 ## Caveats
 
