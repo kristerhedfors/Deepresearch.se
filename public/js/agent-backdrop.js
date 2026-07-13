@@ -6,19 +6,23 @@
 //
 // Instead of popping the sandbox terminal open (which covered the screen and
 // broke the prompt-first flow), the raw commands and output the agent runs
-// drift faintly across the page's sky-blue background, and — THIS is the whole
-// UX — a small TRANSPARENCY BAR appears while the terminal is running so the
-// user tunes how visible that layer is, right there, live. There is NO settings
-// entry: the bar IS the control, shown only during activity and auto-hidden
-// when the terminal goes quiet. When the layer is turned all the way off (0),
-// the text layer is not built or rendered at all (optimized away) — only the
-// tiny bar shows, so the user can bring it back.
+// drift faintly across the page's sky-blue background, and a small TRANSPARENCY
+// BAR appears while the terminal is running so the user tunes how visible that
+// layer is, right there, live. The bar is shown only during activity and
+// auto-hidden when the terminal goes quiet. When the layer is turned all the
+// way off (0), the text layer is not built or rendered at all (optimized away)
+// — only the tiny bar shows, so the user can bring it back.
+//
+// The Settings view (account-settings.js) also carries the SAME control — a
+// slider grayed out until the execution sandbox is on — so the preference is
+// discoverable when the terminal isn't running; both write the one per-browser
+// value below (setBackdropOpacity), so they stay in lockstep.
 //
 // The single feed point is execInSandbox in sandbox.js, so BOTH tiers (DRS and
 // DRC) and any agent that runs commands surface here automatically. Callers may
 // pass a channel id per agent; when several are active the layer clips between
 // them. The chosen transparency is remembered per browser (localStorage) so the
-// bar comes back where the user left it — but it is never a config screen.
+// bar comes back where the user left it.
 //
 // SCROLLING: the log is no longer a fixed tail. A wheel/drag over the empty page
 // field pages BACK through the command history (the conversation bubbles keep
@@ -69,7 +73,8 @@ let bgPinned = true;
 let scrollWired = false; // wheel/touch listeners attached once
 let parallaxTimer = 0; // springs the conversation's opposite lean back to zero
 
-// ---- preference persistence (remembered position, NOT a settings screen) ----
+// ---- preference persistence (one per-browser value; the floating bar AND the
+//      Settings-view slider both read/write it) ----
 
 function readPref() {
   if (pref != null) return pref;
