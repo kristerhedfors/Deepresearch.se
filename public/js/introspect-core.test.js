@@ -13,7 +13,9 @@ import {
   MAX_INLINE_TOTAL_CHARS,
   ORIENTATION_CHARS,
   buildIntrospectionBlock,
+  buildOwaspReferenceBlock,
   externalSourceIntent,
+  securityAssessmentIntent,
   introspectionActive,
   introspectionIntent,
   mentionedSnapshotPaths,
@@ -149,6 +151,81 @@ test("externalSourceIntent: Swedish parity — same breadth as English", () => {
   ]) {
     assert.equal(externalSourceIntent(s), true, s);
   }
+});
+
+test("securityAssessmentIntent: English request forms", () => {
+  for (const s of [
+    "do a security assessment of this site",
+    "conduct a proper security assessment",
+    "security audit please",
+    "can you review the security of the pipeline?",
+    "assess the security of the auth flow",
+    "audit this codebase for security issues",
+    "what security vulnerabilities does this have?",
+    "run a vulnerability assessment",
+    "do a threat model of the app",
+    "penetration test the login",
+    "pentest this endpoint",
+    "how secure is the session cookie?",
+    "classify the findings against OWASP",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), true, s);
+  }
+});
+
+test("securityAssessmentIntent: Swedish parity — same breadth as English", () => {
+  for (const s of [
+    "gör en säkerhetsbedömning av sajten",
+    "genomför en säkerhetsgranskning",
+    "kan du göra en säkerhetsanalys?",
+    "bedöm säkerheten i autentiseringen",
+    "granska säkerheten i pipelinen",
+    "vilka säkerhetsbrister finns här?",
+    "kör en sårbarhetsanalys",
+    "gör en hotmodell av appen",
+    "penetrationstesta inloggningen",
+    "pentesta den här endpointen",
+    "hur säker är sessionskakan?",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), true, s);
+  }
+});
+
+test("securityAssessmentIntent: ordinary (non-security) asks never trigger it", () => {
+  for (const s of [
+    "review this function",
+    "assess the code quality",
+    "audit the logging output for typos",
+    "how does the current pipeline work?",
+    "explain the architecture",
+    "granska den här funktionen",
+    "hur fungerar pipelinen?",
+    "bedöm kodkvaliteten",
+    "",
+  ]) {
+    assert.equal(securityAssessmentIntent(s), false, s);
+  }
+});
+
+test("buildOwaspReferenceBlock: cites categories with URLs, quotes text, carries the CVSS+uncertainty instruction", () => {
+  const retrieved = [
+    { p: "LLM01:2025 Prompt Injection", text: "A Prompt Injection Vulnerability occurs when user prompts alter the LLM's behavior.", score: 0.9 },
+    { p: "A01:2021 Broken Access Control", text: "Access control enforces policy such that users cannot act outside of their intended permissions.", score: 0.8 },
+  ];
+  const sources = {
+    "LLM01:2025 Prompt Injection": { url: "https://genai.owasp.org/llmrisk/llm01-prompt-injection/" },
+    "A01:2021 Broken Access Control": { url: "https://owasp.org/Top10/A01_2021-Broken_Access_Control/" },
+  };
+  const block = buildOwaspReferenceBlock(retrieved, sources);
+  assert.match(block, /OWASP Top 10 reference/);
+  assert.match(block, /LLM01:2025 Prompt Injection — https:\/\/genai\.owasp\.org/);
+  assert.match(block, /A01:2021 Broken Access Control — https:\/\/owasp\.org/);
+  assert.match(block, /Prompt Injection Vulnerability occurs/); // verbatim quote
+  assert.match(block, /CVSS/);
+  assert.match(block, /uncertaint/i);
+  // Empty retrieval → empty block (byte-identical to a run without OWASP).
+  assert.equal(buildOwaspReferenceBlock([], sources), "");
+  assert.equal(buildOwaspReferenceBlock(null), "");
 });
 
 test("externalSourceIntent: pure introspection asks never trigger it (search stays off)", () => {
