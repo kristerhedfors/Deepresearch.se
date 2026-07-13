@@ -94,6 +94,12 @@ export function isPublicAsset(url, method) {
     // must be allowlisted or /cure goes dark.
     url.pathname === "/js/agent-backdrop.js" ||
     url.pathname === "/js/agent-backdrop-core.js" ||
+    // sandbox.js ALSO imports the boot-quip ticker (the rotating messages shown
+    // while the CheerpX VM boots) — same public-graph rule (found live
+    // 2026-07-13: the sandbox-command-visibility commit added the import to
+    // sandbox.js but not here, so /js/boot-messages.js 401'd and /cure went
+    // dark — no umbrella intro, inert page — for every unauthenticated visitor).
+    url.pathname === "/js/boot-messages.js" ||
     // Introspection (developer mode): the shared pure core (imported by
     // /cure/drc.js — same public-graph rule as the modules above) and the
     // committed source-snapshot artifact both tiers fetch. The snapshot is
