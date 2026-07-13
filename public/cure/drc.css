@@ -179,10 +179,15 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
+/* Introspection mode: the wordmark tail joins the purpur cue — the logo turns
+   crimson-purple to match the composer pane + tag, instead of its usual flag
+   blue. Scoped to `dev-mode`, so the tier's default blue branding is unchanged
+   when introspection is off. */
+:root.dev-mode .brand b { color: #9c1450; }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — only present while the
-   ruby introspection skin is active (root carries `dev-mode`). */
+   purpur introspection cue is active (root carries `dev-mode`). */
 .introspection-tag {
   display: none;
   align-self: center;
