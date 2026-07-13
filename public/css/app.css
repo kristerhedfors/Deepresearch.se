@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h29;
+  --css-version: h31;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -20,11 +20,11 @@
 /* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
    element (public/js/dev-mode.js) does NOT re-skin the background or palette —
    the sky-blue field and every chrome surface stay as they are. The ONLY
-   change is the composer input pane, which picks up an AMETHYST glass tint
-   with extra shine (see `:root.dev-mode #composer` below), so introspection is
-   recognizable without the whole app changing color. The Se/cure tier gets a
-   RUBY glass pane the same way (public/cure/drc.css); titanium is reserved for
-   TIN the mascot. */
+   change is the composer input pane, which picks up a WHITE TITANIUM glass
+   tint with extra shine (see `:root.dev-mode #composer` below), plus the small
+   "introspection" wordmark tag, so the mode is recognizable without the whole
+   app changing color. The Se/cure tier gets the SAME white-titanium pane
+   (public/cure/drc.css). */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -192,19 +192,21 @@ header {
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
 /* The small "introspection" marker under the wordmark — the quiet label that
-   names the mode the amethyst skin puts you in. Only present while the
-   introspection theme is active (root carries `dev-mode`); a no-op otherwise. */
+   names the mode the white-titanium skin puts you in. Only present while the
+   introspection theme is active (root carries `dev-mode`); a no-op otherwise.
+   Plain TITANIUM WHITE: a solid near-white fill (no gradient clip — the clipped
+   version muddied the mid-glyphs and read as unreadable grey) with a soft dark
+   shadow so it stays crisp and legible over the scrolling sky field. */
 .introspection-tag {
   display: none;
   align-self: center;
-  margin-top: -.15rem;
-  font-size: .58rem;
+  margin-top: -.1rem;
+  font-size: .68rem;
   font-weight: 600;
-  letter-spacing: .18em;
+  letter-spacing: .16em;
   text-transform: lowercase;
-  color: #5b3fa0; /* amethyst — ties the marker to the purple composer pane */
-  opacity: .9;
-  text-shadow: 0 1px 5px rgba(255, 255, 255, .6);
+  color: #f6f8fa;
+  text-shadow: 0 1px 2px rgba(30, 50, 78, .55), 0 0 1px rgba(30, 50, 78, .4);
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
@@ -578,30 +580,25 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the info popover */
 }
-/* Introspection mode: the composer becomes a saturated, glossy AMETHYST glass
-   pane (the Se/rver tier's introspection cue) — strong enough to clearly stand
-   apart from the plain frosted composer. A rich, fairly UNIFORM violet (slight
-   top→bottom deepen), the shine carried by a bright specular top edge + a soft
-   internal gloss, a violet edge (no white border), and a coloured drop shadow.
-   Because the fill is saturated, the pane's own text goes LIGHT for contrast
-   (below). Background only; the sky-blue field is unchanged. */
+/* Introspection mode: the composer becomes a brushed WHITE TITANIUM glass pane
+   (the Se/rver tier's introspection cue) — a cool silvery-white metal that
+   stands clearly apart from the plain frosted composer without shouting a hue.
+   The metal read comes from a light top→bottom sheen (near-white crown, a
+   faint pewter waist, a lighter foot), a bright specular top edge, and a soft
+   cool drop shadow. The fill is LIGHT, so the pane keeps its ordinary dark
+   text (no foreground override needed). Background only; the sky-blue field is
+   unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(140, 108, 216, .74) 0%, rgba(92, 58, 176, .84) 100%),
-    rgba(120, 88, 202, .64);
-  border: 1px solid rgba(148, 116, 222, .74);
+    linear-gradient(180deg, rgba(252, 253, 254, .9) 0%, rgba(214, 219, 226, .92) 55%, rgba(232, 236, 241, .9) 100%),
+    rgba(233, 236, 241, .72);
+  border: 1px solid rgba(255, 255, 255, .9);
   box-shadow:
-    0 7px 26px rgba(52, 24, 108, .44),
-    inset 0 1px 0 rgba(255, 255, 255, .55),
-    inset 0 13px 26px rgba(216, 200, 255, .18);
+    0 7px 26px rgba(70, 80, 96, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 14px 26px rgba(255, 255, 255, .4),
+    inset 0 -10px 20px rgba(150, 160, 175, .12);
 }
-/* Light foreground so the input text, placeholder and control-row labels stay
-   legible on the saturated amethyst (the #model / attach / camera chips keep
-   their own light backgrounds, so their dark text is fine). */
-:root.dev-mode #composer textarea { color: #fff; }
-:root.dev-mode #composer textarea::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }
-:root.dev-mode #composer #composer-row,
-:root.dev-mode #composer #search-row { color: rgba(255, 255, 255, .92); }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
   /* Textareas won't shrink below their cols-based intrinsic width unless

@@ -268,8 +268,9 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
     ensureReady: async () => {
       onStatus({ type: "phase", phase: "sandbox" });
       // The optional provider mounts files into the VM at boot (introspection
-      // mounts the source snapshot at /src — see public/cure/drc.js).
-      return sb.boot(fileProvider || null);
+      // mounts the source snapshot at /src — see public/cure/drc.js). The boot
+      // is slow, so its rotating quips ride the sandbox phase line as `label`.
+      return sb.boot(fileProvider || null, (msg) => onStatus({ type: "phase", phase: "sandbox", label: msg }));
     },
     onStep: ({ commands }) => onStatus({ type: "phase", phase: "sandbox", detail: commands.length }),
   });
@@ -331,7 +332,8 @@ export async function runDrcSourceTools({
       if (!cmd) return "run_bash needs a non-empty 'command'.";
       if (sbReady === null) {
         onStatus({ type: "phase", phase: "sandbox" });
-        sbReady = await sb.boot(fileProvider);
+        // Rotating boot quips ride the sandbox phase line while Linux comes up.
+        sbReady = await sb.boot(fileProvider, (msg) => onStatus({ type: "phase", phase: "sandbox", label: msg }));
       }
       if (!sbReady) return "Sandbox unavailable; use grep_source/read_file instead.";
       let r;

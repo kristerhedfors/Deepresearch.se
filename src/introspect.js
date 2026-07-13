@@ -29,12 +29,18 @@
 // enrichment.js), so "always inject" here means "always inject in dev mode".
 
 import {
+  OWASP_CORPUS_PATH,
+  OWASP_RAG_PATH,
   RAG_PATH,
   SNAPSHOT_PATH,
   buildIntrospectionBlock,
+  buildOwaspReferenceBlock,
+  diversifyByCategory,
   introspectionActive,
+  lexicalRetrieveOwasp,
   mentionedSnapshotPaths,
   retrieveSourceChunks,
+  securityAssessmentIntent,
   validateRagIndex,
   validateSnapshot,
 } from "../public/js/introspect-core.js";
@@ -43,6 +49,11 @@ import { textOf, withAppendedText } from "./conversation.js";
 
 const QUERY_PREFIX = "query: "; // e5 asymmetric prefix — mirrors src/rag.js
 const RETRIEVE_K = 6;
+// OWASP paragraphs retrieved for a security assessment. Wider than the source
+// K and capped per category (diversifyByCategory) so the block spans SEVERAL
+// vulnerabilities the model can quote, not the single closest one.
+const OWASP_RETRIEVE_K = 8;
+const OWASP_PER_CATEGORY = 2;
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -113,28 +124,138 @@ export async function loadSourceRag(env, log) {
 }
 
 /**
- * Embed the query and cosine-rank the source-RAG index. Returns the top-k
- * chunks (text resolved from the CURRENT snapshot) or [] on any failure —
+ * Fetch + validate the committed OWASP corpus (snapshot-shaped) AND its parallel
+ * per-doc citation metadata (`sources`) through the ASSETS binding. Null on any
+ * failure — a security assessment then simply proceeds without the OWASP block.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<{ snapshot: Snapshot, sources: Record<string, any> } | null>}
+ */
+export async function loadOwaspCorpus(env, log) {
+  try {
+    const assets = /** @type {any} */ (env).ASSETS;
+    if (!assets?.fetch) return null;
+    const res = await assets.fetch(new Request("https://assets.internal" + OWASP_CORPUS_PATH));
+    if (!res.ok) {
+      log.warn("introspect.owasp_corpus_missing", { status: res.status });
+      return null;
+    }
+    const raw = await res.json();
+    const snapshot = validateSnapshot(raw);
+    if (!snapshot) {
+      log.warn("introspect.owasp_corpus_invalid", {});
+      return null;
+    }
+    const sources = raw && typeof raw.sources === "object" && !Array.isArray(raw.sources) ? raw.sources : {};
+    return { snapshot, sources };
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.owasp_corpus_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Fetch + validate the committed OWASP RAG index through the ASSETS binding.
+ * Null (never a throw) on any failure.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<import('../public/js/introspect-core.js').RagIndex | null>}
+ */
+export async function loadOwaspRag(env, log) {
+  try {
+    const assets = /** @type {any} */ (env).ASSETS;
+    if (!assets?.fetch) return null;
+    const res = await assets.fetch(new Request("https://assets.internal" + OWASP_RAG_PATH));
+    if (!res.ok) {
+      log.warn("introspect.owasp_rag_missing", { status: res.status });
+      return null;
+    }
+    const index = validateRagIndex(await res.json());
+    if (!index) log.warn("introspect.owasp_rag_invalid", {});
+    return index;
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.owasp_rag_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Embed the query once (e5 asymmetric query prefix), so BOTH the source
+ * retrieval and the OWASP retrieval reuse one embedding call. Null (never a
+ * throw) on empty input or any failure — retrieval then degrades to [].
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} query
+ * @returns {Promise<Float32Array | null>}
+ */
+async function embedQuery(env, log, query) {
+  try {
+    if (!query.trim()) return null;
+    const { vectors } = await embedTexts(env, [QUERY_PREFIX + query.slice(0, 2000)]);
+    const qvec = vectors && vectors[0];
+    return qvec && qvec.length ? qvec : null;
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.embed_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Cosine-rank the source-RAG index for a pre-embedded query. [] on any failure —
  * the caller still injects the orientation block, so retrieval failing only
  * costs relevance, never the mode.
  * @param {Env} env
  * @param {Logger} log
- * @param {string} query
+ * @param {Float32Array | null} qvec
  * @param {Snapshot} snapshot
  * @returns {Promise<Array<{ p: string, text: string, score: number }>>}
  */
-async function retrieveForQuery(env, log, query, snapshot) {
+async function retrieveSource(env, log, qvec, snapshot) {
   try {
-    if (!query.trim()) return [];
+    if (!qvec) return [];
     const index = await loadSourceRag(env, log);
     if (!index) return [];
-    const { vectors } = await embedTexts(env, [QUERY_PREFIX + query.slice(0, 2000)]);
-    const qvec = vectors && vectors[0];
-    if (!qvec || !qvec.length) return [];
     return retrieveSourceChunks(index, snapshot, qvec, RETRIEVE_K);
   } catch (/** @type {any} */ err) {
     log.warn("introspect.retrieve_failed", { error: err?.message || String(err) });
     return [];
+  }
+}
+
+/**
+ * Retrieve the OWASP paragraphs relevant to a security-assessment query, spread
+ * across SEVERAL categories (diversifyByCategory). Prefers dense retrieval (the
+ * committed e5 index) when the query embed is available; falls back to the
+ * embedding-FREE lexical path over the corpus when it isn't — so the OWASP
+ * grounding works even with no embedder (the same path DRC uses). Returns the
+ * chunks plus the per-doc citation metadata, or empty on any failure. `mode`
+ * reports which path ran, for observability.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Float32Array | null} qvec
+ * @param {string} query
+ * @returns {Promise<{ retrieved: Array<{ p: string, text: string, score: number }>, sources: Record<string, any>, mode: string }>}
+ */
+async function retrieveOwasp(env, log, qvec, query) {
+  const empty = { retrieved: [], sources: {}, mode: "none" };
+  try {
+    const corpus = await loadOwaspCorpus(env, log);
+    if (!corpus) return empty;
+    // Dense path: rank the whole index, then cap per category for breadth.
+    if (qvec) {
+      const index = await loadOwaspRag(env, log);
+      if (index) {
+        const all = retrieveSourceChunks(index, corpus.snapshot, qvec, index.vectors.length);
+        const retrieved = diversifyByCategory(all, OWASP_RETRIEVE_K, OWASP_PER_CATEGORY);
+        if (retrieved.length) return { retrieved, sources: corpus.sources, mode: "dense" };
+      }
+    }
+    // Offline fallback: lexical TF-IDF over the corpus, no embedder needed.
+    const retrieved = lexicalRetrieveOwasp(corpus.snapshot, query, { k: OWASP_RETRIEVE_K, perCat: OWASP_PER_CATEGORY });
+    return { retrieved, sources: corpus.sources, mode: retrieved.length ? "lexical" : "none" };
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.owasp_retrieve_failed", { error: err?.message || String(err) });
+    return empty;
   }
 }
 
@@ -168,8 +289,10 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   /** @type {any} */ (state).sourceSnapshot = snapshot;
 
   // Dense retrieval for THIS question (fail-soft to []). This is the part that
-  // makes the mode phrasing-agnostic.
-  const retrieved = await retrieveForQuery(env, log, latestText, snapshot);
+  // makes the mode phrasing-agnostic. Embed the query ONCE and reuse it for
+  // both the source retrieval and (for a security assessment) the OWASP one.
+  const qvec = await embedQuery(env, log, latestText);
+  const retrieved = await retrieveSource(env, log, qvec, snapshot);
 
   // The full file index is only worth its ~tokens for strong "how are you
   // built / list the files" asks; ordinary code questions ride on retrieval +
@@ -186,6 +309,32 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   state.introspectionCount = 1;
   const inlined = mentionedSnapshotPaths(latestText, snapshot).slice(0, 6);
   const topScore = retrieved.length ? retrieved[0].score : 0;
+
+  // Same convention as the Shodan block: appended so every phase sees it.
+  let convo = /** @type {Conversation} */ (withAppendedText(conversation, block));
+
+  // Security assessment: ALSO inject the OWASP Top 10 reference block (the
+  // retrieved OWASP paragraphs) so findings are classified against — and quote —
+  // the actual OWASP text. Sticky like the mode itself (any user message in the
+  // conversation asking for an assessment engages it). Stashed in state as well:
+  // the native-tool source-research path (src/pipeline.js runSourceResearchTools)
+  // reads the CLEAN pre-enrichment conversation, so it injects state.owaspBlock
+  // explicitly; the deterministic read-loop synthesis rides the appended copy.
+  /** @type {Array<{ p: string, text: string, score: number }>} */
+  let owaspRetrieved = [];
+  let owaspMode = "none";
+  if (texts.some((t) => securityAssessmentIntent(t))) {
+    const { retrieved: hits, sources, mode } = await retrieveOwasp(env, log, qvec, latestText);
+    owaspMode = mode;
+    const owaspBlock = buildOwaspReferenceBlock(hits, sources);
+    if (owaspBlock) {
+      owaspRetrieved = hits;
+      /** @type {any} */ (state).owaspBlock = owaspBlock;
+      convo = /** @type {Conversation} */ (withAppendedText(convo, owaspBlock));
+    }
+  }
+  const owaspCats = owaspRetrieved.map((r) => r.p.split(" ")[0]);
+
   stepDone(
     "introspect",
     retrieved.length
@@ -194,8 +343,10 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     [
       `top matches: ${retrieved.map((r) => r.p).slice(0, 4).join(", ") || "(orientation only)"}`,
       ...(inlined.length ? [`inlined: ${inlined.join(", ")}`] : []),
+      ...(owaspCats.length ? [`OWASP Top 10 reference: ${[...new Set(owaspCats)].join(", ")}`] : []),
     ],
   );
+
   log.info("introspect.applied", {
     files: snapshot.count,
     retrieved: retrieved.length,
@@ -204,7 +355,9 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     inlined: inlined.length,
     include_index: strongIntent,
     block_chars: block.length,
+    owasp: owaspRetrieved.length,
+    owasp_mode: owaspMode,
+    owasp_cats: [...new Set(owaspCats)].slice(0, 8),
   });
-  // Same convention as the Shodan block: appended so every phase sees it.
-  return /** @type {Conversation} */ (withAppendedText(conversation, block));
+  return convo;
 }

@@ -264,6 +264,75 @@ cheap DELTA that only re-embeds the changed files) → commit all three. Doing
 rag before the final snapshot leaves the index chunk-map misaligned and trips
 the consistency check.
 
+## The OWASP Top 10 reference corpus (security assessments)
+
+A dev-mode conversation that asks for a **security assessment** (audit / review
+/ pentest / threat model / "how secure is X", `securityAssessmentIntent` in
+introspect-core.js — EN+SV parity per invariant 6) gets the OWASP Top 10 text
+injected alongside the site's own source, so findings are classified against —
+and quote — the actual OWASP wording. Owner directive (2026-07-13): with no
+framework named, DEFAULT to the **OWASP Top 10 for LLM Applications (2025)** +
+the **OWASP Top 10 for Web Applications (2021)** for structure, terminology, and
+classification, plus **CVSS estimates with the uncertainty stated explicitly**.
+The report leads with an **Executive Summary** (user-facing, plain language),
+then **Scope**, then **Findings** (the technical per-finding detail) — that
+fixed order is carried by both `OWASP_ASSESSMENT_NOTE` (prompts.js) and the
+injected block (`buildOwaspReferenceBlock`).
+
+Two committed artifacts, mirroring the source snapshot/index pair (both under
+the ASSETS-excluded `public/introspect/`, server-only — DRC doesn't use them):
+
+- **`owasp-corpus.json`** (`scripts/fetch-owasp.mjs`, `npm run fetch:owasp`) —
+  the full Markdown text of all 20 categories (LLM01…LLM10 + A01…A10), fetched
+  from the projects' OWN Markdown source of record (github.com/OWASP: the
+  `www-project-top-10-for-large-language-model-applications` `2_0_vulns/` files
+  and `Top10` `2021/docs/en/`). It is **snapshot-shaped** (`{v,digest,count,
+  bytes,files:[{p,s,t}]}`, `p` = the citation id like `LLM01:2025 Prompt
+  Injection`) plus a parallel `sources` map (cat/family/year/title/url) — so it
+  reuses `validateSnapshot`, the chunker, and `retrieveSourceChunks` verbatim.
+- **`owasp-rag.json`** (`scripts/bundle-owasp-rag.mjs`, `npm run
+  bundle:owasp-rag`) — int8 vectors per `{p,ci}`, the SAME format as
+  source-rag.json (Berget e5, 1024-d). Small corpus (~20 docs / ~150 chunks) →
+  a single fast full build, no delta. Needs `BERGET_API_KEY`.
+
+**Retrieval spans MULTIPLE categories, and works OFFLINE.** Two facts matter
+for "quote several different vulnerabilities, self-contained":
+- `diversifyByCategory` caps how many chunks come from any one OWASP category
+  (default k=8, perCat=2) and backfills — so the block spans ~4-6 categories,
+  not k near-duplicate chunks from the closest doc.
+- `lexicalRetrieveOwasp` is an embedding-FREE TF-IDF retrieval over the corpus.
+  It needs no embedder at all, so the OWASP grounding is fully self-contained:
+  **DRC (Se/cure) uses it** (the browser has no Berget e5) and **DRS falls back
+  to it** when the query embed is unavailable. Verified live to surface 6-7
+  correct categories per query and to drive accurate multi-category quoting.
+
+Wiring — **DRS** (`src/introspect.js`): embeds the query ONCE (`embedQuery`) and
+reuses it for source retrieval and — when `securityAssessmentIntent` fires
+(sticky over the conversation) — `retrieveOwasp` (dense+diversify, else lexical)
+→ `buildOwaspReferenceBlock`. The block is appended to the conversation (so the
+read-loop synthesis sees it via the DIRTY convText) AND stashed in
+`state.owaspBlock`, which `pipeline.js runSourceResearchTools` injects explicitly
+(the native-tool path reads the CLEAN pre-enrichment text). Wiring — **DRC**
+(`public/cure/drc.js` `owaspBlockFor`): fetches `owasp-corpus.json` (a PUBLIC
+static asset — added to `isPublicAsset`), lexical-retrieves, and appends the
+block to the introspection context — server in no data path. The
+`OWASP_ASSESSMENT_NOTE` in `prompts.js` (spliced into `sourceAnswerPrompt` +
+`sourceToolAgentPrompt`) AND the instruction inside `buildOwaspReferenceBlock`
+both carry the default + the report structure, so it holds even if retrieval or
+the prompt is bypassed.
+
+**Verify multi-source quoting:** `npm run verify:owasp`
+(`scripts/verify-owasp-quotes.mjs`, needs `BERGET_API_KEY`) drives real models
+with the injected block (dense AND lexical) and asserts ≥2 distinct OWASP
+categories are quoted VERBATIM (a ≥60-char fragment of a retrieved chunk found
+in the answer — a match can only come from the provided text, not memory). A
+live-verify tool, not a unit test; not in CI.
+
+Refresh: `npm run fetch:owasp` → `npm run bundle:owasp-rag` → commit both. The
+freshness test in `src/introspect.test.js` (mirrors the source-rag one) enforces
+every owasp-rag `{p,ci}` still resolves against the corpus chunking and all 20
+docs are covered. Not part of `npm run bundle`, not run in CI (network / key).
+
 ## Freshness discipline
 
 `src/introspect.test.js` enforces two things and **fails `npm test`** on

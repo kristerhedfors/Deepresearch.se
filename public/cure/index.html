@@ -191,34 +191,39 @@
         <div id="savedkeys"></div>
       </details>
 
-      <details id="sandboxpanel">
-        <summary>Execution sandbox (bash) <span class="exp-badge">Experimental</span></summary>
-        <p class="muted">Boots a real Linux <b>in this browser</b> so the assistant can
-          run shell commands to answer you (e.g. “run ls”). Everything runs on your
-          device. The first use downloads a Linux image, so it's slow to start.</p>
-        <label class="knob-row">
-          <input id="bashlite" type="checkbox">
-          <span class="toggle-track"><span class="toggle-dot"></span></span>
-          <span>Enable the in-browser Linux sandbox</span>
-        </label>
-        <span id="sandboxstatus" class="muted"></span>
-      </details>
+      <div class="settings-item">
+        <div class="settings-row">
+          <span class="settings-label">Execution sandbox (bash) <span class="exp-badge">Experimental</span>
+            <button type="button" class="setting-info" data-pop="sbpop" aria-label="More about the execution sandbox">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="bashlite">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="sbpop" hidden>Boots a real Linux <b>in this browser</b> so the assistant can
+          run shell commands to answer you (e.g. “run ls”). Everything runs on your device — nothing leaves the
+          browser. The first use downloads a Linux image, so it's slow to start.</div>
+        <span id="sandboxstatus" class="muted setting-note"></span>
+      </div>
 
-      <details id="devpanel">
-        <summary>Introspection</summary>
-        <p class="muted">Ask about this site's own implementation (“how are you built?”,
-          “show me src/pipeline.js”) and the assistant answers from a snapshot of the
-          exact source code this deployment runs — fetched as a public static file, so
-          the server still sees none of your conversation. The composer pane turns purple
-          while it's on. With the sandbox also on, the whole source
-          tree is mounted at <code>/src</code> in the Linux VM for real shell exploration.</p>
-        <label class="knob-row">
-          <input id="devmode" type="checkbox">
-          <span class="toggle-track"><span class="toggle-dot"></span></span>
-          <span>Enable introspection</span>
-        </label>
-        <span id="devmodestatus" class="muted"></span>
-      </details>
+      <div class="settings-item">
+        <div class="settings-row">
+          <span class="settings-label">Introspection
+            <button type="button" class="setting-info" data-pop="devpop" aria-label="More about introspection">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="devmode">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="devpop" hidden>Ask about this site's own implementation (“how are you built?”,
+          “show me src/pipeline.js”) and the assistant answers from a snapshot of the exact source code this
+          deployment runs — fetched as a public static file, so the server still sees none of your conversation.
+          The composer pane turns <b>white titanium</b> while it's on. With the sandbox also on, the whole source
+          tree is mounted at <code>/src</code> in the Linux VM for real shell exploration.</div>
+        <span id="devmodestatus" class="muted setting-note"></span>
+      </div>
     </aside>
   </div>
 
