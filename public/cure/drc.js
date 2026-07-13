@@ -141,6 +141,8 @@ function afterUmbrella(deepLinked) {
       // storage blocked — nothing auto-shows the pane anyway
     }
     $("input").focus();
+    // The ghost greets a first-time visitor and points at the account button.
+    showGhostSay();
   }
 }
 
@@ -230,23 +232,39 @@ function closeDrawer() {
   $("drawer").hidden = true;
 }
 
-// ---- the account view (right drawer): the all-client-side explainer ---------------
+// ---- the "little fella" greeter: the ghost explains the Se/cure tier ---------------
 
-function openAccount() {
-  closeDrawer();
-  closeSettings();
-  $("accountview").hidden = false;
+// On a genuine first visit (after the umbrella intro), the ghost mascot
+// explains that you're on the client-side Se/cure tier and points at the
+// account button — the door to Se/rver. Shown once (dr_secure_intro_seen);
+// dismisses on its close button or any outside tap (UX-1).
+function showGhostSay() {
+  let seen = false;
+  try {
+    seen = localStorage.getItem("dr_secure_intro_seen") === "1";
+  } catch {
+    // storage blocked — it just may greet again next visit
+  }
+  if (seen) return;
+  try {
+    localStorage.setItem("dr_secure_intro_seen", "1");
+  } catch {
+    // fine
+  }
+  $("ghostsay").hidden = false;
+  $("accountbtn").classList.add("nudge"); // briefly draw the eye to the target
 }
 
-function closeAccount() {
-  $("accountview").hidden = true;
+function hideGhostSay() {
+  if ($("ghostsay").hidden) return;
+  $("ghostsay").hidden = true;
+  $("accountbtn").classList.remove("nudge");
 }
 
 // ---- the settings view (right drawer, the gear): keys + sandbox -------------------
 
 function openSettings() {
   closeDrawer();
-  closeAccount();
   $("bashlite").checked = state.bashLite === true; // reflect current state
   $("devmode").checked = state.developerMode === true;
   renderKeysPanel();
@@ -977,11 +995,17 @@ $("drawerclose").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("click", (e) => {
   if (e.target === $("drawer")) closeDrawer();
 });
-// The account view (the client-side explainer).
-$("accountbtn").addEventListener("click", openAccount);
-$("accountclose").addEventListener("click", closeAccount);
-$("accountview").addEventListener("click", (e) => {
-  if (e.target === $("accountview")) closeAccount();
+// The account button IS the door to Se/rver (the signed-in tier): tapping it
+// leaves the client-side site for the hosted sign-in.
+$("accountbtn").addEventListener("click", () => {
+  location.href = "/login";
+});
+// The greeter's close button + dismiss-on-outside-tap (UX-1).
+$("ghostsayclose").addEventListener("click", hideGhostSay);
+document.addEventListener("click", (e) => {
+  if (!$("ghostsay").hidden && !$("ghostsay").contains(e.target) && e.target !== $("accountbtn")) {
+    hideGhostSay();
+  }
 });
 // The settings view (the gear): API keys + sandbox — all configuration.
 $("gearbtn").addEventListener("click", openSettings);
@@ -989,7 +1013,6 @@ $("settingsclose").addEventListener("click", closeSettings);
 $("settingsview").addEventListener("click", (e) => {
   if (e.target === $("settingsview")) closeSettings();
 });
-$("opensettings").addEventListener("click", openSettings);
 // The settings knobs' ⓘ info popovers (the Se/rver settings-pane component,
 // ported here). Click or press-and-hold a ⓘ to open that knob's detail
 // popover; opening one closes the others, and any click outside a popover or
