@@ -4,7 +4,7 @@ description: >-
   Load when processing user feedback from the live site — "handle the
   feedback queue", "loop on feedback", a user submitted feedback via
   Feedback mode, or when touching src/feedback.js, the account panel's
-  Feedback view, or scripts/feedback. Governs the whole agent loop: pulling
+  Feedback view (public/js/account-feedback.js), or scripts/feedback. Governs the whole agent loop: pulling
   the queue, the mandatory human-in-the-loop decision on EVERY entry,
   implementing or declining, messaging back to the user in plain language,
   status lifecycle, and how to run it as a recurring loop.

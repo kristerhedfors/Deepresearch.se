@@ -4,7 +4,10 @@ description: >-
   Load when changing the /api/chat streaming protocol or the client activity
   rendering (public/js/activity.js, turns.js, stream.js) — the status/delta/done
   event vocabulary and the forward-compatibility rule that clients must ignore
-  unknown status types and fields.
+  unknown status types and fields. ALSO covers the inline-quiz capability,
+  which rides a `quiz` SSE event: src/quiz.js (the quizIntent EN+SV gate —
+  invariant 6 parity — and normalizeQuiz), src/quiz-api.js (/api/quiz/grade),
+  and the client card public/js/quiz.js.
 ---
 
 # /api/chat SSE protocol

@@ -3,8 +3,10 @@ name: live-verify
 description: >-
   Load when verifying behavior against the live site, reading Workers Logs or
   running `wrangler tail`, using x-request-id / (ref …) to correlate errors,
-  debugging disconnects / stream drops / answer recovery / heartbeat / stall
-  watchdog machinery, or anything that only reproduces in production and not in
+  debugging disconnects / stream drops / answer recovery (src/answers.js +
+  the client poller public/js/recovery.js + the resume-across-relaunch
+  marker public/js/pending-answer.js) / heartbeat / stall watchdog
+  machinery, or anything that only reproduces in production and not in
   `wrangler dev`.
 ---
 
