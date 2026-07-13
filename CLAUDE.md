@@ -61,27 +61,43 @@ output at session start; if it printed a WARNING, rebase onto `origin/main`
 before touching code. Re-fetch before every push. Details in the
 **sync-main** skill.
 
-**Submit every change as a PULL REQUEST for merge — do NOT push straight to
-`main`.** (Reversed 2026-07-13: this project previously pushed directly to
-`main`; it now works through PRs so changes are reviewed and merged
-deliberately.) Cut a feature branch off the latest `origin/main`, commit there,
-push the branch, and open a PR targeting `main`. Merging is the reviewer's
-call — do not self-merge unless the owner explicitly asks.
+**BOTH merge styles are supported (2026-07-13).** A change may land EITHER by a
+pull request merged into `main`, OR by a direct branch merge / push to `main`.
+Pick whichever fits — PRs when the change wants review, a direct branch merge
+for routine work. Always cut work on a feature branch off the latest
+`origin/main` first; a merged branch is DONE (do not keep building on it —
+branch fresh from the updated `main`). See the **merge-branches** skill.
 
 ```bash
 git fetch origin main
 git checkout -B <feature-branch> origin/main
-git add -A
-git commit -m "…"
+git add -A && git commit -m "…"
 git push -u origin <feature-branch>
-# then open a PR targeting main (see the merge-branches skill)
+# then EITHER open a PR targeting main, OR merge the branch into main directly
 ```
 
-> **`main` is merge-only now.** No feature work lands by a direct `git push
-> origin main`. Any branch whose work has been merged into `main` (via its PR)
-> is DONE — do not keep building on it; branch fresh from the updated `main`.
-> See the **merge-branches** skill for the full branch-integration + tagging
-> workflow.
+> ### MERGE BARRIER — check on EVERY prompt, before any change
+>
+> A one-time **mass-reconciliation merge** flag lives in
+> **`docs/MERGE-STATUS.json`** (`active: true/false`). It is the signal to
+> ALL clients that the many pre-existing branches have been merged into `main`
+> and are now stale. **Before making any change (every prompt), check it** —
+> the `merge-barrier` hook does this automatically and prints a notice, but the
+> rule stands regardless:
+>
+> **If the barrier is `active` AND your current branch does not contain the
+> recorded `main_sha` (i.e. you're not following the reconciled `main`), then:
+> sync to `main` and CREATE A NEW BRANCH before doing any work — do not
+> continue on your old (now-merged) branch.**
+>
+> ```bash
+> git fetch origin main
+> git checkout -B <fresh-branch> origin/main   # start clean off reconciled main
+> ```
+>
+> A session already branched off the reconciled `main` contains `main_sha`, so
+> the hook stays silent for it. The owner clears the barrier by setting
+> `active: false` once the fleet has reset. See the **merge-branches** skill.
 
 > **Commit signing is NOT provisioned — pushed commits show "Unverified", and
 > that is EXPECTED (TODO for the repo owner, not fixable in a session).** The
