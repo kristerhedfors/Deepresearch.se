@@ -45,6 +45,8 @@ These override the heuristic in the inventory table.
 | `claude/glass-pane-close-icon-v451n4` | `189db14` | **Merged** | close chevrons integrated 2026-07-13. |
 | `claude/security-assessment-owasp-setup-3hznsj` | `bef0451` | **Merged** | OWASP Top-10 corpus + offline retrieval integrated 2026-07-13 via 3-way merge (only source-snapshot/rag conflicted; 1222/1222 tests, typecheck clean). |
 | `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Superseded | On cherry-pick the net drc.js diff vs `main` was **empty** — the land-in-chat onboarding is already in `main`. |
+| `claude/admin-feature-selection-board-9zva2a` | `9084844` | Superseded | The whole selection-board / decision-board system is in `main`: `panels.js` (attention loop), `board.js`, `admin-boards.js`, `features.js`, `security-risks.js`, `panels_reviews`/`security_reviews`/`features_reviews`, `scripts/{boards,panels,features,security}`, the decision-boards + feature-board skills, `docs/DECISION-BOARD-LOOPS.md`. Branch is ~5200 lines behind main. |
+| `claude/selection-boards-headers-v9xhgp` | `7c11c47` | Superseded | Landed in `main` earlier via PR #6 (collapse-to-headers + features board); not in the unmerged set. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 
@@ -81,7 +83,7 @@ heuristic; the skill's content check confirms.
 
 | Branch | tip | ahead | Verdict | Subject |
 |---|---|---|---|---|
-| `claude/admin-feature-selection-board-9zva2a` | 9084844 | 1 | Review | Add panel-selection board (attention loop) + fold usage |
+| `claude/admin-feature-selection-board-9zva2a` | 9084844 | 1 | Superseded | Panel-selection board (attention loop) — `src/panels.js` + `panels_reviews` + `scripts/panels` all in main (verified 2026-07-13) |
 | `claude/anon-chat-copy-ui-rk0k0j` | 7a30685 | 226 | Superseded? | Header: ghost moves beside the account button copy-conv |
 | `claude/anthropic-llm-provider-3ojvsm` | 5f07008 | 284 | Superseded? | eval: Round 10 ledger first Anthropic battery (opus/son |
 | `claude/anthropic-llm-provider-d3iapt` | 24579aa | 284 | Superseded? | Add the model-tuning skill: per-use-case adaptation play |
