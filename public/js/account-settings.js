@@ -2,13 +2,17 @@
 // (2026-07-11 directive; also opened straight from the header's gear
 // icon): the cloud-storage / Shodan / Google Maps knobs, each disabled
 // (with a note) when the server can't back it, plus the Feedback-mode and
-// execution-sandbox knobs (rows + wiring from account-views.js). Built
-// from account-views.js's shared settingRow/wireSettingPopovers building
-// blocks; the panel shell (showView) lives in account.js.
+// execution-sandbox knobs (rows + wiring from account-views.js) and the
+// terminal-backdrop transparency slider (grayed until the sandbox is on;
+// the per-browser value lives in agent-backdrop.js, same as the floating
+// bar). Built from account-views.js's shared settingRow / settingSliderRow /
+// wireSettingPopovers building blocks; the panel shell (showView) lives in
+// account.js.
 
-import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
-import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
+import { renderConfigKnobs, settingRow, settingSliderRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
+import { bashLiteAvailable, bashLiteOn, loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
+import { backdropOpacityPct, setBackdropOpacity } from "./agent-backdrop.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -51,6 +55,22 @@ const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
   to Google — never your whole question or anything about your account. It
   runs only when your message names an address or you attach a located photo,
   and independently of the web-search switch.`;
+
+const BACKDROP_INFO = `<strong>Terminal backdrop transparency</strong><br>
+  When the execution sandbox runs shell commands, the raw commands and their
+  output drift faintly across the page background so you can watch what the
+  assistant is doing without leaving the composer. This slider tunes how
+  visible that layer is — slide all the way to <b>Off</b> to hide it
+  entirely. The same control also floats in on its own while the terminal is
+  active.<br>
+  It only applies while the execution sandbox is on, so it's disabled here
+  until you enable the sandbox above.`;
+
+// The backdrop slider's small value caption — "Off" at 0, otherwise "N%".
+// Mirrors agent-backdrop.js's own bar label.
+function backdropValLabel(pct) {
+  return pct <= 0 ? "Off" : pct + "%";
+}
 
 /**
  * Fetches fresh settings and renders the Settings sub-view: the
@@ -125,12 +145,31 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    ${(() => {
+      const sandboxOn = bashLiteAvailable() && bashLiteOn();
+      const pct = backdropOpacityPct();
+      return (
+        settingSliderRow({
+          id: "backdropknob",
+          label: "Terminal backdrop transparency",
+          value: pct,
+          disabled: !sandboxOn,
+          popId: "backdroppop",
+          info: BACKDROP_INFO,
+          valueLabel: backdropValLabel(pct),
+        }) +
+        (sandboxOn
+          ? ""
+          : `<p class="muted setting-note">Turn on the execution sandbox to adjust the terminal backdrop.</p>`)
+      );
+    })()}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
+  wireBackdropSlider();
 
   if (usable) wireCloudStorageKnob();
   if (shodanUsable) {
@@ -181,6 +220,35 @@ function wireCloudStorageKnob() {
       knob.disabled = false;
     }
   });
+}
+
+// The terminal-backdrop transparency slider (Settings view). It is not a
+// server setting — the preference lives per-browser (agent-backdrop.js /
+// localStorage), the same value the floating bar tunes — so wiring is purely
+// local: on input, persist + apply live and update the caption. It is only
+// meaningful while the execution sandbox is running, so it renders disabled
+// (grayed) unless the sandbox is on; we also keep that in sync LIVE with the
+// sandbox knob — enabling the sandbox reloads the page (it comes back
+// enabled), but disabling does not, so gray it out the moment the sandbox
+// knob goes off.
+function wireBackdropSlider() {
+  const slider = document.getElementById("backdropknob");
+  if (!slider) return;
+  const val = document.getElementById("backdropknobval");
+  slider.addEventListener("input", () => {
+    const pct = Number(slider.value) || 0;
+    setBackdropOpacity(pct);
+    if (val) val.textContent = backdropValLabel(pct);
+  });
+  const sb = document.getElementById("sbknob");
+  if (sb) {
+    sb.addEventListener("change", () => {
+      const on = sb.checked; // the sandbox knob's new desired state
+      slider.disabled = !on;
+      const wrap = slider.closest(".settings-slider");
+      if (wrap) wrap.classList.toggle("is-disabled", !on);
+    });
+  }
 }
 
 /**

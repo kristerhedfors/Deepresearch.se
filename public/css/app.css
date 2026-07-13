@@ -113,8 +113,9 @@ body::before {
 }
 /* The transparency bar: a small floating glass pill that appears WHILE the
    sandbox terminal is running (public/js/agent-backdrop.js) and auto-hides when
-   it goes quiet. It is the ONLY control for the backdrop's transparency — there
-   is no settings entry. Slide to 0 to turn the layer off. */
+   it goes quiet. Slide to 0 to turn the layer off. The Settings view mirrors
+   the same control (a .setting-range row, grayed until the sandbox is on) so
+   it's discoverable when the terminal isn't running. */
 .dr-backdrop-bar {
   position: fixed;
   top: .55rem; right: .7rem;
@@ -1248,6 +1249,30 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .setting-pop[hidden] { display: none; }
 .setting-pop a { color: var(--accent); }
 .setting-note { font-size: .8em; margin: .1rem 0 .4rem; }
+/* A settings SLIDER row's control (settingSliderRow): a 0..100 range plus a
+   small live value caption, sharing the floating backdrop bar's slider look.
+   Grayed as a whole (.is-disabled) when the row doesn't apply — e.g. the
+   terminal-backdrop transparency until the execution sandbox is on. */
+.settings-slider { display: inline-flex; align-items: center; gap: .5rem; flex: none; }
+.settings-slider.is-disabled { opacity: .45; }
+.setting-range {
+  -webkit-appearance: none; appearance: none;
+  width: 108px; height: 4px; margin: 0;
+  border-radius: 999px; background: var(--border); cursor: pointer;
+}
+.setting-range:disabled { cursor: not-allowed; }
+.setting-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
+}
+.setting-range::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(4, 30, 60, .35);
+}
+.setting-range-val { min-width: 2.6em; text-align: right; font-size: .8em; font-weight: 600; color: var(--muted); }
 .switch { cursor: pointer; display: inline-flex; flex: none; -webkit-user-select: none; user-select: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch-track {
