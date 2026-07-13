@@ -35,7 +35,9 @@ import {
   SNAPSHOT_PATH,
   buildIntrospectionBlock,
   buildOwaspReferenceBlock,
+  diversifyByCategory,
   introspectionActive,
+  lexicalRetrieveOwasp,
   mentionedSnapshotPaths,
   retrieveSourceChunks,
   securityAssessmentIntent,
@@ -47,7 +49,11 @@ import { textOf, withAppendedText } from "./conversation.js";
 
 const QUERY_PREFIX = "query: "; // e5 asymmetric prefix — mirrors src/rag.js
 const RETRIEVE_K = 6;
-const OWASP_RETRIEVE_K = 6; // OWASP paragraphs retrieved for a security assessment
+// OWASP paragraphs retrieved for a security assessment. Wider than the source
+// K and capped per category (diversifyByCategory) so the block spans SEVERAL
+// vulnerabilities the model can quote, not the single closest one.
+const OWASP_RETRIEVE_K = 8;
+const OWASP_PER_CATEGORY = 2;
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -217,22 +223,36 @@ async function retrieveSource(env, log, qvec, snapshot) {
 }
 
 /**
- * Cosine-rank the OWASP corpus for a pre-embedded query. Returns the retrieved
- * OWASP paragraphs plus the per-doc citation metadata, or empty on any failure.
+ * Retrieve the OWASP paragraphs relevant to a security-assessment query, spread
+ * across SEVERAL categories (diversifyByCategory). Prefers dense retrieval (the
+ * committed e5 index) when the query embed is available; falls back to the
+ * embedding-FREE lexical path over the corpus when it isn't — so the OWASP
+ * grounding works even with no embedder (the same path DRC uses). Returns the
+ * chunks plus the per-doc citation metadata, or empty on any failure. `mode`
+ * reports which path ran, for observability.
  * @param {Env} env
  * @param {Logger} log
  * @param {Float32Array | null} qvec
- * @returns {Promise<{ retrieved: Array<{ p: string, text: string, score: number }>, sources: Record<string, any> }>}
+ * @param {string} query
+ * @returns {Promise<{ retrieved: Array<{ p: string, text: string, score: number }>, sources: Record<string, any>, mode: string }>}
  */
-async function retrieveOwasp(env, log, qvec) {
-  const empty = { retrieved: [], sources: {} };
+async function retrieveOwasp(env, log, qvec, query) {
+  const empty = { retrieved: [], sources: {}, mode: "none" };
   try {
-    if (!qvec) return empty;
     const corpus = await loadOwaspCorpus(env, log);
     if (!corpus) return empty;
-    const index = await loadOwaspRag(env, log);
-    if (!index) return empty;
-    return { retrieved: retrieveSourceChunks(index, corpus.snapshot, qvec, OWASP_RETRIEVE_K), sources: corpus.sources };
+    // Dense path: rank the whole index, then cap per category for breadth.
+    if (qvec) {
+      const index = await loadOwaspRag(env, log);
+      if (index) {
+        const all = retrieveSourceChunks(index, corpus.snapshot, qvec, index.vectors.length);
+        const retrieved = diversifyByCategory(all, OWASP_RETRIEVE_K, OWASP_PER_CATEGORY);
+        if (retrieved.length) return { retrieved, sources: corpus.sources, mode: "dense" };
+      }
+    }
+    // Offline fallback: lexical TF-IDF over the corpus, no embedder needed.
+    const retrieved = lexicalRetrieveOwasp(corpus.snapshot, query, { k: OWASP_RETRIEVE_K, perCat: OWASP_PER_CATEGORY });
+    return { retrieved, sources: corpus.sources, mode: retrieved.length ? "lexical" : "none" };
   } catch (/** @type {any} */ err) {
     log.warn("introspect.owasp_retrieve_failed", { error: err?.message || String(err) });
     return empty;
@@ -302,8 +322,10 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // explicitly; the deterministic read-loop synthesis rides the appended copy.
   /** @type {Array<{ p: string, text: string, score: number }>} */
   let owaspRetrieved = [];
+  let owaspMode = "none";
   if (texts.some((t) => securityAssessmentIntent(t))) {
-    const { retrieved: hits, sources } = await retrieveOwasp(env, log, qvec);
+    const { retrieved: hits, sources, mode } = await retrieveOwasp(env, log, qvec, latestText);
+    owaspMode = mode;
     const owaspBlock = buildOwaspReferenceBlock(hits, sources);
     if (owaspBlock) {
       owaspRetrieved = hits;
@@ -334,7 +356,8 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     include_index: strongIntent,
     block_chars: block.length,
     owasp: owaspRetrieved.length,
-    owasp_cats: owaspRetrieved.map((r) => r.p.split(" ")[0]).slice(0, 6),
+    owasp_mode: owaspMode,
+    owasp_cats: [...new Set(owaspCats)].slice(0, 8),
   });
   return convo;
 }

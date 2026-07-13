@@ -14,6 +14,9 @@ import {
   ORIENTATION_CHARS,
   buildIntrospectionBlock,
   buildOwaspReferenceBlock,
+  diversifyByCategory,
+  lexicalRetrieveOwasp,
+  owaspCategoryOf,
   externalSourceIntent,
   securityAssessmentIntent,
   introspectionActive,
@@ -230,6 +233,52 @@ test("buildOwaspReferenceBlock: cites categories with URLs, quotes text, carries
   // Empty retrieval → empty block (byte-identical to a run without OWASP).
   assert.equal(buildOwaspReferenceBlock([], sources), "");
   assert.equal(buildOwaspReferenceBlock(null), "");
+});
+
+test("owaspCategoryOf: leading token is the category id", () => {
+  assert.equal(owaspCategoryOf("LLM01:2025 Prompt Injection"), "LLM01:2025");
+  assert.equal(owaspCategoryOf("A01:2021 Broken Access Control"), "A01:2021");
+  assert.equal(owaspCategoryOf(""), "");
+});
+
+test("diversifyByCategory: caps per category, spans multiple, backfills to k", () => {
+  const scored = [
+    { p: "LLM01:2025 x", s: 9 }, { p: "LLM01:2025 x", s: 8 }, { p: "LLM01:2025 x", s: 7 }, // 3 from LLM01
+    { p: "A01:2021 y", s: 6 }, { p: "A01:2021 y", s: 5 }, // 2 from A01
+    { p: "LLM10:2025 z", s: 4 },
+  ];
+  // k=5, perCat=2 → 2 LLM01 + 2 A01 + 1 LLM10 = 3 categories (the cap forces
+  // the 3rd category in rather than a 3rd LLM01).
+  const out = diversifyByCategory(scored, 5, 2);
+  assert.equal(out.length, 5);
+  const cats = out.map((c) => owaspCategoryOf(c.p));
+  assert.ok(cats.filter((c) => c === "LLM01:2025").length <= 2, "LLM01 capped at 2");
+  assert.ok(new Set(cats).size >= 3, "spans ≥3 categories: " + cats.join(","));
+  // Backfill: k=6 exhausts the input — the capped-out 3rd LLM01 fills the slot.
+  const full = diversifyByCategory(scored, 6, 2);
+  assert.equal(full.length, 6);
+  assert.equal(full.filter((c) => owaspCategoryOf(c.p) === "LLM01:2025").length, 3);
+});
+
+test("lexicalRetrieveOwasp: offline retrieval surfaces the right categories across docs", () => {
+  // A tiny 3-doc corpus (snapshot-shaped) — no embeddings, pure TF-IDF.
+  const corpus = {
+    v: 1, digest: "d", count: 3, bytes: 0,
+    files: [
+      { p: "LLM01:2025 Prompt Injection", s: 0, t: "Prompt injection occurs when user prompts manipulate the model and override the system instructions. ".repeat(4) },
+      { p: "A01:2021 Broken Access Control", s: 0, t: "Broken access control lets users act outside intended permissions, accessing admin endpoints and other accounts. ".repeat(4) },
+      { p: "LLM10:2025 Unbounded Consumption", s: 0, t: "Unbounded consumption is excessive resource use — token cost, denial of wallet, and rate-limit exhaustion. ".repeat(4) },
+    ],
+  };
+  const inj = lexicalRetrieveOwasp(corpus, "the model prompt is manipulated by injected user instructions", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(inj[0].p), "LLM01:2025", "prompt-injection query → LLM01 top");
+  const acc = lexicalRetrieveOwasp(corpus, "admin access control on user accounts and permissions", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(acc[0].p), "A01:2021", "access-control query → A01 top");
+  const con = lexicalRetrieveOwasp(corpus, "excessive token cost and denial of wallet, rate limit", { k: 4, perCat: 2 });
+  assert.equal(owaspCategoryOf(con[0].p), "LLM10:2025", "consumption query → LLM10 top");
+  // No content terms / empty corpus → [] (fail-soft, no throw).
+  assert.deepEqual(lexicalRetrieveOwasp(corpus, "the a of to", { k: 4 }), []);
+  assert.deepEqual(lexicalRetrieveOwasp({ v: 1, count: 0, files: [] }, "anything", { k: 4 }), []);
 });
 
 test("externalSourceIntent: pure introspection asks never trigger it (search stays off)", () => {

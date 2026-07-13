@@ -673,6 +673,139 @@ export function buildOwaspReferenceBlock(retrieved, sources = {}) {
   return "\n\n" + lines.join("\n");
 }
 
+// ---- OWASP retrieval: category diversity + an OFFLINE lexical path ------------
+//
+// A security assessment should quote MULTIPLE different OWASP vulnerabilities,
+// not cluster on the single closest one — so retrieval caps how many chunks it
+// takes per category and backfills, guaranteeing breadth. And because the whole
+// point of the committed corpus is to work SELF-CONTAINED, there's an
+// embedding-FREE lexical retrieval (TF-IDF over the corpus) so the OWASP block
+// is available with NO embedder at all — that's the path DRC (the client-side
+// Se/cure tier, no Berget e5) uses, and the fallback DRS uses when the query
+// embed is unavailable. Both are pure and Node-tested.
+
+/**
+ * The OWASP category id of a corpus key ("LLM01:2025 Prompt Injection" →
+ * "LLM01:2025"). The corpus key is `<id> <title>`, so it's the leading token.
+ * @param {string} p
+ * @returns {string}
+ */
+export function owaspCategoryOf(p) {
+  const s = String(p || "");
+  const i = s.indexOf(" ");
+  return i > 0 ? s.slice(0, i) : s;
+}
+
+/**
+ * Take the top-k chunks while capping how many come from any ONE OWASP category
+ * (greedy over the already-score-sorted list; backfill from the remainder if the
+ * per-category cap left fewer than k). Guarantees the returned set spans several
+ * categories when the corpus has them — the "multiple different vulnerabilities"
+ * requirement — instead of k near-duplicate chunks from the closest doc.
+ * @template {{ p: string }} T
+ * @param {T[]} scored chunks sorted by descending relevance
+ * @param {number} [k]
+ * @param {number} [perCat]
+ * @returns {T[]}
+ */
+export function diversifyByCategory(scored, k = 8, perCat = 2) {
+  const list = Array.isArray(scored) ? scored : [];
+  /** @type {Map<string, number>} */
+  const seen = new Map();
+  /** @type {T[]} */
+  const picked = [];
+  /** @type {T[]} */
+  const overflow = [];
+  for (const c of list) {
+    if (picked.length >= k) break;
+    const cat = owaspCategoryOf(c.p);
+    const n = seen.get(cat) || 0;
+    if (n < perCat) {
+      seen.set(cat, n + 1);
+      picked.push(c);
+    } else {
+      overflow.push(c);
+    }
+  }
+  // Backfill (still score order) if the cap starved us below k.
+  for (const c of overflow) {
+    if (picked.length >= k) break;
+    picked.push(c);
+  }
+  return picked;
+}
+
+// Words too common to help lexical ranking (EN + a little SV). Kept small — the
+// corpus is domain text, so ordinary content words ARE the signal.
+const OWASP_STOPWORDS = new Set(
+  ("the a an and or of to in on for with is are be been being this that these those it its as at by from into over under " +
+    "can could should would may might will shall do does did has have had not no nor but if then else when where which who whom " +
+    "you your yours we our us they their them he she his her out up down off about than so such very more most other some any all " +
+    "att och en ett som det den de för med av till på är var det här den där inte kan ska att om men eller vad vem vilka hur")
+    .split(/\s+/),
+);
+
+/** @param {string} s @returns {string[]} content terms, lowercased, ≥3 chars, no stopwords */
+function owaspTerms(s) {
+  return String(s || "")
+    .toLowerCase()
+    .split(/[^a-z0-9åäöé]+/i)
+    .filter((w) => w.length >= 3 && !OWASP_STOPWORDS.has(w));
+}
+
+/**
+ * OFFLINE lexical retrieval over the OWASP corpus — NO embeddings. Scores each
+ * corpus chunk by TF-IDF overlap with the query's content terms (df computed
+ * across the corpus's own chunks), then applies the category-diversity cap. This
+ * is what lets the OWASP grounding work fully self-contained: DRC uses it (no
+ * Berget e5 in the browser), and DRS falls back to it when the query embed is
+ * unavailable. Deterministic and never throws.
+ * @param {Snapshot} corpus the OWASP corpus (snapshot-shaped: files:[{p,s,t}])
+ * @param {string} query
+ * @param {{ k?: number, perCat?: number }} [opts]
+ * @returns {Array<{ p: string, ci: number, text: string, score: number }>}
+ */
+export function lexicalRetrieveOwasp(corpus, query, opts = {}) {
+  const k = opts.k || 8;
+  const perCat = opts.perCat || 2;
+  const chunks = snapshotChunks(corpus); // [{p,ci,text}]
+  if (!chunks.length) return [];
+  const qTerms = [...new Set(owaspTerms(query))];
+  if (!qTerms.length) return [];
+  // Per-chunk term sets + document frequency of each query term.
+  const chunkTerms = chunks.map((c) => owaspTerms(c.text));
+  const df = new Map();
+  for (const t of qTerms) {
+    let d = 0;
+    for (const terms of chunkTerms) if (terms.includes(t)) d++;
+    df.set(t, d);
+  }
+  const N = chunks.length;
+  const scored = chunks.map((c, i) => {
+    const terms = chunkTerms[i];
+    /** @type {Map<string, number>} */
+    const tf = new Map();
+    for (const w of terms) tf.set(w, (tf.get(w) || 0) + 1);
+    let score = 0;
+    for (const t of qTerms) {
+      const f = tf.get(t) || 0;
+      if (!f) continue;
+      const d = df.get(t) || 0;
+      const idf = Math.log((N + 1) / (d + 0.5)); // smoothed, always > 0
+      score += (1 + Math.log(f)) * idf;
+    }
+    // Normalize by chunk length so long chunks don't dominate on raw counts.
+    const norm = score / Math.sqrt(Math.max(1, terms.length));
+    return { p: c.p, ci: c.ci, text: c.text, score: norm };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return diversifyByCategory(
+    scored.filter((c) => c.score > 0),
+    k,
+    perCat,
+  );
+}
+
 // ---- the agentic source-read loop (the "read files as it wants" tool) --------
 //
 // For an introspection question, the pipeline does REAL research in the actual

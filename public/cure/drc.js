@@ -59,9 +59,13 @@ import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import {
+  OWASP_CORPUS_PATH,
   SNAPSHOT_PATH,
   buildIntrospectionBlock,
+  buildOwaspReferenceBlock,
   introspectionActive,
+  lexicalRetrieveOwasp,
+  securityAssessmentIntent,
   validateSnapshot,
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
@@ -665,6 +669,38 @@ async function loadSnapshotOnce() {
   return snapshotCache;
 }
 
+// The OWASP Top 10 reference corpus, fetched once per page load as a PUBLIC
+// static file (server still in no data path). It grounds a security assessment
+// so DRC can quote the actual OWASP text — retrieved OFFLINE with the
+// embedding-free lexical path (the browser has no Berget e5), which is why no
+// dense index is needed here. Fail-soft: any problem → no OWASP block, and the
+// prompt-level default (buildIntrospectionBlock / research prompts) still holds.
+let owaspCorpusCache = null;
+async function loadOwaspCorpusOnce() {
+  if (!owaspCorpusCache) {
+    owaspCorpusCache = fetch(OWASP_CORPUS_PATH)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const raw = await res.json();
+        const snapshot = validateSnapshot(raw);
+        return snapshot ? { snapshot, sources: raw && raw.sources ? raw.sources : {} } : null;
+      })
+      .catch(() => null);
+  }
+  return owaspCorpusCache;
+}
+
+// Build the OWASP reference block for a security-assessment conversation
+// (lexical retrieval over the corpus → several categories). "" when not a
+// security assessment or the corpus is unavailable.
+async function owaspBlockFor(texts, latestText) {
+  if (!texts.some((t) => securityAssessmentIntent(t))) return "";
+  const corpus = await loadOwaspCorpusOnce();
+  if (!corpus) return "";
+  const hits = lexicalRetrieveOwasp(corpus.snapshot, latestText, { k: 8, perCat: 2 });
+  return buildOwaspReferenceBlock(hits, corpus.sources);
+}
+
 async function introspectionContext(conv, latestText) {
   // Developer mode on = always give the model the site's own source, so any
   // phrasing ("code examples from the site") works — no brittle intent gate.
@@ -681,11 +717,16 @@ async function introspectionContext(conv, latestText) {
     engageIntrospection(); // TIN slides in — the mode's visible marker
     // The full file index is worth its tokens only for strong "how are you
     // built / list files" asks; otherwise orientation + named files carry it.
-    const block = buildIntrospectionBlock(snap, {
+    let block = buildIntrospectionBlock(snap, {
       latestText,
       includeIndex: introspectionActive(texts, snap),
       sandboxMounted: state.bashLite === true,
     });
+    // Security assessment: also append the OWASP Top 10 reference (retrieved
+    // OFFLINE via lexical TF-IDF over the committed corpus), so DRC classifies
+    // findings against — and quotes — the real OWASP text with no server call.
+    const owasp = await owaspBlockFor(texts, latestText);
+    if (owasp) block += owasp;
     // The sandbox boots lazily; if it does, the whole tree lands at /src.
     const fileProvider = async () => ({ session: [], project: null, source: { files: snap.files } });
     // The snapshot itself rides along: with a tool-capable provider, DRC drives
