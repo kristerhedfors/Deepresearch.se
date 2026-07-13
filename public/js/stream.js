@@ -764,11 +764,19 @@ async function buildChatPayload(opts) {
 // re-boot (today's behavior), never a wrong mount.
 /** @param {SendOpts} opts */
 function sendWantsMounts(opts) {
+  // Dev mode only needs the /src source mount when the message is actually
+  // introspection-active — the same condition buildSandboxFileProvider uses to
+  // decide `source`. Checking the flag alone would discard the pre-warm on
+  // EVERY send for a dev-mode user (e.g. a bare "ls /"), forcing a needless
+  // re-boot; mirroring the real condition keeps the pre-warm for bare sends.
+  const texts = userTexts(history);
+  const wantsSource =
+    developerModeOn() && (introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t)));
   return !!(
     (opts?.docs && opts.docs.length) ||
     (opts?.images && opts.images.length) ||
     activeProject() ||
-    developerModeOn()
+    wantsSource
   );
 }
 
