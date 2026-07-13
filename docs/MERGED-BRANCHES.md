@@ -47,6 +47,7 @@ These override the heuristic in the inventory table.
 | `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Superseded | On cherry-pick the net drc.js diff vs `main` was **empty** — the land-in-chat onboarding is already in `main`. |
 | `claude/admin-feature-selection-board-9zva2a` | `9084844` | Superseded | The whole selection-board / decision-board system is in `main`: `panels.js` (attention loop), `board.js`, `admin-boards.js`, `features.js`, `security-risks.js`, `panels_reviews`/`security_reviews`/`features_reviews`, `scripts/{boards,panels,features,security}`, the decision-boards + feature-board skills, `docs/DECISION-BOARD-LOOPS.md`. Branch is ~5200 lines behind main. |
 | `claude/selection-boards-headers-v9xhgp` | `7c11c47` | Superseded | Landed in `main` earlier via PR #6 (collapse-to-headers + features board); not in the unmerged set. |
+| `claude/victorian-umbrella-animation-vooqu6` | `6a10191` | **Merged** | DRC umbrella intro: Victorian umbrellas revive from wire into colour. Merged 2026-07-13; only source-snapshot/rag conflicted (regenerated). 1224/1224 tests. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 

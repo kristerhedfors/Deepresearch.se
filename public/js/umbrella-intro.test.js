@@ -11,6 +11,8 @@ import {
   paramsAt,
   PANELS,
   MAX_TWIST,
+  SCALLOP_DEPTH,
+  DOME_FRAC,
   twistOffset,
   scallopFactor,
   canopyZ,
@@ -28,6 +30,14 @@ test("timeline marks are ordered and phases overlap only as designed", () => {
   assert.ok(T.tiltStart < T.tiltEnd);
   assert.ok(T.tiltEnd < T.fadeStart);
   assert.ok(T.fadeStart < T.end);
+  // The revival begins only after the logo color is fully gone (a real
+  // wire-only beat), and the fringe ("the decorations in the end") unspools
+  // after the color has begun flooding back.
+  assert.ok(T.fillGone <= T.reviveStart);
+  assert.ok(T.reviveStart < T.reviveEnd);
+  assert.ok(T.reviveStart < T.decoStart);
+  assert.ok(T.decoStart < T.decoEnd);
+  assert.ok(T.decoEnd <= T.fadeStart);
 });
 
 test("swirl phase: full twist, full color, no wire, top-down camera", () => {
@@ -36,6 +46,8 @@ test("swirl phase: full twist, full color, no wire, top-down camera", () => {
     assert.equal(p.twist, 1);
     assert.equal(p.fill, 1);
     assert.equal(p.wire, 0);
+    assert.equal(p.revive, 0);
+    assert.equal(p.deco, 0);
     assert.equal(p.cam, 0);
     assert.equal(p.shaft, 0);
     assert.equal(p.fade, 1);
@@ -58,6 +70,47 @@ test("wire end: contours fully drawn; color fully gone by fillGone", () => {
   assert.ok(paramsAt(T.wireEnd).fill < 1);
   assert.equal(paramsAt(T.fillGone).fill, 0);
   assert.equal(paramsAt(T.fillGone).pulse, 0);
+});
+
+test("revival: wire-only beat, then color floods back and fringe dangles", () => {
+  // Between the logo color draining and the revival starting there is a real
+  // wire-only window: no logo color, no revived color, no fringe.
+  const gap = paramsAt((T.fillGone + T.reviveStart) / 2);
+  assert.equal(gap.fill, 0);
+  assert.equal(gap.revive, 0);
+  assert.equal(gap.deco, 0);
+  assert.ok(gap.wire === 1); // the wireframe is fully drawn by now
+
+  // Color comes fully back by reviveEnd; fringe is still on its way in there.
+  assert.equal(paramsAt(T.reviveStart).revive, 0);
+  assert.ok(paramsAt((T.reviveStart + T.reviveEnd) / 2).revive > 0);
+  assert.equal(paramsAt(T.reviveEnd).revive, 1);
+
+  // The decorations arrive last and are fully hung by decoEnd.
+  assert.equal(paramsAt(T.decoStart).deco, 0);
+  assert.equal(paramsAt(T.decoEnd).deco, 1);
+  // Revival is monotone up over the whole clock (color never un-blooms).
+  let prev = 0,
+    prevD = 0;
+  for (let t = 0; t <= T.end; t += 50) {
+    const p = paramsAt(t);
+    assert.ok(p.revive >= prev - 1e-12, `revive fell at ${t}`);
+    assert.ok(p.deco >= prevD - 1e-12, `deco fell at ${t}`);
+    prev = p.revive;
+    prevD = p.deco;
+  }
+});
+
+test("Victorian canopy constants: deep scallop, tall dome, varied hues", () => {
+  // Deeper than the default subtle scallop the logo eases through.
+  assert.ok(SCALLOP_DEPTH > 0.085);
+  // A domed pagoda silhouette, not a flat parasol.
+  assert.ok(DOME_FRAC > 0.34);
+  // Every umbrella wakes into its own hue, and they are genuinely spread out
+  // (no two canopies share a color).
+  const cols = FLEET.map((u) => u.col);
+  assert.ok(cols.every((c) => /^#[0-9a-f]{6}$/i.test(c)), "well-formed hex");
+  assert.equal(new Set(cols).size, cols.length, "all distinct");
 });
 
 test("tilt: camera sweeps exactly a quarter circle, shaft fades in", () => {
