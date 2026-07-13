@@ -23,6 +23,11 @@ import {
   introspectionIntent,
   mentionedSnapshotPaths,
   snapshotIndex,
+  parseSkillFrontmatter,
+  skillsCatalog,
+  skillsIndex,
+  mentionedSkills,
+  SKILL_SUMMARY_CHARS,
   validateSnapshot,
   chunkSourceText,
   snapshotChunks,
@@ -413,6 +418,85 @@ test("buildIntrospectionBlock: per-file and total inline caps truncate honestly"
 
 test("snapshotIndex: one row per file", () => {
   assert.equal(snapshotIndex(snap()).split("\n").length, 4);
+});
+
+// ---- skills catalog ---------------------------------------------------------
+
+/** A snapshot fixture that also carries a couple of SKILL.md playbooks. */
+const skillSnap = () =>
+  /** @type {any} */ (
+    validateSnapshot({
+      v: 1,
+      digest: "s",
+      files: [
+        { p: "CLAUDE.md", s: 1, t: "# CLAUDE.md\n\norientation" },
+        { p: "src/pipeline.js", s: 1, t: "// pipeline" },
+        {
+          p: ".claude/skills/deploy/SKILL.md",
+          s: 1,
+          t: "---\nname: deploy\ndescription: >-\n  Load when deploying to production. Covers the push-to-main auto-deploy\n  and wrangler.\n---\n\n# Deployment\n\nbody",
+        },
+        {
+          p: ".claude/skills/feedback-loop/SKILL.md",
+          s: 1,
+          t: '---\nname: feedback-loop\ndescription: "Process user feedback from the live site."\n---\n\n# Feedback',
+        },
+      ],
+    })
+  );
+
+test("parseSkillFrontmatter: folded (>-), inline-quoted, and missing frontmatter", () => {
+  const folded = parseSkillFrontmatter(
+    "---\nname: deploy\ndescription: >-\n  Load when deploying to production.\n  Covers wrangler.\n---\nbody",
+  );
+  assert.equal(folded.name, "deploy");
+  assert.equal(folded.description, "Load when deploying to production. Covers wrangler.");
+
+  const inline = parseSkillFrontmatter('---\nname: x\ndescription: "One line."\n---');
+  assert.equal(inline.description, "One line.");
+
+  const none = parseSkillFrontmatter("# just markdown, no frontmatter");
+  assert.deepEqual(none, { name: "", description: "" });
+});
+
+test("skillsCatalog: one entry per SKILL.md, sorted by name, non-skill files ignored", () => {
+  const cat = skillsCatalog(skillSnap());
+  assert.deepEqual(cat.map((s) => s.name), ["deploy", "feedback-loop"]);
+  assert.equal(cat[0].path, ".claude/skills/deploy/SKILL.md");
+  assert.match(cat[0].description, /Load when deploying/);
+  // A snapshot with no skills yields an empty catalog (no throw).
+  assert.deepEqual(skillsCatalog(snap()), []);
+});
+
+test("skillsIndex: '- name — summary' rows, clipped to the summary cap", () => {
+  const idx = skillsIndex(skillSnap());
+  assert.match(idx, /^- deploy — Load when deploying to production\./m);
+  assert.match(idx, /^- feedback-loop — Process user feedback/m);
+  for (const line of idx.split("\n")) assert.ok(line.length <= SKILL_SUMMARY_CHARS + 40);
+  // full: true keeps the whole description.
+  assert.match(skillsIndex(skillSnap(), { full: true }), /Covers the push-to-main auto-deploy and wrangler\./);
+});
+
+test("mentionedSkills: slash form and '<name> skill' (hyphen/space tolerant)", () => {
+  const s = skillSnap();
+  assert.deepEqual(mentionedSkills("run /deploy now", s), [".claude/skills/deploy/SKILL.md"]);
+  assert.deepEqual(mentionedSkills("explain the deploy skill", s), [".claude/skills/deploy/SKILL.md"]);
+  assert.deepEqual(mentionedSkills("open the feedback loop skill", s), [".claude/skills/feedback-loop/SKILL.md"]);
+  // A bare mention that isn't the skill form doesn't match (no false positives).
+  assert.deepEqual(mentionedSkills("how do I deploy the worker?", s), []);
+  assert.deepEqual(mentionedSkills("", s), []);
+});
+
+test("buildIntrospectionBlock: surfaces the skills catalog and inlines a named skill", () => {
+  const block = buildIntrospectionBlock(skillSnap(), { latestText: "show me the deploy skill" });
+  assert.match(block, /# Skills — the project's 2 institutional playbooks/);
+  assert.match(block, /guides any coding agent via the repo's AGENTS\.md/);
+  assert.match(block, /^- deploy — Load when deploying/m);
+  // Naming a skill inlines its full SKILL.md body.
+  assert.match(block, /# \.claude\/skills\/deploy\/SKILL\.md \(1 bytes\)/);
+  assert.match(block, /# Deployment/);
+  // A snapshot with no skills simply omits the section.
+  assert.doesNotMatch(buildIntrospectionBlock(snap(), {}), /# Skills — the project's/);
 });
 
 // ---- the model picker grouping ---------------------------------------------------

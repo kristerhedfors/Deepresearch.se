@@ -186,6 +186,35 @@ inlined under caps (30k/file, 60k total, 6 files). Depth beyond the caps is
 the sandbox's job, not more inlining — the block rides through EVERY phase
 including the ~32k-context JSON model.
 
+## The skills catalog in the block (institutional knowledge, any model)
+
+`buildIntrospectionBlock` also surfaces the repo's **skills catalog** as a
+first-class section — `skillsCatalog` / `skillsIndex` / `mentionedSkills` in
+`introspect-core.js`. The `.claude/skills/<name>/SKILL.md` playbooks are
+ordinary tracked Markdown, so they already ride in the snapshot AND the dense
+RAG index like any other file. The catalog section lists every skill as
+`- name — one-line summary` (parsed from each SKILL.md's YAML frontmatter by
+`parseSkillFrontmatter`, clipped to `SKILL_SUMMARY_CHARS`), so ANY answer model
+— the whole Berget catalog plus the Anthropic/OpenAI answer models — sees the
+playbooks exist and can quote them. Naming a skill the way you'd name it to
+Claude Code ("the deploy skill", `/deploy`, "the feedback loop skill" —
+hyphen/space tolerant) inlines its full SKILL.md via `mentionedSkills` folded
+into the same named-file inlining path. Relevant skill *content* is also pulled
+in automatically by dense retrieval (the SKILL.md bodies are chunked into
+`source-rag.json`). This is what makes the skills — originally a Claude Code
+(CLI) convention — work "regardless of model" and identically in BOTH tiers
+(both call `buildIntrospectionBlock`). The catalog is intentionally always-on
+(not gated on strong intent) since it's small and it's the whole point.
+
+A vendor-neutral **`AGENTS.md`** at the repo root points *external* coding
+agents (any model/harness) at the same catalog + `CLAUDE.md`, so the pickup is
+also harness-agnostic. Its per-skill summaries mirror the SKILL.md frontmatter;
+regenerate them with the parser if a `description` changes. `AGENTS.md` is a
+tracked `.md`, so it too rides in the snapshot — self-consistent.
+
+`parseSkillFrontmatter` / `skillsCatalog` / `skillsIndex` / `mentionedSkills`
+are pure and Node-tested in `public/js/introspect-core.test.js`.
+
 ## The dense RAG index (`source-rag.json`)
 
 `scripts/bundle-source-rag.mjs` (`npm run bundle:rag`) chunks the committed
