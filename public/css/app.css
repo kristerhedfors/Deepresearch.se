@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h27;
+  --css-version: h28;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -579,19 +579,18 @@ header {
   position: relative; /* anchors the info popover */
 }
 /* Introspection mode: the composer becomes an AMETHYST glass pane (the
-   Se/rver tier's introspection cue) with more shine than the plain frosted
-   pane — a diagonal light-to-purple sheen, a bright specular top edge
-   (inset highlight), and a deeper coloured drop shadow so it reads as
-   polished violet glass. Background only; the field behind it is unchanged. */
+   Se/rver tier's introspection cue). The purple builds up EVENLY top→bottom
+   (a straight 180° gradient, no steep diagonal and no rightward bias), a soft
+   violet edge instead of a hard white border, and a gentle top gloss + a
+   coloured drop shadow for shine. Background only; the field is unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(157deg, rgba(255, 255, 255, .55) 0%, rgba(197, 178, 246, .30) 34%, rgba(123, 92, 199, .34) 100%),
-    rgba(138, 108, 200, .30);
-  border: 1px solid rgba(255, 255, 255, .7);
+    linear-gradient(180deg, rgba(255, 255, 255, .24) 0%, rgba(150, 122, 208, .24) 50%, rgba(123, 92, 199, .42) 100%),
+    rgba(150, 122, 205, .22);
+  border: 1px solid rgba(123, 92, 199, .38);
   box-shadow:
-    0 6px 26px rgba(64, 32, 118, .30),
-    inset 0 1px 0 rgba(255, 255, 255, .75),
-    inset 0 -9px 22px rgba(96, 62, 176, .18);
+    0 6px 22px rgba(64, 32, 118, .24),
+    inset 0 1px 0 rgba(255, 255, 255, .38);
 }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
