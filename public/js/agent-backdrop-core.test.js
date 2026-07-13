@@ -11,21 +11,25 @@ import {
   DEFAULT_OPACITY_PCT,
   MAX_LINES,
   MAX_LINE_CHARS,
+  PARALLAX_CAP_PX,
   activeLines,
   backdropEnabled,
   channelCount,
   channelLines,
   clampLine,
   clampOpacityPct,
+  clampScrollOffset,
   clipToNextChannel,
   createBackdropModel,
   ensureChannel,
   formatResultLines,
   opacityCss,
+  parallaxNudge,
   parseOpacityPref,
   pushCommand,
   pushLines,
   pushResult,
+  scrollStep,
 } from "./agent-backdrop-core.js";
 
 test("clampLine collapses whitespace and caps length", () => {
@@ -136,4 +140,37 @@ test("opacityCss maps 0..100 into the faint band 0..0.55", () => {
   assert.equal(opacityCss(0), 0);
   assert.equal(opacityCss(100), 0.55);
   assert.ok(opacityCss(50) > 0 && opacityCss(50) < 0.55);
+});
+
+test("clampScrollOffset keeps the offset within the scrollable range", () => {
+  // content 300, viewport 100 → 200px of history to reveal
+  assert.equal(clampScrollOffset(50, 300, 100), 50);
+  assert.equal(clampScrollOffset(-10, 300, 100), 0); // never past the tail
+  assert.equal(clampScrollOffset(999, 300, 100), 200); // never past the top
+  // content shorter than the viewport → nothing to scroll
+  assert.equal(clampScrollOffset(40, 80, 100), 0);
+  // garbage coerces to 0, not NaN
+  assert.equal(clampScrollOffset("x", "y", "z"), 0);
+});
+
+test("scrollStep walks toward the tail on positive delta, into history on negative", () => {
+  // start pinned; wheel up (negative) reveals older → offset grows, unpinned
+  const up = scrollStep(0, -60, 300, 100);
+  assert.equal(up.offset, 60);
+  assert.equal(up.pinned, false);
+  // wheel down (positive) walks back toward newest, clamped at 0 → pinned again
+  const down = scrollStep(60, 90, 300, 100);
+  assert.equal(down.offset, 0);
+  assert.equal(down.pinned, true);
+  // clamped at the top of the buffer
+  assert.equal(scrollStep(150, -200, 300, 100).offset, 200);
+});
+
+test("parallaxNudge opposes the gesture, clamped to ±cap, finite on garbage", () => {
+  assert.ok(parallaxNudge(100) < 0); // scroll one way → lean the other
+  assert.ok(parallaxNudge(-100) > 0);
+  assert.equal(parallaxNudge(100000), -PARALLAX_CAP_PX); // capped
+  assert.equal(parallaxNudge(-100000), PARALLAX_CAP_PX);
+  assert.equal(parallaxNudge(0), 0);
+  assert.equal(parallaxNudge("nope"), 0); // never NaN
 });
