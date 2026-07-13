@@ -92,6 +92,16 @@ whole design:
     defeats an at-rest bucket theft, NOT a live compromise of the server
     that both mints the key and holds the ciphertext. Do not claim
     otherwise for Se/rver.
+  - **Server-derived keys are DELIBERATE, not a weakness to "fix".**
+    Deriving the key server-side (instead of handing the user a key to
+    keep) means the user holds NO key material — which is exactly what
+    lets Se/rver store history in the cloud, sync it across devices, and
+    integrate cloud services without a key-management burden (the classic
+    user-held-key failure being "lose the key, lose the data"). The
+    readability of the Se/rver copy to the service is the accepted cost of
+    that convenience; the vault and Se/cure are the escapes for anyone who
+    wants the stronger bar (and accepts holding a key themselves). Frame it
+    that way in user copy — reality stated plainly, not apologetically.
   - **The strong guarantee — "not even a full server compromise can read
     it" — belongs to Se/cure and the vault, not to Se/rver history.** On
     **Se/cure** nothing conversation-derived ever reaches the server at

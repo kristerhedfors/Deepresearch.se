@@ -17,6 +17,13 @@
   --ok: #157a4b;
   --user: #ece1bd;
 }
+/* Introspection mode's cue (the Se/cure tier). drc.js toggles `dev-mode` on the
+   ROOT element when the introspection knob is on. Like the Se/rver twin it does
+   NOT re-skin the khaki background or palette — the ONLY change is the composer
+   input pane, which picks up a RUBY glass tint with extra shine (see
+   `:root.dev-mode #composer` below). Ruby vs the Se/rver tier's amethyst keeps
+   the two tiers' introspection modes distinguishable; titanium is reserved for
+   TIN the mascot. */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -174,6 +181,22 @@ header {
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
+/* The small "introspection" marker under the wordmark — only present while the
+   ruby introspection skin is active (root carries `dev-mode`). */
+.introspection-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.15rem;
+  font-size: .58rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: lowercase;
+  color: #9e1414; /* blood red — ties the marker to the ruby composer pane */
+  opacity: .9;
+  text-shadow: 0 1px 5px rgba(255, 255, 255, .55);
+  pointer-events: none;
+}
+:root.dev-mode .introspection-tag { display: block; }
 .intro-card h1 {
   font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
   font-weight: 300;
@@ -306,6 +329,31 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }
+/* Introspection mode: the composer becomes a deep, glossy BLOOD-RED glass pane
+   (the Se/cure tier's introspection cue) that pops against the muted khaki. A
+   saturated, fairly UNIFORM blood red (only a slight top→bottom deepen) so the
+   whole pane reads as a rich red rather than a pink/rose, with the shine carried
+   by a bright specular top edge + a soft internal top gloss (not a big light
+   band), a red edge (no white border), and a deep drop shadow. Because the fill
+   is saturated and dark, the pane's own text goes LIGHT for contrast (below).
+   Background only; the khaki field is unchanged. */
+:root.dev-mode #composer {
+  background:
+    linear-gradient(180deg, rgba(196, 30, 32, .74) 0%, rgba(134, 10, 14, .84) 100%),
+    rgba(166, 20, 22, .64);
+  border: 1px solid rgba(202, 40, 40, .74);
+  box-shadow:
+    0 7px 26px rgba(104, 4, 6, .44),
+    inset 0 1px 0 rgba(255, 255, 255, .55),
+    inset 0 13px 26px rgba(255, 168, 156, .16);
+}
+/* Light foreground so the input text, placeholder and control-row labels stay
+   legible on the saturated ruby (the #model / attach / camera chips keep their
+   own light backgrounds, so their dark text is fine). */
+:root.dev-mode #composer textarea#input { color: #fff; }
+:root.dev-mode #composer textarea#input::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }
+:root.dev-mode #composer #composer-row,
+:root.dev-mode #composer #search-row { color: rgba(255, 255, 255, .92); }
 #form { display: flex; flex-direction: column; gap: .35rem; }
 textarea#input {
   width: 100%;

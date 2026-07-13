@@ -86,16 +86,16 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 // The developer-mode knob unlocks introspection: ask the assistant about the
 // site's own implementation and it answers from the deployed source snapshot
 // (and can explore the tree at /src when the sandbox is also enabled).
-const DEVELOPER_INFO = `<strong>Developer mode</strong><br>
-  <b>On:</b> unlocks <b>introspection mode</b> — ask about this site's own
-  implementation (“how are you built?”, “show me src/pipeline.js”) and the
-  assistant answers from a snapshot of the exact source code this deployment
-  runs. With the execution sandbox also on, the whole source tree is mounted
-  at <code>/src</code> inside the in-browser Linux VM so the assistant can
-  explore it with real shell commands.<br>
+const DEVELOPER_INFO = `<strong>Introspection</strong><br>
+  <b>On:</b> ask about this site's own implementation (“how are you built?”,
+  “show me src/pipeline.js”) and the assistant answers from a snapshot of the
+  exact source code this deployment runs — and the composer pane turns
+  amethyst so you know you're in it. With the execution sandbox also on, the
+  whole source tree is mounted at <code>/src</code> inside the in-browser Linux
+  VM so the assistant can explore it with real shell commands.<br>
   <b>Off (default):</b> implementation questions are answered like any other
   research question.<br>
-  The source is public on GitHub; this knob is about keeping developer
+  The source is public on GitHub; this knob is about keeping the source
   tooling out of the way, not secrecy.`;
 
 /**
@@ -128,13 +128,13 @@ export function renderConfigKnobs(me) {
       }) +
       settingRow({
         id: "devknob",
-        label: "Developer mode",
+        label: "Introspection",
         checked: true,
         disabled: true,
         popId: "devpop",
         info: DEVELOPER_INFO,
       }) +
-      `<p class="muted setting-note">Admin session: the execution sandbox and developer (introspection) mode are on by default. Sign in with a Google account to switch these per account.</p>`
+      `<p class="muted setting-note">Admin session: the execution sandbox and introspection mode are on by default. Sign in with a Google account to switch these per account.</p>`
     );
   }
   return (
@@ -158,7 +158,7 @@ export function renderConfigKnobs(me) {
     '<p id="sbstatus" class="muted setting-note" hidden></p>' +
     settingRow({
       id: "devknob",
-      label: "Developer mode",
+      label: "Introspection",
       checked: developerModeAvailable() && developerModeOn(),
       disabled: !developerModeAvailable(),
       popId: "devpop",
@@ -346,8 +346,8 @@ export function wireDeveloperKnob(ctx) {
       // write, so a rejected save leaves the palette untouched.
       applyDeveloperTheme(on);
       status.textContent = on
-        ? "Developer mode is on — the titanium theme is on, and asking about this site's own source code enters introspection mode."
-        : "Developer mode is off.";
+        ? "Introspection is on — the composer pane turns amethyst, and asking about this site's own source code answers from the deployed source."
+        : "Introspection is off.";
     } catch (err) {
       knob.checked = !on;
       status.textContent = err?.message || "Could not update the setting.";
@@ -386,11 +386,7 @@ export function renderSummary(me) {
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
       <button id="gamesbtn" type="button">Games</button>
-      <a href="/build/" target="_blank" rel="noopener">About this project</a>
-      <a href="/story/" target="_blank" rel="noopener">The build story</a>
-      <a href="/architecture/" target="_blank" rel="noopener">The architecture story</a>
-      <a href="/pulse/" target="_blank" rel="noopener">Project pulse</a>
-      <a href="/help/" target="_blank" rel="noopener">Documentation</a>
+      <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
     </div>`;
@@ -409,6 +405,34 @@ export function renderFullUsage(me) {
     <button id="usagebackbtn" type="button" class="back-link">← Back</button>
     <p class="section-lbl">Full usage history</p>
     ${blocks}`;
+}
+
+// The "documentation" view — every project-info / help page gathered under one
+// heading instead of loose in the summary's button row. Each opens a NEW TAB
+// (same-tab navigation would abort an in-flight research request), and each
+// carries a one-line description so a first-time reader knows where to go.
+// Static list; the pages themselves are served from public/ (see the ui-notes
+// skill).
+const DOC_LINKS = [
+  ["/help/", "Documentation", "How to use the site — features, privacy, and the deep-research pipeline."],
+  ["/build/", "About this project", "What DeepResearch is and the ideas behind it."],
+  ["/story/", "The build story", "How the site was built, session by session."],
+  ["/architecture/", "The architecture story", "How the Worker, pipeline, and privacy split fit together."],
+  ["/pulse/", "Project pulse", "Live charts of commits, lines, and new features over the repo's history."],
+];
+
+export function renderDocs() {
+  const rows = DOC_LINKS.map(
+    ([href, label, desc]) =>
+      `<div class="account-actions">
+         <a href="${href}" target="_blank" rel="noopener">${label}</a>
+       </div>
+       <p class="muted">${desc}</p>`,
+  ).join("");
+  return `
+    <button id="docsbackbtn" type="button" class="back-link">← Back</button>
+    <p class="section-lbl">Documentation</p>
+    ${rows}`;
 }
 
 // Users see: an OPAQUE research-budget bar (cost-backed server-side, but

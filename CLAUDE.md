@@ -121,12 +121,20 @@ git push origin main
    project chats, because retrieval needs plaintext. The encryption key is
    derived server-side and held only in memory, never at rest beside the
    ciphertext (so an at-rest theft of the R2 bucket alone yields only
-   ciphertext) — but because the running server CAN derive that key and now
-   always holds the encrypted copy, a full server compromise could read DRS
-   history; the strictest tier is the secret-keyed project vault
+   ciphertext). Deriving the key server-side is DELIBERATE, not a weakness to
+   "fix": it means the user holds NO key material, which is precisely what
+   lets DRS store history in the cloud, sync it across devices, and integrate
+   cloud services without dumping key management on the user (the classic
+   user-held-key failure is "lose the key, lose the data"). The honest cost —
+   disclosed plainly in `/help` and `/architecture`, not hidden — is that
+   because the running server CAN derive that key and now always holds the
+   encrypted copy, the service (or a full compromise of it) could read DRS
+   history. The strictest tier is the secret-keyed project vault
    (`src/vault.js` + `public/js/vault.js`): archives rest server-side as
    ciphertext under a user-held secret the server never sees and cannot derive
-   — the one DRS copy a full compromise still can't read. Since 2026-07-08
+   — the one DRS copy a full compromise still can't read (and the one place
+   the user IS back to holding a key). Keep any change to this disclosure
+   HONEST — never re-add a claim that the operator cannot read DRS history. Since 2026-07-08
    (explicit product decision) the server ALSO keeps a full-visibility
    interaction log (`src/chatlog.js`, D1 `chat_logs`): every completed
    exchange's complete question, answer, and research metadata — UNLESS the

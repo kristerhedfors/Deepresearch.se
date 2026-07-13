@@ -100,26 +100,37 @@
   </section>
 
   <section id="history">
-    <h2>Chat history — encrypted, and yours alone</h2>
-    <p>Every conversation you have is saved automatically, right here in
-    your browser, so you can pick it back up later — the History panel
-    (clock icon in the header) lists them by their first question, most
-    recent first. Click one to reopen it (this also restores the model,
-    time target, and web-search setting it was sent with); the pencil
-    renames it, the trash bin deletes it.</p>
+    <h2>Chat history — encrypted at rest, and synced to your account</h2>
+    <p>Every conversation you have is saved automatically, so you can pick it
+    back up later — the History panel (clock icon in the header) lists them by
+    their first question, most recent first. Click one to reopen it (this also
+    restores the model, time target, and web-search setting it was sent with);
+    the pencil renames it, the trash bin deletes it.</p>
     <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
-    modern, larger-capacity successor to <code>localStorage</code>). The
-    server never holds a readable copy of your saved history; separate from
-    history, completed exchanges go to the server's interaction log unless
-    the conversation was started incognito (see "Privacy, in full" below).</p>
+    modern, larger-capacity successor to <code>localStorage</code>)
+    <i>and</i> — this is DeepResearch.<b>Se<span class="sl">/</span>rver</b>,
+    the signed-in tier — as the same encrypted copy in the site's cloud
+    storage, so your history follows your account across devices. Both copies
+    are ciphertext at rest; the honest question of who can turn that back into
+    readable text is answered directly below. (Separately, completed exchanges
+    go to the server's interaction log unless the conversation was started
+    incognito — see "Privacy, in full" below.)</p>
     <h3>How the encryption works</h3>
-    <p>Every conversation is encrypted (AES-256-GCM) before it touches your
-    browser's storage. The key comes from the server, derived per-account
-    from a secret it holds — but that key is fetched fresh each time you
-    open the app and kept only in memory for that page load; it is never
-    written to <code>localStorage</code>, <code>IndexedDB</code>, or any
-    other disk-backed storage. This split is deliberate, and gives two
-    separate guarantees instead of one:</p>
+    <p>Every conversation is encrypted (AES-256-GCM) before it rests anywhere
+    — your browser's storage and the cloud copy alike. The key is
+    <b>derived by the server</b>, per account, from a secret it holds; it's
+    fetched fresh each time you open the app and kept only in memory for that
+    page load, never written to <code>localStorage</code>,
+    <code>IndexedDB</code>, or any other disk-backed storage on your device.</p>
+    <p><b>Why the server derives your key</b> — rather than handing you one to
+    keep — is deliberate: so there is nothing for <i>you</i> to hold,
+    remember, or safeguard. That is exactly what lets DeepResearch.<b>Se<span
+    class="sl">/</span>rver</b> keep your history in the cloud, sync it across
+    your devices, and integrate cloud services on your behalf — with no key
+    for you to lose (the classic failure of user-held keys is precisely that:
+    lose the key, lose the data). The trade is that the service can read your
+    history, stated plainly just below.</p>
+    <p>Keeping the key off your disk still buys two real guarantees:</p>
     <ul>
       <li><b>If your browser's storage is examined at rest</b> — a stolen
         or cloned device, a forensic disk image — the attacker finds only
@@ -130,32 +141,36 @@
         below) — it is likewise just ciphertext: the key isn't stored beside
         it, it's derived on demand by the running server.</li>
     </ul>
-    <div class="privacy-flag"><b>Honest limitation — and why the tiers
-    exist:</b> DeepResearch.<b>Se<span class="sl">/</span>rver</b> (this
-    signed-in tier) always keeps an encrypted copy of your history in the
-    site's storage so it follows your account across devices, and the same
-    server can derive your key. So a <i>full</i> compromise of this running
-    server — both its key-derivation secret <i>and</i> that stored copy —
-    could read your Se/rver history. The encryption still defeats an
-    at-rest theft of either half alone, but it is not a claim that the
-    operator can never read your history. For history that not even a full
-    server compromise can read, use
+    <div class="privacy-flag"><b>The honest trade — and why the tiers
+    exist:</b> because the running server can derive your key <i>and</i> holds
+    the encrypted cloud copy, the service itself — and anyone who fully
+    compromises it — <i>can</i> read your Se<span class="sl">/</span>rver
+    history. That is the deliberate price of not making you manage a key, and
+    of letting your history live in the cloud and work with cloud features. We
+    say so plainly rather than imply the operator can never see it. The
+    encryption is still doing real work (an at-rest theft of the storage
+    bucket <i>alone</i>, without the running server to derive the key, is only
+    ciphertext) — but if you want history that <b>not even the service</b> can
+    read, that's what the other tiers are for:
     DeepResearch.<b>Se<span class="sl">/</span>cure</b> (the /cure tier —
-    nothing reaches this server at all) or, for a single project, its
-    secret-keyed <b>vault</b> (stored as ciphertext under a secret the
-    server never sees and cannot derive).</div>
+    nothing reaches this server at all), or, for a single project, its
+    secret-keyed <b>vault</b> — there the key is one only <i>you</i> hold, so
+    the service can't read it and, yes, you're back to managing that one
+    secret yourself (lose it, lose that copy).</div>
     <h3>What this means day to day</h3>
     <ul>
-      <li><b>It's this browser only.</b> History doesn't sync between
-        devices or browsers — sign in on your phone and it starts with no
-        history, independent of your laptop's. That's the same isolation
-        that keeps each copy's key exposure independent.</li>
-      <li><b>Clearing your browser's site data deletes it for good.</b>
-        There is no server-side backup to restore from — that's the same
-        fact that makes a server compromise alone insufficient.</li>
-      <li>If this server hasn't configured the feature, the History button
-        simply doesn't appear — conversations still work, they just don't
-        persist across a reload, the previous behavior.</li>
+      <li><b>Your history follows your account.</b> Because the encrypted
+        copy lives in the cloud, signing in on another device brings your
+        history with you — nothing to move, no key to carry across.</li>
+      <li><b>Clearing one browser's site data doesn't lose it.</b> The cloud
+        copy restores it on your next sign-in. The flip side is the trade
+        above: that cloud copy is readable to a fully compromised server,
+        which a Se<span class="sl">/</span>cure or vault copy is not.</li>
+      <li>If this server isn't set up for encrypted history at all (no
+        history-key secret configured), the History button simply doesn't
+        appear — conversations still work, they just don't persist across a
+        reload. Likewise, without cloud storage configured (or on a
+        break-glass session) history falls back to <b>this browser only</b>.</li>
     </ul>
     <h3>The exception: chats inside a project</h3>
     <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the

@@ -38,13 +38,13 @@ const CSP_ENABLED = false;
 // uploads, server data-URL frames, and Maps imagery.
 const BOOT_GUARD_HASH = "'sha256-w5cPLY1sDxZyXuQvRq2aJ4i2L1jyBf4ulNgTL0pzf10='";
 const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
-// The parse-time developer-mode theme bootstrap in index.html (the
+// The parse-time introspection-mode cue bootstrap in index.html (the
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
-// regex above stays unique to the attribute-less boot guard). Applies the
-// titanium palette + iOS status-bar tint before first paint from the local
-// cache. Recompute on edit:
+// regex above stays unique to the attribute-less boot guard). Adds the
+// `dev-mode` class before first paint from the local cache so the composer
+// pane is tinted amethyst from the first frame. Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-rB3PLD4N7HoI9+IVLtczpncrr7p4AQbicAEnDMM4ayY='";
+const THEME_BOOT_HASH = "'sha256-WzJ+mf8cZpQShBqOB+o1nl1uBnGt5d/v2ZV2K27md3A='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",
