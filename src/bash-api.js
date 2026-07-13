@@ -19,7 +19,7 @@
 
 import { chatCompletion, listChatModels } from "./providers.js";
 import { consumeChatStream, DEFAULT_MODEL } from "./berget.js";
-import { quotaBlockedResponse } from "./chat.js";
+import { quotaBlockedResponse } from "./quota.js";
 import { formatConversation, lastUserMessage, textOf } from "./conversation.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";

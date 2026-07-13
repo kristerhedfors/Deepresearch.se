@@ -376,6 +376,33 @@ export async function releaseInflight(env, reqId) {
   }
 }
 
+/** @type {Record<string, string>} */
+const PERIOD_NAMES = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" };
+
+/**
+ * Builds the 429 payload for a blocked quota window: a plain-language
+ * message (period + reset time — budget amounts are EUR, admin-only
+ * information, never sent to users) and the public quota object the
+ * client renders.
+ * @param {{ period: string, kind: string, limit?: number, reset_at: number }} blocked
+ * @returns {{ error: string, quota: object }}
+ */
+export function quotaBlockedResponse(blocked) {
+  const periodName = PERIOD_NAMES[blocked.period];
+  const verb = blocked.period === "h5" ? "frees up around" : "resets";
+  const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const error =
+    blocked.kind === "budget"
+      ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
+      : `You've used your ${periodName} search budget ` +
+        `(${Number(blocked.limit).toLocaleString("en-US")} searches). It ${verb} ${when}.`;
+  const publicQuota =
+    blocked.kind === "budget"
+      ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
+      : blocked;
+  return { error, quota: publicQuota };
+}
+
 /**
  * The 429 payload for a refused concurrency reservation — plain-language, no
  * internal cost figures (mirrors quotaBlockedResponse's shape, but this is a

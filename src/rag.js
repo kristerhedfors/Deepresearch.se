@@ -30,13 +30,13 @@
 // index on `u` for per-user filtering.
 
 import { embedModel, embedTexts, rawModelEntry } from "./berget.js";
-import { quotaBlockedResponse } from "./chat.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import {
   effectiveQuota,
   getUsage,
   inflightLimitResponse,
+  quotaBlockedResponse,
   quotaExceeded,
   recordUsage,
   releaseInflight,

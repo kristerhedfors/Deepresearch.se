@@ -220,7 +220,7 @@ Server (`src/`):
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
 | `db.js` | Optional D1 binding + lazy schema (no-op without the binding) |
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
-| `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording, and the per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, `INFLIGHT_CAP`) |
+| `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording, the per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, `INFLIGHT_CAP`), and the two sibling 429-payload builders `quotaBlockedResponse` (quota-window block; also imported by quiz-api/bash-api/rag) and `inflightLimitResponse` (concurrency limit) |
 | `alerts.js` | Operational alerts (D1 `alerts` table): classifies caught pipeline/backend failures (Berget errors, wallet depletion) into a small stable set of alert types surfaced in the admin panel and as a notification badge — rows are upserted by `type` (a recurrence bumps `count`/`last_seen_at` and re-surfaces itself) rather than one row per occurrence; fails soft (a no-op without D1) — see the **access-control** skill |
 | `user-api.js` | `/api/me` (usage vs quota) + `/api/models` (dropdown catalog) + `/api/client-error` (beacon) + `/api/client-log` (client telemetry beacon → Workers Logs; first user is the sandbox filesystem integration — see the **execution-sandbox** skill) |
 | `user-messages.js` | Per-user message center (D1 `user_messages`): account-level notices (quota exhausted/restored, sign-in approved, quota changed by an admin) — structured enums + timestamps ONLY, deliberately no content column, so the feature stays inside the same zero-retention promise the privacy notice makes for conversations; "restored" isn't a separate write, it's derived at read time from the caller's CURRENT quota state (`quota.js`). Rendered by the client's `account-messages.js` |
@@ -234,7 +234,7 @@ Server (`src/`):
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
-| `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs` |
+| `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
 | `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
 | `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, and the `*_reviews` D1 upsert helpers — a new board implements none of this itself. THREE consumers today: the two backlog priority boards `security-risks.js` and `features.js`, plus `panels.js` — the ATTENTION board, a votes-only variant (same core, `"priority"` ordering with no priorities ever set → pure votes-desc) |
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
@@ -283,7 +283,7 @@ Server (`src/`):
 | `googlemaps-text.js` | The Maps integration's pure text side: deterministic address/place extraction, every intent gate (street-view, moves, here-asks, nearby/relocation, barriers, journey), locality corrections, the conversation-state recovery (`pendingRelocation`, `extractJourneyPoints`), and `pickLookup` — the ORDERED LOOKUP_MATCHERS registry (one small matcher per ask shape; the order is the spec) — all Node-tested |
 | `history-key.js` | Per-user key for the client's encrypted local chat history — see "Chat history" below |
 | `log.js` | Structured JSON logger (`LOG_LEVEL` var) |
-| `http.js` | Response helpers (json, SSE) |
+| `http.js` | Response helpers shared across modules: `jsonResponse`, `sseResponse`, `htmlResponse`, `textResponse` (the last is the `?format=text` plain-text renderer the admin-loop board endpoints return) |
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
@@ -524,8 +524,8 @@ clone-not-share of nested fields), `alerts.js` (error classification),
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
 source rule, the JSON-only reinforcement toggle), `chat.js`
-(`quotaBlockedResponse`, `resolveJsonModel`, `summarizeSpend` via its
-`billing.js` re-export), `billing.js` (the shared split-billing spend
+(`quotaBlockedResponse` via its `quota.js` re-export, `resolveJsonModel`,
+`summarizeSpend` via its `billing.js` re-export), `billing.js` (the shared split-billing spend
 math directly: `summarizeSpend`'s three model buckets each at their own
 catalog rate, `exaCost`'s depth-tier scaling + `/contents` surcharge),
 `berget.js`

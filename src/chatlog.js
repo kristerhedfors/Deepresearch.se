@@ -25,7 +25,7 @@
 // chat. No D1 binding → no-op.
 
 import { getDb } from "./db.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, textResponse } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -86,6 +86,18 @@ export function truncateForLog(text, max) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\n…[truncated ${s.length - max} chars]`;
 }
+
+/**
+ * Normalizes an optional free-text field for a decision-board / log row: a
+ * trimmed, cap-truncated string, or null when absent/blank. Shared by the
+ * board validators (testpoints.js, feedback.js) which already truncate with
+ * truncateForLog above.
+ * @param {unknown} v
+ * @param {number} max
+ * @returns {string | null}
+ */
+export const cleanStr = (v, max) =>
+  typeof v === "string" && v.trim() ? truncateForLog(v.trim(), max) : null;
 
 // Per-item caps for the shell tool-call record. `commands` re-caps below
 // resolveShellTranscript's own MAX_SHELL_ROUNDS*8 ceiling; `output` matches
@@ -416,12 +428,4 @@ export async function handleChatLogs(request, env, url, log) {
     return textResponse(formatChatLogsText(logs));
   }
   return jsonResponse({ logs, count: logs.length });
-}
-
-/** @param {string} text */
-function textResponse(text) {
-  return new Response(text, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8" },
-  });
 }

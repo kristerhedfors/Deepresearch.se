@@ -33,3 +33,28 @@ export function sseResponse(stream, extraHeaders = {}) {
     },
   });
 }
+
+/**
+ * HTML response with the correct content-type.
+ * @param {string} html
+ * @param {number} [status]
+ * @returns {Response}
+ */
+export function htmlResponse(html, status = 200) {
+  return new Response(html, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+}
+
+/**
+ * Plain-text response (the `?format=text` renderings the admin loop tools read).
+ * @param {string} text
+ * @returns {Response}
+ */
+export function textResponse(text) {
+  return new Response(text, {
+    status: 200,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
