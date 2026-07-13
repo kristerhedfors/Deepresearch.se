@@ -280,6 +280,13 @@ round-trip OUT (guest-written files back to the user).
   reload; cross-mount symlink resolves; binary round-trip byte-exact. Logic is
   green in CI but unproven in a real browser.
 
+> **Boot HANGS ("booting sandbox" spinner that never finishes) → the
+> `sandbox-debug` skill.** It covers the full boot-stage timeline
+> (`sandbox.boot_stage`), the stall watchdog (`sandbox.boot_stalled`, which
+> flushes a hang the buffered path can't), and the verbose toggle
+> (`dr_sandbox_debug` / `?sbdebug=1` / `window.__DR_SANDBOX_DEBUG`). The
+> mount-telemetry below is for a boot that SUCCEEDS but mounts wrong.
+
 **Observability — reaching the mount telemetry through the log URL.** The mount
 path runs client-side, so it's shipped to Workers Logs two ways:
 1. **The debug beacon.** `sandbox.js` `sblog()` buffers structured events and

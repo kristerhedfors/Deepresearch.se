@@ -8,6 +8,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.public.json --noEmit",
     "bundle": "node scripts/bundle-source.mjs",
     "bundle:rag": "node scripts/bundle-source-rag.mjs",
+    "fetch:owasp": "node scripts/fetch-owasp.mjs",
+    "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
+    "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
     "pulse": "node scripts/build-pulse.mjs"
   },
   "devDependencies": {

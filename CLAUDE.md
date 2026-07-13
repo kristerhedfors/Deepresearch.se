@@ -965,6 +965,14 @@ what docs claim); and update the skill list below plus the skill's
   ingest, overlay persistence, and the `fileProvider` seam
   (`stream.js` `buildSandboxFileProvider`). Full design +
   research: `docs/SANDBOX-HOST-COMMANDS.md`.
+- **sandbox-debug** — the DEBUG SWITCH and boot-hang playbook for the execution
+  sandbox: when the UI hangs on "booting sandbox"/"connecting disk…", how to turn
+  verbose sandbox debugging on/off (the client `dr_sandbox_debug` toggle /
+  `?sbdebug=1` / `window.__DR_SANDBOX_DEBUG`, and the server `LOG_LEVEL=debug`
+  knob), the `sandbox.boot_stage` timeline vocabulary, the stall watchdog
+  (`sandbox.boot_stalled`, warn-level, flushes a hang the buffered path can't),
+  and reading it back via `wrangler tail` / `scripts/chatlogs`. Companion to
+  execution-sandbox (the sandbox itself); this one is the observability switch.
 - **introspection** — INTROSPECTION MODE and the `developer_mode` knob (both
   tiers): the committed source-snapshot artifact
   (`scripts/bundle-source.mjs` → `public/introspect/source-snapshot.json`,

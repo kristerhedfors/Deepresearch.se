@@ -42,9 +42,9 @@ const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
 // regex above stays unique to the attribute-less boot guard). Adds the
 // `dev-mode` class before first paint from the local cache so the composer
-// pane is tinted amethyst from the first frame. Recompute on edit:
+// pane is tinted white titanium from the first frame. Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-WzJ+mf8cZpQShBqOB+o1nl1uBnGt5d/v2ZV2K27md3A='";
+const THEME_BOOT_HASH = "'sha256-EnIV1mWXeC0nWQ0jP//FG3dfm31deaBJ9R1JZPvqfRE='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

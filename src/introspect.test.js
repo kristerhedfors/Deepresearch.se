@@ -34,13 +34,15 @@ const jsonRes = (payload, status = 200) =>
 // An env whose ASSETS binding routes by path so the enrichment can load the
 // snapshot AND (optionally) the rag index. `rag: null` → 404 there, so
 // retrieval fails soft to the orientation-only block.
-/** @param {{ snapshot?: any, snapshotStatus?: number, rag?: any, berget?: boolean }} [opts] */
-function makeEnv({ snapshot = SNAPSHOT, snapshotStatus = 200, rag = null, berget = false } = {}) {
+/** @param {{ snapshot?: any, snapshotStatus?: number, rag?: any, berget?: boolean, owaspCorpus?: any, owaspRag?: any }} [opts] */
+function makeEnv({ snapshot = SNAPSHOT, snapshotStatus = 200, rag = null, berget = false, owaspCorpus = null, owaspRag = null } = {}) {
   return /** @type {any} */ ({
     BERGET_API_TOKEN: berget ? "k" : undefined,
     ASSETS: {
       fetch: async (/** @type {Request} */ req) => {
         const p = new URL(req.url).pathname;
+        if (p.endsWith("owasp-corpus.json")) return owaspCorpus ? jsonRes(owaspCorpus) : jsonRes(null, 404);
+        if (p.endsWith("owasp-rag.json")) return owaspRag ? jsonRes(owaspRag) : jsonRes(null, 404);
         if (p.endsWith("source-rag.json")) return rag ? jsonRes(rag) : jsonRes(null, 404);
         return jsonRes(snapshot, snapshotStatus);
       },
@@ -61,11 +63,17 @@ function steps() {
   const started = [];
   /** @type {string[]} */
   const done = [];
+  /** @type {string[][]} */
+  const details = [];
   return {
     started,
     done,
+    details,
     step: (/** @type {string} */ id, /** @type {string} */ label) => started.push(label),
-    stepDone: (/** @type {string} */ id, /** @type {string} */ label) => done.push(label),
+    stepDone: (/** @type {string} */ id, /** @type {string} */ label, /** @type {string[]} */ d = []) => {
+      done.push(label);
+      details.push(d);
+    },
   };
 }
 
@@ -138,6 +146,70 @@ test("runIntrospectionEnrichment: dense retrieval surfaces relevant chunks (mock
   }
 });
 
+test("runIntrospectionEnrichment: a security-assessment ask injects the OWASP reference block + stashes it in state", async () => {
+  // A one-doc OWASP corpus (snapshot-shaped) + a rag index pointing at its chunk
+  // 0, and a mocked embed aligned to that vector — the same shape the real
+  // artifacts have, so this exercises the whole security-assessment branch.
+  const { int8ToB64, quantizeInt8, chunkSourceText } = await import("../public/js/introspect-core.js");
+  const docText = "A Prompt Injection Vulnerability occurs when user prompts alter the LLM's behavior in unintended ways. ".repeat(3);
+  const owaspCorpus = {
+    v: 1, digest: "owaspdigest01", count: 1, bytes: docText.length,
+    files: [{ p: "LLM01:2025 Prompt Injection", s: docText.length, t: docText }],
+    sources: { "LLM01:2025 Prompt Injection": { cat: "LLM01", family: "llm", year: "2025", title: "Prompt Injection", url: "https://genai.owasp.org/llmrisk/llm01-prompt-injection/" } },
+  };
+  // chunk 0 must resolve (matches the corpus chunking) for retrieval to return it.
+  assert.ok(chunkSourceText(docText).length >= 1);
+  const owaspRag = {
+    v: 1, model: "e5", dims: 3, target: 1400, overlap: 200,
+    vectors: [int8ToB64(quantizeInt8(Float32Array.of(0, 1, 0)))],
+    map: [{ p: "LLM01:2025 Prompt Injection", ci: 0 }],
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
+  try {
+    const s = steps();
+    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
+    const out = await runIntrospectionEnrichment(
+      makeEnv({ berget: true, owaspCorpus, owaspRag }),
+      noopLog, s.step, s.stepDone,
+      /** @type {any} */ (convo("do a security assessment of this site")),
+      state,
+    );
+    const text = /** @type {any} */ (out[out.length - 1]).content;
+    // Both blocks land on the last user message.
+    assert.match(text, /--- Introspection: deepresearch\.se source/);
+    assert.match(text, /--- OWASP Top 10 reference/);
+    assert.match(text, /LLM01:2025 Prompt Injection — https:\/\/genai\.owasp\.org/);
+    assert.match(text, /Prompt Injection Vulnerability occurs/); // the quoted OWASP text
+    assert.match(text, /CVSS/);
+    // Stashed for the native-tool source-research path (uses clean text).
+    assert.match(state.owaspBlock, /--- OWASP Top 10 reference/);
+    assert.ok(s.details[0].some((d) => /OWASP Top 10 reference: LLM01/.test(d)), "OWASP categories shown in the step details");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("runIntrospectionEnrichment: a NON-security dev-mode ask injects NO OWASP block", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonRes({ data: [{ embedding: [0, 1, 0] }], model: "e5" });
+  try {
+    const s = steps();
+    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
+    const out = await runIntrospectionEnrichment(
+      makeEnv({ berget: true, owaspCorpus: { v: 1, count: 1, files: [{ p: "x", s: 1, t: "y" }], sources: {} }, owaspRag: { v: 1, model: "e5", dims: 3, target: 1400, overlap: 200, vectors: [], map: [] } }),
+      noopLog, s.step, s.stepDone,
+      /** @type {any} */ (convo("how do the pipeline phases work?")),
+      state,
+    );
+    const text = /** @type {any} */ (out[out.length - 1]).content;
+    assert.doesNotMatch(text, /OWASP Top 10 reference/);
+    assert.equal(state.owaspBlock, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("runIntrospectionEnrichment: fail-soft when the snapshot is unavailable", async () => {
   const s = steps();
   const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
@@ -199,4 +271,41 @@ test("source-rag index is consistent with the current snapshot (no stale chunk r
   // the source is indexed (a badly-truncated or near-empty index trips this).
   const covered = new Set(index.map.map((m) => m.p));
   assert.ok(covered.size >= 80, `rag index covers only ${covered.size} files — re-run \`npm run bundle:rag\``);
+});
+
+test("owasp-rag index is consistent with the committed OWASP corpus (no stale chunk refs)", async (t) => {
+  // Same freshness invariant as the source-rag check, for the OWASP reference
+  // corpus/index (scripts/fetch-owasp.mjs → owasp-corpus.json, then
+  // scripts/bundle-owasp-rag.mjs → owasp-rag.json). CI can't re-embed, so we
+  // enforce that every indexed (p, ci) still resolves against the CURRENT
+  // corpus's chunking; a corpus refresh that shifts chunk boundaries trips this
+  // → re-run `npm run bundle:owasp-rag`. Optional artifact → SKIP when absent
+  // (the OWASP block simply doesn't inject), enforced when present.
+  const { existsSync } = await import("node:fs");
+  const { validateSnapshot, validateRagIndex, chunkSourceText } = await import("../public/js/introspect-core.js");
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const ragPath = join(root, "public/introspect/owasp-rag.json");
+  const corpusPath = join(root, "public/introspect/owasp-corpus.json");
+  if (!existsSync(ragPath) || !existsSync(corpusPath)) {
+    t.skip("OWASP corpus/index absent — run `npm run fetch:owasp` && `npm run bundle:owasp-rag`");
+    return;
+  }
+  const read = (p) => JSON.parse(readFileSync(p, "utf8"));
+  const corpus = validateSnapshot(read(corpusPath));
+  assert.ok(corpus, "owasp-corpus.json must exist and validate");
+  // The 20 OWASP categories (LLM01..10 + A01..10) — a truncated corpus trips this.
+  assert.equal(corpus.count, 20, `OWASP corpus has ${corpus.count} docs, expected 20 — re-run \`npm run fetch:owasp\``);
+  const index = validateRagIndex(read(corpusPath.replace("owasp-corpus.json", "owasp-rag.json")));
+  assert.ok(index, "owasp-rag.json present but invalid — re-run `npm run bundle:owasp-rag`");
+
+  const counts = new Map();
+  for (const f of corpus.files) counts.set(f.p, chunkSourceText(f.t).length);
+  let stale = 0;
+  for (const m of index.map) {
+    const n = counts.get(m.p);
+    if (n === undefined || m.ci >= n) stale++;
+  }
+  assert.equal(stale, 0, `${stale} owasp-rag chunk refs no longer resolve — re-run \`npm run bundle:owasp-rag\``);
+  const covered = new Set(index.map.map((m) => m.p));
+  assert.equal(covered.size, 20, `owasp-rag covers ${covered.size}/20 OWASP docs — re-run \`npm run bundle:owasp-rag\``);
 });
