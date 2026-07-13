@@ -329,20 +329,31 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the DRS explainer popover */
 }
-/* Introspection mode: the composer becomes a RUBY glass pane (the Se/cure
-   tier's introspection cue). The ruby builds up EVENLY top→bottom (a straight
-   180° gradient, no steep diagonal and no rightward bias), a soft ruby edge
-   instead of a hard white border, and a gentle top gloss + a coloured drop
-   shadow for shine. Background only; the khaki field is unchanged. */
+/* Introspection mode: the composer becomes a vivid, SHINY RUBY glass pane (the
+   Se/cure tier's introspection cue) that pops against the muted khaki. A
+   saturated, fairly UNIFORM jewel-red (only a slight top→bottom deepen) so the
+   whole pane reads as ruby rather than fading to a dusty rose, with the shine
+   carried by a bright specular top edge + a soft internal top gloss (not a big
+   light band), a ruby edge (no white border), and a coloured drop shadow.
+   Because the fill is saturated, the pane's own text goes LIGHT for contrast
+   (below). Background only; the khaki field is unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, .24) 0%, rgba(200, 110, 135, .24) 50%, rgba(180, 60, 90, .42) 100%),
-    rgba(198, 120, 140, .22);
-  border: 1px solid rgba(180, 60, 90, .38);
+    linear-gradient(180deg, rgba(233, 58, 104, .68) 0%, rgba(205, 26, 72, .76) 100%),
+    rgba(218, 42, 86, .58);
+  border: 1px solid rgba(233, 62, 106, .72);
   box-shadow:
-    0 6px 22px rgba(120, 30, 55, .24),
-    inset 0 1px 0 rgba(255, 255, 255, .38);
+    0 7px 26px rgba(150, 16, 58, .40),
+    inset 0 1px 0 rgba(255, 255, 255, .62),
+    inset 0 13px 26px rgba(255, 196, 210, .20);
 }
+/* Light foreground so the input text, placeholder and control-row labels stay
+   legible on the saturated ruby (the #model / attach / camera chips keep their
+   own light backgrounds, so their dark text is fine). */
+:root.dev-mode #composer textarea#input { color: #fff; }
+:root.dev-mode #composer textarea#input::placeholder { color: rgba(255, 255, 255, .8); opacity: 1; }
+:root.dev-mode #composer #composer-row,
+:root.dev-mode #composer #search-row { color: rgba(255, 255, 255, .92); }
 #form { display: flex; flex-direction: column; gap: .35rem; }
 textarea#input {
   width: 100%;
