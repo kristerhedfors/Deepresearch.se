@@ -56,6 +56,7 @@ import {
   handleModels,
 } from "./user-api.js";
 import { handleFeedbackApi } from "./feedback.js";
+import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleBashStep } from "./bash-api.js";
 import { handleStorage } from "./storage.js";
@@ -325,6 +326,15 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname.startsWith("/api/pub/")) {
     if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
     return handlePubWrite(request, env, log, decodeURIComponent(url.pathname.slice("/api/pub/".length)));
+  }
+
+  // /try/:id — the shareable deep link to a testable interaction point
+  // (src/testpoints.js). Resolves the point's target and 302s there with
+  // ?try=<id> merged, so the landing page's client shows the try-it banner.
+  // Admin-gated inside the handler; a stale/missing link falls back to /rver.
+  const tryMatch = url.pathname.match(/^\/try\/(\d+)$/);
+  if (tryMatch && request.method === "GET") {
+    return handleTryRedirect(env, Number(tryMatch[1]), identity);
   }
 
   // The signed-in app — DRS, "deep research SERVER" — lives at /rver (the

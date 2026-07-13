@@ -41,6 +41,7 @@ import { handleAdminFeedback } from "./feedback.js";
 import { handleAdminSecurity } from "./security-risks.js";
 import { handleAdminFeatures } from "./features.js";
 import { handleAdminPanels } from "./panels.js";
+import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
@@ -124,6 +125,13 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // admin surface the owner is working on now). ?format=text is its input.
     if (path === "/panels" || path.startsWith("/panels/")) {
       return handleAdminPanels(request, env, url, log);
+    }
+    // The testable-interaction-points queue (src/testpoints.js): declared,
+    // linkable "try-it" points — CRUD + the 👍/👎 verdict. The banner and
+    // queue UI on the DRS app read this surface; scripts/testpoints is the
+    // producer/reader CLI. See the testable-interaction-points skill.
+    if (path === "/testpoints" || path.startsWith("/testpoints/")) {
+      return handleAdminTestpoints(request, env, url, log);
     }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized
