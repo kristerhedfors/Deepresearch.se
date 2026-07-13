@@ -43,7 +43,7 @@ These override the heuristic in the inventory table.
 | `claude/tokemon-game-subsystem-30a8r7` | `4f677fc` | Superseded | `src/tokemon.js` / `src/tokemon-api.js` present in `main`. |
 | `claude/refactor-skill-repo-kb1c7k` | `f9ee2ab` | **Merged** | `src/billing.js` extraction integrated 2026-07-13 (tests 70/70). |
 | `claude/glass-pane-close-icon-v451n4` | `189db14` | **Merged** | close chevrons integrated 2026-07-13. |
-| `claude/security-assessment-owasp-setup-3hznsj` | `f844788` | **Merged** | OWASP Top-10 corpus + offline retrieval integrated 2026-07-13 via 3-way merge (only source-snapshot/rag conflicted; 1222/1222 tests, typecheck clean). |
+| `claude/security-assessment-owasp-setup-3hznsj` | `bef0451` | **Merged** | OWASP Top-10 corpus + offline retrieval integrated 2026-07-13 via 3-way merge (only source-snapshot/rag conflicted; 1222/1222 tests, typecheck clean). |
 | `claude/forbux-onboarding-flow-dsd61y` | `1460d68` | Superseded | On cherry-pick the net drc.js diff vs `main` was **empty** — the land-in-chat onboarding is already in `main`. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
@@ -135,7 +135,7 @@ heuristic; the skill's content check confirms.
 | `claude/sandbox-terminal-visibility-bvtt78` | b4f801a | 2 | Review | Sandbox: on-screen transparency bar |
 | `claude/secure-client-api-analysis-0twcps` | 0198c57 | 18 | Superseded? | feat(drc): client-side RAG for conversations/projects |
 | `claude/secure-providers-depth-ui-vtrlb0` | c10067d | 79 | Superseded? | Merge origin/main (DRC providers UI) |
-| `claude/security-assessment-owasp-setup-3hznsj` | f844788 | 4 | Merged | OWASP corpus + offline retrieval (integrated 2026-07-13) |
+| `claude/security-assessment-owasp-setup-3hznsj` | bef0451 | 4 | Merged | OWASP corpus + offline retrieval (integrated 2026-07-13) |
 | `claude/segelflygcertifikat-chat-failure-d9v3cd` | db29e9c | 240 | Superseded? | pipeline: fail over to reliable model |
 | `claude/segelflyghandboken-chapter-8zznku` | 7d49feb | 271 | Superseded? | Quiz prompt: test contained knowledge |
 | `claude/sensitive-info-audit-lc44ed` | d862bc9 | 120 | Superseded? | History sidebar: list icon, tweaks |
