@@ -106,6 +106,13 @@ export function isPublicAsset(url, method) {
     // the repo's own tracked text files — public on GitHub anyway — so
     // serving it unauthenticated exposes nothing new; DRC needs it public
     // because its server-not-in-the-path posture forbids an authed endpoint.
+    // The umbrella loading SPINNER (imported by /cure/drc.js so the DRC
+    // research phases show the same spinning-umbrella → ✓ step list as the
+    // DRS app). Its own import — /cure/umbrella.js (the intro's pure timeline
+    // + geometry) — already matches the /cure/*.js rule above. Same
+    // public-graph rule as the modules around it: a 401 here would 401 the
+    // static import and take the whole /cure tier dark.
+    url.pathname === "/js/umbrella-spinner.js" ||
     url.pathname === "/js/introspect-core.js" ||
     // The introspection mascot/picker component (imported by /cure/drc.js —
     // same public-graph rule; its own imports, introspect-core.js and

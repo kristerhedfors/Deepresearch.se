@@ -74,6 +74,7 @@ import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/j
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
+import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -118,10 +119,85 @@ function workStatus(msg) {
   el.innerHTML = msg ? wmHtml(msg) : "";
 }
 
-function phaseLine(msg) {
-  const el = $("phaseline");
-  el.hidden = !msg;
-  el.textContent = msg || "";
+// ---- the research step list --------------------------------------------------------
+//
+// The DRC research phases render as a live STEP LIST — the /cure analog of the
+// DRS app's activity steps (public/js/activity.js makeStepDom/markFinished):
+// each phase shows a spinning pink UMBRELLA (mountUmbrellaSpinner, the very
+// module the DRS app mounts — it's tier-agnostic, so no duplication) while it
+// runs, then swaps to a pink ✓ the moment the next phase starts (or the run
+// ends). A repeated event for the SAME phase — a rotating sandbox-boot quip, a
+// harvest count ticking — updates the running step's label in place and keeps
+// its spinner. Fail-soft by construction: if the umbrella can't mount
+// (reduced-motion, no canvas) the row still shows its label and ✓, exactly the
+// way the DRS steps degrade. The finished ✓ list stays until the next send
+// clears it (resetPhaseSteps), the DRC analog of the app's persistent activity.
+
+let curPhaseStep = null; // { key, row, label, spin, spinner } — running step, or null
+let phaseStepSeq = 0; // rotates the umbrella STYLE so adjacent steps differ
+
+// Swap the running step's spinner for a pink ✓ and forget it.
+function finishCurPhaseStep() {
+  if (!curPhaseStep) return;
+  curPhaseStep.spinner?.stop();
+  curPhaseStep.spin?.remove();
+  if (!curPhaseStep.row.querySelector(".check")) {
+    const check = document.createElement("span");
+    check.className = "check";
+    check.textContent = "✓";
+    curPhaseStep.row.prepend(check);
+  }
+  curPhaseStep = null;
+}
+
+// Start (or update-in-place) the step for `key`. A new key finishes the
+// previous step first; the same key just re-labels the running one.
+function phaseStep(key, label) {
+  const host = $("phaseline");
+  if (!host) return;
+  host.hidden = false;
+  if (curPhaseStep && curPhaseStep.key === key) {
+    curPhaseStep.label.textContent = label || "";
+    return;
+  }
+  finishCurPhaseStep();
+  const row = document.createElement("div");
+  row.className = "phase-step";
+  const spin = document.createElement("span");
+  spin.className = "spin";
+  const lab = document.createElement("span");
+  lab.className = "phase-label";
+  lab.textContent = label || "";
+  row.append(spin, lab);
+  host.appendChild(row);
+  // The same spinning umbrella the DRS steps use; best-effort, and it stops
+  // itself when finishCurPhaseStep removes the `.spin` host.
+  const spinner = mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
+  curPhaseStep = { key, row, label: lab, spin, spinner };
+}
+
+// Re-label the running step WITHOUT starting a new one — for the live tool
+// headlines and the post-validation revision note. Starts a step if none runs.
+function phaseNote(text) {
+  if (curPhaseStep) curPhaseStep.label.textContent = text || "";
+  else phaseStep("_note", text);
+}
+
+// Settle the last step to a ✓ at run end (the list stays visible until the
+// next send resets it).
+function finishPhaseSteps() {
+  finishCurPhaseStep();
+}
+
+// Clear the whole list at the start of a fresh send.
+function resetPhaseSteps() {
+  curPhaseStep = null;
+  const host = $("phaseline");
+  if (host) {
+    host.textContent = "";
+    host.hidden = true;
+  }
+  phaseStepSeq = 0;
 }
 
 // ---- the first-visit glass pane ----------------------------------------------------
@@ -696,7 +772,7 @@ async function recallContext(conv, query) {
   const hookup = embedHookup();
   if (!hookup || !state.rag?.docs?.length) return "";
   try {
-    phaseLine("Recalling project context…");
+    phaseStep("recall", "Recalling project context…");
     const rag = ensureDrcRag(state, hookup.embedder);
     const { block } = await retrieveDrcContext({
       rag,
@@ -770,7 +846,7 @@ async function introspectionContext(conv, latestText) {
   if (state.developerMode !== true) return { block: "", fileProvider: null, snapshot: null };
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
-    phaseLine("Reading the site's own source…");
+    phaseStep("introspect", "Reading the site's own source…");
     const snap = await loadSnapshotOnce();
     if (!snap) return { block: "", fileProvider: null, snapshot: null };
     engageIntrospection(); // TIN slides in — the mode's visible marker
@@ -868,6 +944,7 @@ async function send(ev) {
   sending = true;
   $("send").disabled = true;
   workStatus("");
+  resetPhaseSteps(); // clear the previous run's ✓ step list
   $("chat").querySelector(".empty")?.remove();
   const live = document.createElement("div");
   live.className = "msg assistant streaming";
@@ -894,16 +971,18 @@ async function send(ev) {
       onStatus: (s) => {
         if (s.type === "tool") {
           // Developer-mode native tool call — show the tool + its argument live
-          // (which file / pattern / command), not a bare counter.
-          phaseLine("🔧 " + s.headline);
+          // (which file / pattern / command) on the running step, not a bare
+          // counter and not a new step per call.
+          phaseNote("🔧 " + s.headline);
         } else if (s.type === "phase") {
-          // `label` carries a live line (e.g. a rotating sandbox-boot quip);
-          // otherwise fall back to the phase's static label.
-          phaseLine(s.label || PHASE_LABELS[s.phase] || s.phase);
+          // A new phase starts a new step (✓-ing the previous); the same phase
+          // re-labels in place. `label` carries a live line (e.g. a rotating
+          // sandbox-boot quip); otherwise the phase's static label.
+          phaseStep(s.phase, s.label || PHASE_LABELS[s.phase] || s.phase);
         } else if (s.type === "discard_text") {
           shown = ""; // the validated revision replaces the draft
           live.textContent = "";
-          phaseLine("Applying the reviewed revision…");
+          phaseNote("Applying the reviewed revision…");
         }
       },
       onDelta: (chunk) => {
@@ -915,7 +994,7 @@ async function send(ev) {
   } catch (err) {
     errMsg = err?.message || "The request failed.";
   }
-  phaseLine("");
+  finishPhaseSteps();
 
   const answer = result?.answer || shown;
   live.classList.remove("streaming");
