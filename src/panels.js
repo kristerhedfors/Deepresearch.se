@@ -101,6 +101,12 @@ export const PANEL_ITEMS = [
       "FEATURES.md §3's feature backlog with votes/effort/note/priority — the feature-build loop's work order.",
   },
   {
+    id: "websearch_grants",
+    title: "Web search grants",
+    summary:
+      "Mint shareable Se/cure links that carry a fixed live-web-search quota (metered server-side on the Exa key); list and revoke live grants. Defaults/budget live in Configuration.",
+  },
+  {
     id: "config",
     title: "Configuration",
     summary:

@@ -26,6 +26,17 @@ import { PERIODS } from "./quota.js";
  * @property {number} anim_speed intro-animation speed multiplier (1 = the
  *   default pace, which is itself 2.5× the original — see BASE_SPEED in
  *   public/cure/umbrella.js); served publicly via GET /api/anim
+ * @property {WebSearchGrantConfig} websearch the temporary web-search grant
+ *   defaults + governance (the admin control panel edits these — src/websearch.js)
+ */
+/**
+ * The mintable-web-search-grant defaults + budget governance.
+ * @typedef {Object} WebSearchGrantConfig
+ * @property {boolean} enabled master switch for the whole grant subsystem
+ * @property {number} quota default searches per minted key
+ * @property {number} ttl_hours default lifetime of a minted key, in hours
+ * @property {number} budget cap on total OUTSTANDING remaining across all live
+ *   grants (0 = uncapped) — the "entire set of quota" ceiling the panel governs
  */
 
 /** @type {SiteConfig} */
@@ -45,6 +56,14 @@ export const DEFAULT_CONFIG = {
   // The /cure first-visit umbrella intro's speed, relative to its default
   // pace (admin slider in /admin; the slider's center is exactly this 1).
   anim_speed: 1,
+  // Temporary web-search grants (src/websearch.js): the admin control panel's
+  // default mint values + the global budget ceiling.
+  websearch: {
+    enabled: true,
+    quota: 25,
+    ttl_hours: 24,
+    budget: 0,
+  },
 };
 
 /** @type {{ at: number, value: SiteConfig | null }} */
@@ -125,6 +144,16 @@ function mergeConfig(base, patch) {
     // ever slow to ¼× or hasten to 4× the default.
     out.anim_speed = Math.min(4, Math.max(0.25, patch.anim_speed));
   }
+  const w = patch.websearch;
+  if (w && typeof w === "object") {
+    if (typeof w.enabled === "boolean") out.websearch.enabled = w.enabled;
+    // A minted key's quota/TTL and the global budget are counts of searches /
+    // hours; clamp to sane, non-hostile ranges (quota 1..10000, ttl 1..720h /
+    // 30d, budget ≥0 with 0 = uncapped).
+    if (Number.isFinite(w.quota)) out.websearch.quota = Math.min(10000, Math.max(1, Math.round(w.quota)));
+    if (Number.isFinite(w.ttl_hours)) out.websearch.ttl_hours = Math.min(720, Math.max(1, Math.round(w.ttl_hours)));
+    if (Number.isFinite(w.budget)) out.websearch.budget = Math.max(0, Math.round(w.budget));
+  }
   return out;
 }
 
@@ -141,6 +170,7 @@ function sanitizeConfigPatch(patch) {
     default_model: patch?.default_model,
     require_approval: patch?.require_approval,
     anim_speed: numOr(patch?.anim_speed),
+    websearch: patch?.websearch,
   };
 }
 /** @param {any} v @returns {number | undefined} */

@@ -51,6 +51,7 @@ async function load() {
   renderByModel();
   renderUsers();
   renderConfig();
+  loadWebsearchGrants();
   loadSecurity();
   loadFeatures();
   loadPanels();
@@ -691,6 +692,106 @@ function renderUsers() {
   $("users-sec").hidden = false;
 }
 
+// ---- web-search grants (the mint control panel) ---------------------------
+// Mint shareable `…/cure?ws=<token>` links that grant a Se/cure session a fixed
+// web-search quota (metered server-side on the shared Exa key — src/websearch.js).
+// The default quota/TTL/budget are edited in the Configuration panel; here the
+// admin mints on demand and revokes. The token/link is shown ONLY at mint time
+// (the list never re-exposes a live token), so a leaked list can't hand out
+// capabilities.
+
+function renderWsGrantList(container, grants) {
+  if (!grants.length) {
+    container.innerHTML = '<p class="muted">No live grants.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  for (const g of grants) {
+    const el = document.createElement("div");
+    el.className = "rowitem";
+    const exp = new Date(g.expiresAt).toLocaleString();
+    el.innerHTML = `<div class="head">
+      <b>${escapeHtml(g.label || "(no label)")}</b>
+      <span class="badge">${escapeHtml(g.source || "?")}</span>
+      <span class="muted">${g.remaining}/${g.quota} left · expires ${escapeHtml(exp)}</span>
+      <span class="spacer"></span>
+      <button data-act="revoke" class="danger">Revoke</button>
+    </div>`;
+    el.addEventListener("click", async (e) => {
+      if (e.target.dataset?.act !== "revoke") return;
+      if (!confirm("Revoke this grant? Its link stops working immediately.")) return;
+      try {
+        await api("/websearch/" + encodeURIComponent(g.jti), { method: "DELETE" });
+        const d = await api("/websearch");
+        renderWsGrantList(container, d.grants);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    container.appendChild(el);
+  }
+}
+
+async function loadWebsearchGrants() {
+  let data;
+  try {
+    data = await api("/websearch");
+  } catch (err) {
+    $("wsgrants").innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
+    $("wsgrants-sec").hidden = false;
+    return;
+  }
+  const box = $("wsgrants");
+  const budgetLine =
+    data.budget > 0
+      ? `${data.outstanding} of ${data.budget} searches outstanding (global budget).`
+      : `${data.outstanding} searches outstanding · no global budget set.`;
+  box.innerHTML = `
+    <p class="muted">Mint a link that grants a Se/cure session a fixed web-search quota — share it,
+      and anyone who opens it gets that allowance, metered on the server. ${budgetLine}</p>
+    <div class="group">
+      <label>Quota <input type="number" id="ws-mint-quota" min="1" step="1" value="${data.config.quota}" style="width:6rem"></label>
+      <label>TTL (h) <input type="number" id="ws-mint-ttl" min="1" max="720" step="1" value="${data.config.ttl_hours}" style="width:6rem"></label>
+      <label>Label <input id="ws-mint-label" placeholder="(optional)" maxlength="80"></label>
+      <button type="button" id="ws-mint">Mint link</button>
+    </div>
+    <div id="ws-mint-result" class="group" hidden></div>
+    <div id="ws-grant-list"></div>`;
+  renderWsGrantList(box.querySelector("#ws-grant-list"), data.grants);
+
+  box.querySelector("#ws-mint").addEventListener("click", async () => {
+    try {
+      const r = await api("/websearch", {
+        method: "POST",
+        body: {
+          quota: Number($("ws-mint-quota").value),
+          ttlHours: Number($("ws-mint-ttl").value),
+          label: $("ws-mint-label").value || undefined,
+        },
+      });
+      const res = box.querySelector("#ws-mint-result");
+      res.hidden = false;
+      res.innerHTML = `<label style="flex:1">Shareable link
+        <input id="ws-link" readonly value="${escapeHtml(r.link)}" style="width:100%" onclick="this.select()"></label>
+        <button type="button" id="ws-copy">Copy</button>`;
+      box.querySelector("#ws-copy").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(r.link);
+          box.querySelector("#ws-copy").textContent = "Copied ✓";
+        } catch {
+          box.querySelector("#ws-link").select();
+        }
+      });
+      // Refresh the list (new grant appears) without disturbing the shown link.
+      const d = await api("/websearch");
+      renderWsGrantList(box.querySelector("#ws-grant-list"), d.grants);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  $("wsgrants-sec").hidden = false;
+}
+
 // ---- config ---------------------------------------------------------------
 
 function renderConfig() {
@@ -713,6 +814,16 @@ function renderConfig() {
       <label>Exa cost / search € <input type="number" min="0" step="0.001" name="exa" value="${c.exa_cost_per_search_eur}"></label>
       <label>Max time budget (s) <input type="number" min="15" max="600" name="maxbudget" value="${c.max_time_budget_s}"></label>
       <label>Default model <input name="model" value="${escapeHtml(c.default_model || "")}" placeholder="(worker default)" style="min-width:230px"></label>
+    </div>
+    <h3>Web search grants</h3>
+    <p class="muted">Defaults for the temporary web-search keys minted below (and for a
+      signed-in user crossing to Se/cure via the ghost). Each key lets a client-side
+      Se/cure session run a fixed number of live searches through the server's Exa key.</p>
+    <div class="group">
+      <label><input type="checkbox" name="ws_enabled" ${c.websearch?.enabled !== false ? "checked" : ""}> Enable web-search grants</label>
+      <label>Default quota / key <input type="number" min="1" step="1" name="ws_quota" value="${c.websearch?.quota ?? 25}"></label>
+      <label>Default TTL (hours) <input type="number" min="1" max="720" step="1" name="ws_ttl" value="${c.websearch?.ttl_hours ?? 24}"></label>
+      <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="ws_budget" value="${c.websearch?.budget ?? 0}"></label>
     </div>
     <h3>Accounts</h3>
     <div class="group">
@@ -760,6 +871,12 @@ function renderConfig() {
           default_model: String(f.get("model") || ""),
           require_approval: f.get("approval") === "on",
           anim_speed: Math.round(animMult() * 1000) / 1000,
+          websearch: {
+            enabled: f.get("ws_enabled") === "on",
+            quota: Number(f.get("ws_quota")),
+            ttl_hours: Number(f.get("ws_ttl")),
+            budget: Number(f.get("ws_budget")),
+          },
         },
       });
       $("config-msg").textContent = "Saved ✓";

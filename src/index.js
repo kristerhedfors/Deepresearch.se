@@ -65,7 +65,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
-import { handleWebSearch, handleWebSearchGrant } from "./websearch.js";
+import { handleWebSearch, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
 import { getConfig } from "./config.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { applySecurityHeaders } from "./security-headers.js";
@@ -246,6 +246,11 @@ async function route(request, env, url, log, ctx, requestId) {
   // See src/websearch.js.
   if (request.method === "POST" && url.pathname === "/api/websearch") {
     return { response: await handleWebSearch(request, env, log) };
+  }
+  // Non-consuming grant status — a shared `…/cure?ws=<token>` link follower's
+  // browser reads its remaining quota here (public; the token is the authority).
+  if (request.method === "POST" && url.pathname === "/api/websearch/status") {
+    return { response: await handleWebSearchStatus(request, env) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------

@@ -950,10 +950,45 @@ function wsEnabled() {
   return v == null ? true : v === "1"; // default ON when a grant is present
 }
 
-// Requests a grant, but ONLY when the ghost button asked (the intent marker) —
-// a plain visitor never pings the server. Fail-soft: any failure just leaves the
-// session without server web search.
+// Populates the web-search grant from either a SHARED LINK (/cure?ws=<token>,
+// admin-minted — src/websearch.js) or the ghost-crossover INTENT marker. A
+// plain visitor with neither never pings the server. Fail-soft throughout.
 async function maybeRequestWsGrant() {
+  // 1) A shared link carries a grant token directly. Read its live status
+  //    (non-consuming), store it, and strip the token from the URL so it isn't
+  //    left in history/referrer.
+  let linkToken = "";
+  try {
+    linkToken = new URLSearchParams(location.search).get("ws") || "";
+  } catch {
+    /* no search params */
+  }
+  if (linkToken) {
+    try {
+      const res = await fetch("/api/websearch/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: linkToken }),
+      });
+      if (res.ok) {
+        wsGrant = await res.json();
+        persistWsGrant();
+      }
+    } catch {
+      /* invalid/expired link — no server web search */
+    }
+    try {
+      const u = new URL(location.href);
+      u.searchParams.delete("ws");
+      history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+    } catch {
+      /* history API blocked — harmless */
+    }
+    renderWsRow();
+    return;
+  }
+
+  // 2) The ghost-crossover intent marker.
   let intent = false;
   try {
     intent = localStorage.getItem(WS_INTENT_KEY) === "1";
@@ -1218,7 +1253,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d25 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d26 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
