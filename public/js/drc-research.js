@@ -319,6 +319,11 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
     // Surface the actual command as it starts (not just a counter), so the
     // sandbox phase line shows WHICH command is running.
     onExec: (command) => onStatus({ type: "phase", phase: "sandbox", label: `$ ${shellCommandLabel(command)}` }),
+    // Surface the full run (command + exit + real output) once it finishes, so
+    // the UI can file it into the sandbox step's expandable transcript — the
+    // same "which commands were executed and what they returned" detail the DRS
+    // sandbox step shows (public/js/activity.js finishSandboxStep).
+    onResult: (run) => onStatus({ type: "exec", run }),
   });
 }
 
