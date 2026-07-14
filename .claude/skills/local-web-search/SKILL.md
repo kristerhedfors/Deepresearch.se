@@ -59,6 +59,43 @@ so synthesis proceeds on the highlights it already has. If you need full-text
 on a self-hosted backend, add a `/contents` route to your service and extend
 `fetchContents` the same adapter way.
 
+## Two tiers configure it two different ways
+
+The adapters + parsers + dispatch are ONE shared pure core,
+**`public/js/websearch-backends-core.js`** (the `bash-core.js` /
+`introspect-core.js` arrangement) — it lives under `public/` so BOTH the Worker
+bundler and the browser can import it. Each tier configures a backend its own
+way:
+
+- **Se/rver (DRS)** — an **admin, server-wide** setting. `src/websearch-backends.js`
+  is a thin façade over the core adding the env-aware `resolveSearchBackend`;
+  the admin picks ONE backend for the whole server on the `/admin` **Web search
+  service** panel, and `src/exa.js` routes every search through it (Exa
+  fallback on failure). The service is called from the WORKER, so no CORS is
+  needed.
+
+- **Se/cure (DRC)** — a **per-user, expert** setting, because Se/cure is the
+  interface for people who know what they're doing. The **Web search service**
+  section in the `/cure` settings drawer (`public/cure/drc.js`
+  `renderSearchBackend`) lets each user point web search at their OWN
+  self-hosted service. The browser calls it **directly** (`drcDirectWebSearch`
+  → the shared core's `runBackendSearch`) — no query touches Deepresearch's
+  server at all, which is *stronger* than the server grant (that routes through
+  the server's Exa key). The config (URL + optional key + results) is stored
+  **inside the sealed project state** (`searchBackend` in `drc-core.js`), like
+  the provider keys — the server never sees it.
+  - **CORS is required.** A browser-direct call needs the service to send
+    `Access-Control-Allow-Origin` (and answer the preflight). The settings
+    popover spells this out; it's the expert's responsibility. SearXNG:
+    `search.formats` must include `json` and the instance must allow the
+    origin. The Playwright service (Recipe 2) needs
+    `res.setHeader("Access-Control-Allow-Origin", "*")` + an `OPTIONS`
+    handler.
+  - **Priority in `send()`:** a configured browser-direct backend wins over the
+    server grant, which wins over nothing (offline harvest). All fail-soft.
+  - **Providers must be CORS-capable anyway** in DRC (OpenAI/Groq/Berget), so a
+    CORS-enabled search service fits the tier's existing constraint.
+
 ---
 
 ## Recipe 1 — SearXNG (fastest path, metasearch, no key)
@@ -180,8 +217,19 @@ async function fetchOne(url) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // CORS — REQUIRED for the Se/cure (DRC) browser-direct case; harmless for the
+  // Se/rver (Worker) case. Lock the origin down to your site in production.
+  const cors = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "content-type, x-api-key",
+    "access-control-allow-methods": "POST, OPTIONS",
+  };
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, cors);
+    return res.end();
+  }
   const json = (code, obj) => {
-    res.writeHead(code, { "content-type": "application/json" });
+    res.writeHead(code, { "content-type": "application/json", ...cors });
     res.end(JSON.stringify(obj));
   };
   if (req.method !== "POST" || !req.url.startsWith("/search")) return json(404, { error: "not found" });
