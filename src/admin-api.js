@@ -48,6 +48,7 @@ import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { handleAdminWebSearch } from "./websearch.js";
+import { handleAdminProxy } from "./proxy.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -149,6 +150,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // (The default quota/TTL/budget themselves are edited via PUT /config.)
     if (path === "/websearch" || path.startsWith("/websearch/")) {
       return handleAdminWebSearch(request, env, url, log, identity);
+    }
+    // The secure-research-space proxy-bundle control surface (src/proxy.js):
+    // list live bundles + defaults, mint a shareable `…/cure?rp=…#rk=…` link,
+    // revoke a whole bundle. (Per-service defaults are edited via PUT /config.)
+    if (path === "/proxy" || path.startsWith("/proxy/")) {
+      return handleAdminProxy(request, env, url, log, identity);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

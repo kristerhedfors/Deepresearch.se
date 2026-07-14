@@ -52,6 +52,7 @@ async function load() {
   renderUsers();
   renderConfig();
   loadWebsearchGrants();
+  loadProxyBundles();
   loadSecurity();
   loadFeatures();
   loadPanels();
@@ -792,6 +793,103 @@ async function loadWebsearchGrants() {
   $("wsgrants-sec").hidden = false;
 }
 
+// ---- secure research space bundles (the mint control panel) ---------------
+// Mint shareable `…/cure?rp=<blob>#rk=<key>` links that hand a Se/cure session a
+// BUNDLE of account-connected proxy grants (web search + LLM API — src/proxy.js).
+// Per-service defaults are edited in the Configuration panel; here the admin
+// mints on demand and revokes a whole bundle. The link is shown ONLY at mint
+// time (the list never re-exposes the sealed blob/key), so a leaked list hands
+// out nothing.
+
+function bundleServices(b) {
+  return b.services
+    .map((s) => (s.svc === "api" ? "🤖 API" : "🔎 Web") + ` ${s.remaining}/${s.quota}`)
+    .join(" · ");
+}
+
+function renderProxyBundleList(container, bundles) {
+  if (!bundles.length) {
+    container.innerHTML = '<p class="muted">No live bundles.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  for (const b of bundles) {
+    const el = document.createElement("div");
+    el.className = "rowitem";
+    const exp = b.services[0] ? new Date(b.services[0].expiresAt).toLocaleString() : "";
+    el.innerHTML = `<div class="head">
+      <b>${escapeHtml(b.label || "(no label)")}</b>
+      <span class="badge">${escapeHtml(b.source || "?")}</span>
+      <span class="muted">${escapeHtml(bundleServices(b))} · expires ${escapeHtml(exp)}</span>
+      <span class="spacer"></span>
+      <button data-act="revoke" class="danger">Revoke</button>
+    </div>`;
+    el.addEventListener("click", async (e) => {
+      if (e.target.dataset?.act !== "revoke") return;
+      if (!confirm("Revoke this whole bundle? Its link stops working immediately.")) return;
+      try {
+        await api("/proxy/" + encodeURIComponent(b.bundleId), { method: "DELETE" });
+        const d = await api("/proxy");
+        renderProxyBundleList(container, d.bundles);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    container.appendChild(el);
+  }
+}
+
+async function loadProxyBundles() {
+  let data;
+  try {
+    data = await api("/proxy");
+  } catch (err) {
+    $("proxybundles").innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
+    $("proxybundles-sec").hidden = false;
+    return;
+  }
+  const box = $("proxybundles");
+  const budgetLine =
+    data.budget > 0
+      ? `${data.outstanding} of ${data.budget} units outstanding (global budget).`
+      : `${data.outstanding} units outstanding · no global budget set.`;
+  box.innerHTML = `
+    <p class="muted">Mint a link that lends a Se/cure session an account-connected
+      <b>secure research space</b> — a bundle of proxied web search AND LLM API (Berget), metered
+      on the server. The LLM half routes the visitor's conversation through the server. ${budgetLine}</p>
+    <div class="group">
+      <label>Label <input id="px-mint-label" placeholder="(optional)" maxlength="80"></label>
+      <button type="button" id="px-mint">Mint link</button>
+    </div>
+    <div id="px-mint-result" class="group" hidden></div>
+    <div id="px-bundle-list"></div>`;
+  renderProxyBundleList(box.querySelector("#px-bundle-list"), data.bundles);
+
+  box.querySelector("#px-mint").addEventListener("click", async () => {
+    try {
+      const r = await api("/proxy", { method: "POST", body: { label: $("px-mint-label").value || undefined } });
+      const res = box.querySelector("#px-mint-result");
+      res.hidden = false;
+      res.innerHTML = `<label style="flex:1">Shareable link
+        <input id="px-link" readonly value="${escapeHtml(r.link)}" style="width:100%" onclick="this.select()"></label>
+        <button type="button" id="px-copy">Copy</button>`;
+      box.querySelector("#px-copy").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(r.link);
+          box.querySelector("#px-copy").textContent = "Copied ✓";
+        } catch {
+          box.querySelector("#px-link").select();
+        }
+      });
+      const d = await api("/proxy");
+      renderProxyBundleList(box.querySelector("#px-bundle-list"), d.bundles);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  $("proxybundles-sec").hidden = false;
+}
+
 // ---- config ---------------------------------------------------------------
 
 function renderConfig() {
@@ -824,6 +922,19 @@ function renderConfig() {
       <label>Default quota / key <input type="number" min="1" step="1" name="ws_quota" value="${c.websearch?.quota ?? 25}"></label>
       <label>Default TTL (hours) <input type="number" min="1" max="720" step="1" name="ws_ttl" value="${c.websearch?.ttl_hours ?? 24}"></label>
       <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="ws_budget" value="${c.websearch?.budget ?? 0}"></label>
+    </div>
+    <h3>Secure research space grants</h3>
+    <p class="muted">Defaults for the account-connected proxy BUNDLES minted below (and for a
+      signed-in user crossing to Se/cure via the ghost). Each bundle lends a Se/cure session a
+      fixed web-search AND LLM-API (Berget) quota; the LLM half routes the conversation through
+      the server.</p>
+    <div class="group">
+      <label><input type="checkbox" name="px_enabled" ${c.proxy?.enabled !== false ? "checked" : ""}> Enable secure-research-space grants</label>
+      <label>Web quota / bundle <input type="number" min="1" step="1" name="px_web_quota" value="${c.proxy?.web_quota ?? 25}"></label>
+      <label>Web TTL (h) <input type="number" min="1" max="720" step="1" name="px_web_ttl" value="${c.proxy?.web_ttl_hours ?? 24}"></label>
+      <label>API quota / bundle <input type="number" min="1" step="1" name="px_api_quota" value="${c.proxy?.api_quota ?? 40}"></label>
+      <label>API TTL (h) <input type="number" min="1" max="720" step="1" name="px_api_ttl" value="${c.proxy?.api_ttl_hours ?? 24}"></label>
+      <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="px_budget" value="${c.proxy?.budget ?? 0}"></label>
     </div>
     <h3>Accounts</h3>
     <div class="group">
@@ -876,6 +987,14 @@ function renderConfig() {
             quota: Number(f.get("ws_quota")),
             ttl_hours: Number(f.get("ws_ttl")),
             budget: Number(f.get("ws_budget")),
+          },
+          proxy: {
+            enabled: f.get("px_enabled") === "on",
+            web_quota: Number(f.get("px_web_quota")),
+            web_ttl_hours: Number(f.get("px_web_ttl")),
+            api_quota: Number(f.get("px_api_quota")),
+            api_ttl_hours: Number(f.get("px_api_ttl")),
+            budget: Number(f.get("px_budget")),
           },
         },
       });

@@ -66,6 +66,13 @@ import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
 import { handleWebSearch, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
+import {
+  handleProxyExchange,
+  handleProxyGrant,
+  handleProxyLlm,
+  handleProxyStatus,
+  handleProxyWeb,
+} from "./proxy.js";
 import { getConfig } from "./config.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { applySecurityHeaders } from "./security-headers.js";
@@ -251,6 +258,26 @@ async function route(request, env, url, log, ctx, requestId) {
   // browser reads its remaining quota here (public; the token is the authority).
   if (request.method === "POST" && url.pathname === "/api/websearch/status") {
     return { response: await handleWebSearchStatus(request, env) };
+  }
+  // The SECURE-RESEARCH-SPACE proxy bundle (src/proxy.js) — all PUBLIC because a
+  // Se/cure session has no identity: the caller authorizes with the two-tier
+  // signed tokens (grant token → proxy token). The bundle's grant is minted for
+  // a signed-in user at POST /api/proxy/grant (below the gate) or by an admin
+  // link; these endpoints exchange it and spend it. Invariant 4's second bounded
+  // exception — opt-in, quota-metered, Berget-only for the LLM half.
+  if (request.method === "POST" && url.pathname === "/api/proxy/exchange") {
+    return { response: await handleProxyExchange(request, env) };
+  }
+  if (request.method === "POST" && url.pathname === "/api/proxy/status") {
+    return { response: await handleProxyStatus(request, env) };
+  }
+  if (request.method === "POST" && url.pathname === "/api/proxy/web") {
+    return { response: await handleProxyWeb(request, env, log) };
+  }
+  // The LLM API reverse proxy (OpenAI-wire /models + /chat/completions), driven
+  // by the DRC provider registry with the proxy token as the bearer.
+  if (url.pathname.startsWith("/api/proxy/llm")) {
+    return { response: await handleProxyLlm(request, env, log, url) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
@@ -465,6 +492,13 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // The PUBLIC search endpoint (/api/websearch, before the gate) spends it.
   if (url.pathname === "/api/websearch/grant" && request.method === "POST") {
     return handleWebSearchGrant(request, env, log, identity);
+  }
+  // Secure-research-space bundle: a signed-in user crossing to Se/cure (the
+  // ghost) mints (or reuses) a bundle of account-connected proxy grants (web +
+  // LLM API). The client opens the sealed blob and exchanges the grant tokens
+  // (public /api/proxy/exchange) for the working proxy tokens. See src/proxy.js.
+  if (url.pathname === "/api/proxy/grant" && request.method === "POST") {
+    return handleProxyGrant(request, env, log, identity);
   }
   // Feedback mode (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent.
