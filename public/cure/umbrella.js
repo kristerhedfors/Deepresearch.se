@@ -313,12 +313,35 @@ export function playUmbrellaIntro(opts = {}) {
   const start = performance.now();
   let last = start;
   let raf = 0;
+  let finished = false;
 
   // First tap stops and REMOVES the animation immediately — no fade-out to
   // wait through, nothing left in the way of the page underneath.
   canvas.addEventListener("pointerdown", cleanup);
 
+  // Wall-clock safety net. The intro is DECORATION drawn on a fixed,
+  // full-viewport canvas (z-index 30) that sits on top of the whole app, and
+  // it ends by removing that canvas from INSIDE the requestAnimationFrame
+  // loop. But RAF is not guaranteed to keep firing: on iOS Safari, right after
+  // a same-window navigation, the loop can fire ONCE and then stall — freezing
+  // the very first frame (a bare khaki field, before any umbrella has reached
+  // its appear-in delay) on top of the page and swallowing every tap
+  // underneath, so the app looks like "a full page of khaki, nothing happens"
+  // and no button works. A setTimeout is not subject to that RAF stall, so it
+  // force-finishes the intro if the RAF clock never reaches the end. Because
+  // `prog` is wall-clock driven, a correctly-running intro ALWAYS ends by
+  // T.end / clockRate regardless of device speed (a slow device just drops
+  // frames, it doesn't run longer); the margin only covers scheduling jitter.
+  const maxWall = T.end / clockRate + 1500;
+  let watchdog = setTimeout(cleanup, maxWall);
+
+  // Idempotent: the watchdog, a tap, an in-frame error, and the normal end can
+  // all race to finish — only the first one does the teardown (and calls
+  // onDone once).
   function cleanup() {
+    if (finished) return;
+    finished = true;
+    clearTimeout(watchdog);
     cancelAnimationFrame(raf);
     window.removeEventListener("resize", resize);
     canvas.remove();
@@ -343,6 +366,20 @@ export function playUmbrellaIntro(opts = {}) {
 
   /** @param {number} now */
   function frame(now) {
+    if (!ctx) return cleanup();
+    // The whole frame is wrapped so a single draw error on some device can't
+    // kill the RAF loop and strand the full-screen canvas over the app
+    // (same failure mode the watchdog guards): any throw tears the intro down
+    // cleanly and reveals the page underneath. Decoration must never break it.
+    try {
+      return drawFrame(now);
+    } catch {
+      return cleanup();
+    }
+  }
+
+  /** @param {number} now */
+  function drawFrame(now) {
     if (!ctx) return cleanup();
     // Design-time clock: real elapsed ms × the speed (BASE_SPEED × the
     // admin multiplier). `prog` is the one-way playback progress; on a REVERSE
