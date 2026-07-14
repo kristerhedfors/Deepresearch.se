@@ -15,6 +15,7 @@
   --muted: #75683f;
   --accent: #7c6a24;        /* dark olive, where the app has flag blue */
   --ok: #157a4b;
+  --pink: #df6e8e;          /* the umbrella fleet's rose — the research-step ✓ */
   --user: #ece1bd;
 }
 /* Introspection mode's cue (the Se/cure tier). drc.js toggles `dev-mode` on the
@@ -586,6 +587,44 @@ button:disabled { opacity: .5; cursor: default; }
 
 .statusline { margin: .25rem .35rem 0; font-size: .78rem; color: var(--muted); }
 .statusline[hidden] { display: none; }
+
+/* ---- the research step list: a spinning umbrella per phase, a pink ✓ on done.
+   The /cure analog of the DRS app's activity steps (css/app.css .step/.spin/
+   .check). app.css is auth-served, so the shapes are mirrored here in the
+   khaki/pink palette. The spinner itself is a canvas the umbrella is drawn on
+   (mountUmbrellaSpinner) in the intro's own pink fleet colors — so "pink" is
+   inherent to the umbrella; the ✓ is tinted to the fleet's rose (--pink). */
+.phasesteps { display: flex; flex-direction: column; gap: .3rem; }
+.phase-step {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .8rem;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .3rem .55rem;
+}
+.phase-step .phase-label { overflow-wrap: anywhere; min-width: 0; }
+/* The umbrella's mount box; the canvas centers over it and is allowed to
+   overflow so the tilted canopy + hanging shaft aren't clipped. The faint rose
+   pulse is the reduced-motion / no-canvas FALLBACK — mountUmbrellaSpinner
+   neutralizes this background + animation the moment it mounts the canvas. */
+.phase-step .spin {
+  width: 1.1rem; height: 1.1rem; flex: none;
+  border-radius: 50%;
+  background: var(--pink);
+  opacity: .7;
+  animation: phase-pulse 1.4s ease-in-out infinite alternate;
+}
+@keyframes phase-pulse {
+  from { opacity: .3; transform: scale(.68); }
+  to   { opacity: .8; transform: scale(1); }
+}
+/* The completed-phase checkmark — pink, matching the umbrella fleet (the DRS
+   app tints this with its green --ok instead). */
+.phase-step .check { color: var(--pink); flex: none; font-weight: 700; }
 
 /* ---- the left drawer: the app's history sidebar, mirrored ---- */
 #drawer {
