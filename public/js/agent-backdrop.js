@@ -24,12 +24,14 @@
 // not-yet-terminated prompt line is shown as a tail.
 //
 // TWO-LAYER VIEW SWITCH: while the sandbox is running the page holds two stacked
-// panes — the CONVERSATION and this TERMINAL backdrop. A TAP on the bare page
-// background (never on a message bubble, never on interactive chrome) swaps which
-// pane is in front: the front pane reads at full strength, the other recedes to
-// a faint background, and a quick slide-in-from-the-right sells the swap. The
-// tap-vs-message discrimination is the load-bearing detail (a tap that lands on a
-// user/assistant bubble or a control does its normal thing and never switches).
+// panes — the CONVERSATION and this TERMINAL backdrop. A header ICON (`#termbtn`
+// in the upper-right, a terminal glyph) is the ONE control that swaps which pane
+// is in front: the front pane reads at full strength, the other recedes to a
+// faint background, and a quick slide-in-from-the-right sells the swap. The icon
+// APPEARS the moment the VM prints anything — so beyond the characters drifting
+// on the background, the icon's presence is the sign the Linux system is active
+// (2026-07-14 directive: replaced the old tap-on-the-background switch — the icon
+// is now the only switcher, and its only job is switching).
 //
 // SCROLLING is per-mode. In CONVERSATION mode the conversation scrolls natively
 // and the terminal (the background pane) leans along in synchronization, weaker
@@ -48,7 +50,7 @@ import {
   clampLine,
   clipToNextChannel,
   createBackdropModel,
-  isTapGesture,
+  ensureChannel,
   nextLayerMode,
   opacityCss,
   parallaxFollow,
@@ -63,6 +65,11 @@ import {
 // (boot/login banner + prompt), the proposed commands, and their output all land
 // here so the backdrop reads as ONE coherent terminal behind the chat.
 const TERM_CHANNEL = "shell";
+
+// The header switcher icon shared by both tiers (same id in index.html and
+// cure/index.html): hidden until the VM prints, then it both toggles the view
+// and, by its presence, signals the terminal is active.
+const TERM_BTN_ID = "termbtn";
 
 // The transparency slider was removed (2026-07-13 directive): the layer is
 // always shown at its fullest (100 → the faint 0.55 CSS ceiling). One fixed
@@ -87,12 +94,14 @@ let termBuf = "";
 // the live tail), bgPinned tracks whether we're still following the newest.
 let bgOffset = 0;
 let bgPinned = true;
-let scrollWired = false; // wheel/touch/tap listeners attached once
+let scrollWired = false; // wheel/touch listeners attached once
+let termBtnWired = false; // the header switcher icon's click listener attached once
+let termActive = false; // the VM has printed → the switcher icon is shown
 
 // Which pane is in front. Only meaningful while the backdrop has content (a
 // sandbox ran). Defaults to the conversation — we never auto-pop the terminal
 // forward (that was the old screen-covering behavior we removed); the user taps
-// the background to bring it up.
+// the header terminal icon to bring it up.
 let layerMode = LAYER_CONVO;
 
 // Composed transforms for the two panes. Each pane can carry BOTH a transient
@@ -151,7 +160,7 @@ function applyOpacity() {
 }
 
 // ---- the two-layer view switch ----------------------------------------------
-// A tap on the bare page background swaps the foreground pane (see the header
+// The header terminal icon (#termbtn) swaps the foreground pane (see the header
 // note). We keep the mode meaningful only while the sandbox has produced output.
 
 /** Whether the sandbox has produced any output yet (→ a terminal worth showing). */
@@ -206,7 +215,52 @@ function clearParallax() {
   applyViewTransform();
 }
 
-/** Switch the foreground pane, updating the class, opacity and slide flourish. */
+// ---- the header switcher icon (#termbtn) ------------------------------------
+// The ONE control that swaps panes (2026-07-14 directive). It lives in each
+// tier's header markup with a shared id; here we only find it, wire its click,
+// reveal it when the VM prints, and reflect which pane is forward. No glow — its
+// presence + pressed state are the only signals.
+
+function termBtn() {
+  return typeof document !== "undefined" ? document.getElementById(TERM_BTN_ID) : null;
+}
+
+// Reflect on the icon: pressed (accent) while the terminal is the foreground.
+function syncTermBtn() {
+  const btn = termBtn();
+  if (!btn) return;
+  const terminal = layerMode === LAYER_TERMINAL;
+  btn.classList.toggle("on", terminal);
+  try { btn.setAttribute("aria-pressed", terminal ? "true" : "false"); } catch { /* ignore */ }
+}
+
+// Show the switcher icon the moment the terminal is active (the VM printed), and
+// wire its click ONCE. Presence = "Linux is running"; tapping = switch panes.
+function revealTermBtn() {
+  if (termActive) return;
+  termActive = true;
+  const btn = termBtn();
+  if (!btn) return;
+  try { btn.removeAttribute("hidden"); } catch { /* ignore */ }
+  wireTermBtn();
+  syncTermBtn();
+}
+
+function wireTermBtn() {
+  if (termBtnWired) return;
+  const btn = termBtn();
+  if (!btn) return;
+  termBtnWired = true;
+  btn.addEventListener("click", (e) => {
+    try {
+      e.preventDefault();
+      if (!hasBackdropContent()) return; // nothing to switch to
+      setLayerMode(nextLayerMode(layerMode));
+    } catch { /* decoration — never break the page */ }
+  });
+}
+
+/** Switch the foreground pane, updating the class, opacity, icon and flourish. */
 function setLayerMode(mode) {
   const next = mode === LAYER_TERMINAL ? LAYER_TERMINAL : LAYER_CONVO;
   if (next === layerMode) return;
@@ -216,6 +270,7 @@ function setLayerMode(mode) {
     document.body.classList.toggle("term-fg", terminal);
   }
   applyOpacity();
+  syncTermBtn();
   clearParallax();
   slideInForeground(terminal);
 }
@@ -273,10 +328,8 @@ function applyBgScroll() {
   scroller.style.transform = "translateY(" + bgOffset + "px)";
 }
 
-// Genuine interactive chrome + message bubbles — a TAP on any of these does its
-// own thing and must NEVER switch panes (the load-bearing distinction: tap a
-// user/assistant message → no switch; tap the bare background → switch). Also
-// the set a TERMINAL-mode swipe won't hijack, so real controls stay usable.
+// Genuine interactive chrome + message bubbles — a TERMINAL-mode swipe must
+// never hijack these, so real controls stay usable while paging history.
 const BLOCK_SEL =
   ".msg, .step, .activity, button, a, input, textarea, select, label, [role=button], " +
   "#jumpdown, header, #footer, #composer, #searchpop, .setting-pop, .history, " +
@@ -284,18 +337,6 @@ const BLOCK_SEL =
 
 function onBlocked(target) {
   return !!(target && target.closest && target.closest(BLOCK_SEL));
-}
-
-// A tap counts as a pane switch only when it lands on the bare background: not on
-// a message/control, and not while text is selected (a drag-select ends in a
-// pointerup we must not treat as a tap).
-function isSwitchTarget(target) {
-  if (onBlocked(target)) return false;
-  try {
-    const sel = typeof window !== "undefined" && window.getSelection && window.getSelection();
-    if (sel && String(sel).length) return false;
-  } catch { /* ignore */ }
-  return true;
 }
 
 // Apply one scroll gesture to the backdrop (TERMINAL mode only); returns true if
@@ -315,34 +356,13 @@ function scrollBackdrop(deltaY) {
 
 let touchY = 0;
 let touchActive = false;
-let downX = 0, downY = 0, downT = 0, downTarget = null, pointerDown = false;
-
-function now() {
-  try { return typeof performance !== "undefined" ? performance.now() : 0; }
-  catch { return 0; }
-}
 
 function wireScroll() {
   if (scrollWired || typeof window === "undefined") return;
   scrollWired = true;
 
-  // --- the tap-to-switch gesture (pointer events cover mouse + touch) ---
-  window.addEventListener("pointerdown", (e) => {
-    pointerDown = true;
-    downX = e.clientX; downY = e.clientY; downT = now(); downTarget = e.target;
-  }, { passive: true });
-  window.addEventListener("pointerup", (e) => {
-    try {
-      if (!pointerDown) return;
-      pointerDown = false;
-      if (!hasBackdropContent()) return; // no sandbox output → nothing to switch to
-      if (!isTapGesture(e.clientX - downX, e.clientY - downY, now() - downT)) return;
-      // both the press and the release must be on the bare background — a drag
-      // that started on a bubble and lifted on the gap isn't a background tap.
-      if (!isSwitchTarget(e.target) || !isSwitchTarget(downTarget)) return;
-      setLayerMode(nextLayerMode(layerMode));
-    } catch { /* decoration — never break the page */ }
-  }, { passive: true });
+  // Switching panes is done ONLY by the header terminal icon (wireTermBtn); the
+  // listeners below are just the per-mode scroll/parallax feel.
 
   // --- wheel: TERMINAL mode pages history; CONVO mode scrolls the convo (and
   //     leans the backdrop along, wired via the #chat scroll listener below) ---
@@ -426,6 +446,7 @@ function feed(fn, channel, payload) {
     fn(model, channel || "shell", payload);
     render();
     syncClipTimer();
+    if (hasBackdropContent()) revealTermBtn(); // terminal is active → show the icon
   } catch { /* the backdrop is decoration — never break the caller */ }
 }
 
@@ -454,8 +475,12 @@ export function feedTerminal(text) {
     const parts = (termBuf + clean).split("\n");
     termBuf = parts.pop() || ""; // the unterminated remainder (the prompt)
     for (const line of parts) pushLines(model, TERM_CHANNEL, [line]);
+    // A prompt with no trailing newline is a live tail with no committed line
+    // yet — ensure the channel so render() shows it (and it counts as content).
+    if (termBuf) ensureChannel(model, TERM_CHANNEL);
     render();
     syncClipTimer();
+    if (hasBackdropContent()) revealTermBtn(); // terminal is active → show the icon
   } catch { /* the backdrop is decoration — never break the caller */ }
 }
 

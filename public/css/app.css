@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h33;
+  --css-version: h34;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -121,7 +121,7 @@ body::before {
 
 /* Two-layer view switch (public/js/agent-backdrop.js): while the sandbox is
    running the page holds two stacked panes — the conversation (#chat) and the
-   terminal backdrop. A tap on the bare page background swaps which is in front.
+   terminal backdrop. The header terminal icon (#termbtn) swaps which is in front.
    In the default (conversation-forward) state everything reads as usual; when
    the terminal is brought forward the body carries `term-fg`: the backdrop
    rises above the chat (but below the fixed chrome at z:5) and reads at full
@@ -863,11 +863,17 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    right edge whichever of them are showing. */
 #accountbtn { margin-left: auto; }
 #gearbtn { margin-left: auto; }
+#termbtn:not([hidden]) { margin-left: auto; }
 #ghostbtn:not([hidden]) { margin-left: auto; }
+/* Leftmost VISIBLE of the right-docked group keeps the auto margin; any that
+   follow a visible earlier member reset to 0 so the group stays glued. */
+#ghostbtn:not([hidden]) ~ #termbtn,
 #ghostbtn:not([hidden]) ~ #gearbtn,
 #ghostbtn:not([hidden]) ~ #accountbtn,
+#termbtn:not([hidden]) ~ #gearbtn,
+#termbtn:not([hidden]) ~ #accountbtn,
 #gearbtn:not([hidden]) ~ #accountbtn { margin-left: 0; }
-#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn {
+#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn, #termbtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -904,6 +910,14 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #ghostbtn[hidden] { display: none; }
 #ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #ghostbtn:disabled { opacity: .4; }
+
+/* Terminal switcher icon (public/js/agent-backdrop.js): hidden until the
+   in-browser Linux VM prints something, then it appears — its presence is the
+   sign the sandbox is active — and TAPPING it is the one way to switch between
+   the terminal pane and the conversation. Pressed (accent) = the terminal is the
+   foreground pane right now. No glow: just the symbol, matching the other icons. */
+#termbtn[hidden] { display: none; }
+#termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 /* Active incognito stays clearly visible while the chat runs — the lock
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }
