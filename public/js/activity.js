@@ -287,6 +287,24 @@ export function renderStreetViewEmbed(turn, s) {
     .catch(renderIframeFallback);
 }
 
+// A pill-shaped SVG marker icon showing the walking time on the map (the
+// number the walking route's dotted line is annotated with). Baked into an
+// SVG data URL so it needs no map styling and renders identically on every
+// client — width grows with the text, anchored at its center.
+function walkTimeBadge(maps, text) {
+  const w = Math.round(18 + text.length * 6.6);
+  const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="22">` +
+    `<rect x="0.75" y="0.75" width="${w - 1.5}" height="20.5" rx="10.25" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>` +
+    `<text x="${w / 2}" y="15" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="12" font-weight="600" fill="#065f46" text-anchor="middle">${esc}</text>` +
+    `</svg>`;
+  return {
+    url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+    anchor: new maps.Point(w / 2, 11),
+  };
+}
+
 // Interactive road map, from a `map_embed` status event — the no-coverage
 // counterpart of the Street View embed: the location resolved but Google has
 // no panorama near it, so a navigable MAP of the area stands in beside the
@@ -363,6 +381,18 @@ export function renderMapEmbed(turn, s) {
             .map((p) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))
             .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
         : [];
+      // The actual WALKING ROUTE (map_embed's optional `route` field): the
+      // road-following path from Google Routes, drawn as a DOTTED green line
+      // with a walking-time badge at its midpoint — so the reply shows BOTH
+      // the straight stop-to-stop line (what/where) AND the real on-foot
+      // route with its minutes (how long it takes to walk it), requested
+      // 2026-07-14. Older clients ignore the field (forward-compat rule).
+      const routePts =
+        s.route && Array.isArray(s.route.polyline)
+          ? s.route.polyline
+              .map((p) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))
+              .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+          : [];
       if (path.length >= 2 && maps.Polyline) {
         new maps.Polyline({ path, map, strokeColor: "#2563eb", strokeOpacity: 0.9, strokeWeight: 4 });
         if (maps.Marker) {
@@ -376,9 +406,43 @@ export function renderMapEmbed(turn, s) {
             if (deckIdx >= 0) m.addListener("click", () => openDeck(deckIdx));
           });
         }
+        if (routePts.length >= 2 && maps.SymbolPath) {
+          // A dotted line = closely-spaced circle symbols on an invisible
+          // polyline (the standard Maps JS idiom for dashed/dotted paths).
+          const dot = {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor: "#059669",
+            fillOpacity: 1,
+            strokeColor: "#059669",
+            strokeOpacity: 1,
+            scale: 2.6,
+          };
+          new maps.Polyline({
+            path: routePts,
+            map,
+            clickable: false,
+            strokeOpacity: 0,
+            icons: [{ icon: dot, offset: "0", repeat: "14px" }],
+            zIndex: 2,
+          });
+          // The walking-time number, ON the map, at the route's midpoint.
+          const durS = Number(s.route.durationS);
+          if (Number.isFinite(durS) && durS > 0 && maps.Marker && maps.Point) {
+            const mins = Math.max(1, Math.round(durS / 60));
+            const mid = routePts[Math.floor(routePts.length / 2)];
+            new maps.Marker({
+              position: mid,
+              map,
+              clickable: false,
+              zIndex: 999,
+              icon: walkTimeBadge(maps, `${mins} min walk`),
+            });
+          }
+        }
         if (maps.LatLngBounds) {
           const bounds = new maps.LatLngBounds();
           path.forEach((p) => bounds.extend(p));
+          routePts.forEach((p) => bounds.extend(p));
           map.fitBounds(bounds);
         }
       }

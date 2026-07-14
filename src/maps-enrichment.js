@@ -95,6 +95,25 @@ const MAX_MAPS_IMAGES = 4;
 /** @type {Record<string, number>} */
 const DIR_HEADINGS = { north: 0, east: 90, south: 180, west: 270 };
 
+// The walking route carried on a `map_embed` event (the road-following
+// polyline + its distance/duration) so the client can draw the actual
+// on-foot path as a DOTTED line with a walking-time badge, alongside the
+// straight stop-to-stop line (requested 2026-07-14). Returns undefined when
+// no route resolved — the field is simply absent and older clients ignore it
+// either way (the sse-protocol forward-compat rule).
+/**
+ * @param {import('./googlemaps.js').WalkingRoute | null} route
+ * @returns {{ polyline: LatLng[], durationS: number | null, distanceMeters: number } | undefined}
+ */
+function mapEmbedRoute(route) {
+  if (!route || !Array.isArray(route.polyline) || route.polyline.length < 2) return undefined;
+  return {
+    polyline: route.polyline.map((p) => ({ lat: p.lat, lng: p.lng })),
+    durationS: route.durationS,
+    distanceMeters: route.distanceMeters,
+  };
+}
+
 // ---- dispatch ---------------------------------------------------------------
 
 // Google Maps enrichment: resolve a location the message is about (a street
@@ -663,7 +682,7 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
       lat: waypoints.reduce((s2, p) => s2 + p.lat, 0) / waypoints.length,
       lng: waypoints.reduce((s2, p) => s2 + p.lng, 0) / waypoints.length,
     };
-    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: waypoints.map((p) => ({ lat: p.lat, lng: p.lng })) } });
+    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: waypoints.map((p) => ({ lat: p.lat, lng: p.lng })), route: mapEmbedRoute(route) } });
   }
   stepDone(
     "maps",
@@ -816,9 +835,12 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
 async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation, state, journey) {
   step("maps", "Mapping the journey so far…");
   const points = journey.points;
-  const [image, route, startPlace, endPlace] = await Promise.all([
-    routeMapImage(env, log, points).catch(() => null),
-    computeWalkingRoute(env, log, points),
+  // Compute the on-foot route FIRST so both the static route image and the
+  // interactive embed can draw the real ROAD path (not just straight stop-to-
+  // stop lines) — fail-soft null degrades both back to straight-line.
+  const route = await computeWalkingRoute(env, log, points);
+  const [image, startPlace, endPlace] = await Promise.all([
+    routeMapImage(env, log, points, route?.polyline || null).catch(() => null),
     reverseGeocode(env, log, points[0].lat, points[0].lng),
     reverseGeocode(env, log, points[points.length - 1].lat, points[points.length - 1].lng),
   ]);
@@ -840,7 +862,7 @@ async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation
       lat: points.reduce((s, p) => s + p.lat, 0) / points.length,
       lng: points.reduce((s, p) => s + p.lng, 0) / points.length,
     };
-    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: points } });
+    emit({ status: { type: "map_embed", lat: mid.lat, lng: mid.lng, zoom: 15, path: points, route: mapEmbedRoute(route) } });
   }
   let straight = 0;
   for (let i = 1; i < points.length; i++) {

@@ -61,7 +61,13 @@ unknown `status` types (forward compatibility).
   click opens the deck's slideshow at it — imagedeck.js), a polyline
   between them, and fits the viewport to the route; clients that don't
   know the field render the same event as a plain centered map (the
-  forward-compat rule at work). `streetview_frames` frames likewise
+  forward-compat rule at work). ALSO optionally
+  `"route":{"polyline":[{"lat":…,"lng":…},…],"durationS":540,"distanceMeters":720}`
+  (added 2026-07-14): the along-the-ROADS walking path from Google Routes
+  — the client draws it as a DOTTED green line beside the straight blue
+  stop-to-stop line and pins a "N min walk" badge at its midpoint (the
+  walking time on the map). Absent when the Routes API isn't enabled/
+  errors; older clients ignore it (forward-compat). `streetview_frames` frames likewise
   gained optional per-frame `lat`/`lng`/`kind:"map"` fields the same day
   — the deck uses them for the mini-map, the waypoint matching, and the
   ask-from-this-point anchor; older clients ignore them —
