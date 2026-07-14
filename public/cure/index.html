@@ -87,7 +87,19 @@
   <div id="ghostsay" hidden>
     <button id="ghostsayclose" type="button" aria-label="Dismiss">×</button>
     <span class="ghostsay-face" aria-hidden="true">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
+      <svg width="36" height="42" viewBox="-3 -13 33 40" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <!-- the ghost -->
+        <path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/>
+        <line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/>
+        <line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/>
+        <!-- a little pink umbrella held over the shoulder, matching the strolling ghost -->
+        <g stroke="#8a4a5e">
+          <line x1="21" y1="-3" x2="16.5" y2="8" stroke-width="1.4"/>
+          <path d="M12 -2 Q21 -12 30 -2 Q26.5 -4.6 24 -2 Q21.5 -4.6 19 -2 Q16.5 -4.6 14 -2 Q13 -3 12 -2 Z" fill="#df6e8e" stroke-width="1.1" stroke-linejoin="round"/>
+          <circle cx="21" cy="-6" r="1" fill="#8a4a5e" stroke="none"/>
+          <path d="M16.5 8 q2.4 1 2 3.4" stroke-width="1.4"/>
+        </g>
+      </svg>
     </span>
     <div class="ghostsay-body">
       <strong>You're on DeepResearch.<b>Se<span class="sl">/</span>cure</b></strong>
