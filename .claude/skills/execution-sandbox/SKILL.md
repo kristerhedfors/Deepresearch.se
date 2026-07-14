@@ -586,3 +586,69 @@ from logs; the fix is unit-tested but the iOS timing is unproven in-session).
 `www` callback that only a (non-matching) wildcard covered. Fixed by
 canonicalizing `www → apex` (301) at the top of `route()` before anything else.
 See the **access-control** skill.
+
+## Incident — "sandbox not ready" from the boot's own /workspace verify (2026-07-14)
+
+**Symptom:** "List files in /" answered "sandbox not ready" on the iOS PWA,
+**twice in a row** first thing in the morning (chat_logs #316/#317). Unlike the
+2026-07-13 boot-race, **isolation was fine**: `meta.client_diag` was
+`{coi:true, sab:true, bl:true, ran:1}` and `meta.shell` held the smoking gun —
+`[{command:"ls /", exitCode:1, stdout:"", stderr:"sandbox not ready"}]`. So the
+loop DID run a command against the VM, and the VM was dead when it did.
+
+**Root cause (a boot that reports success but has already torn itself down):**
+`stream.js` always passes a `fileProvider` to `bootVM`, so the persistent
+`/workspace` volume (a bare, fixed-name `IDBDevice` `dr-sandbox-workspace`,
+reused every boot and **never reset**) is mounted even for a bare `ls /` —
+making `fileMount` truthy. `bootVM` then ran its DEBUG-ONLY `fs.verify` exec
+after `vmState="ready"`, and that verify's `ls -la /workspace/*/` glob is exactly
+the documented wedge trigger (a stat over a corrupt persisted volume that never
+returns — see the sandbox-debug skill). The read wedged → `EXEC_TIMEOUT_MS`
+(30 s) → `resetSandbox()` fired **from inside the boot** (`vmState="off"`,
+`cx=null`) — yet `bootVM` still `return true`d. `ensureSandboxBooted` therefore
+resolved ready, the loop ran the model's real `ls /`, and `execInSandbox` hit the
+`vmState!=="ready"` guard → "sandbox not ready". Intermittent because it hinges
+on the persisted IDB state (a boot/seed interrupted by an iOS PWA suspension
+leaves the ext2-in-IndexedDB with inconsistent metadata that a later read
+wedges on — and nothing ever clears that fixed-name db, so it re-arms every boot).
+`fs.ms:649, err:""` in the log fits: the fs summary is stamped BEFORE the verify,
+so it records the fast (IDB-cached) boot-to-ready time, not the 30 s wedge.
+
+**Fixes (`public/js/sandbox.js`):**
+1. **Gate the `/workspace`-reading `fs.verify` behind the verbose debug toggle
+   (`_sbDebug`).** It is debug-level telemetry (`sandbox.fs.verify` only surfaces
+   with `LOG_LEVEL=debug`/the client toggle), so it has no business on the normal
+   hot path — `if (fileMount && _sbDebug)`. This removes the wedge trigger from
+   every production boot; the common "ls /" (which never needs `/workspace`) can't
+   be broken by an unrelated corrupt persisted volume.
+2. **Honest readiness.** `bootVM` returns `false` (not `true`) if the VM was torn
+   down between `vmState="ready"` and the end of boot (`if (vmState!=="ready" ||
+   !cx) return false`). A dead VM can never again be reported as booted — the
+   caller falls back cleanly (`maybeRunShellLoop` answers normally) instead of
+   running commands against a corpse. **LOAD-BEARING: keep this guard; it is the
+   invariant that "boot resolved true" ⟺ "a live VM exists".**
+3. **Self-heal the persistent volume.** On a torn-down FILE-MOUNTING boot,
+   `resetWorkspaceStorage()` wipes `/workspace` (`IDBDevice.reset()` →
+   `indexedDB.deleteDatabase` fallback, bounded, best-effort) so a corrupt store
+   can't brick every future boot. Scoped to the already-failed file-mounting path
+   — the bare `ls /` path never mounts `/workspace` and never reaches it, so
+   nothing usable is ever wiped.
+
+**Diagnostics added for any recurrence:** `sandbox.exec_not_ready` (full state
+dump: `vmState`, `hasCx`, `bootTracked`, `bootBare`, `stage`, `gen`, `cmd`),
+`sandbox.boot_torn_down`, a monotonic **boot-generation** counter (`gen`) on the
+boot events, and a teardown `reason` on `sandbox.reset` (`boot_timeout` /
+`exec_timeout`). If it ever returns, the log now says exactly which boot backed
+the failing exec and what reset it. Still owed: live confirmation on the real iOS
+device that the morning "twice in a row" is gone (the diagnosis + fix are from
+logs + structure; the iOS timing is unproven in-session — the deploy carries the
+diagnostics to confirm on the next real attempt).
+
+**Note — `/workspace` is a bare `IDBDevice`, NOT an OverlayDevice** (only root
+`/` is an OverlayDevice over the CloudDevice image). So `/workspace` reads go
+straight to the single `dr-sandbox-workspace` IndexedDB with no base-image
+fallback — which is why "reading /workspace" fails while the rest of the VM
+(served from the disk image) boots fine. The deeper hardening options
+(bounded `/workspace` probe at boot with fallback to a non-persistent mount;
+re-validating IDB handles on `pageshow(persisted)`; a user-facing "reset
+workspace storage") remain open follow-ups.
