@@ -102,80 +102,89 @@ export function termsPage(identity) {
   <link rel="icon" href="/favicon.ico" sizes="48x48">
   <meta name="theme-color" content="#6fc3fd">
   <style>${PAGE_CSS}
-    body { align-items: start; padding: 1.25rem 1rem 3rem; }
-    .card { width: min(560px, 94vw); text-align: left; }
-    .card h1 { text-align: center; }
-    h2 { font-size: .92rem; margin: .6rem 0 .2rem; }
-    p, li { font-size: .88rem; line-height: 1.5; margin: .3rem 0; }
-    ul { padding-left: 1.2rem; margin: .3rem 0; }
-    .rules { background: #fbeaea; border: 1px solid #e6b8b8; border-radius: 10px; padding: .6rem .9rem; }
-    .rules b { color: #7a1414; }
+    body { align-items: start; padding: 1.1rem 1rem 2rem; }
+    .card { width: min(520px, 94vw); text-align: left; gap: .5rem; padding: 1.3rem 1.4rem; }
+    .card h1 { text-align: center; font-size: 1.15rem; margin: 0; }
+    .hi { text-align: center; font-size: 1.6rem; line-height: 1; margin: 0; }
+    .lead { text-align: center; color: #2f5d8e; font-size: .82rem; margin: 0 0 .2rem; overflow-wrap: anywhere; }
+    .sec { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr); gap: .1rem .55rem; align-items: start; }
+    .sec > div { min-width: 0; }
+    .sec .ico { font-size: 1rem; line-height: 1.5; text-align: center; }
+    .sec h2 { font-size: .9rem; margin: 0; line-height: 1.5; }
+    .sec p { font-size: .84rem; line-height: 1.45; margin: .1rem 0 0; color: #234; overflow-wrap: anywhere; }
+    .rules { grid-column: 2; min-width: 0; list-style: none; margin: .3rem 0 0; padding: 0;
+      display: grid; gap: .18rem; }
+    .rules li { font-size: .82rem; line-height: 1.35; padding-left: 1.15rem;
+      position: relative; color: #234; }
+    .rules li::before { content: "✕"; position: absolute; left: 0; top: 0;
+      color: #b53535; font-weight: 700; }
     a { color: #0d4fa0; overflow-wrap: anywhere; }
-    form.accept { margin: .4rem 0 0; display: flex; gap: .6rem; align-items: center; }
+    .actions { display: flex; align-items: center; gap: .9rem; margin-top: .7rem; flex-wrap: wrap; }
+    form { margin: 0; }
     button.primary {
       background: #0d4fa0; color: #fff; border: 0; border-radius: 24px;
-      padding: .62rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
+      padding: .6rem 1.4rem; font: inherit; font-weight: 600; cursor: pointer;
     }
-    form.out { margin: 0; }
+    button.primary:active { background: #0a3f80; }
     button.plain {
       background: none; border: 0; color: #2f5d8e; font: inherit;
-      font-size: .8rem; text-decoration: underline; cursor: pointer; padding: 0;
+      font-size: .82rem; text-decoration: underline; cursor: pointer; padding: 0;
     }
+    .fine { font-size: .74rem; color: #5a7ba6; margin: .5rem 0 0; text-align: center; }
   </style>
 </head>
 <body>
   <div class="card">
-    <img class="logo" src="/icons/icon-192.png?v=4" alt="">
-    <h1>Before you start</h1>
-    <p>You’re signed in as <b>${escapeHtml(identity.email)}</b>. One thing
-    first — please read and accept what this site is and how it may be used.</p>
+    <p class="hi">👋</p>
+    <h1>Welcome — one quick read</h1>
+    <p class="lead">Signed in as <b>${escapeHtml(identity.email)}</b> · about 20 seconds</p>
 
-    <h2>What this is</h2>
-    <p>DeepResearch.se is a working deep-research assistant, but above all a
-    <b>research and demonstration project</b>: an entire SaaS-style app built
-    over a weekend, entirely through the Claude Code iPhone app — no other
-    device, no source or config viewed directly. It is invite-only, not a
-    commercial product, and never placed on the market. The source is public at
-    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>;
-    the EU AI Act reasoning behind the rules below is on the
-    <a href="/build/">About this project</a> page, and the complete
-    prompt-by-prompt history is on <a href="/story/">The build story</a>.</p>
+    <div class="sec">
+      <div class="ico">🔬</div>
+      <div>
+        <h2>What this is</h2>
+        <p>A working deep-research assistant — and an experiment in how private
+        an LLM app can be. Built over a weekend, phone-only; invite-only, not a
+        product. More on <a href="/build/">About</a> and
+        <a href="/story/">The build story</a>; source on
+        <a href="https://github.com/kristerhedfors/Deepresearch.se">GitHub</a>.</p>
+      </div>
+    </div>
 
-    <h2>Not allowed here</h2>
-    <p>The EU AI Act’s prohibited practices (Article 5), mapped onto what a
-    text research tool can be asked to do, are hard rules on this site:</p>
-    <div class="rules">
-      <ul>
-        <li><b>Manipulation causing harm</b> — content designed to deceive or
-          psychologically manipulate a person into decisions likely to cause
-          significant harm.</li>
-        <li><b>Exploiting vulnerable people</b> — targeting children or other
-          vulnerable groups to distort their behavior harmfully.</li>
-        <li><b>Social scoring</b> of identifiable people that leads to worse
-          treatment in unrelated contexts.</li>
-        <li><b>Predicting a named person’s criminality</b> from profiling or
-          personality traits rather than verifiable facts.</li>
-        <li><b>Inferring protected characteristics or emotional state</b> of
-          a named, identifiable person (race, politics, religion, union
-          membership, sexual orientation; a coworker’s or student’s
-          feelings) from data about them.</li>
-        <li><b>Facial recognition / biometric surveillance</b> in any form,
-          and <b>non-consensual intimate imagery or CSAM</b> — categorically.</li>
+    <div class="sec">
+      <div class="ico">🚫</div>
+      <div>
+        <h2>House rules</h2>
+        <p>It’s a text research tool. The EU AI Act’s banned uses (Article 5)
+        are hard limits here — don’t use it to:</p>
+      </div>
+      <ul class="rules">
+        <li>Manipulate or deceive anyone into harmful choices</li>
+        <li>Exploit children or other vulnerable people</li>
+        <li>Social-score real, identifiable people</li>
+        <li>Predict a named person’s criminality from profiling</li>
+        <li>Infer someone’s race, politics, religion or feelings</li>
+        <li>Facial recognition or biometric surveillance — or NCII / CSAM</li>
       </ul>
     </div>
 
-    <h2>Privacy, briefly</h2>
-    <p>Questions are processed by Berget.ai (EU-hosted models) and web
-    searches by Exa (which retains queries — see the in-app documentation
-    for the semi-private workflow). Conversations are not stored server-side
-    beyond a ≤15-minute answer-recovery buffer; logs carry metadata only.</p>
+    <div class="sec">
+      <div class="ico">🔒</div>
+      <div>
+        <h2>Privacy</h2>
+        <p>Answers run on Berget.ai (EU-hosted), web search via Exa (which
+        keeps queries). Conversations aren’t stored server-side beyond a
+        ≤15-min recovery buffer; logs are metadata only.</p>
+      </div>
+    </div>
 
-    <p class="muted">Accepting is recorded on your account. Misuse is grounds
-    for revoking access.</p>
-    <form class="accept" method="post" action="/terms/accept">
-      <button class="primary" type="submit">I understand and accept</button>
-    </form>
-    <form class="out" method="post" action="/logout"><button class="plain" type="submit">Or sign out</button></form>
+    <div class="actions">
+      <form method="post" action="/terms/accept">
+        <button class="primary" type="submit">I understand — let’s go</button>
+      </form>
+      <form method="post" action="/logout"><button class="plain" type="submit">or sign out</button></form>
+    </div>
+    <p class="fine">Accepting is recorded on your account. Misuse is grounds for revoking access.</p>
   </div>
 </body>
 </html>`;
