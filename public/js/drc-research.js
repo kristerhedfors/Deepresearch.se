@@ -442,6 +442,7 @@ export async function runDrcSourceTools({
  */
 export async function runDrcResearch({
   providerId,
+  provider: providerOverride = null,
   apiKey,
   model,
   messages,
@@ -458,7 +459,12 @@ export async function runDrcResearch({
   signal,
   baseUrl,
 }) {
-  const provider = drcProvider(providerId);
+  // `providerOverride` lets the caller pass a provider object that isn't in the
+  // user-key registry — specifically the SECURE-RESEARCH-SPACE proxy provider
+  // (drc-providers.js proxyLlmProvider), whose "apiKey" is a temporary proxy
+  // token and whose base is the server's account-connected reverse proxy. Every
+  // wire call downstream is provider-agnostic, so nothing else changes.
+  const provider = providerOverride || drcProvider(providerId);
   if (!provider) throw new Error("Unknown provider.");
   if (!apiKey) throw new Error("No " + provider.label + " API key is stored.");
   const jsonModel = provider.jsonModel;

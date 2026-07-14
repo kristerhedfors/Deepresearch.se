@@ -270,29 +270,52 @@ function syncGhostState() {
     "Ghost mode — DeepResearch.Se/cure: the khaki client-side twin where this server never sees your chats (your own API keys, browser-local storage)";
 }
 
-ghostBtn.addEventListener("click", () => {
-  // Crossing to Se/cure signed-in: drop an intent marker so the /cure page
-  // requests a TEMPORARY web-search grant (a bounded quota of searches routed
-  // through this server's Exa key — src/websearch.js). Same-origin localStorage
-  // is shared with /cure, and this write is synchronous so it lands before the
-  // navigation. It is only INTENT — the grant itself is minted from the /cure
-  // side against the (still-present) session cookie; a plain visitor who never
-  // crossed over never sets it, so the server stays out of their path entirely.
+// Open /cure, in a fresh browsing context for the installed PWA (iOS pins the
+// launch status-bar tint on in-app navigation — the khaki /cure under a still-
+// blue bar; on-device-trace skill 2026-07-10), plain navigation elsewhere.
+function goToCure(path) {
+  const standalone =
+    /** @type {any} */ (navigator).standalone === true ||
+    matchMedia("(display-mode: standalone)").matches;
+  if (standalone) window.open(path, "_blank");
+  else location.assign(path);
+}
+
+ghostBtn.addEventListener("click", async () => {
+  // Crossing to Se/cure signed-in now hands over a whole SECURE RESEARCH SPACE:
+  // a bundle of temporary, account-connected proxy grants (web search + LLM API)
+  // minted for this signed-in account (src/proxy.js). We mint it here so the
+  // encrypted bundle can ride the navigation URL — ciphertext in the query
+  // (?rp=), decryption key in the ANCHOR (#rk=, never sent to the server). The
+  // /cure page opens it, exchanges the grant tokens, and connects the APIs.
+  ghostBtn.disabled = true;
+  try {
+    const res = await fetch("/api/proxy/grant", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    if (res.ok) {
+      const b = await res.json(); // { blob, key, connected }
+      if (b && b.blob && b.key) {
+        goToCure("/cure?rp=" + encodeURIComponent(b.blob) + "#rk=" + encodeURIComponent(b.key));
+        return;
+      }
+    }
+  } catch {
+    // offline / grants unavailable — fall through to a plain crossover
+  } finally {
+    ghostBtn.disabled = false;
+  }
+  // Fallback: no bundle (feature off, no D1, or a network error). Preserve the
+  // legacy web-search intent marker so the old grant path still fires, and
+  // cross over plain. A plain visitor who never crossed never sets it.
   try {
     localStorage.setItem("dr_ws_grant_intent", "1");
   } catch {
     // storage blocked → /cure simply won't offer server web search; harmless
   }
-  // In the installed PWA the webview's status-bar tint is pinned at
-  // launch — iOS ignores the destination page's theme-color on in-app
-  // navigation (on-device-trace skill, 2026-07-10: the khaki /cure under
-  // a still-blue bar). Ghost mode therefore opens in its OWN browsing
-  // context from a standalone app; plain navigation everywhere else.
-  const standalone =
-    /** @type {any} */ (navigator).standalone === true ||
-    matchMedia("(display-mode: standalone)").matches;
-  if (standalone) window.open("/cure", "_blank");
-  else location.assign("/cure");
+  goToCure("/cure");
 });
 syncGhostState();
 

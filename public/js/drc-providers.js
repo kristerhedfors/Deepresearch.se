@@ -120,6 +120,37 @@ export function drcProvider(id) {
   return DRC_PROVIDERS.find((p) => p.id === id) || null;
 }
 
+// The SECURE-RESEARCH-SPACE LLM provider: not a user-key provider but the
+// server's account-connected reverse proxy (src/proxy.js /api/proxy/llm). It is
+// wire-identical to Berget (the proxy is Berget-only, OpenAI-compatible), so it
+// reuses every function in this module unchanged — the only differences are the
+// base URL (the server proxy) and that its "apiKey" is the temporary PROXY
+// TOKEN, not a provider key. Built on demand (it needs the page origin) rather
+// than living in DRC_PROVIDERS, because it exists only while a bundle is live.
+// The id `proxy` never collides with a real provider, and its model ids are the
+// Berget catalog the proxy forwards.
+export const PROXY_LLM_PROVIDER_ID = "proxy";
+export function proxyLlmProvider(origin) {
+  return {
+    id: PROXY_LLM_PROVIDER_ID,
+    label: "Secure research space",
+    base: (origin || "") + "/api/proxy/llm",
+    proxied: true, // marks this as the server-proxied provider (no user key)
+    jsonModel: "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    fallbackModels: [
+      "moonshotai/Kimi-K2.6",
+      "zai-org/GLM-4.7-FP8",
+      "mistralai/Mistral-Medium-3.5-128B",
+      "openai/gpt-oss-120b",
+      "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+    ],
+    modelFilter: (id) => id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id),
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No embeddings over the proxy — RAG stays on the user's own OpenAI key when
+    // present; a proxy-only session runs without client-side RAG, like Groq.
+  };
+}
+
 /**
  * Identify the provider a pasted API key belongs to by its prefix
  * (sk_ber_… → Berget, gsk_… → Groq, sk-… → OpenAI), or null for an
