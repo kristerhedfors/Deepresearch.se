@@ -23,24 +23,35 @@
 // started (2026-07-14 directive). ANSI escapes are stripped and the live,
 // not-yet-terminated prompt line is shown as a tail.
 //
-// SCROLLING: the log is no longer a fixed tail. A wheel/drag over the empty page
-// field pages BACK through the command history (the conversation bubbles keep
-// their own native scroll — touching a bubble scrolls the convo, not the
-// backdrop). While the backdrop scrolls, the conversation leans the opposite way
-// ever so slightly and springs back — purely for feel; it never fights the
-// user's own message scrolling. The newest command line sits ABOVE the composer
-// (the CSS raises the viewport) so it's visible, not hidden behind the input.
+// TWO-LAYER VIEW SWITCH: while the sandbox is running the page holds two stacked
+// panes — the CONVERSATION and this TERMINAL backdrop. A TAP on the bare page
+// background (never on a message bubble, never on interactive chrome) swaps which
+// pane is in front: the front pane reads at full strength, the other recedes to
+// a faint background, and a quick slide-in-from-the-right sells the swap. The
+// tap-vs-message discrimination is the load-bearing detail (a tap that lands on a
+// user/assistant bubble or a control does its normal thing and never switches).
+//
+// SCROLLING is per-mode. In CONVERSATION mode the conversation scrolls natively
+// and the terminal (the background pane) leans along in synchronization, weaker
+// and shorter. In TERMINAL mode a wheel/drag pages BACK through the command
+// history and the conversation (now the background pane) leans along the same
+// way. The newest command line sits ABOVE the composer (the CSS raises the
+// viewport) so it's visible, not hidden behind the input.
 
 import {
   CHANNEL_CLIP_MS,
+  LAYER_CONVO,
+  LAYER_TERMINAL,
   activeLines,
   backdropEnabled,
   channelCount,
   clampLine,
   clipToNextChannel,
   createBackdropModel,
+  isTapGesture,
+  nextLayerMode,
   opacityCss,
-  parallaxNudge,
+  parallaxFollow,
   pushCommand,
   pushLines,
   pushResult,
@@ -76,8 +87,23 @@ let termBuf = "";
 // the live tail), bgPinned tracks whether we're still following the newest.
 let bgOffset = 0;
 let bgPinned = true;
-let scrollWired = false; // wheel/touch listeners attached once
-let parallaxTimer = 0; // springs the conversation's opposite lean back to zero
+let scrollWired = false; // wheel/touch/tap listeners attached once
+
+// Which pane is in front. Only meaningful while the backdrop has content (a
+// sandbox ran). Defaults to the conversation — we never auto-pop the terminal
+// forward (that was the old screen-covering behavior we removed); the user taps
+// the background to bring it up.
+let layerMode = LAYER_CONVO;
+
+// Composed transforms for the two panes. Each pane can carry BOTH a transient
+// slide (the switch flourish) and a small parallax lean (during scroll); they
+// share one transform, so we track the parts and write them together. The
+// conversation (#chat) uses native scroll, so a static translate is safe; the
+// backdrop's parallax rides its OWN wrapper (`.dr-agent-backdrop-text`), clear
+// of the scroller/`<pre>` transforms that already page and wave.
+let chatSlideX = 0, chatParY = 0, chatParTimer = 0;
+let viewSlideX = 0, viewParY = 0, viewParTimer = 0;
+let lastChatTop = 0; // remembers #chat.scrollTop to derive its scroll delta
 
 // ---- fixed transparency ----
 
@@ -119,7 +145,96 @@ function ensureLayer() {
 function applyOpacity() {
   if (!layer) return;
   layer.style.display = "";
-  layer.style.opacity = String(opacityCss(OPACITY_PCT));
+  // Full strength when the terminal is the foreground pane; the faint ceiling
+  // when it's the background (its normal, decorative state).
+  layer.style.opacity = layerMode === LAYER_TERMINAL ? "1" : String(opacityCss(OPACITY_PCT));
+}
+
+// ---- the two-layer view switch ----------------------------------------------
+// A tap on the bare page background swaps the foreground pane (see the header
+// note). We keep the mode meaningful only while the sandbox has produced output.
+
+/** Whether the sandbox has produced any output yet (→ a terminal worth showing). */
+function hasBackdropContent() {
+  return channelCount(model) > 0;
+}
+
+function reduceMotion() {
+  try {
+    return typeof window !== "undefined" && window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch { return false; }
+}
+
+function chatEl() {
+  return typeof document !== "undefined" ? document.getElementById("chat") : null;
+}
+
+function applyChatTransform() {
+  const c = chatEl();
+  if (c) c.style.transform = "translate(" + chatSlideX + "px," + chatParY + "px)";
+}
+function applyViewTransform() {
+  if (view) view.style.transform = "translate(" + viewSlideX + "px," + viewParY + "px)";
+}
+
+// A quick slide-in-from-the-right for the pane that just came forward. Disable
+// the transition, place it 30px to the right, force a reflow, then transition
+// back to 0 — the standard kick so it eases IN rather than animating out first.
+function slideInForeground(terminal) {
+  if (reduceMotion()) return;
+  const isChat = !terminal;
+  const el = terminal ? view : chatEl();
+  if (!el) return;
+  if (isChat) chatSlideX = 30; else viewSlideX = 30;
+  el.style.transition = "none";
+  if (isChat) applyChatTransform(); else applyViewTransform();
+  // force reflow so the 30px start is committed before we transition to 0
+  void el.offsetWidth;
+  el.style.transition = "";
+  if (isChat) chatSlideX = 0; else viewSlideX = 0;
+  if (isChat) applyChatTransform(); else applyViewTransform();
+}
+
+// Reset any lingering parallax lean on BOTH panes (called on a mode switch so a
+// half-sprung lean doesn't stick when the panes trade foreground/background).
+function clearParallax() {
+  chatParY = 0; viewParY = 0;
+  if (chatParTimer) { clearTimeout(chatParTimer); chatParTimer = 0; }
+  if (viewParTimer) { clearTimeout(viewParTimer); viewParTimer = 0; }
+  applyChatTransform();
+  applyViewTransform();
+}
+
+/** Switch the foreground pane, updating the class, opacity and slide flourish. */
+function setLayerMode(mode) {
+  const next = mode === LAYER_TERMINAL ? LAYER_TERMINAL : LAYER_CONVO;
+  if (next === layerMode) return;
+  layerMode = next;
+  const terminal = layerMode === LAYER_TERMINAL;
+  if (typeof document !== "undefined" && document.body) {
+    document.body.classList.toggle("term-fg", terminal);
+  }
+  applyOpacity();
+  clearParallax();
+  slideInForeground(terminal);
+}
+
+// The BACKGROUND pane leans in the same direction as the foreground scroll, then
+// springs back — "in synchronization … weaker and shorter". `signed` is the
+// already-directed displacement (px of scroll intent); parallaxFollow scales +
+// clamps it. The CSS transition on each pane smooths the lean and the return.
+function leanChat(signed) {
+  chatParY = parallaxFollow(signed);
+  applyChatTransform();
+  if (chatParTimer) clearTimeout(chatParTimer);
+  chatParTimer = setTimeout(() => { chatParY = 0; applyChatTransform(); }, 150);
+}
+function leanBackdrop(signed) {
+  viewParY = parallaxFollow(signed);
+  applyViewTransform();
+  if (viewParTimer) clearTimeout(viewParTimer);
+  viewParTimer = setTimeout(() => { viewParY = 0; applyViewTransform(); }, 150);
 }
 
 function render() {
@@ -158,57 +273,85 @@ function applyBgScroll() {
   scroller.style.transform = "translateY(" + bgOffset + "px)";
 }
 
-// Conversation bubbles / interactive chrome — a wheel or drag over any of these
-// scrolls the CONVERSATION (native), never the backdrop.
-const CONVO_SEL =
-  ".msg, .step, .activity, #jumpdown, header, #footer, #composer, " +
-  ".history, #account, .account-card, .project-panel, #drspop, #intro, #drawer";
+// Genuine interactive chrome + message bubbles — a TAP on any of these does its
+// own thing and must NEVER switch panes (the load-bearing distinction: tap a
+// user/assistant message → no switch; tap the bare background → switch). Also
+// the set a TERMINAL-mode swipe won't hijack, so real controls stay usable.
+const BLOCK_SEL =
+  ".msg, .step, .activity, button, a, input, textarea, select, label, [role=button], " +
+  "#jumpdown, header, #footer, #composer, #searchpop, .setting-pop, .history, " +
+  "#account, .account-card, .project-panel, #drspop, #intro, #drawer";
 
-function onConvo(target) {
-  return !!(target && target.closest && target.closest(CONVO_SEL));
+function onBlocked(target) {
+  return !!(target && target.closest && target.closest(BLOCK_SEL));
 }
 
-// A tiny, springy opposite lean applied to the conversation while the backdrop
-// scrolls — purely for feel, eased back to zero so it never displaces the gap
-// the user is reading in (public/js/agent-backdrop-core.js parallaxNudge).
-function nudgeConversation(deltaY) {
-  const chat = typeof document !== "undefined" ? document.getElementById("chat") : null;
-  if (!chat) return;
-  chat.style.transform = "translateY(" + parallaxNudge(deltaY) + "px)";
-  chat.style.transition = "transform .08s ease-out";
-  if (parallaxTimer) clearTimeout(parallaxTimer);
-  parallaxTimer = setTimeout(() => {
-    chat.style.transition = "transform .5s ease-out";
-    chat.style.transform = "translateY(0)";
-  }, 110);
+// A tap counts as a pane switch only when it lands on the bare background: not on
+// a message/control, and not while text is selected (a drag-select ends in a
+// pointerup we must not treat as a tap).
+function isSwitchTarget(target) {
+  if (onBlocked(target)) return false;
+  try {
+    const sel = typeof window !== "undefined" && window.getSelection && window.getSelection();
+    if (sel && String(sel).length) return false;
+  } catch { /* ignore */ }
+  return true;
 }
 
-// Apply one scroll gesture to the backdrop; returns true if we took it over
-// (so the caller can preventDefault). We only take over when there is history
-// to reveal (or we're already scrolled back) — otherwise the page behaves
-// normally over its empty field.
+// Apply one scroll gesture to the backdrop (TERMINAL mode only); returns true if
+// we took it over so the caller can preventDefault. Only takes over when there
+// is history to reveal. The conversation — now the background pane — leans along
+// in synchronization.
 function scrollBackdrop(deltaY) {
-  if (!backdropOn() || !scroller) return false;
+  if (!scroller) return false;
   if (maxBgOffset() <= 0 && bgOffset <= 0) return false;
   const step = scrollStep(bgOffset, deltaY, pre.scrollHeight, view.clientHeight);
   bgOffset = step.offset;
   bgPinned = step.pinned;
   applyBgScroll();
-  nudgeConversation(deltaY);
+  leanChat(-deltaY); // background pane follows the same visual direction, weaker
   return true;
 }
 
 let touchY = 0;
 let touchActive = false;
+let downX = 0, downY = 0, downT = 0, downTarget = null, pointerDown = false;
+
+function now() {
+  try { return typeof performance !== "undefined" ? performance.now() : 0; }
+  catch { return 0; }
+}
 
 function wireScroll() {
   if (scrollWired || typeof window === "undefined") return;
   scrollWired = true;
+
+  // --- the tap-to-switch gesture (pointer events cover mouse + touch) ---
+  window.addEventListener("pointerdown", (e) => {
+    pointerDown = true;
+    downX = e.clientX; downY = e.clientY; downT = now(); downTarget = e.target;
+  }, { passive: true });
+  window.addEventListener("pointerup", (e) => {
+    try {
+      if (!pointerDown) return;
+      pointerDown = false;
+      if (!hasBackdropContent()) return; // no sandbox output → nothing to switch to
+      if (!isTapGesture(e.clientX - downX, e.clientY - downY, now() - downT)) return;
+      // both the press and the release must be on the bare background — a drag
+      // that started on a bubble and lifted on the gap isn't a background tap.
+      if (!isSwitchTarget(e.target) || !isSwitchTarget(downTarget)) return;
+      setLayerMode(nextLayerMode(layerMode));
+    } catch { /* decoration — never break the page */ }
+  }, { passive: true });
+
+  // --- wheel: TERMINAL mode pages history; CONVO mode scrolls the convo (and
+  //     leans the backdrop along, wired via the #chat scroll listener below) ---
   window.addEventListener(
     "wheel",
     (e) => {
       try {
-        if (onConvo(e.target)) return; // over a bubble → let the conversation scroll
+        if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+        if (onBlocked(e.target)) return; // over a real control → leave it alone
         if (scrollBackdrop(e.deltaY)) e.preventDefault();
       } catch { /* decoration — never break the page */ }
     },
@@ -218,8 +361,9 @@ function wireScroll() {
     "touchstart",
     (e) => {
       touchActive = false;
-      if (!backdropOn() || !e.touches || e.touches.length !== 1) return;
-      if (onConvo(e.target)) return; // finger started on a bubble → its scroll wins
+      if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+      if (!e.touches || e.touches.length !== 1) return;
+      if (onBlocked(e.target)) return; // finger on a real control → leave it alone
       touchY = e.touches[0].clientY;
       touchActive = true;
     },
@@ -239,6 +383,22 @@ function wireScroll() {
     { passive: false },
   );
   window.addEventListener("touchend", () => { touchActive = false; }, { passive: true });
+
+  // --- CONVO mode: the terminal (background pane) leans along as the
+  //     conversation scrolls natively, in synchronization but weaker/shorter ---
+  const c = chatEl();
+  if (c) {
+    lastChatTop = c.scrollTop;
+    c.addEventListener("scroll", () => {
+      try {
+        const top = c.scrollTop;
+        const d = top - lastChatTop;
+        lastChatTop = top;
+        if (layerMode !== LAYER_CONVO || !hasBackdropContent()) return;
+        leanBackdrop(-d); // content moved up (d>0) → backdrop drifts up too, less
+      } catch { /* decoration — never break the page */ }
+    }, { passive: true });
+  }
 }
 
 // Start/stop the round-robin that clips between agents. Only runs when more
