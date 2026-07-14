@@ -159,18 +159,29 @@ function beginPhaseSteps(beforeEl) {
   return host;
 }
 
-// Swap the running step's spinner for a pink ✓ and forget it.
+// Finish the running step with the umbrella spinner's COMPLETION FINALE: the
+// spinner speed-runs from wherever its boomerang is into the fully-bloomed PINK
+// umbrella (the beat the loop deliberately never reaches) and folds it into the
+// pink ✓, then we drop the canvas and prepend the real .check (same rose, so
+// the handoff is seamless). Fail-soft: a no-op mount fires the callback at once.
+// Detached from curPhaseStep immediately so a new step can start over the ~1 s
+// finale without the old one clobbering it.
 function finishCurPhaseStep() {
   if (!curPhaseStep) return;
-  curPhaseStep.spinner?.stop();
-  curPhaseStep.spin?.remove();
-  if (!curPhaseStep.summary.querySelector(".check")) {
-    const check = document.createElement("span");
-    check.className = "check";
-    check.textContent = "✓";
-    curPhaseStep.summary.prepend(check);
-  }
+  const step = curPhaseStep;
   curPhaseStep = null;
+  const addCheck = () => {
+    if (!step.summary.querySelector(".check")) {
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = "✓";
+      step.summary.prepend(check);
+    }
+    step.spinner?.stop?.();
+    step.spin?.remove();
+  };
+  if (step.spinner?.finish) step.spinner.finish(addCheck);
+  else addCheck();
 }
 
 // Start (or update-in-place) the step for `key`. A new key finishes the

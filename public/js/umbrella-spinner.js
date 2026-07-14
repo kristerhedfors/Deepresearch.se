@@ -41,19 +41,33 @@ import {
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
 
+// The in-progress LOOP turns back JUST BEFORE the pink. Its apex is the moment
+// the umbrella is fully built, tilted and wobbling but the Victorian color has
+// NOT yet flooded in — revive is exactly 0 at T.reviveStart. So while work is
+// ongoing the loading symbol swirls → untwists → wireframes → tilts → wobbles,
+// then rewinds, over and over, and NEVER blooms pink. Only the completion
+// FINALE (planFinale below) crosses T.reviveStart into the pink revive: the
+// pink umbrella is the one beat the loop never reaches, reserved for "done".
+export const LOOP_APEX = T.reviveStart;
+
+// The finale's target: the fully-revived, fully-fringed PINK umbrella — held a
+// beat, then folded into the ✓. Past reviveEnd and decoEnd but before the
+// intro's own fade, so it's the richest pink with its fringe fully hung.
+export const PINK_APEX = T.decoEnd;
+
 /** The BOOMERANG clock: real elapsed ms → design-time t that ramps 0→cycle
  * then back cycle→0, forever — a triangle wave. So the spinner plays the intro
- * (vortex→untwist→wire→camera→bloom) FORWARD, then rewinds it BACKWARD, over
+ * (vortex→untwist→wire→camera→wobble) FORWARD, then rewinds it BACKWARD, over
  * and over: the loading symbol "goes back and forth" like a boomerang while the
- * host stays mounted. The default cycle is T.fadeStart, so the apex is the
- * fully-bloomed, fringed umbrella (never the timeline's own fade-out) — the
- * turn is a clean reversal, not a blink.
+ * host stays mounted. The default cycle is LOOP_APEX (T.reviveStart), so the
+ * apex is the built-but-still-colorless wobbling umbrella JUST BEFORE the pink
+ * revive — the turn is a clean reversal, and the pink is saved for the finale.
  * @param {number} elapsedReal  ms since mount (real time)
  * @param {number} clockRate    design-ms per real-ms (BASE_SPEED × admin mult)
  * @param {number} cycle        design-ms of one one-way sweep (half the period)
  * @returns {number} */
-export function boomerangDesignTime(elapsedReal, clockRate, cycle = T.fadeStart) {
-  const c = cycle > 0 ? cycle : T.fadeStart;
+export function boomerangDesignTime(elapsedReal, clockRate, cycle = LOOP_APEX) {
+  const c = cycle > 0 ? cycle : LOOP_APEX;
   const pos = (Math.max(0, elapsedReal) * clockRate) % (2 * c);
   return pos <= c ? pos : 2 * c - pos;
 }
@@ -69,6 +83,57 @@ export function spinnerStyle(index) {
   return FLEET[i];
 }
 
+// ---- the completion FINALE (pure) --------------------------------------------------
+// When the task finishes, the spinner stops boomeranging and SPEED-RUNS from
+// wherever it was caught on the wave, forward through the remaining motion and
+// INTO the pink umbrella (the one place the loop never reaches), holds a beat,
+// then folds into the ✓. There are FIVE versions keyed to where the wave was
+// caught — the phase bucket picks the runway so a catch deep in the vortex
+// still lands the pink umbrella at the same satisfying felt pace as one already
+// tilting; the further out it was, the more design-time it fast-forwards.
+
+// Phase boundaries within the loop, in DESIGN ms. A catch before the first mark
+// is bucket 0 (deep vortex, furthest from pink); at/after the last is bucket 4
+// (built, tilted & wobbling — nearly there).
+const FINALE_MARKS = [T.swirlEnd, T.untwistEnd, T.wireEnd, T.tiltStart];
+// Real-ms runway per bucket (index = bucket): further out → longer runway, so
+// the bigger design-distance still reads as a deliberate speed-run, not a snap.
+const FINALE_RUN_MS = [900, 760, 640, 520, 400];
+const FINALE_HOLD_MS = 240; // living a beat as the pink umbrella
+const FINALE_CHECK_MS = 420; // the pink umbrella folding into the ✓
+
+/** Which of the five speed-run versions a completion caught at design-time t0
+ * uses (0 = deep vortex … 4 = tilted & wobbling).
+ * @param {number} t0 @returns {number} */
+export function finalePhaseBucket(t0) {
+  const t = Number.isFinite(t0) ? Math.max(0, t0) : 0;
+  let b = 0;
+  for (const m of FINALE_MARKS) if (t >= m) b++;
+  return b;
+}
+
+/** The finale plan for a completion caught at design-time t0 (the current wave
+ * position): the speed-run from t0 up to the pink apex, the beat to hold it,
+ * and the fold into the ✓. Pure and deterministic — the browser just plays it
+ * out frame by frame.
+ * @param {number} t0
+ * @returns {{bucket:number, runStart:number, runEnd:number, runMs:number,
+ *            holdMs:number, checkMs:number, totalMs:number}} */
+export function planFinale(t0) {
+  const start = Number.isFinite(t0) ? Math.min(Math.max(0, t0), PINK_APEX) : 0;
+  const bucket = finalePhaseBucket(start);
+  const runMs = FINALE_RUN_MS[bucket];
+  return {
+    bucket,
+    runStart: start,
+    runEnd: PINK_APEX,
+    runMs,
+    holdMs: FINALE_HOLD_MS,
+    checkMs: FINALE_CHECK_MS,
+    totalMs: runMs + FINALE_HOLD_MS + FINALE_CHECK_MS,
+  };
+}
+
 // ---- the DOM layer (browser only) --------------------------------------------------
 
 const YELLOW = "#f5c518"; // the logotype's golden swirl
@@ -76,6 +141,8 @@ const BLUE = "#1a56b0"; // the logotype's flag-blue field
 const INK = "#3d3418"; // the wire drawing's ink (drc.css --text)
 const CREAM = "#fff4f8"; // the fringe tassels of the revived rim
 const HANDLE = "#9c6472"; // the handle's dusty-rose shaft once alive
+const CHECK_PINK = "#e06c8c"; // the finale's ✓ — the fleet rose, matching the
+// CSS `.check` (--check-pink / --pink) so the canvas ✓ hands off seamlessly.
 
 /** "#rrggbb" → [r,g,b]. @param {string} c */
 function hex(c) {
@@ -118,10 +185,21 @@ function reducedMotion() {
  *   size  — the drawing box in px (defaults to ~2.4× the host's rendered size)
  *   style — which fleet canopy (see spinnerStyle); adjacent slots pass 0,1,…
  *   speed — the admin anim multiplier (1 = default; BASE_SPEED applied on top)
- * @returns {{ stop: () => void }}
+ * @returns {{ stop: () => void, finish: (onDone?: () => void) => void }}
+ *   stop   — tear down immediately (no finale), for cancel/settle paths.
+ *   finish — play the completion finale (speed-run into the pink umbrella, then
+ *            fold into the ✓) and call onDone ONCE when the ✓ has formed; the
+ *            caller swaps in its real checkmark then. On a no-op mount it fires
+ *            onDone immediately so the caller still gets its checkmark.
  */
 export function mountUmbrellaSpinner(host, opts = {}) {
-  const noop = { stop: () => {} };
+  const noop = {
+    stop: () => {},
+    /** @param {(() => void)=} onDone */
+    finish: (onDone) => {
+      if (typeof onDone === "function") onDone();
+    },
+  };
   try {
     if (!host || !canCanvas() || reducedMotion()) return noop;
 
@@ -165,13 +243,43 @@ export function mountUmbrellaSpinner(host, opts = {}) {
     let spin = 0; // integrated so the spin-rate ramp never jumps the angle
     let raf = 0;
     let start = 0;
-    let lastT = 0; // previous boomerang design-time — its signed delta drives spin
+    let lastT = 0; // previous design-time — its signed delta drives spin
     let stopped = false;
+
+    // Completion FINALE state: set by finish(), played out in frame(). While
+    // `mode` is "loop" the boomerang runs; once "finale", the spinner speed-runs
+    // into the pink umbrella and folds into the ✓ per the pure planFinale plan.
+    let mode = /** @type {"loop"|"finale"} */ ("loop");
+    let finaleStart = 0; // real ms when the finale's first frame ran
+    let plan = /** @type {ReturnType<typeof planFinale>|null} */ (null);
+    let onFinaleDone = /** @type {(() => void)|null} */ (null);
+    let doneCalled = false;
 
     function stop() {
       stopped = true;
       if (raf) cancelAnimationFrame(raf);
       canvas.remove();
+    }
+
+    /** Begin the completion finale: from wherever the wave was caught (the last
+     * drawn design-time), speed-run forward into the pink umbrella, hold a beat,
+     * then fold into the ✓ — `onDone` fires ONCE when the ✓ has formed. Idempotent
+     * (a second call only re-points onDone); a stopped spinner fires onDone at once.
+     * @param {(() => void)=} onDone */
+    function finish(onDone) {
+      const cb = typeof onDone === "function" ? onDone : null;
+      if (stopped) {
+        if (cb) cb();
+        return;
+      }
+      if (mode === "finale") {
+        if (cb) onFinaleDone = cb;
+        return;
+      }
+      onFinaleDone = cb;
+      plan = planFinale(lastT); // lastT = where the boomerang is right now
+      finaleStart = 0;
+      mode = "finale";
     }
 
     /** One canopy point → sway → camera projection → screen px.
@@ -187,37 +295,24 @@ export function mountUmbrellaSpinner(host, opts = {}) {
       return { x: cx + pr.x, y: cy + pr.y };
     }
 
-    /** @param {number} now */
-    function frame(now) {
-      if (stopped || !ctx) return;
-      // Self-terminate once the caller removed the host from the document —
-      // the existing spinner-removal is the only cleanup callers do.
-      if (!canvas.isConnected) return stop();
-      if (!start) {
-        start = now;
-        lastT = 0;
-      }
-      const t = boomerangDesignTime(now - start, clockRate);
-      const P = paramsAt(t);
-
-      // Signed design-time delta: it's POSITIVE on the forward sweep and
-      // NEGATIVE on the rewind, so the spin — the only separately-integrated
-      // quantity — reverses with the timeline and the whole thing truly
-      // "goes back and forth". Clamped so a backgrounded tab's time jump
-      // (or the triangle-wave apex) can't fling the angle.
-      let dtd = t - lastT;
-      lastT = t;
-      const cap = 60 * clockRate;
-      if (dtd > cap) dtd = cap;
-      else if (dtd < -cap) dtd = -cap;
-
-      // One-time fade-in over the first ~250 ms so the mount doesn't pop; after
-      // that the umbrella stays fully visible and just morphs vortex↔bloom (no
-      // blink at the boomerang turnarounds). P.fade stays 1 (cycle < fadeStart).
-      const alpha = smooth((now - start) / 250) * P.fade;
-
+    /** Draw the umbrella at design-time t with master alpha A (fade-in × the
+     * timeline's own P.fade). Clears the canvas first. `fold` (0..1) collapses
+     * it toward center as it dissolves into the ✓ during the finale. Reads the
+     * closure's `spin` (updated once per frame in frame()).
+     * @param {number} t @param {number} A @param {number} fold */
+    function drawUmbrella(t, A, fold) {
+      if (!ctx) return;
       ctx.clearRect(0, 0, size, size);
-      spin += style.dir * (style.speed || 1) * P.spinRate * 0.0016 * dtd;
+      const P = paramsAt(t);
+      const alpha = A * P.fade;
+      if (alpha <= 0.001) return;
+      ctx.save();
+      if (fold > 0) {
+        const s2 = 1 - 0.4 * smooth(fold);
+        ctx.translate(cx, cy);
+        ctx.scale(s2, s2);
+        ctx.translate(-cx, -cy);
+      }
 
       const pulse = 1 + 0.1 * P.pulse * Math.sin(t * 0.0023 + style.phase);
       const rad = R * pulse;
@@ -419,12 +514,126 @@ export function mountUmbrellaSpinner(host, opts = {}) {
           }
         }
       }
+      ctx.restore();
       ctx.globalAlpha = 1;
+    }
+
+    /** The pink ✓ the umbrella folds into. `prog` (0..1) draws it on; `a` its
+     * opacity. A fixed rose (matching the CSS `.check`) so the canvas ✓ hands
+     * off seamlessly to the real checkmark the caller swaps in.
+     * @param {number} prog @param {number} a */
+    function drawCheck(prog, a) {
+      if (!ctx || a <= 0.001) return;
+      const h = R * 1.05;
+      const ccx = cx;
+      const ccy = cy + R * 0.12; // sit where the CSS ✓ lands
+      const P1 = { x: ccx - 0.46 * h, y: ccy + 0.04 * h };
+      const P2 = { x: ccx - 0.08 * h, y: ccy + 0.4 * h };
+      const P3 = { x: ccx + 0.52 * h, y: ccy - 0.44 * h };
+      const seg = (
+        /** @type {{x:number,y:number}} */ p,
+        /** @type {{x:number,y:number}} */ q
+      ) => Math.hypot(q.x - p.x, q.y - p.y);
+      const L1 = seg(P1, P2);
+      const L2 = seg(P2, P3);
+      const d = clamp01(prog) * (L1 + L2);
+      const sc2 = 0.7 + 0.3 * smooth(clamp01(prog)); // scales up as it draws on
+      ctx.save();
+      ctx.translate(ccx, ccy);
+      ctx.scale(sc2, sc2);
+      ctx.translate(-ccx, -ccy);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = CHECK_PINK;
+      ctx.lineWidth = Math.max(2, R * 0.16);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(P1.x, P1.y);
+      if (d <= L1) {
+        const u = L1 > 0 ? d / L1 : 1;
+        ctx.lineTo(P1.x + (P2.x - P1.x) * u, P1.y + (P2.y - P1.y) * u);
+      } else {
+        ctx.lineTo(P2.x, P2.y);
+        const u = L2 > 0 ? (d - L1) / L2 : 1;
+        ctx.lineTo(P2.x + (P3.x - P2.x) * u, P2.y + (P3.y - P2.y) * u);
+      }
+      ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    /** @param {number} now */
+    function frame(now) {
+      if (stopped || !ctx) return;
+      // Self-terminate once the caller removed the host from the document —
+      // the existing spinner-removal is the only cleanup callers do.
+      if (!canvas.isConnected) return stop();
+      if (!start) {
+        start = now;
+        lastT = 0;
+      }
+
+      // Design-time t and master alpha for this frame, per mode.
+      let t;
+      let master;
+      let fold = 0; // umbrella→✓ collapse (finale fold phase only)
+      let checkProg = 0; // ✓ draw-on progress (finale fold phase only)
+      if (mode === "finale" && plan) {
+        if (!finaleStart) finaleStart = now;
+        const fe = now - finaleStart;
+        if (fe < plan.runMs) {
+          // Speed-run: fast-forward from the caught wave position, THROUGH the
+          // pink revive the loop never reaches, up to the full pink umbrella.
+          t = plan.runStart + (plan.runEnd - plan.runStart) * smooth(fe / plan.runMs);
+          master = 1;
+        } else if (fe < plan.runMs + plan.holdMs) {
+          t = plan.runEnd; // live a beat, fully bloomed and pink
+          master = 1;
+        } else {
+          t = plan.runEnd; // fold the pink umbrella into the ✓
+          master = 1;
+          checkProg = clamp01((fe - plan.runMs - plan.holdMs) / plan.checkMs);
+          fold = checkProg;
+        }
+      } else {
+        t = boomerangDesignTime(now - start, clockRate);
+        // One-time fade-in over the first ~250 ms so the mount doesn't pop; after
+        // that the umbrella stays fully visible and just morphs vortex↔wobble.
+        master = smooth((now - start) / 250);
+      }
+
+      // Signed design-time delta drives the separately-integrated spin: POSITIVE
+      // on the forward sweep / speed-run, NEGATIVE on the boomerang rewind, so
+      // the rotation reverses with the timeline. Clamped so a backgrounded tab's
+      // time jump (or the triangle-wave apex) can't fling the angle.
+      let dtd = t - lastT;
+      lastT = t;
+      const cap = 60 * clockRate;
+      if (dtd > cap) dtd = cap;
+      else if (dtd < -cap) dtd = -cap;
+      spin += style.dir * (style.speed || 1) * paramsAt(t).spinRate * 0.0016 * dtd;
+
+      // The umbrella fades out as the ✓ draws in during the fold.
+      drawUmbrella(t, master * (1 - smooth(checkProg)), fold);
+      if (checkProg > 0) drawCheck(checkProg, smooth(checkProg));
+
+      if (mode === "finale" && checkProg >= 1 && !doneCalled) {
+        // The ✓ is fully formed: leave it on the canvas and hand off to the
+        // caller (which swaps in its real .check span), so there's no gap. Stop
+        // the RAF; the caller's removal of the host tears down the canvas.
+        doneCalled = true;
+        const cb = onFinaleDone;
+        onFinaleDone = null;
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+        if (cb) cb();
+        return;
+      }
       raf = requestAnimationFrame(frame);
     }
 
     raf = requestAnimationFrame(frame);
-    return { stop };
+    return { stop, finish };
   } catch {
     // Decoration must never cost a chat — fall back to the CSS spinner.
     return noop;
