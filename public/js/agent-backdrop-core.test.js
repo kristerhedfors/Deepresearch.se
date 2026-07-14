@@ -9,8 +9,12 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_OPACITY_PCT,
+  FOLLOW_CAP_PX,
+  LAYER_CONVO,
+  LAYER_TERMINAL,
   MAX_LINES,
   MAX_LINE_CHARS,
+  OPACITY_CEILING,
   PARALLAX_CAP_PX,
   activeLines,
   backdropEnabled,
@@ -23,11 +27,16 @@ import {
   createBackdropModel,
   ensureChannel,
   formatResultLines,
+  isTapGesture,
+  nextLayerMode,
   opacityCss,
+  parallaxFollow,
   parallaxNudge,
   parseOpacityPref,
   pushCommand,
   pushLines,
+  replaceLastLine,
+  stripAnsi,
   pushResult,
   scrollStep,
 } from "./agent-backdrop-core.js";
@@ -136,10 +145,34 @@ test("backdropEnabled is false only at 0", () => {
   assert.equal(backdropEnabled(100), true);
 });
 
-test("opacityCss maps 0..100 into the faint band 0..0.55", () => {
+test("opacityCss maps 0..100 into the faint band 0..OPACITY_CEILING", () => {
   assert.equal(opacityCss(0), 0);
-  assert.equal(opacityCss(100), 0.55);
-  assert.ok(opacityCss(50) > 0 && opacityCss(50) < 0.55);
+  assert.equal(opacityCss(100), OPACITY_CEILING);
+  assert.ok(opacityCss(50) > 0 && opacityCss(50) < OPACITY_CEILING);
+  assert.ok(OPACITY_CEILING < 1); // still a backdrop, never a wall
+});
+
+test("stripAnsi removes escape sequences and stray controls, keeps text", () => {
+  assert.equal(stripAnsi("\x1b[0;32mroot@box\x1b[0m:~# "), "root@box:~# ");
+  assert.equal(stripAnsi("a\x1b]0;title\x07b"), "ab"); // OSC title
+  assert.equal(stripAnsi("x\x1b[2Ky"), "xy"); // erase-line CSI
+  assert.equal(stripAnsi("one\r\ntwo\rthree"), "one\ntwo\nthree"); // CR/CRLF → LF
+  assert.equal(stripAnsi("keep\ttab\nline"), "keep\ttab\nline"); // tab + newline survive
+  assert.equal(stripAnsi("bell\x07here"), "bellhere"); // control byte dropped
+  assert.equal(stripAnsi(null), "");
+  assert.equal(stripAnsi(undefined), "");
+});
+
+test("replaceLastLine updates the tail in place, pushes on an empty channel", () => {
+  const m = createBackdropModel();
+  replaceLastLine(m, "shell", "root@box:~"); // empty → push
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~"]);
+  replaceLastLine(m, "shell", "root@box:~#"); // grow the same prompt in place
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~#"]);
+  pushLines(m, "shell", ["$ ls"]);
+  replaceLastLine(m, "shell", "$ ls -la"); // replaces the newest, not the prompt
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~#", "$ ls -la"]);
+  assert.equal(m.active, "shell");
 });
 
 test("clampScrollOffset keeps the offset within the scrollable range", () => {
@@ -173,4 +206,32 @@ test("parallaxNudge opposes the gesture, clamped to ±cap, finite on garbage", (
   assert.equal(parallaxNudge(-100000), PARALLAX_CAP_PX);
   assert.equal(parallaxNudge(0), 0);
   assert.equal(parallaxNudge("nope"), 0); // never NaN
+});
+
+test("nextLayerMode toggles convo ↔ terminal; unknown → terminal first", () => {
+  assert.equal(nextLayerMode(LAYER_CONVO), LAYER_TERMINAL);
+  assert.equal(nextLayerMode(LAYER_TERMINAL), LAYER_CONVO);
+  // a first background tap (mode unset/garbage) always brings the terminal up
+  assert.equal(nextLayerMode(undefined), LAYER_TERMINAL);
+  assert.equal(nextLayerMode("nope"), LAYER_TERMINAL);
+});
+
+test("isTapGesture accepts small quick presses, rejects drags and long holds", () => {
+  assert.equal(isTapGesture(0, 0, 40), true);
+  assert.equal(isTapGesture(8, -6, 200), true); // within move + time tolerance
+  assert.equal(isTapGesture(40, 0, 100), false); // horizontal drag
+  assert.equal(isTapGesture(0, 60, 100), false); // vertical swipe
+  assert.equal(isTapGesture(2, 2, 900), false); // held too long (text select)
+  assert.equal(isTapGesture("x", "y", "z"), true); // garbage coerces to 0 → a tap
+});
+
+test("parallaxFollow keeps the gesture's direction, clamped to ±cap, finite", () => {
+  assert.ok(parallaxFollow(100) > 0); // same direction (background follows along)
+  assert.ok(parallaxFollow(-100) < 0);
+  assert.equal(parallaxFollow(100000), FOLLOW_CAP_PX); // capped, sign preserved
+  assert.equal(parallaxFollow(-100000), -FOLLOW_CAP_PX);
+  assert.equal(parallaxFollow(0), 0);
+  assert.equal(parallaxFollow("nope"), 0); // never NaN
+  // weaker than the raw delta
+  assert.ok(Math.abs(parallaxFollow(20)) < 20);
 });

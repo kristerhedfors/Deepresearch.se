@@ -148,6 +148,13 @@ loadSettings()
     // navigation as the boot pass — deduped in isolateForSandbox.
     if (isolateForSandbox(sandboxOn)) return;
     clearIsolationGuard();
+    // The knob is on and the page is isolated — boot the VM straight away so
+    // "enabled" means the Linux system is already running (its terminal drifting
+    // faintly behind the chat) the moment the app opens, not only once the user
+    // focuses the composer. Same bare, best-effort, idempotent boot as the
+    // composer-focus pre-warm (a later attachment/project is handled by
+    // resetSandboxIfBare at send time).
+    if (sandboxOn) prewarmSandbox();
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});
@@ -479,7 +486,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h32";
+const CSS_VERSION = "h34";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

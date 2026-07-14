@@ -210,16 +210,75 @@ export function backdropEnabled(pct) {
   return clampOpacityPct(pct) > 0;
 }
 
+// The layer's CSS-opacity ceiling — deliberately below 1 so even "full" stays a
+// backdrop the chat reads cleanly over. Nudged up from 0.55 → 0.72 (2026-07-14
+// directive: "slightly more prominent, just slightly more visible than now" —
+// the running-terminal characters are the signal that the Linux VM has actually
+// started, so they should read a touch more clearly without becoming a wall).
+export const OPACITY_CEILING = 0.72;
+
 /**
  * Map the user's 0..100 slider to the layer's actual CSS opacity. The ceiling
- * is deliberately below 1 (0.55) so even "full" stays a faint backdrop the
- * chat reads cleanly over — the slider tunes within the faint band, it does
- * not turn the page into a terminal.
+ * (OPACITY_CEILING) is below 1 so even "full" stays a faint backdrop the chat
+ * reads cleanly over — the value tunes within that band, it does not turn the
+ * page into a terminal.
  * @param {number} pct
- * @returns {number} 0..0.55
+ * @returns {number} 0..OPACITY_CEILING
  */
 export function opacityCss(pct) {
-  return +(clampOpacityPct(pct) / 100 * 0.55).toFixed(3);
+  return +(clampOpacityPct(pct) / 100 * OPACITY_CEILING).toFixed(3);
+}
+
+// ---- raw terminal text ------------------------------------------------------
+// The backdrop also mirrors the VM's RAW terminal stream (the boot/login banner
+// and shell prompt), so "there are characters drifting behind the chat" is the
+// visible proof the Linux system has booted. That stream carries ANSI escape
+// sequences (colored prompt, cursor moves) which must be stripped before the
+// text lands in a <pre>, or the layer fills with garbage like `\x1b[0;32m`.
+
+// eslint-disable-next-line no-control-regex
+const ANSI_CSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g; // CSI … final byte (colors, cursor)
+// eslint-disable-next-line no-control-regex
+const ANSI_OSC = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g; // OSC … BEL / ST (title sets)
+// eslint-disable-next-line no-control-regex
+const ANSI_MISC = /\x1b[=>NOc]|\x1b\([AB012]/g; // charset / keypad selects
+// eslint-disable-next-line no-control-regex
+const CTRL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g; // controls except \t (\x09) \n (\x0a) \r (\x0d)
+
+/**
+ * Strip ANSI escape sequences and stray control bytes from a raw terminal
+ * chunk, leaving printable text plus newlines/tabs/carriage-returns. Total —
+ * never throws; non-string input degrades to "".
+ * @param {unknown} s
+ * @returns {string}
+ */
+export function stripAnsi(s) {
+  return String(s == null ? "" : s)
+    .replace(ANSI_OSC, "")
+    .replace(ANSI_CSI, "")
+    .replace(ANSI_MISC, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(CTRL, "");
+}
+
+/**
+ * Replace the last line of a channel with `line` (pushing it if the channel is
+ * empty). Used to update the live, not-yet-terminated tail (the shell prompt)
+ * in place as more bytes of the same line arrive, instead of appending a
+ * duplicate. Returns the stored (clamped) line.
+ * @param {BackdropModel} model
+ * @param {string} channel
+ * @param {string} line
+ */
+export function replaceLastLine(model, channel, line) {
+  const id = ensureChannel(model, channel);
+  const buf = model.channels[id];
+  const clamped = clampLine(line);
+  if (buf.length) buf[buf.length - 1] = clamped;
+  else buf.push(clamped);
+  model.active = id;
+  return clamped;
 }
 
 // ---- scrolling the backdrop -------------------------------------------------
@@ -283,5 +342,76 @@ export function parallaxNudge(deltaY, factor = PARALLAX_FACTOR, cap = PARALLAX_C
   const c = Math.abs(num(cap));
   const n = -num(deltaY) * num(factor);
   const r = Math.max(-c, Math.min(c, n));
+  return r === 0 ? 0 : r; // normalize -0 → 0
+}
+
+// ---- the two-layer view switch ----------------------------------------------
+// When the execution sandbox is running the page holds TWO stacked panes: the
+// CONVERSATION and this TERMINAL backdrop. A tap on the bare page background
+// (never on a message bubble, never on interactive chrome) swaps which pane is
+// in front — the front one reads at full strength, the other recedes to a faint
+// background. These are the pure pieces of that interaction: the mode toggle,
+// the tap-vs-swipe discrimination, and the SAME-direction "follow" the
+// BACKGROUND pane leans by while the foreground scrolls ("in synchronization …
+// weaker and shorter" — the request). The DOM glue that reads targets, animates
+// the slide, and wires the gestures lives in agent-backdrop.js.
+
+/** The two foreground panes. */
+export const LAYER_CONVO = "convo";
+export const LAYER_TERMINAL = "terminal";
+
+/**
+ * Toggle the foreground pane. Anything that is not already the terminal flips TO
+ * the terminal (so a first background tap always brings the terminal forward).
+ * @param {unknown} mode
+ * @returns {"convo"|"terminal"}
+ */
+export function nextLayerMode(mode) {
+  return mode === LAYER_TERMINAL ? LAYER_CONVO : LAYER_TERMINAL;
+}
+
+// A press only counts as a "tap" (→ switch panes) when the pointer barely moved
+// and lifted quickly; a longer drag is a scroll or a text selection and must
+// NOT switch. Deliberately generous on distance (thumbs wobble) but tight on
+// time so a slow press-and-hold to select text is excluded.
+export const TAP_MOVE_TOL_PX = 10;
+export const TAP_TIME_TOL_MS = 500;
+
+/**
+ * Whether a pointer gesture reads as a tap (vs a swipe / long press): the move
+ * stayed within tolerance on BOTH axes and it lifted within the time window.
+ * @param {unknown} dx horizontal travel
+ * @param {unknown} dy vertical travel
+ * @param {unknown} dt duration (ms)
+ * @param {number} [moveTol]
+ * @param {number} [timeTol]
+ */
+export function isTapGesture(dx, dy, dt, moveTol = TAP_MOVE_TOL_PX, timeTol = TAP_TIME_TOL_MS) {
+  const mx = Math.abs(num(dx));
+  const my = Math.abs(num(dy));
+  const t = num(dt);
+  return mx <= num(moveTol) && my <= num(moveTol) && t >= 0 && t <= num(timeTol);
+}
+
+// The BACKGROUND pane leans in the SAME direction as the foreground scroll, but
+// weaker and shorter — the parallax the request describes as "in synchronization
+// … weaker". Same clamped shape as parallaxNudge but NOT inverted (the caller
+// passes an already-signed "how far the background should move" value) and a
+// gentler factor.
+export const FOLLOW_FACTOR = 0.14;
+export const FOLLOW_CAP_PX = 10;
+
+/**
+ * The background pane's same-direction follow offset for one foreground scroll
+ * step: the signed input scaled down and clamped to ±cap (sign preserved, so
+ * the direction decision stays with the caller where the DOM context is known).
+ * @param {unknown} delta signed background displacement request
+ * @param {number} [factor]
+ * @param {number} [cap]
+ * @returns {number} px, in [-cap, cap]
+ */
+export function parallaxFollow(delta, factor = FOLLOW_FACTOR, cap = FOLLOW_CAP_PX) {
+  const c = Math.abs(num(cap));
+  const r = Math.max(-c, Math.min(c, num(delta) * num(factor)));
   return r === 0 ? 0 : r; // normalize -0 → 0
 }
