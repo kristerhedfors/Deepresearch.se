@@ -10,41 +10,12 @@
        this meta after load to force WebKit to re-evaluate it. -->
   <meta name="theme-color" content="#c3b091">
   <link rel="stylesheet" href="/cure/drc.css">
-  <!-- First-paint intro guard: decide SYNCHRONOUSLY (before any body chrome
-       paints) whether the first-visit umbrella intro will play, and if so hold
-       the app chrome hidden via `.umbrella-intro` on the root so you drop
-       straight into the animation with no flash of the chat UI underneath. The
-       gates mirror maybePlayUmbrella() in drc.js exactly; drc.js clears the
-       class the moment the intro finishes (or fails). A generous safety timer
-       reveals the app anyway if drc.js never loads, so a hard failure can never
-       leave the page permanently blank. -->
-  <script>
-    (function () {
-      try {
-        var s = location.search, p = location.pathname;
-        var force = /[?&]anim=(1|rev)\b/.test(s);
-        if (!force) {
-          var seen = false;
-          try { seen = localStorage.getItem("dr_umbrella_seen_v2") === "1"; } catch (e) {}
-          var reduced = false;
-          try { reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
-          // A deep link (a saved project or a published replay) suppresses the
-          // intro — same URL shapes handleProjectLink()/handlePublicationLink()
-          // recognize in drc.js.
-          var deepLinked =
-            /^\/(?:my|free)\/project-[0-9a-z]+/i.test(p) ||
-            /^\/cure\/[a-z0-9-]+$/i.test(p) ||
-            /[?&]continue=/.test(s);
-          if (seen || reduced || deepLinked) return;
-        }
-        var root = document.documentElement;
-        root.classList.add("umbrella-intro");
-        // Fail-safe: if drc.js never loads to clear the class, reveal anyway
-        // (comfortably longer than the slowest admin-slowed play).
-        setTimeout(function () { root.classList.remove("umbrella-intro"); }, 30000);
-      } catch (e) {}
-    })();
-  </script>
+  <!-- NOTE: there is deliberately no "hide the chrome until the intro plays"
+       head script here. The first-visit umbrella intro is a canvas overlay
+       (drc.js → umbrella.js) drawn on TOP of the app; the chat UI always paints.
+       An earlier guard that held the chrome hidden until the animation signalled
+       done meant a stalled/failed intro left the whole site a blank khaki screen,
+       so it was removed — the app must never wait on decoration. -->
   <!-- Vendored renderer globals (classic scripts, same as the main app) -->
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>
