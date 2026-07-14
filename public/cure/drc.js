@@ -132,9 +132,31 @@ function workStatus(msg) {
 // (reduced-motion, no canvas) the row still shows its label and ✓, exactly the
 // way the DRS steps degrade. The finished ✓ list stays until the next send
 // clears it (resetPhaseSteps), the DRC analog of the app's persistent activity.
+//
+// The step list lives INLINE in the conversation (#chat), inserted just above
+// the streaming answer for the current send — NOT in the composer footer.
+// (Before 2026-07-14 it rendered into a static #phaseline inside #composer, so
+// the steps appeared down in the input pane where questions are typed instead
+// of in the conversation flow; the DRS app renders its activity inline, so the
+// tiers now match.) `beginPhaseSteps` builds a fresh host per send; the module
+// keeps a handle to it so phaseStep/finish/reset don't have to thread it.
 
 let curPhaseStep = null; // { key, row, label, spin, spinner } — running step, or null
+let phaseHost = null; // the .phasesteps container for the current send, inside #chat
 let phaseStepSeq = 0; // rotates the umbrella STYLE so adjacent steps differ
+
+// Start a fresh step list inside the conversation flow. `beforeEl` is the live
+// answer element the steps should sit above (matching DRS, where activity
+// precedes the answer); with none the host is appended to the end of #chat.
+function beginPhaseSteps(beforeEl) {
+  resetPhaseSteps();
+  const host = document.createElement("div");
+  host.className = "phasesteps";
+  if (beforeEl) beforeEl.before(host);
+  else $("chat").appendChild(host);
+  phaseHost = host;
+  return host;
+}
 
 // Swap the running step's spinner for a pink ✓ and forget it.
 function finishCurPhaseStep() {
@@ -153,9 +175,8 @@ function finishCurPhaseStep() {
 // Start (or update-in-place) the step for `key`. A new key finishes the
 // previous step first; the same key just re-labels the running one.
 function phaseStep(key, label) {
-  const host = $("phaseline");
+  const host = phaseHost;
   if (!host) return;
-  host.hidden = false;
   if (curPhaseStep && curPhaseStep.key === key) {
     curPhaseStep.label.textContent = label || "";
     return;
@@ -189,13 +210,13 @@ function finishPhaseSteps() {
   finishCurPhaseStep();
 }
 
-// Clear the whole list at the start of a fresh send.
+// Clear the whole list at the start of a fresh send: drop the previous run's
+// inline host (it lived in #chat) so the new send builds its own.
 function resetPhaseSteps() {
   curPhaseStep = null;
-  const host = $("phaseline");
-  if (host) {
-    host.textContent = "";
-    host.hidden = true;
+  if (phaseHost) {
+    phaseHost.remove();
+    phaseHost = null;
   }
   phaseStepSeq = 0;
 }
@@ -944,11 +965,13 @@ async function send(ev) {
   sending = true;
   $("send").disabled = true;
   workStatus("");
-  resetPhaseSteps(); // clear the previous run's ✓ step list
   $("chat").querySelector(".empty")?.remove();
   const live = document.createElement("div");
   live.className = "msg assistant streaming";
   $("chat").appendChild(live);
+  // The research steps render inline, just above this send's answer (matching
+  // the DRS app's activity placement) — not in the composer footer.
+  beginPhaseSteps(live);
 
   const retrieved = await recallContext(conv, text);
   const intro = await introspectionContext(conv, text);
