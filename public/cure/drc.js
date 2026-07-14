@@ -141,7 +141,7 @@ function workStatus(msg) {
 // tiers now match.) `beginPhaseSteps` builds a fresh host per send; the module
 // keeps a handle to it so phaseStep/finish/reset don't have to thread it.
 
-let curPhaseStep = null; // { key, row, label, spin, spinner } — running step, or null
+let curPhaseStep = null; // { key, details, summary, label, spin, spinner, body } — running step, or null
 let phaseHost = null; // the .phasesteps container for the current send, inside #chat
 let phaseStepSeq = 0; // rotates the umbrella STYLE so adjacent steps differ
 
@@ -163,17 +163,25 @@ function finishCurPhaseStep() {
   if (!curPhaseStep) return;
   curPhaseStep.spinner?.stop();
   curPhaseStep.spin?.remove();
-  if (!curPhaseStep.row.querySelector(".check")) {
+  if (!curPhaseStep.summary.querySelector(".check")) {
     const check = document.createElement("span");
     check.className = "check";
     check.textContent = "✓";
-    curPhaseStep.row.prepend(check);
+    curPhaseStep.summary.prepend(check);
   }
   curPhaseStep = null;
 }
 
 // Start (or update-in-place) the step for `key`. A new key finishes the
 // previous step first; the same key just re-labels the running one.
+//
+// Each step is a <details> (a tappable, expandable summary + body) — the /cure
+// analog of the DRS app's <details class="step"> (public/js/activity.js
+// makeStepDom). It starts NOT expandable (toggling is preventDefault'd until an
+// `expandable` class appears — there's nothing inside yet); the moment detail is
+// added (a tool call's command + output, a sandbox command's transcript) the
+// body is created and the step becomes tappable, so a visitor can open it to
+// see exactly WHICH commands ran and WHAT they returned — matching Se/rver.
 function phaseStep(key, label) {
   const host = phaseHost;
   if (!host) return;
@@ -182,19 +190,26 @@ function phaseStep(key, label) {
     return;
   }
   finishCurPhaseStep();
-  const row = document.createElement("div");
-  row.className = "phase-step";
+  const details = document.createElement("details");
+  details.className = "phase-step";
+  const summary = document.createElement("summary");
   const spin = document.createElement("span");
   spin.className = "spin";
   const lab = document.createElement("span");
   lab.className = "phase-label";
   lab.textContent = label || "";
-  row.append(spin, lab);
-  host.appendChild(row);
+  summary.append(spin, lab);
+  details.appendChild(summary);
+  // Block the toggle until there's a body to show (the `expandable` gate,
+  // mirroring DRS activity.js makeStepDom).
+  details.addEventListener("click", (e) => {
+    if (!details.classList.contains("expandable")) e.preventDefault();
+  });
+  host.appendChild(details);
   // The same spinning umbrella the DRS steps use; best-effort, and it stops
   // itself when finishCurPhaseStep removes the `.spin` host.
   const spinner = mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
-  curPhaseStep = { key, row, label: lab, spin, spinner };
+  curPhaseStep = { key, details, summary, label: lab, spin, spinner, body: null };
 }
 
 // Re-label the running step WITHOUT starting a new one — for the live tool
@@ -202,6 +217,77 @@ function phaseStep(key, label) {
 function phaseNote(text) {
   if (curPhaseStep) curPhaseStep.label.textContent = text || "";
   else phaseStep("_note", text);
+}
+
+// Lazily create the running step's expandable body and mark the step tappable.
+// Returns null when no step is running (so callers no-op safely).
+function phaseStepBody() {
+  if (!curPhaseStep) return null;
+  if (!curPhaseStep.body) {
+    const body = document.createElement("div");
+    body.className = "phase-detail";
+    curPhaseStep.details.appendChild(body);
+    curPhaseStep.details.classList.add("expandable");
+    curPhaseStep.body = body;
+  }
+  return curPhaseStep.body;
+}
+
+// Append one tool call (developer-mode source investigation: grep_source /
+// read_file / list_files / run_bash) to the running step's expandable body —
+// the command/argument headline plus the first lines of its REAL result, so the
+// step opens to show what the model actually ran and read (the /cure twin of the
+// DRS step's `details` bullets). `lines` is drc-research.js's toolResultLines().
+function appendToolDetail(headline, lines) {
+  const body = phaseStepBody();
+  if (!body) return;
+  const item = document.createElement("div");
+  item.className = "tool-call";
+  const head = document.createElement("div");
+  head.className = "tool-head";
+  head.textContent = "🔧 " + (headline || "");
+  const out = document.createElement("pre");
+  out.className = "tool-out";
+  out.textContent = (Array.isArray(lines) ? lines : []).join("\n");
+  item.append(head, out);
+  body.appendChild(item);
+}
+
+// Append one sandbox command's full transcript (command line, non-zero exit
+// badge, clamped output) to the running step's expandable body — the bash-lite
+// shell pass's counterpart of appendToolDetail, mirroring the DRS sandbox step's
+// renderShellRun (public/js/activity.js). Untrusted throughout: textContent
+// only, never HTML.
+function appendShellRun(run) {
+  const r = run && typeof run === "object" ? run : null;
+  if (!r || !r.command) return;
+  const body = phaseStepBody();
+  if (!body) return;
+  const wrap = document.createElement("div");
+  wrap.className = "shell-run";
+  const cmd = document.createElement("div");
+  cmd.className = "shell-cmd";
+  const prompt = document.createElement("span");
+  prompt.className = "shell-prompt";
+  prompt.textContent = "$";
+  const text = document.createElement("span");
+  text.className = "shell-cmd-text";
+  text.textContent = String(r.command || "");
+  cmd.append(prompt, text);
+  const exit = Number.isFinite(Number(r.exitCode)) ? Math.trunc(Number(r.exitCode)) : 1;
+  if (exit !== 0) {
+    const badge = document.createElement("span");
+    badge.className = "shell-exit";
+    badge.textContent = "exit " + exit;
+    cmd.appendChild(badge);
+  }
+  const out = document.createElement("pre");
+  out.className = "shell-out";
+  const stdout = typeof r.stdout === "string" ? r.stdout.replace(/\s+$/, "") : "";
+  const stderr = typeof r.stderr === "string" ? r.stderr.replace(/\s+$/, "") : "";
+  out.textContent = stdout && stderr ? "stdout:\n" + stdout + "\n\nstderr:\n" + stderr : stdout || stderr || "(no output)";
+  wrap.append(cmd, out);
+  body.appendChild(wrap);
 }
 
 // Settle the last step to a ✓ at run end (the list stays visible until the
@@ -995,8 +1081,16 @@ async function send(ev) {
         if (s.type === "tool") {
           // Developer-mode native tool call — show the tool + its argument live
           // (which file / pattern / command) on the running step, not a bare
-          // counter and not a new step per call.
+          // counter and not a new step per call. Also file the full call (the
+          // headline + its real result lines) into the step's expandable body,
+          // so the run stays inspectable: tap to see WHICH command ran and what
+          // it returned (matching Se/rver's step details).
           phaseNote("🔧 " + s.headline);
+          appendToolDetail(s.headline, s.result);
+        } else if (s.type === "exec") {
+          // A bash-lite sandbox command finished — append its full transcript
+          // (command + exit + output) to the running (sandbox) step's body.
+          appendShellRun(s.run);
         } else if (s.type === "phase") {
           // A new phase starts a new step (✓-ing the previous); the same phase
           // re-labels in place. `label` carries a live line (e.g. a rotating
@@ -1075,7 +1169,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d24 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d25 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
