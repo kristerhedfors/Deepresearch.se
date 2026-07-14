@@ -12,6 +12,10 @@
 > This is an assessment document, not a change to product behaviour. It scopes
 > **Se/cure only** — Se/rver (the signed-in hosted tier) is deliberately server-
 > centric and is out of scope for the Forever Agent bar.
+>
+> **Companion:** `docs/FOREVERAGENT-TRAJECTORY.md` turns this into a phased plan
+> (milestones M0–M5) with the concrete codebase **integration points** each
+> adaptation hooks into.
 
 ---
 
