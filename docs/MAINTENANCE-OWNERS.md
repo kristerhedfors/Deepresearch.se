@@ -42,8 +42,22 @@ feature maintenance*, and the **feature-maintenance** skill):
 > #43 gates `fs.verify` behind debug, makes `bootVM` return honest readiness,
 > self-heals the corrupt `dr-sandbox-workspace` IDB, and adds diagnostics
 > (`sandbox.exec_not_ready`, `sandbox.boot_torn_down`, boot-generation counter,
-> `sandbox.reset` reason). **NOT yet confirmed on a real device** — CheerpX can't
-> boot in the proxied CI Chromium (xterm CDN blocked under COEP `require-corp`),
-> so the loop stays OPEN: re-test on the installed iOS PWA; if it still fails, the
-> new diagnostics in `wrangler tail` pinpoint the stage, and route the next round
-> back to #43's session. Keep the worker in the loop until boot is green on device.
+> `sandbox.reset` reason). **Boot + list are green on-device (chat_logs #325); the
+> read-path wedge is NOT.** Loop stays OPEN.
+>
+> **2026-07-14 08:17 — narrowed (chat_logs #328) → routed to #43
+> (comment 4966842820):** mount + `ls -la /workspace` succeed on the iOS PWA, but
+> a regular-file `read()` (`cat /workspace/INDEX.txt`) wedges → #34's 30 s exec
+> timeout (exit 124) → ~120 s burned per turn. A CheerpX `IDBDevice` file-content
+> read stall on iOS WebKit, distinct from the mount/list stall #43 fixed.
+>
+> **2026-07-14 09:02 — generalized (chat_logs #331) → nudged #43
+> (comment 4967433472):** the user is now hand-steering around it —
+> *"Explore but avoid /workspace and /mnt aa they freeze."* **`/mnt` wedges too**,
+> not just `/workspace`. `/mnt` carries no `INDEX.txt` seed and isn't the
+> persistent `dr-sandbox-workspace` IDBDevice, so this **rules out the seed-write
+> hypothesis** and points at a generic persistent/mounted-device `read()` stall on
+> iOS spanning BOTH mounts — likely a device-layer fix (serve small file bytes off
+> the DataDevice/manifest on iOS) rather than per-volume self-heal. Keep #43's
+> worker in the loop until `cat` of a file under `/workspace` **and** `/mnt`
+> returns content on a real iOS PWA.
