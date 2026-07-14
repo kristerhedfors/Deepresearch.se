@@ -25,11 +25,11 @@
 /* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
    element (public/js/dev-mode.js) does NOT re-skin the background or palette —
    the sky-blue field and every chrome surface stay as they are. The ONLY
-   change is the composer input pane, which picks up a WHITE TITANIUM glass
-   tint with extra shine (see `:root.dev-mode #composer` below), plus the small
-   "introspection" wordmark tag, so the mode is recognizable without the whole
-   app changing color. The Se/cure tier gets the SAME white-titanium pane
-   (public/cure/drc.css). */
+   change is the composer input pane, which picks up a soft ROSE-WHITE glass
+   tint with extra shine — the umbrella fleet's white-and-pink colour feel (see
+   `:root.dev-mode #composer` below), plus the small "introspection" wordmark
+   tag, so the mode is recognizable without the whole app changing color. The
+   Se/cure tier gets the SAME rose-white pane (public/cure/drc.css). */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -646,24 +646,25 @@ header {
   padding: .5rem .65rem .55rem;
   position: relative; /* anchors the info popover */
 }
-/* Introspection mode: the composer becomes a brushed WHITE TITANIUM glass pane
-   (the Se/rver tier's introspection cue) — a cool silvery-white metal that
-   stands clearly apart from the plain frosted composer without shouting a hue.
-   The metal read comes from a light top→bottom sheen (near-white crown, a
-   faint pewter waist, a lighter foot), a bright specular top edge, and a soft
-   cool drop shadow. The fill is LIGHT, so the pane keeps its ordinary dark
-   text (no foreground override needed). Background only; the sky-blue field is
-   unchanged. */
+/* Introspection mode: the composer becomes a brushed ROSE-WHITE glass pane
+   (the Se/rver tier's introspection cue) — a soft white-and-pink metal in the
+   same colour feel as the umbrella fleet (white + the fleet's rose #df6e8e),
+   that stands clearly apart from the plain frosted composer without shouting a
+   hue. The metal read comes from a light top→bottom sheen (near-white crown, a
+   faint dusty-rose waist, a lighter foot), a bright specular top edge, and a
+   soft warm drop shadow. The fill is LIGHT and still translucent, so the pane
+   keeps its ordinary dark text (no foreground override needed) and lets the
+   field show through. Background only; the sky-blue field is unchanged. */
 :root.dev-mode #composer {
   background:
-    linear-gradient(180deg, rgba(252, 253, 254, .9) 0%, rgba(214, 219, 226, .92) 55%, rgba(232, 236, 241, .9) 100%),
-    rgba(233, 236, 241, .72);
-  border: 1px solid rgba(255, 255, 255, .9);
+    linear-gradient(180deg, rgba(253, 248, 250, .9) 0%, rgba(236, 210, 220, .92) 55%, rgba(247, 233, 239, .9) 100%),
+    rgba(245, 231, 237, .72);
+  border: 1px solid rgba(255, 250, 252, .9);
   box-shadow:
-    0 7px 26px rgba(70, 80, 96, .26),
-    inset 0 1px 0 rgba(255, 255, 255, .95),
-    inset 0 14px 26px rgba(255, 255, 255, .4),
-    inset 0 -10px 20px rgba(150, 160, 175, .12);
+    0 7px 26px rgba(120, 70, 90, .24),
+    inset 0 1px 0 rgba(255, 252, 253, .95),
+    inset 0 14px 26px rgba(255, 250, 252, .4),
+    inset 0 -10px 20px rgba(200, 150, 170, .14);
 }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
