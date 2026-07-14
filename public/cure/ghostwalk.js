@@ -165,8 +165,8 @@ const GHOST_SVG = `
 
 // The umbrella canvas is taller than the ghost — the canopy rises well above
 // the head — and its bottom-center is the grip/pivot.
-const UMB_W = 104;
-const UMB_H = 122;
+const UMB_W = 52;
+const UMB_H = 62;
 // A fixed 3/4 hanging view (0 = straight down, π/2 = side): enough pitch to read
 // as a 3D canopy with the shaft hanging, not a flat disc.
 const UMB_CAM = 1.16;
