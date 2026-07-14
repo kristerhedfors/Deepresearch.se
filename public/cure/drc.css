@@ -110,6 +110,24 @@ body::before {
 /* The transparency slider was removed (2026-07-13 directive): the backdrop is
    always shown at its fixed faint ceiling — public/js/agent-backdrop.js. */
 
+/* Two-layer view switch (public/js/agent-backdrop.js) — mirror of app.css for
+   the self-contained /cure stylesheet. While the sandbox is running the page
+   holds two stacked panes (the conversation #chat and the terminal backdrop);
+   tapping the header terminal icon swaps which is in front. `term-fg` on the
+   body brings the terminal forward (above the chat, below the fixed chrome) at
+   full strength while the conversation recedes. Khaki palette. */
+#chat,
+.dr-agent-backdrop-text {
+  transition: opacity .26s ease, transform .3s cubic-bezier(.2, .72, .29, 1);
+}
+body.term-fg #chat { opacity: .16; }
+body.term-fg #dr-agent-backdrop { z-index: 4; }
+body.term-fg .dr-agent-backdrop-pre { color: rgba(61, 52, 24, .85); }
+@media (prefers-reduced-motion: reduce) {
+  #chat,
+  .dr-agent-backdrop-text { transition: opacity .2s ease; }
+}
+
 /* The floating in-browser Linux sandbox terminal (public/js/sandbox.js). Built
    but kept HIDDEN by default on BOTH tiers — activity surfaces on the backdrop
    above, not this panel. drc.css is self-contained, so without this mirror the
@@ -236,7 +254,7 @@ header {
 .header-right, #composer { pointer-events: auto; }
 .header-right { display: flex; align-items: center; gap: .5rem; }
 #ghostbtn { margin-left: auto; } /* (ghost, account) pair docks right, app-style */
-#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn {
+#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #termbtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -249,6 +267,11 @@ header {
   position: relative;
   cursor: pointer;
 }
+/* Terminal switcher icon: hidden until the VM prints, then its presence marks
+   the sandbox active; tapping it is the one way to switch terminal ⇄ chat.
+   Pressed (accent) = terminal is forward. No glow — just the symbol. */
+#termbtn[hidden] { display: none; }
+#termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* DRS-only features: present where the app has them, but dimmed. Still
    tappable — the tap opens the explainer pointing to /rver. */

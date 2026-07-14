@@ -240,6 +240,33 @@ New pure exports (`agent-backdrop-core.js`, Node-tested): `stripAnsi`,
 tested; verify live). **Still owed:** live confirmation on the real device that
 the boot banner drifts behind the chat and auto-start fires on open.
 
+### Header-icon switcher replaces the tap-on-background switch (2026-07-14)
+
+PR #40 had added a two-layer view switch (conversation pane ⇄ terminal pane,
+`body.term-fg`, `LAYER_CONVO`/`LAYER_TERMINAL`/`nextLayerMode`/`setLayerMode` in
+`agent-backdrop.js`) triggered by a TAP ON THE BARE PAGE BACKGROUND. Owner
+changed their mind: the switch is now a **header ICON** (`#termbtn`, a terminal
+`>_` glyph) in the upper-right, styled exactly like the other header icons.
+
+- `#termbtn` is in BOTH headers (`public/index.html`, `public/cure/index.html`),
+  `hidden` by default, same shared id so `agent-backdrop.js` drives both.
+- `agent-backdrop.js` `revealTermBtn()` un-hides it the moment the VM prints
+  (called from `feed()`/`feedTerminal()` once `hasBackdropContent()`), wires its
+  click ONCE (`wireTermBtn` → `setLayerMode(nextLayerMode(layerMode))`), and
+  `syncTermBtn()` reflects the foreground pane as the `.on` (accent) pressed
+  state. **The icon's mere presence = the sandbox is active** (the second
+  "Linux is running" signal beyond the drifting characters). **No glow** — just
+  the symbol + the accent pressed state (owner directive). Switching is the ONLY
+  thing the icon does.
+- The old tap-to-switch gesture (`pointerdown`/`pointerup` + `isSwitchTarget` +
+  `isTapGesture`) is REMOVED from `agent-backdrop.js`; per-mode scroll/parallax
+  is unchanged. `isTapGesture` stays exported/tested in the core but is now
+  unused by the glue.
+- CSS: `#termbtn` added to the header-button base + the right-docked auto-margin
+  group in `css/app.css`; the `body.term-fg` two-layer rules (which PR #40 only
+  put in app.css) are now MIRRORED into `cure/drc.css` too, plus `#termbtn`
+  styling — so the switch actually works + is styled on DRC. Handshake `h34`.
+
 ## Cross-origin isolation (the tricky part)
 
 CheerpX needs `SharedArrayBuffer` → cross-origin isolation → COOP + COEP on the
