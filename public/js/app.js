@@ -25,6 +25,7 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
 import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
+import { hideTerminalIcon, showTerminalIcon } from "./agent-backdrop.js";
 import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
@@ -76,6 +77,12 @@ applyDeveloperTheme(cachedDeveloperMode(), { persist: false });
 // If it navigates, the current boot is abandoned for the fresh isolated load;
 // otherwise clear the guard so a later loss of isolation can self-heal again.
 if (!isolateForSandbox(cachedSandboxMode())) clearIsolationGuard();
+
+// Reveal the header terminal icon at first paint from the cached knob, so a
+// returning sandbox user sees the "Linux is starting" icon the instant they
+// land — before /api/settings resolves (which then reconciles it below). The
+// VM itself pre-warms from loadSettings once isolation is confirmed.
+if (cachedSandboxMode()) showTerminalIcon();
 
 // ---- Auto-follow scrolling ---------------------------------------------
 // Streaming pins the view to the bottom ONLY while the user is already
@@ -154,7 +161,10 @@ loadSettings()
     // focuses the composer. Same bare, best-effort, idempotent boot as the
     // composer-focus pre-warm (a later attachment/project is handled by
     // resetSandboxIfBare at send time).
-    if (sandboxOn) prewarmSandbox();
+    // Reconcile the header terminal icon with the authoritative knob: show it
+    // (a cross-device enable that had no local cache at first paint) or hide a
+    // stale-cache icon when the server says the sandbox is off.
+    if (sandboxOn) { showTerminalIcon(); prewarmSandbox(); } else hideTerminalIcon();
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});

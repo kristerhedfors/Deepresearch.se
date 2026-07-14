@@ -246,6 +246,32 @@ function revealTermBtn() {
   syncTermBtn();
 }
 
+/**
+ * Reveal the header terminal icon immediately, before the VM has printed
+ * anything — used at page load when the sandbox is ENABLED and booting in the
+ * background, so the icon's presence is the "Linux is starting" signal the
+ * moment the user lands on the page (2026-07-14 owner directive). Idempotent
+ * and safe to call before any backdrop content exists; the pane switch is a
+ * no-op until the VM prints (which happens within a moment of boot).
+ */
+export function showTerminalIcon() {
+  try { revealTermBtn(); } catch { /* decoration — never break the caller */ }
+}
+
+/**
+ * Hide the header terminal icon again — used to reconcile a stale local cache
+ * when the server confirms the sandbox knob is OFF. No-op once the VM has
+ * actually produced output (a genuinely active terminal is never hidden).
+ */
+export function hideTerminalIcon() {
+  try {
+    if (hasBackdropContent()) return; // a real terminal is running — keep it
+    termActive = false;
+    const btn = termBtn();
+    if (btn) btn.setAttribute("hidden", "");
+  } catch { /* decoration — never break the caller */ }
+}
+
 function wireTermBtn() {
   if (termBtnWired) return;
   const btn = termBtn();
@@ -328,10 +354,15 @@ function applyBgScroll() {
   scroller.style.transform = "translateY(" + bgOffset + "px)";
 }
 
-// Genuine interactive chrome + message bubbles — a TERMINAL-mode swipe must
-// never hijack these, so real controls stay usable while paging history.
+// Genuine interactive controls + floating chrome + panels — a TERMINAL-mode
+// swipe must never hijack these, so real controls stay usable while paging
+// history. NB: the conversation's OWN content (.msg / .step / .activity) is
+// deliberately NOT here: in terminal mode those bubbles are the RECEDED
+// background pane, so a swipe across them must page the terminal — blocking on
+// them let a gesture fall through to #chat's native scroll and "scroll my
+// messages instead" (they cover most of the screen).
 const BLOCK_SEL =
-  ".msg, .step, .activity, button, a, input, textarea, select, label, [role=button], " +
+  "button, a, input, textarea, select, label, [role=button], " +
   "#jumpdown, header, #footer, #composer, #searchpop, .setting-pop, .history, " +
   "#account, .account-card, .project-panel, #drspop, #intro, #drawer";
 
@@ -372,7 +403,11 @@ function wireScroll() {
       try {
         if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
         if (onBlocked(e.target)) return; // over a real control → leave it alone
-        if (scrollBackdrop(e.deltaY)) e.preventDefault();
+        // The terminal is the foreground pane: capture the gesture so the
+        // background conversation never scrolls, then page the log (a no-op if
+        // there's no history yet — but the messages still stay put).
+        e.preventDefault();
+        scrollBackdrop(e.deltaY);
       } catch { /* decoration — never break the page */ }
     },
     { passive: false },
@@ -397,7 +432,10 @@ function wireScroll() {
         const y = e.touches[0].clientY;
         const dy = touchY - y; // finger up → toward newest, matching wheel deltaY>0
         touchY = y;
-        if (scrollBackdrop(dy)) e.preventDefault();
+        // touchActive is only set in terminal mode over non-control area, so
+        // always capture here — the background conversation must not scroll.
+        e.preventDefault();
+        scrollBackdrop(dy);
       } catch { /* decoration — never break the page */ }
     },
     { passive: false },

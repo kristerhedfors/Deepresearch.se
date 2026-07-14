@@ -59,6 +59,7 @@ import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported } from "/js/sandbox.js";
+import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
   OWASP_CORPUS_PATH,
   SNAPSHOT_PATH,
@@ -1066,7 +1067,12 @@ $("bashlite").checked = state.bashLite === true;
 // (gated on sandboxIdle); the /cure page is always cross-origin isolated.
 function prewarmDrcSandbox() {
   try {
-    if (state.bashLite !== true || !sandboxSupported() || !sandboxIdle()) return;
+    if (state.bashLite !== true || !sandboxSupported()) return;
+    // Sandbox is enabled → show the header terminal icon straight away, so its
+    // presence signals "Linux is starting" the moment the page opens (even
+    // before the VM prints). Independent of the idle/dev-mode boot gates below.
+    showTerminalIcon();
+    if (!sandboxIdle()) return;
     // Skip when developer mode is on: that path mounts the source snapshot at
     // /src at boot, and a bare pre-warm would be adopted (idempotent boot) and
     // lose the mount. It boots on the first source-tool call instead.
@@ -1082,7 +1088,8 @@ $("bashlite").addEventListener("change", () => {
     ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
     : "Sandbox disabled.";
   saveState().catch(() => {});
-  prewarmDrcSandbox(); // enabling now → start Linux immediately
+  if (state.bashLite) prewarmDrcSandbox(); // enabling now → start Linux immediately + show icon
+  else hideTerminalIcon(); // disabling → drop the header terminal icon
 });
 // Introspection mode's mascot (developer mode): TIN, the titanium robot,
 // slides in when what the user is TYPING reads as an ask about this site's
