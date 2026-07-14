@@ -376,10 +376,21 @@ round-trip OUT (guest-written files back to the user).
 - **DRC note:** attach is a DRS-only feature (the `/cure` attach button is
   dimmed), so chat-attachment mounting is inherently DRS. `sandbox.js` is
   provider-agnostic; DRC would only ever wire *project* files, and hasn't yet.
-- **Still owed (live-verify):** DataDevice mount readable in-guest on real iOS
-  Safari under `require-corp`; `/workspace` + project-volume persistence across
-  reload; cross-mount symlink resolves; binary round-trip byte-exact. Logic is
-  green in CI but unproven in a real browser.
+- **THE DESTINATION IS THE ROOT OVERLAY, NOT A BARE `IDBDevice` (fixed
+  2026-07-14).** `/workspace` and the project dir are **plain directories in the
+  root `OverlayDevice`** filesystem, created by the seed script's `mkdir -p` and
+  filled by `cp` from the `DataDevice` ingests. They are NOT separate
+  `{type:"dir"}` `IDBDevice` mounts — that was the original design and it is the
+  reason file integrations never worked: CheerpX 1.2.6 **wedges the guest on the
+  first read** of a bare-`IDBDevice` dir mount (see the incident below). Do NOT
+  reintroduce per-volume `IDBDevice` mounts for user files. Persistence is free —
+  the root overlay already persists guest writes across sessions via its own
+  IndexedDB layer (`IDB_CACHE_ID`).
+- **Verified (2026-07-14, isolated Chromium probe):** `DataDevice` ingest → `cp`
+  into the overlay `/workspace` is readable in-guest (`cat`/`grep`/`ls`), binary
+  bytes intact; the bare-`IDBDevice` dir mount times out on `cat`. **Still owed:**
+  the same on real iOS Safari under `require-corp`, and overlay persistence of
+  `/workspace` + the project dir + the cross-dir symlink across a reload.
 
 > **Boot HANGS ("booting sandbox" spinner that never finishes) → the
 > `sandbox-debug` skill.** It covers the full boot-stage timeline
@@ -652,3 +663,55 @@ fallback — which is why "reading /workspace" fails while the rest of the VM
 (bounded `/workspace` probe at boot with fallback to a non-persistent mount;
 re-validating IDB handles on `pageshow(persisted)`; a user-facing "reset
 workspace storage") remain open follow-ups.
+
+## Incident — THE real file-integration bug: the bare-`IDBDevice` dir mount wedges (2026-07-14, FIXED)
+
+The 2026-07-14 note above suspected the bare `IDBDevice` `/workspace` mount and
+filed it as a "hardening follow-up." It was not a hardening item — **it was the
+whole bug.** File integrations (reading attachments/project files from inside the
+VM) had never worked since they shipped, for one reason.
+
+**Root cause (proven empirically):** the design mounted `/workspace` (and each
+project) as a **bare `IDBDevice` mounted directly `{type:"dir", dev: idbDevice}`**.
+In CheerpX 1.2.6 the guest **hangs forever on the FIRST read of a file** from
+such a mount — the `cat`/`ls -la <file>`/stat never returns (internally the CDN
+throws *"Cannot read properties of null (reading 'fileData')"*). So the seed
+`cp` into `/workspace` and every later `cat /workspace/…` wedged → `EXEC_TIMEOUT`
+→ reset → "sandbox not ready". The device docs *technically* list `{type:"dir"}`
+for `IDBDevice`, but it does not work in practice (an `IDBDevice` works as the
+overlay layer of an `OverlayDevice`, which is how root `/` uses it).
+
+**How it was proven:** an isolated Chromium probe (own COOP/COEP page → real
+CheerpX + the WebVM disk) mounting a `DataDevice` ingest + a bare `IDBDevice`
+side by side, then diffing four mechanisms:
+- `cat /mnt/in-s/f` (DataDevice ingest read) → **works**.
+- `cp /mnt/in-s/. → /workspace` (a dir in the **root overlay**) then
+  `cat /workspace/f` → **works, byte-perfect** (`ls`, `grep` too).
+- base64-through-`exec` into overlay `/workspace` → **works**.
+- `cp` into a bare-`IDBDevice` `/wsidb` then `cat /wsidb/f` → **TIMEOUT** (25 s),
+  and `echo x > /wsidb/w && cat /wsidb/w` → **TIMEOUT**. Definitive.
+
+**Fix (`public/js/sandbox.js`, minimal):** stop creating/mounting the bare
+`IDBDevice` volumes (`WORKSPACE_DB` at `/workspace`, `dr-proj-<hash>` per
+project). Keep the efficient `DataDevice` direct-byte ingests (`/mnt/in-s`,
+`/mnt/in-p`, `/mnt/in-src`) untouched. `/workspace` and the project dir become
+**plain directories the seed script `mkdir`s in the root `OverlayDevice`** — a
+real ext2 fs that already persists across sessions via `IDB_CACHE_ID`.
+`buildSeedScript`/`buildManifest` were ALREADY overlay-shaped (`mkdir -p
+/workspace …; cp -a /mnt/in-s/. /workspace/; …`) so they needed no change — only
+the *destination device* moved. `exportFile` (round-trip out) switched from
+`IDBDevice.readFileAsBlob` to base64-through-`exec` (no per-volume device to read
+anymore). This is exactly the mechanism `aisecurityliteracy.dev` proved.
+
+**What this retires:** the whole "corrupt persisted `/workspace` volume" failure
+class and its self-heal machinery (`resetWorkspaceStorage`, the exec-timeout
+`/workspace` wipe, the debug `fs.verify` wedge from incident #316/#317) — there
+is no fragile per-volume `IDBDevice` left to corrupt. `resetWorkspaceStorage` is
+kept only as a legacy sweep that deletes a user's stale pre-fix
+`dr-sandbox-workspace` db. **Do NOT reintroduce bare-`IDBDevice` dir mounts for
+user files.**
+
+**Still owed:** live confirmation on the real iOS PWA that an attached file is
+now `cat`-able from the VM, and overlay persistence of `/workspace` + the project
+dir + the symlink across a reload (the mechanism is proven in Chromium; the iOS
+timing + persistence are unproven in-session).

@@ -2,9 +2,28 @@
 
 *Research date: 2026-07-11. Status: part (A) host-commands = DESIGN;
 part (B) file-mounting = **Tier 1 + persistence IMPLEMENTED for DRS**
-(2026-07-11) — `sandbox-files.js` + `sandbox.js` mounts/seed +
-`stream.js` provider; Tier 2 (WebDevice+SW) and DRC wiring still pending.
-Live browser verification still owed (see the checklist).*
+(2026-07-11), and **the ingest DESTINATION corrected 2026-07-14** — files now
+`cp` into PLAIN DIRECTORIES in the root OVERLAY, not bare `IDBDevice` volumes;
+`sandbox-files.js` + `sandbox.js` mounts/seed + `stream.js` provider; Tier 2
+(WebDevice+SW) and DRC wiring still pending.*
+
+> **ROOT CAUSE FOUND & FIXED — the bare-`IDBDevice` dir mount wedges (2026-07-14).**
+> File integrations never actually worked because the original implementation
+> mounted the `/workspace` (and each project) as a **bare `IDBDevice` mounted
+> directly `{type:"dir"}`**. In CheerpX 1.2.6 the guest **hangs forever on the
+> FIRST read** of a file from such a mount (internally *"Cannot read properties
+> of null (reading 'fileData')"*), which surfaced as the recurring "reads wedge
+> / sandbox not ready" symptom. **Proven** in an isolated Chromium probe: a
+> `DataDevice` ingest → `cp` into the **root overlay** `/workspace` reads back
+> byte-perfect (`cat`, `grep`, `ls` all fine), while the bare-`IDBDevice` dir
+> mount times out on `cat`. The device API docs technically *allow* `{type:"dir",
+> dev: idbDevice}`, but it does not work in practice. **Fix:** drop the bare
+> `IDBDevice` mounts entirely; `/workspace` and the project dir are now plain
+> directories the seed script `mkdir`s in the **root `OverlayDevice`** — a real
+> ext2 fs that already persists across sessions via its own IndexedDB layer. This
+> is exactly the mechanism `aisecurityliteracy.dev` proved. The efficient
+> `DataDevice` direct-byte ingest (no base64) is unchanged — only the *destination*
+> moved from a fragile per-volume IDBDevice to the overlay.
 
 *This doc covers two related capabilities that share one host→guest device:
 (A) **fast host-JS commands** that bypass the emulator, and (B) **mounting the
