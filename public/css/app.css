@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h34;
+  --css-version: h35;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -15,6 +15,11 @@
   --muted: #2f5d8e;
   --accent: #0d4fa0;
   --ok: #157a4b;
+  /* The completed-research-step checkmark's pink — matched to the umbrella
+     intro's lead canopy pink (public/cure/umbrella.js, the first PINKS entry
+     `col: "#e06c8c"`). Distinct from --ok (green), which still marks feedback
+     and quiz success. */
+  --check-pink: #e06c8c;
   --user: #d8edff;
 }
 /* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
@@ -372,7 +377,7 @@ header {
 .step.expandable summary { cursor: pointer; }
 .step.expandable summary::after { content: "▾"; opacity: .55; margin-left: auto; }
 .step.expandable[open] summary::after { content: "▴"; }
-.step .check { color: var(--ok); flex: none; }
+.step .check { color: var(--check-pink); flex: none; }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
