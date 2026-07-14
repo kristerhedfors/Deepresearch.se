@@ -595,10 +595,11 @@ button:disabled { opacity: .5; cursor: default; }
    (mountUmbrellaSpinner) in the intro's own pink fleet colors — so "pink" is
    inherent to the umbrella; the ✓ is tinted to the fleet's rose (--pink). */
 .phasesteps { display: flex; flex-direction: column; gap: .3rem; }
+/* Each step is a <details>: the summary is the live row (spinner/✓ + label),
+   the body its expandable detail. Only steps that HAVE detail (a tool call, a
+   sandbox command) become tappable — the .expandable gate, matching the DRS
+   app's css/app.css .step / .step.expandable. */
 .phase-step {
-  display: flex;
-  align-items: center;
-  gap: .45rem;
   font-size: .8rem;
   color: var(--muted);
   background: var(--panel-2);
@@ -606,6 +607,17 @@ button:disabled { opacity: .5; cursor: default; }
   border-radius: 8px;
   padding: .3rem .55rem;
 }
+.phase-step > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  cursor: default;
+}
+.phase-step > summary::-webkit-details-marker { display: none; }
+.phase-step.expandable > summary { cursor: pointer; }
+.phase-step.expandable > summary::after { content: "▾"; opacity: .55; margin-left: auto; }
+.phase-step.expandable[open] > summary::after { content: "▴"; }
 .phase-step .phase-label { overflow-wrap: anywhere; min-width: 0; }
 /* The umbrella's mount box; the canvas centers over it and is allowed to
    overflow so the tilted canopy + hanging shaft aren't clipped. The faint rose
@@ -625,6 +637,48 @@ button:disabled { opacity: .5; cursor: default; }
 /* The completed-phase checkmark — pink, matching the umbrella fleet (the DRS
    app tints this with its green --ok instead). */
 .phase-step .check { color: var(--pink); flex: none; font-weight: 700; }
+
+/* The expandable body: the developer-mode tool calls and/or the bash-lite
+   sandbox commands run during this step, each with its real output — so a
+   visitor can tap the step open and see exactly what executed. */
+.phase-detail { margin: .4rem 0 .1rem; display: flex; flex-direction: column; gap: .5rem; }
+.tool-call, .shell-run {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.tool-head, .shell-cmd {
+  padding: .35rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.shell-cmd { display: flex; align-items: baseline; gap: .4rem; }
+.shell-prompt { color: var(--pink); flex: none; font-weight: 600; }
+.shell-cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.shell-exit {
+  flex: none;
+  color: #c0392b;
+  font-size: .72rem;
+  padding: .05rem .35rem;
+  border: 1px solid #c0392b;
+  border-radius: 999px;
+  opacity: .85;
+}
+.tool-out, .shell-out {
+  margin: 0;
+  padding: .4rem .5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .78rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 15rem;
+  overflow-y: auto;
+}
 
 /* ---- the left drawer: the app's history sidebar, mirrored ---- */
 #drawer {
