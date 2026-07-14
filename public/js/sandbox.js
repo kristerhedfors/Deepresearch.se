@@ -36,6 +36,7 @@ import {
   planSourceMount,
   projHash,
   sanitizeProjName,
+  shellEscape,
 } from "./sandbox-files.js";
 import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
@@ -72,11 +73,12 @@ let _bootGen = 0;
 let execQueue = Promise.resolve();
 let panel = null;
 let statusEl = null;
-// Persistent IDBDevice handles kept so exportFile() can read guest-written
-// files back out (readFileAsBlob). Set during boot when a file provider is
-// supplied; null otherwise.
+// LEGACY: the old design mounted a bare IDBDevice (WORKSPACE_DB) at /workspace,
+// which wedged the VM on read (see the file-mount block in bootVM). /workspace
+// now lives in the root overlay, so no per-volume device handle is kept. This
+// stays null; resetWorkspaceStorage() still deletes the stale WORKSPACE_DB db so
+// a user carrying a corrupt pre-fix volume gets it cleaned up + the space back.
 let workspaceDev = null;
-let projectDev = null;
 // The boot-quip ticker (see boot-messages.js): a setInterval that rotates an
 // entertaining "still booting a whole Linux" line onto the caller's
 // notification surface while the slow first boot runs. Module-level so both the
@@ -498,16 +500,13 @@ export async function resetSandboxIfBare() {
 }
 
 /**
- * Wipe the PERSISTENT /workspace volume (the fixed-name IDBDevice
- * `dr-sandbox-workspace`, reused across every boot and never otherwise reset).
- * The design keeps guest scratch across sessions, but a boot/seed interrupted by
- * an iOS PWA suspension can leave the ext2-in-IndexedDB with inconsistent
- * metadata (a dangling inode, a link-count-0 entry) that makes a later
- * /workspace read WEDGE — and because the db name is fixed and nothing ever
- * clears it, that wedge re-arms on every future boot, bricking the sandbox for
- * good. This is the recovery valve: called only after a file-mounting boot has
- * already torn itself down (so nothing usable is lost), it deletes the volume so
- * the NEXT boot recreates a clean one. Best-effort and never throws — prefers
+ * LEGACY CLEANUP: delete the old bare-IDBDevice /workspace volume
+ * (`dr-sandbox-workspace`). That device is no longer mounted — /workspace now
+ * lives in the root overlay — but a user who ran the old (broken) code still has
+ * a stale, possibly-corrupt `dr-sandbox-workspace` db sitting in IndexedDB.
+ * Deleting it reclaims the space and removes a dead artifact; it can no longer
+ * affect a boot (nothing reads it). Kept wired to the exec-timeout / torn-down
+ * paths as a harmless best-effort sweep. Best-effort and never throws — prefers
  * CheerpX's own IDBDevice.reset(), falls back to deleting the IndexedDB.
  */
 async function resetWorkspaceStorage() {
@@ -618,10 +617,24 @@ async function bootVM(fileProvider = null) {
     { type: "sys", path: "/sys" },
   ];
 
-  // File mounting (design part B). When a provider is supplied: mount the
-  // persistent /workspace volume, the two flat ingest DataDevices, and — if a
-  // project is active — its own persistent volume at /mnt/<projname>-<hash>.
-  // All fail-soft: any error here leaves the sandbox booting as a bare VM.
+  // File mounting (design part B). When a provider is supplied, the user's
+  // files ingest through in-memory DataDevices (direct binary bytes, no base64)
+  // and the boot seed script cp's them into PLAIN DIRECTORIES in the root
+  // OVERLAY filesystem — /workspace (session) and the project dir under /mnt.
+  // The overlay is a real ext2 fs and already persists across sessions via its
+  // own IndexedDB layer (IDB_CACHE_ID), so those directories are persistent RW
+  // without any extra device.
+  //
+  // We deliberately do NOT mount a bare IDBDevice as /workspace (or one per
+  // project). CheerpX 1.2.6 WEDGES the VM on the FIRST read of a file from a
+  // directly-`type:"dir"`-mounted IDBDevice — the guest read never returns
+  // (internally "Cannot read properties of null (reading 'fileData')"), which is
+  // exactly why file integrations never worked and reads hung into "sandbox not
+  // ready". Proven in an isolated Chromium probe (scratch harness, 2026-07-14):
+  // DataDevice ingest → cp into the overlay reads back byte-perfect, while a bare
+  // IDBDevice dir mount times out on `cat`. So the ONLY extra devices are the
+  // read-only ingest DataDevices; the destinations are overlay directories the
+  // seed script creates. This is the mechanism aisecurityliteracy.dev proved.
   /** @type {{ plan: any, inSession: any, inProject: any, inSource: any, projMount: string } | null} */
   let fileMount = null;
   if (fileProvider) {
@@ -632,17 +645,14 @@ async function bootVM(fileProvider = null) {
       // real mounts once every device was created — a partial failure must not
       // leave a half-formed mount in the config passed to Linux.create.
       const extra = [];
-      const wsDev = await CheerpX.IDBDevice.create(WORKSPACE_DB);
-      extra.push({ type: "dir", dev: wsDev, path: "/workspace" });
       const inSession = await CheerpX.DataDevice.create();
       extra.push({ type: "dir", dev: inSession, path: "/mnt/in-s" });
       let inProject = null;
       let projMount = "";
-      let projDev = null;
       if (plan && plan.project) {
+        // A plain directory in the overlay — created by the seed script's
+        // `mkdir -p`, NOT a separate device mount (see the block comment above).
         projMount = `/mnt/${plan.project.name}-${plan.project.hash}`;
-        projDev = await CheerpX.IDBDevice.create("dr-proj-" + plan.project.hash);
-        extra.push({ type: "dir", dev: projDev, path: projMount });
         inProject = await CheerpX.DataDevice.create();
         extra.push({ type: "dir", dev: inProject, path: "/mnt/in-p" });
       }
@@ -656,8 +666,6 @@ async function bootVM(fileProvider = null) {
         extra.push({ type: "dir", dev: inSource, path: "/mnt/in-src" });
       }
       for (const m of extra) mounts.push(m);
-      workspaceDev = wsDev;
-      projectDev = projDev;
       fileMount = { plan, inSession, inProject, inSource, projMount };
       sblog("info", "sandbox.fs.mount", {
         workspace: "/workspace",
@@ -900,25 +908,34 @@ async function seedFiles(fm) {
   });
 }
 
-// Read a guest-written file back out into JS (the round-trip export): files
-// under /workspace come from the session volume, files under a project mount
-// from the project volume. Returns the Blob, or null if unavailable.
+// Read a guest-written file back out into JS (the round-trip export). Now that
+// /workspace and the project dir live in the root OVERLAY (no per-volume
+// IDBDevice to readFileAsBlob from), the file is base64'd out through the exec
+// bridge — the same proven capture path every command uses. Returns the Blob,
+// or null if unavailable.
 /**
  * @param {string} path an absolute guest path under /workspace or /mnt/<proj>
  * @returns {Promise<Blob | null>}
  */
 export async function exportFile(path) {
   const p = String(path || "");
+  // Only round-trip files out of the mount tree — never arbitrary guest paths.
+  if (!/^\/(workspace|mnt|root|tmp)\//.test(p)) {
+    sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: 0, ok: false, skip: "path" });
+    return null;
+  }
   try {
-    let blob = null;
-    if (p.startsWith("/workspace/") && workspaceDev) {
-      blob = await workspaceDev.readFileAsBlob(p.slice("/workspace".length));
-    } else if (p.startsWith("/mnt/") && projectDev) {
-      // strip the mount prefix: /mnt/<name>-<hash>/rest → /rest
-      const rest = p.replace(/^\/mnt\/[^/]+/, "");
-      blob = await projectDev.readFileAsBlob(rest || "/");
+    const r = await execInSandbox("base64 -w0 " + shellEscape(p));
+    if (r.exitCode !== 0 || !r.stdout) {
+      sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: 0, ok: false, rc: r.exitCode });
+      flushSandboxLog();
+      return null;
     }
-    sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: blob ? blob.size : 0, ok: !!blob });
+    const bin = atob(r.stdout.replace(/\s+/g, ""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes]);
+    sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: blob.size, ok: true });
     flushSandboxLog();
     return blob;
   } catch (err) {
