@@ -1011,6 +1011,29 @@ async function loadProxyBundles() {
 
 // ---- config ---------------------------------------------------------------
 
+// Build the `sandbox` config patch from the form: the surviving registry rows
+// (existing minus the ones ticked to remove, plus an optionally added row), the
+// selected default image id, and the prefetch flag. The server re-validates
+// every field (src/config.js sanitizeSandboxImage) — this only shapes the patch.
+function buildSandboxPatch(f, existing) {
+  const images = existing.filter((_, i) => f.get(`sb_rm_${i}`) !== "on");
+  const newId = String(f.get("sb_new_id") || "").trim().toLowerCase();
+  if (newId) {
+    images.push({
+      id: newId,
+      label: String(f.get("sb_new_label") || newId),
+      arch: String(f.get("sb_new_arch") || "i386").trim() || "i386",
+      size_mb: Number(f.get("sb_new_size")) || 0,
+      verified: f.get("sb_new_verified") === "on",
+    });
+  }
+  return {
+    image: String(f.get("sb_image") || ""),
+    images,
+    prefetch: f.get("sb_prefetch") === "on",
+  };
+}
+
 function renderConfig() {
   const c = overview.config;
   const form = $("config-form");
@@ -1054,6 +1077,34 @@ function renderConfig() {
       <label>API quota / bundle <input type="number" min="1" step="1" name="px_api_quota" value="${c.proxy?.api_quota ?? 40}"></label>
       <label>API TTL (h) <input type="number" min="1" max="720" step="1" name="px_api_ttl" value="${c.proxy?.api_ttl_hours ?? 24}"></label>
       <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="px_budget" value="${c.proxy?.budget ?? 0}"></label>
+    </div>
+    <h3>Linux sandbox image</h3>
+    <p class="muted">The experimental in-browser Linux sandbox boots this ext2 image
+      (CheerpX HttpBytesDevice, streamed from our R2). Empty = the built-in webvm.io Debian.
+      <strong>CheerpX is 32-bit x86 only</strong> — every image must be <code>i386</code>
+      (mainline Arch is x86_64 and <em>cannot boot</em>; use Alpine i386 / Debian i386-slim /
+      archlinux32). Upload the <code>.ext2</code> to R2 as
+      <code>sandbox-images/&lt;id&gt;.ext2</code>, then register + select it here. See
+      docs/SANDBOX-LOCAL-IMAGE.md.</p>
+    <div class="group">
+      <label>Default image
+        <select name="sb_image" style="min-width:230px">
+          <option value="" ${!c.sandbox?.image ? "selected" : ""}>Built-in (webvm.io Debian)</option>
+          ${(c.sandbox?.images || []).map((im) => `<option value="${escapeHtml(im.id)}" ${c.sandbox?.image === im.id ? "selected" : ""}>${escapeHtml(im.label)} — ${escapeHtml(im.arch)}${im.arch !== "i386" ? " ⚠" : ""}, ~${im.size_mb}MB${im.verified ? " ✓" : " (unverified)"}</option>`).join("")}
+        </select>
+      </label>
+      <label><input type="checkbox" name="sb_prefetch" ${c.sandbox?.prefetch ? "checked" : ""}> Prefetch whole image on first boot</label>
+    </div>
+    ${(c.sandbox?.images || []).length ? `<div class="group" style="flex-direction:column;align-items:stretch;gap:.2rem">
+      <span class="muted">Registered images (tick to remove on save):</span>
+      ${(c.sandbox?.images || []).map((im, i) => `<label><input type="checkbox" name="sb_rm_${i}"> <code>${escapeHtml(im.id)}</code> — ${escapeHtml(im.label)} (${escapeHtml(im.arch)}, ~${im.size_mb}MB)${im.verified ? " ✓ verified" : ""}${im.arch !== "i386" ? " ⚠ not i386 — cannot boot" : ""}</label>`).join("")}
+    </div>` : ""}
+    <div class="group">
+      <label>Add id <input name="sb_new_id" placeholder="alpine-i386-2026-07" style="width:12rem"></label>
+      <label>label <input name="sb_new_label" placeholder="Alpine (small)" style="width:10rem"></label>
+      <label>arch <input name="sb_new_arch" value="i386" style="width:5rem"></label>
+      <label>size MB <input type="number" min="0" name="sb_new_size" style="width:6rem"></label>
+      <label><input type="checkbox" name="sb_new_verified"> verified</label>
     </div>
     <h3>Accounts</h3>
     <div class="group">
@@ -1115,6 +1166,7 @@ function renderConfig() {
             api_ttl_hours: Number(f.get("px_api_ttl")),
             budget: Number(f.get("px_budget")),
           },
+          sandbox: buildSandboxPatch(f, c.sandbox?.images || []),
         },
       });
       $("config-msg").textContent = "Saved ✓";
