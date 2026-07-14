@@ -177,6 +177,21 @@ CREATE TABLE IF NOT EXISTS websearch_grants (
 );
 CREATE INDEX IF NOT EXISTS idx_websearch_grants_user ON websearch_grants(user_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_websearch_grants_exp ON websearch_grants(expires_at);
+CREATE TABLE IF NOT EXISTS proxy_grants (
+  jti TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  service TEXT NOT NULL,
+  quota INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  label TEXT,
+  source TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_proxy_grants_user ON proxy_grants(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_proxy_grants_bundle ON proxy_grants(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_proxy_grants_exp ON proxy_grants(expires_at);
 `;
 
 // Additive migrations for databases created before the column existed.

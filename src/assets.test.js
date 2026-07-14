@@ -31,6 +31,7 @@ describe("isPublicAsset", () => {
   test("the whole /cure module graph is on the allowlist", () => {
     for (const p of [
       "/js/vault-core.js", "/js/sse.js", "/js/drc-core.js", "/js/drc-providers.js",
+      "/js/proxy-bundle.js",
       "/js/drc-rag.js", "/js/rag.js", "/js/chat-rag.js", "/js/settings.js",
       "/js/drc-research.js", "/js/drc-store.js", "/js/bash-core.js", "/js/bash-agent.js",
       "/js/sandbox.js", "/js/sandbox-files.js", "/js/agent-backdrop.js",

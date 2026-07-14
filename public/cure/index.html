@@ -97,6 +97,17 @@
     </div>
   </div>
 
+  <!-- SECURE-RESEARCH-SPACE banner: shown when this session holds a temporary
+       bundle of account-connected proxy grants (web search + LLM API), handed
+       over on a ghost crossover from Se/rver or via a shared link. It states
+       CLEARLY which APIs are connected. Dismissable; the connected state stays
+       visible in Settings (the gear). Filled + toggled by drc.js. -->
+  <div id="proxybanner" hidden>
+    <span class="pb-icon" aria-hidden="true">🔒</span>
+    <span id="proxybannertext"></span>
+    <button id="proxybannerclose" type="button" aria-label="Dismiss">×</button>
+  </div>
+
   <div id="chat"><div class="empty">Ask a research question to get started — it runs right here
     in your browser, on your own OpenAI, Groq or Berget API key. The first send helps you set one up.</div></div>
 
@@ -243,6 +254,28 @@
           query</b> leaves this browser (never your conversation); the allowance is fixed for this session and
           metered on the server. Turn it off to stay fully client-side.</div>
         <span id="wsstatus" class="muted setting-note"></span>
+      </div>
+
+      <!-- Secure research space — shown ONLY when this session holds a temporary
+           account-connected proxy bundle. States which APIs are connected and
+           lets the user turn the whole borrowed space off (back to fully
+           client-side). Revealed by renderProxyRow() in drc.js. -->
+      <div class="settings-item" id="proxyrow" hidden>
+        <div class="settings-row">
+          <span class="settings-label">Secure research space
+            <button type="button" class="setting-info" data-pop="proxypop" aria-label="More about the secure research space">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="proxyenabled">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="proxypop" hidden>A signed-in <b>Se<span class="sl">/</span>rver</b> account LENT this
+          browser a temporary, quota-limited <b>research space</b>: proxied access to its server-side keys, so you can
+          research without your own keys. The <b>web search</b> half sends only a query; the <b>LLM API</b> half routes
+          your conversation through the server on the account's model key (so, unlike the rest of Se<span class="sl">/</span>cure,
+          the server DOES see those messages) — it's opt-in and bounded. Turn it off to go fully client-side again.</div>
+        <span id="proxystatus" class="muted setting-note"></span>
       </div>
 
       <div class="settings-item">
