@@ -558,11 +558,13 @@ function makeStepDom(labelText, toggleGateClass) {
   // Each in-progress step plays the intro in miniature, fixed in its slot;
   // best-effort, and stops itself when markFinished/settlePendingSteps removes
   // the `.spin` element. Odd offset so consecutive styles are visibly apart.
-  mountUmbrellaSpinner(spin, { style: (stepSpinnerSeq++ * 3) % 6, size: 34 });
+  // The handle is kept so markFinished can play the completion finale (the
+  // speed-run into the pink umbrella, then the fold into the ✓).
+  const spinner = mountUmbrellaSpinner(spin, { style: (stepSpinnerSeq++ * 3) % 6, size: 34 });
   details.addEventListener("click", (e) => {
     if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });
-  return { details, summary, label };
+  return { details, summary, label, spinner };
 }
 
 /**
@@ -598,13 +600,28 @@ export function updateGenericStep(turn, id, label) {
 // summary as finished — adds the "finished" class and swaps the spinner
 // for a checkmark. Doesn't touch "expandable"; callers add that based on
 // whether they have anything to show inside.
+//
+// The swap is now the umbrella spinner's COMPLETION FINALE: instead of the
+// spinner vanishing and a ✓ popping in, the spinner speed-runs from wherever
+// its boomerang is into the fully-bloomed PINK umbrella (the beat the loop
+// deliberately never reaches) and folds that into the ✓. Only then do we drop
+// the canvas and prepend the real .check (a beat-perfect handoff — same rose).
+// Fail-soft: a no-op mount (reduced-motion/no-canvas) fires the callback at
+// once, so the ✓ still appears immediately.
 function markFinished(step) {
   step.details.classList.add("finished");
-  step.summary.querySelector(".spin")?.remove();
-  const check = document.createElement("span");
-  check.className = "check";
-  check.textContent = "✓";
-  step.summary.prepend(check);
+  const spinEl = step.summary.querySelector(".spin");
+  const addCheck = () => {
+    if (!step.summary.querySelector(".check")) {
+      const check = document.createElement("span");
+      check.className = "check";
+      check.textContent = "✓";
+      step.summary.prepend(check);
+    }
+    spinEl?.remove();
+  };
+  if (step.spinner?.finish) step.spinner.finish(addCheck);
+  else addCheck();
 }
 
 export function finishGenericStep(turn, s) {
@@ -741,6 +758,7 @@ export function renderStats(turn, s) {
 export function settlePendingSteps(turn) {
   const settle = (step) => {
     if (!step || step.details.classList.contains("finished")) return;
+    step.spinner?.stop?.(); // neutral settle: no pink-umbrella finale here
     step.summary.querySelector(".spin")?.remove();
     step.details.classList.add("finished");
     if (!step.summary.querySelector(".check, .settled")) {

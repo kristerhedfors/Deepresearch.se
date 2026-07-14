@@ -5,8 +5,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { boomerangDesignTime, spinnerStyle } from "./umbrella-spinner.js";
-import { T, FLEET, BASE_SPEED } from "../cure/umbrella.js";
+import {
+  boomerangDesignTime,
+  spinnerStyle,
+  finalePhaseBucket,
+  planFinale,
+  LOOP_APEX,
+  PINK_APEX,
+} from "./umbrella-spinner.js";
+import { T, FLEET, BASE_SPEED, paramsAt } from "../cure/umbrella.js";
 
 test("boomerangDesignTime ramps 0→cycle→0 (a triangle wave)", () => {
   const c = 1000;
@@ -35,6 +42,65 @@ test("boomerangDesignTime stays within [0, cycle] and honors clockRate", () => {
 
 test("boomerangDesignTime clamps negatives", () => {
   assert.equal(boomerangDesignTime(-500, BASE_SPEED), 0);
+});
+
+test("the loop boomerangs JUST BEFORE the pink — its default apex is colorless", () => {
+  // The default cycle is LOOP_APEX (= T.reviveStart), so the in-progress loop
+  // never reaches the pink revive: revive is exactly 0 across the whole sweep.
+  assert.equal(LOOP_APEX, T.reviveStart);
+  for (let ms = 0; ms < 40000; ms += 91) {
+    const t = boomerangDesignTime(ms, BASE_SPEED); // default cycle
+    assert.ok(t >= 0 && t <= LOOP_APEX, `t=${t} past the loop apex at ${ms}ms`);
+    assert.equal(paramsAt(t).revive, 0, `pink leaked into the loop at t=${t}`);
+  }
+});
+
+test("the finale target IS the fully-bloomed pink umbrella", () => {
+  // PINK_APEX is past the loop apex, fully revived and fully decorated, but not
+  // yet fading — the richest pink with its fringe hung.
+  assert.ok(PINK_APEX > LOOP_APEX);
+  const P = paramsAt(PINK_APEX);
+  assert.equal(P.revive, 1, "fully revived (pink)");
+  assert.equal(P.deco, 1, "fringe fully hung");
+  assert.equal(P.fade, 1, "not yet fading");
+});
+
+test("finalePhaseBucket gives five versions across the wave", () => {
+  // Deep vortex → tilted & wobbling, one bucket per phase the catch lands in.
+  assert.equal(finalePhaseBucket(0), 0); // deep in the vortex
+  assert.equal(finalePhaseBucket(T.swirlEnd), 1); // untwisting
+  assert.equal(finalePhaseBucket(T.untwistEnd), 2); // wireframe
+  assert.equal(finalePhaseBucket(T.wireEnd), 3); // color draining
+  assert.equal(finalePhaseBucket(T.tiltStart), 4); // tilted & wobbling
+  assert.equal(finalePhaseBucket(LOOP_APEX), 4); // still bucket 4 at the apex
+  // Five distinct buckets exist and only five.
+  const seen = new Set();
+  for (let t = 0; t <= LOOP_APEX; t += 50) seen.add(finalePhaseBucket(t));
+  assert.deepEqual([...seen].sort((a, b) => a - b), [0, 1, 2, 3, 4]);
+  // Defensive against junk.
+  assert.equal(finalePhaseBucket(-1), 0);
+  assert.equal(finalePhaseBucket(NaN), 0);
+});
+
+test("planFinale speed-runs from the caught wave position up to the pink apex", () => {
+  for (const t0 of [0, 1500, 5000, 7000, 9000, LOOP_APEX]) {
+    const p = planFinale(t0);
+    assert.equal(p.runStart, t0, "starts from where the wave was caught");
+    assert.equal(p.runEnd, PINK_APEX, "always ends at the pink umbrella");
+    assert.equal(p.bucket, finalePhaseBucket(t0));
+    assert.ok(p.runMs > 0 && p.holdMs > 0 && p.checkMs > 0);
+    assert.equal(p.totalMs, p.runMs + p.holdMs + p.checkMs);
+  }
+  // Further from the apex → a longer runway (the speed-run reads deliberate,
+  // not a snap), so the deep-vortex catch gets more real time than the tilt one.
+  assert.ok(planFinale(0).runMs > planFinale(LOOP_APEX).runMs);
+});
+
+test("planFinale is defensive and never overshoots the pink apex", () => {
+  assert.equal(planFinale(NaN).runStart, 0);
+  assert.equal(planFinale(-500).runStart, 0);
+  // A t0 beyond the apex (shouldn't happen, but be safe) clamps to it.
+  assert.equal(planFinale(PINK_APEX + 5000).runStart, PINK_APEX);
 });
 
 test("spinnerStyle cycles the fleet so adjacent slots differ", () => {
