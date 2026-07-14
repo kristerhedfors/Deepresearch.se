@@ -389,7 +389,8 @@ Server (`src/`):
 | `anthropic.js` | Anthropic (Claude) client — second, `ANTHROPIC_API_KEY`-gated provider: raw-fetch Messages API with an SSE adapter re-emitting Anthropic streams as OpenAI-style SSE (so `consumeChatStream` + all its guards work unchanged), static EUR-priced catalog (opus/sonnet/haiku) — see the **add-llm-provider** skill |
 | `openai.js` | OpenAI (GPT) client — third, `OPENAI_API_KEY`-gated provider: raw-fetch Chat Completions; NO stream adapter (OpenAI SSE is the native wire format `consumeChatStream` parses), only pinned wire params (`max_completion_tokens`, `reasoning_effort: "none"`, `stream_options.include_usage`), static EUR-priced catalog (gpt-5.6-sol/terra/luna + gpt-5.4-mini) |
 | `providers.js` | The LLM-provider dispatch seam: merged model catalog (`listChatModels`) + `chatCompletion`/`completeJson` routed by model-id namespace via the `SECONDARY_PROVIDERS` registry (`claude-*` → Anthropic, bare `gpt-*` → OpenAI, else Berget) — everything downstream is provider-agnostic |
-| `exa.js` | Exa web search |
+| `exa.js` | Exa web search — the DEFAULT web-search backend. `webSearch` first resolves the configured backend (`config.js`'s `search` block) and routes a non-`exa` selection to `websearch-backends.js`, falling back to Exa on failure; the cache key carries the backend id |
+| `websearch-backends.js` | The pluggable web-search BACKEND — SERVER FAÇADE over the shared pure core `public/js/websearch-backends-core.js` (the bash-core.js arrangement, so Se/rver AND Se/cure share ONE implementation): adds only the server-shaped `resolveSearchBackend` (config + `SEARCH_BACKEND_URL`/`SEARCH_BACKEND_KEY` env) + the config allowlist (`["exa", …self-hosted]`). Default `exa` keeps the site unchanged; a non-`exa` selection routes through the core (SearXNG / Exa-compatible), Exa fallback on failure; `/contents` full-text stays Exa-only. Se/rver config is the admin, server-wide `/admin` **Web search service** panel; recipes for running your own service in the **local-web-search** skill. Node-tested |
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
@@ -720,6 +721,11 @@ SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 ghost reuse-per-user, `mintWebSearchGrant` + the global budget ceiling,
 `grantStatus`/`revokeGrant`, the atomic reserve/refund, the admin
 list/mint-link/revoke surface, the 400/403/429/503 status codes),
+`websearch-backends.js` (the pluggable search backends' SERVER façade:
+`resolveSearchBackend` env/config resolution + clamping, and the re-exported
+core parsers/dispatch over a mocked fetch — its client-core sibling
+`public/js/websearch-backends-core.js` covers the browser-facing
+`(log, resolved, query, depth)` contract directly),
 `proxy-grant.js` (the secure-research-space two-tier tokens: grant→proxy
 mint/verify, the namespace separation that keeps the tiers/websearch/session
 tokens distinct, and the secret/expiry/tamper rejections) and `proxy.js`
@@ -1033,6 +1039,18 @@ what docs claim); and update the skill list below plus the skill's
   layer, API client design with empirical probing, registry/diversity
   wiring, SSE visibility via `search_done`, and the validation protocol
   (unit tests → live probes → bench A/B → ledger).
+- **local-web-search** — running your OWN web-search service as an Exa
+  alternative, configurable in BOTH tiers: the shared pure core
+  (`public/js/websearch-backends-core.js`) behind the server façade
+  (`src/websearch-backends.js`), the `search` config block, the `exa.js`
+  routing + Exa fallback. **Se/rver** configures it server-wide on the
+  admin `/admin` **Web search service** panel (with a live test-search);
+  **Se/cure** configures it PER-USER in the `/cure` settings drawer and calls
+  the self-hosted service BROWSER-DIRECT (no query touches the server; the
+  config rests in the sealed state; CORS required). Plus ready-to-run recipes
+  (SearXNG's JSON API, a Playwright crawler exposing an Exa-compatible API,
+  and hosted/offline alternatives) and the privacy rationale (keep search
+  queries off a third party — the project mission).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
 - **mcp-server** — the outbound MCP surface (`POST /mcp`, `src/mcp.js`): the
