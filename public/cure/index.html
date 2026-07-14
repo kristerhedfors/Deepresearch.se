@@ -189,6 +189,27 @@
         <div id="savedkeys"></div>
       </details>
 
+      <!-- Server-proxied web search — visible ONLY when this session carries a
+           temporary grant (crossed over signed-in from Se/rver via the ghost).
+           Revealed by renderWsRow() in drc.js. -->
+      <div class="settings-item" id="wsrow" hidden>
+        <div class="settings-row">
+          <span class="settings-label">Web search (via Se<span class="sl">/</span>rver)
+            <button type="button" class="setting-info" data-pop="wspop" aria-label="More about server web search">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="websearchserver">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="wspop" hidden>A signed-in <b>Se<span class="sl">/</span>rver</b> session granted this
+          browser a small, fixed number of <b>live web searches</b> routed through the server's search key — so your
+          research can use fresh web results even while you run your own (e.g. local) model. Only the <b>search
+          query</b> leaves this browser (never your conversation); the allowance is fixed for this session and
+          metered on the server. Turn it off to stay fully client-side.</div>
+        <span id="wsstatus" class="muted setting-note"></span>
+      </div>
+
       <div class="settings-item">
         <div class="settings-row">
           <span class="settings-label">Execution sandbox (bash) <span class="exp-badge">Experimental</span>

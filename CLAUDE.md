@@ -229,6 +229,34 @@ update the row in the same pass. See the **feature-maintenance** skill.
    Outbound requests to third parties carry the minimum (a query, a
    coordinate, a host) — never the conversation, filename, or account
    identity.
+   **ONE deliberate, bounded exception to "the server is in NO DRC data
+   path" (2026-07-14 directive): the temporary web-search GRANT subsystem**
+   (`src/websearch.js` + `src/websearch-key.js`; client glue in
+   `public/cure/drc.js` + `public/js/drc-research.js`; admin panel in
+   `public/js/admin.js`; defaults in `src/config.js`'s `websearch` block).
+   A short-lived, quota-metered token (HMAC-signed with `SESSION_SECRET` under
+   an independent `websearch.` namespace; the quota is a D1
+   `websearch_grants` row keyed by the token's `jti`) authorizes a fixed
+   number of live web searches routed through the server's Exa key — so a
+   Se/cure session keeps the strong posture (own/local model, browser-local
+   storage) while still getting fresh web results. It stays inside the
+   minimal-outbound rule: only the search QUERY reaches the server and Exa —
+   never the conversation. **TWO ways to receive a grant:** (1) the GHOST
+   CROSSOVER — a signed-in Se/rver user crossing to Se/cure mints/reuses their
+   own grant (authed `POST /api/websearch/grant`, offered only when the ghost
+   set the intent marker, so a plain visitor never pings the server); (2) a
+   SHAREABLE LINK — an admin mints a grant in the **control panel** (`/admin` →
+   Web search grants) and gets a `…/cure?ws=<token>` link anyone can follow
+   (`POST /api/admin/websearch`); the follower's browser reads it via public
+   `POST /api/websearch/status` (non-consuming) and spends it via public
+   `POST /api/websearch`. The control panel sets the DEFAULT quota/TTL, the
+   master `enabled` switch, and a **global budget** ceiling on the total
+   outstanding remaining across all live grants (the "entire set of quota"
+   governance). It is OPT-IN (a toggle in Se/cure settings) and FAIL-SAFE
+   (no D1 → no grants can be minted or metered, so there is no unmetered
+   server-paid search); the public search is metered ONLY by the token+D1 row
+   (an atomic `UPDATE … WHERE used < quota`), and revoking a grant (deleting
+   its row) kills its link immediately.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -284,6 +312,8 @@ Server (`src/`):
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
+| `websearch-key.js` | The temporary web-search GRANT TOKEN half (leaf module): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
+| `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
@@ -650,6 +680,12 @@ policy, COEP request shaping) and `security-headers.js` (the site-wide
 header set + the CSP policy), `auth.js` (the session-cookie HMAC keyed
 SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 `answers.js` (the answer-recovery cache's running/lost/done projection),
+`websearch-key.js` (the grant token's mint→verify round-trip, the
+`SESSION_SECRET`/namespace/expiry/tamper rejections) and `websearch.js`
+(the mint subsystem + grant meter over an in-memory D1 fake + mocked Exa:
+ghost reuse-per-user, `mintWebSearchGrant` + the global budget ceiling,
+`grantStatus`/`revokeGrant`, the atomic reserve/refund, the admin
+list/mint-link/revoke surface, the 400/403/429/503 status codes),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
 `?format=text`), `testpoints.js` (the try-it queue's pure logic:

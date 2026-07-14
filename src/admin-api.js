@@ -26,6 +26,10 @@
 //                                    the admin panels reshaped purely by ▲/▼
 //                                    thumbs; ?format=text is the attention
 //                                    loop's input — which surface is in focus)
+//   *      /api/admin/websearch*     the temporary web-search grant control
+//                                    surface (src/websearch.js): GET list +
+//                                    defaults, POST mint a shareable link,
+//                                    DELETE /:jti revoke
 //   GET    /api/admin/boards         the admin-BOARDS discovery index
 //                                    (src/admin-boards.js — one entry per
 //                                    Claude-fetchable list + how to fetch its
@@ -43,6 +47,7 @@ import { handleAdminFeatures } from "./features.js";
 import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
+import { handleAdminWebSearch } from "./websearch.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -138,6 +143,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // text view — the "pop up all the boards" entry point.
     if (path === "/boards" && method === "GET") {
       return handleAdminBoards(request, env, url, log);
+    }
+    // The temporary web-search grant control surface (src/websearch.js): list
+    // live grants + defaults, mint a shareable `…/cure?ws=<token>` link, revoke.
+    // (The default quota/TTL/budget themselves are edited via PUT /config.)
+    if (path === "/websearch" || path.startsWith("/websearch/")) {
+      return handleAdminWebSearch(request, env, url, log, identity);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

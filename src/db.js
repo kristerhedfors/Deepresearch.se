@@ -165,6 +165,18 @@ CREATE TABLE IF NOT EXISTS test_points (
   ref TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_test_points_status ON test_points(status, id DESC);
+CREATE TABLE IF NOT EXISTS websearch_grants (
+  jti TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  quota INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  label TEXT,
+  source TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_websearch_grants_user ON websearch_grants(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_websearch_grants_exp ON websearch_grants(expires_at);
 `;
 
 // Additive migrations for databases created before the column existed.
@@ -174,6 +186,10 @@ const ALTERS = [
   "ALTER TABLE users ADD COLUMN google_sub TEXT",
   "ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER",
   "ALTER TABLE users ADD COLUMN settings_json TEXT",
+  // websearch_grants gained label/source after its first ship (2026-07-14) —
+  // additive so a DB that created the table earlier picks them up.
+  "ALTER TABLE websearch_grants ADD COLUMN label TEXT",
+  "ALTER TABLE websearch_grants ADD COLUMN source TEXT",
 ];
 
 let migrated = false; // per isolate
