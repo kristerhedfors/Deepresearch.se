@@ -58,10 +58,12 @@ export const PINK_APEX = T.decoEnd;
 /** The BOOMERANG clock: real elapsed ms → design-time t that ramps 0→cycle
  * then back cycle→0, forever — a triangle wave. So the spinner plays the intro
  * (vortex→untwist→wire→camera→wobble) FORWARD, then rewinds it BACKWARD, over
- * and over: the loading symbol "goes back and forth" like a boomerang while the
- * host stays mounted. The default cycle is LOOP_APEX (T.reviveStart), so the
- * apex is the built-but-still-colorless wobbling umbrella JUST BEFORE the pink
- * revive — the turn is a clean reversal, and the pink is saved for the finale.
+ * and over: the loading symbol loops while the host stays mounted. The default
+ * cycle is LOOP_APEX (T.reviveStart), so the apex is the built-but-still-
+ * colorless wobbling umbrella JUST BEFORE the pink revive — the pink is saved
+ * for the finale. The turnaround is NOT a hard reversal: `boomerangFlip` below
+ * carries the canopy through a full 180° TUMBLE at the apex, so the umbrella
+ * somersaults over the top instead of snapping back the way it came.
  * @param {number} elapsedReal  ms since mount (real time)
  * @param {number} clockRate    design-ms per real-ms (BASE_SPEED × admin mult)
  * @param {number} cycle        design-ms of one one-way sweep (half the period)
@@ -70,6 +72,38 @@ export function boomerangDesignTime(elapsedReal, clockRate, cycle = LOOP_APEX) {
   const c = cycle > 0 ? cycle : LOOP_APEX;
   const pos = (Math.max(0, elapsedReal) * clockRate) % (2 * c);
   return pos <= c ? pos : 2 * c - pos;
+}
+
+// Half-width (design-ms) of a tumble's smoothstep — how much of the sweep the
+// 180° somersault is spread across at each turnaround.
+export const FLIP_WINDOW = 1200;
+
+/** The TUMBLE angle (radians, about the horizontal axis) layered on top of the
+ * boomerang so the turnaround reads as a full somersault, not a hard reversal.
+ * Across one boomerang PERIOD (2×cycle) the umbrella rotates a continuous 2π,
+ * split into two 180° tumbles: the FIRST is the dramatic one — a clean 0→π flip
+ * centered on the apex (the built, tilted, wobbling umbrella flips the whole way
+ * over the top), held through the rewind; the SECOND (π→2π) un-rolls quietly
+ * during the fast-spinning vortex right before the loop seam, so the period ends
+ * back at 2π ≡ 0 with NO snap (only cos/sin of this angle are ever used, so the
+ * raw 2π→0 wrap at the seam is invisible). Monotonic throughout — the canopy
+ * only ever tumbles the ONE way, matching the never-reversing twirl.
+ * @param {number} elapsedReal  ms since mount (real time)
+ * @param {number} clockRate    design-ms per real-ms (BASE_SPEED × admin mult)
+ * @param {number} cycle        design-ms of one one-way sweep (half the period)
+ * @returns {number} */
+export function boomerangFlip(elapsedReal, clockRate, cycle = LOOP_APEX) {
+  const c = cycle > 0 ? cycle : LOOP_APEX;
+  const period = 2 * c;
+  const pos = (Math.max(0, elapsedReal) * clockRate) % period;
+  // Keep the two risers non-overlapping inside the period (fw < c/3).
+  const fw = Math.min(FLIP_WINDOW, c / 3);
+  // Flat through the build-up, then the apex tumble 0→π, held to the vortex.
+  if (pos <= c - fw) return 0;
+  if (pos <= c + fw) return Math.PI * smooth((pos - (c - fw)) / (2 * fw));
+  if (pos <= period - 2 * fw) return Math.PI;
+  // The quiet un-roll π→2π (≡ 0) during the deep vortex before the seam.
+  return Math.PI + Math.PI * smooth((pos - (period - 2 * fw)) / (2 * fw));
 }
 
 /** The style for the i-th loading slot on screen: one of the intro fleet's
@@ -243,7 +277,8 @@ export function mountUmbrellaSpinner(host, opts = {}) {
     let spin = 0; // integrated so the spin-rate ramp never jumps the angle
     let raf = 0;
     let start = 0;
-    let lastT = 0; // previous design-time — its signed delta drives spin
+    let lastT = 0; // previous design-time — its magnitude delta drives spin
+    let lastFlip = 0; // last loop tumble angle — eased out over the finale run
     let stopped = false;
 
     // Completion FINALE state: set by finish(), played out in frame(). While
@@ -297,10 +332,12 @@ export function mountUmbrellaSpinner(host, opts = {}) {
 
     /** Draw the umbrella at design-time t with master alpha A (fade-in × the
      * timeline's own P.fade). Clears the canvas first. `fold` (0..1) collapses
-     * it toward center as it dissolves into the ✓ during the finale. Reads the
-     * closure's `spin` (updated once per frame in frame()).
-     * @param {number} t @param {number} A @param {number} fold */
-    function drawUmbrella(t, A, fold) {
+     * it toward center as it dissolves into the ✓ during the finale. `flipA`
+     * (radians) is the boomerang TUMBLE about the horizontal axis — the canopy
+     * somersaults through it at the turnaround. Reads the closure's `spin`
+     * (updated once per frame in frame()).
+     * @param {number} t @param {number} A @param {number} fold @param {number} flipA */
+    function drawUmbrella(t, A, fold, flipA) {
       if (!ctx) return;
       ctx.clearRect(0, 0, size, size);
       const P = paramsAt(t);
@@ -321,7 +358,9 @@ export function mountUmbrellaSpinner(host, opts = {}) {
         domeH * ((1 - pg) * (1 - r * r) + pg * (1 - r) * (1 - r));
 
       const swayAmp = 0.1 * P.camP;
-      const rx = swayAmp * Math.sin(t * 0.0011 + style.phase);
+      // The tumble rides on top of the gentle sway, about the same horizontal
+      // axis the camera pitches on — so the umbrella somersaults over the top.
+      const rx = swayAmp * Math.sin(t * 0.0011 + style.phase) + (flipA || 0);
       const ry = 0.8 * swayAmp * Math.cos(t * 0.0009 + style.phase * 1.4);
       // Dangle: sink slowly once the camera has dropped.
       const sink = t > T.tiltStart ? ((t - T.tiltStart) / 1000) * 0.02 * rad : 0;
@@ -578,6 +617,7 @@ export function mountUmbrellaSpinner(host, opts = {}) {
       let master;
       let fold = 0; // umbrella→✓ collapse (finale fold phase only)
       let checkProg = 0; // ✓ draw-on progress (finale fold phase only)
+      let flipA = 0; // boomerang tumble (loop mode only; the finale blooms flat)
       if (mode === "finale" && plan) {
         if (!finaleStart) finaleStart = now;
         const fe = now - finaleStart;
@@ -586,6 +626,9 @@ export function mountUmbrellaSpinner(host, opts = {}) {
           // pink revive the loop never reaches, up to the full pink umbrella.
           t = plan.runStart + (plan.runEnd - plan.runStart) * smooth(fe / plan.runMs);
           master = 1;
+          // Unroll any tumble the loop was mid-somersault on, so the pink
+          // umbrella blooms upright rather than snapping flat.
+          flipA = lastFlip * (1 - smooth(fe / plan.runMs));
         } else if (fe < plan.runMs + plan.holdMs) {
           t = plan.runEnd; // live a beat, fully bloomed and pink
           master = 1;
@@ -597,24 +640,27 @@ export function mountUmbrellaSpinner(host, opts = {}) {
         }
       } else {
         t = boomerangDesignTime(now - start, clockRate);
+        flipA = boomerangFlip(now - start, clockRate);
+        lastFlip = flipA; // remembered so a finale can ease the tumble out
         // One-time fade-in over the first ~250 ms so the mount doesn't pop; after
         // that the umbrella stays fully visible and just morphs vortex↔wobble.
         master = smooth((now - start) / 250);
       }
 
-      // Signed design-time delta drives the separately-integrated spin: POSITIVE
-      // on the forward sweep / speed-run, NEGATIVE on the boomerang rewind, so
-      // the rotation reverses with the timeline. Clamped so a backgrounded tab's
-      // time jump (or the triangle-wave apex) can't fling the angle.
+      // Design-time delta drives the separately-integrated spin. It advances by
+      // the MAGNITUDE of the delta so the twirl keeps turning the ONE way across
+      // the boomerang rewind (the turnaround is a tumble now, not a direction
+      // switch) and through the finale speed-run alike. Clamped so a backgrounded
+      // tab's time jump (or the triangle-wave apex) can't fling the angle.
       let dtd = t - lastT;
       lastT = t;
       const cap = 60 * clockRate;
       if (dtd > cap) dtd = cap;
       else if (dtd < -cap) dtd = -cap;
-      spin += style.dir * (style.speed || 1) * paramsAt(t).spinRate * 0.0016 * dtd;
+      spin += style.dir * (style.speed || 1) * paramsAt(t).spinRate * 0.0016 * Math.abs(dtd);
 
       // The umbrella fades out as the ✓ draws in during the fold.
-      drawUmbrella(t, master * (1 - smooth(checkProg)), fold);
+      drawUmbrella(t, master * (1 - smooth(checkProg)), fold, flipA);
       if (checkProg > 0) drawCheck(checkProg, smooth(checkProg));
 
       if (mode === "finale" && checkProg >= 1 && !doneCalled) {

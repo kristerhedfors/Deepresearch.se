@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 
 import {
   boomerangDesignTime,
+  boomerangFlip,
+  FLIP_WINDOW,
   spinnerStyle,
   finalePhaseBucket,
   planFinale,
@@ -42,6 +44,41 @@ test("boomerangDesignTime stays within [0, cycle] and honors clockRate", () => {
 
 test("boomerangDesignTime clamps negatives", () => {
   assert.equal(boomerangDesignTime(-500, BASE_SPEED), 0);
+});
+
+test("boomerangFlip is a monotonic full-turn tumble, snap-free at the seam", () => {
+  const c = 6000; // > 3×FLIP_WINDOW so the tumble spans the full FLIP_WINDOW
+  const period = 2 * c;
+  const fw = Math.min(FLIP_WINDOW, c / 3);
+  // No tumble at mount, and flat through the whole build-up (before the apex).
+  assert.equal(boomerangFlip(0, 1, c), 0);
+  assert.equal(boomerangFlip(c - fw - 1, 1, c), 0);
+  // Halfway through the apex somersault at the very apex.
+  assert.ok(Math.abs(boomerangFlip(c, 1, c) - Math.PI / 2) < 1e-9);
+  // A full 180° flip reached by the far edge of the apex window, then HELD
+  // through the rewind (the umbrella returns flipped, not un-flipping).
+  assert.ok(Math.abs(boomerangFlip(c + fw, 1, c) - Math.PI) < 1e-9);
+  assert.ok(Math.abs(boomerangFlip(period - 2 * fw, 1, c) - Math.PI) < 1e-9);
+  // The second 180° un-rolls to 2π by the seam — so cos/sin land back at 0.
+  assert.ok(Math.abs(boomerangFlip(period - 1e-6, 1, c) - 2 * Math.PI) < 1e-3);
+  // Monotonic (never reverses) within a period (pos=period wraps to 0).
+  let prev = -1;
+  for (let pos = 0; pos < period; pos += 25) {
+    const f = boomerangFlip(pos, 1, c);
+    assert.ok(f >= prev - 1e-9, `flip dipped at pos=${pos}`);
+    prev = f;
+  }
+  // Seam is snap-free in the only thing the draw uses (cos of the angle): the
+  // frame just before the period wrap matches the frame just after (pos≈0).
+  const before = Math.cos(boomerangFlip(period - 1e-6, 1, c));
+  const after = Math.cos(boomerangFlip(0, 1, c));
+  assert.ok(Math.abs(before - after) < 1e-3, "cos jumps across the loop seam");
+});
+
+test("boomerangFlip honors clockRate and clamps negatives", () => {
+  // clockRate scales real→design just like the boomerang clock.
+  assert.equal(boomerangFlip(100, 2, 1000), boomerangFlip(200, 1, 1000));
+  assert.equal(boomerangFlip(-500, BASE_SPEED), 0);
 });
 
 test("the loop boomerangs JUST BEFORE the pink — its default apex is colorless", () => {
