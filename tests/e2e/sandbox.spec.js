@@ -143,18 +143,25 @@ test("@live sandbox: 'List files in /' never answers 'sandbox not ready' (boots+
   for (const body of bootEvents) {
     try {
       const j = JSON.parse(body);
-      const rows = Array.isArray(j) ? j : j.logs || j.events || [j];
+      // flushSandboxLog posts { scope:"sandbox", ua, events:[{level,event,...fields}] }
+      const rows = Array.isArray(j) ? j : j.events || j.logs || [j];
       for (const r of rows) {
         const name = r.event || r.name || r.msg || "";
         if (typeof name === "string" && name.startsWith("sandbox.")) {
-          events.push({ event: name, ...(r.data || r.fields || {}) });
-          if (name === "sandbox.boot_stage" && r.data && r.data.stage) stages.push(r.data.stage);
+          const { level, event: _e, ...fields } = r;
+          events.push({ event: name, ...fields });
+          if (name === "sandbox.boot_stage" && r.stage) stages.push(r.stage);
         }
       }
     } catch {
       /* non-JSON beacon body — ignore */
     }
   }
+  // Console breadcrumbs mirror every sblog call ("[sandbox] sandbox.boot_stage
+  // {stage: …}") — a reliable secondary timeline source if beacons are dropped.
+  const consoleStages = consoleMsgs
+    .filter((m) => m.includes("[sandbox] sandbox.boot_stage"))
+    .map((m) => m);
 
   console.log("\n================ SANDBOX VALIDATION REPORT ================");
   console.log("PUT /api/settings status :", putStatus);
@@ -163,6 +170,8 @@ test("@live sandbox: 'List files in /' never answers 'sandbox not ready' (boots+
   console.log("settled URL              :", iso.url);
   console.log("client_diag              :", JSON.stringify(diag));
   console.log("boot-stage timeline      :", stages.join(" -> ") || "(none captured)");
+  console.log("console boot_stage lines :", consoleStages.length);
+  for (const c of consoleStages) console.log("   ", c);
   console.log("sandbox events           :");
   for (const e of events) console.log("   ", JSON.stringify(e));
   console.log("--- ANSWER (first 1200 chars) ---");
