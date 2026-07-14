@@ -114,6 +114,35 @@ body::before {
 /* The transparency slider (floating bar + Settings mirror) was removed
    (2026-07-13 directive): the backdrop is always shown at its fixed faint
    ceiling — public/js/agent-backdrop.js. */
+
+/* Two-layer view switch (public/js/agent-backdrop.js): while the sandbox is
+   running the page holds two stacked panes — the conversation (#chat) and the
+   terminal backdrop. A tap on the bare page background swaps which is in front.
+   In the default (conversation-forward) state everything reads as usual; when
+   the terminal is brought forward the body carries `term-fg`: the backdrop
+   rises above the chat (but below the fixed chrome at z:5) and reads at full
+   strength, while the conversation recedes to a faint background pane. The panes
+   also carry a JS transform for the slide-in-from-the-right flourish and the
+   gentle in-synchronization parallax lean; the transition here smooths both. */
+#chat,
+.dr-agent-backdrop-text {
+  transition: opacity .26s ease, transform .3s cubic-bezier(.2, .72, .29, 1);
+}
+body.term-fg #chat {
+  opacity: .16;
+}
+body.term-fg #dr-agent-backdrop {
+  z-index: 4;
+}
+body.term-fg .dr-agent-backdrop-pre {
+  /* Foreground now: darker, fully legible terminal text (the faint background
+     colour is for when it sits behind the conversation). */
+  color: rgba(10, 46, 92, .82);
+}
+@media (prefers-reduced-motion: reduce) {
+  #chat,
+  .dr-agent-backdrop-text { transition: opacity .2s ease; }
+}
 /* The chrome floats: header and footer are fixed, click-transparent
    strips (pointer-events: none) whose glass ITEMS re-enable pointer
    events — content scrolls beneath and stays visible between items and
