@@ -394,7 +394,10 @@ function maybePlayUmbrella(deepLinked) {
   }
   // `force` (the explicit ?anim=1 replay) wins over all three gates; without
   // it, reduce-motion / already-seen / a deep link each suppress the intro.
-  if (!force && (reduced || seen || deepLinked)) return Promise.resolve();
+  // Resolves with whether the intro actually PLAYED so the caller can chain
+  // the ambient strolling ghost (ghostwalk.js) onto a real play, and force it
+  // through reduced-motion on the ?anim=1 path exactly as the intro is.
+  if (!force && (reduced || seen || deepLinked)) return Promise.resolve(false);
   try {
     localStorage.setItem("dr_umbrella_seen", "1");
   } catch {
@@ -415,6 +418,21 @@ function maybePlayUmbrella(deepLinked) {
         m.playUmbrellaIntro({ onDone: res, speed, reverse: rev ? true : undefined })
       )
     )
+    .then(() => true)
+    .catch(() => {
+      // decoration only — never block the page over it
+      return false;
+    });
+}
+
+// The ambient strolling ghost (public/cure/ghostwalk.js): after the intro the
+// little ghost ambles across the page carrying a pink umbrella and saying
+// things. Dynamically imported and fully fail-soft — a load failure is a
+// no-op, exactly like the intro. `force` is the ?anim=1 replay, which pushes
+// it through reduced-motion just as it does the intro.
+function startGhostStroll(force) {
+  import("./ghostwalk.js")
+    .then((m) => m.startGhostWalk({ force: !!force }))
     .catch(() => {
       // decoration only — never block the page over it
     });
@@ -1608,13 +1626,17 @@ renderMessages();
 // wordmark away.
 handlePublicationLink().then((opened) => {
   const deepLinked = projectLinked || opened;
-  maybePlayUmbrella(deepLinked).then(() => {
+  maybePlayUmbrella(deepLinked).then((played) => {
     // Reveal the app chrome the head-script held hidden for a flash-free intro
     // (a no-op when no class was added — reduced-motion / already-seen / deep
     // link never hide it). Done here, once the animation is over, so the app
     // appears exactly as the umbrella scene ends.
     document.documentElement.classList.remove("umbrella-intro");
     afterUmbrella(deepLinked);
+    // Extend the intro: when it actually played (first visit, or the ?anim=1
+    // replay), send the little ghost strolling across the page with a pink
+    // umbrella. Gated on a real play so returning visitors get a clean page.
+    if (played) startGhostStroll(/[?&]anim=(1|rev)\b/.test(location.search));
   });
 });
 
