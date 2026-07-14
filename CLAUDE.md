@@ -337,6 +337,7 @@ Server (`src/`):
 | `user-messages.js` | Per-user message center (D1 `user_messages`): account-level notices (quota exhausted/restored, sign-in approved, quota changed by an admin) — structured enums + timestamps ONLY, deliberately no content column, so the feature stays inside the same zero-retention promise the privacy notice makes for conversations; "restored" isn't a separate write, it's derived at read time from the caller's CURRENT quota state (`quota.js`). Rendered by the client's `account-messages.js` |
 | `settings.js` | Per-user settings (`users.settings_json`, additive column): the `server_history` cloud-storage, `shodan_mcp`, `google_maps`, `feedback_mode`, `bash_lite_mcp` (experimental execution sandbox), and `developer_mode` (introspection mode) knobs — `GET/PUT /api/settings` |
 | `introspect.js` | INTROSPECTION MODE's server enrichment (the `developer_mode` knob): whenever developer mode is on it appends the site's OWN source so answers (incl. code-example requests) come from the real code, never a denial. It RETRIEVES the source chunks most relevant to the question from a committed DENSE index (`public/introspect/source-rag.json` — int8 embeddings per source chunk, `scripts/bundle-source-rag.mjs` / `npm run bundle:rag`, a per-file-hash DELTA build that only re-embeds changed files), embedding the query with Berget e5 (same model the index was built with) — so it works for ANY phrasing with NO intent regex and NO Linux VM. Plus a CLAUDE.md orientation excerpt, the full file index for strong "how are you built" asks, named files inlined by path, and the **skills catalog** — the repo's `.claude/skills/*/SKILL.md` playbooks surfaced as a first-class listing (`skillsCatalog`/`skillsIndex`/`mentionedSkills`) so ANY answer model in EITHER tier can quote or inline a playbook by name, the same institutional knowledge Claude Code works from (the vendor-neutral root `AGENTS.md` points external agents at the same catalog). Both artifacts (the source snapshot + the rag index) are COMMITTED, served by this deploy, read back through the ASSETS binding — by construction the exact source this deploy runs. `hasSource` flips the answer prompts' capabilities line (prompts.js/pipeline.js) so the model uses the source instead of saying it isn't a coding tool. Shared pure core (chunker/int8 codec/retrieval/block builder) is `public/js/introspect-core.js`; with the sandbox knob also on the tree mounts at `/src` — see the **introspection** skill |
+| `introspect-tools.js` | The native source-investigation tools' server FAÇADE: a pure re-export of the ONE shared core `public/js/introspect-core.js` — the tool schemas (`INTROSPECTION_TOOLS`) and the pure snapshot executors `grepSource`/`readFileTool`/`listFilesTool` + `runIntrospectionTool` (the `grep_source`/`read_file`/`list_files` loop DRS drives server-side via `src/anthropic.js`'s tool run and `pipeline.js`'s `runSourceResearchTools`, DRC drives browser-side). The owner-authorized invariant-1 exception (developer mode + tool-capable answer models); the core lives under `public/` for the same reason `bash-agent.js` re-exports `bash-core.js` — see the **introspection** skill |
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
 | `storage.js` | Opt-in R2 cloud storage (knob-gated writes): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), full drain-wipe (`DELETE /api/storage` — vault objects excluded) |
@@ -388,7 +389,8 @@ Server (`src/`):
 | `anthropic.js` | Anthropic (Claude) client — second, `ANTHROPIC_API_KEY`-gated provider: raw-fetch Messages API with an SSE adapter re-emitting Anthropic streams as OpenAI-style SSE (so `consumeChatStream` + all its guards work unchanged), static EUR-priced catalog (opus/sonnet/haiku) — see the **add-llm-provider** skill |
 | `openai.js` | OpenAI (GPT) client — third, `OPENAI_API_KEY`-gated provider: raw-fetch Chat Completions; NO stream adapter (OpenAI SSE is the native wire format `consumeChatStream` parses), only pinned wire params (`max_completion_tokens`, `reasoning_effort: "none"`, `stream_options.include_usage`), static EUR-priced catalog (gpt-5.6-sol/terra/luna + gpt-5.4-mini) |
 | `providers.js` | The LLM-provider dispatch seam: merged model catalog (`listChatModels`) + `chatCompletion`/`completeJson` routed by model-id namespace via the `SECONDARY_PROVIDERS` registry (`claude-*` → Anthropic, bare `gpt-*` → OpenAI, else Berget) — everything downstream is provider-agnostic |
-| `exa.js` | Exa web search |
+| `exa.js` | Exa web search — the DEFAULT web-search backend. `webSearch` first resolves the configured backend (`config.js`'s `search` block) and routes a non-`exa` selection to `websearch-backends.js`, falling back to Exa on failure; the cache key carries the backend id |
+| `websearch-backends.js` | The pluggable web-search BACKEND — SERVER FAÇADE over the shared pure core `public/js/websearch-backends-core.js` (the bash-core.js arrangement, so Se/rver AND Se/cure share ONE implementation): adds only the server-shaped `resolveSearchBackend` (config + `SEARCH_BACKEND_URL`/`SEARCH_BACKEND_KEY` env) + the config allowlist (`["exa", …self-hosted]`). Default `exa` keeps the site unchanged; a non-`exa` selection routes through the core (SearXNG / Exa-compatible), Exa fallback on failure; `/contents` full-text stays Exa-only. Se/rver config is the admin, server-wide `/admin` **Web search service** panel; recipes for running your own service in the **local-web-search** skill. Node-tested |
 | `edge-cache.js` | Fail-soft Workers Cache (caches.default) get/put helpers — the shared cross-request result-cache mechanics behind `exa.js` and `googlemaps.js` |
 | `hf.js` | Hugging Face Hub search (models/datasets/papers) — joins each search wave as citable registry sources when the question explicitly targets Hugging Face (`hfIntent`); `HUGGINGFACE_API_TOKEN` secret optional |
 | `shodan.js` | Shodan host-intelligence client + target extraction (opt-in `shodan_mcp` knob) — see "Shodan host intelligence" below |
@@ -719,6 +721,11 @@ SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 ghost reuse-per-user, `mintWebSearchGrant` + the global budget ceiling,
 `grantStatus`/`revokeGrant`, the atomic reserve/refund, the admin
 list/mint-link/revoke surface, the 400/403/429/503 status codes),
+`websearch-backends.js` (the pluggable search backends' SERVER façade:
+`resolveSearchBackend` env/config resolution + clamping, and the re-exported
+core parsers/dispatch over a mocked fetch — its client-core sibling
+`public/js/websearch-backends-core.js` covers the browser-facing
+`(log, resolved, query, depth)` contract directly),
 `proxy-grant.js` (the secure-research-space two-tier tokens: grant→proxy
 mint/verify, the namespace separation that keeps the tiers/websearch/session
 tokens distinct, and the secret/expiry/tamper rejections) and `proxy.js`
@@ -845,7 +852,11 @@ titanium-mascot + picker DOM glue, verified live) and
 retrieval against a mocked ASSETS binding & embed, PLUS two FRESHNESS checks
 that fail `npm test`: the snapshot must match the tree (`npm run bundle`) and
 the rag index's every chunk ref must still resolve against the snapshot
-(`npm run bundle:rag`); see the **introspection** skill).
+(`npm run bundle:rag`); see the **introspection** skill) and
+`introspect-tools.test.js` (the native source-investigation tools' server
+façade: the re-export contract pinning that its surface IS
+`public/js/introspect-core.js`, not a mirror, and the tool schemas/executors
+load without pulling in the pipeline).
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
@@ -982,6 +993,17 @@ what docs claim); and update the skill list below plus the skill's
   in `types.js`, the source-snapshot freshness ordering, server-vs-client
   risk). Worked example: the 2026-07-12 `assets.js`/`security-headers.js`/
   `model-routing.js`/`pipeline-inputs.js`/`activity-core.js` pass.
+- **update-docs** — the one playbook for reconciling the WHOLE documentation
+  surface with the code: the inventory (CLAUDE.md, README, AGENTS.md,
+  FEATURES.md, SECURITY-RISKS.md, `docs/`, the skills + their `description`
+  frontmatter, the static `/help` `/build` `/story` `/architecture` `/welcome`
+  pages, the committed introspection/pulse artifacts), the split between
+  TEST-ENFORCED mirrors (`npm test` names the drift — the two catalogs + the
+  snapshot/rag freshness) and HAND-MAINTAINED prose (grep for it — the file
+  table, the skills list, the test-suite prose), the exact drift-detection
+  commands, the regenerate-don't-hand-edit rule for generated artifacts, and
+  the survey → detect → update → verify → commit workflow. Load for a
+  docs-update pass or when adding a module/skill/feature that needs its docs row.
 
 - **pipeline-architecture** — the research pipeline engine (`src/pipeline.js`,
   `budget.js`, `model-profiles.js`, `berget.js`): the 5 phases, split model
@@ -1017,6 +1039,18 @@ what docs claim); and update the skill list below plus the skill's
   layer, API client design with empirical probing, registry/diversity
   wiring, SSE visibility via `search_done`, and the validation protocol
   (unit tests → live probes → bench A/B → ledger).
+- **local-web-search** — running your OWN web-search service as an Exa
+  alternative, configurable in BOTH tiers: the shared pure core
+  (`public/js/websearch-backends-core.js`) behind the server façade
+  (`src/websearch-backends.js`), the `search` config block, the `exa.js`
+  routing + Exa fallback. **Se/rver** configures it server-wide on the
+  admin `/admin` **Web search service** panel (with a live test-search);
+  **Se/cure** configures it PER-USER in the `/cure` settings drawer and calls
+  the self-hosted service BROWSER-DIRECT (no query touches the server; the
+  config rests in the sealed state; CORS required). Plus ready-to-run recipes
+  (SearXNG's JSON API, a Playwright crawler exposing an Exa-compatible API,
+  and hosted/offline alternatives) and the privacy rationale (keep search
+  queries off a third party — the project mission).
 - **sse-protocol** — the `/api/chat` SSE event vocabulary (delta/status/done)
   and the forward-compatibility rule.
 - **mcp-server** — the outbound MCP surface (`POST /mcp`, `src/mcp.js`): the

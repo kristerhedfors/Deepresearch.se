@@ -51,6 +51,7 @@ async function load() {
   renderByModel();
   renderUsers();
   renderConfig();
+  loadWebsearchService();
   loadWebsearchGrants();
   loadProxyBundles();
   loadSecurity();
@@ -693,6 +694,124 @@ function renderUsers() {
   $("users-sec").hidden = false;
 }
 
+// ---- web-search service (the backend selection panel) ---------------------
+// Picks which provider runs the pipeline's searches: Exa (built-in) or a
+// self-hosted SearXNG / Exa-compatible service. The selection is stored in
+// site config (PUT /api/admin/config's `search` block); the auth secret and
+// an optional base-URL override come from Worker env (SEARCH_BACKEND_KEY /
+// SEARCH_BACKEND_URL), reported here as present/absent only. A "Test search"
+// button runs one live search through the configured backend so a self-hosted
+// service can be verified before it's relied on. See the local-web-search skill.
+
+const BACKEND_OPTIONS = [
+  { id: "exa", label: "Exa (built-in, hosted)" },
+  { id: "searxng", label: "SearXNG (self-hosted, JSON API)" },
+  { id: "exa_compatible", label: "Exa-compatible endpoint (self-hosted)" },
+];
+
+async function loadWebsearchService() {
+  let data;
+  try {
+    data = await api("/search");
+  } catch (err) {
+    $("wssvc").innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
+    $("wssvc-sec").hidden = false;
+    return;
+  }
+  const s = data.config || {};
+  const e = data.env || {};
+  const box = $("wssvc");
+  const selfHosted = s.backend && s.backend !== "exa";
+  const envLine = [
+    `EXA_API_KEY ${e.hasExaKey ? "✓ set" : "✗ missing"}`,
+    `SEARCH_BACKEND_KEY ${e.hasBackendKey ? "✓ set" : "— unset"}`,
+    e.hasBackendUrlOverride ? "SEARCH_BACKEND_URL ✓ overriding base URL" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  box.innerHTML = `
+    <form id="wssvc-form" class="group" style="flex-direction:column;align-items:stretch;gap:.7rem">
+      <label>Search backend
+        <select name="backend" id="wssvc-backend" style="min-width:20rem">
+          ${BACKEND_OPTIONS.map(
+            (o) => `<option value="${o.id}" ${s.backend === o.id ? "selected" : ""}>${escapeHtml(o.label)}</option>`,
+          ).join("")}
+        </select>
+      </label>
+      <div id="wssvc-selfhosted" ${selfHosted ? "" : "hidden"} style="display:flex;flex-direction:column;gap:.7rem;padding:.6rem 0">
+        <label>Service base URL
+          <input name="base_url" id="wssvc-url" value="${escapeHtml(s.base_url || "")}"
+            placeholder="https://search.example.com" style="min-width:24rem"
+            ${e.hasBackendUrlOverride ? "disabled" : ""}>
+          ${e.hasBackendUrlOverride ? '<span class="muted">Set by the SEARCH_BACKEND_URL secret.</span>' : ""}
+        </label>
+        <label>Results per search
+          <input type="number" name="results" id="wssvc-results" min="1" max="20" step="1" value="${s.results ?? 6}" style="width:6rem"></label>
+        <label><input type="checkbox" name="fallback_exa" id="wssvc-fallback" ${s.fallback_exa !== false ? "checked" : ""}>
+          Fall back to Exa when the self-hosted service fails (needs EXA_API_KEY)</label>
+        <p class="muted">Auth for the self-hosted service comes from the
+          <code>SEARCH_BACKEND_KEY</code> Worker secret (sent as an
+          <code>x-api-key</code> for the Exa-compatible backend, or a
+          <code>Bearer</code> token for SearXNG behind an auth proxy) — never
+          stored in config.</p>
+      </div>
+      <p class="muted">Env: ${escapeHtml(envLine)}</p>
+      <div class="group"><button type="submit">Save backend</button><span class="muted" id="wssvc-msg"></span></div>
+    </form>
+    <div class="group" style="margin-top:.6rem">
+      <label style="flex:1">Test search
+        <input id="wssvc-testq" placeholder="e.g. latest on CRISPR gene editing" style="width:100%"></label>
+      <button type="button" id="wssvc-test">Run test</button>
+    </div>
+    <div id="wssvc-testout" class="muted"></div>`;
+
+  const backendSel = box.querySelector("#wssvc-backend");
+  const selfBox = box.querySelector("#wssvc-selfhosted");
+  backendSel.addEventListener("change", () => {
+    selfBox.hidden = backendSel.value === "exa";
+  });
+
+  box.querySelector("#wssvc-form").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const backend = backendSel.value;
+    const patch = { backend };
+    if (backend !== "exa") {
+      if (!e.hasBackendUrlOverride) patch.base_url = box.querySelector("#wssvc-url").value.trim();
+      patch.results = Number(box.querySelector("#wssvc-results").value) || 6;
+      patch.fallback_exa = box.querySelector("#wssvc-fallback").checked;
+    }
+    try {
+      await api("/config", { method: "PUT", body: { search: patch } });
+      $("wssvc-msg").textContent = "Saved ✓";
+      setTimeout(() => ($("wssvc-msg").textContent = ""), 2000);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  box.querySelector("#wssvc-test").addEventListener("click", async () => {
+    const q = box.querySelector("#wssvc-testq").value.trim();
+    const out = box.querySelector("#wssvc-testout");
+    if (!q) {
+      out.textContent = "Enter a query to test.";
+      return;
+    }
+    out.textContent = "Searching…";
+    try {
+      const r = await api("/search/test", { method: "POST", body: { query: q } });
+      const head = `${r.backend} · ${r.resultCount} result(s) · ${r.durationMs} ms${r.cached ? " · cached" : ""}`;
+      const list = (r.sources || [])
+        .map((sc) => `<li><a href="${escapeHtml(sc.url)}" target="_blank" rel="noopener">${escapeHtml(sc.title || sc.url)}</a></li>`)
+        .join("");
+      out.innerHTML = `<b>${escapeHtml(head)}</b>${list ? `<ul>${list}</ul>` : "<p>No sources returned.</p>"}`;
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  });
+
+  $("wssvc-sec").hidden = false;
+}
+
 // ---- web-search grants (the mint control panel) ---------------------------
 // Mint shareable `…/cure?ws=<token>` links that grant a Se/cure session a fixed
 // web-search quota (metered server-side on the shared Exa key — src/websearch.js).
@@ -892,6 +1011,29 @@ async function loadProxyBundles() {
 
 // ---- config ---------------------------------------------------------------
 
+// Build the `sandbox` config patch from the form: the surviving registry rows
+// (existing minus the ones ticked to remove, plus an optionally added row), the
+// selected default image id, and the prefetch flag. The server re-validates
+// every field (src/config.js sanitizeSandboxImage) — this only shapes the patch.
+function buildSandboxPatch(f, existing) {
+  const images = existing.filter((_, i) => f.get(`sb_rm_${i}`) !== "on");
+  const newId = String(f.get("sb_new_id") || "").trim().toLowerCase();
+  if (newId) {
+    images.push({
+      id: newId,
+      label: String(f.get("sb_new_label") || newId),
+      arch: String(f.get("sb_new_arch") || "i386").trim() || "i386",
+      size_mb: Number(f.get("sb_new_size")) || 0,
+      verified: f.get("sb_new_verified") === "on",
+    });
+  }
+  return {
+    image: String(f.get("sb_image") || ""),
+    images,
+    prefetch: f.get("sb_prefetch") === "on",
+  };
+}
+
 function renderConfig() {
   const c = overview.config;
   const form = $("config-form");
@@ -935,6 +1077,34 @@ function renderConfig() {
       <label>API quota / bundle <input type="number" min="1" step="1" name="px_api_quota" value="${c.proxy?.api_quota ?? 40}"></label>
       <label>API TTL (h) <input type="number" min="1" max="720" step="1" name="px_api_ttl" value="${c.proxy?.api_ttl_hours ?? 24}"></label>
       <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="px_budget" value="${c.proxy?.budget ?? 0}"></label>
+    </div>
+    <h3>Linux sandbox image</h3>
+    <p class="muted">The experimental in-browser Linux sandbox boots this ext2 image
+      (CheerpX HttpBytesDevice, streamed from our R2). Empty = the built-in webvm.io Debian.
+      <strong>CheerpX is 32-bit x86 only</strong> — every image must be <code>i386</code>
+      (mainline Arch is x86_64 and <em>cannot boot</em>; use Alpine i386 / Debian i386-slim /
+      archlinux32). Upload the <code>.ext2</code> to R2 as
+      <code>sandbox-images/&lt;id&gt;.ext2</code>, then register + select it here. See
+      docs/SANDBOX-LOCAL-IMAGE.md.</p>
+    <div class="group">
+      <label>Default image
+        <select name="sb_image" style="min-width:230px">
+          <option value="" ${!c.sandbox?.image ? "selected" : ""}>Built-in (webvm.io Debian)</option>
+          ${(c.sandbox?.images || []).map((im) => `<option value="${escapeHtml(im.id)}" ${c.sandbox?.image === im.id ? "selected" : ""}>${escapeHtml(im.label)} — ${escapeHtml(im.arch)}${im.arch !== "i386" ? " ⚠" : ""}, ~${im.size_mb}MB${im.verified ? " ✓" : " (unverified)"}</option>`).join("")}
+        </select>
+      </label>
+      <label><input type="checkbox" name="sb_prefetch" ${c.sandbox?.prefetch ? "checked" : ""}> Prefetch whole image on first boot</label>
+    </div>
+    ${(c.sandbox?.images || []).length ? `<div class="group" style="flex-direction:column;align-items:stretch;gap:.2rem">
+      <span class="muted">Registered images (tick to remove on save):</span>
+      ${(c.sandbox?.images || []).map((im, i) => `<label><input type="checkbox" name="sb_rm_${i}"> <code>${escapeHtml(im.id)}</code> — ${escapeHtml(im.label)} (${escapeHtml(im.arch)}, ~${im.size_mb}MB)${im.verified ? " ✓ verified" : ""}${im.arch !== "i386" ? " ⚠ not i386 — cannot boot" : ""}</label>`).join("")}
+    </div>` : ""}
+    <div class="group">
+      <label>Add id <input name="sb_new_id" placeholder="alpine-i386-2026-07" style="width:12rem"></label>
+      <label>label <input name="sb_new_label" placeholder="Alpine (small)" style="width:10rem"></label>
+      <label>arch <input name="sb_new_arch" value="i386" style="width:5rem"></label>
+      <label>size MB <input type="number" min="0" name="sb_new_size" style="width:6rem"></label>
+      <label><input type="checkbox" name="sb_new_verified"> verified</label>
     </div>
     <h3>Accounts</h3>
     <div class="group">
@@ -996,6 +1166,7 @@ function renderConfig() {
             api_ttl_hours: Number(f.get("px_api_ttl")),
             budget: Number(f.get("px_budget")),
           },
+          sandbox: buildSandboxPatch(f, c.sandbox?.images || []),
         },
       });
       $("config-msg").textContent = "Saved ✓";

@@ -74,6 +74,7 @@ import {
   handleProxyWeb,
 } from "./proxy.js";
 import { getConfig } from "./config.js";
+import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { applySecurityHeaders } from "./security-headers.js";
 
@@ -244,6 +245,22 @@ async function route(request, env, url, log, ctx, requestId) {
     return {
       response: jsonResponse({ speed: cfg.anim_speed }, 200, { "cache-control": "public, max-age=60" }),
     };
+  }
+  // The self-hosted Linux sandbox image (src/sandbox-image.js) — both PUBLIC
+  // because they serve BOTH tiers including the server-in-no-data-path DRC
+  // (/cure) client, which has no identity. The config endpoint is presentation
+  // config only (which disk to boot); the image stream is the operator's own
+  // public ext2 from R2. Fail-soft: no image selected / no R2 → the client uses
+  // its built-in streamed default, so this is inert until an image is uploaded.
+  if (request.method === "GET" && url.pathname === "/api/sandbox-image") {
+    return { response: await handleSandboxImageConfig(env) };
+  }
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    url.pathname.startsWith("/sandbox/img/")
+  ) {
+    const id = url.pathname.slice("/sandbox/img/".length).replace(/\.ext2$/, "");
+    return { response: await handleSandboxImage(request, env, id) };
   }
   // Metered web search for a Se/cure (DRC) session — PUBLIC because DRC has no
   // identity: the caller authorizes with a signed, quota-metered grant token

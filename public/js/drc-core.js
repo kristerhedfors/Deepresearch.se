@@ -125,6 +125,14 @@ export function emptyDrcState() {
     // data path) and, with bashLite also on, the /src sandbox mount. Default
     // OFF; an absent field (older blobs) reads as off.
     developerMode: false,
+    // The per-user web-search BACKEND (public/js/websearch-backends-core.js).
+    // Se/cure is the expert tier, so it can point web search at the user's OWN
+    // self-hosted service, called STRAIGHT from the browser (server in no data
+    // path). "grant" = the default server-proxied grant path (used only when a
+    // grant is present); "searxng" / "exa_compatible" = a browser-direct
+    // self-hosted service. `key` lives inside the sealed state like the provider
+    // keys. Absent (older blobs) reads as the grant default.
+    searchBackend: { backend: "grant", baseUrl: "", key: "", results: 6 },
     conversations: [],
     rag: { docs: [] },
   };
