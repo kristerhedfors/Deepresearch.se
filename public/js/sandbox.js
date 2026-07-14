@@ -37,7 +37,7 @@ import {
   projHash,
   sanitizeProjName,
 } from "./sandbox-files.js";
-import { feedCommand, feedResult } from "./agent-backdrop.js";
+import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 
 const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
@@ -341,9 +341,23 @@ export function toggleSandbox() {
 
 // ---- terminal I/O ----------------------------------------------------------
 
+// A streaming decoder for the raw console bytes we mirror onto the backdrop —
+// {stream:true} so a multi-byte UTF-8 sequence split across two chunks isn't
+// mangled. Only stdout (vt===1) is a real terminal stream; exec output never
+// reaches here (execInSandbox swaps the console to a private byte collector for
+// the duration of a command), so this only ever carries the boot/login banner
+// and the interactive shell prompt — exactly the "Linux started" signal.
+const _termDecoder = typeof TextDecoder !== "undefined" ? new TextDecoder() : null;
+
 function writeData(buf, vt) {
   if (vt !== 1) return;
-  if (term) term.write(new Uint8Array(buf));
+  const bytes = new Uint8Array(buf);
+  if (term) term.write(bytes);
+  // Mirror the raw stream onto the faint page-background layer (fail-soft —
+  // decoration must never break the console).
+  try {
+    if (_termDecoder) feedTerminal(_termDecoder.decode(bytes, { stream: true }));
+  } catch { /* ignore */ }
 }
 
 function readData(str) {

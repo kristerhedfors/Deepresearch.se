@@ -210,16 +210,75 @@ export function backdropEnabled(pct) {
   return clampOpacityPct(pct) > 0;
 }
 
+// The layer's CSS-opacity ceiling — deliberately below 1 so even "full" stays a
+// backdrop the chat reads cleanly over. Nudged up from 0.55 → 0.72 (2026-07-14
+// directive: "slightly more prominent, just slightly more visible than now" —
+// the running-terminal characters are the signal that the Linux VM has actually
+// started, so they should read a touch more clearly without becoming a wall).
+export const OPACITY_CEILING = 0.72;
+
 /**
  * Map the user's 0..100 slider to the layer's actual CSS opacity. The ceiling
- * is deliberately below 1 (0.55) so even "full" stays a faint backdrop the
- * chat reads cleanly over — the slider tunes within the faint band, it does
- * not turn the page into a terminal.
+ * (OPACITY_CEILING) is below 1 so even "full" stays a faint backdrop the chat
+ * reads cleanly over — the value tunes within that band, it does not turn the
+ * page into a terminal.
  * @param {number} pct
- * @returns {number} 0..0.55
+ * @returns {number} 0..OPACITY_CEILING
  */
 export function opacityCss(pct) {
-  return +(clampOpacityPct(pct) / 100 * 0.55).toFixed(3);
+  return +(clampOpacityPct(pct) / 100 * OPACITY_CEILING).toFixed(3);
+}
+
+// ---- raw terminal text ------------------------------------------------------
+// The backdrop also mirrors the VM's RAW terminal stream (the boot/login banner
+// and shell prompt), so "there are characters drifting behind the chat" is the
+// visible proof the Linux system has booted. That stream carries ANSI escape
+// sequences (colored prompt, cursor moves) which must be stripped before the
+// text lands in a <pre>, or the layer fills with garbage like `\x1b[0;32m`.
+
+// eslint-disable-next-line no-control-regex
+const ANSI_CSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g; // CSI … final byte (colors, cursor)
+// eslint-disable-next-line no-control-regex
+const ANSI_OSC = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g; // OSC … BEL / ST (title sets)
+// eslint-disable-next-line no-control-regex
+const ANSI_MISC = /\x1b[=>NOc]|\x1b\([AB012]/g; // charset / keypad selects
+// eslint-disable-next-line no-control-regex
+const CTRL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g; // controls except \t (\x09) \n (\x0a) \r (\x0d)
+
+/**
+ * Strip ANSI escape sequences and stray control bytes from a raw terminal
+ * chunk, leaving printable text plus newlines/tabs/carriage-returns. Total —
+ * never throws; non-string input degrades to "".
+ * @param {unknown} s
+ * @returns {string}
+ */
+export function stripAnsi(s) {
+  return String(s == null ? "" : s)
+    .replace(ANSI_OSC, "")
+    .replace(ANSI_CSI, "")
+    .replace(ANSI_MISC, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(CTRL, "");
+}
+
+/**
+ * Replace the last line of a channel with `line` (pushing it if the channel is
+ * empty). Used to update the live, not-yet-terminated tail (the shell prompt)
+ * in place as more bytes of the same line arrive, instead of appending a
+ * duplicate. Returns the stored (clamped) line.
+ * @param {BackdropModel} model
+ * @param {string} channel
+ * @param {string} line
+ */
+export function replaceLastLine(model, channel, line) {
+  const id = ensureChannel(model, channel);
+  const buf = model.channels[id];
+  const clamped = clampLine(line);
+  if (buf.length) buf[buf.length - 1] = clamped;
+  else buf.push(clamped);
+  model.active = id;
+  return clamped;
 }
 
 // ---- scrolling the backdrop -------------------------------------------------

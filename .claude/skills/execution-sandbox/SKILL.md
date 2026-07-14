@@ -189,17 +189,56 @@ config entry** (2026-07-12 directive): the bar IS the control.
   transcript (one channel per agent id) + the round-robin `clipToNextChannel`
   that "clips between agents" when several are active + `ShellRun`→lines
   formatting + the transparency parse/clamp (`opacityCss` caps CSS opacity at
-  0.55 so even "full" reads as background). Node-tested.
+  `OPACITY_CEILING` = 0.72 so even "full" reads as background) + `stripAnsi` /
+  `replaceLastLine` for the raw-terminal mirror. Node-tested.
 - **DOM glue** `agent-backdrop.js`: lazily builds `#dr-agent-backdrop` (fixed,
   `z-index:-1`, `pointer-events:none`, behind the chat) AND the floating bar;
   import-safe in Node (guards every browser global) because
   `sandbox.js`←`drc-research.js` is Node-tested.
 - **CSS lives in two places** because `drc.css` is self-contained (app.css is
   auth-served): `#dr-agent-backdrop` + `.dr-agent-backdrop-text` + the
-  `agent-wave` keyframe + `.dr-backdrop-bar`/`.dr-backdrop-range` are mirrored in
-  `css/app.css` and `cure/drc.css` (only the palette colors differ). If you
-  touch the look, update BOTH. A CSS change to app.css also needs the
-  `--css-version`/`CSS_VERSION` handshake bump (at `h25` for this).
+  `agent-wave` keyframe are mirrored in `css/app.css` and `cure/drc.css` (only
+  the palette colors differ). If you touch the look, update BOTH. A CSS change to
+  app.css also needs the `--css-version`/`CSS_VERSION` handshake bump (at `h33`
+  for this; the floating transparency bar/slider was removed 2026-07-13 — the
+  layer is one fixed faint value now).
+
+### Start-immediately + raw-terminal mirroring + more prominent (2026-07-14)
+
+Owner directive: "the execution sandbox, if enabled, should start immediately;
+all the terminal text should be visible in the chat background (new lines
+appearing just above the input pane); terminal characters in the background are
+the distinguishing sign that Linux has started; make it slightly more visible."
+Three coordinated changes:
+
+- **Auto-start when enabled.** DRS `app.js` calls `prewarmSandbox()` in the
+  `loadSettings().then` once the knob is confirmed on AND the page is isolated
+  (didn't navigate for the COEP self-heal). DRC `cure/drc.js` `prewarmDrcSandbox()`
+  boots at page init and on knob-enable. Both are the SAME bare, idempotent,
+  `sandboxIdle`-gated boot as the composer-focus pre-warm, and both SKIP when
+  developer mode is on (that path mounts `/src` at boot; a bare pre-warm would be
+  adopted and lose the mount). So "enabled" now means the VM is already booting
+  the moment the app opens, not only on composer focus / first shell send.
+- **Raw terminal mirrored to the backdrop.** `sandbox.js` `writeData` (the
+  CheerpX console writer) decodes each chunk with a streaming `TextDecoder` and
+  calls `agent-backdrop.js` `feedTerminal()`. This surfaces the boot/login
+  banner + shell prompt behind the chat — the "Linux started" signal — separate
+  from the clean `feedCommand`/`feedResult` command view. **Why it stays clean:**
+  during a command `execInSandbox` swaps the console to a private byte collector,
+  so `writeData` only ever carries the interactive shell's own output, never the
+  base64 marker envelope. `feedTerminal` strips ANSI (`stripAnsi` in the core),
+  commits newline-terminated lines, and shows the unterminated tail (the live
+  prompt) via `render()`; `feedCommand` first `flushTermTail()`s so a command
+  lands BELOW the prompt. All on the single `"shell"` channel = one coherent
+  terminal.
+- **Slightly more prominent.** `agent-backdrop-core.js` `OPACITY_CEILING`
+  0.55 → 0.72; `.dr-agent-backdrop-pre` font-size 12→13px and text alpha
+  .5→.62 (app) / .55→.66 (drc). Still a backdrop, not a wall.
+
+New pure exports (`agent-backdrop-core.js`, Node-tested): `stripAnsi`,
+`replaceLastLine`, `OPACITY_CEILING`. `feedTerminal` is DOM glue (not unit-
+tested; verify live). **Still owed:** live confirmation on the real device that
+the boot banner drifts behind the chat and auto-start fires on open.
 
 ## Cross-origin isolation (the tricky part)
 
