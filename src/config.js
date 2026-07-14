@@ -30,6 +30,29 @@ import { PERIODS } from "./quota.js";
  *   defaults + governance (the admin control panel edits these — src/websearch.js)
  * @property {ProxyGrantConfig} proxy the secure-research-space proxy BUNDLE
  *   defaults + governance (per-service quota/TTL + shared budget — src/proxy.js)
+ * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
+ *   selection + registry (admin-selectable small image — src/sandbox-image.js)
+ */
+/**
+ * The self-hosted Linux sandbox image selection (see docs/SANDBOX-LOCAL-IMAGE.md).
+ * @typedef {Object} SandboxImageConfig
+ * @property {string} image the SELECTED default image id (must match an
+ *   images[].id, else it degrades to "" = the built-in streamed default, so the
+ *   feature is inert until an operator uploads AND selects an image)
+ * @property {SandboxImage[]} images the registry of self-hosted images the admin
+ *   picker offers (each uploaded to R2 out of band as sandbox-images/<id>.ext2)
+ * @property {boolean} prefetch fully prefetch the (small) selected image into the
+ *   browser block cache on first boot so later boots issue zero disk fetches
+ */
+/**
+ * One registered sandbox image row.
+ * @typedef {Object} SandboxImage
+ * @property {string} id stable slug ([a-z0-9-]+); the R2 basename + served path
+ * @property {string} label human label for the picker
+ * @property {string} arch guest ISA — MUST be "i386" (CheerpX is 32-bit x86 only)
+ * @property {number} size_mb approximate on-disk size, for the UI
+ * @property {boolean} verified live-verified on real devices — only verified
+ *   images should be set as the fleet default
  */
 /**
  * The mintable-web-search-grant defaults + budget governance.
@@ -90,6 +113,16 @@ export const DEFAULT_CONFIG = {
     api_ttl_hours: 24,
     budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live proxy_grants
   },
+  // Self-hosted Linux sandbox image (src/sandbox-image.js). Empty `image` = the
+  // built-in streamed default (today's webvm.io Debian), so this is INERT until
+  // an operator uploads an ext2 image to R2 and selects it. CheerpX is 32-bit
+  // x86 ONLY, so every registered image must be i386 (mainline Arch is x86_64
+  // and cannot boot — use Alpine i386 / Debian i386-slim / archlinux32).
+  sandbox: {
+    image: "",
+    images: [],
+    prefetch: false,
+  },
 };
 
 /** @type {{ at: number, value: SiteConfig | null }} */
@@ -147,7 +180,7 @@ export async function saveConfig(env, patch) {
  * @param {any} patch
  * @returns {SiteConfig}
  */
-function mergeConfig(base, patch) {
+export function mergeConfig(base, patch) {
   const out = structuredClone(base);
   if (!patch || typeof patch !== "object") return out;
   for (const p of PERIODS) {
@@ -191,7 +224,42 @@ function mergeConfig(base, patch) {
     if (Number.isFinite(px.api_ttl_hours)) out.proxy.api_ttl_hours = Math.min(720, Math.max(1, Math.round(px.api_ttl_hours)));
     if (Number.isFinite(px.budget)) out.proxy.budget = Math.max(0, Math.round(px.budget));
   }
+  const sb = patch.sandbox;
+  if (sb && typeof sb === "object") {
+    // The image registry: keep only well-formed rows (a hostile/malformed patch
+    // can only ever produce a valid, bounded list). Replace wholesale when an
+    // `images` array is provided so an admin can remove a row.
+    if (Array.isArray(sb.images)) {
+      out.sandbox.images = sb.images.map(sanitizeSandboxImage).filter(Boolean).slice(0, 50);
+    }
+    // The selected default MUST match a registered id — else fall back to ""
+    // (the built-in default), so the fleet can never point at a missing image.
+    if (typeof sb.image === "string") {
+      out.sandbox.image = out.sandbox.images.some((im) => im.id === sb.image) ? sb.image : "";
+    }
+    if (typeof sb.prefetch === "boolean") out.sandbox.prefetch = sb.prefetch;
+  }
   return out;
+}
+
+/**
+ * Coerce one untrusted sandbox-image row into a valid {@link SandboxImage}, or
+ * null if it has no usable id. Every field is clamped so a hostile patch can't
+ * inject anything but a bounded, well-shaped row.
+ * @param {any} im
+ * @returns {import('./config.js').SandboxImage | null}
+ */
+function sanitizeSandboxImage(im) {
+  if (!im || typeof im !== "object") return null;
+  const id = String(im.id || "").toLowerCase();
+  if (!/^[a-z0-9-]{1,64}$/.test(id)) return null;
+  return {
+    id,
+    label: String(im.label || id).slice(0, 80),
+    arch: String(im.arch || "i386").slice(0, 16),
+    size_mb: Number.isFinite(Number(im.size_mb)) ? Math.max(0, Math.round(Number(im.size_mb))) : 0,
+    verified: im.verified === true,
+  };
 }
 
 /**
@@ -209,6 +277,7 @@ function sanitizeConfigPatch(patch) {
     anim_speed: numOr(patch?.anim_speed),
     websearch: patch?.websearch,
     proxy: patch?.proxy,
+    sandbox: patch?.sandbox,
   };
 }
 /** @param {any} v @returns {number | undefined} */

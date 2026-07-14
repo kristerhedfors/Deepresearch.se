@@ -52,6 +52,41 @@ const IDB_CACHE_ID = "deepresearch-sandbox-vm";
 // volumes are dr-proj-<hash>, created on demand.
 const WORKSPACE_DB = "dr-sandbox-workspace";
 
+// The optional SELF-HOSTED small image (docs/SANDBOX-LOCAL-IMAGE.md), set by the
+// app from GET /api/sandbox-image before any boot. Empty = the built-in webvm.io
+// CloudDevice default above (so this whole feature is inert until an operator
+// uploads AND selects an image). A same-origin path, e.g. /sandbox/img/<id>.ext2.
+let _imageUrl = "";
+// Reserved for the optional full-prefetch optimization (off by default; the flag
+// is plumbed from config so the client can adopt it once verified live).
+let _imagePrefetch = false;
+
+/**
+ * Point the sandbox at a self-hosted ext2 image (or "" for the built-in default).
+ * Must be called BEFORE the VM boots to affect that boot — bootVM reads it at
+ * connect-disk time. Idempotent + fail-soft.
+ * @param {string} url same-origin image path, or "" for the built-in default
+ * @param {boolean} [prefetch]
+ */
+export function setSandboxImage(url, prefetch = false) {
+  _imageUrl = typeof url === "string" ? url : "";
+  _imagePrefetch = !!prefetch;
+}
+
+/**
+ * A per-image IndexedDB block-cache id: switching images must NOT reuse a cache
+ * built from a different disk's blocks (block N means different bytes). The
+ * built-in default keeps the original fixed id for continuity.
+ * @param {string} url
+ * @returns {string}
+ */
+function cacheIdFor(url) {
+  if (!url) return IDB_CACHE_ID;
+  let h = 0x811c9dc5; // FNV-1a, stable per url
+  for (let i = 0; i < url.length; i++) { h ^= url.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return "dr-sandbox-vm-" + (h >>> 0).toString(16);
+}
+
 /** @type {'off'|'booting'|'ready'|'error'} */
 let vmState = "off";
 let cx = null;
@@ -605,8 +640,26 @@ async function bootVM(fileProvider = null) {
   const CheerpX = await import(CHEERPX_CDN);
 
   setStatus("connecting disk…");
-  const blockDevice = await CheerpX.CloudDevice.create(DISK_URL);
-  const blockCache = await CheerpX.IDBDevice.create(IDB_CACHE_ID);
+  // Prefer a self-hosted small image (CheerpX HttpBytesDevice, same-origin,
+  // Range-streamed from our R2) when one is selected; otherwise the built-in
+  // webvm.io CloudDevice default. Fail-soft: if HttpBytesDevice is unavailable
+  // (older CheerpX pin) or the image can't open, fall back to the default so a
+  // misconfigured image never wedges the boot — the sandbox's fail-soft contract.
+  let blockDevice = null;
+  let usingLocalImage = false;
+  if (_imageUrl && CheerpX.HttpBytesDevice && typeof CheerpX.HttpBytesDevice.create === "function") {
+    try {
+      const absolute = new URL(_imageUrl, location.href).href;
+      blockDevice = await CheerpX.HttpBytesDevice.create(absolute);
+      usingLocalImage = true;
+      sblog("info", "sandbox.image", { url: _imageUrl, prefetch: _imagePrefetch, via: "HttpBytesDevice" });
+    } catch (err) {
+      sblog("warn", "sandbox.image_failed", { url: _imageUrl, error: String((/** @type {any} */ (err))?.message || err).slice(0, 200) });
+      blockDevice = null;
+    }
+  }
+  if (!blockDevice) blockDevice = await CheerpX.CloudDevice.create(DISK_URL);
+  const blockCache = await CheerpX.IDBDevice.create(usingLocalImage ? cacheIdFor(_imageUrl) : IDB_CACHE_ID);
   const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache);
 
   const mounts = [

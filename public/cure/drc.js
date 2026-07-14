@@ -61,7 +61,7 @@ import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
-import { ensureSandboxBooted, sandboxIdle, sandboxSupported } from "/js/sandbox.js";
+import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
   OWASP_CORPUS_PATH,
@@ -1713,6 +1713,22 @@ $("bashlite").checked = state.bashLite === true;
 // means the system is already running (its terminal drifting faintly behind the
 // chat) rather than waiting for a message to need it. Best-effort + idempotent
 // (gated on sandboxIdle); the /cure page is always cross-origin isolated.
+// Point sandbox.js at the admin's selected self-hosted image (or "" = built-in
+// default) BEFORE any boot. Public endpoint, no user data — DRC may read it just
+// like /api/anim (the image bytes stream from our same-origin R2, no third party,
+// no account). Fail-soft: any error leaves the built-in default. See
+// docs/SANDBOX-LOCAL-IMAGE.md.
+let _drcSandboxImageApplied = null;
+function applyDrcSandboxImage() {
+  if (_drcSandboxImageApplied) return _drcSandboxImageApplied;
+  _drcSandboxImageApplied = fetch("/api/sandbox-image")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((cfg) => { if (cfg && typeof cfg.url === "string") setSandboxImage(cfg.url, !!cfg.prefetch); })
+    .catch(() => {});
+  return _drcSandboxImageApplied;
+}
+applyDrcSandboxImage();
+
 function prewarmDrcSandbox() {
   try {
     if (state.bashLite !== true || !sandboxSupported()) return;
@@ -1725,7 +1741,11 @@ function prewarmDrcSandbox() {
     // /src at boot, and a bare pre-warm would be adopted (idempotent boot) and
     // lose the mount. It boots on the first source-tool call instead.
     if (state.developerMode === true) return;
-    ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
+    // Ensure the selected image is applied before the boot chooses its disk.
+    applyDrcSandboxImage().finally(() => {
+      if (!sandboxIdle()) return;
+      ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
+    });
   } catch { /* best-effort — never disturb the page */ }
 }
 prewarmDrcSandbox();

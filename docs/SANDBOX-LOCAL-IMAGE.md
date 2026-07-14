@@ -1,6 +1,30 @@
 # Serving a local, small Linux image for the sandbox (admin-selectable)
 
-*Design + plan. Status: DESIGN (not yet implemented). Research date: 2026-07-14.*
+*Design + plan. Research date: 2026-07-14.*
+
+> **STATUS (2026-07-14): the plumbing is IMPLEMENTED and inert-by-default; the
+> image itself is not yet built/uploaded, and the boot path is not yet
+> live-verified.** Shipped in this change:
+> - `src/sandbox-image.js` — the R2 `Range` streamer `GET /sandbox/img/<id>.ext2`
+>   and the public config endpoint `GET /api/sandbox-image` (both routed pre-auth
+>   in `index.js`); Node-tested (`sandbox-image.test.js`).
+> - `src/config.js` — the `sandbox` block (`image` / `images[]` / `prefetch`) +
+>   its validation (`config.test.js`).
+> - `public/js/sandbox.js` — `setSandboxImage(url, prefetch)` + the
+>   `HttpBytesDevice`-vs-`CloudDevice` branch with a per-image block cache;
+>   **fail-soft fallback to the built-in default**, so with no image selected the
+>   boot is byte-identical to before.
+> - `public/js/app.js` (DRS) + `public/cure/drc.js` (DRC) — fetch
+>   `/api/sandbox-image` and point `sandbox.js` at the selection before boot.
+> - `public/js/admin.js` — the **Linux sandbox image** config panel (dropdown +
+>   registry + add-image form + i386 warning + prefetch toggle).
+> - `scripts/build-sandbox-image.sh` — the reproducible Alpine/Debian i386 build.
+>
+> **Still owed (see §8):** build + upload a real i386 image, flip its `verified`
+> flag after booting it end-to-end on a real device (iOS Safari especially), and
+> only then select it as the default. `prefetch` is plumbed but not yet consumed
+> by the client (§6). Until an image is uploaded and selected, everything above
+> is dormant and the sandbox streams the current webvm.io default unchanged.
 
 ## What this is
 

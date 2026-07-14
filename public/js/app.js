@@ -25,6 +25,7 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
 import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
+import { setSandboxImage } from "./sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "./agent-backdrop.js";
 import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
@@ -164,7 +165,7 @@ loadSettings()
     // Reconcile the header terminal icon with the authoritative knob: show it
     // (a cross-device enable that had no local cache at first paint) or hide a
     // stale-cache icon when the server says the sandbox is off.
-    if (sandboxOn) { showTerminalIcon(); prewarmSandbox(); } else hideTerminalIcon();
+    if (sandboxOn) { showTerminalIcon(); applySandboxImage().finally(prewarmSandbox); } else hideTerminalIcon();
     if (!s?.server_history) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});
@@ -488,11 +489,28 @@ window.addEventListener("resize", syncChatInset);
 window.addEventListener("orientationchange", syncChatInset);
 syncChatInset();
 
+// The self-hosted Linux sandbox image (docs/SANDBOX-LOCAL-IMAGE.md): fetch the
+// admin's selection once and point sandbox.js at it BEFORE any boot. Empty ⇒ the
+// built-in streamed default (current behavior), so this is inert until an image
+// is uploaded and selected. Fully fail-soft — any error leaves the default.
+let _sandboxImageApplied = null;
+function applySandboxImage() {
+  if (_sandboxImageApplied) return _sandboxImageApplied;
+  _sandboxImageApplied = fetch("/api/sandbox-image")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((cfg) => { if (cfg && typeof cfg.url === "string") setSandboxImage(cfg.url, !!cfg.prefetch); })
+    .catch(() => {});
+  return _sandboxImageApplied;
+}
+// Kick it at module init too so the composer-focus pre-warm (below) can pick it
+// up even before settings resolve.
+applySandboxImage();
+
 // Pre-warm the execution sandbox the moment the composer is focused (knob on +
 // isolated + no attachments/project/dev-mode → a bare boot). The ~25s CheerpX
 // cold start then elapses while the user types, so a shell ask answers without
 // the wait. Strictly best-effort and idempotent (see prewarmSandbox).
-input.addEventListener("focus", prewarmSandbox);
+input.addEventListener("focus", () => applySandboxImage().finally(prewarmSandbox));
 
 // Introspection mode's mascot (developer mode): as soon as what the user is
 // TYPING reads as an ask about this site's own implementation, TIN — the
