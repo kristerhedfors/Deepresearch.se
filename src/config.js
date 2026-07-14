@@ -10,6 +10,7 @@
 
 import { getDb } from "./db.js";
 import { PERIODS } from "./quota.js";
+import { SEARCH_BACKENDS } from "./websearch-backends.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./quota.js').QuotaMap} QuotaMap */
@@ -28,6 +29,24 @@ import { PERIODS } from "./quota.js";
  *   public/cure/umbrella.js); served publicly via GET /api/anim
  * @property {WebSearchGrantConfig} websearch the temporary web-search grant
  *   defaults + governance (the admin control panel edits these — src/websearch.js)
+ * @property {SearchBackendConfig} search the web-search BACKEND selection —
+ *   which provider actually runs the pipeline's searches (Exa or a self-hosted
+ *   alternative). Edited on the admin's "Web search service" panel; the
+ *   pluggable backends live in src/websearch-backends.js
+ */
+/**
+ * The web-search BACKEND selection (which provider runs the pipeline's
+ * searches). The auth secret + an optional base-URL override come from the
+ * `SEARCH_BACKEND_KEY` / `SEARCH_BACKEND_URL` env, never stored here.
+ * @typedef {Object} SearchBackendConfig
+ * @property {string} backend one of src/websearch-backends.js SEARCH_BACKENDS
+ *   ("exa" | "searxng" | "exa_compatible"); anything else falls back to Exa
+ * @property {string} base_url the self-hosted service's base URL (ignored for
+ *   the "exa" backend; a `SEARCH_BACKEND_URL` env var overrides it)
+ * @property {number} results default results per search for a self-hosted
+ *   backend (1..20)
+ * @property {boolean} fallback_exa on a self-hosted-backend failure, fall back
+ *   to Exa when the EXA_API_KEY is present (default true)
  */
 /**
  * The mintable-web-search-grant defaults + budget governance.
@@ -63,6 +82,17 @@ export const DEFAULT_CONFIG = {
     quota: 25,
     ttl_hours: 24,
     budget: 0,
+  },
+  // Web-search BACKEND (src/websearch-backends.js): which provider actually
+  // runs the pipeline's searches. Defaults to Exa (the built-in), so an
+  // unconfigured site behaves exactly as before. Point it at a self-hosted
+  // SearXNG or Exa-compatible service to keep search queries off a third
+  // party — see the local-web-search skill.
+  search: {
+    backend: "exa",
+    base_url: "",
+    results: 6,
+    fallback_exa: true,
   },
 };
 
@@ -154,6 +184,22 @@ function mergeConfig(base, patch) {
     if (Number.isFinite(w.ttl_hours)) out.websearch.ttl_hours = Math.min(720, Math.max(1, Math.round(w.ttl_hours)));
     if (Number.isFinite(w.budget)) out.websearch.budget = Math.max(0, Math.round(w.budget));
   }
+  const s = patch.search;
+  if (s && typeof s === "object") {
+    // Only a known backend id survives; anything else pins to Exa so a
+    // malformed patch can never route searches to an unvalidated target.
+    if (typeof s.backend === "string") {
+      out.search.backend = SEARCH_BACKENDS.includes(s.backend) ? s.backend : "exa";
+    }
+    if (typeof s.base_url === "string") {
+      // Store only a plausible http(s) URL (or empty); a hostile value can't
+      // become an outbound target. Trailing slashes trimmed at use.
+      const u = s.base_url.trim();
+      out.search.base_url = u === "" || /^https?:\/\/[^\s]+$/i.test(u) ? u : out.search.base_url;
+    }
+    if (Number.isFinite(s.results)) out.search.results = Math.min(20, Math.max(1, Math.round(s.results)));
+    if (typeof s.fallback_exa === "boolean") out.search.fallback_exa = s.fallback_exa;
+  }
   return out;
 }
 
@@ -171,6 +217,7 @@ function sanitizeConfigPatch(patch) {
     require_approval: patch?.require_approval,
     anim_speed: numOr(patch?.anim_speed),
     websearch: patch?.websearch,
+    search: patch?.search,
   };
 }
 /** @param {any} v @returns {number | undefined} */

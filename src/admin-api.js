@@ -48,6 +48,8 @@ import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { handleAdminWebSearch } from "./websearch.js";
+import { webSearch } from "./exa.js";
+import { resolveSearchBackend } from "./websearch-backends.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -149,6 +151,47 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // (The default quota/TTL/budget themselves are edited via PUT /config.)
     if (path === "/websearch" || path.startsWith("/websearch/")) {
       return handleAdminWebSearch(request, env, url, log, identity);
+    }
+    // The web-search BACKEND (src/websearch-backends.js): GET reports the
+    // resolved backend + which env secrets are present; POST /test runs one
+    // live search through the currently-configured backend so the admin can
+    // verify a self-hosted service works. The backend SELECTION itself is
+    // edited via PUT /config. See the local-web-search skill.
+    if (path === "/search" && method === "GET") {
+      const cfg = await getConfig(env);
+      const resolved = resolveSearchBackend(env, cfg.search);
+      return jsonResponse({
+        config: cfg.search,
+        resolved: { backend: resolved.backend, baseUrl: resolved.baseUrl, results: resolved.results, fallbackExa: resolved.fallbackExa },
+        env: {
+          hasBackendKey: !!resolved.key,
+          hasBackendUrlOverride: !!(/** @type {any} */ (env)?.SEARCH_BACKEND_URL),
+          hasExaKey: !!(/** @type {any} */ (env)?.EXA_API_KEY),
+        },
+      });
+    }
+    if (path === "/search/test" && method === "POST") {
+      const body = /** @type {any} */ (await request.json().catch(() => ({})));
+      const query = typeof body?.query === "string" ? body.query.trim().slice(0, 200) : "";
+      if (!query) return jsonResponse({ error: "A test query is required." }, 400);
+      const cfg = await getConfig(env);
+      const resolved = resolveSearchBackend(env, cfg.search);
+      const started = Date.now();
+      const res = await webSearch(env, log, query, { numResults: resolved.results, type: "auto" }).catch((e) => ({
+        content: String(e?.message || e),
+        items: [],
+        sources: [],
+        resultCount: 0,
+      }));
+      log.info("admin.search_test", { backend: resolved.backend, results: res.resultCount });
+      return jsonResponse({
+        backend: resolved.backend,
+        resultCount: res.resultCount,
+        durationMs: Date.now() - started,
+        cached: /** @type {any} */ (res).cached || false,
+        sources: (res.sources || []).slice(0, 10),
+        content: String(res.content || "").slice(0, 1500),
+      });
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

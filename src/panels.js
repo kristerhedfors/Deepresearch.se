@@ -101,6 +101,12 @@ export const PANEL_ITEMS = [
       "FEATURES.md §3's feature backlog with votes/effort/note/priority — the feature-build loop's work order.",
   },
   {
+    id: "websearch_service",
+    title: "Web search service",
+    summary:
+      "Which backend runs the pipeline's searches — Exa (built-in) or a self-hosted SearXNG / Exa-compatible service. Save the selection and run a live test search.",
+  },
+  {
     id: "websearch_grants",
     title: "Web search grants",
     summary:
