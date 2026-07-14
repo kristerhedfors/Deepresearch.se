@@ -1006,6 +1006,15 @@ export function execInSandbox(command) {
     if (outcome === "timeout") {
       sblog("warn", "sandbox.exec_timeout", { ms: EXEC_TIMEOUT_MS, command: String(command).slice(0, 120) });
       flushSandboxLog();
+      // A command that wedged reading /workspace is the corrupt-persistent-volume
+      // signature (a stat over inconsistent ext2-in-IndexedDB metadata that never
+      // returns). Wipe that fixed-name IDB volume so it doesn't re-brick the next
+      // boot — targeted to /workspace-touching commands so an unrelated slow
+      // command never nukes a healthy volume. Fires before resetSandbox (which
+      // leaves workspaceDev set for resetWorkspaceStorage to read).
+      if (/\/workspace/.test(String(command))) {
+        try { resetWorkspaceStorage(); } catch { /* best-effort */ }
+      }
       // CheerpX has no abort — discard the wedged instance so a later send re-boots.
       try { resetSandbox("exec_timeout"); } catch { /* ignore */ }
       const timeoutRes = { exitCode: 124, stdout: "", stderr: `command timed out after ${Math.round(EXEC_TIMEOUT_MS / 1000)}s` };
