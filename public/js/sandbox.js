@@ -65,6 +65,10 @@ let bootPromise = null;
 // resetSandboxIfBare() uses it to discard a pre-warm when a real send needs
 // mounts a bare VM can't carry (mounts are fixed at Linux.create).
 let _bootBare = false;
+// Monotonic boot counter — bumped at the START of every bootVM. Rides on the
+// diagnostic events so a "sandbox not ready" exec can be tied to the boot that
+// (was supposed to) back it, and a stale-VM reuse becomes visible in the log.
+let _bootGen = 0;
 let execQueue = Promise.resolve();
 let panel = null;
 let statusEl = null;
@@ -428,7 +432,7 @@ function withBootTimeout(boot) {
         try { stopBootQuips(); } catch { /* ignore */ }
         try { stopBootWatchdog(); } catch { /* ignore */ }
         // CheerpX has no abort — discard the wedged instance so a retry re-boots.
-        try { resetSandbox(); } catch { /* ignore */ }
+        try { resetSandbox("boot_timeout"); } catch { /* ignore */ }
         resolve(false);
       }, BOOT_TIMEOUT_MS);
     } catch { /* timers unavailable — no timeout, just await the boot */ }
@@ -450,8 +454,10 @@ export function sandboxIdle() {
  * parked interactive shell) is abandoned to GC — CheerpX exposes no clean
  * dispose, and a fresh Linux.create makes a new VM. Used to discard a bare
  * pre-warm that a real send needs to replace with a file-mounting boot.
+ * @param {string} [reason] why the teardown happened — surfaced in the log so a
+ *   later "sandbox not ready" can be traced to the reset that caused it.
  */
-export function resetSandbox() {
+export function resetSandbox(reason = "") {
   try { stopBootWatchdog(); } catch { /* ignore */ }
   try { stopBootQuips(); } catch { /* ignore */ }
   _bootOnMessage = null; // full teardown — drop the sink (stopBootQuips no longer does)
@@ -460,7 +466,7 @@ export function resetSandbox() {
   cx = null;
   _bootBare = false;
   try { if (typeof window !== "undefined") /** @type {any} */ (window).__DR_SANDBOX = null; } catch { /* ignore */ }
-  sblog("info", "sandbox.reset", {});
+  sblog("info", "sandbox.reset", { reason: String(reason || "").slice(0, 80), gen: _bootGen });
   flushSandboxLog();
 }
 
@@ -478,6 +484,47 @@ export async function resetSandboxIfBare() {
 }
 
 /**
+ * Wipe the PERSISTENT /workspace volume (the fixed-name IDBDevice
+ * `dr-sandbox-workspace`, reused across every boot and never otherwise reset).
+ * The design keeps guest scratch across sessions, but a boot/seed interrupted by
+ * an iOS PWA suspension can leave the ext2-in-IndexedDB with inconsistent
+ * metadata (a dangling inode, a link-count-0 entry) that makes a later
+ * /workspace read WEDGE — and because the db name is fixed and nothing ever
+ * clears it, that wedge re-arms on every future boot, bricking the sandbox for
+ * good. This is the recovery valve: called only after a file-mounting boot has
+ * already torn itself down (so nothing usable is lost), it deletes the volume so
+ * the NEXT boot recreates a clean one. Best-effort and never throws — prefers
+ * CheerpX's own IDBDevice.reset(), falls back to deleting the IndexedDB.
+ */
+async function resetWorkspaceStorage() {
+  const dev = workspaceDev;
+  workspaceDev = null;
+  try {
+    if (dev && typeof dev.reset === "function") {
+      await dev.reset();
+      sblog("warn", "sandbox.workspace_reset", { via: "idbdevice" });
+      flushSandboxLog();
+      return;
+    }
+  } catch { /* fall through to deleteDatabase */ }
+  try {
+    if (typeof indexedDB !== "undefined" && indexedDB.deleteDatabase) {
+      await new Promise((resolve) => {
+        let done = false;
+        const settle = () => { if (!done) { done = true; resolve(undefined); } };
+        const req = indexedDB.deleteDatabase(WORKSPACE_DB);
+        req.onsuccess = settle;
+        req.onerror = settle;
+        req.onblocked = settle; // an open handle blocks the delete — give up, don't hang
+        setTimeout(settle, 3000); // never wait on IDB forever
+      });
+      sblog("warn", "sandbox.workspace_reset", { via: "deletedb" });
+      flushSandboxLog();
+    }
+  } catch { /* best-effort — a still-bricked volume just falls back next boot */ }
+}
+
+/**
  * The boot progress sink is the module-level _bootOnMessage (set by
  * ensureSandboxBooted), so the ticker can be adopted by a caller that joins an
  * in-flight boot — see startBootQuips.
@@ -486,10 +533,12 @@ export async function resetSandboxIfBare() {
 async function bootVM(fileProvider = null) {
   const t0 = Date.now();
   _bootT0 = t0;
+  _bootGen += 1;
+  const gen = _bootGen;
   _bootStage = "boot_start";
   const coi = typeof window !== "undefined" && window.crossOriginIsolated === true;
   const sab = typeof SharedArrayBuffer !== "undefined";
-  sblog("info", "sandbox.boot_start", { coi, sab, provider: !!fileProvider, debug: _sbDebug });
+  sblog("info", "sandbox.boot_start", { coi, sab, provider: !!fileProvider, debug: _sbDebug, gen });
   if (!sandboxSupported()) {
     sblog("warn", "sandbox.boot_unsupported", { coi, sab });
     setFsSummary({ n: 0, b: 0, proj: false, drop: 0, ms: Date.now() - t0, err: "not cross-origin isolated" });
@@ -670,7 +719,19 @@ async function bootVM(fileProvider = null) {
     bytes: _fsSummary ? _fsSummary.b : 0,
     project: !!(plan && plan.project),
   });
-  if (fileMount) {
+  // The on-disk verification listing is DEBUG-ONLY telemetry (sandbox.fs.verify
+  // only surfaces with LOG_LEVEL=debug / the client verbose toggle), so only run
+  // it when verbose debugging is actually on. It reads /workspace — a bare,
+  // persistent IDBDevice (dr-sandbox-workspace) that is never reset — and the
+  // `ls -la /workspace/*/` glob is the documented wedge trigger (a stat over a
+  // corrupt persisted volume that never returns; sandbox-debug skill). When it
+  // wedged it hit EXEC_TIMEOUT_MS and resetSandbox() tore down the VM FROM
+  // INSIDE the boot, yet bootVM returned true — so the model's real command then
+  // got "sandbox not ready" (chat_logs #316/#317, iOS PWA, 2026-07-14). Keeping
+  // this diagnostic off the normal hot path is the fix; the honest-readiness
+  // guard below is the belt-and-suspenders so a torn-down boot can never again
+  // report success.
+  if (fileMount && _sbDebug) {
     try {
       const v = await execInSandbox(
         "echo '# /workspace'; ls -la /workspace 2>&1; echo '# project'; ls -la /workspace/*/ 2>/dev/null | head -40",
@@ -681,6 +742,23 @@ async function bootVM(fileProvider = null) {
     }
   }
   flushSandboxLog();
+
+  // Honest readiness: if anything between "vmState = ready" above and here tore
+  // the VM back down (e.g. a diagnostic exec that wedged and reset the sandbox),
+  // do NOT report a successful boot — a stale `true` here is exactly what made
+  // ensureSandboxBooted resolve ready while execInSandbox saw a dead VM and
+  // returned "sandbox not ready". Report the real state so the caller falls back
+  // cleanly (answers normally) instead of running commands against a corpse.
+  if (vmState !== "ready" || !cx) {
+    sblog("warn", "sandbox.boot_torn_down", { stage: _bootStage, gen, mounted: !!fileMount });
+    flushSandboxLog();
+    // A file-mounting boot that tore itself down most likely wedged reading or
+    // seeding the persistent /workspace volume — wipe it so the next boot isn't
+    // bricked by the same corrupt store. Only here (already-failed, files-mounted
+    // boot); the bare "ls /" path never mounts /workspace and never reaches this.
+    if (fileMount) { try { await resetWorkspaceStorage(); } catch { /* best-effort */ } }
+    return false;
+  }
 
   // Interactive login shell in a loop (re-spawns if the user types exit).
   (async () => {
@@ -862,7 +940,24 @@ const EXEC_TIMEOUT_MS = 30000;
  */
 export function execInSandbox(command) {
   const run = async () => {
-    if (vmState !== "ready" || !cx) return { exitCode: 1, stdout: "", stderr: "sandbox not ready" };
+    if (vmState !== "ready" || !cx) {
+      // The VM isn't live when a command tries to run. This should no longer
+      // happen on the happy path (bootVM now reports honest readiness), so log
+      // the exact state if it ever recurs: which boot generation, whether a boot
+      // is still tracked, and the last stage — enough to tell a stale-VM reuse
+      // from a mid-flight teardown without device access.
+      sblog("warn", "sandbox.exec_not_ready", {
+        vmState,
+        hasCx: !!cx,
+        bootTracked: !!bootPromise,
+        bootBare: _bootBare,
+        stage: _bootStage,
+        gen: _bootGen,
+        cmd: String(command).slice(0, 80),
+      });
+      flushSandboxLog();
+      return { exitCode: 1, stdout: "", stderr: "sandbox not ready" };
+    }
     // Surface the command on the faint page-background activity layer (never
     // throws — it's decoration). "shell" is the default single-agent channel;
     // multiple agents each pass their own id and the layer clips between them.
@@ -912,7 +1007,7 @@ export function execInSandbox(command) {
       sblog("warn", "sandbox.exec_timeout", { ms: EXEC_TIMEOUT_MS, command: String(command).slice(0, 120) });
       flushSandboxLog();
       // CheerpX has no abort — discard the wedged instance so a later send re-boots.
-      try { resetSandbox(); } catch { /* ignore */ }
+      try { resetSandbox("exec_timeout"); } catch { /* ignore */ }
       const timeoutRes = { exitCode: 124, stdout: "", stderr: `command timed out after ${Math.round(EXEC_TIMEOUT_MS / 1000)}s` };
       try { feedResult("shell", timeoutRes); } catch { /* decoration */ }
       return timeoutRes;
