@@ -562,10 +562,18 @@ audit + one follow-up round → streamed synthesis on the chosen model →
 validation with a revise-and-replace verdict via the discard_text
 convention; deterministic, NO function calling, every helper phase
 fail-soft — the pipeline invariants hold client-side; whole flow
-Node-tested end to end against a mock provider), and `drc-store.js`
+Node-tested end to end against a mock provider), `drc-store.js`
 (the BROWSER-LOCAL sealed-state storage adapter — localStorage rows of
 ciphertext keyed by blob id, injectable backend, deliberately the seam
-a future remote adapter would slot into — Node-tested).
+a future remote adapter would slot into — Node-tested), and
+`drc-page-core.js` (the DRC page's import-free PURE core — the small
+fragments the `/cure` DOM-wiring layer (`drc.js`) would otherwise inline
+or duplicate: `grantLive`/`grantFlagEnabled` (the ONE liveness + master-
+toggle check both borrowed-capability subsystems — the web-search grant
+AND the proxy bundle — share), `normalizeSearchBackend` (the web-search
+backend config normalizer, one definition for the sealed-state read and
+the settings-form persist), and the deep-link path parsers
+`parseProjectPath`/`parsePublicationRef` — Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
@@ -784,7 +792,9 @@ sealed-state round-trip with the API keys AND the RAG chunk text
 unreadable in the stored form, v1/v2→v3 migration, state validation),
 `drc-providers.js` (the
 CORS-capable registry: per-provider wire quirks, JSON-mode payloads,
-lenient JSON extraction, model filters, live-vs-fallback catalog over
+lenient JSON extraction, model filters, the `bergetCatalogFilter` shared
+by the Berget entry AND the proxy provider, `filterAndSortModels`'s
+curate-and-order-newest-first shaping, live-vs-fallback catalog over
 mock HTTP, the embed config — small model, 512 dims, Groq has none —
 and `drcEmbed`'s wire shape/index-ordering over mock HTTP),
 `drc-rag.js` (DRC's client-side RAG: incremental chat indexing with
@@ -800,6 +810,10 @@ clarify short-circuit, triage fail-soft, and the recall block threaded
 into triage/synthesis/validation but never harvest), `drc-store.js` (the
 browser-local storage adapter: round-trip over an injected backend,
 ciphertext-only at rest, listing, quota/corruption fail-soft),
+`drc-page-core.js` (the DRC page's pure core: `grantLive`'s
+token/expiry/quota liveness, `grantFlagEnabled`'s default-ON master
+toggle, `normalizeSearchBackend`'s backend/URL/key/results normalization,
+and the `parseProjectPath`/`parsePublicationRef` deep-link parsers),
 `public/cure/umbrella.js`'s pure core — via
 `public/js/umbrella-intro.test.js` — (the DRC first-visit intro's
 phase timeline and vortex→umbrella geometry: ramp

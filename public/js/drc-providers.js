@@ -21,6 +21,15 @@
 // optional baseUrl override so tests can point at a mock (the BERGET_URL
 // convention).
 
+// The Berget catalog curation rule (its ids are vendor paths like mistralai/…,
+// zai-org/…; the catalog is chat-model-dominated, so curation means excluding
+// the non-chat modalities it hosts — whisper speech-to-text, e5 embeddings, the
+// bge reranker — not picking generations). Shared by the Berget registry entry
+// AND the wire-identical secure-research-space proxy provider below, so the
+// regex has ONE definition and the two can never drift apart.
+export const bergetCatalogFilter = (id) =>
+  id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id);
+
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
 // (src/openai.js); Groq and Berget speak plain OpenAI chat completions
@@ -101,8 +110,8 @@ export const DRC_PROVIDERS = [
     // Berget's ids are vendor paths (mistralai/…, zai-org/…). The catalog
     // is chat-model-dominated; curation here means excluding the non-chat
     // modalities it hosts (whisper speech-to-text, e5 embeddings, the bge
-    // reranker), not picking generations.
-    modelFilter: (id) => id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id),
+    // reranker), not picking generations. Shared with proxyLlmProvider below.
+    modelFilter: bergetCatalogFilter,
     // Plain OpenAI chat-completions wire — same params the server's
     // Berget client sends (src/berget.js: max_tokens, response_format).
     params: (maxTokens) => ({ max_tokens: maxTokens }),
@@ -144,7 +153,7 @@ export function proxyLlmProvider(origin) {
       "openai/gpt-oss-120b",
       "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
     ],
-    modelFilter: (id) => id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id),
+    modelFilter: bergetCatalogFilter, // wire-identical to Berget (see above)
     params: (maxTokens) => ({ max_tokens: maxTokens }),
     // No embeddings over the proxy — RAG stays on the user's own OpenAI key when
     // present; a proxy-only session runs without client-side RAG, like Groq.
@@ -378,6 +387,24 @@ export async function drcToolRun(
 }
 
 /**
+ * The curated, ordered model-id list from a raw /models `data` array: keep the
+ * string ids the provider's `modelFilter` accepts, sorted newest-generation
+ * first (gpt-5.6 above gpt-5.4). Pure — the shaping half of `listDrcModels`,
+ * split out so it is unit-testable without a mock /models fetch (and reused by
+ * any future keyless/local provider that lists models the same way).
+ * @param {any} data the parsed `/models` response's `data` field
+ * @param {(id: string) => boolean} modelFilter the provider's curation predicate
+ * @returns {string[]}
+ */
+export function filterAndSortModels(data, modelFilter) {
+  return (Array.isArray(data) ? data : [])
+    .map((m) => m?.id)
+    .filter((id) => typeof id === "string" && modelFilter(id))
+    .sort()
+    .reverse(); // newest generation first (gpt-5.6 above gpt-5.4)
+}
+
+/**
  * The provider's chat-capable model list — live from the user's key, the
  * static fallback when the fetch fails (wrong key still gets a dropdown to
  * try; the send will surface the real error).
@@ -389,11 +416,7 @@ export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();
-    const ids = (Array.isArray(data?.data) ? data.data : [])
-      .map((m) => m?.id)
-      .filter((id) => typeof id === "string" && provider.modelFilter(id))
-      .sort()
-      .reverse(); // newest generation first (gpt-5.6 above gpt-5.4)
+    const ids = filterAndSortModels(data?.data, provider.modelFilter);
     if (ids.length) return ids;
   } catch {
     // fall through to the static list

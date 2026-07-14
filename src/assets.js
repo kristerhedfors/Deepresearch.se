@@ -61,6 +61,10 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/drc-core.js" ||
     url.pathname === "/js/drc-providers.js" ||
+    // The DRC page's pure core (import-free): grant liveness, the web-search
+    // backend config normalizer, and the deep-link path parsers, all imported
+    // by /cure/drc.js — same public-graph rule, a 401 here takes /cure dark.
+    url.pathname === "/js/drc-page-core.js" ||
     // The secure-research-space bundle crypto — drc.js imports it to open the
     // encrypted proxy bundle from the URL (src/proxy.js). Must be public or the
     // /cure module graph fails to link.
