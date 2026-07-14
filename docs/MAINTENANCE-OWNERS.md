@@ -25,13 +25,25 @@ feature maintenance*, and the **feature-maintenance** skill):
 
 | Subsystem | Owner PR | Author session (see PR trailer) | Files it guards | Regression signatures to watch |
 |---|---|---|---|---|
-| **Execution sandbox — boot + reliability** (standing maintenance owner; MUST stay subscribed) | #39 (`claude/sandbox-terminal-visibility-ujgu88`) — plus the **incoming boot-investigation PRs** (Playwright); whichever lands latest takes ownership | in each PR's `Claude-Session:` trailer | `public/js/sandbox.js`, `public/js/bash-core.js`, `src/bash-agent.js`, `src/bash-api.js`, `public/js/boot-messages.js`, `public/js/agent-backdrop*.js` | `sandbox not ready`, `stream stalled`, `sandbox.boot_stalled`, `sandbox.exec_timeout`, high `client_diag.fs.ms` (11–27 s = the iOS `/workspace` mount stall), never reaching `boot_done` |
+| **Execution sandbox — boot + reliability** (standing maintenance owner; MUST stay subscribed) | **#43** (`claude/sandbox-pwa-failure-ijgemh`, session `01LQuhduTgD8g92dTMtSEPgS`) — the Playwright worker; supersedes the earlier `sandbox-terminal-visibility-ujgu88` owner | in each PR's `Claude-Session:` trailer | `public/js/sandbox.js`, `public/js/bash-core.js`, `src/bash-agent.js`, `src/bash-api.js`, `public/js/boot-messages.js`, `public/js/agent-backdrop*.js`, `tests/e2e/sandbox.spec.js` | `sandbox not ready`, `stream stalled`, `sandbox.boot_stalled`, `sandbox.exec_timeout`, `sandbox.exec_not_ready`, `sandbox.boot_torn_down`, high `client_diag.fs.ms` (11–27 s = iOS `/workspace` mount stall), never reaching `boot_done` |
 | Sandbox agentic shell loop | #37 (`claude/last-chats-failure-logs-87jlxp`) | PR #37 trailer | `public/js/bash-core.js` (`runShellLoop`, `sandboxTornDown`) | `Ran N commands, all sandbox not ready`; loop not stopping on teardown |
 | DRC umbrella intro / loading spinners | #36 (`claude/intro-animation-loading-states-djis82`) | PR #36 trailer | `public/cure/umbrella.js`, `public/js/umbrella-spinner.js` | intro/spinner not rendering, canvas errors |
 
 > **Sandbox note:** the recurring failure is the CheerpX `/workspace` IndexedDB
 > mount stalling on iOS WebKit / Firefox iOS (~11–27 s vs ~0.8 s on a Safari tab),
 > which cascades into "sandbox not ready" / stream-stall. The loop-level fixes
-> (#34 exec timeout, #37 teardown stop) make it fail *soft*; the ROOT fix (the
-> mount model) is the live-on-device work the incoming Playwright worker(s) own.
-> Keep that worker in the loop until the boot is reliably green on a real iOS PWA.
+> (#34 exec timeout, #37 teardown stop) make it fail *soft*.
+>
+> **2026-07-14 — routed regression (chat_logs #322, iOS PWA, css h34) → FIXED by
+> #43 (merged `415fd75`), PENDING on-device confirmation.** Root cause: the
+> debug-only boot `fs.verify` exec (`ls -la /workspace/*/`) wedged over a corrupt
+> persisted `/workspace` IDB → 30 s exec timeout → `resetSandbox` fired inside
+> boot, but `bootVM` still returned `true`, so the model's `ls /` hit a dead VM.
+> #43 gates `fs.verify` behind debug, makes `bootVM` return honest readiness,
+> self-heals the corrupt `dr-sandbox-workspace` IDB, and adds diagnostics
+> (`sandbox.exec_not_ready`, `sandbox.boot_torn_down`, boot-generation counter,
+> `sandbox.reset` reason). **NOT yet confirmed on a real device** — CheerpX can't
+> boot in the proxied CI Chromium (xterm CDN blocked under COEP `require-corp`),
+> so the loop stays OPEN: re-test on the installed iOS PWA; if it still fails, the
+> new diagnostics in `wrangler tail` pinpoint the stage, and route the next round
+> back to #43's session. Keep the worker in the loop until boot is green on device.
