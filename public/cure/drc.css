@@ -328,7 +328,15 @@ header {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4.4rem 1.25rem 9rem;
+  /* The bottom inset must clear the FIXED footer glass (composer pane) so the
+     tail of a long reply can scroll fully into view instead of resting behind
+     it. The composer is three rows tall and its real footprint grows with the
+     iPhone safe-area inset, so a fixed rem value was too short (the "reply
+     buried behind the footer glass" bug — a reply slightly over one page could
+     only be dragged up by iOS rubber-band, snapping back on release). drc.js
+     measures the composer's actual footprint and overrides --chat-pad-bottom;
+     9rem is only the pre-measure fallback. */
+  padding: 4.4rem 1.25rem var(--chat-pad-bottom, 9rem);
   display: flex;
   flex-direction: column;
   gap: 1rem;

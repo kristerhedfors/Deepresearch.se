@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h35;
+  --css-version: h36;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -238,8 +238,12 @@ header {
   overflow-y: auto;
   overflow-x: hidden;
   /* Top/bottom padding clears the fixed glass chrome (two header rows /
-     the composer) so first and last messages can scroll into the open. */
-  padding: 5.6rem 1.25rem 8rem;
+     the composer) so first and last messages can scroll into the open. The
+     composer grows as the textarea autosizes and sits above the iPhone
+     safe-area inset, so a fixed bottom value buried the tail of a long reply
+     behind the footer glass; app.js measures the composer's real footprint and
+     overrides --chat-pad-bottom (8rem is only the pre-measure fallback). */
+  padding: 5.6rem 1.25rem var(--chat-pad-bottom, 8rem);
   display: flex;
   flex-direction: column;
   gap: 1rem;

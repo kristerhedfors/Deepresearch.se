@@ -1358,7 +1358,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d26 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d27 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -1557,3 +1557,34 @@ $("websearchserver").addEventListener("change", () => {
 // one (intent marker) — fire-and-forget; renders the row when it resolves.
 maybeRequestWsGrant();
 $("form").addEventListener("submit", send);
+
+// Keep the chat's bottom inset matched to the FIXED footer glass so the last
+// lines of a reply always clear the composer pane. The footer's real footprint
+// (composer height + margins + the iPhone safe-area inset) is more than the
+// old fixed 9rem, which left the tail of a slightly-over-one-page reply buried
+// behind the glass — reachable only by an iOS rubber-band drag that snapped
+// back on release. Measuring from the composer's top edge to the viewport
+// bottom captures that footprint exactly, regardless of safe-area or margin
+// collapsing; +14px is a small breathing gap. Fail-soft; re-runs whenever the
+// composer resizes or the viewport changes (iOS toolbar show/hide, rotation).
+function syncChatInset() {
+  try {
+    const composer = $("composer");
+    const chat = $("chat");
+    if (!composer || !chat) return;
+    const overlap = window.innerHeight - composer.getBoundingClientRect().top;
+    if (overlap > 0) chat.style.setProperty("--chat-pad-bottom", Math.round(overlap + 14) + "px");
+  } catch {
+    /* best-effort — the CSS 9rem fallback still applies */
+  }
+}
+if (window.ResizeObserver) {
+  try {
+    new ResizeObserver(syncChatInset).observe($("composer"));
+  } catch {
+    /* no ResizeObserver support — the resize/orientation listeners still fire */
+  }
+}
+window.addEventListener("resize", syncChatInset);
+window.addEventListener("orientationchange", syncChatInset);
+syncChatInset();

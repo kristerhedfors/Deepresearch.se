@@ -431,8 +431,39 @@ document.getElementById("privacyok").addEventListener("click", () => {
 const autogrow = () => {
   input.style.height = "auto";
   input.style.height = input.scrollHeight + "px";
+  syncChatInset(); // the taller composer must not bury the reply's tail
 };
 input.addEventListener("input", autogrow);
+
+// Keep the chat's bottom inset matched to the FIXED footer glass so the last
+// lines of a reply always clear the composer pane. The footer's real footprint
+// (composer height — which GROWS as the textarea autosizes — plus margins and
+// the iPhone safe-area inset) exceeds the old fixed 8rem, which left the tail
+// of a slightly-over-one-page reply buried behind the glass, reachable only by
+// an iOS rubber-band drag that snapped back on release. Measuring from the
+// composer's top edge to the viewport bottom captures that footprint exactly,
+// regardless of safe-area or margin collapsing; +14px is a small breathing
+// gap. Fail-soft; the CSS 8rem (var --chat-pad-bottom fallback) still applies.
+function syncChatInset() {
+  try {
+    const composer = document.getElementById("composer");
+    if (!composer || !chat) return;
+    const overlap = window.innerHeight - composer.getBoundingClientRect().top;
+    if (overlap > 0) chat.style.setProperty("--chat-pad-bottom", Math.round(overlap + 14) + "px");
+  } catch {
+    /* best-effort — the CSS fallback still applies */
+  }
+}
+if (window.ResizeObserver) {
+  try {
+    new ResizeObserver(syncChatInset).observe(document.getElementById("composer"));
+  } catch {
+    /* no ResizeObserver — the resize/orientation listeners still fire */
+  }
+}
+window.addEventListener("resize", syncChatInset);
+window.addEventListener("orientationchange", syncChatInset);
+syncChatInset();
 
 // Pre-warm the execution sandbox the moment the composer is focused (knob on +
 // isolated + no attachments/project/dev-mode → a bare boot). The ~25s CheerpX
@@ -508,7 +539,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h35";
+const CSS_VERSION = "h36";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
