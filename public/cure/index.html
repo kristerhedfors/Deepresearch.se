@@ -268,6 +268,40 @@
         <span id="wsstatus" class="muted setting-note"></span>
       </div>
 
+      <!-- Web search SERVICE — the expert, per-user backend for live web
+           search, called STRAIGHT from this browser (server in no data path).
+           Wired by renderSearchBackend() in drc.js; config lives in the sealed
+           project state. -->
+      <div class="settings-item" id="wssvcrow">
+        <div class="settings-row">
+          <span class="settings-label">Web search service
+            <button type="button" class="setting-info" data-pop="wssvcpop" aria-label="More about the web search service">ⓘ</button>
+          </span>
+        </div>
+        <div class="setting-pop" id="wssvcpop" hidden>Point live web search at your OWN self-hosted service —
+          a <b>SearXNG</b> instance or any <b>Exa-compatible</b> endpoint — called directly from this browser, so
+          no query touches this site's server at all. Your service must send <b>CORS</b> headers
+          (<code>Access-Control-Allow-Origin</code>). The URL and key are stored only inside your sealed project,
+          in this browser. Leave it on “Server grant” to use a granted allowance instead (or nothing). Recipes for
+          running your own service: the <code>local-web-search</code> guide.</div>
+        <label class="setting-note" style="display:block;margin-top:.4rem">Backend
+          <select id="ws-backend" style="width:100%;margin-top:.2rem">
+            <option value="grant">Server grant (default)</option>
+            <option value="searxng">SearXNG — your instance</option>
+            <option value="exa_compatible">Exa-compatible — your service</option>
+          </select>
+        </label>
+        <div id="ws-direct" hidden style="margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem">
+          <label class="setting-note">Service URL
+            <input id="ws-url" type="url" placeholder="https://search.example.com" style="width:100%;margin-top:.2rem"></label>
+          <label class="setting-note">API key <span class="muted">(optional)</span>
+            <input id="ws-key" type="password" autocomplete="off" placeholder="only if your service needs one" style="width:100%;margin-top:.2rem"></label>
+          <label class="setting-note">Results per search
+            <input id="ws-results" type="number" min="1" max="20" step="1" style="width:5rem;margin-top:.2rem"></label>
+        </div>
+        <span id="ws-svc-status" class="muted setting-note"></span>
+      </div>
+
       <!-- Secure research space — shown ONLY when this session holds a temporary
            account-connected proxy bundle. States which APIs are connected and
            lets the user turn the whole borrowed space off (back to fully

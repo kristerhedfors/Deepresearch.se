@@ -6,6 +6,8 @@
 // rules and the canonical reference URL.
 
 import { cacheGet, cachePut } from "./edge-cache.js";
+import { getConfig } from "./config.js";
+import { resolveSearchBackend, runBackendSearch } from "./websearch-backends.js";
 
 const EXA_URL = "https://api.exa.ai/search";
 const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
@@ -47,11 +49,13 @@ const CACHE_TTL_S = 600; // 10 min: long enough to absorb a follow-up
  * @param {string} query
  * @param {string} type Exa search mode ("auto" | "deep" | …)
  * @param {number} numResults
+ * @param {string} [backend] the configured backend id — part of the key so a
+ *   backend switch never serves another backend's cached results (default "exa")
  * @returns {string} a synthetic `.internal` cache-key URL
  */
-export function searchCacheKey(query, type, numResults) {
+export function searchCacheKey(query, type, numResults, backend = "exa") {
   const q = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const params = new URLSearchParams({ q, t: String(type), n: String(numResults) });
+  const params = new URLSearchParams({ q, t: String(type), n: String(numResults), b: String(backend) });
   return `https://exa-search-cache.internal/search?${params.toString()}`;
 }
 
@@ -102,22 +106,33 @@ export async function webSearch(env, log, query, depth = {}) {
     durationMs: Date.now() - startedAt,
   });
 
-  if (!env.EXA_API_KEY) {
-    log.error("exa.misconfigured", { missing: "EXA_API_KEY" });
-    return failure("Web search is unavailable: EXA_API_KEY is not configured.");
-  }
   if (!query) {
     log.warn("exa.empty_query", {});
     return failure("No search query was provided.");
   }
 
-  log.debug("exa.search_query", { query }); // user content: debug level only
+  // Resolve the configured web-search BACKEND. Defaults to Exa, so an
+  // unconfigured site is unchanged; a self-hosted SearXNG / Exa-compatible
+  // service (src/websearch-backends.js) routes here instead. Fail-soft: a
+  // config read failure degrades to the Exa default.
+  const searchCfg = await getConfig(env).then((c) => c.search).catch(() => null);
+  const backend = resolveSearchBackend(env, searchCfg || {});
+  const usingSelfHosted = backend.backend !== "exa";
+
+  // Without Exa AND without a self-hosted backend, there is nothing to search.
+  if (!usingSelfHosted && !env.EXA_API_KEY) {
+    log.error("exa.misconfigured", { missing: "EXA_API_KEY" });
+    return failure("Web search is unavailable: EXA_API_KEY is not configured.");
+  }
+
+  log.debug("exa.search_query", { query, backend: backend.backend }); // user content: debug level only
 
   // Serve an identical earlier search from the edge cache if it's still
   // fresh — a repeated query (e.g. a follow-up turn) costs nothing and
-  // returns instantly. Fail-soft: any cache miss/error falls through to a
-  // live search below.
-  const cacheKey = searchCacheKey(query, type, numResults);
+  // returns instantly. Keyed by the backend too, so a switch never serves
+  // stale cross-backend results. Fail-soft: any cache miss/error falls through
+  // to a live search below.
+  const cacheKey = searchCacheKey(query, type, numResults, backend.backend);
   const cached = await cacheGet(log, "exa.cache", cacheKey);
   if (cached) {
     log.info("exa.cache_hit", {
@@ -125,8 +140,27 @@ export async function webSearch(env, log, query, depth = {}) {
       results: cached.resultCount,
       query_chars: query.length,
       type,
+      backend: backend.backend,
     });
     return { ...cached, durationMs: Date.now() - startedAt, cached: true };
+  }
+
+  // Self-hosted backend path: run it, and on any failure fall through to Exa
+  // (when allowed and a key exists) rather than erroring the search wave.
+  if (usingSelfHosted) {
+    const alt = await runBackendSearch(env, log, backend, query, { numResults, type }).catch(() => null);
+    if (alt) {
+      const durationMs = Date.now() - startedAt;
+      log.info("search.backend_hit", { backend: backend.backend, results: alt.resultCount, duration_ms: durationMs });
+      await cachePut(log, "exa.cache", cacheKey, alt, CACHE_TTL_S);
+      return { ...alt, durationMs, cached: false };
+    }
+    if (!(backend.fallbackExa && env.EXA_API_KEY)) {
+      log.warn("search.backend_no_results", { backend: backend.backend, fallback: backend.fallbackExa });
+      return { ...failure(`No results found for: ${query}`), durationMs: Date.now() - startedAt };
+    }
+    log.info("search.backend_fallback_exa", { backend: backend.backend });
+    // fall through to the Exa path below
   }
 
   let resp;
@@ -135,7 +169,9 @@ export async function webSearch(env, log, query, depth = {}) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": env.EXA_API_KEY,
+        // Reaching here guarantees a key: either not self-hosted (checked
+        // above) or self-hosted fell back with a key present.
+        "x-api-key": /** @type {string} */ (env.EXA_API_KEY),
       },
       body: JSON.stringify({
         query,
