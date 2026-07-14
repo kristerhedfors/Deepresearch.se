@@ -151,6 +151,7 @@ export function addUserBubble(text, imageUrls = [], docNames = []) {
  * @property {string} text               the full answer text so far
  * @property {boolean} rawMode           Raw-button toggle state
  * @property {boolean} errored           setError was called
+ * @property {boolean} finaleActive      typing umbrella is mid finish-finale
  * @property {number} searchCount        from the `done` event (collapse label)
  * @property {number} startedAt          anchors researchLog's relative timestamps
  * @property {object[]} researchLog      ordered research events (activity.js ResearchLogEntry)
@@ -196,6 +197,7 @@ export function addAssistantTurn(question = "", images = []) {
     el, activityWrap, activity, activityLabel, content, stats,
     question, images, model: "",
     steps: {}, text: "", rawMode: false, errored: false, searchCount: 0,
+    finaleActive: false, // true while the typing umbrella plays its finish finale
     // Structured, ordered log of every research event this turn saw (steps,
     // searches, service lookups, the final stats) — the source for the
     // "Copy research JSON" debug button (activity.js). startedAt anchors the
@@ -414,6 +416,12 @@ function renderContent(turn) {
   }
 }
 
+// Below this wait, dismissing the typing indicator is instant (no finale) —
+// a quick direct reply shouldn't be held back by a celebratory flourish. Above
+// it (a research-length wait), the big umbrella plays the same completion finale
+// the small step spinners do before the answer is revealed.
+const TYPING_FINALE_MIN_MS = 1500;
+
 function showTyping(content) {
   content.className = "content typing";
   content.replaceChildren();
@@ -423,7 +431,21 @@ function showTyping(content) {
   // The single waiting spinner: play the intro in miniature, fixed in place.
   // Best-effort — falls back to the CSS twirly logo on reduced-motion/no-canvas.
   // The animation stops itself when setText/resetForRevision clears the icon.
-  mountUmbrellaSpinner(icon, { style: 0, size: 72 });
+  // The handle + wait-start are stashed on the content element so setText can
+  // play the pink-umbrella→✓ FINISH FINALE (the same one the small step spinners
+  // got) when a research-length wait resolves into an answer.
+  content.__typingSpinner = mountUmbrellaSpinner(icon, { style: 0, size: 72 });
+  content.__typingStart = Date.now();
+}
+
+// Reveal the streamed answer where the typing indicator was: drop the typing
+// state and expose the Raw/Copy tools. (Split out of setText so both the
+// finale's completion callback and the no-finale path share one implementation.)
+function revealTyping(turn) {
+  turn.content.__typingSpinner = null;
+  turn.content.classList.remove("typing");
+  turn.content.replaceChildren();
+  turn.el.classList.add("has-text");
 }
 
 /**
@@ -443,9 +465,33 @@ export function isTyping(turn) {
  */
 export function setText(turn, text) {
   if (isTyping(turn)) {
-    turn.content.classList.remove("typing");
-    turn.content.replaceChildren();
-    turn.el.classList.add("has-text"); // reveal the Raw/Copy tools
+    // Already mid-finale: keep the latest text and stay under the umbrella; the
+    // finale's completion callback renders whatever accumulated by then.
+    if (turn.finaleActive) {
+      turn.text = text;
+      return;
+    }
+    const content = turn.content;
+    const handle = content.__typingSpinner;
+    const waited = Date.now() - (content.__typingStart || Date.now());
+    // A research-length wait resolving into a real (non-error) answer earns the
+    // big umbrella's COMPLETION FINALE: it speed-runs from wherever its boomerang
+    // is into the fully-bloomed PINK umbrella and folds into the pink ✓ — exactly
+    // like the small step spinners — and only THEN is the answer revealed. A
+    // quick reply, an error, or a reduced-motion/no-canvas mount skips straight
+    // to the reveal so nothing is needlessly held back.
+    if (handle?.finish && !turn.errored && waited >= TYPING_FINALE_MIN_MS) {
+      turn.finaleActive = true;
+      turn.text = text; // keep accumulating deltas while the finale plays
+      handle.finish(() => {
+        turn.finaleActive = false;
+        revealTyping(turn);
+        renderContent(turn);
+        scrollDown();
+      });
+      return;
+    }
+    revealTyping(turn); // reveal the Raw/Copy tools
   }
   turn.text = text;
   renderContent(turn);
@@ -478,6 +524,7 @@ export function setError(turn, message) {
 export function resetForRevision(turn) {
   turn.text = "";
   turn.errored = false;
+  turn.finaleActive = false;
   turn.el.classList.remove("has-text");
   showTyping(turn.content);
 }
