@@ -68,6 +68,18 @@ for routine work. Always cut work on a feature branch off the latest
 `origin/main` first; a merged branch is DONE (do not keep building on it —
 branch fresh from the updated `main`). See the **merge-branches** skill.
 
+**ALWAYS watch a PR you open (owner directive, 2026-07-14).** The moment you
+create a pull request, subscribe this session to it with
+`subscribe_pr_activity` — do NOT wait to be asked, and do NOT merely offer.
+Then follow it through per the harness's PR-activity rules: investigate every
+CI failure / review comment, push a fix when you're confident and it's small,
+ask via `AskUserQuestion` when it's ambiguous or architecturally significant,
+and skip only genuine no-ops. Webhooks don't deliver CI *success*, new pushes,
+or merge-conflict transitions, so also schedule a `send_later` self check-in
+~1 h out to re-check state and re-arm silently if nothing changed. A
+subscription is not finished until the PR is **merged or closed** (or the owner
+says stop) — keep watching until then.
+
 ```bash
 git fetch origin main
 git checkout -B <feature-branch> origin/main
