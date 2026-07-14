@@ -76,6 +76,13 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
+import {
+  grantFlagEnabled,
+  grantLive,
+  normalizeSearchBackend,
+  parseProjectPath,
+  parsePublicationRef,
+} from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
@@ -562,9 +569,9 @@ function showDrs(feature) {
 // reference so the password manager (which files the secret under that
 // username) matches the entry, and opens the panel ready for the secret.
 function handleProjectLink() {
-  const m = location.pathname.match(/^\/(?:my|free)\/(project-[0-9a-z]+)/i);
-  if (!m) return false;
-  $("refname").value = m[1];
+  const ref = parseProjectPath(location.pathname); // drc-page-core.js
+  if (!ref) return false;
+  $("refname").value = ref;
   openDrawer();
   $("projpanel").open = true;
   gateStatus("Enter (or autofill) this project's secret to open it.");
@@ -576,13 +583,13 @@ function handleProjectLink() {
 // typing a follow-up (on the visitor's own key). /?continue=<slug> is the
 // legacy handoff form.
 async function handlePublicationLink() {
-  const m = location.pathname.match(/^\/cure\/([a-z0-9-]+)$/i);
-  const slug = m ? m[1] : new URLSearchParams(location.search).get("continue");
-  if (!slug || !/^[a-z0-9-]{1,80}$/i.test(slug)) return false;
+  const ref = parsePublicationRef(location.pathname, location.search); // drc-page-core.js
+  if (!ref) return false;
+  const { slug, fromPath } = ref;
   try {
     const res = await fetch("/api/pub/" + encodeURIComponent(slug.toLowerCase()));
     if (!res.ok) {
-      if (m) workStatus("No publication at /cure/" + slug + " — starting fresh.");
+      if (fromPath) workStatus("No publication at /cure/" + slug + " — starting fresh.");
       return false;
     }
     const pub = await res.json();
@@ -1099,16 +1106,10 @@ function readJson(key) {
   }
 }
 function wsGrantActive() {
-  return !!(
-    wsGrant &&
-    wsGrant.token &&
-    Number(wsGrant.expiresAt) > Date.now() &&
-    (wsGrant.remaining == null || Number(wsGrant.remaining) > 0)
-  );
+  return grantLive(wsGrant); // drc-page-core.js: the shared liveness check
 }
 function wsEnabled() {
-  const v = localStorage.getItem(WS_ENABLED_KEY);
-  return v == null ? true : v === "1"; // default ON when a grant is present
+  return grantFlagEnabled(localStorage.getItem(WS_ENABLED_KEY)); // default ON when a grant is present
 }
 
 // Populates the web-search grant from either a SHARED LINK (/cure?ws=<token>,
@@ -1290,13 +1291,7 @@ function renderWsRow() {
 // degrades to the offline harvest (or the server grant, if that's selected).
 
 function searchBackendCfg() {
-  const sb = (state && state.searchBackend) || {};
-  return {
-    backend: sb.backend === "searxng" || sb.backend === "exa_compatible" ? sb.backend : "grant",
-    baseUrl: String(sb.baseUrl || "").trim().replace(/\/+$/, ""),
-    key: String(sb.key || "").trim(),
-    results: Number(sb.results) > 0 ? Math.min(20, Math.max(1, Math.round(Number(sb.results)))) : 6,
-  };
+  return normalizeSearchBackend(state && state.searchBackend); // drc-page-core.js
 }
 
 // True when a browser-direct self-hosted backend is configured AND usable.
@@ -1342,12 +1337,12 @@ function renderSearchBackend() {
   // Save on any change (guarded so we only bind once per open — the elements
   // persist across opens, so use onchange assignment, not addEventListener).
   const persist = async () => {
-    state.searchBackend = {
-      backend: sel.value === "searxng" || sel.value === "exa_compatible" ? sel.value : "grant",
-      baseUrl: urlEl.value.trim().replace(/\/+$/, ""),
-      key: keyEl.value.trim(),
-      results: Number(resEl.value) > 0 ? Math.min(20, Math.max(1, Math.round(Number(resEl.value)))) : 6,
-    };
+    state.searchBackend = normalizeSearchBackend({
+      backend: sel.value,
+      baseUrl: urlEl.value,
+      key: keyEl.value,
+      results: resEl.value,
+    });
     renderSearchBackend();
     await saveState();
   };
@@ -1380,11 +1375,10 @@ const PROXY_ENABLED_KEY = "dr_proxy_enabled"; // "1"/"0" — the master toggle
 const proxyGrants = { web: readJson(PROXY_WEB_KEY), api: readJson(PROXY_API_KEY) };
 
 function proxyLive(p) {
-  return !!(p && p.token && Number(p.expiresAt) > Date.now() && (p.remaining == null || Number(p.remaining) > 0));
+  return grantLive(p); // drc-page-core.js: the shared liveness check (same shape as wsGrant)
 }
 function proxyEnabled() {
-  const v = localStorage.getItem(PROXY_ENABLED_KEY);
-  return v == null ? true : v === "1"; // default ON while a bundle is present
+  return grantFlagEnabled(localStorage.getItem(PROXY_ENABLED_KEY)); // default ON while a bundle is present
 }
 function webProxyUsable() {
   return proxyLive(proxyGrants.web) && proxyEnabled();

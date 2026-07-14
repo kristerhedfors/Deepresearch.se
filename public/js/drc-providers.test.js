@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import {
   DRC_PROVIDERS,
+  bergetCatalogFilter,
   buildDrcPayload,
   configuredDrcProviders,
   detectDrcProvider,
@@ -13,7 +14,9 @@ import {
   drcEmbedProvider,
   drcProvider,
   drcToolRun,
+  filterAndSortModels,
   listDrcModels,
+  proxyLlmProvider,
   toOpenAiTools,
 } from "./drc-providers.js";
 
@@ -155,6 +158,36 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(berget.modelFilter("BAAI/bge-reranker-v2-m3"), false);
   assert.equal(berget.modelFilter("intfloat/multilingual-e5-large-instruct"), false);
   assert.equal(berget.modelFilter("intfloat/multilingual-e5-large"), false);
+});
+
+test("the Berget catalog filter has ONE definition, shared by the proxy provider", () => {
+  const berget = drcProvider("berget");
+  // The registry entry and the wire-identical secure-research-space proxy both
+  // reference the same predicate — no drift-prone copy of the regex.
+  assert.equal(berget.modelFilter, bergetCatalogFilter);
+  assert.equal(proxyLlmProvider("https://x").modelFilter, bergetCatalogFilter);
+  assert.equal(bergetCatalogFilter("mistralai/Mistral-Small-3.2-24B-Instruct-2506"), true);
+  assert.equal(bergetCatalogFilter("intfloat/multilingual-e5-large"), false);
+});
+
+test("filterAndSortModels curates by the predicate and orders newest-first", () => {
+  const data = [
+    { id: "gpt-5.4-mini" },
+    { id: "gpt-5.6-terra" },
+    { id: "text-embedding-3-large" }, // dropped by the filter
+    { id: 42 }, // non-string id dropped
+    null, // junk entry dropped
+    { id: "gpt-5.6-sol" },
+  ];
+  const openai = drcProvider("openai");
+  assert.deepEqual(filterAndSortModels(data, openai.modelFilter), [
+    "gpt-5.6-terra",
+    "gpt-5.6-sol",
+    "gpt-5.4-mini",
+  ]);
+  // Fail-soft over a non-array (a bad /models body) → empty list, never a throw.
+  assert.deepEqual(filterAndSortModels(null, openai.modelFilter), []);
+  assert.deepEqual(filterAndSortModels(undefined, () => true), []);
 });
 
 describe("provider calls over mock HTTP", () => {
