@@ -33,6 +33,8 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  *   which provider actually runs the pipeline's searches (Exa or a self-hosted
  *   alternative). Edited on the admin's "Web search service" panel; the
  *   pluggable backends live in src/websearch-backends.js
+ * @property {ProxyGrantConfig} proxy the secure-research-space proxy BUNDLE
+ *   defaults + governance (per-service quota/TTL + shared budget — src/proxy.js)
  */
 /**
  * The web-search BACKEND selection (which provider runs the pipeline's
@@ -56,6 +58,17 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  * @property {number} ttl_hours default lifetime of a minted key, in hours
  * @property {number} budget cap on total OUTSTANDING remaining across all live
  *   grants (0 = uncapped) — the "entire set of quota" ceiling the panel governs
+ */
+/**
+ * The secure-research-space proxy-bundle defaults + budget governance.
+ * @typedef {Object} ProxyGrantConfig
+ * @property {boolean} enabled master switch for the whole bundle subsystem
+ * @property {number} web_quota default Exa searches per bundled web grant
+ * @property {number} web_ttl_hours default lifetime of a web grant, in hours
+ * @property {number} api_quota default LLM completions per bundled api grant
+ * @property {number} api_ttl_hours default lifetime of an api grant, in hours
+ * @property {number} budget cap on total OUTSTANDING remaining across all live
+ *   proxy grants (0 = uncapped)
  */
 
 /** @type {SiteConfig} */
@@ -93,6 +106,19 @@ export const DEFAULT_CONFIG = {
     base_url: "",
     results: 6,
     fallback_exa: true,
+  },
+  // The SECURE-RESEARCH-SPACE proxy bundle (src/proxy.js): the admin defaults +
+  // governance for the account-connected grants a ghost crossover (or a
+  // shareable link) hands a Se/cure session — a bundled web-search grant AND an
+  // LLM API grant. Per-service quota/TTL + a shared global outstanding-remaining
+  // budget ceiling across ALL live proxy grants.
+  proxy: {
+    enabled: true,
+    web_quota: 25, // Exa searches per bundled web grant
+    web_ttl_hours: 24,
+    api_quota: 40, // LLM completions per bundled api grant
+    api_ttl_hours: 24,
+    budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live proxy_grants
   },
 };
 
@@ -200,6 +226,17 @@ function mergeConfig(base, patch) {
     if (Number.isFinite(s.results)) out.search.results = Math.min(20, Math.max(1, Math.round(s.results)));
     if (typeof s.fallback_exa === "boolean") out.search.fallback_exa = s.fallback_exa;
   }
+  const px = patch.proxy;
+  if (px && typeof px === "object") {
+    if (typeof px.enabled === "boolean") out.proxy.enabled = px.enabled;
+    // Same non-hostile clamps as websearch: per-service quota 1..10000, ttl
+    // 1..720h (30d), budget ≥0 with 0 = uncapped.
+    if (Number.isFinite(px.web_quota)) out.proxy.web_quota = Math.min(10000, Math.max(1, Math.round(px.web_quota)));
+    if (Number.isFinite(px.web_ttl_hours)) out.proxy.web_ttl_hours = Math.min(720, Math.max(1, Math.round(px.web_ttl_hours)));
+    if (Number.isFinite(px.api_quota)) out.proxy.api_quota = Math.min(10000, Math.max(1, Math.round(px.api_quota)));
+    if (Number.isFinite(px.api_ttl_hours)) out.proxy.api_ttl_hours = Math.min(720, Math.max(1, Math.round(px.api_ttl_hours)));
+    if (Number.isFinite(px.budget)) out.proxy.budget = Math.max(0, Math.round(px.budget));
+  }
   return out;
 }
 
@@ -218,6 +255,7 @@ function sanitizeConfigPatch(patch) {
     anim_speed: numOr(patch?.anim_speed),
     websearch: patch?.websearch,
     search: patch?.search,
+    proxy: patch?.proxy,
   };
 }
 /** @param {any} v @returns {number | undefined} */

@@ -61,6 +61,10 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/sse.js" ||
     url.pathname === "/js/drc-core.js" ||
     url.pathname === "/js/drc-providers.js" ||
+    // The secure-research-space bundle crypto — drc.js imports it to open the
+    // encrypted proxy bundle from the URL (src/proxy.js). Must be public or the
+    // /cure module graph fails to link.
+    url.pathname === "/js/proxy-bundle.js" ||
     url.pathname === "/js/drc-rag.js" ||
     // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
     // helpers) each import settings.js — all three must be public or the

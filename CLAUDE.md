@@ -229,8 +229,9 @@ update the row in the same pass. See the **feature-maintenance** skill.
    Outbound requests to third parties carry the minimum (a query, a
    coordinate, a host) — never the conversation, filename, or account
    identity.
-   **ONE deliberate, bounded exception to "the server is in NO DRC data
-   path" (2026-07-14 directive): the temporary web-search GRANT subsystem**
+   **TWO deliberate, bounded exceptions to "the server is in NO DRC data
+   path".** The FIRST (2026-07-14 directive) is the **temporary web-search
+   GRANT subsystem**
    (`src/websearch.js` + `src/websearch-key.js`; client glue in
    `public/cure/drc.js` + `public/js/drc-research.js`; admin panel in
    `public/js/admin.js`; defaults in `src/config.js`'s `websearch` block).
@@ -257,6 +258,36 @@ update the row in the same pass. See the **feature-maintenance** skill.
    server-paid search); the public search is metered ONLY by the token+D1 row
    (an atomic `UPDATE … WHERE used < quota`), and revoking a grant (deleting
    its row) kills its link immediately.
+   The SECOND (2026-07-14 directive): the **SECURE-RESEARCH-SPACE proxy BUNDLE**
+   (`src/proxy.js` + `src/proxy-grant.js` + the shared bundle crypto
+   `public/js/proxy-bundle.js`; client glue in `public/cure/drc.js` +
+   `public/js/drc-providers.js`'s `proxyLlmProvider`; admin panel in
+   `public/js/admin.js`; defaults in `src/config.js`'s `proxy` block; D1
+   `proxy_grants`). It GENERALIZES the web-search grant into a whole "secure
+   research space" a signed-in Se/rver user (ghost crossover) or an admin
+   (shareable link) LENDS a Se/cure session: a bundle of temporary,
+   account-connected proxy grants, **one per SERVICE** — `web` (proxied Exa,
+   query-only, exactly like the first exception) and `api` (proxied LLM
+   completions on the server's Berget key). **The `api` grant DOES route the
+   conversation through the server** (an LLM call carries the prompt) — this is
+   the one place a Se/cure session's *content* touches the server — so it is
+   OPT-IN, quota-metered, time-limited, Berget-ONLY (bounded account exposure),
+   and **clearly DISCLOSED in the Se/cure UI** ("which APIs are connected"): a
+   connected-APIs banner + a Settings row + a master toggle that turns the whole
+   borrowed space off. **TWO-TIER tokens** (the owner's directive): the bundle
+   carries GRANT TOKENS (`prg1.…`, namespace `proxygrant.`, the "token-granting
+   tokens") that travel in the URL; the client EXCHANGES each
+   (`POST /api/proxy/exchange`) for a PROXY TOKEN (`prx1.…`, namespace
+   `proxytoken.`) that never appears in a URL and authorizes the metered service
+   (`POST /api/proxy/web`; the OpenAI-wire reverse proxy `/api/proxy/llm/*` which
+   the DRC provider registry drives unchanged). **Bundle TRANSPORT:** the bundle
+   is AES-256-GCM sealed; the ciphertext rides the URL query (`?rp=`,
+   server-visible but opaque) and the decryption key rides the URL ANCHOR
+   (`#rk=`, never sent to any server, stripped from referrers). Mint paths:
+   authed `POST /api/proxy/grant` (ghost, reuse-per-user) and
+   `POST /api/admin/proxy` (link). Same FAIL-SAFE posture (no D1 → 503, no
+   unmetered spend), the same atomic reserve/refund meter, and per-service
+   quota/TTL + a shared global `budget` ceiling governed in the control panel.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -314,6 +345,8 @@ Server (`src/`):
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `websearch-key.js` | The temporary web-search GRANT TOKEN half (leaf module): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
 | `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
+| `proxy-grant.js` | The SECURE-RESEARCH-SPACE two-tier TOKEN half (leaf module): mint/verify of the GRANT token `prg1.<payload>.<hmac>` (the bundle's "token-granting token", namespace `proxygrant.`) and the PROXY token `prx1.…` (the post-exchange working credential, namespace `proxytoken.`) — both HMAC-signed with `SESSION_SECRET`, each under its own namespace so the two tiers (and the `wsk1`/session tokens) can never be confused; claims carry `svc` (`web`/`api`). Node-tested |
+| `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, DELETE revoke a bundle). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
@@ -692,6 +725,16 @@ list/mint-link/revoke surface, the 400/403/429/503 status codes),
 core parsers/dispatch over a mocked fetch — its client-core sibling
 `public/js/websearch-backends-core.js` covers the browser-facing
 `(log, resolved, query, depth)` contract directly),
+`proxy-grant.js` (the secure-research-space two-tier tokens: grant→proxy
+mint/verify, the namespace separation that keeps the tiers/websearch/session
+tokens distinct, and the secret/expiry/tamper rejections) and `proxy.js`
+(the bundle mint subsystem + per-service meter over an in-memory D1 fake +
+mocked Exa/Berget: bundle mint one-row-per-service, ghost reuse-per-user, the
+grant→proxy exchange, the atomic web + LLM reserve/refund incl. the LLM
+reverse-proxy models-forward/metered-completion/refund-on-error, non-consuming
+status, and the admin mint-link/list/revoke surface) and (client)
+`proxy-bundle.js` (the AES-GCM seal→open round-trip, wrong-key/tamper/garbage
+fail-soft to null, and the shape validator),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
 `?format=text`), `testpoints.js` (the try-it queue's pure logic:

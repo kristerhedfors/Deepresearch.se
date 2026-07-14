@@ -48,13 +48,16 @@ import {
 } from "/js/drc-core.js";
 import {
   DRC_PROVIDERS,
+  PROXY_LLM_PROVIDER_ID,
   configuredDrcProviders,
   detectDrcProvider,
   drcEmbed,
   drcEmbedProvider,
   drcProvider,
   listDrcModels,
+  proxyLlmProvider,
 } from "/js/drc-providers.js";
+import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
@@ -392,7 +395,10 @@ function maybePlayUmbrella(deepLinked) {
   }
   // `force` (the explicit ?anim=1 replay) wins over all three gates; without
   // it, reduce-motion / already-seen / a deep link each suppress the intro.
-  if (!force && (reduced || seen || deepLinked)) return Promise.resolve();
+  // Resolves with whether the intro actually PLAYED so the caller can chain
+  // the ambient strolling ghost (ghostwalk.js) onto a real play, and force it
+  // through reduced-motion on the ?anim=1 path exactly as the intro is.
+  if (!force && (reduced || seen || deepLinked)) return Promise.resolve(false);
   try {
     localStorage.setItem("dr_umbrella_seen", "1");
   } catch {
@@ -413,6 +419,21 @@ function maybePlayUmbrella(deepLinked) {
         m.playUmbrellaIntro({ onDone: res, speed, reverse: rev ? true : undefined })
       )
     )
+    .then(() => true)
+    .catch(() => {
+      // decoration only — never block the page over it
+      return false;
+    });
+}
+
+// The ambient strolling ghost (public/cure/ghostwalk.js): after the intro the
+// little ghost ambles across the page carrying a pink umbrella and saying
+// things. Dynamically imported and fully fail-soft — a load failure is a
+// no-op, exactly like the intro. `force` is the ?anim=1 replay, which pushes
+// it through reduced-motion just as it does the intro.
+function startGhostStroll(force) {
+  import("./ghostwalk.js")
+    .then((m) => m.startGhostWalk({ force: !!force }))
     .catch(() => {
       // decoration only — never block the page over it
     });
@@ -475,6 +496,7 @@ function openSettings() {
   $("devmode").checked = state.developerMode === true;
   renderKeysPanel();
   renderWsRow(); // reflect the web-search grant (if any)
+  renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
   $("settingsview").hidden = false;
 }
@@ -748,7 +770,8 @@ async function saveKeys() {
 async function refreshModels() {
   const pick = $("model");
   const providers = configuredDrcProviders(state.keys);
-  if (!providers.length) {
+  const proxyOn = apiProxyUsable();
+  if (!providers.length && !proxyOn) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
     return;
   }
@@ -763,6 +786,23 @@ async function refreshModels() {
       );
     }),
   );
+  // The SECURE-RESEARCH-SPACE provider (the account-connected LLM proxy), first
+  // so a keyless borrowed session lands on it by default. Its "key" is the api
+  // proxy token; its models are the Berget catalog the proxy forwards.
+  if (proxyOn) {
+    const pp = proxyLlmProvider(location.origin);
+    let ids = [];
+    try {
+      ids = await listDrcModels(pp, proxyGrants.api.token);
+    } catch {
+      ids = [...pp.fallbackModels];
+    }
+    groups.unshift(
+      `<optgroup label="🔒 Secure research space — connected">` +
+        ids.map((id) => `<option value="${esc(pp.id + "::" + id)}">${esc(id)}</option>`).join("") +
+        "</optgroup>",
+    );
+  }
   // The tier's provider limit, made visible: only CORS-capable providers
   // can serve DRC (direct browser calls); the hosted ones stay listed,
   // disabled, pointing at DRS. Berget graduated OFF this list 2026-07-11
@@ -1129,6 +1169,39 @@ async function maybeRequestWsGrant() {
 // any error, or the toggle off → null, and the pipeline falls back to the
 // offline harvest. Keeps `remaining` fresh from each server response.
 async function drcServerWebSearch(query) {
+  // Prefer the secure-research-space WEB proxy (the bundle's web grant) when
+  // it's live and the space is enabled; fall back to the legacy web-search
+  // grant. Both are fail-soft — any problem returns null and the pipeline uses
+  // the offline harvest instead.
+  if (webProxyUsable()) {
+    try {
+      const res = await fetch("/api/proxy/web", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: proxyGrants.web.token, query }),
+      });
+      if (res.status === 429) {
+        proxyGrants.web.remaining = 0;
+        persistProxyGrants();
+        renderProxyRow();
+        return null;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.remaining === "number") {
+          proxyGrants.web.remaining = data.remaining;
+          persistProxyGrants();
+          renderProxyRow();
+        }
+        return Array.isArray(data.items) && data.items.length
+          ? { items: data.items, content: data.content, sources: data.sources, resultCount: data.resultCount }
+          : null;
+      }
+    } catch {
+      // fall through to the legacy grant below
+    }
+    return null;
+  }
   if (!wsGrantActive() || !wsEnabled()) return null;
   try {
     const res = await fetch("/api/websearch", {
@@ -1262,6 +1335,174 @@ function renderSearchBackend() {
   resEl.onchange = persist;
 }
 
+// ---- secure research space: the account-connected proxy BUNDLE ----------------------
+//
+// The richer sibling of the web-search grant above (src/proxy.js). A signed-in
+// Se/rver user crossing over via the ghost — or an admin-minted shareable link —
+// hands this browser a BUNDLE of temporary, account-connected proxy grants, one
+// per service:
+//   • web → proxied Exa web search (query only leaves, like the grant above)
+//   • api → proxied LLM completions through the server's Berget key (this one
+//           DOES route the conversation through the server — opt-in, bounded,
+//           and disclosed to the user; it's what makes a keyless session able to
+//           actually research)
+// The bundle arrives ENCRYPTED: ciphertext in the URL query (?rp=), decryption
+// key in the URL ANCHOR (#rk=, never sent to any server). We open it, EXCHANGE
+// each "token-granting token" for a working PROXY TOKEN (kept out of the URL),
+// and store the proxy tokens in localStorage (temporary credentials, not part of
+// the sealed project state). The user is told CLEARLY which APIs are connected.
+const PROXY_WEB_KEY = "dr_proxy_web"; // { token, quota, remaining, expiresAt }
+const PROXY_API_KEY = "dr_proxy_api"; // { token, quota, remaining, expiresAt }
+const PROXY_ENABLED_KEY = "dr_proxy_enabled"; // "1"/"0" — the master toggle
+
+const proxyGrants = { web: readJson(PROXY_WEB_KEY), api: readJson(PROXY_API_KEY) };
+
+function proxyLive(p) {
+  return !!(p && p.token && Number(p.expiresAt) > Date.now() && (p.remaining == null || Number(p.remaining) > 0));
+}
+function proxyEnabled() {
+  const v = localStorage.getItem(PROXY_ENABLED_KEY);
+  return v == null ? true : v === "1"; // default ON while a bundle is present
+}
+function webProxyUsable() {
+  return proxyLive(proxyGrants.web) && proxyEnabled();
+}
+function apiProxyUsable() {
+  return proxyLive(proxyGrants.api) && proxyEnabled();
+}
+function anyProxyPresent() {
+  return !!((proxyGrants.web && proxyGrants.web.token) || (proxyGrants.api && proxyGrants.api.token));
+}
+function persistProxyGrants() {
+  try {
+    for (const [svc, key] of [["web", PROXY_WEB_KEY], ["api", PROXY_API_KEY]]) {
+      if (proxyGrants[svc] && proxyGrants[svc].token) localStorage.setItem(key, JSON.stringify(proxyGrants[svc]));
+      else localStorage.removeItem(key);
+    }
+  } catch {
+    /* storage blocked — the grants just won't survive a reload */
+  }
+}
+
+// Reads an encrypted bundle from THIS page's own URL (ciphertext `?rp=`, key
+// `#rk=`), decrypts it locally, and exchanges each grant token for its working
+// proxy token. Then strips both from the URL so no token lingers in history or a
+// referrer. Fail-soft throughout: any problem simply means no borrowed space.
+async function maybeOpenProxyBundle() {
+  let blob = "";
+  let key = "";
+  try {
+    blob = new URLSearchParams(location.search).get("rp") || "";
+  } catch {
+    /* no search params */
+  }
+  try {
+    key = new URLSearchParams(location.hash.replace(/^#/, "")).get("rk") || "";
+  } catch {
+    /* no hash */
+  }
+  if (!blob || !key) return false;
+
+  let opened = false;
+  try {
+    const bundle = await openBundle(blob, key);
+    if (bundle && validateBundle(bundle)) {
+      for (const g of bundle.grants) {
+        try {
+          const res = await fetch("/api/proxy/exchange", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token: g.token }),
+          });
+          if (!res.ok) continue;
+          const v = await res.json(); // { svc, proxyToken, quota, used, remaining, expiresAt }
+          if (v.svc !== "web" && v.svc !== "api") continue;
+          proxyGrants[v.svc] = {
+            token: v.proxyToken,
+            quota: v.quota,
+            remaining: typeof v.remaining === "number" ? v.remaining : v.quota,
+            expiresAt: v.expiresAt,
+          };
+          opened = true;
+        } catch {
+          /* one service failed to exchange — keep any others */
+        }
+      }
+      if (opened) {
+        persistProxyGrants();
+        try {
+          localStorage.setItem(PROXY_ENABLED_KEY, "1");
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch {
+    /* bad bundle — nothing borrowed */
+  }
+
+  // Always strip the ciphertext + key from the address bar (dropping the hash
+  // by rebuilding the URL without it).
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete("rp");
+    history.replaceState(null, "", u.pathname + (u.search || ""));
+  } catch {
+    /* history API blocked — harmless */
+  }
+
+  if (opened) {
+    if (configuredDrcProviders(state.keys).length || apiProxyUsable()) await refreshModels().catch(() => {});
+    announceProxyConnected();
+    renderProxyRow();
+  }
+  return opened;
+}
+
+// The prominent "which APIs are connected" notice — the owner's explicit
+// requirement. Names each connected service and where the allowance came from.
+function announceProxyConnected() {
+  const parts = [];
+  if (proxyGrants.web && proxyGrants.web.token) parts.push("🔎 Web search");
+  if (proxyGrants.api && proxyGrants.api.token) parts.push("🤖 LLM API (Berget)");
+  if (!parts.length) return;
+  const banner = $("proxybanner");
+  if (banner) {
+    $("proxybannertext").innerHTML = wmHtml(
+      "<b>Secure research space connected.</b> A Se/rver account lent this session: " +
+        parts.join(" + ") +
+        ". Bounded & temporary — the LLM API routes your messages through the server; manage it under ⚙ Settings.",
+    );
+    banner.hidden = false;
+  }
+  workStatus(
+    "Secure research space connected — " +
+      parts.join(" + ") +
+      ". You can research right away, no key needed. (The LLM API routes your conversation through the server; turn it off under Settings to stay client-side.)",
+  );
+}
+
+// Reflects the bundle into the settings row: which APIs are connected, remaining
+// counts, and the master on/off toggle.
+function renderProxyRow() {
+  const row = $("proxyrow");
+  if (!row) return;
+  row.hidden = !anyProxyPresent();
+  if (row.hidden) return;
+  const toggle = /** @type {HTMLInputElement} */ ($("proxyenabled"));
+  const on = proxyEnabled();
+  toggle.checked = on;
+  const line = (label, p) => {
+    if (!p || !p.token) return null;
+    const live = proxyLive(p);
+    const rem = p.remaining == null ? p.quota : p.remaining;
+    return label + ": " + (live ? rem + " of " + p.quota + " left" : "used up / expired");
+  };
+  const bits = [line("🔎 Web search", proxyGrants.web), line("🤖 LLM API (Berget)", proxyGrants.api)].filter(Boolean);
+  $("proxystatus").textContent =
+    (on ? "Connected — " : "Off (fully client-side) — ") + bits.join(" · ");
+}
+
 // ---- send: the client-side research pipeline -----------------------------------------
 
 async function send(ev) {
@@ -1275,7 +1516,9 @@ async function send(ev) {
   // canned, not the model), never an error wall. The question is echoed as a
   // normal bubble; nothing typed is lost. For an explicit get-started ask (or
   // an unrecognized one) also surface the key panel so setup is one tap away.
-  if (!configuredDrcProviders(state.keys).length) {
+  // A live secure-research-space LLM proxy counts as "has a provider" — a
+  // borrowed session with no key of its own can research on the lent API.
+  if (!configuredDrcProviders(state.keys).length && !apiProxyUsable()) {
     const reply = matchCanned(text, { tier: "drc" });
     renderCannedExchange(text, reply);
     $("input").value = "";
@@ -1301,6 +1544,14 @@ async function send(ev) {
   state.providerId = providerId;
   state.model = model;
   state.research = $("websearch").checked;
+
+  // Resolve the answer provider + credential: normally a user-key provider, but
+  // when the pick is the secure-research-space proxy it's the proxy provider
+  // object with the api PROXY TOKEN as its "key" (runDrcResearch takes a
+  // provider override so this needs no registry entry).
+  const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
+  const providerOverride = usingApiProxy ? proxyLlmProvider(location.origin) : null;
+  const answerKey = usingApiProxy ? proxyGrants.api?.token : state.keys[providerId];
 
   let conv = activeConv();
   if (!conv) {
@@ -1335,7 +1586,8 @@ async function send(ev) {
   try {
     result = await runDrcResearch({
       providerId,
-      apiKey: state.keys[providerId],
+      provider: providerOverride,
+      apiKey: answerKey,
       model,
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
@@ -1346,11 +1598,12 @@ async function send(ev) {
       fileProvider: intro.fileProvider,
       // Web search source, in priority order: (1) the user's OWN self-hosted
       // service called browser-direct (the expert setting — no query touches
-      // this server); (2) the server-proxied grant, when live and toggled on;
+      // this server); (2) the secure-research-space web proxy OR the legacy
+      // grant, whichever is live + enabled, both via drcServerWebSearch;
       // (3) null → the offline harvest, unchanged.
       webSearch: directSearchActive()
         ? drcDirectWebSearch
-        : wsGrantActive() && wsEnabled()
+        : webProxyUsable() || (wsGrantActive() && wsEnabled())
           ? drcServerWebSearch
           : null,
       onStatus: (s) => {
@@ -1461,13 +1714,17 @@ renderMessages();
 // wordmark away.
 handlePublicationLink().then((opened) => {
   const deepLinked = projectLinked || opened;
-  maybePlayUmbrella(deepLinked).then(() => {
+  maybePlayUmbrella(deepLinked).then((played) => {
     // Reveal the app chrome the head-script held hidden for a flash-free intro
     // (a no-op when no class was added — reduced-motion / already-seen / deep
     // link never hide it). Done here, once the animation is over, so the app
     // appears exactly as the umbrella scene ends.
     document.documentElement.classList.remove("umbrella-intro");
     afterUmbrella(deepLinked);
+    // Extend the intro: when it actually played (first visit, or the ?anim=1
+    // replay), send the little ghost strolling across the page with a pink
+    // umbrella. Gated on a real play so returning visitors get a clean page.
+    if (played) startGhostStroll(/[?&]anim=(1|rev)\b/.test(location.search));
   });
 });
 
@@ -1640,9 +1897,27 @@ $("websearchserver").addEventListener("change", () => {
   }
   renderWsRow();
 });
-// Request/refresh the temporary web-search grant if the ghost button asked for
-// one (intent marker) — fire-and-forget; renders the row when it resolves.
-maybeRequestWsGrant();
+// The secure-research-space master toggle: turn the whole borrowed space off to
+// go fully client-side, or back on. Refreshes the model dropdown (the proxy
+// provider appears/disappears) and the row.
+$("proxyenabled").addEventListener("change", () => {
+  try {
+    localStorage.setItem(PROXY_ENABLED_KEY, $("proxyenabled").checked ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  renderProxyRow();
+  refreshModels().catch(() => {});
+});
+$("proxybannerclose")?.addEventListener("click", () => {
+  $("proxybanner").hidden = true;
+});
+// Open an account-connected proxy bundle (secure research space) if this page
+// was reached with one in its URL (ghost crossover or shared link); otherwise
+// fall back to the legacy web-search grant path. Both fire-and-forget.
+maybeOpenProxyBundle().then((opened) => {
+  if (!opened) maybeRequestWsGrant();
+});
 $("form").addEventListener("submit", send);
 
 // Keep the chat's bottom inset matched to the FIXED footer glass so the last

@@ -87,7 +87,19 @@
   <div id="ghostsay" hidden>
     <button id="ghostsayclose" type="button" aria-label="Dismiss">×</button>
     <span class="ghostsay-face" aria-hidden="true">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
+      <svg width="36" height="42" viewBox="-3 -13 33 40" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <!-- the ghost -->
+        <path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/>
+        <line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/>
+        <line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/>
+        <!-- a little pink umbrella held over the shoulder, matching the strolling ghost -->
+        <g stroke="#8a4a5e">
+          <line x1="21" y1="-3" x2="16.5" y2="8" stroke-width="1.4"/>
+          <path d="M12 -2 Q21 -12 30 -2 Q26.5 -4.6 24 -2 Q21.5 -4.6 19 -2 Q16.5 -4.6 14 -2 Q13 -3 12 -2 Z" fill="#df6e8e" stroke-width="1.1" stroke-linejoin="round"/>
+          <circle cx="21" cy="-6" r="1" fill="#8a4a5e" stroke="none"/>
+          <path d="M16.5 8 q2.4 1 2 3.4" stroke-width="1.4"/>
+        </g>
+      </svg>
     </span>
     <div class="ghostsay-body">
       <strong>You're on DeepResearch.<b>Se<span class="sl">/</span>cure</b></strong>
@@ -95,6 +107,17 @@
       <p class="ghostsay-point">Want accounts, cloud sync and live web search? That's <b>Se<span class="sl">/</span>rver</b> — tap the account button, top-right ↗</p>
       <a id="ghostsaygo" href="/login">Sign in to <b>Se<span class="sl">/</span>rver</b> →</a>
     </div>
+  </div>
+
+  <!-- SECURE-RESEARCH-SPACE banner: shown when this session holds a temporary
+       bundle of account-connected proxy grants (web search + LLM API), handed
+       over on a ghost crossover from Se/rver or via a shared link. It states
+       CLEARLY which APIs are connected. Dismissable; the connected state stays
+       visible in Settings (the gear). Filled + toggled by drc.js. -->
+  <div id="proxybanner" hidden>
+    <span class="pb-icon" aria-hidden="true">🔒</span>
+    <span id="proxybannertext"></span>
+    <button id="proxybannerclose" type="button" aria-label="Dismiss">×</button>
   </div>
 
   <div id="chat"><div class="empty">Ask a research question to get started — it runs right here
@@ -277,6 +300,28 @@
             <input id="ws-results" type="number" min="1" max="20" step="1" style="width:5rem;margin-top:.2rem"></label>
         </div>
         <span id="ws-svc-status" class="muted setting-note"></span>
+      </div>
+
+      <!-- Secure research space — shown ONLY when this session holds a temporary
+           account-connected proxy bundle. States which APIs are connected and
+           lets the user turn the whole borrowed space off (back to fully
+           client-side). Revealed by renderProxyRow() in drc.js. -->
+      <div class="settings-item" id="proxyrow" hidden>
+        <div class="settings-row">
+          <span class="settings-label">Secure research space
+            <button type="button" class="setting-info" data-pop="proxypop" aria-label="More about the secure research space">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="proxyenabled">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="proxypop" hidden>A signed-in <b>Se<span class="sl">/</span>rver</b> account LENT this
+          browser a temporary, quota-limited <b>research space</b>: proxied access to its server-side keys, so you can
+          research without your own keys. The <b>web search</b> half sends only a query; the <b>LLM API</b> half routes
+          your conversation through the server on the account's model key (so, unlike the rest of Se<span class="sl">/</span>cure,
+          the server DOES see those messages) — it's opt-in and bounded. Turn it off to go fully client-side again.</div>
+        <span id="proxystatus" class="muted setting-note"></span>
       </div>
 
       <div class="settings-item">

@@ -113,6 +113,12 @@ export const PANEL_ITEMS = [
       "Mint shareable Se/cure links that carry a fixed live-web-search quota (metered server-side on the Exa key); list and revoke live grants. Defaults/budget live in Configuration.",
   },
   {
+    id: "proxy_bundles",
+    title: "Secure research space grants",
+    summary:
+      "Mint shareable Se/cure links that lend a bundle of account-connected proxy grants (web search + LLM API on Berget, metered server-side); list and revoke live bundles. Defaults/budget live in Configuration.",
+  },
+  {
     id: "config",
     title: "Configuration",
     summary:
