@@ -165,19 +165,40 @@ another device is impossible without re-typing everything.
 
 **Current.** Renderer libs are vendored and served locally: `/vendor/marked.min.js`,
 `/vendor/purify.min.js`, plus `pdf.js`, `jsPDF`. Good — matches the vendoring rule.
-**But the sandbox violates it:** `public/js/sandbox.js` loads at runtime from
-external CDNs —
-- `https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0` (+ fit addon)
-- `https://cxrtnc.leaningtech.com/1.2.6/cx.esm.js` (CheerpX engine)
-- `wss://disks.webvm.io/…ext2` (the Linux disk)
+**But the sandbox pulls three things from external origins at runtime**
+(`public/js/sandbox.js`):
+
+- `https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0` + fit addon — the terminal (~small)
+- `https://cxrtnc.leaningtech.com/1.2.6/cx.esm.js` — the CheerpX engine (~small)
+- `wss://disks.webvm.io/…debian_large…ext2` — the Linux disk (~hundreds of MB–GB)
 
 The spec is explicit: *"no runtime CDN fetches"*, vendor everything, pin +
 hash-verify, zero drift.
 
-**Adaptation.**
-- **Vendor xterm + the fit addon** into `/vendor` and pin with a recorded SHA-256 (small, straightforward).
-- **CheerpX + the disk** are the hard exception: large, and the disk is a streamed remote image. Document it as an *accepted, disclosed exception* in `SECURITY-RISKS.md` (it's already noted there as a vendored-vs-CDN item) and, where feasible, self-host the engine build behind the same origin. The disk-streaming model is inherent to WebVM; treat it as an explicit capability-layer choice, not a silent dependency.
-- Everything else already complies — keep the "dependency count is a security metric" discipline when adding the QR lib (R10) and any WebLLM/transformers.js (R11/R12).
+**Nuance — the disk is already partly local.** The boot stack
+(`sandbox.js:608`) is a `CloudDevice` (remote, streamed **lazily** over WSS)
+backing an `IDBDevice` block cache, combined by an `OverlayDevice`:
+
+```js
+const blockDevice   = await CheerpX.CloudDevice.create(DISK_URL);
+const blockCache    = await CheerpX.IDBDevice.create(IDB_CACHE_ID);
+const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache);
+```
+
+So **every block that gets read is persisted in IndexedDB** and served locally
+on the next boot, and all writes land locally too. It is *lazy*, though — only
+touched blocks are cached, not the whole image. Fully-local/offline would mean
+force-reading the entire device once (a large, deliberate one-time prefetch),
+which then runs into **browser storage quota + eviction — worst exactly on iOS
+Safari**, where the sandbox's `/workspace` IndexedDB mount already stalls
+(`docs/MAINTENANCE-OWNERS.md`). So "cache the whole disk" makes the desktop
+story great and the mobile story *more* precarious, not less.
+
+**Adaptation (tiered — do the cheap wins, scope the rest honestly).**
+1. **Vendor xterm + the fit addon** into `/vendor`, pin with a recorded SHA-256. Small, fully compliant, removes one CDN outright.
+2. **Self-host (or service-worker-cache) the CheerpX engine script.** Small download; removes the second CDN. Gated by **Leaning Technology's engine license** — confirm redistribution terms before self-hosting; that licensing question, not the bytes, is the real constraint on full sovereignty here.
+3. **The disk** is the genuine exception. Options, least→most work: (a) leave the lazy `CloudDevice`+IDB cache as-is and *document* it as a disclosed capability-layer dependency in `SECURITY-RISKS.md`; (b) add an opt-in "download full image for offline use" action that force-fills the block cache (desktop-only guidance given the iOS quota reality); (c) self-host the Debian image on the same origin (fine to redistribute — it's Debian — but large). Treat it as an explicit, disclosed choice, never a silent dependency.
+4. Keep the "dependency count is a security metric" discipline when adding the QR lib (R10) and any WebLLM/transformers.js (R11/R12) — vendor them the same way.
 
 ### R9 — Static-file deployable — 🟡 Partial
 
@@ -197,7 +218,7 @@ the Worker injects** — so at least the sandbox path is not backend-independent
 
 - **R11 In-browser inference (WebLLM)** — *Absent.* Not required, but adding it is the tidiest way to satisfy **R1 and R6 with zero server**: detect local server → WebLLM → remote, exactly the `local-inference.md` fallback ladder. Run it in a Web Worker (spec guidance) and disclose first-load model size.
 - **R12 In-browser embeddings (transformers.js)** — *Absent.* RAG currently embeds via remote OpenAI (`drc-providers.js` `embed`). A `transformers.js` `all-MiniLM-L6-v2` path would keep sensitive document retrieval fully local and remove the "Groq/Berget have no embeddings → no RAG" limitation.
-- **R13 In-browser execution (WASM)** — ✅ **Already shipped.** CheerpX x86 Linux with a guarded, client-orchestrated bash loop. This is the standout — most agents never get here. (Its only debts are R7 vendoring and R6 offline.)
+- **R13 In-browser execution (WASM)** — ✅ **Already shipped.** CheerpX x86 Linux with a guarded, client-orchestrated bash loop. This is the standout — most agents never get here. It already caches read disk blocks locally (`CloudDevice`+`IDBDevice`+`OverlayDevice`, see R7), so repeat boots hit the network less. Its only debts are R7 vendoring (engine/xterm) and the disk's remote first-fill.
 - **R14 Edge deployment** — *Incidental.* Static assets are edge-servable; nothing to build, worth a note in deployment docs.
 
 ---
@@ -211,22 +232,42 @@ the Worker injects** — so at least the sandbox path is not backend-independent
 
 ---
 
-## 7. Prioritised adaptation roadmap
+## 7. Prioritised plan — what to document, what to fix, in what order
 
-Ordered by (MUST-first) × (effort). One change (local inference) clears the
-most ground.
+Two tracks. **Document** = write it down now (disclosures, accepted
+exceptions, decisions) — cheap, and several of these are the *actual* spec
+requirement (transparency is a disclosure, not a build). **Fix** = code.
+Ordered MUST-first, then by impact ÷ effort. The ranking is deliberately front-
+loaded: **P1 alone clears the most MUST ground.**
 
-1. **Add local + custom-base-URL inference** (R1, and thereby R6 partial, R5 partial). *Small–medium.* One provider entry + a base-URL field + a local-server probe + CORS/setup hints. **Do this first.**
-2. **Encrypted export/import of sealed state — file, then URL-fragment, then QR** (R10). *Small→medium, incremental.* Reuses existing crypto.
-3. **AI-identity + provider-visibility disclosure** (R5). *Small.* Copy changes to the empty state and model picker.
-4. **Service worker app-shell precache for `/cure`** (R6). *Small.* Makes the UI load offline; pairs with R1 for a truly offline core.
-5. **Vendor xterm/fit; document CheerpX+disk as a disclosed exception** (R7). *Small for xterm; policy note for the rest.*
-6. **Verify + fix `file://` / bare-static-server boot for the core app** (R9). *Small–medium.* Relative paths; scope the sandbox out as header-dependent.
-7. **(Optional) WebLLM fallback** (R11 → completes R1/R6 with zero server). *Medium.* The most "Forever Agent" enhancement available.
-8. **(Optional) transformers.js local embeddings** (R12). *Medium.* Local RAG for all providers.
+### Track A — Document (do these first; low cost, high honesty value)
 
-**Bottom line:** Se/cure is roughly two MUST-level features away from meeting
-the Forever Agent bar — **local inference (R1)** and the **offline capability
-(R6)** it unlocks — plus **portability (R10)** to satisfy the SHOULD tier. The
-structural hard parts (sovereignty, verifiable privacy, encrypted state,
-in-browser execution) are already done.
+| # | Action | Serves | Where | Effort |
+|---|---|---|---|---|
+| D1 | State the **AI identity + provider-visibility** facts in-product: an AI self-intro on the empty state, and a "your words go to {provider}; they can read them, this site can't" line by the model picker | **R5 (MUST)** | `public/cure/index.html`, `drc.js` | XS |
+| D2 | Record the **sandbox external-dependency exception** (CheerpX engine + xterm + streamed disk) as a *disclosed capability-layer choice*, incl. the Leaning Technology engine-license question | R7 | `SECURITY-RISKS.md` | XS |
+| D3 | Note the **`file://` / static-host scope**: core research app aims to be backend-independent; the sandbox is header-dependent (needs COEP) by design | R9 | this doc / `docs/ARCHITECTURE.md` | XS |
+| D4 | This gap analysis itself (the register of where Se/cure stands vs the spec) | all | `docs/FOREVERAGENT-GAP-ANALYSIS.md` | ✅ done |
+
+### Track B — Fix (code, MUST-first)
+
+| P | Action | Serves | Effort | Notes |
+|---|---|---|---|---|
+| **P1** | **Local + custom-base-URL inference** — add a `local` provider entry + user-editable base URL + a `GET {base}/models` "local model found" probe + CORS/setup hint | **R1 (MUST)**, unlocks **R6**, strengthens **R5** | S–M | The one change that clears the most. Mind the http-localhost-from-https and `OLLAMA_ORIGINS` caveats (§3, R1) |
+| **P2** | **Encrypted export/import of sealed state** — start with a `.drc` file (it's already one AES-GCM blob), then the URL-fragment carry, then QR | **R10 (SHOULD)** | S→M, incremental | Reuses `vault-core.js`; also a backup against localStorage eviction |
+| **P3** | **Service-worker app-shell precache for `/cure`** — makes the UI load offline; with P1 the core is genuinely offline-capable | **R6 (MUST)** | S | No SW today (confirmed) |
+| **P4** | **Vendor xterm + fit; self-host/SW-cache the CheerpX engine** (pending license check) | **R7 (SHOULD)** | S | Removes two of three sandbox CDNs; leaves only the disk |
+| **P5** | **Verify + fix `file://` / bare-static-server boot** of the core app (relative paths; sandbox scoped out) | **R9 (SHOULD)** | S–M | Spec's explicit baseline-independence test |
+| **P6** | *(Optional)* **WebLLM fallback** in a Web Worker — completes R1/R6 with **zero server** | R11 → R1/R6 | M | The most "Forever Agent" enhancement available; vendor it |
+| **P7** | *(Optional)* **transformers.js local embeddings** — local RAG for all providers, not just OpenAI | R12 | M | Removes the "Groq/Berget → no RAG" limit |
+| **P8** | *(Optional)* **"Download full disk image for offline"** opt-in that force-fills the block cache | R13/R6 for the sandbox | M | Desktop-only guidance given the iOS quota reality (§4, R7) |
+
+### Bottom line
+
+Se/cure is roughly **two MUST-level features** from meeting the bar — **local
+inference (P1/R1)** and the **offline capability (P3/R6)** it unlocks — plus
+**portability (P2/R10)** for the SHOULD tier. The structural hard parts
+(sovereignty, verifiable privacy, encrypted state, in-browser execution) are
+already done. **The single highest-leverage move is P1**; the cheapest genuine
+compliance wins are the Track-A disclosures (transparency is literally a MUST
+that you satisfy by *writing the sentence*).
