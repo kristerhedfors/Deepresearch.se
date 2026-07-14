@@ -110,15 +110,11 @@ body::before {
   color: rgba(10, 46, 92, .62);
   white-space: pre-wrap;
   word-break: break-word;
-  /* A gentle side-to-side wave across the characters (kept subtle on purpose). */
-  animation: agent-wave 7.5s ease-in-out infinite;
-}
-@keyframes agent-wave {
-  0%, 100% { transform: translateX(0) skewX(0deg); }
-  50% { transform: translateX(7px) skewX(-1.1deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-pre { animation: none; }
+  /* NO side-to-side sway (2026-07-14 directive): the terminal text stays put.
+     The only motion it ever carries is north-south — the vertical page-back when
+     the terminal is the foreground pane, and the keep-pace follow the backdrop
+     does while the conversation scrolls. Horizontal drift read as distracting
+     ambient wobble, so it is gone entirely. */
 }
 /* The transparency slider (floating bar + Settings mirror) was removed
    (2026-07-13 directive): the backdrop is always shown at its fixed faint
@@ -145,14 +141,9 @@ body.term-fg #dr-agent-backdrop {
 }
 body.term-fg .dr-agent-backdrop-pre {
   /* Foreground now: darker, fully legible terminal text (the faint background
-     colour is for when it sits behind the conversation). */
+     colour is for when it sits behind the conversation). The text carries no
+     sway in either state (see .dr-agent-backdrop-pre above). */
   color: rgba(10, 46, 92, .82);
-  /* No sway in terminal view (2026-07-14 directive): the side-to-side drift
-     wave reads as weird ambient motion once the terminal is the pane you're
-     reading and scrolling, so switch it off and pin the text straight. The
-     gentle wave only makes sense while the layer is faint background texture. */
-  animation: none;
-  transform: none;
 }
 @media (prefers-reduced-motion: reduce) {
   #chat,

@@ -330,6 +330,38 @@ export function scrollStep(current, deltaY, contentHeight, viewportHeight) {
 }
 
 /**
+ * Map the conversation's scroll position to the backdrop's scroll offset so the
+ * terminal in the BACKGROUND keeps pace with the messages the user is reading
+ * (2026-07-14 directive). At the newest end — the conversation scrolled to the
+ * bottom — the backdrop pins to its live tail (offset 0, its last command);
+ * scrolling back up toward the oldest messages walks the backdrop proportionally
+ * back through its command history, so the commands/output behind the chat line
+ * up with the prompts and research jobs on screen. Purely north-south. Total —
+ * garbage inputs degrade to a pinned tail, never throws.
+ * @param {unknown} convoScrollTop the conversation's scrollTop (0 = oldest/top)
+ * @param {unknown} convoScrollHeight
+ * @param {unknown} convoClientHeight
+ * @param {unknown} contentHeight backdrop rendered text height
+ * @param {unknown} viewportHeight backdrop visible window height
+ * @returns {{ offset: number, pinned: boolean }} pinned = following the tail
+ */
+export function convoSyncOffset(
+  convoScrollTop,
+  convoScrollHeight,
+  convoClientHeight,
+  contentHeight,
+  viewportHeight,
+) {
+  const maxConvo = Math.max(0, num(convoScrollHeight) - num(convoClientHeight));
+  // px scrolled up from the newest (bottom) message
+  const fromBottom = Math.max(0, maxConvo - num(convoScrollTop));
+  const frac = maxConvo > 0 ? fromBottom / maxConvo : 0;
+  const maxOffset = Math.max(0, num(contentHeight) - num(viewportHeight));
+  const offset = clampScrollOffset(frac * maxOffset, contentHeight, viewportHeight);
+  return { offset, pinned: offset <= 0.5 };
+}
+
+/**
  * The conversation's opposite-direction parallax nudge for one backdrop scroll
  * step: a small displacement opposing the gesture, clamped to ±cap. Purely for
  * feel — the caller springs it back to zero.
