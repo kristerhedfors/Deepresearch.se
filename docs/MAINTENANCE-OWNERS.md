@@ -26,6 +26,7 @@ feature maintenance*, and the **feature-maintenance** skill):
 | Subsystem | Owner PR | Author session (see PR trailer) | Files it guards | Regression signatures to watch |
 |---|---|---|---|---|
 | **Execution sandbox — boot + reliability** (standing maintenance owner; MUST stay subscribed) | **#43** (`claude/sandbox-pwa-failure-ijgemh`, session `01LQuhduTgD8g92dTMtSEPgS`) — the Playwright worker; supersedes the earlier `sandbox-terminal-visibility-ujgu88` owner | in each PR's `Claude-Session:` trailer | `public/js/sandbox.js`, `public/js/bash-core.js`, `src/bash-agent.js`, `src/bash-api.js`, `public/js/boot-messages.js`, `public/js/agent-backdrop*.js`, `tests/e2e/sandbox.spec.js` | `sandbox not ready`, `stream stalled`, `sandbox.boot_stalled`, `sandbox.exec_timeout`, `sandbox.exec_not_ready`, `sandbox.boot_torn_down`, high `client_diag.fs.ms` (11–27 s = iOS `/workspace` mount stall), never reaching `boot_done` |
+| **Sandbox FILE MOUNTING** (attached/project files read from inside the VM) | **#52** (`claude/file-integrations-workspace-read-ndhwt5`, session `01GE154SMjg759eTivTkpV8d`, merged `9e341c0`) — root-caused + fixed the `/workspace`/`/mnt` read wedge | `public/js/sandbox.js` (device mounts), `public/js/sandbox-files.js`, `docs/SANDBOX-HOST-COMMANDS.md` | file read wedges to `sandbox not ready` / `cat` exit 124; corrupt `dr-sandbox-workspace` IDB. **ROOT-FIXED by #52**: bare `IDBDevice {type:"dir"}` hangs on first read in CheerpX 1.2.6 → now `/workspace` + project dirs are plain dirs in the root `OverlayDevice`. Retires the whole corrupt-volume class. **Owes on-device confirmation** (attached file `cat`-able from the VM + overlay persistence across reload). |
 | Sandbox agentic shell loop | #37 (`claude/last-chats-failure-logs-87jlxp`) | PR #37 trailer | `public/js/bash-core.js` (`runShellLoop`, `sandboxTornDown`) | `Ran N commands, all sandbox not ready`; loop not stopping on teardown |
 | DRC umbrella intro / loading spinners | #36 (`claude/intro-animation-loading-states-djis82`) | PR #36 trailer | `public/cure/umbrella.js`, `public/js/umbrella-spinner.js` | intro/spinner not rendering, canvas errors |
 
@@ -57,7 +58,16 @@ feature maintenance*, and the **feature-maintenance** skill):
 > not just `/workspace`. `/mnt` carries no `INDEX.txt` seed and isn't the
 > persistent `dr-sandbox-workspace` IDBDevice, so this **rules out the seed-write
 > hypothesis** and points at a generic persistent/mounted-device `read()` stall on
-> iOS spanning BOTH mounts — likely a device-layer fix (serve small file bytes off
-> the DataDevice/manifest on iOS) rather than per-volume self-heal. Keep #43's
-> worker in the loop until `cat` of a file under `/workspace` **and** `/mnt`
-> returns content on a real iOS PWA.
+> iOS spanning BOTH mounts.
+>
+> **2026-07-14 ~15:00 — ROOT-FIXED by #52 (merged `9e341c0`).** A different worker
+> (session `01GE154SMjg759eTivTkpV8d`) proved the mechanism live in Chromium: a bare
+> `IDBDevice {type:"dir"}` mount **hangs on the FIRST file read** in CheerpX 1.2.6
+> (the device docs list `{type:"dir"}` but it only works as an `OverlayDevice`
+> overlay). The nudge's device-layer hunch was right. #52 drops the `WORKSPACE_DB`
+> + `dr-proj-` IDBDevice mounts and makes `/workspace` + project dirs **plain dirs
+> in the root `OverlayDevice`** (already persistent via `IDB_CACHE_ID`) — retiring
+> the whole corrupt-`/workspace`-volume failure class. Ownership of file mounting
+> moves to **#52** (row above). **Still owes on-device confirmation:** an attached
+> file `cat`-able from the VM + overlay persistence of `/workspace`/project dir +
+> the cross-dir symlink across a reload. #43 stays the boot/reliability owner.
