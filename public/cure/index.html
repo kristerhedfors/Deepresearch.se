@@ -25,7 +25,7 @@
         var force = /[?&]anim=(1|rev)\b/.test(s);
         if (!force) {
           var seen = false;
-          try { seen = localStorage.getItem("dr_umbrella_seen") === "1"; } catch (e) {}
+          try { seen = localStorage.getItem("dr_umbrella_seen_v2") === "1"; } catch (e) {}
           var reduced = false;
           try { reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
           // A deep link (a saved project or a published replay) suppresses the
