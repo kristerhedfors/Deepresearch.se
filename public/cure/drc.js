@@ -32,7 +32,7 @@
 //   - nothing project-derived reaches the Deepresearch server, in any
 //     form. "No logging" is not a policy here — there is nothing to log.
 //   - "Lock" just drops this tab's memory — a reload does the same.
-//   (The plain localStorage items, dr_intro_seen and dr_umbrella_seen, are
+//   (The plain localStorage items, dr_intro_seen and dr_umbrella_seen_v2, are
 //   UI flags — they carry nothing derived from secrets, keys, or content.)
 
 import {
@@ -81,6 +81,12 @@ import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
 const $ = (id) => document.getElementById(id);
+
+// The first-visit umbrella intro's once-per-browser flag. Versioned (…_v2)
+// so a fix to the intro can re-show it to browsers that recorded the previous,
+// broken version as "seen". The head script in index.html reads the SAME key
+// to decide whether to hold the chrome hidden for the play — keep them in sync.
+const UMBRELLA_SEEN_KEY = "dr_umbrella_seen_v2";
 
 let profile = null; // {refHash, blobId, blobKey} — null while the session is unsaved
 let state = emptyDrcState(); // the working state (keys included), from the first keystroke
@@ -383,7 +389,13 @@ function maybePlayUmbrella(deepLinked) {
   const force = rev || /[?&]anim=1\b/.test(location.search);
   let seen = false;
   try {
-    seen = localStorage.getItem("dr_umbrella_seen") === "1";
+    // Versioned key (2026-07-14): the earlier `dr_umbrella_seen` was set BEFORE
+    // the intro played, so anyone who first-visited during the stuck-canvas bug
+    // (the RAF stall that froze a bare khaki field — since fixed) recorded the
+    // intro as "seen" while actually seeing nothing, and it never replayed.
+    // Bumping the key gives every existing browser the now-fixed intro exactly
+    // once. (Old key intentionally left unread — no cleanup needed.)
+    seen = localStorage.getItem(UMBRELLA_SEEN_KEY) === "1";
   } catch {
     // storage blocked — treat as unseen, the flag below just won't stick
   }
@@ -399,11 +411,18 @@ function maybePlayUmbrella(deepLinked) {
   // the ambient strolling ghost (ghostwalk.js) onto a real play, and force it
   // through reduced-motion on the ?anim=1 path exactly as the intro is.
   if (!force && (reduced || seen || deepLinked)) return Promise.resolve(false);
-  try {
-    localStorage.setItem("dr_umbrella_seen", "1");
-  } catch {
-    // fine — it may play again next visit
-  }
+  // Mark the intro "seen" only once it has actually RUN (in the completion
+  // handler below), not here before the play. If the module fails to even load
+  // (the .catch path) the flag stays unset so the one-and-only first-visit
+  // intro retries next time instead of being silently burned. `?anim=1`/deep
+  // links never reach here, so the replay path never touches the flag.
+  const markUmbrellaSeen = () => {
+    try {
+      localStorage.setItem(UMBRELLA_SEEN_KEY, "1");
+    } catch {
+      // fine — it may play again next visit
+    }
+  };
   // The admin-set speed multiplier (site config, GET /api/anim — public and
   // edge/browser-cacheable). Time-boxed so a slow server can only ever cost
   // ~900 ms before the intro runs at the default speed instead.
@@ -419,7 +438,10 @@ function maybePlayUmbrella(deepLinked) {
         m.playUmbrellaIntro({ onDone: res, speed, reverse: rev ? true : undefined })
       )
     )
-    .then(() => true)
+    .then(() => {
+      markUmbrellaSeen(); // it ran (played through, was skipped, or self-healed)
+      return true;
+    })
     .catch(() => {
       // decoration only — never block the page over it
       return false;
