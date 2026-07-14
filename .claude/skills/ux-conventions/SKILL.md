@@ -95,3 +95,60 @@ to a speaker bubble; the outside-interaction dismissal *is* the backdrop.
 bubbles dismiss on outside interaction only; the modal-style drawers/panels are
 a separate surface. If Escape support is ever added, codify it here as its own
 rule so it lands everywhere at once rather than one bubble at a time.
+
+---
+
+## UX-2 — Sandbox two-layer switch: a background tap swaps the foreground pane; message taps never switch; the background pane leans along in synchronization
+
+**Rule.** While the execution sandbox is running (the agent backdrop has produced
+output), the page holds **two stacked panes** — the CONVERSATION (`#chat`) and
+the TERMINAL backdrop (`#dr-agent-backdrop`). A **tap on the bare page
+background** — not on a message bubble, not on interactive chrome — **swaps which
+pane is in front**: the front pane reads at full strength, the other recedes to a
+faint background (`body.term-fg` → chat `opacity:.16`, backdrop rises to `z:4`
+below the fixed chrome at `z:5`), with a quick **slide-in-from-the-right** on the
+pane that just came forward. A tap that lands on a **user/assistant message** (or
+any control) does its normal thing and **never switches**. A **swipe/drag** is
+not a tap and never switches. Once in a mode, **scrolling the foreground pane
+makes the background pane lean along in the same direction, weaker and shorter**
+(a gentle parallax that springs back).
+
+**Why.** The old design popped a full terminal panel open, which covered the
+screen and broke the prompt-first flow. Two peers you flip between keep both the
+conversation and the raw agent activity one tap away without either ever taking
+the whole screen. The message-vs-background discrimination is load-bearing: users
+must be able to select/tap message text and controls without the layer flipping
+out from under them, so ONLY the empty field toggles.
+
+**The mechanics that make it consistent (match all of these):**
+
+1. **Tap detection is `pointerdown`→`pointerup`** (covers mouse + touch), gated by
+   `isTapGesture` (small travel on both axes, short duration) so a swipe or a
+   press-and-hold text-selection is excluded (`agent-backdrop-core.js`).
+2. **The switch fires only on the bare background.** Both the press AND the
+   release target must pass `isSwitchTarget` — not inside `BLOCK_SEL` (`.msg`,
+   `.step`, `.activity`, controls, chrome, panels) and no active text selection.
+   `.msg` is in `BLOCK_SEL`: **tapping a message never switches.**
+3. **Gated on sandbox output** (`hasBackdropContent()` → a channel exists). Before
+   the sandbox runs there is nothing to switch to, so background taps are inert
+   and the page behaves normally.
+4. **Never auto-pop.** New sandbox output does NOT bring the terminal forward on
+   its own (that was the removed screen-covering behavior); the default stays
+   conversation-forward and the user chooses to flip.
+5. **Per-mode scrolling.** CONVO mode: conversation scrolls natively, the backdrop
+   (background) leans via the `#chat` scroll listener. TERMINAL mode: a wheel/drag
+   pages the command history and the conversation (background) leans. The lean is
+   `parallaxFollow` (same direction as the scroll, gentler factor, capped) applied
+   to the *background* pane and sprung back — distinct from the older opposite
+   `parallaxNudge`.
+6. **Reduced motion** skips the slide flourish (`prefers-reduced-motion`), keeping
+   the instant opacity swap.
+
+**Canonical implementation:** `public/js/agent-backdrop.js`
+(`setLayerMode` / `slideInForeground` / `isSwitchTarget` / `scrollBackdrop` /
+`leanChat` / `leanBackdrop` and the `wireScroll` gesture wiring) over the pure
+core `public/js/agent-backdrop-core.js` (`nextLayerMode`, `isTapGesture`,
+`parallaxFollow`); the `body.term-fg` styling + pane transitions live in
+`public/css/app.css` (the two-layer-view-switch block). Pure logic is
+Node-tested in `agent-backdrop-core.test.js`; the DOM glue is browser-verified
+(tap-vs-message, swap opacity/z-index, tap-vs-swipe, both parallax directions).

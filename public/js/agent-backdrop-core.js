@@ -285,3 +285,74 @@ export function parallaxNudge(deltaY, factor = PARALLAX_FACTOR, cap = PARALLAX_C
   const r = Math.max(-c, Math.min(c, n));
   return r === 0 ? 0 : r; // normalize -0 → 0
 }
+
+// ---- the two-layer view switch ----------------------------------------------
+// When the execution sandbox is running the page holds TWO stacked panes: the
+// CONVERSATION and this TERMINAL backdrop. A tap on the bare page background
+// (never on a message bubble, never on interactive chrome) swaps which pane is
+// in front — the front one reads at full strength, the other recedes to a faint
+// background. These are the pure pieces of that interaction: the mode toggle,
+// the tap-vs-swipe discrimination, and the SAME-direction "follow" the
+// BACKGROUND pane leans by while the foreground scrolls ("in synchronization …
+// weaker and shorter" — the request). The DOM glue that reads targets, animates
+// the slide, and wires the gestures lives in agent-backdrop.js.
+
+/** The two foreground panes. */
+export const LAYER_CONVO = "convo";
+export const LAYER_TERMINAL = "terminal";
+
+/**
+ * Toggle the foreground pane. Anything that is not already the terminal flips TO
+ * the terminal (so a first background tap always brings the terminal forward).
+ * @param {unknown} mode
+ * @returns {"convo"|"terminal"}
+ */
+export function nextLayerMode(mode) {
+  return mode === LAYER_TERMINAL ? LAYER_CONVO : LAYER_TERMINAL;
+}
+
+// A press only counts as a "tap" (→ switch panes) when the pointer barely moved
+// and lifted quickly; a longer drag is a scroll or a text selection and must
+// NOT switch. Deliberately generous on distance (thumbs wobble) but tight on
+// time so a slow press-and-hold to select text is excluded.
+export const TAP_MOVE_TOL_PX = 10;
+export const TAP_TIME_TOL_MS = 500;
+
+/**
+ * Whether a pointer gesture reads as a tap (vs a swipe / long press): the move
+ * stayed within tolerance on BOTH axes and it lifted within the time window.
+ * @param {unknown} dx horizontal travel
+ * @param {unknown} dy vertical travel
+ * @param {unknown} dt duration (ms)
+ * @param {number} [moveTol]
+ * @param {number} [timeTol]
+ */
+export function isTapGesture(dx, dy, dt, moveTol = TAP_MOVE_TOL_PX, timeTol = TAP_TIME_TOL_MS) {
+  const mx = Math.abs(num(dx));
+  const my = Math.abs(num(dy));
+  const t = num(dt);
+  return mx <= num(moveTol) && my <= num(moveTol) && t >= 0 && t <= num(timeTol);
+}
+
+// The BACKGROUND pane leans in the SAME direction as the foreground scroll, but
+// weaker and shorter — the parallax the request describes as "in synchronization
+// … weaker". Same clamped shape as parallaxNudge but NOT inverted (the caller
+// passes an already-signed "how far the background should move" value) and a
+// gentler factor.
+export const FOLLOW_FACTOR = 0.14;
+export const FOLLOW_CAP_PX = 10;
+
+/**
+ * The background pane's same-direction follow offset for one foreground scroll
+ * step: the signed input scaled down and clamped to ±cap (sign preserved, so
+ * the direction decision stays with the caller where the DOM context is known).
+ * @param {unknown} delta signed background displacement request
+ * @param {number} [factor]
+ * @param {number} [cap]
+ * @returns {number} px, in [-cap, cap]
+ */
+export function parallaxFollow(delta, factor = FOLLOW_FACTOR, cap = FOLLOW_CAP_PX) {
+  const c = Math.abs(num(cap));
+  const r = Math.max(-c, Math.min(c, num(delta) * num(factor)));
+  return r === 0 ? 0 : r; // normalize -0 → 0
+}
