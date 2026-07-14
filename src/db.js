@@ -165,6 +165,15 @@ CREATE TABLE IF NOT EXISTS test_points (
   ref TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_test_points_status ON test_points(status, id DESC);
+CREATE TABLE IF NOT EXISTS websearch_grants (
+  jti TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  quota INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_websearch_grants_user ON websearch_grants(user_id, expires_at DESC);
 `;
 
 // Additive migrations for databases created before the column existed.

@@ -87,6 +87,7 @@ let unsavedHintShown = false;
 const PHASE_LABELS = {
   triage: "Analyzing the question…",
   clarify: "Asking for a detail…",
+  search: "Searching the web…",
   harvest: "Harvesting knowledge…",
   gap: "Auditing coverage…",
   synth: "Writing the answer…",
@@ -375,6 +376,7 @@ function openSettings() {
   $("bashlite").checked = state.bashLite === true; // reflect current state
   $("devmode").checked = state.developerMode === true;
   renderKeysPanel();
+  renderWsRow(); // reflect the web-search grant (if any)
   $("settingsview").hidden = false;
 }
 
@@ -909,6 +911,144 @@ async function indexExchange(conv) {
   }
 }
 
+// ---- server-proxied web search (the temporary grant) --------------------------------
+//
+// Se/cure is normally server-less. But a SIGNED-IN Se/rver user who crosses over
+// via the ghost button can be handed a short-lived, quota-metered token
+// (src/websearch.js): it lets THIS session run a bounded number of LIVE web
+// searches through the server's Exa key — e.g. to get fresh web results while
+// running your own (local) model. This is the ONE place Se/cure touches the
+// server in a data path, and it is opt-in and bounded: only a search QUERY ever
+// leaves (never the conversation), it is off for anyone who did not cross over
+// signed-in (no grant), and the toggle here turns it off. The grant is stored in
+// this browser's localStorage (a temporary credential, not part of the sealed
+// project state), so it survives a reload within the session.
+const WS_INTENT_KEY = "dr_ws_grant_intent"; // the DRS ghost button sets this before navigating here
+const WS_GRANT_KEY = "dr_ws_grant"; // { token, quota, used, remaining, expiresAt }
+const WS_ENABLED_KEY = "dr_ws_enabled"; // "1"/"0" — the user's per-browser toggle
+
+let wsGrant = readJson(WS_GRANT_KEY);
+
+function readJson(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function wsGrantActive() {
+  return !!(
+    wsGrant &&
+    wsGrant.token &&
+    Number(wsGrant.expiresAt) > Date.now() &&
+    (wsGrant.remaining == null || Number(wsGrant.remaining) > 0)
+  );
+}
+function wsEnabled() {
+  const v = localStorage.getItem(WS_ENABLED_KEY);
+  return v == null ? true : v === "1"; // default ON when a grant is present
+}
+
+// Requests a grant, but ONLY when the ghost button asked (the intent marker) —
+// a plain visitor never pings the server. Fail-soft: any failure just leaves the
+// session without server web search.
+async function maybeRequestWsGrant() {
+  let intent = false;
+  try {
+    intent = localStorage.getItem(WS_INTENT_KEY) === "1";
+    if (intent) localStorage.removeItem(WS_INTENT_KEY);
+  } catch {
+    /* storage blocked — treat as no intent */
+  }
+  if (intent) {
+    try {
+      const res = await fetch("/api/websearch/grant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      if (res.ok) {
+        wsGrant = await res.json();
+        try {
+          localStorage.setItem(WS_GRANT_KEY, JSON.stringify(wsGrant));
+        } catch {
+          /* ignore quota */
+        }
+      }
+    } catch {
+      /* offline / not signed in — no server web search this session */
+    }
+  } else if (wsGrant && !wsGrantActive()) {
+    // A stored grant that has expired or been used up: forget it.
+    wsGrant = null;
+    try {
+      localStorage.removeItem(WS_GRANT_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+  renderWsRow();
+}
+
+// The webSearch fn handed to runDrcResearch. Fail-soft: quota exhausted (429),
+// any error, or the toggle off → null, and the pipeline falls back to the
+// offline harvest. Keeps `remaining` fresh from each server response.
+async function drcServerWebSearch(query) {
+  if (!wsGrantActive() || !wsEnabled()) return null;
+  try {
+    const res = await fetch("/api/websearch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: wsGrant.token, query }),
+    });
+    if (res.status === 429) {
+      wsGrant.remaining = 0;
+      persistWsGrant();
+      renderWsRow();
+      return null;
+    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (typeof data.remaining === "number") {
+      wsGrant.remaining = data.remaining;
+      persistWsGrant();
+      renderWsRow();
+    }
+    return Array.isArray(data.items) && data.items.length
+      ? { items: data.items, content: data.content, sources: data.sources, resultCount: data.resultCount }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistWsGrant() {
+  try {
+    if (wsGrant) localStorage.setItem(WS_GRANT_KEY, JSON.stringify(wsGrant));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Reflects the grant into the settings row: shown only when a grant exists, the
+// remaining count and toggle state kept live.
+function renderWsRow() {
+  const row = $("wsrow");
+  if (!row) return;
+  const has = !!(wsGrant && wsGrant.token);
+  row.hidden = !has;
+  if (!has) return;
+  const toggle = /** @type {HTMLInputElement} */ ($("websearchserver"));
+  const active = wsGrantActive();
+  toggle.checked = wsEnabled() && active;
+  toggle.disabled = !active;
+  const remaining = wsGrant.remaining == null ? wsGrant.quota : wsGrant.remaining;
+  $("wsstatus").textContent = !active
+    ? "This session's web-search allowance is used up (or expired)."
+    : (wsEnabled() ? "On" : "Off") + " — " + remaining + " of " + wsGrant.quota + " server web searches left this session.";
+}
+
 // ---- send: the client-side research pipeline -----------------------------------------
 
 async function send(ev) {
@@ -991,6 +1131,9 @@ async function send(ev) {
       snapshot: intro.snapshot,
       bash: state.bashLite === true,
       fileProvider: intro.fileProvider,
+      // Server-proxied web search: only when a grant is live AND the toggle is
+      // on (else null → the offline harvest, unchanged).
+      webSearch: wsGrantActive() && wsEnabled() ? drcServerWebSearch : null,
       onStatus: (s) => {
         if (s.type === "tool") {
           // Developer-mode native tool call — show the tool + its argument live
@@ -1075,7 +1218,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d24 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d25 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -1254,4 +1397,16 @@ $("websearch").addEventListener("change", () => {
   state.research = $("websearch").checked;
   saveState();
 });
+// The server-proxied web-search toggle (only meaningful when a grant is live).
+$("websearchserver").addEventListener("change", () => {
+  try {
+    localStorage.setItem(WS_ENABLED_KEY, $("websearchserver").checked ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  renderWsRow();
+});
+// Request/refresh the temporary web-search grant if the ghost button asked for
+// one (intent marker) — fire-and-forget; renders the row when it resolves.
+maybeRequestWsGrant();
 $("form").addEventListener("submit", send);

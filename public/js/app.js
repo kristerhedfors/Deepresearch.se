@@ -271,6 +271,18 @@ function syncGhostState() {
 }
 
 ghostBtn.addEventListener("click", () => {
+  // Crossing to Se/cure signed-in: drop an intent marker so the /cure page
+  // requests a TEMPORARY web-search grant (a bounded quota of searches routed
+  // through this server's Exa key — src/websearch.js). Same-origin localStorage
+  // is shared with /cure, and this write is synchronous so it lands before the
+  // navigation. It is only INTENT — the grant itself is minted from the /cure
+  // side against the (still-present) session cookie; a plain visitor who never
+  // crossed over never sets it, so the server stays out of their path entirely.
+  try {
+    localStorage.setItem("dr_ws_grant_intent", "1");
+  } catch {
+    // storage blocked → /cure simply won't offer server web search; harmless
+  }
   // In the installed PWA the webview's status-bar tint is pinned at
   // launch — iOS ignores the destination page's theme-color on in-app
   // navigation (on-device-trace skill, 2026-07-10: the khaki /cure under

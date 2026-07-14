@@ -65,6 +65,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
+import { handleWebSearch, handleWebSearchGrant } from "./websearch.js";
 import { getConfig } from "./config.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { applySecurityHeaders } from "./security-headers.js";
@@ -236,6 +237,15 @@ async function route(request, env, url, log, ctx, requestId) {
     return {
       response: jsonResponse({ speed: cfg.anim_speed }, 200, { "cache-control": "public, max-age=60" }),
     };
+  }
+  // Metered web search for a Se/cure (DRC) session — PUBLIC because DRC has no
+  // identity: the caller authorizes with a signed, quota-metered grant token
+  // (minted for a signed-in user at POST /api/websearch/grant, below the gate).
+  // Only a query string reaches the server here; the grant's D1 row is the
+  // meter. Fail-safe: no D1 → 503, no unmetered server-paid search is possible.
+  // See src/websearch.js.
+  if (request.method === "POST" && url.pathname === "/api/websearch") {
+    return { response: await handleWebSearch(request, env, log) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
@@ -443,6 +453,13 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
+  }
+  // Temporary web-search grant: a signed-in user crossing to Se/cure mints
+  // (or reuses) their short-lived, quota-metered token so the client-side
+  // session can run a bounded number of searches through the server's Exa key.
+  // The PUBLIC search endpoint (/api/websearch, before the gate) spends it.
+  if (url.pathname === "/api/websearch/grant" && request.method === "POST") {
+    return handleWebSearchGrant(request, env, log, identity);
   }
   // Feedback mode (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent.

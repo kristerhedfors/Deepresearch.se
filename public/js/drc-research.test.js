@@ -4,11 +4,15 @@ import http from "node:http";
 import {
   drcContext,
   drcDirectPrompt,
+  drcDirectPromptWeb,
   drcGapPrompt,
   drcHarvestPrompt,
   drcSynthPrompt,
+  drcSynthPromptWeb,
   drcTriagePrompt,
   drcValidatePrompt,
+  drcValidatePromptWeb,
+  drcWebHarvestPrompt,
   normalizeDrcNotes,
   normalizeDrcTriage,
   renderDrcNotes,
@@ -82,6 +86,21 @@ test("every prompt keeps the offline-mode honesty and JSON discipline", () => {
   assert.match(drcSynthPrompt(), /training cutoff/);
   assert.match(drcGapPrompt(["q1", "q2"]), /1\. q1[\s\S]*2\. q2/);
   assert.match(drcValidatePrompt(), /"verdict":"revise"/);
+});
+
+test("the web-search prompt variants flip the honesty rules to citation rules", () => {
+  // Offline says "no web search / never cite"; the web variants require citing
+  // the numbered live sources and forbid inventing a citation.
+  for (const p of [drcWebHarvestPrompt(), drcSynthPromptWeb(), drcDirectPromptWeb()]) {
+    assert.match(p, /CITE|cite/);
+    assert.match(p, /never invent/i);
+  }
+  assert.match(drcWebHarvestPrompt(), /JSON/);
+  assert.match(drcValidatePromptWeb(), /"verdict":"revise"/);
+  assert.match(drcValidatePromptWeb(), /citation \[n\] refers to a Source number/);
+  // The web synth prompt drops the offline "no web sources / training cutoff"
+  // framing (it now HAS sources) — a guard against reusing the offline text.
+  assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
 });
 
 // ---- the full flow against a mock provider ------------------------------------------
@@ -300,6 +319,121 @@ describe("runDrcResearch end to end (mock provider)", () => {
     } finally {
       server3.close();
     }
+  });
+});
+
+// Server-proxied web search (the temporary grant): with a webSearch fn injected,
+// the harvest runs REAL searches, the model extracts CITED facts from the
+// results, and synthesis/validation switch to the citation-aware variants with a
+// numbered Sources list. Fully fail-soft — a webSearch returning null falls back
+// to the offline harvest.
+describe("runDrcResearch web-search grant path (mock provider)", () => {
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      const phase = phaseOf(body);
+      requests.push({ phase, body });
+      const json = (obj) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(obj) } }] }));
+      };
+      if (phase === "triage") json({ action: "research", complexity: "simple", subquestions: ["What is A?", "What is B?"] });
+      else if (phase === "harvest") json({ facts: ["A shipped in 2024 [1]"], uncertain: [] });
+      else if (phase === "gap") json({ complete: true });
+      else if (phase === "validate") json({ verdict: "pass" });
+      else {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(sse(["Grounded ", "answer [1]."]));
+      }
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+
+  test("research harvest runs real searches and synthesis cites the numbered sources", async () => {
+    requests.length = 0;
+    const queries = [];
+    const webSearch = async (q) => {
+      queries.push(q);
+      return { items: [{ title: "Result for " + q, url: "https://ex/" + queries.length, highlights: ["hi"] }], resultCount: 1 };
+    };
+    const phases = [];
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B" }],
+      webSearch,
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      onDelta: () => {},
+      baseUrl,
+    });
+    assert.equal(result.action, "research");
+    // A web search ran for each sub-question.
+    assert.deepEqual(queries, ["What is A?", "What is B?"]);
+    // The harvest used the web-harvest prompt (given the live results block).
+    const harvest = requests.find((r) => r.phase === "harvest");
+    assert.match(harvest.body.messages[0].content, /LIVE WEB SEARCH RESULTS/);
+    assert.match(harvest.body.messages[1].content, /Web search results/);
+    // Synthesis carried a numbered Sources list and used the web synth prompt.
+    const synth = requests.find((r) => r.phase === "synth");
+    assert.match(synth.body.messages[0].content, /CITE claims with the bracketed Source numbers/);
+    assert.match(synth.body.messages.at(-1).content, /Sources \(cite claims as \[n\]\)/);
+    assert.match(synth.body.messages.at(-1).content, /\[1\] Result for What is A\?/);
+    // The phase line surfaced "search" (not "harvest") while web search ran.
+    assert.ok(phases.includes("search"));
+  });
+
+  test("a webSearch that returns null falls back to the offline harvest", async () => {
+    requests.length = 0;
+    const webSearch = async () => null; // e.g. quota exhausted / error
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B" }],
+      webSearch,
+      onDelta: () => {},
+      baseUrl,
+    });
+    assert.equal(result.action, "research");
+    // Offline harvest prompt used, and synthesis stayed on the offline variant
+    // (no Sources block) since no web sources were gathered.
+    const harvest = requests.find((r) => r.phase === "harvest");
+    assert.match(harvest.body.messages[0].content, /From your own knowledge/);
+    const synth = requests.find((r) => r.phase === "synth");
+    assert.doesNotMatch(synth.body.messages.at(-1).content, /Sources \(cite claims as \[n\]\)/);
+  });
+
+  test("a direct answer (research off) grounds in one web search when the grant is on", async () => {
+    requests.length = 0;
+    const queries = [];
+    const webSearch = async (q) => {
+      queries.push(q);
+      return { items: [{ title: "Doc", url: "https://ex/d", highlights: [] }], resultCount: 1 };
+    };
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "latest on A?" }],
+      research: false,
+      webSearch,
+      onDelta: () => {},
+      baseUrl,
+    });
+    assert.equal(result.action, "direct");
+    assert.deepEqual(queries, ["latest on A?"]);
+    const direct = requests.at(-1);
+    assert.match(direct.body.messages[0].content, /grounded in the numbered web search results/);
+    assert.match(direct.body.messages.at(-1).content, /Web search results/);
   });
 });
 

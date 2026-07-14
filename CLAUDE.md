@@ -229,6 +229,22 @@ update the row in the same pass. See the **feature-maintenance** skill.
    Outbound requests to third parties carry the minimum (a query, a
    coordinate, a host) — never the conversation, filename, or account
    identity.
+   **ONE deliberate, bounded exception to "the server is in NO DRC data
+   path" (2026-07-14 directive):** the **temporary web-search grant**
+   (`src/websearch.js` + `src/websearch-key.js`). A SIGNED-IN Se/rver user
+   who crosses to Se/cure via the ghost button can be handed a short-lived,
+   quota-metered token (HMAC-signed with `SESSION_SECRET`; the quota is a D1
+   row keyed by the token's `jti`) that authorizes a fixed number of live web
+   searches routed through the server's Exa key — so the session keeps the
+   strong Se/cure posture (own/local model, browser-local storage) while
+   still getting fresh web results. It stays inside the minimal-outbound rule:
+   only the search QUERY reaches the server and Exa — never the conversation.
+   It is OPT-IN (a toggle in Se/cure settings, and only offered when the
+   ghost set the intent marker — a plain visitor never pings the server) and
+   FAIL-SAFE (no D1 → no grants can be minted and no search can be metered, so
+   there is no unmetered server-paid search). The public `POST /api/websearch`
+   is metered ONLY by the token+D1 row; per-user Exa exposure is bounded to one
+   grant's quota per ~24h window.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -284,6 +300,8 @@ Server (`src/`):
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
+| `websearch-key.js` | The temporary web-search GRANT TOKEN half (leaf module): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
+| `websearch.js` | The web-search grant METER + endpoints (D1 `websearch_grants`, keyed by the token's `jti`): `grantWebSearch` (reuse-the-active-grant-per-user, so per-user Exa exposure is bounded to one quota per ~24h; fail-soft no-op without D1), `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — a signed-in user crossing to Se/cure mints/reuses their token), `handleWebSearch` (PUBLIC `POST /api/websearch`, routed pre-auth — verifies the token, atomically reserves one unit from the D1 row, runs Exa on the server key, refunds an empty/failed search). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client glue is in `public/cure/drc.js` (grant request on the ghost intent marker + the settings toggle) and `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
@@ -650,6 +668,10 @@ policy, COEP request shaping) and `security-headers.js` (the site-wide
 header set + the CSP policy), `auth.js` (the session-cookie HMAC keyed
 SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 `answers.js` (the answer-recovery cache's running/lost/done projection),
+`websearch-key.js` (the grant token's mint→verify round-trip, the
+`SESSION_SECRET`/namespace/expiry/tamper rejections) and `websearch.js`
+(the grant meter over an in-memory D1 fake + mocked Exa: reuse-per-user,
+the atomic reserve/refund, the 400/403/429/503 status codes),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
 `?format=text`), `testpoints.js` (the try-it queue's pure logic:
