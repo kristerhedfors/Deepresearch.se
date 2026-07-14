@@ -1152,6 +1152,16 @@ export async function sendMessage(text, opts) {
   let wasHidden = document.hidden;
   let lastByteAt = Date.now(); // last time the stream produced ANY bytes (incl. keepalives)
   let staleAbort = false; // set when the watchdog (not the user) aborts, so the catch recovers
+  // The silence clock only judges the /api/chat STREAM, so the watchdog stays
+  // dormant until that stream is actually dispatched (flipped true just before
+  // the fetch below). Everything before it — buildChatPayload and, crucially,
+  // the in-browser bash-lite sandbox loop (maybeRunShellLoop) whose cold boot
+  // alone can take ~25s (chat_logs #315: fs.ms 26520) plus several command
+  // rounds — must NOT count as stream silence. Without this gate a foreground
+  // pre-fetch phase longer than STREAM_STALL_MS trips the watchdog and aborts
+  // /api/chat before it even starts, surfacing as "stream stalled — connection
+  // went silent" with no requestId to recover from (the 2026-07-13 iOS PWA bug).
+  let streaming = false;
   const onVisibility = () => {
     if (document.hidden) {
       wasHidden = true;
@@ -1165,7 +1175,7 @@ export async function sendMessage(text, opts) {
   document.addEventListener("visibilitychange", onVisibility);
   const reqController = controller; // capture: clearHistory may reassign the module-level one
   const watchdog = setInterval(() => {
-    if (isStreamStale(lastByteAt, Date.now(), document.hidden, STREAM_STALL_MS)) {
+    if (streaming && isStreamStale(lastByteAt, Date.now(), document.hidden, STREAM_STALL_MS)) {
       staleAbort = true;
       try { reqController.abort(); } catch { /* already settled */ }
     }
@@ -1209,6 +1219,12 @@ export async function sendMessage(text, opts) {
       // dropped count (drop), boot ms, and any error.
       fs: sandboxFsSummary() || undefined,
     };
+    // The stream is about to start: arm the stall watchdog and open a fresh
+    // full silence window from HERE, so the (possibly long) pre-fetch work
+    // above — payload build + the bash-lite sandbox loop — never counts as
+    // stream silence. From now on lastByteAt is stamped on every read.
+    lastByteAt = Date.now();
+    streaming = true;
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
