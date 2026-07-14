@@ -142,6 +142,12 @@ body.term-fg .dr-agent-backdrop-pre {
   /* Foreground now: darker, fully legible terminal text (the faint background
      colour is for when it sits behind the conversation). */
   color: rgba(10, 46, 92, .82);
+  /* No sway in terminal view (2026-07-14 directive): the side-to-side drift
+     wave reads as weird ambient motion once the terminal is the pane you're
+     reading and scrolling, so switch it off and pin the text straight. The
+     gentle wave only makes sense while the layer is faint background texture. */
+  animation: none;
+  transform: none;
 }
 @media (prefers-reduced-motion: reduce) {
   #chat,

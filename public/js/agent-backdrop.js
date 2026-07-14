@@ -34,11 +34,14 @@
 // is now the only switcher, and its only job is switching).
 //
 // SCROLLING is per-mode. In CONVERSATION mode the conversation scrolls natively
-// and the terminal (the background pane) leans along in synchronization, weaker
-// and shorter. In TERMINAL mode a wheel/drag pages BACK through the command
-// history and the conversation (now the background pane) leans along the same
-// way. The newest command line sits ABOVE the composer (the CSS raises the
-// viewport) so it's visible, not hidden behind the input.
+// and the terminal (the background pane) does NOT move — it stays pinned at the
+// live tail (its last command); the terminal has no history worth paging while
+// you read the chat, so it holds still (2026-07-14 directive). In TERMINAL mode
+// a wheel/drag pages BACK through the command history and the conversation (now
+// the background pane) leans along in synchronization — a faint up/down follow,
+// weaker and shorter, just enough to keep the two panes feeling coherent. The
+// newest command line sits ABOVE the composer (the CSS raises the viewport) so
+// it's visible, not hidden behind the input.
 
 import {
   CHANNEL_CLIP_MS,
@@ -311,12 +314,6 @@ function leanChat(signed) {
   if (chatParTimer) clearTimeout(chatParTimer);
   chatParTimer = setTimeout(() => { chatParY = 0; applyChatTransform(); }, 150);
 }
-function leanBackdrop(signed) {
-  viewParY = parallaxFollow(signed);
-  applyViewTransform();
-  if (viewParTimer) clearTimeout(viewParTimer);
-  viewParTimer = setTimeout(() => { viewParY = 0; applyViewTransform(); }, 150);
-}
 
 function render() {
   if (!pre) return;
@@ -442,18 +439,18 @@ function wireScroll() {
   );
   window.addEventListener("touchend", () => { touchActive = false; }, { passive: true });
 
-  // --- CONVO mode: the terminal (background pane) leans along as the
-  //     conversation scrolls natively, in synchronization but weaker/shorter ---
+  // --- CONVO mode: the terminal (background pane) holds STILL. It has no
+  //     history to page while you read the chat, so it stays pinned at its live
+  //     tail (last command) rather than drifting along with the conversation
+  //     scroll (2026-07-14 directive). We keep lastChatTop current so the delta
+  //     is right if we ever lean again, but the scroll itself moves nothing on
+  //     the terminal side. ---
   const c = chatEl();
   if (c) {
     lastChatTop = c.scrollTop;
     c.addEventListener("scroll", () => {
       try {
-        const top = c.scrollTop;
-        const d = top - lastChatTop;
-        lastChatTop = top;
-        if (layerMode !== LAYER_CONVO || !hasBackdropContent()) return;
-        leanBackdrop(-d); // content moved up (d>0) → backdrop drifts up too, less
+        lastChatTop = c.scrollTop;
       } catch { /* decoration — never break the page */ }
     }, { passive: true });
   }
