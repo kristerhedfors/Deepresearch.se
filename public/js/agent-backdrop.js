@@ -16,6 +16,13 @@
 // pass a channel id per agent; when several are active the layer clips between
 // them.
 //
+// The backdrop ALSO mirrors the VM's RAW terminal stream (feedTerminal, fed from
+// sandbox.js's console writer): the boot/login banner and shell prompt drift
+// behind the chat the instant the VM prints anything, so "there are terminal
+// characters in the background" is the visible proof the Linux system has
+// started (2026-07-14 directive). ANSI escapes are stripped and the live,
+// not-yet-terminated prompt line is shown as a tail.
+//
 // SCROLLING: the log is no longer a fixed tail. A wheel/drag over the empty page
 // field pages BACK through the command history (the conversation bubbles keep
 // their own native scroll — touching a bubble scrolls the convo, not the
@@ -29,14 +36,22 @@ import {
   activeLines,
   backdropEnabled,
   channelCount,
+  clampLine,
   clipToNextChannel,
   createBackdropModel,
   opacityCss,
   parallaxNudge,
   pushCommand,
+  pushLines,
   pushResult,
   scrollStep,
+  stripAnsi,
 } from "./agent-backdrop-core.js";
+
+// The single channel every sandbox surface shares: the VM's raw terminal stream
+// (boot/login banner + prompt), the proposed commands, and their output all land
+// here so the backdrop reads as ONE coherent terminal behind the chat.
+const TERM_CHANNEL = "shell";
 
 // The transparency slider was removed (2026-07-13 directive): the layer is
 // always shown at its fullest (100 → the faint 0.55 CSS ceiling). One fixed
@@ -49,6 +64,13 @@ let view = null; // the clipped viewport window (sizes/positions the text)
 let scroller = null; // the inner element we translate to scroll the log
 let pre = null; // the <pre> the active channel renders into
 let clipTimer = 0; // round-robin between channels when >1 is active
+
+// The raw-terminal line assembler: the VM writes the console in arbitrary
+// chunks, so we buffer the partial trailing line (the not-yet-newline-terminated
+// shell prompt) here and show it as a live tail; complete lines are committed to
+// the model. Cleared/flushed when a command starts (feedCommand) so the command
+// appears BELOW the prompt, not above it.
+let termBuf = "";
 
 // Backdrop scroll state: bgOffset px scrolled back into the log (0 = pinned to
 // the live tail), bgPinned tracks whether we're still following the newest.
@@ -103,8 +125,13 @@ function applyOpacity() {
 function render() {
   if (!pre) return;
   // Newest at the bottom, like a real terminal tail; the CSS clips the top so
-  // the visible window is always the most recent work.
-  pre.textContent = activeLines(model).join("\n");
+  // the visible window is always the most recent work. The unterminated raw-
+  // terminal tail (the live shell prompt) is shown appended, so "characters are
+  // drifting behind the chat" the instant the VM prints anything — the visible
+  // proof Linux has booted.
+  let lines = activeLines(model);
+  if (model.active === TERM_CHANNEL && termBuf) lines = lines.concat([clampLine(termBuf)]);
+  pre.textContent = lines.join("\n");
   // Fresh output re-pins to the live tail unless the user has scrolled back to
   // read history; either way keep the offset inside the (now-changed) range.
   if (bgPinned) bgOffset = 0;
@@ -242,8 +269,39 @@ function feed(fn, channel, payload) {
   } catch { /* the backdrop is decoration — never break the caller */ }
 }
 
+// Commit any pending raw-terminal tail (the live prompt) as a real line, so
+// whatever comes next — a command, a result — is appended BELOW it in order.
+function flushTermTail() {
+  if (termBuf) {
+    pushLines(model, TERM_CHANNEL, [termBuf]);
+    termBuf = "";
+  }
+}
+
+/**
+ * Mirror a chunk of the VM's RAW terminal stream (boot/login banner, shell
+ * prompt) onto the backdrop. ANSI escapes are stripped; complete lines are
+ * committed and the trailing partial line is kept as a live tail. This is the
+ * "Linux has started" signal — the moment the VM prints anything, characters
+ * drift behind the chat. Fed from sandbox.js's console writer; fully fail-soft.
+ * @param {unknown} text a decoded terminal chunk
+ */
+export function feedTerminal(text) {
+  try {
+    const clean = stripAnsi(text);
+    if (!clean) return;
+    ensureLayer();
+    const parts = (termBuf + clean).split("\n");
+    termBuf = parts.pop() || ""; // the unterminated remainder (the prompt)
+    for (const line of parts) pushLines(model, TERM_CHANNEL, [line]);
+    render();
+    syncClipTimer();
+  } catch { /* the backdrop is decoration — never break the caller */ }
+}
+
 /** Show a proposed command (`$ cmd`) on the given agent's channel. */
 export function feedCommand(channel, command) {
+  flushTermTail(); // land the command below the live prompt, not above it
   feed(pushCommand, channel, command);
 }
 

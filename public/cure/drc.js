@@ -58,6 +58,7 @@ import {
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
+import { ensureSandboxBooted, sandboxIdle, sandboxSupported } from "/js/sandbox.js";
 import {
   OWASP_CORPUS_PATH,
   SNAPSHOT_PATH,
@@ -1059,6 +1060,21 @@ $("newchatbtn").addEventListener("click", newChat);
 // sealed project state). No reload needed here — the DRC page is always served
 // cross-origin isolated, so the sandbox can boot the moment a message needs it.
 $("bashlite").checked = state.bashLite === true;
+// Boot a bare Linux VM straight away when the sandbox is enabled, so "enabled"
+// means the system is already running (its terminal drifting faintly behind the
+// chat) rather than waiting for a message to need it. Best-effort + idempotent
+// (gated on sandboxIdle); the /cure page is always cross-origin isolated.
+function prewarmDrcSandbox() {
+  try {
+    if (state.bashLite !== true || !sandboxSupported() || !sandboxIdle()) return;
+    // Skip when developer mode is on: that path mounts the source snapshot at
+    // /src at boot, and a bare pre-warm would be adopted (idempotent boot) and
+    // lose the mount. It boots on the first source-tool call instead.
+    if (state.developerMode === true) return;
+    ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
+  } catch { /* best-effort — never disturb the page */ }
+}
+prewarmDrcSandbox();
 $("bashlite").addEventListener("change", () => {
   state.bashLite = $("bashlite").checked;
   const st = $("sandboxstatus");
@@ -1066,6 +1082,7 @@ $("bashlite").addEventListener("change", () => {
     ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
     : "Sandbox disabled.";
   saveState().catch(() => {});
+  prewarmDrcSandbox(); // enabling now → start Linux immediately
 });
 // Introspection mode's mascot (developer mode): TIN, the titanium robot,
 // slides in when what the user is TYPING reads as an ask about this site's

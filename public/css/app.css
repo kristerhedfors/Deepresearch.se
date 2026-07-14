@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h32;
+  --css-version: h33;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -96,9 +96,13 @@ body::before {
 .dr-agent-backdrop-pre {
   margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
-  font-size: 12px;
+  /* Slightly more prominent than before (2026-07-14 directive): a touch larger
+     and a firmer ink so the running terminal reads clearly as "Linux started",
+     while the layer opacity (agent-backdrop-core.js OPACITY_CEILING) keeps it a
+     backdrop, never a wall. */
+  font-size: 13px;
   line-height: 1.55;
-  color: rgba(10, 46, 92, .5);
+  color: rgba(10, 46, 92, .62);
   white-space: pre-wrap;
   word-break: break-word;
   /* A gentle side-to-side wave across the characters (kept subtle on purpose). */

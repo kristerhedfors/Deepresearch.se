@@ -11,6 +11,7 @@ import {
   DEFAULT_OPACITY_PCT,
   MAX_LINES,
   MAX_LINE_CHARS,
+  OPACITY_CEILING,
   PARALLAX_CAP_PX,
   activeLines,
   backdropEnabled,
@@ -28,6 +29,8 @@ import {
   parseOpacityPref,
   pushCommand,
   pushLines,
+  replaceLastLine,
+  stripAnsi,
   pushResult,
   scrollStep,
 } from "./agent-backdrop-core.js";
@@ -136,10 +139,34 @@ test("backdropEnabled is false only at 0", () => {
   assert.equal(backdropEnabled(100), true);
 });
 
-test("opacityCss maps 0..100 into the faint band 0..0.55", () => {
+test("opacityCss maps 0..100 into the faint band 0..OPACITY_CEILING", () => {
   assert.equal(opacityCss(0), 0);
-  assert.equal(opacityCss(100), 0.55);
-  assert.ok(opacityCss(50) > 0 && opacityCss(50) < 0.55);
+  assert.equal(opacityCss(100), OPACITY_CEILING);
+  assert.ok(opacityCss(50) > 0 && opacityCss(50) < OPACITY_CEILING);
+  assert.ok(OPACITY_CEILING < 1); // still a backdrop, never a wall
+});
+
+test("stripAnsi removes escape sequences and stray controls, keeps text", () => {
+  assert.equal(stripAnsi("\x1b[0;32mroot@box\x1b[0m:~# "), "root@box:~# ");
+  assert.equal(stripAnsi("a\x1b]0;title\x07b"), "ab"); // OSC title
+  assert.equal(stripAnsi("x\x1b[2Ky"), "xy"); // erase-line CSI
+  assert.equal(stripAnsi("one\r\ntwo\rthree"), "one\ntwo\nthree"); // CR/CRLF → LF
+  assert.equal(stripAnsi("keep\ttab\nline"), "keep\ttab\nline"); // tab + newline survive
+  assert.equal(stripAnsi("bell\x07here"), "bellhere"); // control byte dropped
+  assert.equal(stripAnsi(null), "");
+  assert.equal(stripAnsi(undefined), "");
+});
+
+test("replaceLastLine updates the tail in place, pushes on an empty channel", () => {
+  const m = createBackdropModel();
+  replaceLastLine(m, "shell", "root@box:~"); // empty → push
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~"]);
+  replaceLastLine(m, "shell", "root@box:~#"); // grow the same prompt in place
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~#"]);
+  pushLines(m, "shell", ["$ ls"]);
+  replaceLastLine(m, "shell", "$ ls -la"); // replaces the newest, not the prompt
+  assert.deepEqual(channelLines(m, "shell"), ["root@box:~#", "$ ls -la"]);
+  assert.equal(m.active, "shell");
 });
 
 test("clampScrollOffset keeps the offset within the scrollable range", () => {

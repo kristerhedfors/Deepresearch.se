@@ -91,9 +91,11 @@ body::before {
 .dr-agent-backdrop-pre {
   margin: 0;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
-  font-size: 12px;
+  /* Slightly more prominent (2026-07-14 directive) — see app.css for the note;
+     this mirror keeps the khaki palette. */
+  font-size: 13px;
   line-height: 1.55;
-  color: rgba(61, 52, 24, .55);
+  color: rgba(61, 52, 24, .66);
   white-space: pre-wrap;
   word-break: break-word;
   animation: agent-wave 7.5s ease-in-out infinite;
