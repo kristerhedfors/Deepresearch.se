@@ -61,6 +61,7 @@ import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
+import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
@@ -496,6 +497,7 @@ function openSettings() {
   renderKeysPanel();
   renderWsRow(); // reflect the web-search grant (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
+  renderSearchBackend(); // reflect the per-user web-search backend
   $("settingsview").hidden = false;
 }
 
@@ -1254,6 +1256,85 @@ function renderWsRow() {
     : (wsEnabled() ? "On" : "Off") + " — " + remaining + " of " + wsGrant.quota + " server web searches left this session.";
 }
 
+// ---- web search SERVICE: the expert, browser-direct backend --------------------------
+//
+// Se/cure is the expert tier, so it can point live web search at the user's OWN
+// self-hosted service (SearXNG or an Exa-compatible endpoint), called STRAIGHT
+// from this browser — no query touches Deepresearch's server (stronger than the
+// server grant, which routes through the server's Exa key). The config (URL +
+// optional key + results) lives inside the sealed project state, like the
+// provider keys. The service must send CORS headers to be reachable from here.
+// Fail-soft: a misconfigured/unreachable service returns null and the pipeline
+// degrades to the offline harvest (or the server grant, if that's selected).
+
+function searchBackendCfg() {
+  const sb = (state && state.searchBackend) || {};
+  return {
+    backend: sb.backend === "searxng" || sb.backend === "exa_compatible" ? sb.backend : "grant",
+    baseUrl: String(sb.baseUrl || "").trim().replace(/\/+$/, ""),
+    key: String(sb.key || "").trim(),
+    results: Number(sb.results) > 0 ? Math.min(20, Math.max(1, Math.round(Number(sb.results)))) : 6,
+  };
+}
+
+// True when a browser-direct self-hosted backend is configured AND usable.
+function directSearchActive() {
+  const c = searchBackendCfg();
+  return (c.backend === "searxng" || c.backend === "exa_compatible") && !!c.baseUrl;
+}
+
+// The webSearch fn handed to runDrcResearch for the direct path. Same {items,…}
+// shape drcServerWebSearch returns, so the pipeline consumes it identically.
+async function drcDirectWebSearch(query) {
+  const c = searchBackendCfg();
+  try {
+    const r = await runDirectBackendSearch(console, c, query, { numResults: c.results });
+    return r && Array.isArray(r.items) && r.items.length ? r : null;
+  } catch {
+    return null; // fail-soft: a lost search, not a lost answer
+  }
+}
+
+// Reflects the sealed backend config into the settings section and wires edits.
+function renderSearchBackend() {
+  const sel = /** @type {HTMLSelectElement} */ ($("ws-backend"));
+  if (!sel) return;
+  const c = searchBackendCfg();
+  sel.value = c.backend;
+  const direct = $("ws-direct");
+  const urlEl = /** @type {HTMLInputElement} */ ($("ws-url"));
+  const keyEl = /** @type {HTMLInputElement} */ ($("ws-key"));
+  const resEl = /** @type {HTMLInputElement} */ ($("ws-results"));
+  urlEl.value = c.baseUrl;
+  keyEl.value = c.key;
+  resEl.value = String(c.results);
+  const isDirect = c.backend === "searxng" || c.backend === "exa_compatible";
+  direct.hidden = !isDirect;
+  const status = $("ws-svc-status");
+  status.textContent = !isDirect
+    ? ""
+    : c.baseUrl
+      ? "Web search will call your " + (c.backend === "searxng" ? "SearXNG instance" : "service") + " directly from this browser."
+      : "Enter your service URL to enable browser-direct web search.";
+
+  // Save on any change (guarded so we only bind once per open — the elements
+  // persist across opens, so use onchange assignment, not addEventListener).
+  const persist = async () => {
+    state.searchBackend = {
+      backend: sel.value === "searxng" || sel.value === "exa_compatible" ? sel.value : "grant",
+      baseUrl: urlEl.value.trim().replace(/\/+$/, ""),
+      key: keyEl.value.trim(),
+      results: Number(resEl.value) > 0 ? Math.min(20, Math.max(1, Math.round(Number(resEl.value)))) : 6,
+    };
+    renderSearchBackend();
+    await saveState();
+  };
+  sel.onchange = persist;
+  urlEl.onchange = persist;
+  keyEl.onchange = persist;
+  resEl.onchange = persist;
+}
+
 // ---- secure research space: the account-connected proxy BUNDLE ----------------------
 //
 // The richer sibling of the web-search grant above (src/proxy.js). A signed-in
@@ -1515,9 +1596,16 @@ async function send(ev) {
       snapshot: intro.snapshot,
       bash: state.bashLite === true,
       fileProvider: intro.fileProvider,
-      // Server-proxied web search: the secure-research-space web proxy OR the
-      // legacy grant, whichever is live + enabled (else null → offline harvest).
-      webSearch: webProxyUsable() || (wsGrantActive() && wsEnabled()) ? drcServerWebSearch : null,
+      // Web search source, in priority order: (1) the user's OWN self-hosted
+      // service called browser-direct (the expert setting — no query touches
+      // this server); (2) the secure-research-space web proxy OR the legacy
+      // grant, whichever is live + enabled, both via drcServerWebSearch;
+      // (3) null → the offline harvest, unchanged.
+      webSearch: directSearchActive()
+        ? drcDirectWebSearch
+        : webProxyUsable() || (wsGrantActive() && wsEnabled())
+          ? drcServerWebSearch
+          : null,
       onStatus: (s) => {
         if (s.type === "tool") {
           // Developer-mode native tool call — show the tool + its argument live
