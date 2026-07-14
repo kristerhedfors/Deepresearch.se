@@ -1731,11 +1731,10 @@ renderMessages();
 handlePublicationLink().then((opened) => {
   const deepLinked = projectLinked || opened;
   maybePlayUmbrella(deepLinked).then((played) => {
-    // Reveal the app chrome the head-script held hidden for a flash-free intro
-    // (a no-op when no class was added — reduced-motion / already-seen / deep
-    // link never hide it). Done here, once the animation is over, so the app
-    // appears exactly as the umbrella scene ends.
-    document.documentElement.classList.remove("umbrella-intro");
+    // The app chrome is ALWAYS painted (the intro is a canvas overlay on top of
+    // it, never a gate in front of it) — so a stalled or failed animation can
+    // never leave the site blank. The overlay removes itself when it ends or via
+    // its own watchdog (umbrella.js); nothing here has to un-hide the app.
     afterUmbrella(deepLinked);
     // Extend the intro: when it actually played (first visit, or the ?anim=1
     // replay), send the little ghost strolling across the page with a pink
