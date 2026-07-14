@@ -10,6 +10,41 @@
        this meta after load to force WebKit to re-evaluate it. -->
   <meta name="theme-color" content="#c3b091">
   <link rel="stylesheet" href="/cure/drc.css">
+  <!-- First-paint intro guard: decide SYNCHRONOUSLY (before any body chrome
+       paints) whether the first-visit umbrella intro will play, and if so hold
+       the app chrome hidden via `.umbrella-intro` on the root so you drop
+       straight into the animation with no flash of the chat UI underneath. The
+       gates mirror maybePlayUmbrella() in drc.js exactly; drc.js clears the
+       class the moment the intro finishes (or fails). A generous safety timer
+       reveals the app anyway if drc.js never loads, so a hard failure can never
+       leave the page permanently blank. -->
+  <script>
+    (function () {
+      try {
+        var s = location.search, p = location.pathname;
+        var force = /[?&]anim=(1|rev)\b/.test(s);
+        if (!force) {
+          var seen = false;
+          try { seen = localStorage.getItem("dr_umbrella_seen") === "1"; } catch (e) {}
+          var reduced = false;
+          try { reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+          // A deep link (a saved project or a published replay) suppresses the
+          // intro — same URL shapes handleProjectLink()/handlePublicationLink()
+          // recognize in drc.js.
+          var deepLinked =
+            /^\/(?:my|free)\/project-[0-9a-z]+/i.test(p) ||
+            /^\/cure\/[a-z0-9-]+$/i.test(p) ||
+            /[?&]continue=/.test(s);
+          if (seen || reduced || deepLinked) return;
+        }
+        var root = document.documentElement;
+        root.classList.add("umbrella-intro");
+        // Fail-safe: if drc.js never loads to clear the class, reveal anyway
+        // (comfortably longer than the slowest admin-slowed play).
+        setTimeout(function () { root.classList.remove("umbrella-intro"); }, 30000);
+      } catch (e) {}
+    })();
+  </script>
   <!-- Vendored renderer globals (classic scripts, same as the main app) -->
   <script src="/vendor/marked.min.js"></script>
   <script src="/vendor/purify.min.js"></script>

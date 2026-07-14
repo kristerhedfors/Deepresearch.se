@@ -59,6 +59,22 @@ body::before {
   body::before { animation: none; }
 }
 
+/* First-paint intro guard. When the first-visit umbrella intro is going to
+   play, an inline head script in index.html adds `.umbrella-intro` to the
+   ROOT synchronously — before any body chrome paints — so the very first
+   thing on screen is the animation (its canvas paints its own khaki backdrop
+   over the whole viewport), never a flash of the chat UI underneath it. The
+   <html> background is already khaki (above), so there is no white flash in
+   the gap before the canvas mounts. drc.js removes the class the moment the
+   intro finishes (or fails), revealing the app. Layout is preserved
+   (visibility, not display) so nothing reflows when the chrome appears. */
+html.umbrella-intro body > header,
+html.umbrella-intro body > #chat,
+html.umbrella-intro body > #footer,
+html.umbrella-intro body::before {
+  visibility: hidden;
+}
+
 /* Agent activity backdrop: the sandbox's raw commands + output drifting faintly
    across the khaki field behind the chat (shared logic in
    public/js/agent-backdrop.js — the element is created there and appended to

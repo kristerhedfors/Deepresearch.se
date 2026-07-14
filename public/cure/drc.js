@@ -1374,7 +1374,14 @@ renderMessages();
 // wordmark away.
 handlePublicationLink().then((opened) => {
   const deepLinked = projectLinked || opened;
-  maybePlayUmbrella(deepLinked).then(() => afterUmbrella(deepLinked));
+  maybePlayUmbrella(deepLinked).then(() => {
+    // Reveal the app chrome the head-script held hidden for a flash-free intro
+    // (a no-op when no class was added — reduced-motion / already-seen / deep
+    // link never hide it). Done here, once the animation is over, so the app
+    // appears exactly as the umbrella scene ends.
+    document.documentElement.classList.remove("umbrella-intro");
+    afterUmbrella(deepLinked);
+  });
 });
 
 $("introstart").addEventListener("click", dismissIntro);
