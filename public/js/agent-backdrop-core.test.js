@@ -24,6 +24,7 @@ import {
   clampOpacityPct,
   clampScrollOffset,
   clipToNextChannel,
+  convoSyncOffset,
   createBackdropModel,
   ensureChannel,
   formatResultLines,
@@ -197,6 +198,29 @@ test("scrollStep walks toward the tail on positive delta, into history on negati
   assert.equal(down.pinned, true);
   // clamped at the top of the buffer
   assert.equal(scrollStep(150, -200, 300, 100).offset, 200);
+});
+
+test("convoSyncOffset maps the conversation scroll onto the backdrop's history", () => {
+  // conversation: 1000px content, 400px viewport → 600px scrollable.
+  // backdrop: 300px content, 100px viewport → 200px of history to reveal.
+  // At the bottom (newest, scrollTop=600) → pinned tail, offset 0.
+  const bottom = convoSyncOffset(600, 1000, 400, 300, 100);
+  assert.equal(bottom.offset, 0);
+  assert.equal(bottom.pinned, true);
+  // At the top (oldest, scrollTop=0) → fully back through the history (max 200).
+  const top = convoSyncOffset(0, 1000, 400, 300, 100);
+  assert.equal(top.offset, 200);
+  assert.equal(top.pinned, false);
+  // Halfway up (scrollTop=300) → halfway through the backdrop history (100).
+  const mid = convoSyncOffset(300, 1000, 400, 300, 100);
+  assert.equal(mid.offset, 100);
+  assert.equal(mid.pinned, false);
+  // No scrollable conversation → pinned tail (no division by zero).
+  assert.equal(convoSyncOffset(0, 400, 400, 300, 100).offset, 0);
+  // Backdrop shorter than its viewport → nothing to reveal, stays pinned.
+  assert.equal(convoSyncOffset(0, 1000, 400, 80, 100).offset, 0);
+  // Garbage coerces to a pinned tail, never NaN.
+  assert.equal(convoSyncOffset("x", "y", "z", "w", "v").offset, 0);
 });
 
 test("parallaxNudge opposes the gesture, clamped to ±cap, finite on garbage", () => {
