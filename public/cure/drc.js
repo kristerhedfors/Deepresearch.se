@@ -99,6 +99,7 @@ import {
   parsePublicationRef,
   phaseChannel,
   providerVisibilityNote,
+  unlockCelebrationSize,
   wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
@@ -568,7 +569,7 @@ function closeDrawer() {
 
 // On a genuine first visit (after the umbrella intro), the ghost mascot
 // explains that you're on the client-side Se/cure tier and points at the
-// account button — the door to Se/rver. Shown once (dr_secure_intro_seen);
+// account button — the menu holding the door to Se/rver. Shown once (dr_secure_intro_seen);
 // dismisses on its close button or any outside tap (UX-1).
 function showGhostSay() {
   let seen = false;
@@ -591,6 +592,22 @@ function hideGhostSay() {
   if ($("ghostsay").hidden) return;
   $("ghostsay").hidden = true;
   $("accountbtn").classList.remove("nudge");
+}
+
+// ---- the account view (right drawer, the person icon) -----------------------------
+
+// Se/cure has no accounts, so the account button opens a MENU rather than the
+// old straight-to-/login redirect: the documentation links every visitor can
+// read (all public pages) and, where account specifics would sit, the sign-in
+// link to the hosted tier. Static markup in index.html — nothing to render.
+function openAccount() {
+  closeDrawer();
+  hideGhostSay(); // the greeter points AT this button — opening the menu completes its job
+  $("accountview").hidden = false;
+}
+
+function closeAccount() {
+  $("accountview").hidden = true;
 }
 
 // ---- the settings view (right drawer, the gear): keys + sandbox -------------------
@@ -1816,6 +1833,58 @@ function handleWorkspaceLink() {
   return false;
 }
 
+// The unlock CELEBRATION (owner directive, 2026-07-15): the moment the correct
+// password opens a shared workspace, ONE LARGE umbrella plays the intro's whole
+// arc FAST, full-screen — the umbrella spinner's completion finale (the
+// speed-run through vortex → untwist → wireframe → tilt → the pink bloom, then
+// the fold into the pink ✓) on a viewport-sized canvas over the intro's own
+// khaki stage. mountUmbrellaSpinner is reused as-is: finish() straight after
+// mount speed-runs the compressed intro in ~0.9 s, so the two renderings can
+// never drift. Entirely decoration and entirely fail-soft: reduced-motion and
+// no-canvas browsers skip it, a tap dismisses it (like the intro), and a
+// watchdog clears the overlay even if RAF stalls (the umbrella.js iOS lesson)
+// — the unlock itself never waits on any of this.
+const CELEBRATION_HOLD_MS = 650; // living a beat as the full-screen ✓
+const CELEBRATION_WATCHDOG_MS = 6000; // finale ≈ 0.9+0.24+0.42 s + holds; wide margin
+function playUnlockCelebration() {
+  try {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!document.createElement("canvas").getContext) return;
+    const overlay = document.createElement("div");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:30;background:#c3b091;cursor:pointer;" +
+      "transition:opacity .3s ease;";
+    const host = document.createElement("div");
+    host.style.cssText = "position:absolute;left:50%;top:50%;width:0;height:0;";
+    overlay.appendChild(host);
+    document.body.appendChild(overlay);
+    let gone = false;
+    const remove = () => {
+      if (gone) return;
+      gone = true;
+      clearTimeout(watchdog);
+      overlay.remove();
+    };
+    const fadeOut = () => {
+      if (gone) return;
+      overlay.style.opacity = "0";
+      setTimeout(remove, 350);
+    };
+    overlay.addEventListener("pointerdown", remove); // tap skips, like the intro
+    const watchdog = setTimeout(remove, CELEBRATION_WATCHDOG_MS);
+    const spinner = mountUmbrellaSpinner(host, {
+      size: unlockCelebrationSize(window.innerWidth, window.innerHeight),
+      style: 0, // the fleet's deep-rose lead umbrella
+    });
+    // finish() immediately: the whole intro compressed into the finale's
+    // speed-run + the pink beat + the ✓ — the "fast final" of the intro.
+    spinner.finish(() => setTimeout(fadeOut, CELEBRATION_HOLD_MS));
+  } catch {
+    /* decoration — must never cost the unlock */
+  }
+}
+
 // The unlock submit: decrypt the blob LOCALLY (workspace-core's 8192-round
 // KDF + AES-GCM — wrong password just fails soft), apply the payload onto
 // this session, hydrate any embedded grants through the existing fail-soft
@@ -1836,6 +1905,9 @@ async function unlockWorkspace(ev) {
     }
     const { grants, note, name } = applyWorkspacePayload(state, opened.payload);
     pendingWorkspaceBlob = null;
+    // The password checked out — celebrate over everything that follows (the
+    // grant hydration and re-renders run underneath the animation).
+    playUnlockCelebration();
 
     // Hydrate embedded grants (all optional and fail-soft — the workspace
     // itself is already fully applied, offline).
@@ -2148,7 +2220,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d28 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d29 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -2193,10 +2265,14 @@ $("drawerclose").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("click", (e) => {
   if (e.target === $("drawer")) closeDrawer();
 });
-// The account button IS the door to Se/rver (the signed-in tier): tapping it
-// leaves the client-side site for the hosted sign-in.
-$("accountbtn").addEventListener("click", () => {
-  location.href = "/login";
+// The account button opens the account MENU (like the signed-in app's account
+// panel) rather than redirecting to sign-in (2026-07-15 directive): the public
+// documentation pages plus — instead of account specifics — the door to
+// Se/rver, since Se/cure itself has no accounts.
+$("accountbtn").addEventListener("click", openAccount);
+$("accountclose").addEventListener("click", closeAccount);
+$("accountview").addEventListener("click", (e) => {
+  if (e.target === $("accountview")) closeAccount();
 });
 // The greeter's close button + dismiss-on-outside-tap (UX-1).
 $("ghostsayclose").addEventListener("click", hideGhostSay);
@@ -2211,7 +2287,14 @@ $("settingsclose").addEventListener("click", closeSettings);
 $("settingsview").addEventListener("click", (e) => {
   if (e.target === $("settingsview")) closeSettings();
 });
-// The secure-workspace pane (settings row → share composer; #w= → unlock).
+// The secure-workspace pane (header share icon / settings row → share
+// composer; #w= → unlock). The header icon (2026-07-15 owner directive) is
+// the first-class door — it sits where the ghost used to, ghost one step
+// left; the settings row stays as the explained entry next to the ⓘ.
+$("sharebtn").addEventListener("click", () => {
+  closeSettings();
+  openWorkspaceView("share");
+});
 $("wkopenbtn").addEventListener("click", () => {
   closeSettings();
   openWorkspaceView("share");

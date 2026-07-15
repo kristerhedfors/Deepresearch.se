@@ -39,13 +39,20 @@
         <button id="ghostbtn" type="button" class="on" data-feature="ghost" title="You're in ghost mode — Se/cure: this server never sees your chats" aria-label="Ghost mode (you are here)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
         </button>
+        <!-- Share this workspace (2026-07-15 owner directive: a first-class
+             header icon, not just the settings row) — sits where the ghost
+             used to, the ghost one step left. Opens the workspace pane's
+             share composer (wired in drc.js). -->
+        <button id="sharebtn" type="button" title="Share this workspace — seal keys, settings &amp; chats into one offline link" aria-label="Share secure workspace">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="8.59" y1="10.49" x2="15.41" y2="6.51"/></svg>
+        </button>
         <button id="termbtn" type="button" title="Terminal — tap to switch between the terminal and the conversation" aria-label="Switch between terminal and conversation" aria-pressed="false" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3"/><line x1="13" y1="16" x2="17" y2="16"/></svg>
         </button>
         <button id="gearbtn" type="button" title="Settings (API keys &amp; sandbox)" aria-label="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
-        <button id="accountbtn" type="button" title="Sign in to DeepResearch.Se/rver" aria-label="Sign in to Se/rver">
+        <button id="accountbtn" type="button" title="Account — documentation &amp; Se/rver sign-in" aria-label="Account menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
         </button>
       </div>
@@ -54,7 +61,8 @@
 
   <!-- The "little fella" first-visit greeter: after the umbrella intro the
        ghost explains the Se/cure tier and points at the account button (the
-       door to Se/rver). First visit only; dismisses on any outside tap (UX-1). -->
+       menu holding docs + the door to Se/rver). First visit only; dismisses
+       on any outside tap (UX-1). -->
   <div id="ghostsay" hidden>
     <button id="ghostsayclose" type="button" aria-label="Dismiss">×</button>
     <span class="ghostsay-face" aria-hidden="true">
@@ -392,6 +400,36 @@
     </aside>
   </div>
 
+  <!-- The account view (right drawer, the person icon): the same menu spot
+       the signed-in app's account panel occupies — but Se/cure has no
+       accounts, so instead of account specifics it holds the public
+       documentation pages plus the door to the signed-in tier. Docs open in
+       a NEW TAB (same-tab navigation would abort an in-flight research run —
+       the same rule as the Se/rver panel's documentation view); the sign-in
+       link deliberately navigates same-tab (it leaves the client-side site). -->
+  <div id="accountview" hidden>
+    <aside class="drawer-panel account-panel">
+      <div class="drawer-head">
+        <strong>Account</strong>
+        <button id="accountclose" type="button" aria-label="Close">›</button>
+      </div>
+
+      <p class="acct-lead">Se<span class="sl">/</span>cure has <b>no accounts</b>: your keys, chats and
+        projects live only in this browser, so there is nothing to sign in to here.
+        Accounts — with cloud sync, documents and live web search — are the hosted
+        tier, DeepResearch.<b>Se<span class="sl">/</span>rver</b>.</p>
+      <a class="btnlike" href="/login">Sign in to DeepResearch.<b>Se<span class="sl">/</span>rver</b> →</a>
+
+      <p class="acct-lead acct-section"><b>Documentation</b></p>
+      <a class="pub-item acct-link" href="/help/" target="_blank" rel="noopener">Documentation<span>How to use the site — features, privacy, and the deep-research pipeline.</span></a>
+      <a class="pub-item acct-link" href="/build/" target="_blank" rel="noopener">About this project<span>What DeepResearch is and the ideas behind it.</span></a>
+      <a class="pub-item acct-link" href="/story/" target="_blank" rel="noopener">The build story<span>How the site was built, session by session.</span></a>
+      <a class="pub-item acct-link" href="/architecture/" target="_blank" rel="noopener">The architecture story<span>How the Worker, pipeline, and privacy split fit together.</span></a>
+      <a class="pub-item acct-link" href="/pulse/" target="_blank" rel="noopener">Project pulse<span>Live charts of commits, lines, and new features over the repo's history.</span></a>
+      <a class="pub-item acct-link" href="/welcome/" target="_blank" rel="noopener">The landing page<span>Se<span class="sl">/</span>cure and Se<span class="sl">/</span>rver side by side — what each tier does.</span></a>
+    </aside>
+  </div>
+
   <!-- ---- secure workspace pane (right drawer, like settings) ----
        Two modes, wired in drc.js:
        · SHARE (default, and what /cure/workspace opens): seal this session
@@ -406,8 +444,13 @@
       </div>
 
       <div id="wkopen" hidden>
+        <!-- The tier name is a LINK (owner directive, 2026-07-15): a workspace
+             link is many recipients' very first contact with the site, so the
+             text embeds the door to what they just landed on. target=_blank —
+             navigating this tab away would drop the pending #w= blob. -->
         <p class="muted">Someone shared a <b>secure workspace</b> with you: a fully configured
-          Se<span class="sl">/</span>cure session sealed inside this link's <b>#anchor</b> — the encrypted
+          <a href="/welcome/" target="_blank" rel="noopener">DeepResearch.<b>Se<span class="sl">/</span>cure</b></a>
+          session sealed inside this link's <b>#anchor</b> — the encrypted
           part after <code>#</code> that browsers never send to any server. Enter the password
           you received separately to open it, entirely in this browser.</p>
         <form id="wkopenform">

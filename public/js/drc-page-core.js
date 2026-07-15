@@ -183,6 +183,27 @@ export function disclosureText(phase, ctx = {}) {
   }
 }
 
+// ---- the workspace-unlock celebration ------------------------------------------
+
+/**
+ * The full-screen unlock celebration's drawing-box size (px). When the correct
+ * password opens a shared secure workspace (owner directive, 2026-07-15), ONE
+ * LARGE umbrella plays the intro's arc FAST over the whole viewport — the
+ * umbrella spinner's completion finale (speed-run into the pink bloom, fold
+ * into the pink ✓) at celebration scale. ~72% of the short viewport side reads
+ * big without clipping the dangling shaft (the spinner draws the canopy at
+ * 0.3× its box and anchors it slightly high); clamped for tiny/huge screens,
+ * defensive against nonsense input.
+ * @param {number} w viewport width (px)
+ * @param {number} h viewport height (px)
+ * @returns {number}
+ */
+export function unlockCelebrationSize(w, h) {
+  const s = Math.min(Number(w) || 0, Number(h) || 0);
+  if (!Number.isFinite(s) || s <= 0) return 320;
+  return Math.round(Math.min(760, Math.max(220, s * 0.72)));
+}
+
 // ---- the standing provider-visibility line (the model picker's disclosure) ----
 
 /**

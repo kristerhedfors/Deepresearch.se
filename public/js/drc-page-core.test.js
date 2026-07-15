@@ -9,6 +9,7 @@ import {
   parseProjectPath,
   parsePublicationRef,
   providerVisibilityNote,
+  unlockCelebrationSize,
   wmHtml,
 } from "./drc-page-core.js";
 
@@ -193,4 +194,16 @@ test("providerVisibilityNote: the standing model-picker disclosure per provider 
   const proxy = providerVisibilityNote("proxy");
   assert.match(proxy, /through this site's server/i);
   assert.match(proxy, /Berget/);
+});
+
+test("unlockCelebrationSize: ~72% of the short viewport side, clamped, garbage-safe", () => {
+  // A phone: the short side (width) scales.
+  assert.equal(unlockCelebrationSize(390, 844), Math.round(390 * 0.72));
+  // A desktop: the short side (height) scales, capped at 760.
+  assert.equal(unlockCelebrationSize(1920, 1080), 760);
+  // A tiny viewport still draws a readable umbrella.
+  assert.equal(unlockCelebrationSize(200, 300), 220);
+  // Garbage in → the safe default, never NaN.
+  assert.equal(unlockCelebrationSize(NaN, undefined), 320);
+  assert.equal(unlockCelebrationSize(-5, 0), 320);
 });

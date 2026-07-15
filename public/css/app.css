@@ -919,27 +919,34 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    anchors the row's right edge on its own — unless the ghost is showing,
    in which case the ghost carries the gap so the pair (ghost, account)
    sits together at the right edge. */
-/* The right-docked group is (ghost, test queue, terminal, gear, account):
-   the LEFTMOST visible of them carries the auto margin so the group stays
-   glued together at the right edge whichever of them are showing. */
+/* The right-docked group is (ghost, share, test queue, terminal, gear,
+   account): the LEFTMOST visible of them carries the auto margin so the
+   group stays glued together at the right edge whichever of them are
+   showing. */
 #accountbtn { margin-left: auto; }
 #gearbtn { margin-left: auto; }
 #termbtn:not([hidden]) { margin-left: auto; }
 #tryqueuebtn:not([hidden]) { margin-left: auto; }
+#sharebtn:not([hidden]) { margin-left: auto; }
 #ghostbtn:not([hidden]) { margin-left: auto; }
 /* Leftmost VISIBLE of the right-docked group keeps the auto margin; any that
    follow a visible earlier member reset to 0 so the group stays glued. */
+#ghostbtn:not([hidden]) ~ #sharebtn,
 #ghostbtn:not([hidden]) ~ #tryqueuebtn,
 #ghostbtn:not([hidden]) ~ #termbtn,
 #ghostbtn:not([hidden]) ~ #gearbtn,
 #ghostbtn:not([hidden]) ~ #accountbtn,
+#sharebtn:not([hidden]) ~ #tryqueuebtn,
+#sharebtn:not([hidden]) ~ #termbtn,
+#sharebtn:not([hidden]) ~ #gearbtn,
+#sharebtn:not([hidden]) ~ #accountbtn,
 #tryqueuebtn:not([hidden]) ~ #termbtn,
 #tryqueuebtn:not([hidden]) ~ #gearbtn,
 #tryqueuebtn:not([hidden]) ~ #accountbtn,
 #termbtn:not([hidden]) ~ #gearbtn,
 #termbtn:not([hidden]) ~ #accountbtn,
 #gearbtn:not([hidden]) ~ #accountbtn { margin-left: 0; }
-#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn, #termbtn, #tryqueuebtn {
+#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #sharebtn, #copybtn, #termbtn, #tryqueuebtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -978,6 +985,9 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    incognito one keeps it visible as the "nothing is being saved"
    indicator. */
 #ghostbtn[hidden] { display: none; }
+/* Workspace-share icon (right of the ghost — the spot the ghost held before
+   2026-07-15): shares the glass style; the pin keeps [hidden] effective. */
+#sharebtn[hidden] { display: none; }
 #ghostbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #ghostbtn:disabled { opacity: .4; }
 
