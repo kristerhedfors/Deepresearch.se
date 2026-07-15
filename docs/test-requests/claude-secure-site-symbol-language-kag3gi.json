@@ -9,7 +9,7 @@
       "target": "/rver?anim=1",
       "actions": [],
       "runs": 2,
-      "minted_id": null,
+      "minted_id": 18,
       "verdicts": []
     },
     {
@@ -17,11 +17,17 @@
       "summary": "CHANGED: the blue tier's loading indicators are now BALLOONS (the umbrella spinner stays on /cure only). Send the prefilled question with web search ON. PASS: while researching, each step's spinner is a small WIRE balloon boomeranging (it must NEVER show a colored balloon while still running); when a step completes it speed-runs into a colored gold-and-blue balloon, holds a beat, then folds into a BLUE check mark — and the big typing indicator plays the same finale before the answer reveals. FAIL: any PINK check mark anywhere on /rver, a spinner that vanishes with a popped-in check (no finale), or a spinner still boomeranging after the answer landed. If anything is off, please attach the research-debug JSON in the note.",
       "target": "/rver",
       "actions": [
-        { "type": "setSearch", "on": true },
-        { "type": "compose", "text": "What are the main approaches to making privacy properties of AI assistants independently verifiable?" }
+        {
+          "type": "setSearch",
+          "on": true
+        },
+        {
+          "type": "compose",
+          "text": "What are the main approaches to making privacy properties of AI assistants independently verifiable?"
+        }
       ],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 19,
       "verdicts": []
     },
     {
@@ -29,10 +35,13 @@
       "summary": "The corner guide balloon (bottom-right, above the composer, hovering among small clouds). Send the prefilled question and let it finish. PASS: the moment the reply completes, the guide's burner FLARES gold, it climbs a notch, a small pennant unfurls under the basket, and clouds streak DOWNWARD past it; a second completed task adds a second pennant and another notch. Then press the new-chat button: the pennants clear and clouds swish PAST it sideways. It must never intercept taps (everything under it stays clickable). FAIL: no flare/pennant on completion, the balloon drifting over UI it blocks, or it vanishing entirely. Please confirm twice: once in a normal tab, once in the iOS PWA.",
       "target": "/rver",
       "actions": [
-        { "type": "compose", "text": "Give me a short overview of how end-to-end encryption is typically audited." }
+        {
+          "type": "compose",
+          "text": "Give me a short overview of how end-to-end encryption is typically audited."
+        }
       ],
       "runs": 2,
-      "minted_id": null,
+      "minted_id": 20,
       "verdicts": []
     }
   ]
