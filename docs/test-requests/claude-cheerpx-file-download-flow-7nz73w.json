@@ -21,7 +21,8 @@
         }
       ],
       "runs": 2,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 28
     },
     {
       "label": "Sandbox download flow: add the file to a project",
@@ -34,7 +35,8 @@
         }
       ],
       "runs": 1,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 29
     }
   ]
 }
