@@ -69,7 +69,14 @@ tap-to-skip, reduced-motion-skipped, watchdog-cleared, entirely fail-soft).
 `node --test public/js/workspace-core.test.js src/websearch.test.js
 src/proxy.test.js src/pub.test.js public/js/drc-page-core.test.js` covers
 the core round-trip/dual-key/tamper cases, the adjust meter + endpoints, and
-the reserved slug. The pane wiring is verified live (live-verify skill):
+the reserved slug. `node --test src/workspace-grants.test.js` is the
+CROSS-subsystem invariant suite for the quota-bound tokens a workspace
+carries: the token-fixed/row-metered split under live adjusts, concurrency
+overrun proofs, refund floors, expiry (row beats token; adjust can't
+resurrect), budget ceilings (freed by pause/expiry, independent per
+subsystem), owner-scoped 404 indistinguishability, the wsk1/prg1/prx1
+prefix-swap forgery matrix, and the full mint → seal → open → hydrate →
+spend → pause/top-up → revoke flow. The pane wiring is verified live (live-verify skill):
 mint a link from `/admin` or the account panel, open it in a private window,
 check the unlock → apply → grant-hydration flow and that the fragment is
 stripped. The workspace-core suite costs ~15 s (the 8192-round KDF is the

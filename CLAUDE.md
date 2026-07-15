@@ -847,7 +847,15 @@ grant→proxy exchange, the atomic web + LLM reserve/refund incl. the LLM
 reverse-proxy models-forward/metered-completion/refund-on-error, non-consuming
 status, and the admin mint-link/list/revoke surface) and (client)
 `proxy-bundle.js` (the AES-GCM seal→open round-trip, wrong-key/tamper/garbage
-fail-soft to null, and the shape validator),
+fail-soft to null, and the shape validator), and `workspace-grants.js` — the
+CROSS-subsystem secure-workspace grant-token invariants end to end, over ONE
+combined in-memory D1 serving both grant tables (the token-fixed/row-metered
+split under live quota adjusts, concurrency-burst overrun proofs, refund
+floors, expiry boundaries incl. row-expiry-beats-token / adjust-can't-resurrect
+/ expired-ghost-not-reused, budget ceilings freed by pause/expiry and
+independent per subsystem, account binding with byte-identical foreign/missing
+404s, the wsk1/prg1/prx1 prefix-swap forgery matrix, and the full mint → seal
+→ open → hydrate → spend → minter pause/top-up → revoke workspace flow),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
 `?format=text`), `testpoints.js` (the try-it queue's pure logic:
@@ -1163,6 +1171,16 @@ what docs claim); and update the skill list below plus the skill's
   per-token quota-adjust control surfaces (self-service + admin), the
   frozen KDF constants, the URL-safe-token-tiers-only rule, and the
   reserved "workspace" slug. Architecture: `docs/WORKSPACE-SECURITY.md`.
+- **quota-grant-assessment** — testing/auditing the quota-limited,
+  account-bound temporary grant tokens (the secure-workspace borrowed
+  capabilities): the invariant checklist (token-fixed/row-metered under live
+  adjusts, concurrency overrun, refund floors, expiry, budget ceilings,
+  account binding, the cross-family forgery matrix, the workspace flow end
+  to end), the combined-D1-fake test technique behind
+  `src/workspace-grants.test.js`, the snapshot-regeneration gotcha, and the
+  extension checklist for a new grant family/service. Companion to
+  secure-workspaces (the feature map); this one is the verification
+  methodology.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
   `server_history` cloud knob, RAG documents, projects, the secret-keyed
   project vault, and the encryption-asymmetry rule (`storage.js`,
