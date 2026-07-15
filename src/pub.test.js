@@ -45,6 +45,9 @@ test("pubSlugOk: lowercase words with hyphens, dot-free", () => {
   assert.equal(pubSlugOk("-leading"), false);
   assert.equal(pubSlugOk("a".repeat(81)), false);
   assert.equal(pubSlugOk(""), false);
+  // "workspace" is RESERVED for the secure-workspaces page at /cure/workspace.
+  assert.equal(pubSlugOk("workspace"), false);
+  assert.equal(pubSlugOk("workspace-security"), true); // only the exact word is reserved
 });
 
 test("validatePublication normalizes the frozen-session shape", () => {
