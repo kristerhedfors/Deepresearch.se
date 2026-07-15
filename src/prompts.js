@@ -181,16 +181,57 @@ export const notesPrompt = (priorEntities = [], { reinforceJsonOnly = false } = 
   ANTI_INJECTION_NOTE +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
 
+// Per-tier output structure for synthesis (the slider-driven report-
+// comprehensiveness scaling, 2026-07-15 product directive: the slider buys
+// OUTPUT depth, not just research depth — src/budget.js reportTierFor). The
+// "standard" block is byte-identical to the pre-tier prompt's structure
+// bullets, so the default 60s budget keeps producing the answer the eval
+// ledgers were measured on; the other tiers replace ONLY the structure
+// bullets — every shared rule (Markdown mechanics, citations, superlative
+// data, honesty about gaps) stays identical across tiers. Every tier keeps
+// the inline [n] citation rule and the closing "Sources:" list, which
+// validation and the client's source rendering depend on.
+/** @type {Record<import('./types.js').ReportTier, string>} */
+const REPORT_TIER_STRUCTURE = {
+  brief:
+    "REPORT DEPTH — BRIEF: the user chose the shortest research time, so deliver a compact brief — the best possible annotated summary of what the search found, not a report.\n" +
+    "- Start with a 1-2 sentence direct answer in bold.\n" +
+    "- Then 3-6 tight bullet points with the key facts — each concrete (a number, date, name, or finding) and cited inline with bracketed numbers like [1], [2] after each claim. No headings and no background sections; a small table only if the question is inherently comparative.\n" +
+    "- Keep it under roughly 250 words before the source list.\n" +
+    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+  standard:
+    "- Start with a 1-3 sentence conclusion in bold.\n" +
+    "- Then the key findings as short sections or bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n" +
+    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+  extended:
+    "REPORT DEPTH — STRUCTURED REPORT: the user chose an extended research time, so deliver a structured report, not just a short answer.\n" +
+    "- Start with a 2-4 sentence conclusion in bold summarizing the key findings.\n" +
+    '- Then organize the findings under short, informative "##" section headings — one per major theme or sub-question — mixing tight paragraphs and bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n' +
+    '- Include the relevant background and context the sources support, and close the findings with a short "## Limitations" section naming what the sources leave unanswered.\n' +
+    "- Aim for roughly 800-1,500 words before the source list. The depth must come from the sources' specifics — never from padding or repetition; if the sources are thin, say so and write less.\n" +
+    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+  full:
+    "REPORT DEPTH — FULL RESEARCH REPORT: the user chose the maximum research time and expects the structure and comprehensiveness of a frontier research assistant's full report.\n" +
+    '- Start with a "# " title naming the specific subject, then an executive summary in bold (3-6 sentences: the key conclusions and the most important numbers or facts).\n' +
+    '- Then a comprehensive body under informative "##" section headings — one per major theme or sub-question, with "###" subsections where a theme has distinct threads. Each section gives the concrete facts, figures, dates, and named entities the sources support, in substantive paragraphs (bullets for enumerations); cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures, options, or entities.\n' +
+    "- Cover, as far as the sources support each: the current state, the key data and numbers, differing perspectives and independent commentary, notable risks or criticisms, and the outlook/what to watch next.\n" +
+    '- Close with a "## Limitations and open questions" section: what the sources do not establish, conflicts left unresolved, and what further research would target.\n' +
+    "- Aim for roughly 1,500-3,000 words before the source list. The depth must come from the sources' specifics — more of their facts, numbers, and context — never from padding, repetition, or unsourced generalities; if the sources are thin, say so plainly and write a shorter report.\n" +
+    '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n',
+};
+
 // Phase 4 — synthesis from the numbered source registry (Markdown output).
 // `hasShell` appends one clause telling synthesis it may use the Linux sandbox
 // transcript block (src/bash-agent.js buildShellTranscript) present in the
 // input; default false keeps the output byte-identical to a run without the
 // experimental sandbox (prompts.test + the eval ledgers depend on that).
+// `reportTier` selects the output-structure block above; the default
+// "standard" keeps the prompt byte-identical to the pre-tier version.
 /**
- * @param {{ hasShell?: boolean, hasSource?: boolean }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier }} [opts]
  * @returns {string}
  */
-export const synthPrompt = ({ hasShell = false, hasSource = false } = {}) =>
+export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard" } = {}) =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
   (hasShell
@@ -200,9 +241,7 @@ export const synthPrompt = ({ hasShell = false, hasSource = false } = {}) =>
     ? "DEVELOPER MODE: the input includes an \"Introspection: deepresearch.se source\" block — the site's OWN source code (relevant excerpts + orientation). For questions about how this site works or for code examples from this project, treat that block as ground truth: quote the real code and cite file paths (no numbered citation needed for it). Never claim you lack access to the source.\n"
     : "") +
   "Format in Markdown (the UI renders it). Use REAL line breaks: a blank line between paragraphs and before every heading, and — critically — put each table on its own lines with a blank line before it and EACH ROW ON ITS OWN LINE (header row, the |---|---| separator row, then one line per data row). Never run a heading or a table onto the end of a sentence.\n" +
-  "- Start with a 1-3 sentence conclusion in bold.\n" +
-  "- Then the key findings as short sections or bullet lists; cite sources inline with bracketed numbers like [1], [2] after each claim. Use tables when comparing figures.\n" +
-  '- End with a "Sources:" section listing each cited source as "- [n] Title — URL".\n' +
+  (REPORT_TIER_STRUCTURE[reportTier] || REPORT_TIER_STRUCTURE.standard) +
   "Match the answer's DATA to the question's superlative (2026-07-08 user requirement): when the user asks for the LATEST/newest/most recent, state each item's concrete date (release, update, or publication — source highlights often carry 'updated YYYY-MM-DD'; use it). When the user asks for the FASTEST/quickest/most efficient, give the concrete measurements — tokens/second, latency, speedup factors, steps — with their conditions (hardware, batch, baseline). When asked for the biggest/most popular/best, give the numbers (downloads, parameters, benchmark scores). A superlative claim without its number or date must be flagged as such (\"the source claims X is fastest but reports no figures\") — never presented bare.\n" +
   "If the user's question targets a specific platform or registry (asks what exists, is available, or is the latest ON it — e.g. on Hugging Face), then the artifacts the sources show hosted there (models, datasets, papers) are first-class findings, not background: include a section inventorying the most relevant ones with citations, alongside any news or articles ABOUT the platform.\n" +
   "If the input lists sub-questions, the answer must address EVERY one of them — use them as the skeleton of the findings sections; where the sources leave a sub-question unanswered, say so explicitly rather than skipping it. If the input lists source conflicts, address each one explicitly: present both sides with their citations and, where possible, why they differ (date, methodology, definition) — never silently pick one side.\n" +
@@ -422,7 +461,7 @@ export const quizGradePrompt = () =>
 const CAPABILITIES_NOTE =
   " If the user asks what this site can do, its capabilities, features, or how to use it, answer ONLY from this factual list of what is actually implemented — never invent capabilities beyond it, and if unsure say so. Deepresearch.se is a deep-research assistant. Its capabilities:\n" +
   "1. Web research with citations (Exa search). You ask a question; it plans several search angles, runs them, reads the results across follow-up rounds, and writes an answer built only from the sources it found, each claim cited [1][2] with a Sources list, then fact-checks that draft against the sources. Example: \"What are the latest EU AI Act enforcement deadlines?\" TURN ON/OFF: the spiderweb knob in the composer (bottom-left, blue = on, grey = off), on by default. Off makes the model answer from its own training knowledge with no web requests.\n" +
-  "2. Research time budget. A slider in the composer (15 seconds to 10 minutes) sets how deep to go — more time buys more search angles, more follow-up rounds, and the fact-check pass; less time gives a faster, slimmer answer. Turned via that slider; only active when web search is on.\n" +
+  "2. Research time budget. A slider in the composer (15 seconds to 10 minutes) sets how deep to go AND how comprehensive the delivered answer is — more time buys more search angles, more follow-up rounds, the fact-check pass, and a longer, more structured report: the bottom of the slider gives a compact cited brief, the default a focused answer, and the top a full research report (executive summary, thematic sections, tables, limitations). Turned via that slider; only active when web search is on.\n" +
   "3. Choice of AI model. The model selector in the header picks which model answers (models Berget reports as down show greyed out). Some models are vision-capable — see next.\n" +
   "4. Image understanding (vision). Attach images with the paperclip; a vision-capable model can identify, describe, read, or count what's in them (if the current model can't, you're offered a one-tap switch to one that can). Example: attach a photo and ask \"what landmark is this?\". TURN ON/OFF: attach or remove images via the paperclip and its attachment cards.\n" +
   "5. Document attachments (PDF, DOCX, MD, TXT). The paperclip also accepts documents; they are read in your browser and their text travels inside your message (the files are never uploaded). Example: attach a report PDF and ask \"summarize the methodology\". Large documents are indexed so later questions keep retrieving the relevant parts. TURN ON/OFF: attach or remove documents via the paperclip.\n" +

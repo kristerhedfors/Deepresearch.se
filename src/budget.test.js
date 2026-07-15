@@ -12,6 +12,7 @@ import {
   fitsDeadline,
   planResearch,
   recordPhase,
+  reportTierFor,
   wantsNotes,
   wantsFullContent,
   wantsClaimValidation,
@@ -114,6 +115,73 @@ describe("planResearch — depth scales with budget tier", () => {
   test("validation is reserved unless the budget can't afford it plus a minimal plan", () => {
     const plan = planResearch(MODEL, 60);
     assert.equal(plan.validate, true);
+  });
+});
+
+describe("report-comprehensiveness tiers — the slider buys output depth too", () => {
+  const MODEL = "test/report-tier-model-" + Math.random();
+
+  test("reportTierFor boundaries: brief <60s, standard <180s, extended <420s, full ≥420s", () => {
+    assert.equal(reportTierFor(15), "brief");
+    assert.equal(reportTierFor(59), "brief");
+    assert.equal(reportTierFor(60), "standard");
+    assert.equal(reportTierFor(179), "standard");
+    assert.equal(reportTierFor(180), "extended");
+    assert.equal(reportTierFor(419), "extended");
+    assert.equal(reportTierFor(420), "full");
+    assert.equal(reportTierFor(MAX_BUDGET_S), "full");
+  });
+
+  test("the plan carries the tier and its token caps", () => {
+    const std = planResearch(MODEL, DEFAULT_BUDGET_S);
+    assert.equal(std.reportTier, "standard");
+    // The default budget keeps the long-standing pre-tier caps, so its
+    // behavior is byte-identical on the wire.
+    assert.equal(std.synthMaxTokens, 4096);
+    assert.equal(std.validateMaxTokens, 3000);
+
+    const full = planResearch(MODEL, MAX_BUDGET_S);
+    assert.equal(full.reportTier, "full");
+    assert.equal(full.synthMaxTokens, 8192);
+    assert.equal(full.validateMaxTokens, 9000);
+
+    const ext = planResearch(MODEL, 240);
+    assert.equal(ext.reportTier, "extended");
+    assert.ok(ext.synthMaxTokens > 4096 && ext.synthMaxTokens < full.synthMaxTokens);
+  });
+
+  test("the full tier grows the source registry and digest so the depth can come from material", () => {
+    const full = planResearch(MODEL, MAX_BUDGET_S);
+    assert.ok(full.maxSources >= 28);
+    assert.ok(full.digestCap >= 24_000);
+    // Lower tiers keep their existing caps.
+    assert.ok(planResearch(MODEL, DEFAULT_BUDGET_S).maxSources <= 24);
+  });
+
+  test("even the floor plan carries the tier fields", () => {
+    const plan = planResearch(MODEL, MIN_BUDGET_S);
+    assert.equal(plan.reportTier, "brief");
+    assert.equal(plan.synthMaxTokens, 4096);
+    assert.equal(plan.validateMaxTokens, 3000);
+  });
+
+  test("179s vs 180s: identical research plan, different report tier — the bench A/B seam", () => {
+    // The rubric bench's tier A/B (tests/EVAL-BENCH-FINDINGS.md, 2026-07-15)
+    // compares EVAL_BUDGET_S=179 vs 180 on the same deploy: the one budget
+    // pair that crosses a report-tier boundary while every research-depth
+    // knob stays identical, so any judge/structure delta isolates the
+    // report-tier prompt change. This pin is what makes that protocol valid
+    // — if a future depth boundary lands between 179 and 180, this fails and
+    // the protocol must pick a new seam.
+    const a = planResearch(MODEL, 179);
+    const b = planResearch(MODEL, 180);
+    for (const k of ["queries", "gapIterations", "followups", "validate", "maxSearches", "maxSources", "digestCap"]) {
+      assert.deepEqual(b[k], a[k], `research knob ${k} identical across the seam`);
+    }
+    assert.deepEqual(a.searchDepth, b.searchDepth);
+    assert.equal(a.reportTier, "standard");
+    assert.equal(b.reportTier, "extended");
+    assert.ok(b.synthMaxTokens > a.synthMaxTokens);
   });
 });
 

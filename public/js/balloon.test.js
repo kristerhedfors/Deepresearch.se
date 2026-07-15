@@ -1,20 +1,26 @@
-// The Se/rver balloon guide's PURE core (public/js/balloon.js — the umbrella
-// convention: timeline/geometry math Node-tested, the DOM layer verified
-// live). Pins the envelope profile, the hover/climb/pennant/flare params,
-// and the swish-cloud crossing guarantees the draw loop relies on.
+// The Se/rver balloon greeter's PURE core (public/js/balloon.js — the
+// umbrella convention: timeline/geometry math Node-tested, the DOM layer
+// verified live). Pins the envelope profile, the hover/climb/pennant/flare
+// params, the swish-cloud crossing guarantees the draw loop relies on, and
+// the first-visit greeter script/departure contract (owner directive
+// 2026-07-15 round 4: no persistent figures — pointers once, then gone).
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEPART_MS,
   FLARE_MS,
   GORES,
+  GREETER_LINES,
+  LINE_MS,
   PENNANT_MAX,
   RISE_MAX,
   RISE_STEP,
   bobY,
   clamp01,
   cloudPos,
+  departProgress,
   flareLevel,
   pennantCount,
   prof,
@@ -87,6 +93,39 @@ test("swishClouds: deterministic per seed, lanes/scales in range", () => {
     assert.ok(c.delay >= 0 && c.delay <= 0.3);
     assert.ok(c.speed >= 1 + c.delay, "speed guarantees the crossing completes");
   }
+});
+
+test("greeter script: a couple of short pointer lines, one per tier, Se/cure named as the door", () => {
+  // The whole point of the figure now is a FIRST-VISIT pointer — a short,
+  // bounded script, not ambient decoration. Keep it tight: 1–3 lines, each
+  // bubble-sized.
+  assert.ok(GREETER_LINES.length >= 1 && GREETER_LINES.length <= 3);
+  for (const line of GREETER_LINES) {
+    assert.equal(typeof line, "string");
+    assert.ok(line.length > 0 && line.length <= 160, `bubble-sized, got ${line.length}`);
+  }
+  // It must actually point somewhere: this tier by name, and the ghost
+  // button as the door to the secure tier.
+  assert.ok(GREETER_LINES.some((l) => l.includes("Se/rver")));
+  assert.ok(GREETER_LINES.some((l) => l.includes("ghost") && l.includes("Se/cure")));
+});
+
+test("greeter timing: a bounded stay — lines plus departure, well under a minute", () => {
+  const stay = GREETER_LINES.length * LINE_MS + DEPART_MS;
+  assert.ok(stay > 0 && stay < 60_000, `transient by construction, got ${stay}ms`);
+});
+
+test("departProgress: starts grounded, monotone, complete by DEPART_MS, clamped after", () => {
+  assert.equal(departProgress(0), 0);
+  let prev = -Infinity;
+  for (let t = 0; t <= DEPART_MS; t += DEPART_MS / 20) {
+    const p = departProgress(t);
+    assert.ok(p >= prev, "monotone climb-out");
+    prev = p;
+  }
+  assert.equal(departProgress(DEPART_MS), 1, "gone when the transition ends");
+  assert.equal(departProgress(DEPART_MS * 3), 1, "clamped past the end");
+  assert.equal(departProgress(-50), 0, "clamped before the start");
 });
 
 test("cloudPos: every cloud starts off-screen, crosses monotonically, and completes by p=1", () => {

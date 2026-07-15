@@ -191,13 +191,19 @@ holding **pink umbrellas** (shelter), the first-visit umbrella intro
 (`public/cure/umbrella.js`), and an umbrella landing for every completed
 task. DeepResearch.**Se/rver**'s sibling language is now DECIDED and shipped
 client-side (owner's pick 2026-07-15 from the four animated candidates in
-`docs/symbol-language/proposals.html`): **the BALLOON GUIDE** — the balloon
+`docs/symbol-language/proposals.html`): **the BALLOON** — the balloon
 itself is the symbol, one little gold-and-blue balloon (the umbrellas'
 geometric sibling, powered and rising: "the server does the lifting")
-hovering among clouds in the app's corner, following you around as the
-tier's guide the way the ghost does on the secure side. Per completed task
-the burner flares, it climbs a notch and hangs a pennant; clouds swish past
-it in ALL of its transitions (`public/js/balloon.js` — pure Node-tested core
+among clouds in the app's corner, the ghost's counterpart on the blue side.
+Round 4 (same day) re-scoped it — NO persistent figure follows the user
+around on either tier: the balloon is a FIRST-VISIT GREETER, chained onto
+the landing intro's completion, speaking a couple of pointer lines (what
+the tier does; the ghost button as the door to Se/cure) before climbing
+away and unmounting; the same directive lowered the ambient UX animation
+level (slower wave drift, rarer ghost shimmer, slower ghost breathe). While
+on screen, per completed task the burner flares, it climbs a notch and
+hangs a pennant; clouds swish past it in ALL of its transitions
+(`public/js/balloon.js` — pure Node-tested core
 + fail-soft DOM layer; wired in `app.js`/`stream.js`). Round 2 (same day)
 completed the grammar: the first-visit LANDING intro
 (`public/js/balloon-intro.js` — the vortex untwists into WIRE balloons, the
@@ -218,8 +224,8 @@ of the pink ✓, whose bubble discloses exactly what that task sent, to whom,
 on whose credential (pure `phaseChannel`/`disclosureText` in
 `drc-page-core.js`; `stepIsLocal` in `activity-core.js`; UX-2 in the
 ux-conventions registry). Design record: `docs/SYMBOL-LANGUAGE.md` §6.
-RESIDUAL: live verification on real devices, and any grown-up guide duties
-(a tap-to-explain bubble like the ghost's).
+RESIDUAL: live verification on real devices (the speech-bubble duty landed
+with the round-4 greeter).
 
 ---
 
@@ -280,3 +286,18 @@ RESIDUAL: live verification on real devices, and any grown-up guide duties
   local steps keep the pink ✓. Unknown phases default ONLINE (over-disclosing
   is the safe failure). Codified as UX-2; classification + disclosure pure and
   Node-tested; balloon modules added to the /cure public allowlist.
+- **2026-07-15** — F-16 round 4: no persistent figures + a lower UX animation
+  level (owner directive). Neither tier keeps a small figure following the
+  user around: a tier's character appears ONCE, for first-time visitors,
+  right after the first-visit intro — pointers, then gone. Se/cure already
+  had that shape (the strolling ghost and #ghostsay greeter both chain onto
+  the intro's one real play); Se/rver's balloon guide was converted into the
+  matching one-shot GREETER (`showBalloonGreeter`, chained onto the landing
+  intro's onDone; two pointer lines — what the tier does + the ghost button
+  as the door to Se/cure — then a climb-away departure and unmount; any tap
+  dismisses per UX-1; `balloonReset` removed, `balloonTaskDone` a no-op once
+  departed). Ambient animation lowered across both tiers: background wave
+  drift 26 s → 52 s, the ghost-button glow+shimmer once a minute → once per
+  three minutes (same ~4 s event), the /cure ghost-contour breathe
+  3.6 s → 7.2 s. Codified as UX-3 in the ux-conventions registry; CSS
+  handshake h37→h38, /cure build stamp d27→d28.

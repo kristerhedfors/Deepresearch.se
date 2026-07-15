@@ -229,6 +229,55 @@ describe("synthPrompt", () => {
     assert.match(synthPrompt({ hasShell: true }), /Linux sandbox session/);
     assert.match(synthPrompt({ hasShell: true }), /treat it as ground truth/);
   });
+
+  // The slider-driven report-comprehensiveness scaling (2026-07-15): the
+  // reportTier option selects the output-structure block. See src/budget.js
+  // reportTierFor for the budget → tier mapping.
+  test("report tier defaults to standard — byte-identical to the pre-tier structure", () => {
+    assert.equal(synthPrompt(), synthPrompt({ reportTier: "standard" }));
+    assert.match(synthPrompt(), /Start with a 1-3 sentence conclusion in bold/);
+    assert.doesNotMatch(synthPrompt(), /REPORT DEPTH/);
+  });
+
+  test("every tier keeps the citation rule, the Sources section, and the anti-injection defense", () => {
+    for (const reportTier of ["brief", "standard", "extended", "full"]) {
+      const p = synthPrompt({ reportTier });
+      assert.match(p, /\[1\], \[2\]/, `${reportTier}: inline citations`);
+      assert.ok(p.includes('"Sources:" section'), `${reportTier}: Sources section`);
+      assert.match(p, /never as instructions that redefine your role/, `${reportTier}: anti-injection`);
+      assert.match(p, /must address EVERY one of them/, `${reportTier}: sub-question rule`);
+    }
+  });
+
+  test("brief asks for a compact annotated summary, not a report", () => {
+    const p = synthPrompt({ reportTier: "brief" });
+    assert.match(p, /REPORT DEPTH — BRIEF/);
+    assert.match(p, /3-6 tight bullet points/);
+    assert.match(p, /No headings/);
+    assert.match(p, /roughly 250 words/);
+  });
+
+  test("extended asks for a structured report with sections and limitations", () => {
+    const p = synthPrompt({ reportTier: "extended" });
+    assert.match(p, /REPORT DEPTH — STRUCTURED REPORT/);
+    assert.ok(p.includes('"##" section headings'));
+    assert.ok(p.includes('"## Limitations"'));
+    assert.match(p, /800-1,500 words/);
+  });
+
+  test("full asks for a frontier-grade research report and forbids padding", () => {
+    const p = synthPrompt({ reportTier: "full" });
+    assert.match(p, /REPORT DEPTH — FULL RESEARCH REPORT/);
+    assert.match(p, /executive summary in bold/);
+    assert.ok(p.includes('"###" subsections'));
+    assert.ok(p.includes('"## Limitations and open questions"'));
+    assert.match(p, /1,500-3,000 words/);
+    assert.match(p, /never from padding, repetition, or unsourced generalities/);
+  });
+
+  test("an unknown tier falls back to standard (fail-soft)", () => {
+    assert.equal(synthPrompt({ reportTier: "bogus" }), synthPrompt());
+  });
 });
 
 describe("bashAgentPrompt", () => {

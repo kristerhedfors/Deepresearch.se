@@ -145,15 +145,15 @@ export function toOpenAiPayload(messages, { model, maxTokens = MAX_TOKENS, strea
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Conversation} messages
- * @param {{ model?: string }} opts
+ * @param {{ model?: string, maxTokens?: number }} opts maxTokens raises the answer cap for the longer report tiers (budget.js); default stays MAX_TOKENS
  */
-export function openaiChatCompletion(env, messages, { model } = {}) {
+export function openaiChatCompletion(env, messages, { model, maxTokens } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
   return fetch(chatUrl(env), {
     method: "POST",
     headers: headers(env),
-    body: JSON.stringify(toOpenAiPayload(messages, { model, stream: true })),
+    body: JSON.stringify(toOpenAiPayload(messages, { model, maxTokens: maxTokens || MAX_TOKENS, stream: true })),
     signal: controller.signal,
   }).finally(() => clearTimeout(timer));
 }

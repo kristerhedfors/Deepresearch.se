@@ -210,3 +210,82 @@ them):
    speech-corpus paper. Filtered attempts carry kind-scoped dedup keys.
    Dataset language tags proved UNRELIABLE (?language=sv → github-code) —
    language filter is models-only, evidence noted in code.
+
+## 2026-07-15 — Report-comprehensiveness tiers (slider → output depth): instrumentation + protocol
+
+**Change under test:** branch `claude/slider-comprehensiveness-scaling-wcwyde`
+— the time slider now scales the OUTPUT's structure/comprehensiveness, not
+just research depth (`src/budget.js reportTierFor`: brief <60s / standard
+<180s / extended <420s / full ≥420s; `prompts.js REPORT_TIER_STRUCTURE`
+per-tier synthesis guidance; synthesis/validation token caps and
+source-digest scaled at the top tiers). The `standard` tier is pinned
+byte-identical to the pre-tier prompt by unit test, so the 60s default needs
+no re-baselining.
+
+**New instrumentation (this round):** `bench-score.mjs reportStructure` — a
+free, deterministic report-shape metric (body words before the Sources
+list, h1/h2/h3 counts, table data rows, bullets, hasTitle / hasBoldLead /
+hasLimitations as 0/1 rates), carried per-run in `metrics.structure` and
+aggregated per model + overall in `_summary.json` (`structure` block) and
+the score table (`words`/`h2`/`limits` columns). Deliberately NOT folded
+into the judge overall: structure is what the tier bought, the judge's 1-5
+dims are quality — conflating them would let sheer length inflate quality.
+
+**Incident — the first baseline attempt found a LIVE regression instead
+(battery aborted after 4 runs, results discarded):** every break-glass
+request returned a 5-question QUIZ built from the site's own source
+(chat_logs #360: `introspection:1`, zero queries, quiz explanations citing
+tsconfig comments). Two stacked causes, both structural for the bench
+identity: (1) developer mode is ALWAYS ON for the break-glass admin by
+design (`settings.js developerModeEnabled` — no settings row to flip; the
+PUT is refused: "Settings need a signed-in account"), so the introspection
+enrichment injects on every request; (2) `pipeline.js`'s quiz gate ran
+`quizIntent(ctx.lastUser)` — the ENRICHMENT-APPENDED text. The injected
+CLAUDE.md orientation contains literal "quiz me…" prose, so the gate fired
+on 100% of dev-mode requests (reproduced locally against an excerpt-bearing
+string). The same bug class was already fixed for `externalSourceIntent`
+(the cleanLastUser split); the quiz gate had been missed. Even with the
+quiz gate fixed, `externalSourceIntent` matches none of the bench questions
+(probed locally), so ALL break-glass bench traffic routes introspection-
+first — the rubric bench has been structurally unrunnable since
+introspection mode shipped.
+
+**Fixes shipped with this branch (each with regression pins):**
+1. Quiz gate reads `ctx.cleanLastUser` (both the primary gate and the
+   triage-backup question count) — source-pinned in `pipeline.test.js`.
+2. OFF-ONLY `/api/chat` body override `developer_mode: false` (the
+   incognito pattern: decline a held capability, never acquire one) so the
+   break-glass bench identity can skip the introspection enrichment;
+   `eval-bench.mjs` and `model-eval.mjs` now always send it.
+
+**Revised protocol — same-deploy seam A/B (replaces the planned temporal
+before/after, which the incident made impossible: the pre-tier deploy
+cannot run the bench at all under break-glass).** `planResearch(model, 179)`
+and `planResearch(model, 180)` produce IDENTICAL research plans (queries,
+gap rounds, followups, maxSearches/Sources, digestCap, searchDepth — pinned
+in `budget.test.js` "the bench A/B seam") while crossing the standard →
+extended report-tier boundary, so a paired battery at 179s vs 180s on the
+SAME deploy isolates exactly the report-tier prompt change — no live-drift
+confound between sides, interleavable, and the questions/judge stay fixed:
+
+```bash
+cd tests && BASE_URL=https://deepresearch.se \
+  EVAL_MODELS='mistralai/Mistral-Small-3.2-24B-Instruct-2506' \
+  EVAL_JUDGE_MODEL='mistralai/Mistral-Small-3.2-24B-Instruct-2506' \
+  EVAL_BUDGET_S=179 EVAL_CONCURRENCY=2 node eval-bench.mjs   # side A: standard
+# then identically with EVAL_BUDGET_S=180                    # side B: extended
+# descriptive top-tier readout (no counterpart, research depth differs):
+#   EVAL_BUDGET_S=450 — full tier structure numbers
+```
+
+**What "earned its merge" looks like:** at the 179/180 seam the structure
+dims move decisively on side B (words up toward 800–1,500, h2 > 0 on most
+runs, hasLimitations → ~1.0) while the judge dims (citation / coverage /
+calibration) hold or improve — coverage may rise (more rubric points fit);
+citation faithfulness and calibration must NOT drop (the padding-forbidden
+rule exists precisely to protect them). Words up WITH a judge drop = the
+tier bought length, not substance — that blocks the merge, not the bench.
+
+**Scores:** _pending — the seam battery runs once this branch is deployed
+(the override + quiz fix must be live first); appended below when complete._
+

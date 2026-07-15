@@ -149,6 +149,30 @@ rounds — plus runtime deadline checks between phases (budget +15% grace;
 extra gap rounds are cut first, validation last, with a visible
 "Validation skipped" step when it happens).
 
+**Report-comprehensiveness tiers (2026-07-15 product directive):** the
+slider buys OUTPUT depth, not just research depth — the delivered answer's
+structure and length scale with the budget. `budget.js reportTierFor(budgetS)`
+maps the budget to a `ReportTier` (`brief` <60s → `standard` <180s →
+`extended` <420s → `full` ≥420s) carried on the plan; `prompts.js`'s
+`REPORT_TIER_STRUCTURE` turns it into per-tier structure/length guidance in
+`synthPrompt` — from a compact annotated-search-results brief (bold answer +
+3-6 cited bullets, ≤~250 words) up to a frontier-assistant-grade full
+research report at the top (`#` title, bold executive summary, `##` thematic
+sections with `###` subsections, comparative tables, `## Limitations and
+open questions`, ~1,500–3,000 words), with padding explicitly forbidden (the
+depth must come from source specifics). The `standard` tier is byte-identical
+to the pre-tier prompt, so the 60s default's behavior (and the eval ledgers'
+baselines) is unchanged. Supporting caps scale with the tier: the plan's
+`synthMaxTokens` (4096 → 8192; threaded as `maxTokens` through
+`providers.js`/`berget.js`/`anthropic.js`/`openai.js` chat streams and a
+matching `maxChars` raise of the runaway safety valve in
+`consumeChatStream`), `validateMaxTokens` (3000 → 9000 — a revise verdict's
+`revised_answer` must hold the whole report), and at `full` a bigger source
+registry/digest (`maxSources` ≥28, `digestCap` ≥24k) so the extra length has
+material to come from. The client readout (`public/js/timescale.js
+budgetTier`, mirrored boundaries) stacks the tier name under the time so the
+slider names its deliverable.
+
 **Model-specific adaptations (`src/model-profiles.js`):** the pipeline is
 designed to be model-agnostic (no function calling, plain JSON-mode
 calls — see above), but real models still differ in speed and JSON

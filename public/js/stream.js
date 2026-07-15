@@ -537,7 +537,9 @@ function handleEvent(turn, evt, acc) {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export
       renderStats(turn, s);
-      balloonTaskDone(); // the guide flares, climbs a notch, hangs a pennant
+      // No-op on every visit but the first: the greeter only exists briefly
+      // after the landing intro — if it's still on screen, its burner flares.
+      balloonTaskDone();
     }
     else if (s.type === "discard_text") {
       resetForRevision(turn);

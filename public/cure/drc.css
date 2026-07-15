@@ -51,7 +51,9 @@ body::before {
     rgba(61, 52, 24, .045) 210px,
     rgba(255, 255, 255, 0) 280px
   );
-  animation: bg-drift 26s linear infinite;
+  /* Slow ambient drift (52s — halved 2026-07-15, "lower the UX animation
+     level"): the waves should barely be noticed moving. */
+  animation: bg-drift 52s linear infinite;
 }
 @keyframes bg-drift {
   to { transform: translate3d(198px, 198px, 0); }
@@ -292,7 +294,8 @@ header {
    its contours (the white SVG strokes on the lit accent button) carry a
    breathing glow while the little ghost floats, gently rocking. Pure CSS;
    reduced-motion keeps a constant contour glow with no movement, so the
-   marker still reads. */
+   marker still reads. Slowed to a 7.2 s breath 2026-07-15 ("lower the UX
+   animation level") — present, not busy. */
 @keyframes ghost-contour {
   0%, 100% {
     transform: translateY(.6px) rotate(-4deg);
@@ -303,7 +306,7 @@ header {
     filter: drop-shadow(0 0 2px rgba(255, 255, 255, 1)) drop-shadow(0 0 7px rgba(255, 255, 255, .85));
   }
 }
-#ghostbtn svg { animation: ghost-contour 3.6s ease-in-out infinite; }
+#ghostbtn svg { animation: ghost-contour 7.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   #ghostbtn svg {
     animation: none;
@@ -584,7 +587,7 @@ button:disabled { opacity: .5; cursor: default; }
 }
 .ghostsay-face {
   color: var(--accent); flex: none; margin-top: .1rem;
-  animation: ghost-contour 3.6s ease-in-out infinite;
+  animation: ghost-contour 7.2s ease-in-out infinite;
 }
 .ghostsay-body { min-width: 0; }
 .ghostsay-body strong { display: block; font-weight: 600; margin-bottom: .3rem; }

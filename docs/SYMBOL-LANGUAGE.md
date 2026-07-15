@@ -21,10 +21,12 @@ respected, and fail-soft — decoration must never cost a chat.
 DeepResearch.**Se/cure** — the client-side tier at `/cure` — speaks:
 
 - **The ghost** — anonymity. The secure-tier marker in BOTH tiers, each its
-  own way (2026-07-12): on the blue tier a once-a-minute glow + shimmer sweep
-  on the ghost button (which is the DOOR to /cure); on Se/cure the ghost
-  character's contours glow and breathe while it floats (`ghost-contour`,
-  `drc.css`). The ghost HOLDS the umbrellas: anonymity carrying shelter.
+  own way (2026-07-12): on the blue tier a glow + shimmer sweep on the ghost
+  button (which is the DOOR to /cure) — once a minute originally, stretched
+  to once per THREE minutes 2026-07-15 ("lower the UX animation level"); on
+  Se/cure the ghost character's contours glow and breathe while it floats
+  (`ghost-contour`, `drc.css`, slowed to a 7.2 s breath the same day). The
+  ghost HOLDS the umbrellas: anonymity carrying shelter.
 - **The pink umbrellas** — shelter. The client side of the site is the
   sheltered side; the umbrella is its own symbol. Victorian, decorated,
   each one different (white-and-pink palette, motifs, beaded fringe).
@@ -83,32 +85,51 @@ truthfully — *"carried"* (A), *"watched over"* (B), *"remembered"* (C),
 The owner picked **A, the balloons** ("we like the balloons very much, they
 still hover among the clouds") and REFINED the concept: no fleet, no separate
 intro spectacle — **the balloon itself is the symbol**, one little balloon
-that follows you around as the tier's guide, exactly the role the ghost plays
-on the secure side. And a standing animation rule: **it swishes by clouds in
-ALL of its transitions.**
+playing on the blue side exactly the role the ghost plays on the secure side.
+And a standing animation rule: **it swishes by clouds in ALL of its
+transitions.**
 
-The refined language, as shipped:
+**Round 4 (owner, 2026-07-15) re-scoped the figures on BOTH tiers: no site
+has a persistent figure following the user around.** A tier's character
+appears ONCE — for first-time visitors, right after the first-visit intro
+animation — delivers a few pointers on how the tier works, and retires. On
+Se/cure that was already the shape (the strolling ghost + the `#ghostsay`
+greeter both chain onto the intro's one real play); on Se/rver the balloon
+guide was converted from an always-mounted companion into the matching
+one-shot GREETER. The same directive lowered the ambient UX animation level
+overall (slower background wave drift, a rarer ghost-button shimmer, a
+slower ghost-contour breathe).
+
+The language, as shipped:
 
 - **The balloon** (logotype gold-and-blue gores — the umbrellas' geometric
-  sibling, powered and rising) hovers among small clouds in the corner of the
-  app above the composer: the ghost's Se/rver counterpart, always with you.
-- **Per completed task** (the pipeline's `done` event): the burner flares
-  gold, the balloon climbs a notch (capped so it stays in its corner), a
-  pennant unfurls under the basket — and clouds streak DOWNWARD past it (the
-  relative motion of the climb).
-- **All other transitions** — appearing at boot, resetting for a new chat
-  (the pennant tail belongs to the conversation) — clouds swish PAST it
-  sideways. Every move the guide makes goes through clouds.
+  sibling, powered and rising) appears among small clouds in the corner
+  above the composer ONCE, chained onto the first-visit landing intro
+  (§5b): the ghost's Se/rver counterpart as a greeter, not a companion.
+- **The pointers**: a small speech bubble (plain text, `GREETER_LINES`)
+  says what this tier does (live-web research, the time slider) and that
+  the ghost button is the door to Se/cure. Any tap dismisses (UX-1); the
+  script ends on its own either way.
+- **The departure**: the balloon climbs up out of its box through a
+  downward cloud swish (`departProgress`) and unmounts — returning
+  visitors get a clean page.
+- **Per completed task while it is on screen** (the pipeline's `done`
+  event): the burner flares gold, the balloon climbs a notch, a pennant
+  unfurls — clouds streak DOWNWARD (the relative motion of the climb). A
+  no-op on every later visit; the per-task symbol duty lives in the
+  spinners (§5b/§6). Every move it makes goes through clouds.
 
 Implementation (umbrella conventions): `public/js/balloon.js` — a PURE core
 (envelope profile, hover/climb/pennant/flare params, deterministic
-swish-cloud crossings; Node-tested in `public/js/balloon.test.js`) under a
-browser-only DOM layer (one small fixed canvas, `pointer-events:none`,
-`aria-hidden`, fail-soft everywhere, static under `prefers-reduced-motion`,
-paused while the tab is hidden). Wired in `app.js` (`initBalloonGuide` at
-boot, `balloonReset` on new chat) and `stream.js` (`balloonTaskDone` on the
-`done` SSE event). Candidates B–D stay recorded in `proposals.html` for the
-record; the "THE PICK" section there previews the guide as shipped.
+swish-cloud crossings, the greeter script + departure math; Node-tested in
+`public/js/balloon.test.js`) under a browser-only DOM layer (one small fixed
+canvas, `pointer-events:none`, `aria-hidden`, fail-soft everywhere, static
+under `prefers-reduced-motion`, paused while the tab is hidden). Wired in
+`app.js` (`showBalloonGreeter`, dynamically imported inside the landing
+intro's `onDone` — the exact gate /cure uses for its strolling ghost) and
+`stream.js` (`balloonTaskDone` on the `done` SSE event, a no-op once the
+greeter has departed). Candidates B–D stay recorded in `proposals.html` for
+the record; the "THE PICK" section there previews the guide concept.
 
 ### 5b. The landing animation + the waiting symbol (owner, 2026-07-15, round 2)
 
@@ -146,9 +167,9 @@ umbrella spinner's pure boomerang/tumble clocks, so the tiers' symbols stay
 siblings by construction.
 
 Residual (F-16 stays 🟡 PARTIAL): live verification on real devices (iOS PWA
-especially — intro, spinner finale, and guide alike), and any grown-up guide
-duties (a tap-to-explain bubble like the ghost's, per the ux-conventions
-registry) if the owner wants them.
+especially — intro, spinner finale, and the first-visit greeter alike). The
+"speech bubble like the ghost's" duty landed with round 4: the greeter's
+pointer bubble (§5).
 
 ## 6. The granular per-task grammar (owner, 2026-07-15, round 3)
 

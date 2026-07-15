@@ -6,6 +6,7 @@ import {
   hostnameOf,
   sourceDiversity,
   citationCoverage,
+  reportStructure,
   aggregateScores,
   mean,
   median,
@@ -196,4 +197,85 @@ test("aggregateScores: empty input is a zero bundle", () => {
   assert.equal(agg.scored, 0);
   assert.deepEqual(agg.dimensions, {});
   assert.equal(agg.overall.mean, 0);
+});
+
+// --- reportStructure (the tier A/B's comprehensiveness readout) ------------
+
+test("reportStructure: a full-tier-shaped report counts everything", () => {
+  const answer = [
+    "# EU AI Act Enforcement",
+    "",
+    "**The Act's first deadlines land in 2026, and enforcement is real.**",
+    "",
+    "## Current state",
+    "",
+    "Prohibited practices apply since Feb 2025 [1].",
+    "",
+    "### National authorities",
+    "",
+    "- Sweden named its authority [2]",
+    "- Germany has not [3]",
+    "",
+    "## Key numbers",
+    "",
+    "| Provision | Deadline |",
+    "|---|---|",
+    "| GPAI rules | Aug 2025 |",
+    "| High-risk | Aug 2026 |",
+    "",
+    "## Limitations and open questions",
+    "",
+    "Sources conflict on the GPAI code's status [1][3].",
+    "",
+    "Sources:",
+    "- [1] Title — https://a.example",
+    "- [2] Title — https://b.example",
+    "- [3] Title — https://c.example",
+  ].join("\n");
+  const s = reportStructure(answer);
+  assert.equal(s.hasTitle, 1);
+  assert.equal(s.hasBoldLead, 1);
+  assert.equal(s.hasLimitations, 1);
+  assert.equal(s.h1, 1);
+  assert.equal(s.h2, 3);
+  assert.equal(s.h3, 1);
+  assert.equal(s.tableRows, 3); // header + 2 data rows; separator excluded
+  assert.equal(s.bullets, 2); // body bullets only — the Sources list is excluded
+  assert.ok(s.words > 30 && s.words < 120);
+});
+
+test("reportStructure: a brief-shaped answer stays flat", () => {
+  const answer =
+    "**Yes — the deadline is Aug 2026.**\n\n- Key fact one [1]\n- Key fact two [2]\n\nSources:\n- [1] T — https://a.example\n- [2] T — https://b.example\n";
+  const s = reportStructure(answer);
+  assert.equal(s.hasTitle, 0);
+  assert.equal(s.hasBoldLead, 1);
+  assert.equal(s.hasLimitations, 0);
+  assert.equal(s.h1 + s.h2 + s.h3, 0);
+  assert.equal(s.tableRows, 0);
+  assert.equal(s.bullets, 2);
+  assert.ok(s.words < 25);
+});
+
+test("reportStructure: words count only the body before the Sources list", () => {
+  const withList = "Answer body here.\n\nSources:\n- [1] " + "padding ".repeat(50) + "— https://a.example";
+  assert.equal(reportStructure(withList).words, 3);
+  // No Sources list at all -> the whole text is the body.
+  assert.equal(reportStructure("Three words here").words, 3);
+});
+
+test("reportStructure: non-string input is a zero bundle", () => {
+  const s = reportStructure(null);
+  assert.equal(s.words, 0);
+  assert.equal(s.h2, 0);
+  assert.equal(s.hasTitle, 0);
+});
+
+test("reportStructure: all fields are numeric so aggregateScores can average them", () => {
+  const agg = aggregateScores([
+    { scores: reportStructure("**A.**\n\nSources:\n- [1] x") },
+    { scores: reportStructure("# T\n\n**B.**\n\n## S\n\ntext [1]\n\nSources:\n- [1] x") },
+  ]);
+  assert.equal(agg.dimensions.hasTitle.mean, 0.5);
+  assert.ok(agg.dimensions.words.n === 2);
 });
