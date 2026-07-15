@@ -171,7 +171,14 @@ matching `maxChars` raise of the runaway safety valve in
 registry/digest (`maxSources` ≥28, `digestCap` ≥24k) so the extra length has
 material to come from. The client readout (`public/js/timescale.js
 budgetTier`, mirrored boundaries) stacks the tier name under the time so the
-slider names its deliverable.
+slider names its deliverable. **Complexity caps the tier like it caps
+depth:** `applyComplexityToPlan` drops extended/full to `standard` for
+triage-`simple` questions — the 2026-07-15 seam battery (paired 179s/180s
+A/B, EVAL-BENCH-FINDINGS.md) showed report scaffolding helping broad kinds
+but going 0 wins / 7 losses on focused-lookup kinds (numeric/recency/hf);
+stretching one fact across sections dilutes it. Same battery's watch item:
+Mistral Small can stop CLEANLY mid-Sources-list at ~1.2–2.9k output tokens
+on the longer tiers (4/30 extended runs) — model-side early stop, not a cap.
 
 **Model-specific adaptations (`src/model-profiles.js`):** the pipeline is
 designed to be model-agnostic (no function calling, plain JSON-mode
