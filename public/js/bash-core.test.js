@@ -18,12 +18,17 @@ import {
   bashIntent,
   buildShellTranscript,
   buildStepUserMessage,
+  base64ToBytes,
+  concatChunks,
   deliverablesRun,
+  execEnvelope,
   formatByteSize,
   formatShellResult,
+  isExportablePath,
   mimeForName,
   normalizeExecResult,
   outboxListCommand,
+  parseExecEnvelope,
   parseOutboxListing,
   parseShellRequest,
   runShellLoop,
@@ -626,5 +631,72 @@ describe("deliverablesRun", () => {
     const rendered = formatShellResult(deliverablesRun([{ name: "a.txt", size: 3 }]));
     assert.match(rendered, /\$ # deliverables/);
     assert.match(rendered, /exit: 0/);
+  });
+});
+
+// ---- exec bridge protocol -------------------------------------------------
+
+describe("execEnvelope + parseExecEnvelope", () => {
+  test("round-trips stdout, stderr, and the real exit code", () => {
+    const { marker } = execEnvelope("false", "abc123");
+    // Simulate the guest's printf line: base64("out"), base64("err"), rc 7.
+    const raw = "some shell banner\n" + marker + btoa("hello out") + ":" + btoa("boom") + ":7###\n";
+    const parsed = parseExecEnvelope(raw, marker);
+    assert.deepEqual(parsed, { exitCode: 7, stdout: "hello out", stderr: "boom" });
+  });
+
+  test("captures $? before any pipe (the RC-after-pipe fix stays encoded)", () => {
+    const { wrapped } = execEnvelope("exit 3", "id1");
+    // RC must be read from $? directly after the subshell, BEFORE the base64
+    // command substitutions run — the regression that lost real exit codes.
+    assert.match(wrapped, /\) >\/tmp\/_oid1 2>\/tmp\/_eid1; RC=\$\?; /);
+    assert.ok(wrapped.indexOf("RC=$?") < wrapped.indexOf("base64"));
+    assert.ok(wrapped.includes("( exit 3 )"));
+  });
+
+  test("empty fields and negative exit codes parse; missing marker → null", () => {
+    const { marker } = execEnvelope("true", "z9");
+    assert.deepEqual(parseExecEnvelope(marker + "::-1###", marker), { exitCode: -1, stdout: "", stderr: "" });
+    assert.equal(parseExecEnvelope("no marker here", marker), null);
+    assert.equal(parseExecEnvelope("", marker), null);
+  });
+
+  test("a marker with regex metacharacters is matched literally", () => {
+    // ids are alphanumeric today, but the escape must hold regardless
+    const marker = "###EXECa.b+c:";
+    assert.deepEqual(parseExecEnvelope(marker + btoa("x") + "::0###", marker), { exitCode: 0, stdout: "x", stderr: "" });
+    assert.equal(parseExecEnvelope("###EXECaXbYc:" + btoa("x") + "::0###", marker), null);
+  });
+
+  test("garbage base64 in one field fails soft to an empty string", () => {
+    const { marker } = execEnvelope("true", "g1");
+    const parsed = parseExecEnvelope(marker + "!!notb64!!:" + btoa("kept") + ":0###", marker);
+    assert.deepEqual(parsed, { exitCode: 0, stdout: "", stderr: "kept" });
+  });
+});
+
+describe("concatChunks / base64ToBytes", () => {
+  test("concatChunks joins console chunks in order", () => {
+    const joined = concatChunks([new Uint8Array([1, 2]), new Uint8Array([]), new Uint8Array([3])]);
+    assert.deepEqual(Array.from(joined), [1, 2, 3]);
+    assert.deepEqual(Array.from(concatChunks([])), []);
+  });
+
+  test("base64ToBytes decodes and tolerates wrapping whitespace", () => {
+    const b64 = btoa("AB\x00C");
+    const wrapped = b64.slice(0, 2) + "\n " + b64.slice(2);
+    assert.deepEqual(Array.from(base64ToBytes(wrapped)), [65, 66, 0, 67]);
+    assert.deepEqual(Array.from(base64ToBytes("")), []);
+  });
+});
+
+describe("isExportablePath", () => {
+  test("allows only the mount tree, never arbitrary guest paths", () => {
+    for (const ok of ["/workspace/outbox/a.txt", "/mnt/proj-abc/data.csv", "/root/x", "/tmp/_o1"]) {
+      assert.equal(isExportablePath(ok), true, ok);
+    }
+    for (const bad of ["/etc/passwd", "/workspace", "/mntx/evil", "workspace/a", "", null]) {
+      assert.equal(isExportablePath(/** @type {any} */ (bad)), false, String(bad));
+    }
   });
 });
