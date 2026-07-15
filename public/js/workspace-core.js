@@ -332,6 +332,7 @@ export function buildWorkspacePayload(state, opts = {}) {
     if (typeof s.bashLite === "boolean") settings.bashLite = s.bashLite;
     if (typeof s.developerMode === "boolean") settings.developerMode = s.developerMode;
     if (s.searchBackend && typeof s.searchBackend === "object") settings.searchBackend = s.searchBackend;
+    if (typeof s.localBaseUrl === "string" && s.localBaseUrl) settings.localBaseUrl = s.localBaseUrl;
     if (Object.keys(settings).length) w.settings = settings;
   }
   if (opts.conversations && Array.isArray(s.conversations) && s.conversations.length) {
@@ -384,6 +385,7 @@ export function applyWorkspacePayload(state, payload) {
   if (typeof s.bashLite === "boolean") state.bashLite = s.bashLite;
   if (typeof s.developerMode === "boolean") state.developerMode = s.developerMode;
   if (s.searchBackend && typeof s.searchBackend === "object") state.searchBackend = s.searchBackend;
+  if (typeof s.localBaseUrl === "string") state.localBaseUrl = s.localBaseUrl;
   if (Array.isArray(w.conversations)) {
     for (const c of w.conversations) {
       const messages = (Array.isArray(c.messages) ? c.messages : []).filter(

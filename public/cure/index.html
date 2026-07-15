@@ -91,8 +91,10 @@
     <button id="proxybannerclose" type="button" aria-label="Dismiss">×</button>
   </div>
 
-  <div id="chat"><div class="empty">Ask a research question to get started — it runs right here
-    in your browser, on your own OpenAI, Groq or Berget API key. The first send helps you set one up.</div></div>
+  <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
+    browser, on your own OpenAI, Groq or Berget API key (or a local model you run yourself). My replies
+    are model-generated, so verify anything critical. Ask a research question to get started — the first
+    send helps you set a key up.</div></div>
 
   <div id="footer">
     <div class="footer-slide">
@@ -127,6 +129,11 @@
               <span class="knob-track"><span class="knob"></span></span>
             </label>
           </div>
+          <!-- The standing "where your words go" disclosure — follows the model
+               picker (drc.js renderProviderNote): the chosen provider CAN read
+               the conversation; this site's server can't. Flips to "nothing
+               leaves this device" on a local model. -->
+          <p id="provnote" class="statusline provnote" hidden></p>
         </form>
         <p id="workstatus" class="statusline" hidden></p>
       </div>
@@ -150,8 +157,10 @@
         <p class="muted">One secret seals this session — chats and API keys — into an
           encrypted blob stored <b>in this browser only</b>; your
           <code>/my/project-…</code> link reopens it here. Keep the secret in your
-          password manager; losing it (or clearing this browser's site data) loses
-          the project. Cross-device sync is what the signed-in Se<span class="sl">/</span>rver offers.</p>
+          password manager; losing it loses the project. Browsers can also evict
+          site data — download a <b>.drc backup</b> below so a cleared browser
+          can't take the project with it. Cross-device sync is what the signed-in
+          Se<span class="sl">/</span>rver offers.</p>
         <!-- A real form so 1Password / Apple Passwords capture the secret as a
              site password: username = the project reference, password = the
              secret. Submit is intercepted; nothing is ever posted. -->
@@ -175,6 +184,14 @@
             <code id="newsecrettext"></code>
             <button type="button" id="copysecret">Copy</button>
           </div>
+        </div>
+        <!-- Encrypted backup: the sealed blob as a file. Export needs an open
+             project; restore takes the file + its secret (entered above) and
+             works even on a browser that has never seen the project. -->
+        <div class="row" id="backuprow">
+          <button type="button" id="exportbtn" hidden>Download backup (.drc)</button>
+          <button type="button" id="importbtn">Restore backup…</button>
+          <input id="importfile" type="file" accept=".drc,application/octet-stream" hidden>
         </div>
         <p id="gatestatus" class="muted" hidden></p>
       </details>
@@ -217,6 +234,31 @@
         </div>
         <div id="savedkeys"></div>
       </details>
+
+      <!-- LOCAL model server — the keyless provider: an OpenAI-compatible
+           server the user runs (Ollama / LM Studio / llama.cpp). Setting a
+           URL is what puts "Local" in the model dropdown; with it, research
+           runs with NO third party in the path at all. Wired by drc.js. -->
+      <div class="settings-item" id="localrow">
+        <div class="settings-row">
+          <span class="settings-label">Local model server
+            <button type="button" class="setting-info" data-pop="localpop" aria-label="More about local models">ⓘ</button>
+          </span>
+        </div>
+        <div class="setting-pop" id="localpop" hidden>Run the model YOURSELF and point Se<span class="sl">/</span>cure
+          at it — any OpenAI-compatible server works: <b>Ollama</b> (<code>http://localhost:11434/v1</code>),
+          <b>LM Studio</b> (<code>http://localhost:1234/v1</code>), <b>llama.cpp</b>
+          (<code>http://localhost:8080/v1</code>). No API key, no account — and <b>nothing leaves your
+          device</b>: every research phase runs on your own machine. Ollama must allow this page's origin:
+          start it with <code>OLLAMA_ORIGINS=https://deepresearch.se</code> (LM Studio and llama.cpp allow
+          cross-origin calls by default).</div>
+        <label class="setting-note" style="display:block;margin-top:.4rem">Server URL
+          <input id="local-url" type="url" placeholder="http://localhost:11434/v1 (Ollama)" style="width:100%;margin-top:.2rem"></label>
+        <div class="row" style="margin-top:.4rem">
+          <button type="button" id="local-save">Save &amp; detect</button>
+          <span id="local-status" class="muted setting-note"></span>
+        </div>
+      </div>
 
       <!-- Server-proxied web search — visible ONLY when this session carries a
            temporary grant (crossed over signed-in from Se/rver via the ghost).
@@ -383,7 +425,7 @@
           encrypted into the link's <b>#anchor</b> (never sent to any server — the link IS the workspace).
           Share the link and the password through <b>different channels</b>.</p>
         <label class="wk-check"><input type="checkbox" id="wk-inc-keys"> Provider API keys <span class="muted">(+ provider/model choice)</span></label>
-        <label class="wk-check"><input type="checkbox" id="wk-inc-settings" checked> Settings <span class="muted">(research knob, sandbox, introspection, search backend)</span></label>
+        <label class="wk-check"><input type="checkbox" id="wk-inc-settings" checked> Settings <span class="muted">(research knob, sandbox, introspection, search backend, local model URL)</span></label>
         <label class="wk-check"><input type="checkbox" id="wk-inc-chats"> Conversations</label>
         <label class="wk-check" id="wk-grants-row" hidden><input type="checkbox" id="wk-inc-grants"> Borrowed allowances <span class="muted" id="wk-grants-desc"></span></label>
         <label for="wk-name" style="display:block;margin-top:.5rem">Workspace name <span class="muted">(optional)</span></label>

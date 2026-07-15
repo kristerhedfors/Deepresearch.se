@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   deriveDrcProfile,
   deriveDrcTitle,
+  drcBackupFileName,
   emptyDrcState,
   drcSecretValid,
   generateDrcSecret,
   migrateDrcState,
+  openDrcBackup,
   openDrcState,
   sealDrcState,
   validateDrcState,
@@ -79,7 +81,7 @@ test("project state round-trips sealed under the blob key — API keys inside", 
   await assert.rejects(openDrcState(bytes, wrong));
 });
 
-test("validateDrcState accepts v1/v2/v3, rejects foreign shapes", () => {
+test("validateDrcState accepts v1/v2/v3/v4, rejects foreign shapes", () => {
   assert.equal(validateDrcState(emptyDrcState()), true);
   // A v1 blob (stored before keys moved into the state) still opens…
   const v1 = { v: 1, kind: DRC_STATE_KIND, updatedAt: 1, conversations: [] };
@@ -87,13 +89,18 @@ test("validateDrcState accepts v1/v2/v3, rejects foreign shapes", () => {
   // …as does a v2 blob (stored before the RAG index existed)…
   const v2 = { v: 2, kind: DRC_STATE_KIND, updatedAt: 1, keys: {}, conversations: [] };
   assert.equal(validateDrcState(v2), true);
-  // …and both migrate to the current shape, gaining an empty RAG index.
-  for (const old of [v1, v2]) {
+  // …and a v3 blob (stored before the local model server URL existed)…
+  const v3 = { v: 3, kind: DRC_STATE_KIND, updatedAt: 1, keys: {}, conversations: [], rag: { docs: [] } };
+  assert.equal(validateDrcState(v3), true);
+  // …and all migrate to the current shape, gaining an empty RAG index and
+  // an unset local server URL.
+  for (const old of [v1, v2, v3]) {
     const migrated = migrateDrcState({ ...old });
     assert.equal(migrated.v, DRC_STATE_V);
     assert.deepEqual(migrated.keys, {});
     assert.equal(migrated.research, true);
     assert.deepEqual(migrated.rag, { docs: [] });
+    assert.equal(migrated.localBaseUrl, "");
   }
 
   assert.equal(validateDrcState(null), false);
@@ -103,6 +110,40 @@ test("validateDrcState accepts v1/v2/v3, rejects foreign shapes", () => {
   assert.equal(validateDrcState({ ...emptyDrcState(), rag: [] }), false);
   assert.equal(validateDrcState({ ...emptyDrcState(), rag: { docs: null } }), false);
   assert.equal(validateDrcState({ ...emptyDrcState(), conversations: [{ id: "c" }] }), false);
+  assert.equal(validateDrcState({ ...emptyDrcState(), localBaseUrl: 42 }), false);
+});
+
+test(".drc backup: filename, round-trip via the secret, wrong-secret/tamper fail-soft", async () => {
+  assert.equal(drcBackupFileName("abc123"), "project-abc123.drc");
+
+  const secret = generateDrcSecret();
+  const { blobKey } = await deriveDrcProfile(secret);
+  const state = emptyDrcState();
+  state.keys = { openai: "sk-test-backup" };
+  state.conversations.push({
+    id: "c1",
+    title: "Backup me",
+    messages: [{ role: "user", content: "hi" }],
+    createdAt: 1,
+    updatedAt: 2,
+  });
+  const bytes = await sealDrcState(state, blobKey);
+
+  // The backup opens with the secret alone — the file IS the sealed blob.
+  const opened = await openDrcBackup(bytes, secret);
+  assert.ok(opened);
+  assert.deepEqual(opened.state.keys, { openai: "sk-test-backup" });
+  assert.equal(opened.state.conversations[0].title, "Backup me");
+  assert.equal(opened.state.v, DRC_STATE_V); // migrated on open
+  const { blobId } = await deriveDrcProfile(secret);
+  assert.equal(opened.profile.blobId, blobId); // restorable under the derived id
+
+  // Wrong secret and tampered bytes both fail soft to null, never throw.
+  assert.equal(await openDrcBackup(bytes, generateDrcSecret()), null);
+  const tampered = new Uint8Array(bytes);
+  tampered[tampered.length - 1] ^= 0xff;
+  assert.equal(await openDrcBackup(tampered, secret), null);
+  assert.equal(await openDrcBackup(bytes, "not-a-secret"), null);
 });
 
 test("deriveDrcTitle uses the first non-empty user line", () => {

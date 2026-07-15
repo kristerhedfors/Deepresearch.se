@@ -41,8 +41,21 @@ import {
 import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 
-const XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0";
-const XTERM_FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0";
+// xterm is VENDORED (2026-07-15, the Forever Agent user-value pass): the
+// terminal used to load from cdn.jsdelivr.net at runtime, so a CDN outage
+// could break the most regression-prone feature from outside the repo.
+// public/vendor/xterm/ holds @xterm/xterm@5.5.0 (lib/xterm.js, css/xterm.css)
+// and @xterm/addon-fit@0.10.0 (lib/addon-fit.js), byte-identical to the CDN
+// files, pinned by SHA-256:
+//   xterm.js     1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495
+//   xterm.css    ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6
+//   addon-fit.js bdaefa370b1bfc42ee88d46fe6072400902a4d4b2d45cd93438dda9b23c97089
+// The CheerpX ENGINE stays a CDN dependency for now — self-hosting it is
+// gated on Leaning Technology's license terms (an owner decision; see
+// docs/FOREVERAGENT-TRAJECTORY.md §5) — as does the streamed Debian disk.
+const XTERM_JS = "/vendor/xterm/xterm.js";
+const XTERM_CSS = "/vendor/xterm/xterm.css";
+const XTERM_FIT_JS = "/vendor/xterm/addon-fit.js";
 const CHEERPX_CDN = "https://cxrtnc.leaningtech.com/1.2.6/cx.esm.js";
 // The public WebVM Debian disk (streamed over WebSocket, cached in IndexedDB).
 const DISK_URL = "wss://disks.webvm.io/debian_large_20230522_5044875331_2.ext2";
@@ -613,14 +626,16 @@ async function bootVM(fileProvider = null) {
     // none of it, so a failed/blocked CSS load must NOT abort the boot (it did:
     // a transient CDN miss on xterm.css took the whole sandbox down with
     // "Sandbox unavailable"). The two SCRIPTS are load-bearing (they define the
-    // Terminal/FitAddon globals), so those stay fatal.
-    loadCSS(XTERM_CDN + "/css/xterm.css").catch((e) => console.warn("[sandbox] xterm css skipped:", e?.message || e)),
-    loadScript(XTERM_CDN + "/lib/xterm.js"),
-    loadScript(XTERM_FIT_CDN + "/lib/addon-fit.js"),
+    // Terminal/FitAddon globals), so those stay fatal. All three are VENDORED
+    // same-origin files now (see the constants above), so this no longer
+    // depends on a third-party CDN at all.
+    loadCSS(XTERM_CSS).catch((e) => console.warn("[sandbox] xterm css skipped:", e?.message || e)),
+    loadScript(XTERM_JS),
+    loadScript(XTERM_FIT_JS),
   ]);
 
   const container = panel.querySelector("#dr-sandbox-term");
-  // @ts-ignore — Terminal/FitAddon are attached to window by the CDN scripts.
+  // @ts-ignore — Terminal/FitAddon are attached to window by the vendored scripts.
   term = new Terminal({
     cursorBlink: true,
     convertEol: true,

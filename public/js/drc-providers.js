@@ -123,6 +123,35 @@ export const DRC_PROVIDERS = [
     // without a live key — a deliberate later step, not an oversight.
     // Until then a Berget-only session runs without RAG, like Groq.
   },
+  {
+    // The user's OWN inference server — Ollama, LM Studio, llama.cpp, or any
+    // OpenAI-compatible endpoint the user controls (localhost included:
+    // browsers treat http://localhost as a potentially-trustworthy origin, so
+    // an https page may call it). This is the tier's strongest privacy mode —
+    // with it, the conversation reaches NO third party at all — and the reason
+    // it exists (the project mission; docs/FOREVERAGENT-GAP-ANALYSIS.md §8).
+    // KEYLESS: no key exists, so "configured" means "a base URL is set"
+    // (configuredDrcProviders below); the URL itself lives in the sealed state
+    // (drc-core.js localBaseUrl) and always overrides `base` on the wire.
+    id: "local",
+    label: "Local (Ollama / LM Studio / llama.cpp)",
+    base: "http://localhost:11434/v1", // Ollama's default; the settings URL overrides
+    keyPattern: null,
+    keyless: true,
+    // One local server serves BOTH pipeline roles: with no fixed cheap model
+    // to name (the catalog is whatever the user pulled), the JSON planning
+    // phases fall back to the user's chosen model (drc-research.js) — the
+    // split-model-routing invariant collapses honestly onto one model.
+    jsonModel: null,
+    fallbackModels: [], // no static catalog exists for a user's own server
+    // A local catalog is whatever the user pulled — curate only the obvious
+    // non-chat modalities out (Ollama lists embedding models beside chat ones).
+    modelFilter: (id) => !/(embed|whisper|rerank|guard|tts|moderation)/i.test(id),
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed`: local embeddings (transformers.js or the server's own
+    // /embeddings) are a deliberate later step — a local-only session runs
+    // without client-side RAG, like Groq (fail-soft, never an error).
+  },
 ];
 
 export function drcProvider(id) {
@@ -175,9 +204,20 @@ export function detectDrcProvider(key) {
   return DRC_PROVIDERS.find((p) => p.keyPattern && p.keyPattern.test(k)) || null;
 }
 
-/** The providers the user has stored a key for. */
-export function configuredDrcProviders(keys) {
-  return DRC_PROVIDERS.filter((p) => typeof keys?.[p.id] === "string" && keys[p.id]);
+/**
+ * The providers this session can actually call: a key is stored for them —
+ * or, for the keyless local entry, a base URL is configured (there is no key
+ * to store; the URL is the whole configuration). The honest generalization
+ * over "has a key", so the dropdown/refresh flow works unchanged for both.
+ * @param {Record<string, string> | null | undefined} keys
+ * @param {{localBaseUrl?: string}} [opts]
+ */
+export function configuredDrcProviders(keys, { localBaseUrl } = {}) {
+  return DRC_PROVIDERS.filter((p) =>
+    p.keyless
+      ? typeof localBaseUrl === "string" && !!localBaseUrl.trim()
+      : typeof keys?.[p.id] === "string" && keys[p.id],
+  );
 }
 
 /**
@@ -187,6 +227,16 @@ export function configuredDrcProviders(keys) {
  */
 export function drcEmbedProvider(keys) {
   return DRC_PROVIDERS.find((p) => p.embed && typeof keys?.[p.id] === "string" && keys[p.id]) || null;
+}
+
+// The wire headers for a call: keyless providers (the local entry) get NO
+// Authorization header at all — "Bearer undefined" makes some servers 401 —
+// while every keyed call keeps the exact header it always sent.
+function wireHeaders(apiKey) {
+  return {
+    "content-type": "application/json",
+    ...(apiKey ? { authorization: "Bearer " + apiKey } : {}),
+  };
 }
 
 /**
@@ -200,10 +250,7 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl } = {}
     signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(30_000) : undefined);
   const res = await fetch((baseUrl || provider.base) + "/embeddings", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify({
       model: provider.embed.model,
       input: texts,
@@ -245,10 +292,7 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: true, maxTokens })),
     signal,
   });
@@ -308,10 +352,7 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
   const timeout = signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(45_000) : undefined);
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: "Bearer " + apiKey,
-    },
+    headers: wireHeaders(apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { json: true, maxTokens })),
     signal: timeout,
   });
@@ -363,7 +404,7 @@ export async function drcToolRun(
   { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl } = {},
 ) {
   const url = (baseUrl || provider.base) + "/chat/completions";
-  const headers = { "content-type": "application/json", authorization: "Bearer " + apiKey };
+  const headers = wireHeaders(apiKey);
   const messages = [
     ...(system ? [{ role: "system", content: system }] : []),
     { role: "user", content: userContent },
@@ -449,7 +490,7 @@ export function filterAndSortModels(data, modelFilter) {
 export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
   try {
     const res = await fetch((baseUrl || provider.base) + "/models", {
-      headers: { authorization: "Bearer " + apiKey },
+      headers: apiKey ? { authorization: "Bearer " + apiKey } : {},
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();

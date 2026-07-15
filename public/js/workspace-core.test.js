@@ -154,6 +154,7 @@ test("buildWorkspacePayload projects only the selected sections", () => {
     bashLite: true,
     developerMode: false,
     searchBackend: { backend: "searxng", baseUrl: "https://sx.example", key: "", results: 6 },
+    localBaseUrl: "http://localhost:11434/v1",
     conversations: [
       { id: "c1", title: "T", messages: [{ role: "user", content: "q" }, { role: "assistant", content: "a", extra: 1 }] },
       { id: "c2", messages: [] },
@@ -171,6 +172,9 @@ test("buildWorkspacePayload projects only the selected sections", () => {
   assert.deepEqual(everything.keys, { openai: "sk-x", berget: "sk_ber_1" }); // trimmed, empties dropped
   assert.equal(everything.providerId, "openai");
   assert.deepEqual(everything.settings.searchBackend.backend, "searxng");
+  // The local model server URL is configuration too — a workspace is a fully
+  // configured session, so it rides in settings (and applies back below).
+  assert.equal(everything.settings.localBaseUrl, "http://localhost:11434/v1");
   assert.equal(everything.conversations.length, 2);
   // messages are reduced to bare {role, content}
   assert.deepEqual(everything.conversations[0].messages[1], { role: "assistant", content: "a" });
@@ -230,4 +234,14 @@ test("build → seal → open → apply: the whole share flow end to end", async
   assert.equal(target.keys.berget, "sk_ber_team");
   assert.equal(target.conversations.length, 1);
   assert.equal(applied.name, "Handoff");
+});
+
+test("the local model server URL rides settings through apply", () => {
+  const target = { keys: {}, conversations: [] };
+  applyWorkspacePayload(target, {
+    v: WORKSPACE_V,
+    kind: WORKSPACE_KIND,
+    settings: { localBaseUrl: "http://localhost:1234/v1" },
+  });
+  assert.equal(target.localBaseUrl, "http://localhost:1234/v1");
 });

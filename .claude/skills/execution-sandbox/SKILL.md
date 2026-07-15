@@ -278,8 +278,10 @@ isolates, `SharedArrayBuffer` stays undefined, and the VM can't boot (confirmed
 live 2026-07-11 on iOS 18.7 Safari 26.5: header served, `crossOriginIsolated
 === false`, `SharedArrayBuffer` absent). `require-corp` is honored by Chrome,
 Firefox, AND Safari. Its cost: every cross-origin subresource must carry CORP —
-the sandbox's CDN loads (jsdelivr xterm, cxrtnc CheerpX) already send
-`Cross-Origin-Resource-Policy: cross-origin`, CORS `fetch` (DRC providers, the
+the sandbox's remaining CDN load (cxrtnc CheerpX) already sends
+`Cross-Origin-Resource-Policy: cross-origin` (xterm is VENDORED same-origin
+since 2026-07-15 — `public/vendor/xterm/`, SHA-256-pinned in `sandbox.js`, so a
+jsdelivr outage can no longer break the boot), CORS `fetch` (DRC providers, the
 Berget/Exa calls) is unaffected, and the server-fetched Maps imagery is
 same-origin; the ONLY casualty is the keyless Street View Embed **iframe** (no
 CORP). That's why the DRS shell only gets COEP when the knob is ON. The DRC page

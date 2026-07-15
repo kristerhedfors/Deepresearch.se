@@ -466,8 +466,14 @@ export async function runDrcResearch({
   // wire call downstream is provider-agnostic, so nothing else changes.
   const provider = providerOverride || drcProvider(providerId);
   if (!provider) throw new Error("Unknown provider.");
-  if (!apiKey) throw new Error("No " + provider.label + " API key is stored.");
-  const jsonModel = provider.jsonModel;
+  // Keyless providers (the local entry — the user's own Ollama/LM Studio/
+  // llama.cpp server) have no key to demand; every other provider still does.
+  if (!apiKey && !provider.keyless) throw new Error("No " + provider.label + " API key is stored.");
+  // Split model routing, the client-side mirror: planning phases run on the
+  // provider's fixed cheap jsonModel — except a local server, which declares
+  // none (its catalog is whatever the user pulled), so both roles collapse
+  // onto the user's chosen model.
+  const jsonModel = provider.jsonModel || model;
   const question = messages[messages.length - 1]?.content || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const intro = typeof introspection === "string" ? introspection.trim() : "";

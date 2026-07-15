@@ -145,12 +145,14 @@ export function phaseChannel(phase) {
  * captures when it resolves the provider and search route:
  *   provider   — the answer provider's display label (e.g. "OpenAI")
  *   viaProxy   — true when the secure-research-space LLM proxy carries calls
+ *   local      — true when the model is the user's OWN local server (the
+ *                keyless provider): calls stay on the user's machine
  *   search     — "self" (own browser-direct service) | "grant" (server-metered)
  *   embedProvider — the embeddings provider label (recall), if any
  * Returns "" for local phases (they complete to the pink ✓, no notice).
  * @param {string} phase
- * @param {{provider?: string, viaProxy?: boolean, search?: string|null,
- *          embedProvider?: string}} [ctx]
+ * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
+ *          search?: string|null, embedProvider?: string}} [ctx]
  * @returns {string}
  */
 export function disclosureText(phase, ctx = {}) {
@@ -158,7 +160,9 @@ export function disclosureText(phase, ctx = {}) {
   const provider = ctx.provider || "your model provider";
   const llm = ctx.viaProxy
     ? "This step sent the conversation text it needed THROUGH the DeepResearch.Se server to Berget — the borrowed secure-research-space API (metered, time-limited, Berget-only). This is the one call path where your text touches the server."
-    : `This step sent the conversation text it needed to ${provider}, directly from your browser on your own API key. The DeepResearch.Se server was not involved.`;
+    : ctx.local
+      ? "This step called the model server running on YOUR OWN machine — the conversation never left your device, and no third party (this site's server included) was involved."
+      : `This step sent the conversation text it needed to ${provider}, directly from your browser on your own API key. The DeepResearch.Se server was not involved.`;
   switch (String(phase)) {
     case "search":
       return ctx.search === "self"
@@ -177,4 +181,33 @@ export function disclosureText(phase, ctx = {}) {
     default:
       return "This step called an online API — the text it needed left your browser. " + llm;
   }
+}
+
+// ---- the standing provider-visibility line (the model picker's disclosure) ----
+
+/**
+ * The one-line "where your words go" disclosure shown beside the model picker —
+ * the STANDING counterpart of the per-step notices above. Honesty is the point
+ * (docs/FOREVERAGENT-GAP-ANALYSIS.md §8): "private from this site" must never
+ * be mistaken for "private from the model provider" — the chosen provider DOES
+ * receive and can read the conversation — and with the local provider the line
+ * flips to the strongest true statement the tier can make.
+ * @param {string} providerId
+ * @param {string} [label] the provider's display label (e.g. "OpenAI")
+ * @returns {string} "" when no provider is picked yet
+ */
+export function providerVisibilityNote(providerId, label) {
+  const id = String(providerId || "");
+  if (!id) return "";
+  if (id === "local") {
+    return "Local model — nothing leaves this device: replies come from the server running on your own machine.";
+  }
+  if (id === "proxy") {
+    return (
+      "Your messages route through this site's server to Berget on the borrowed, metered allowance — " +
+      "the one Se/cure path where your words touch the server."
+    );
+  }
+  const who = label || id;
+  return `Your messages go to ${who} — they can read them. This site's server can't: calls go straight from your browser.`;
 }
