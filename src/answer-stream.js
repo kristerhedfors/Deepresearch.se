@@ -124,11 +124,16 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
     // timeout and the abort ("The operation was aborted") threw straight
     // out of the pipeline as a fatal chat error — a provider blip the user
     // paid for with a dead research run, all searches already done.
+    // The report-tier output cap (budget.js REPORT_TIER_CAPS): the extended/
+    // full tiers raise max_tokens above the providers' long-standing 4096
+    // default so the bigger report isn't truncated; brief/standard carry
+    // 4096, keeping the default budget byte-identical on the wire.
+    const maxTokens = ctx.state.plan?.synthMaxTokens;
     let upstream;
     try {
       // Cast: conversation.js's helpers hand back its looser Msg shape; the
       // messages here are the well-formed arrays the phase builders wrote.
-      upstream = await chatCompletion(ctx.env, /** @type {Conversation} */ (messages), { model });
+      upstream = await chatCompletion(ctx.env, /** @type {Conversation} */ (messages), { model, maxTokens });
     } catch (/** @type {any} */ err) {
       // fetch() itself rejected: the connect-timeout abort or a network
       // reset. Always transient by nature.
@@ -155,7 +160,11 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
           received += t.length;
           ctx.emitDelta(t);
         },
-        { idleMs: STREAM_IDLE_TIMEOUT_MS },
+        // maxChars scales the runaway-generation safety valve with the
+        // report tier — a legitimate full report can approach the default
+        // 32k cap, so give a raised max_tokens matching headroom (~4 chars/
+        // token, doubled) while a runaway still gets cut off by our code.
+        { idleMs: STREAM_IDLE_TIMEOUT_MS, maxChars: maxTokens ? Math.max(32_000, maxTokens * 8) : undefined },
       );
     } catch (/** @type {any} */ err) {
       // A hang caught by the idle guard right at the START of the answer

@@ -393,7 +393,7 @@ Server (`src/`):
 | `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
 | `billing.js` | The shared split-billing spend math for a completed request (`summarizeSpend` — the up-to-three-model-bucket token/cost totals, each priced at its own catalog rate; `exaCost` — searches at their depth-tier price plus the `/contents` fetch surcharge): a leaf module (only the pure cost primitives from `quota.js`/`budget.js`) so `chat.js` and `mcp.js` share ONE implementation instead of both re-inlining it (`mcp.js` pulls it in via its dynamic-import block so the pipeline still stays out of `mcp.test.js`) |
 | `conversation.js` | Message-array utilities (textOf, image parts, formatting) |
-| `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks |
+| `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks — plus the report-comprehensiveness tiers (`reportTierFor`: the slider buys OUTPUT depth too, brief → standard → extended → full; the plan carries the tier and its synthesis/validation token caps, and prompts.js turns it into per-tier report structure) |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client (primary provider): streaming + JSON-mode completions (both fetch calls time-bounded — see below), model catalog (incl. raw per-token pricing) |
 | `anthropic.js` | Anthropic (Claude) client — second, `ANTHROPIC_API_KEY`-gated provider: raw-fetch Messages API with an SSE adapter re-emitting Anthropic streams as OpenAI-style SSE (so `consumeChatStream` + all its guards work unchanged), static EUR-priced catalog (opus/sonnet/haiku) — see the **add-llm-provider** skill |
@@ -865,7 +865,10 @@ knobs, with `stepIsLocal` in `activity-core.js` classifying Se/rver steps), `ima
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
-malformed-JSON tolerance), `quiz.js`'s pure core (answer verdicts,
+malformed-JSON tolerance), `timescale.js` (the slider's position⇄seconds
+curve, `fmtBudget`, and the `budgetTier` report-tier readout — its
+boundaries pinned to mirror `src/budget.js`'s `reportTierFor`),
+`quiz.js`'s pure core (answer verdicts,
 scoring incl. ungraded free-text handling, the completed-quiz summary
 block), `drc-core.js` (DRC's derivations: determinism,
 format-insensitive input, independence of every derived value —

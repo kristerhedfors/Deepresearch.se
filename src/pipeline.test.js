@@ -6,6 +6,7 @@
 // (src/pipeline.js), and isTransientConnectStatus (src/answer-stream.js).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { isTransientConnectStatus } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
 import { normalizeTriage } from "./triage.js";
@@ -183,5 +184,27 @@ describe("isTransientConnectStatus", () => {
     for (const status of [400, 401, 403, 404, 413, 422]) {
       assert.equal(isTransientConnectStatus(status), false, `status ${status}`);
     }
+  });
+});
+
+// Regression pin for chat_logs #360 (2026-07-15): the deterministic quiz gate
+// must read the CLEAN pre-enrichment message, never the enrichment-appended
+// lastUser — the introspection block folded into lastUser carries the
+// CLAUDE.md orientation, whose prose contains literal "quiz me…" examples, so
+// with developer mode on EVERY request quiz-triggered and the whole answer
+// became a 5-question quiz. quizIntent itself is pure and correct (quiz.test
+// covers it); the bug was the CALL SITE's argument, so that is what gets
+// pinned — same style as the façade-contract source pins elsewhere.
+describe("quiz gate reads the clean (pre-enrichment) user message", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("the primary deterministic gate uses cleanLastUser", () => {
+    assert.match(src, /quizIntent\(ctx\.cleanLastUser\)/);
+    assert.doesNotMatch(src, /quizIntent\(ctx\.lastUser\)/);
+  });
+
+  test("the triage-backup question count uses cleanLastUser", () => {
+    assert.match(src, /quizQuestionCount\(ctx\.cleanLastUser\)/);
+    assert.doesNotMatch(src, /quizQuestionCount\(ctx\.lastUser\)/);
   });
 });

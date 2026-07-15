@@ -32,6 +32,7 @@ import {
   buildJudgePrompt,
   sourceDiversity,
   citationCoverage,
+  reportStructure,
   aggregateScores,
 } from "./bench-score.mjs";
 
@@ -77,7 +78,12 @@ async function postOnce(modelId, messages, { webSearch = true, budgetS = BUDGET_
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
       headers: { authorization: AUTH, "content-type": "application/json" },
-      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS }),
+      // developer_mode:false — the off-only override (src/chat.js): the
+      // break-glass bench identity has developer mode FORCED on, and the
+      // introspection enrichment would otherwise route every question to
+      // source reading (and, pre-fix, to a quiz — chat_logs #360). The bench
+      // measures the web-research pipeline, so decline introspection.
+      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS, developer_mode: false }),
       signal: controller.signal,
     });
     requestId = res.headers.get("x-request-id");
@@ -185,6 +191,10 @@ async function runOne(model, judgeModelId, question) {
   const sources = sourcesFromEvents(research.events);
   const diversity = sourceDiversity(sources);
   const citations = citationCoverage(research.text);
+  // Report-shape metrics for the tier A/B (free, deterministic): did the
+  // budget's report tier actually deliver its structure/length? Kept out of
+  // the judge overall — structure is what the tier bought, not quality.
+  const structure = reportStructure(research.text);
 
   let judge = null;
   if (research.ok && research.text.trim()) {
@@ -210,7 +220,7 @@ async function runOne(model, judgeModelId, question) {
     answer_length: research.text.length,
     answer: research.text,
     sources,
-    metrics: { diversity, citations },
+    metrics: { diversity, citations, structure },
     judge: judge.ok
       ? { request_id: judge.request_id, scores: judge.scores, notes: judge.notes }
       : { ok: false, error: judge.error, raw: judge.raw || null },
@@ -267,7 +277,7 @@ async function main() {
     const result = await runOne(model, judgeModelId, q);
     completed++;
     const status = result.scores
-      ? `cit ${result.scores.citation} cov ${result.scores.coverage} cal ${result.scores.calibration} (overall ${result.overall}), div ${result.metrics.diversity.score}`
+      ? `cit ${result.scores.citation} cov ${result.scores.coverage} cal ${result.scores.calibration} (overall ${result.overall}), div ${result.metrics.diversity.score}, ${result.metrics.structure.words}w/${result.metrics.structure.h2}h2`
       : `NO SCORE: ${result.research_error || (result.judge && result.judge.error) || "unknown"}`;
     console.log(`[${completed}/${jobs.length}] ${model.id} :: ${q.id} -> ${status}`);
     fs.writeFileSync(path.join(runDir, `${slug(model.id)}__${q.id}.json`), JSON.stringify(result, null, 2));
@@ -291,6 +301,11 @@ async function main() {
       judge: agg,
       source_diversity_mean: round3(avg(divScores)),
       citation_coverage_mean: round3(avg(citScores)),
+      // Report-shape aggregate (mean/median per dimension) for the tier A/B:
+      // only completed answers count, so a failed run doesn't drag words to 0.
+      structure: aggregateScores(
+        rs.filter((r) => r.ok && r.answer_length > 0).map((r) => ({ scores: r.metrics.structure })),
+      ),
     };
   }
 
@@ -304,6 +319,11 @@ async function main() {
     per_model: perModelSummary,
     // overall aggregate across ALL runs regardless of model
     overall: aggregateScores(results.filter((r) => r.scores).map((r) => ({ scores: r.scores, overall: r.overall }))),
+    // Report-shape aggregate across all completed answers (the tier A/B's
+    // comprehensiveness readout: words, h2/h3, tableRows, hasLimitations…).
+    structure: aggregateScores(
+      results.filter((r) => r.ok && r.answer_length > 0).map((r) => ({ scores: r.metrics.structure })),
+    ),
   };
   fs.writeFileSync(path.join(runDir, "_summary.json"), JSON.stringify(summary, null, 2));
 
@@ -330,8 +350,11 @@ function printTable(perModel) {
     overall: fmt(s.judge.overall?.mean),
     diversity: fmt(s.source_diversity_mean),
     cite_cov: fmt(s.citation_coverage_mean),
+    words: s.structure?.dimensions?.words ? String(Math.round(s.structure.dimensions.words.mean)) : "-",
+    h2: fmt(s.structure?.dimensions?.h2?.mean),
+    limits: fmt(s.structure?.dimensions?.hasLimitations?.mean),
   }));
-  const cols = ["model", "judged", "citation", "coverage", "calibration", "overall", "diversity", "cite_cov"];
+  const cols = ["model", "judged", "citation", "coverage", "calibration", "overall", "diversity", "cite_cov", "words", "h2", "limits"];
   const width = {};
   for (const c of cols) width[c] = Math.max(c.length, ...rows.map((r) => String(r[c]).length));
   const line = (r) => cols.map((c) => String(r[c]).padEnd(width[c])).join("  ");

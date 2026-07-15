@@ -31,6 +31,7 @@
 import { getModelProfile } from "./model-profiles.js";
 
 /** @typedef {import('./types.js').SearchDepth} SearchDepth */
+/** @typedef {import('./types.js').ReportTier} ReportTier */
 
 /**
  * The static allocation planResearch returns. Same shape as
@@ -49,6 +50,9 @@ import { getModelProfile } from "./model-profiles.js";
  * @property {number} digestCap Char cap on the synthesis digest.
  * @property {Record<string, number>} estimates Per-phase duration estimates (ms) the plan was built from.
  * @property {SearchDepth} searchDepth
+ * @property {ReportTier} reportTier Output comprehensiveness tier the slider bought.
+ * @property {number} synthMaxTokens max_tokens for the synthesis stream (scaled to the tier).
+ * @property {number} validateMaxTokens max_tokens for validate/revise JSON calls (revised_answer must hold the whole report).
  */
 
 /** @type {Record<string, number>} */
@@ -154,6 +158,8 @@ export function planResearch(model, budgetS, jsonModel = model) {
     claim: j.claim,
   };
   const budgetMs = budgetS * 1000;
+  const reportTier = reportTierFor(budgetS);
+  const caps = REPORT_TIER_CAPS[reportTier];
   /** @type {BudgetPlan} */
   const plan = {
     budgetMs,
@@ -167,6 +173,9 @@ export function planResearch(model, budgetS, jsonModel = model) {
     digestCap: 14_000,
     estimates: t,
     searchDepth: searchDepthFor(budgetS),
+    reportTier,
+    synthMaxTokens: caps.synthMaxTokens,
+    validateMaxTokens: caps.validateMaxTokens,
   };
 
   let avail = budgetMs - t.triage - t.synth;
@@ -199,8 +208,56 @@ export function planResearch(model, budgetS, jsonModel = model) {
     plan.maxSources = 24;
     plan.digestCap = 18_000;
   }
+  // The full-report tier feeds synthesis a larger source registry and digest
+  // so the report's extra length can come from MORE SOURCE MATERIAL — the
+  // synthesis prompt forbids padding, so without more input the model could
+  // only stretch, not deepen.
+  if (reportTier === "full") {
+    plan.maxSources = Math.max(plan.maxSources, 28);
+    plan.digestCap = Math.max(plan.digestCap, 24_000);
+  }
   return plan;
 }
+
+// ---- report-comprehensiveness tiers -----------------------------------------
+//
+// The slider buys OUTPUT depth, not just research depth (2026-07-15 product
+// directive): the delivered answer's structure and comprehensiveness must
+// correlate with the time budget — from a compact annotated-search-results
+// brief at the bottom, through the classic focused answer, up to a full
+// frontier-assistant-grade research report (executive summary, thematic
+// sections, tables, limitations) at the top. reportTierFor is the one mapping;
+// prompts.js's synthPrompt turns the tier into per-tier structure/length
+// guidance, and the caps below give the longer tiers the token headroom the
+// bigger output needs (synthesis stream AND the validation revise path, whose
+// revised_answer must hold the complete corrected report). Boundaries sit on
+// the slider's existing tier vocabulary: <60s is below the default, 180s is
+// mid-slider on the quadratic scale, 420s matches searchDepth's "deep" gate.
+/**
+ * @param {number} budgetS
+ * @returns {ReportTier}
+ */
+export function reportTierFor(budgetS) {
+  if (budgetS >= 420) return "full";
+  if (budgetS >= 180) return "extended";
+  if (budgetS >= 60) return "standard";
+  return "brief";
+}
+
+// synthMaxTokens: brief/standard keep the long-standing 4096 cap (the exact
+// value every provider client documents as "the synthesis answer cap"), so
+// the default budget stays byte-identical on the wire. extended/full raise it
+// for the bigger report (8192 ≈ a 3,000-word report with tables and sources).
+// validateMaxTokens: the single-pass validate and the claim-revise call must
+// be able to return the WHOLE corrected answer as JSON — scaled with the
+// report, since a 3000-token cap would truncate a full report's revision.
+/** @type {Record<ReportTier, { synthMaxTokens: number, validateMaxTokens: number }>} */
+const REPORT_TIER_CAPS = {
+  brief: { synthMaxTokens: 4096, validateMaxTokens: 3000 },
+  standard: { synthMaxTokens: 4096, validateMaxTokens: 3000 },
+  extended: { synthMaxTokens: 6144, validateMaxTokens: 6000 },
+  full: { synthMaxTokens: 8192, validateMaxTokens: 9000 },
+};
 
 // Complexity-scaled effort: after triage classifies the question (see
 // prompts.js's DECOMPOSITION_RULE), a "simple" question gets its research

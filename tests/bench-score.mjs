@@ -141,6 +141,53 @@ export function citationCoverage(answerText) {
   };
 }
 
+// --- non-LLM metric: report structure --------------------------------------
+
+// Descriptive shape metrics for the answer's REPORT STRUCTURE — the
+// measurement side of the slider-driven report-comprehensiveness tiers
+// (src/budget.js reportTierFor, prompts.js REPORT_TIER_STRUCTURE): a tier
+// A/B needs to see whether a higher budget actually delivered a longer,
+// more structured report (words, headings, tables, the executive-summary /
+// limitations conventions), not just whether the judge liked it. All
+// numeric (booleans as 0/1) so aggregateScores can average them into rates;
+// deliberately NOT folded into the judge overall — structure is what the
+// tier bought, quality is what the judge scores, and conflating them would
+// let sheer length inflate the quality number.
+export function reportStructure(answerText) {
+  const text = typeof answerText === "string" ? answerText : "";
+  // Body = everything before the "Sources:" list (same line-anchored,
+  // markdown-tolerant match citationCoverage uses), so the source list's
+  // own lines don't count as report content.
+  const srcMatch = /(^|\n)\s*(?:#+\s*|\*+\s*)?sources\s*:/i.exec(text);
+  const body = srcMatch ? text.slice(0, srcMatch.index) : text;
+  const lines = body.split("\n");
+
+  const countHeadings = (level) => {
+    const re = new RegExp(`^\\s{0,3}#{${level}}\\s+\\S`);
+    return lines.filter((l) => re.test(l)).length;
+  };
+  // Table DATA rows: |…| lines minus |---|---| separator rows.
+  const tableRows = lines.filter(
+    (l) => /^\s*\|.*\|\s*$/.test(l) && !/^\s*\|[\s:|-]+\|\s*$/.test(l),
+  ).length;
+  const bullets = lines.filter((l) => /^\s*[-*+]\s+\S/.test(l)).length;
+
+  return {
+    // Word count of the report body (before the Sources list) — the
+    // headline comprehensiveness number.
+    words: (body.match(/\S+/g) || []).length,
+    h1: countHeadings(1),
+    h2: countHeadings(2),
+    h3: countHeadings(3),
+    tableRows,
+    bullets,
+    // The full-tier conventions, as 0/1 rates:
+    hasTitle: /^\s{0,3}#\s+\S/.test(body) ? 1 : 0,
+    hasBoldLead: /^\s{0,3}(?:#.*\n+)?\s*\*\*/.test(body.trimStart()) ? 1 : 0,
+    hasLimitations: /^\s{0,3}#{2,3}\s+.*limitation/im.test(body) ? 1 : 0,
+  };
+}
+
 // --- aggregation ----------------------------------------------------------
 
 // Aggregate an array of per-question result objects into mean/median per

@@ -188,7 +188,20 @@ export interface BudgetPlan {
   /** Per-phase duration estimates the plan was built from. */
   estimates: Record<PhaseName, number>;
   searchDepth: SearchDepth;
+  /** Output comprehensiveness tier the slider bought (src/budget.js reportTierFor). */
+  reportTier: ReportTier;
+  /** max_tokens for the synthesis stream, scaled to the report tier. */
+  synthMaxTokens: number;
+  /** max_tokens for validate/revise JSON calls (revised_answer holds the whole report). */
+  validateMaxTokens: number;
 }
+
+/**
+ * The slider-driven output-comprehensiveness tier: how structured and
+ * comprehensive the delivered answer should be, from an annotated
+ * search-results brief up to a full research report.
+ */
+export type ReportTier = "brief" | "standard" | "extended" | "full";
 
 // ---- Per-request state (src/chat.js newRequestState) -----------------------
 /** Prompt/completion token tally for one billing bucket. */
