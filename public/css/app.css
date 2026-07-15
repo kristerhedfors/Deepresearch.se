@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h40;
+  --css-version: h41;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -919,22 +919,27 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    anchors the row's right edge on its own — unless the ghost is showing,
    in which case the ghost carries the gap so the pair (ghost, account)
    sits together at the right edge. */
-/* The right-docked trio is (ghost, gear, account): the LEFTMOST visible of
-   them carries the auto margin so the group stays glued together at the
-   right edge whichever of them are showing. */
+/* The right-docked group is (ghost, test queue, terminal, gear, account):
+   the LEFTMOST visible of them carries the auto margin so the group stays
+   glued together at the right edge whichever of them are showing. */
 #accountbtn { margin-left: auto; }
 #gearbtn { margin-left: auto; }
 #termbtn:not([hidden]) { margin-left: auto; }
+#tryqueuebtn:not([hidden]) { margin-left: auto; }
 #ghostbtn:not([hidden]) { margin-left: auto; }
 /* Leftmost VISIBLE of the right-docked group keeps the auto margin; any that
    follow a visible earlier member reset to 0 so the group stays glued. */
+#ghostbtn:not([hidden]) ~ #tryqueuebtn,
 #ghostbtn:not([hidden]) ~ #termbtn,
 #ghostbtn:not([hidden]) ~ #gearbtn,
 #ghostbtn:not([hidden]) ~ #accountbtn,
+#tryqueuebtn:not([hidden]) ~ #termbtn,
+#tryqueuebtn:not([hidden]) ~ #gearbtn,
+#tryqueuebtn:not([hidden]) ~ #accountbtn,
 #termbtn:not([hidden]) ~ #gearbtn,
 #termbtn:not([hidden]) ~ #accountbtn,
 #gearbtn:not([hidden]) ~ #accountbtn { margin-left: 0; }
-#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn, #termbtn {
+#historybtn, #clearbtn, #accountbtn, #gearbtn, #ghostbtn, #copybtn, #termbtn, #tryqueuebtn {
   background: rgba(255, 255, 255, .3);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   backdrop-filter: blur(14px) saturate(150%);
@@ -961,6 +966,10 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 .notif-badge[hidden] { display: none; }
 #historybtn[hidden] { display: none; }
+/* Admin-only test-queue launcher (public/js/testpoints.js): shares the glass
+   header-icon style above — the shared rule's inline-flex would defeat the
+   [hidden] attribute, so pin it back, like #historybtn/#termbtn. */
+#tryqueuebtn[hidden] { display: none; }
 
 /* Incognito ghost, left of the account button. Pressed (accent) = this
    conversation is never written to chat history (local or cloud). The
