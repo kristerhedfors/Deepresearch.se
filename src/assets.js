@@ -78,6 +78,14 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/rag.js" ||
     url.pathname === "/js/chat-rag.js" ||
     url.pathname === "/js/settings.js" ||
+    // The pluggable web-search backend's shared pure core — /cure/drc.js
+    // statically imports it (the per-user browser-direct backend, 2f993c0) —
+    // same public-graph rule (found live 2026-07-15: the import shipped
+    // without this entry, so it 401'd, the whole /cure module graph failed to
+    // link, and the tier went inert for every unauthenticated visitor — no
+    // umbrella intro, dead composer. The derived module-graph test in
+    // assets.test.js now fails `npm test` on this whole class.)
+    url.pathname === "/js/websearch-backends-core.js" ||
     url.pathname === "/js/drc-research.js" ||
     url.pathname === "/js/drc-store.js" ||
     // drc-research.js statically imports the bash-lite sandbox modules (the
