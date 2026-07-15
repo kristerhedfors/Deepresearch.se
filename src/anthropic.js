@@ -307,10 +307,10 @@ export function oaiChunksFromEvent(evt, usage) {
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Conversation} messages
- * @param {{ model?: string }} opts
+ * @param {{ model?: string, maxTokens?: number }} opts maxTokens raises the answer cap for the longer report tiers (budget.js); default stays MAX_TOKENS
  */
-export async function anthropicChatCompletion(env, messages, { model } = {}) {
-  const payload = toAnthropicPayload(messages, { model, stream: true });
+export async function anthropicChatCompletion(env, messages, { model, maxTokens } = {}) {
+  const payload = toAnthropicPayload(messages, { model, maxTokens: maxTokens || MAX_TOKENS, stream: true });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STREAM_CONNECT_TIMEOUT_MS);
   let resp;

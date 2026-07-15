@@ -64,4 +64,16 @@ describe("consumeChatStream", () => {
     assert.equal(out.text, "ok");
     assert.equal(out.finishReason, "stop");
   });
+
+  test("maxChars overrides the runaway-generation safety cap (report tiers raise it)", async () => {
+    // The default STREAM_MAX_CHARS stays for callers that pass nothing; the
+    // answer stream passes a cap scaled to the report tier's max_tokens so a
+    // legitimate full report isn't cut off while a runaway still is.
+    await assert.rejects(
+      consumeChatStream(sseBody([delta("x".repeat(30)), doneChunk]), () => {}, { maxChars: 10 }),
+      /exceeded the 10-char safety cap/,
+    );
+    const out = await consumeChatStream(sseBody([delta("x".repeat(30)), doneChunk]), () => {}, { maxChars: 100 });
+    assert.equal(out.text.length, 30);
+  });
 });

@@ -876,7 +876,10 @@ async function runSynthesis(ctx) {
     `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    // reportTier scales the OUTPUT's structure/comprehensiveness with the
+    // slider (brief → standard → extended → full) — see budget.js
+    // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
+    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,
@@ -948,7 +951,9 @@ async function runSinglePassValidation(ctx, draft, digest) {
     label: "validate",
     statKey: "validate",
     recordStat: true,
-    maxTokens: 3000,
+    // Scaled with the report tier: a "revise" verdict's revised_answer must
+    // hold the COMPLETE corrected answer, so a full report needs more room.
+    maxTokens: ctx.state.plan.validateMaxTokens || 3000,
     messages: [
       { role: "system", content: validatePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
       {
@@ -1024,7 +1029,9 @@ async function runClaimValidation(ctx, draft, digest) {
   const reviseRaw = await jsonPhase(ctx, {
     label: "claim_revise",
     statKey: "validate",
-    maxTokens: 3000,
+    // Same tier scaling as the single-pass validate: the revised_answer must
+    // hold the complete corrected report.
+    maxTokens: ctx.state.plan.validateMaxTokens || 3000,
     messages: [
       { role: "system", content: revisePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
       {

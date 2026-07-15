@@ -839,6 +839,14 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #budgetval {
   min-width: 3.6rem;
   font-variant-numeric: tabular-nums;
+  /* Time stacked over the report tier the setting buys (app.js budgetTier):
+     the slider scales the answer's comprehensiveness too, so the readout
+     names the deliverable, not just the duration. */
+  display: inline-flex; flex-direction: column; align-items: center;
+  line-height: 1.15; text-align: center;
+}
+#budgettier {
+  font-size: .58rem; opacity: .72; letter-spacing: .02em; white-space: nowrap;
 }
 /* Slider with the clock as its thumb (SVG-embedded emoji, since thumbs
    can't contain text). Track is styled manually — appearance:none. */

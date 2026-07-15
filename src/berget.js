@@ -195,14 +195,14 @@ export const eurPerTokenFromUsd = (usdPerMTok) => (usdPerMTok * USD_TO_EUR) / 1e
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Conversation} messages
- * @param {{ model?: string }} [opts]
+ * @param {{ model?: string, maxTokens?: number }} [opts] maxTokens raises the answer cap for the longer report tiers (budget.js); default stays 4096
  * @returns {Promise<Response>}
  */
-export function chatCompletion(env, messages, { model } = {}) {
+export function chatCompletion(env, messages, { model, maxTokens } = {}) {
   const payload = {
     model: model || defaultModel(env),
     stream: true,
-    max_tokens: 4096,
+    max_tokens: maxTokens || 4096,
     messages,
   };
   const controller = new AbortController();
@@ -242,10 +242,10 @@ export function chatCompletion(env, messages, { model } = {}) {
 /**
  * @param {ReadableStream<Uint8Array>} body an OpenAI-style SSE response body
  * @param {(chunk: string) => void} onText called with each text delta
- * @param {{ idleMs?: number, maxMs?: number }} [guards] opt-in idle/total budgets (0 = off)
+ * @param {{ idleMs?: number, maxMs?: number, maxChars?: number }} [guards] opt-in idle/total budgets (0 = off); maxChars overrides the STREAM_MAX_CHARS safety valve (report tiers with a raised max_tokens need matching headroom)
  * @returns {Promise<StreamResult>}
  */
-export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } = {}) {
+export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0, maxChars = STREAM_MAX_CHARS } = {}) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -325,10 +325,10 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0 } 
       if (delta.content) {
         text += delta.content;
         onText(delta.content);
-        if (text.length > STREAM_MAX_CHARS) {
+        if (text.length > maxChars) {
           await reader.cancel();
           throw new Error(
-            `Model stream exceeded the ${STREAM_MAX_CHARS}-char safety cap — likely a runaway/degenerate generation on the backend; aborted before it could exhaust the Worker's CPU budget`,
+            `Model stream exceeded the ${maxChars}-char safety cap — likely a runaway/degenerate generation on the backend; aborted before it could exhaust the Worker's CPU budget`,
           );
         }
       }

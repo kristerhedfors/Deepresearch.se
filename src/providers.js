@@ -51,7 +51,7 @@ export { isAnthropicModel, isOpenAiModel };
  *   label: string,
  *   matches: (id: unknown) => boolean,
  *   models: (env: import('./types.js').Env) => import('./types.js').ModelCatalogEntry[],
- *   chatCompletion: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string }) => Promise<any>,
+ *   chatCompletion: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
  *   completeJson: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
  * }} SecondaryProvider
  */
@@ -113,7 +113,7 @@ export async function listChatModels(env) {
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Conversation} messages
- * @param {{ model?: string }} [opts]
+ * @param {{ model?: string, maxTokens?: number }} [opts] maxTokens: the report-tier answer cap (budget.js synthMaxTokens)
  */
 export function chatCompletion(env, messages, opts = {}) {
   const provider = providerFor(opts.model);

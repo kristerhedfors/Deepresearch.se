@@ -46,7 +46,7 @@ import {
   sendMessage,
   stopGeneration,
 } from "./stream.js";
-import { BUDGET_MAX_S, BUDGET_MIN_S, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
+import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { applyFeedbackMode, clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
 
@@ -195,15 +195,24 @@ window.addEventListener("pageshow", (e) => {
 
 // ---- Research time-target slider ----------------------------------------
 // Persisted as seconds; sent as time_budget_s with each request (the server
-// plans the spend — src/budget.js). Position mapping in timescale.js.
+// plans the spend — src/budget.js). Position mapping in timescale.js. The
+// readout stacks the time over the report tier it buys (budgetTier — the
+// slider also scales the answer's comprehensiveness, brief → full report).
 
 const budgetSlider = document.getElementById("budget");
 const budgetVal = document.getElementById("budgetval");
+const budgetTime = document.getElementById("budgettime");
+const budgetTierEl = document.getElementById("budgettier");
 let budgetS = 60;
 const savedBudget = parseInt(localStorage.getItem("budget_s"), 10);
 if (savedBudget >= BUDGET_MIN_S && savedBudget <= BUDGET_MAX_S) budgetS = savedBudget;
 budgetSlider.value = secondsToPos(budgetS);
-const updateBudgetVal = () => { budgetVal.textContent = fmtBudget(budgetS); };
+const updateBudgetVal = () => {
+  const tier = budgetTier(budgetS);
+  budgetTime.textContent = fmtBudget(budgetS);
+  budgetTierEl.textContent = tier.label;
+  budgetVal.title = "Research time target · " + tier.desc;
+};
 budgetSlider.addEventListener("input", () => {
   budgetS = posToSeconds(Number(budgetSlider.value));
   updateBudgetVal();
