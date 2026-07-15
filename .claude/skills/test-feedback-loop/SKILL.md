@@ -52,8 +52,22 @@ verdicts.
 
 ## One tick of the loop
 
+0. **Serve the git channel** (the worker-side plumbing — see
+   **request-testing**): `scripts/test-requests --mint` mints every pending
+   point a merged PR shipped in `docs/test-requests/<branch>.json` and stamps
+   the queue ids back (commit the stamps); `scripts/test-requests --sync`
+   stamps new verdicts into the files, re-opens a passed point that still
+   owes `runs` confirmations, and prints one `COMMENT #<pr> …` line per new
+   verdict — post each on that PR verbatim
+   (`mcp__github__add_issue_comment`; resolve a null `pr` from the file's
+   `branch` via `mcp__github__list_pull_requests` and stamp it). That comment
+   wakes the subscribed author-worker — it IS the verdict delivery. Move a
+   fully-`done` file to `docs/test-requests/archive/` and commit.
 1. **Sweep**: `scripts/testpoints --verdicts` — every decided-but-unconsumed
-   point (`passed` + `failed`; `archived` = already consumed, never reappears).
+   point (`passed` + `failed`; `archived` = already consumed, never
+   reappears). Points minted from a request file get their verdict routed by
+   step 0's sync; this sweep still mines their notes for anything the loop
+   itself should act on (routing table below).
 2. **Mine every note, pass or fail.** The status is the tester's overall call;
    the NOTE is where the real signal lives. Evidence: point #3 (2026-07-15)
    was 👍 "works" but its note carried a verbatim instruction-following
@@ -84,6 +98,11 @@ verdicts.
 
 ## Minting sources (step 5) — where new test cases come from
 
+- **Worker test-request files** — the first-class channel: a worker ships
+  `docs/test-requests/<branch>.json` inside its PR (the **request-testing**
+  skill), and step 0 mints it at merge. Prefer nudging workers onto this
+  channel over minting on their behalf: their file states the pass criteria
+  and `runs`, and their PR gets the verdicts.
 - **`docs/MAINTENANCE-OWNERS.md` "owes" items** — every "owes on-device
   confirmation" clause is a test point waiting to be declared (e.g. #52's
   attached-file-readable-from-the-VM and overlay-persistence confirmations).
