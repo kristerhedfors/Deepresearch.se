@@ -110,6 +110,42 @@ boot, `balloonReset` on new chat) and `stream.js` (`balloonTaskDone` on the
 `done` SSE event). Candidates B–D stay recorded in `proposals.html` for the
 record; the "THE PICK" section there previews the guide as shipped.
 
+### 5b. The landing animation + the waiting symbol (owner, 2026-07-15, round 2)
+
+Two more pieces, completing the grammar so Se/rver mirrors everything
+Se/cure's umbrella language does:
+
+- **The first-visit LANDING intro** (`public/js/balloon-intro.js`): the same
+  opening as Se/cure's — the logo vortex untwists from the top view — but it
+  turns into **wire balloons**, and the camera then drops a full **180°**
+  (twice the umbrella's quarter-lap): down past the side view and
+  UNDERNEATH, **twisting sideways** as it descends (the roll crests mid-drop
+  and settles into a slightly tilted horizon), clouds swishing up past the
+  view (the guide's transition vocabulary — every transition goes through
+  clouds). Color floods back on the way down: **five balloons, the SAME
+  shape in different sizes** (the owner's call — sizes vary, the shape does
+  not), baskets and rigging hang in, and the view ENDS from below — envelopes
+  overhead, burners glowing warm in the mouths. Deliberately **faster** than
+  the umbrella intro (~4.1 s real vs ~5.9 s; pinned by a unit test against
+  `umbrella.js`'s own constants). Gated in `app.js` exactly like /cure's:
+  once per browser (marked seen only after a real play), suppressed by
+  reduced-motion and `/try` deep links, `?anim=1` / `?anim=rev` force a
+  replay, the admin `anim_speed` multiplier honored.
+- **The WAITING SYMBOL** (`public/js/balloon-spinner.js`): the blue tier's
+  loading indicators (the typing indicator and the research step spinners —
+  `turns.js` / `activity.js`) now play the balloon intro in miniature with
+  the umbrella spinner's exact contract and boomerang discipline: the loop
+  turns back JUST before the color revival, so the **colored balloon is the
+  beat reserved for "done"** — completion speed-runs into the fully colored
+  blue-and-gold balloon and folds it into a **BLUE ✓** (`--check-blue`,
+  `app.css`), where Se/cure's umbrella folds into the pink one. The umbrella
+  spinner remains Se/cure's own (`cure/drc.js` still mounts it).
+
+Both reuse one renderer (`drawBalloonFigure`, exported by the intro) and the
+umbrella spinner's pure boomerang/tumble clocks, so the tiers' symbols stay
+siblings by construction.
+
 Residual (F-16 stays 🟡 PARTIAL): live verification on real devices (iOS PWA
-especially), and any grown-up guide duties (a tap-to-explain bubble like the
-ghost's, per the ux-conventions registry) if the owner wants them.
+especially — intro, spinner finale, and guide alike), and any grown-up guide
+duties (a tap-to-explain bubble like the ghost's, per the ux-conventions
+registry) if the owner wants them.

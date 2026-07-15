@@ -514,7 +514,27 @@ counterpart, a little gold-and-blue balloon hovering among clouds above the
 composer; burner flare + climb + pennant per completed task via `stream.js`'s
 `done` event, cloud swishes on ALL its transitions (boot, new-chat reset),
 pure core Node-tested, DOM layer fail-soft/`pointer-events:none`/reduced-
-motion-static — see `docs/SYMBOL-LANGUAGE.md`), `opfs.js`
+motion-static — see `docs/SYMBOL-LANGUAGE.md`), `balloon-intro.js` (the
+Se/rver first-visit LANDING intro — the blue tier's counterpart of /cure's
+umbrella intro, deliberately FASTER (~4.1 s vs ~5.9 s, test-pinned): the logo
+vortex untwists into WIRE balloons seen from above, the camera drops a full
+**180°** (twice the umbrella's quarter-lap) rolling sideways as it descends —
+clouds swishing up past the view, the guide's own vocabulary — and ends
+looking UP from underneath at FIVE same-shape/different-size balloons, color
+flooded back, baskets rigged, burners glowing in the mouths; pure timeline +
+geometry core Node-tested, same watchdog/tap-to-skip/easter-egg/`anim_speed`
+contract as `umbrella.js`, gated in `app.js` on first visit + reduced-motion
+with `?anim=1`/`?anim=rev` as the forced replay; exports the shared
+single-balloon renderer `drawBalloonFigure`), `balloon-spinner.js` (the blue
+tier's WAITING SYMBOL — `mountBalloonSpinner`, the exact
+`mountUmbrellaSpinner` contract, now wired in `turns.js`/`activity.js` where
+the umbrella spinner used to be (the umbrella spinner remains Se/cure's, in
+`cure/drc.js`): each loading slot boomerangs the balloon intro in miniature,
+turning back JUST before the color revival; completion speed-runs INTO the
+fully colored blue-and-gold balloon and folds it into a **BLUE ✓**
+(`--check-blue`, app.css — Se/rver's counterpart of Se/cure's pink ✓);
+reuses balloon-intro's timeline/renderer AND umbrella-spinner's pure
+boomerang/tumble clocks, pure plan helpers Node-tested), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental
@@ -799,7 +819,15 @@ copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
 core extracted out of `stream.js`'s send path), `balloon.js`'s pure core
 (the Se/rver balloon guide: envelope profile, hover/climb/pennant/flare
-params, the deterministic swish-cloud crossing guarantees), `imagedeck.js`'s pure
+params, the deterministic swish-cloud crossing guarantees), `balloon-intro.js`'s
+pure core (the Se/rver landing intro: timeline mark ordering, the 180° camera
+drop's monotone descent, the sideways roll's crest-and-settle, the
+same-shape/five-sizes fleet contract, projection/gore-depth math, the
+faster-than-the-umbrella-intro directive pinned against `umbrella.js`'s own
+constants), `balloon-spinner.js`'s pure side (the blue waiting symbol: the
+loop apex that never reaches the color, the finale plan's speed-run buckets
+into the blue apex, style cycling — plus the sibling contract of reusing
+`umbrella-spinner.js`'s boomerang clock), `imagedeck.js`'s pure
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,

@@ -198,9 +198,18 @@ hovering among clouds in the app's corner, following you around as the
 tier's guide the way the ghost does on the secure side. Per completed task
 the burner flares, it climbs a notch and hangs a pennant; clouds swish past
 it in ALL of its transitions (`public/js/balloon.js` — pure Node-tested core
-+ fail-soft DOM layer; wired in `app.js`/`stream.js`). Design record:
-`docs/SYMBOL-LANGUAGE.md`. RESIDUAL: live verification on real devices, and
-any grown-up guide duties (a tap-to-explain bubble like the ghost's).
++ fail-soft DOM layer; wired in `app.js`/`stream.js`). Round 2 (same day)
+completed the grammar: the first-visit LANDING intro
+(`public/js/balloon-intro.js` — the vortex untwists into WIRE balloons, the
+camera drops a full 180° twisting sideways, clouds swish past, and it ends
+from below under five same-shape/different-size colored balloons; faster
+than the umbrella intro, test-pinned) and the WAITING SYMBOL
+(`public/js/balloon-spinner.js` — the blue tier's typing/step spinners
+boomerang the balloon intro in miniature and fold, on completion, into a
+BLUE ✓ via the colored balloon, where Se/cure's umbrella folds to pink;
+`--check-blue` in app.css). Design record: `docs/SYMBOL-LANGUAGE.md`.
+RESIDUAL: live verification on real devices, and any grown-up guide duties
+(a tap-to-explain bubble like the ghost's).
 
 ---
 
@@ -240,3 +249,15 @@ any grown-up guide duties (a tap-to-explain bubble like the ghost's).
   transitions, reduced-motion static, hidden-tab pause. Recorded the decision
   in `docs/SYMBOL-LANGUAGE.md` §5 and marked the pick on the proposals page.
   Status → PARTIAL (residual: live device verification, tap-to-explain).
+- **2026-07-15** — F-16 round 2: the Se/rver landing animation + waiting
+  symbol. Shipped `public/js/balloon-intro.js` (the blue tier's first-visit
+  intro: vortex → wire balloons → a 180° camera drop with a sideways roll and
+  swishing clouds → five same-shape/different-size balloons seen from below,
+  burners glowing; ~4.1 s, faster than the umbrella intro by test-pinned
+  directive; gated in app.js like /cure's with ?anim=1 replay) and
+  `public/js/balloon-spinner.js` (the mountUmbrellaSpinner contract, wired
+  into turns.js/activity.js: the boomerang loop never reaches the color —
+  completion speed-runs into the colored balloon and folds into a BLUE ✓,
+  app.css --check-blue). One shared renderer (drawBalloonFigure) keeps the
+  intro, spinner, and guide the same figure; the umbrella spinner stays
+  Se/cure's. CSS handshake bumped h36→h37 for the .check color change.

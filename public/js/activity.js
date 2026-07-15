@@ -20,7 +20,7 @@ import {
   shellRunOutputText,
   zoomToFov,
 } from "./activity-core.js";
-import { mountUmbrellaSpinner } from "./umbrella-spinner.js";
+import { mountBalloonSpinner } from "./balloon-spinner.js";
 
 // Re-exported so importers of activity.js (stream.js, the unit tests) keep
 // their existing import paths; the implementations live in activity-core.js.
@@ -539,10 +539,10 @@ export function renderStreetViewFrames(turn, s) {
 // blocked until `toggleGateClass` appears on the element (generic steps
 // unlock via "expandable", search steps via "finished") — before that there
 // is nothing inside to show.
-// Rotates the umbrella STYLE across the research step spinners so two waiting
-// symbols side by side wear two different canopies (color + shape), just like
-// the intro's varied fleet. A module-level counter — plain per-step increment
-// is all the "adjacent ones differ" guarantee needs.
+// Rotates the balloon STYLE across the research step spinners so two waiting
+// symbols side by side wear two different color schemes (same shape — the
+// owner's call), just like the intro's fleet. A module-level counter — plain
+// per-step increment is all the "adjacent ones differ" guarantee needs.
 let stepSpinnerSeq = 0;
 
 function makeStepDom(labelText, toggleGateClass) {
@@ -560,7 +560,7 @@ function makeStepDom(labelText, toggleGateClass) {
   // the `.spin` element. Odd offset so consecutive styles are visibly apart.
   // The handle is kept so markFinished can play the completion finale (the
   // speed-run into the pink umbrella, then the fold into the ✓).
-  const spinner = mountUmbrellaSpinner(spin, { style: (stepSpinnerSeq++ * 3) % 6, size: 34 });
+  const spinner = mountBalloonSpinner(spin, { style: stepSpinnerSeq++, size: 34 });
   details.addEventListener("click", (e) => {
     if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });
@@ -601,11 +601,12 @@ export function updateGenericStep(turn, id, label) {
 // for a checkmark. Doesn't touch "expandable"; callers add that based on
 // whether they have anything to show inside.
 //
-// The swap is now the umbrella spinner's COMPLETION FINALE: instead of the
+// The swap is now the balloon spinner's COMPLETION FINALE: instead of the
 // spinner vanishing and a ✓ popping in, the spinner speed-runs from wherever
-// its boomerang is into the fully-bloomed PINK umbrella (the beat the loop
-// deliberately never reaches) and folds that into the ✓. Only then do we drop
-// the canvas and prepend the real .check (a beat-perfect handoff — same rose).
+// its boomerang is into the fully-colored BLUE-AND-GOLD balloon (the beat the
+// loop deliberately never reaches) and folds that into the blue ✓. Only then do
+// we drop the canvas and prepend the real .check (a beat-perfect handoff — same
+// accent blue, app.css --check-blue).
 // Fail-soft: a no-op mount (reduced-motion/no-canvas) fires the callback at
 // once, so the ✓ still appears immediately.
 function markFinished(step) {
@@ -758,7 +759,7 @@ export function renderStats(turn, s) {
 export function settlePendingSteps(turn) {
   const settle = (step) => {
     if (!step || step.details.classList.contains("finished")) return;
-    step.spinner?.stop?.(); // neutral settle: no pink-umbrella finale here
+    step.spinner?.stop?.(); // neutral settle: no colored-balloon finale here
     step.summary.querySelector(".spin")?.remove();
     step.details.classList.add("finished");
     if (!step.summary.querySelector(".check, .settled")) {

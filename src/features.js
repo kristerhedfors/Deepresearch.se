@@ -186,7 +186,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "open",
     summary:
-      "DECIDED (owner, 2026-07-15) and shipped client-side: the BALLOON GUIDE — the balloon itself is the symbol, a little gold-and-blue balloon (the umbrellas' geometric sibling: 'the server does the lifting') hovering among clouds in the app's corner, the ghost's Se/rver counterpart. Burner flare + climb + pennant per completed task; clouds swish past it in ALL transitions (public/js/balloon.js, wired in app.js/stream.js). Record: docs/SYMBOL-LANGUAGE.md. RESIDUAL: live device verification; tap-to-explain bubble.",
+      "DECIDED (owner, 2026-07-15) and shipped client-side: the BALLOON — the tier's symbol, the ghost's Se/rver counterpart. Three pieces: the GUIDE (public/js/balloon.js — hovers among clouds above the composer, burner flare + climb + pennant per completed task, cloud swishes in ALL transitions), the first-visit LANDING intro (public/js/balloon-intro.js — vortex → wire balloons → a 180° camera drop with a sideways roll and swishing clouds → five same-shape/different-size colored balloons from below; faster than the umbrella intro, test-pinned), and the WAITING SYMBOL (public/js/balloon-spinner.js — the typing/step spinners boomerang the intro in miniature and fold, on completion, into a BLUE check via the colored balloon, where Se/cure's umbrella folds to pink). Record: docs/SYMBOL-LANGUAGE.md. RESIDUAL: live device verification; tap-to-explain bubble.",
   },
 ];
 
