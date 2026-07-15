@@ -1,0 +1,39 @@
+{
+  "branch": "claude/secure-site-symbol-language-kag3gi",
+  "pr": null,
+  "requested_at": "2026-07-15",
+  "points": [
+    {
+      "label": "Balloon landing intro (forced replay)",
+      "summary": "NEW: the Se/rver first-visit intro (F-16). ?anim=1 forces a replay through every gate. PASS: the logo vortex (gold/blue pinwheels) untwists into WIRE balloons seen from above, the camera then drops a FULL 180° — past the side view and underneath, twisting sideways on the way down — clouds swish upward past the view, color floods back into FIVE balloons (same shape, different sizes), baskets and ropes hang in, and it ENDS looking up from below with warm burner glows in the mouths; whole thing ~4 s and noticeably brisker than /cure's umbrella intro; a tap anywhere skips instantly and the app underneath works. FAIL: asterisk-looking balloons (unfilled gores), a stuck full-screen canvas, or the intro replaying on a plain visit without ?anim=1. Please confirm twice: once in a normal tab, once in the iOS PWA.",
+      "target": "/rver?anim=1",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Blue ✓ waiting symbols on research steps",
+      "summary": "CHANGED: the blue tier's loading indicators are now BALLOONS (the umbrella spinner stays on /cure only). Send the prefilled question with web search ON. PASS: while researching, each step's spinner is a small WIRE balloon boomeranging (it must NEVER show a colored balloon while still running); when a step completes it speed-runs into a colored gold-and-blue balloon, holds a beat, then folds into a BLUE check mark — and the big typing indicator plays the same finale before the answer reveals. FAIL: any PINK check mark anywhere on /rver, a spinner that vanishes with a popped-in check (no finale), or a spinner still boomeranging after the answer landed. If anything is off, please attach the research-debug JSON in the note.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "compose", "text": "What are the main approaches to making privacy properties of AI assistants independently verifiable?" }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Guide balloon: flare + pennant per task, swish on new chat",
+      "summary": "The corner guide balloon (bottom-right, above the composer, hovering among small clouds). Send the prefilled question and let it finish. PASS: the moment the reply completes, the guide's burner FLARES gold, it climbs a notch, a small pennant unfurls under the basket, and clouds streak DOWNWARD past it; a second completed task adds a second pennant and another notch. Then press the new-chat button: the pennants clear and clouds swish PAST it sideways. It must never intercept taps (everything under it stays clickable). FAIL: no flare/pennant on completion, the balloon drifting over UI it blocks, or it vanishing entirely. Please confirm twice: once in a normal tab, once in the iOS PWA.",
+      "target": "/rver",
+      "actions": [
+        { "type": "compose", "text": "Give me a short overview of how end-to-end encryption is typically audited." }
+      ],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
