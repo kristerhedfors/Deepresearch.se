@@ -568,7 +568,7 @@ function closeDrawer() {
 
 // On a genuine first visit (after the umbrella intro), the ghost mascot
 // explains that you're on the client-side Se/cure tier and points at the
-// account button — the door to Se/rver. Shown once (dr_secure_intro_seen);
+// account button — the menu holding the door to Se/rver. Shown once (dr_secure_intro_seen);
 // dismisses on its close button or any outside tap (UX-1).
 function showGhostSay() {
   let seen = false;
@@ -591,6 +591,22 @@ function hideGhostSay() {
   if ($("ghostsay").hidden) return;
   $("ghostsay").hidden = true;
   $("accountbtn").classList.remove("nudge");
+}
+
+// ---- the account view (right drawer, the person icon) -----------------------------
+
+// Se/cure has no accounts, so the account button opens a MENU rather than the
+// old straight-to-/login redirect: the documentation links every visitor can
+// read (all public pages) and, where account specifics would sit, the sign-in
+// link to the hosted tier. Static markup in index.html — nothing to render.
+function openAccount() {
+  closeDrawer();
+  hideGhostSay(); // the greeter points AT this button — opening the menu completes its job
+  $("accountview").hidden = false;
+}
+
+function closeAccount() {
+  $("accountview").hidden = true;
 }
 
 // ---- the settings view (right drawer, the gear): keys + sandbox -------------------
@@ -2148,7 +2164,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d28 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d29 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -2193,10 +2209,14 @@ $("drawerclose").addEventListener("click", closeDrawer);
 $("drawer").addEventListener("click", (e) => {
   if (e.target === $("drawer")) closeDrawer();
 });
-// The account button IS the door to Se/rver (the signed-in tier): tapping it
-// leaves the client-side site for the hosted sign-in.
-$("accountbtn").addEventListener("click", () => {
-  location.href = "/login";
+// The account button opens the account MENU (like the signed-in app's account
+// panel) rather than redirecting to sign-in (2026-07-15 directive): the public
+// documentation pages plus — instead of account specifics — the door to
+// Se/rver, since Se/cure itself has no accounts.
+$("accountbtn").addEventListener("click", openAccount);
+$("accountclose").addEventListener("click", closeAccount);
+$("accountview").addEventListener("click", (e) => {
+  if (e.target === $("accountview")) closeAccount();
 });
 // The greeter's close button + dismiss-on-outside-tap (UX-1).
 $("ghostsayclose").addEventListener("click", hideGhostSay);
