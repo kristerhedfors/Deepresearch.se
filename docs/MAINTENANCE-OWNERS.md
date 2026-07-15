@@ -81,5 +81,13 @@ feature maintenance*, and the **feature-maintenance** skill):
 > the VM, (2) overlay persistence of `/workspace`/project dir + the cross-dir
 > symlink across a reload. Same sweep: chat_logs #346 hit one #34-style 30 s
 > exec timeout on a trivial pipe (no filesystem involved), immediate retry
-> (#347) succeeded — a transient in #43's boot/reliability scope, failed soft
-> as designed; watch for recurrence, not routed as a fresh regression.
+> (#347) succeeded — initially held back as a possible transient.
+>
+> **2026-07-15 (second tick) — RECURRENCE established → routed to #43
+> (comment 4977916312).** chat_logs #344 (07-14 21:21) is the SAME symptom a
+> day earlier: `ls /` fine (#343), then the first *piped* command
+> (`echo -n … | sha256sum`) exit 124 at 30 s, identical retry succeeds
+> (#347). Two occurrences across two sessions on the same iPhone; yesterday's
+> run did not warm whatever is cold (cache not persisting across sessions?).
+> Not the #52 file-read wedge — no filesystem path involved. Fail-soft held
+> both times. Signature: first-pipe/uncached-binary exec timeout on iOS.
