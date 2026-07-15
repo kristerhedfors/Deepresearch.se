@@ -69,8 +69,10 @@ const MAX_QUERY_CHARS = 2000;
 const MAX_TOP_K = 12;
 const METADATA_TEXT_CHARS = 1800; // Vectorize caps metadata at 10 KiB/vector
 
+// Exported: src/storage.js validates its conversation/file ids with the same
+// rule (both guard R2 key-path segments), so the two share ONE implementation.
 /** @param {unknown} s */
-const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
+export const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
 /** @param {number | string} uid @param {string} docId */
 const ragKey = (uid, docId) => `rag/${uid}/${docId}`;
 /** @param {number | string} uid @param {string} docId @param {number} seq */
