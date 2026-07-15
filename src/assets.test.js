@@ -2,6 +2,9 @@
 // caching policy, and the cross-origin-isolation (COEP) request shaping.
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, posix } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { isPublicAsset, buildAssetRequest, serveAsset } from "./assets.js";
 
@@ -37,10 +40,60 @@ describe("isPublicAsset", () => {
       "/js/sandbox.js", "/js/sandbox-files.js", "/js/agent-backdrop.js",
       "/js/agent-backdrop-core.js", "/js/boot-messages.js", "/js/introspect-core.js",
       "/js/introspect-ui.js", "/introspect/source-snapshot.json", "/js/markdown.js",
-      "/js/canned-faq.js", "/js/umbrella-spinner.js",
+      "/js/canned-faq.js", "/js/umbrella-spinner.js", "/js/websearch-backends-core.js",
     ]) {
       assert.equal(isPublicAsset(u(p), "GET"), true, p);
     }
+  });
+
+  // The recurring breakage class this repo has now hit FOUR times (drc-rag
+  // 2026-07-10, sandbox 2026-07-11, boot-messages 2026-07-13,
+  // websearch-backends-core 2026-07-15): a commit adds an import to the /cure
+  // module graph but not to the allowlist, the module 401s for unauthenticated
+  // visitors, the whole ES-module graph fails to link, and the public tier
+  // goes inert (no umbrella intro, dead composer) while the static HTML still
+  // paints. The hand-maintained list above can't catch that by construction —
+  // this test derives the graph from the REAL source files on disk (static
+  // AND dynamic imports, starting from /cure/index.html's scripts) so any
+  // future import added without its allowlist entry fails `npm test` by name.
+  test("every module reachable from the /cure page is public (derived from the real import graph)", () => {
+    const pub = fileURLToPath(new URL("../public", import.meta.url));
+    const html = readFileSync(join(pub, "cure/index.html"), "utf8");
+    const queue = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(queue.length >= 1, "found no <script src> entries in /cure/index.html");
+    const seen = new Set();
+    while (queue.length) {
+      const p = queue.shift();
+      if (seen.has(p) || p.startsWith("http")) continue;
+      seen.add(p);
+      assert.equal(
+        isPublicAsset(u(p), "GET"),
+        true,
+        `${p} is imported by the /cure module graph but NOT on the public allowlist — ` +
+          "an unauthenticated visitor gets a 401, the graph fails to link, and /cure goes inert. " +
+          "Add it to isPublicAsset (src/assets.js).",
+      );
+      let src;
+      try {
+        src = readFileSync(join(pub, p), "utf8");
+      } catch {
+        assert.fail(`${p} is referenced from the /cure graph but missing on disk`);
+      }
+      const specs = [];
+      // Static imports (single- or multi-line): `import … from "spec"` and
+      // bare `import "spec"`. Anchored to line start so comment PROSE about
+      // imports never matches.
+      for (const m of src.matchAll(/^\s*import\s+(?:[^"']*?from\s+)?["']([^"']+)["']/gm)) specs.push(m[1]);
+      // Dynamic imports — the intro (umbrella.js) and ghostwalk load this way,
+      // and a 401 there is the same silent breakage.
+      for (const m of src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) specs.push(m[1]);
+      for (const spec of specs) {
+        if (spec.startsWith("http") || !spec.endsWith(".js")) continue;
+        queue.push(spec.startsWith("/") ? spec : posix.normalize(posix.join(posix.dirname(p), spec)));
+      }
+    }
+    // Sanity that the walker actually walked the graph, not just the entry.
+    assert.ok(seen.size >= 25, `suspiciously small /cure module graph (${seen.size} modules) — walker broken?`);
   });
 
   test("vault.js (DRS store/load) is NOT public — only the pure core is", () => {
