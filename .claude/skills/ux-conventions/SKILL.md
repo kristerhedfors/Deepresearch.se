@@ -199,3 +199,57 @@ its full disclosure. A pink ✓ on an online step would be a small lie.
 (`finale: "info"`), `public/js/umbrella-spinner.js` (`check: "blue"`),
 `public/cure/drc.css` (`.notice` / `.leak-note`). Grammar record:
 `docs/SYMBOL-LANGUAGE.md` §6.
+
+---
+
+## UX-3 — Mascot figures are first-visit-only pointers, never persistent; ambient animation stays low
+
+**Rule.** When a tier has a mascot/figure (the ghost on Se/cure, the balloon
+on Se/rver), it appears **once per browser** — for first-time visitors, chained
+onto the first-visit intro animation's real play — delivers a few **pointers
+on how the tier works** (a short speech-bubble script), then retires
+(walks/climbs away) and **unmounts completely**. It is never mounted on a
+routine boot; returning visitors get a clean page with no figure following
+them around. Any tap dismisses it early (UX-1 — the bubbles hold no
+interactive content). Separately, **ambient always-running animation is kept
+at a LOW level**: background drifts slow enough to barely register, marker
+events (the ghost-button glow/shimmer) rare (minutes apart, seconds long),
+breathing loops slow. Functional motion — loading spinners, per-task finales —
+is exempt: it communicates state.
+
+**Why.** Owner directive (2026-07-15, F-16 round 4): "none of the sites should
+have a persistent small figure following them around — we'd only need them for
+first-time visitors to get some pointers on how things work following the
+initial animation. Lower UX animation level." A figure that's always there
+stops meaning anything and competes with the work; as a one-shot greeter it is
+the tier's handshake.
+
+**The mechanics that make it consistent:**
+
+1. **Gate on the intro's real play**, not on a routine boot: /cure chains
+   `startGhostStroll` + `showGhostSay` onto `maybePlayUmbrella`'s resolved
+   `played`; /rver chains `showBalloonGreeter` (dynamic import) inside the
+   landing intro's `onDone`. The intro itself is once-per-browser (seen-key
+   set only after a real run), so the figure inherits that gate; `?anim=1`
+   replays both.
+2. **A bounded script, then self-retirement**: the ghost strolls its planned
+   legs and `retire()`s; the balloon speaks `GREETER_LINES` (LINE_MS each)
+   then `depart()`s (`departProgress`, DEPART_MS) and `unmount()`s —
+   timers, listeners, and DOM all cleaned up.
+3. **Dismiss on any interaction** (UX-1): the balloon binds one
+   `pointerdown` capture listener on `document`; the figure layers are
+   `pointer-events:none` so the same tap still reaches the app.
+4. **Reduced motion**: the automatic first-visit play is suppressed with the
+   intro; the forced `?anim=1` path shows a static figure and skips the
+   animated departure.
+
+**Canonical implementations:** `public/js/balloon.js`
+(`showBalloonGreeter` / `speak` / `depart` / `unmount`; pure
+`GREETER_LINES` / `departProgress` Node-tested in `balloon.test.js`),
+`public/js/app.js` (the landing-intro `onDone` chain),
+`public/cure/ghostwalk.js` (`startGhostWalk` / `retire`) + `public/cure/drc.js`
+(`startGhostStroll` gated on `played`, `showGhostSay` with
+`dr_secure_intro_seen`). Ambient levels: `public/css/app.css` (`bg-drift 52s`,
+`ghost-glow`/`ghost-shimmer` 180s cycles), `public/cure/drc.css`
+(`ghost-contour 7.2s`), `public/welcome/index.html` (the landing's matching
+ghost cycle). Record: `docs/SYMBOL-LANGUAGE.md` §5, FEATURES.md F-16 round 4.

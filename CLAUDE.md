@@ -516,11 +516,17 @@ the cache — closing the 2026-07-13 boot-race where a send before `/api/setting
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested), `balloon.js` (the Se/rver BALLOON GUIDE —
+all route through; Node-tested), `balloon.js` (the Se/rver BALLOON GREETER —
 the blue tier's symbol character, F-16, owner's pick 2026-07-15: the ghost's
-counterpart, a little gold-and-blue balloon hovering among clouds above the
-composer; burner flare + climb + pennant per completed task via `stream.js`'s
-`done` event, cloud swishes on ALL its transitions (boot, new-chat reset),
+counterpart, a little gold-and-blue balloon among clouds above the composer.
+FIRST-VISIT ONLY since the round-4 directive (2026-07-15: NO persistent
+figure follows the user around, on either tier): `showBalloonGreeter` is
+chained onto the landing intro's `onDone` in `app.js` — never a routine
+boot — swishes in, speaks a couple of pointer lines (`GREETER_LINES`: what
+the tier does + the ghost button as the door to Se/cure; any tap dismisses,
+UX-1), then climbs away (`departProgress`) and unmounts; burner flare +
+climb + pennant per completed task via `stream.js`'s `done` event only
+while on screen (a no-op afterwards), cloud swishes on ALL its transitions,
 pure core Node-tested, DOM layer fail-soft/`pointer-events:none`/reduced-
 motion-static — see `docs/SYMBOL-LANGUAGE.md`), `balloon-intro.js` (the
 Se/rver first-visit LANDING intro — the blue tier's counterpart of /cure's
@@ -653,9 +659,11 @@ provider dropdown auto-follows the pasted key's prefix
 (`detectDrcProvider`: sk-… OpenAI, gsk_… Groq, sk_ber_… Berget) plus
 the sandbox knob; the ghost is the secure-tier marker in both tiers,
 each its own way (2026-07-12): on the BLUE tier a glow + shimmer
-sweep once a MINUTE (event in the first ~6% of a 60 s CSS cycle —
-app.css and the landing alike), on DRC the ghost character's contours
-glow and breathe while it floats (`ghost-contour` in drc.css).
+sweep once every THREE minutes (the same ~4 s event in the first ~2%
+of a 180 s CSS cycle since the 2026-07-15 "lower the UX animation
+level" directive — app.css and the landing alike), on DRC the ghost
+character's contours glow and breathe while it floats (`ghost-contour`
+in drc.css, a 7.2 s breath since the same directive).
 CHAT-FIRST (a visitor can type
 immediately; the first send without a key gets a helpful
 open-the-settings pointer, never an error wall), with a first-visit glass pane (`#intro`, doubling as the
@@ -843,8 +851,9 @@ and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
 core extracted out of `stream.js`'s send path), `balloon.js`'s pure core
-(the Se/rver balloon guide: envelope profile, hover/climb/pennant/flare
-params, the deterministic swish-cloud crossing guarantees), `balloon-intro.js`'s
+(the Se/rver balloon greeter: envelope profile, hover/climb/pennant/flare
+params, the deterministic swish-cloud crossing guarantees, the first-visit
+pointer script + bounded-stay/departure contract), `balloon-intro.js`'s
 pure core (the Se/rver landing intro: timeline mark ordering, the 180° camera
 drop's monotone descent, the sideways roll's crest-and-settle, the
 same-shape/five-sizes fleet contract, projection/gore-depth math, the

@@ -1,5 +1,5 @@
 // @ts-check
-// The Se/rver BALLOON GUIDE — the blue tier's symbol character (FEATURES.md
+// The Se/rver BALLOON GREETER — the blue tier's symbol character (FEATURES.md
 // F-16, owner's pick 2026-07-15 from the docs/symbol-language/proposals.html
 // candidates). Where Se/cure has the ghost (anonymity, holding the pink
 // umbrellas), Se/rver has a little hot-air balloon in the logotype's
@@ -7,21 +7,31 @@
 // but POWERED and RISING. It says the true thing about this tier: the server
 // carries the load.
 //
-// The guide hovers among small clouds in the corner of the app ("they still
-// hover among the clouds") and speaks the umbrella grammar:
+// FIRST-VISIT ONLY (owner directive, 2026-07-15, round 4): no site has a
+// persistent figure following the user around. The balloon appears ONCE,
+// right after the first-visit landing intro (balloon-intro.js — app.js chains
+// it onto the intro's onDone, the exact gate /cure uses for its strolling
+// ghost), delivers a couple of POINTER lines on how the tier works in a small
+// speech bubble, then climbs away through clouds and unmounts. Returning
+// visitors get a clean page. While it is on screen it still speaks the
+// umbrella grammar:
 //   - per COMPLETED TASK (stream.js's `done` event): the burner flares gold,
 //     the balloon climbs a notch, a pennant unfurls under the basket — and
 //     clouds swish DOWNWARD past it (the relative motion of the climb).
-//   - on its other transitions — appearing at boot, resetting for a new
-//     chat — clouds swish PAST it horizontally (owner directive: it swishes
-//     by clouds in ALL of its transitions).
-//   - ambient: a gentle bob, two small clouds drifting slowly behind it.
+//   - on its other transitions — swishing in, departing — clouds cross the
+//     box (owner directive: it swishes by clouds in ALL of its transitions).
+//   - ambient (for its short stay): a gentle bob, two small drifting clouds.
 //
 // Structured like umbrella.js: a PURE core (everything above the DOM layer —
 // Node-tested in balloon.test.js) and a browser-only DOM layer (one small
 // fixed canvas, pointer-events:none, aria-hidden). Decoration ONLY: every
 // public entry point is fail-soft, `prefers-reduced-motion` gets a static
-// balloon with no clouds or flare, and nothing downstream awaits it.
+// balloon with no clouds or flare, and nothing downstream awaits it. The
+// bubble is plain text (no interactive content), so per UX-1 a click/tap
+// ANYWHERE dismisses the greeter — the pointer-events:none layers never eat
+// the click meant for the app underneath.
+
+import { wmHtml } from "./drc-page-core.js";
 
 // ---- the pure core -----------------------------------------------------------
 
@@ -39,8 +49,26 @@ export const GORES = 8; // matches the logo vortex / umbrella panel count
 export const FLARE_MS = 900; // burner flare decay
 export const SWISH_MS = 1100; // one cloud-swish transition
 export const RISE_STEP = 9; // px climbed per completed task…
-export const RISE_MAX = 27; // …capped so the guide stays in its corner
+export const RISE_MAX = 27; // …capped so the greeter stays in its corner
 export const PENNANT_MAX = 6; // the visible pennant tail stops growing here
+
+// The greeter's pointer script: what the balloon says on a first visit, in
+// order. Short and squarely on how THIS tier works — the sibling of the /cure
+// ghost's greeting (which explains Se/cure and points back here). Plain text;
+// the DOM layer renders wordmarks through wmHtml.
+export const GREETER_LINES = [
+  "Ask anything — Se/rver researches the live web for you. The slider sets how long it digs.",
+  "Want nothing to leave your browser? The ghost button, top right, is the door to Se/cure.",
+];
+export const LINE_MS = 6000; // each pointer line's time on screen
+export const DEPART_MS = 1600; // the climb-away-and-unmount transition
+
+/** Departure progress 0..1, `since` ms after the greeter starts leaving:
+ * eased, monotone, complete by DEPART_MS (the DOM layer unmounts at 1).
+ * @param {number} since */
+export function departProgress(since) {
+  return smooth(since / DEPART_MS);
+}
 
 /** @param {number} v */
 export const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -123,7 +151,9 @@ const BOX_H = 150;
 /** @type {{canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D,
  *          tasks: number, flareAt: number, swish: {t0:number, dir:"x"|"y",
  *          clouds:{lane:number,scale:number,delay:number,speed:number}[]}|null,
- *          rise: number, reduced: boolean, raf: number}|null} */
+ *          rise: number, reduced: boolean, raf: number, departAt: number,
+ *          bubble: HTMLElement|null, timers: number[],
+ *          dismiss: ((e: Event) => void)|null}|null} */
 let guide = null;
 
 /** One puffy cloud (three overlapping discs), centered at x,y.
@@ -166,7 +196,9 @@ function draw(t) {
   const R = 26; // balloon radius
   const EH = R * 2.05; // envelope height
   const bob = g.reduced ? 0 : bobY(t);
-  const top = BOX_H - 66 - EH - g.rise + bob;
+  // Departing: the whole figure eases up and out of the box through the swish.
+  const depart = g.departAt >= 0 ? departProgress(t - g.departAt) * (BOX_H + 60) : 0;
+  const top = BOX_H - 66 - EH - g.rise + bob - depart;
 
   // ambient clouds behind the balloon — it hovers AMONG them
   if (!g.reduced) {
@@ -286,21 +318,38 @@ function draw(t) {
   }
 }
 
+/** Tear the greeter down completely: canvas, bubble, timers, listeners. */
+function unmount() {
+  const g = guide;
+  if (!g) return;
+  guide = null;
+  try {
+    cancelAnimationFrame(g.raf);
+    for (const id of g.timers) clearTimeout(id);
+    if (g.dismiss) document.removeEventListener("pointerdown", g.dismiss, true);
+    g.bubble?.remove();
+    g.canvas.remove();
+  } catch {
+    // best-effort cleanup — nothing downstream depends on it
+  }
+}
+
 /** @param {number} now */
 function frame(now) {
   const g = guide;
   if (!g) return;
-  // The guide is decoration on a tiny canvas, but it must never be the thing
-  // that breaks the app: any draw error unmounts it cleanly.
+  // The greeter is decoration on a tiny canvas, but it must never be the
+  // thing that breaks the app: any draw error unmounts it cleanly.
   try {
     if (!document.hidden) draw(now);
+    if (g.departAt >= 0 && now - g.departAt >= DEPART_MS) {
+      unmount(); // climbed out of the box — the visit is over
+      return;
+    }
     if (g.reduced && !g.swish && flareLevel(now - g.flareAt) <= 0) return; // static — stop looping
     g.raf = requestAnimationFrame(frame);
   } catch {
-    try {
-      g.canvas.remove();
-    } catch {}
-    guide = null;
+    unmount();
   }
 }
 
@@ -311,11 +360,66 @@ function startSwish(dir) {
   g.swish = { t0: performance.now(), dir, clouds: swishClouds(5, (Date.now() & 0xffff) | 1) };
 }
 
+/** Start leaving: hide the bubble, climb up through a downward cloud swish,
+ * unmount when the climb completes (reduced motion unmounts right away). */
+function depart() {
+  const g = guide;
+  if (!g || g.departAt >= 0) return;
+  try {
+    g.bubble?.remove();
+    g.bubble = null;
+    if (g.reduced) {
+      unmount();
+      return;
+    }
+    g.departAt = performance.now();
+    startSwish("y"); // clouds streak downward as it climbs away
+  } catch {
+    unmount();
+  }
+}
+
+/** Show the next pointer line (or leave when the script is done).
+ * @param {number} i */
+function speak(i) {
+  const g = guide;
+  if (!g || g.departAt >= 0) return; // already leaving — never re-open the bubble
+  try {
+    if (i >= GREETER_LINES.length) {
+      depart();
+      return;
+    }
+    let el = g.bubble;
+    if (!el) {
+      el = document.createElement("div");
+      el.setAttribute("aria-hidden", "true");
+      // Inline-styled like the canvas (no stylesheet handshake); glass over
+      // the blue palette, floating to the LEFT of the balloon. Inert to input
+      // — the document-level dismiss handles UX-1 (plain text inside).
+      el.style.cssText =
+        "position:fixed;right:104px;bottom:9.4rem;max-width:236px;z-index:5;" +
+        "pointer-events:none;background:rgba(255,255,255,.92);color:#0a2e5c;" +
+        "border:1px solid rgba(13,79,160,.35);border-radius:12px;border-bottom-right-radius:3px;" +
+        "padding:.55rem .7rem;font-size:.82rem;line-height:1.4;" +
+        "box-shadow:0 6px 22px rgba(4,30,60,.18);";
+      document.body.appendChild(el);
+      g.bubble = el;
+    }
+    el.innerHTML = wmHtml(GREETER_LINES[i]); // trusted static script, escaped anyway
+    g.timers.push(window.setTimeout(() => speak(i + 1), LINE_MS));
+  } catch {
+    unmount();
+  }
+}
+
 /**
- * Mounts the balloon guide (idempotent; no-ops outside a browser). Called
- * once from app.js at boot — the guide swishes in through clouds.
+ * The one-shot first-visit greeter (idempotent; no-ops outside a browser).
+ * Called by app.js ONLY right after the balloon landing intro has actually
+ * played (first visit, or the ?anim=1 replay) — never on a routine boot, so
+ * returning visitors never see a figure. Swishes in through clouds, delivers
+ * the pointer lines, then climbs away and unmounts itself.
  */
-export function initBalloonGuide() {
+export function showBalloonGreeter() {
   if (guide || typeof document === "undefined") return;
   let canvas = null;
   try {
@@ -334,10 +438,29 @@ export function initBalloonGuide() {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     document.body.appendChild(canvas);
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; // inside try — a missing API just means no guide
-    guide = { canvas, ctx, tasks: 0, flareAt: -1e9, swish: null, rise: 0, reduced, raf: 0 };
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; // inside try — a missing API just means no greeter
+    // Any tap/click anywhere sends it on its way early (UX-1: the bubble holds
+    // no interactive content, so every outside interaction dismisses — and the
+    // pointer-events:none layers let that same tap still reach the app).
+    const dismiss = () => depart();
+    guide = {
+      canvas,
+      ctx,
+      tasks: 0,
+      flareAt: -1e9,
+      swish: null,
+      rise: 0,
+      reduced,
+      raf: 0,
+      departAt: -1,
+      bubble: null,
+      timers: [],
+      dismiss,
+    };
     startSwish("x"); // arrive through the clouds
     guide.raf = requestAnimationFrame(frame);
+    guide.timers.push(window.setTimeout(() => speak(0), 900)); // settle, then talk
+    document.addEventListener("pointerdown", dismiss, true);
     // A hidden tab stops drawing (frame checks document.hidden); on return the
     // reduced-motion static path may have parked the loop — restart it.
     document.addEventListener("visibilitychange", () => {
@@ -354,8 +477,9 @@ export function initBalloonGuide() {
   }
 }
 
-/** A task completed: flare the burner, climb a notch, hang a pennant —
- * clouds streak downward with the climb. Fail-soft no-op when unmounted. */
+/** A task completed while the greeter is still on screen: flare the burner,
+ * climb a notch, hang a pennant — clouds streak downward with the climb.
+ * Fail-soft no-op when unmounted (i.e. on every visit after the first). */
 export function balloonTaskDone() {
   const g = guide;
   if (!g) return;
@@ -366,20 +490,6 @@ export function balloonTaskDone() {
     if (g.reduced) {
       cancelAnimationFrame(g.raf);
       g.raf = requestAnimationFrame(frame); // repaint the static balloon
-    }
-  } catch {}
-}
-
-/** A fresh conversation: the tail and altitude reset, clouds swish past. */
-export function balloonReset() {
-  const g = guide;
-  if (!g) return;
-  try {
-    g.tasks = 0;
-    startSwish("x");
-    if (g.reduced) {
-      cancelAnimationFrame(g.raf);
-      g.raf = requestAnimationFrame(frame);
     }
   } catch {}
 }
