@@ -155,27 +155,60 @@ function save(f) {
   writeFileSync(f.path, JSON.stringify(f.data, null, 2) + "\n");
 }
 
+// Non-archived live points that already carry this file's branch in their
+// ref, keyed by label — the IDEMPOTENCY guard for --mint. If a concurrent
+// driver (another session, or the hourly Routine) already minted this file's
+// points before either committed the stamped minted_id back, we ADOPT the
+// existing id instead of creating a duplicate. Ref carries the branch (bare
+// or "PR #N (branch)"), so a substring match on the branch identifies this
+// file's points regardless of whether the PR number was stamped at mint time.
+async function existingByBranchLabel(branch) {
+  const res = await api("GET", "?limit=200");
+  const map = new Map();
+  for (const t of res.testpoints || []) {
+    if (t.status === "archived") continue;
+    if (typeof t.ref === "string" && t.ref.includes(branch)) map.set(t.label, t);
+  }
+  return map;
+}
+
 // --mint: create a live queue point for every unminted point, stamp the id
 // back. Ref carries branch + PR so a verdict is routable at a glance even
-// outside this plumbing.
+// outside this plumbing. Idempotent: a point already on the queue for this
+// branch+label is adopted, not re-created (concurrent-driver safe).
 async function mint(files) {
   let minted = 0;
+  let adopted = 0;
   for (const f of files) {
     if (f.error) continue;
     let changed = false;
+    const existing = (f.data.points || []).some((p) => !p.minted_id && !p.done)
+      ? await existingByBranchLabel(f.data.branch)
+      : new Map();
     for (const p of f.data.points || []) {
       if (p.minted_id || p.done) continue;
+      p.verdicts = p.verdicts || [];
+      const already = existing.get(p.label);
+      if (already) {
+        p.minted_id = already.id;
+        changed = true;
+        adopted++;
+        console.log(`adopted existing queue #${p.minted_id} for ${f.name} "${p.label}" (concurrent mint — no duplicate created)`);
+        continue;
+      }
       const ref = f.data.pr ? `PR #${f.data.pr} (${f.data.branch})` : f.data.branch;
       const created = await api("POST", "", { label: p.label, summary: p.summary, target: p.target, actions: p.actions, ref });
       p.minted_id = created.testpoint?.id ?? created.id;
-      p.verdicts = p.verdicts || [];
       changed = true;
       minted++;
       console.log(`minted ${f.name} "${p.label}" → queue #${p.minted_id} (/try/${p.minted_id})`);
     }
     if (changed) save(f);
   }
-  console.log(minted ? `${minted} point(s) minted — commit the stamped file(s)` : "(nothing to mint)");
+  const parts = [];
+  if (minted) parts.push(`${minted} minted`);
+  if (adopted) parts.push(`${adopted} adopted`);
+  console.log(parts.length ? `${parts.join(", ")} — commit the stamped file(s)` : "(nothing to mint)");
 }
 
 // --sync: pull each minted, unfinished point; a verdict newer than the last

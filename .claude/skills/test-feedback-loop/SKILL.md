@@ -161,6 +161,17 @@ These extend testable-interaction-points' "declaring points well":
 - State lives in the queue itself (archived = consumed), so a tick is
   stateless and any session can run it — nothing breaks if the container
   recycles.
+- **ONE driver at a time.** An owner-invoked tick AND a scheduled Routine
+  both minting is a race: two uncoordinated drivers each read `minted_id:
+  null` on the same request file (neither has committed its stamp yet) and
+  both mint → duplicate queue points (observed 2026-07-15 after PR #71 merged
+  — #14/#15 and orphan #16/#17). Pick ONE driver — either the owner runs
+  ticks by prompt, or a single Routine fires them, not both. `--mint` is now
+  idempotent (it ADOPTS an existing branch+label point instead of
+  re-creating), which closes the common window, but don't rely on it as a
+  substitute for a single driver: archive any orphan duplicates you find
+  (the pair NOT recorded in a committed request file's `minted_id`) and
+  reconcile.
 
 ## Improvements backlog (needs code — take to the features board, don't ad-hoc)
 

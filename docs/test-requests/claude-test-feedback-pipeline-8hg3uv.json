@@ -1,6 +1,6 @@
 {
   "branch": "claude/test-feedback-pipeline-8hg3uv",
-  "pr": null,
+  "pr": 71,
   "requested_at": "2026-07-15",
   "points": [
     {
@@ -14,7 +14,7 @@
         }
       ],
       "runs": 1,
-      "minted_id": 16,
+      "minted_id": 14,
       "verdicts": []
     },
     {
@@ -28,7 +28,7 @@
         }
       ],
       "runs": 2,
-      "minted_id": 17,
+      "minted_id": 15,
       "verdicts": []
     }
   ]
