@@ -1,0 +1,25 @@
+{
+  "branch": "claude/user-feedback-pipeline-issues-8xykwj",
+  "pr": null,
+  "requested_at": "2026-07-15",
+  "points": [
+    {
+      "label": "Retest #10: shared workspace/bundle link researches on the lent API",
+      "summary": "FIX for your /try/10 verdict ('Secure research space rejected the request (502)'): the borrowed session's model dropdown was defaulting to a Berget model that is DOWN for maintenance (zai-org/GLM-5.2 — the catalog lists it, the newest-first sort put it on top). Down models are now excluded from the dropdown in both tiers' DRC pickers. Repeat your original steps: account Settings → Create link (share a Se/cure workspace), open the link in a private window, enter the password, and send any question on the default model. PASS = an answer streams in on the borrowed LLM API with no error; the model dropdown's Secure-research-space group contains no dead model. FAIL = any 'rejected the request' error on the default pick. If a call still fails, the error now names the upstream reason (e.g. 'Model X is currently undergoing maintenance') instead of a bare 502 — please quote it in the note.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openAccount",
+          "view": "settings"
+        },
+        {
+          "type": "note",
+          "text": "Create the workspace link in Settings, open it in a private window, send a question on the default model. Playwright now covers this end to end (tests/e2e/proxy-space.spec.js mocked + the @live borrowed-visitor test), so this is the on-device confirmation."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

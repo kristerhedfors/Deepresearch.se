@@ -16,6 +16,7 @@ import {
   drcToolRun,
   filterAndSortModels,
   listDrcModels,
+  providerErrorDetail,
   proxyLlmProvider,
   toOpenAiTools,
 } from "./drc-providers.js";
@@ -188,6 +189,48 @@ test("filterAndSortModels curates by the predicate and orders newest-first", () 
   // Fail-soft over a non-array (a bad /models body) → empty list, never a throw.
   assert.deepEqual(filterAndSortModels(null, openai.modelFilter), []);
   assert.deepEqual(filterAndSortModels(undefined, () => true), []);
+});
+
+test("filterAndSortModels drops models the catalog marks DOWN (status.up false)", () => {
+  // The live incident (2026-07-15, test point #10): Berget kept listing
+  // zai-org/GLM-5.2 while it was dark for maintenance, the newest-first sort
+  // put it FIRST, and a borrowed workspace session defaulted to it — every
+  // call 502'd. Down models must never reach the dropdown.
+  const data = [
+    { id: "zai-org/GLM-5.2", status: { up: false }, lifecycle_state: "maintenance" },
+    { id: "zai-org/GLM-4.7-FP8", status: { up: true } },
+    { id: "mistralai/Mistral-Small-3.2-24B-Instruct-2506", status: { up: true } },
+  ];
+  assert.deepEqual(filterAndSortModels(data, bergetCatalogFilter), [
+    "zai-org/GLM-4.7-FP8",
+    "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+  ]);
+  // Fail-OPEN when the field is absent — OpenAI/Groq entries carry no status.
+  assert.deepEqual(
+    filterAndSortModels([{ id: "gpt-5.6-sol" }, { id: "gpt-5.6-terra", status: {} }], drcProvider("openai").modelFilter),
+    ["gpt-5.6-terra", "gpt-5.6-sol"],
+  );
+});
+
+test("providerErrorDetail reads both failure wire shapes (direct + proxied)", async () => {
+  const asRes = (body) => new Response(JSON.stringify(body), { status: 502 });
+  // The direct OpenAI-wire shape.
+  assert.equal(await providerErrorDetail(asRes({ error: { message: "Invalid API key" } })), "Invalid API key");
+  // The secure-research-space proxy shape: {error, detail} with the UPSTREAM
+  // OpenAI-wire error text inside detail (src/proxy.js's 502).
+  assert.equal(
+    await providerErrorDetail(
+      asRes({
+        error: "The upstream model rejected the request.",
+        detail: '{"error":{"message":"Model \'zai-org/GLM-5.2\' is currently undergoing maintenance and is not available for inference","type":"invalid_request_error","code":null}}',
+      }),
+    ),
+    "Model 'zai-org/GLM-5.2' is currently undergoing maintenance and is not available for inference",
+  );
+  // A plain string error, an unreadable body, junk detail — all degrade to "".
+  assert.equal(await providerErrorDetail(asRes({ error: "quota exhausted" })), "quota exhausted");
+  assert.equal(await providerErrorDetail(new Response("not json", { status: 502 })), "");
+  assert.equal(await providerErrorDetail(asRes({ error: { message: 42 }, detail: "junk" })), "");
 });
 
 describe("provider calls over mock HTTP", () => {
