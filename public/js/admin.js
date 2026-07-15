@@ -829,13 +829,29 @@ function renderWsGrantList(container, grants) {
       <span class="badge">${escapeHtml(g.source || "?")}</span>
       <span class="muted">${g.remaining}/${g.quota} left · expires ${escapeHtml(exp)}</span>
       <span class="spacer"></span>
+      <button data-act="q-" title="Remove 10 searches from this token">−10</button>
+      <button data-act="q+" title="Add 10 searches to this token">+10</button>
+      <button data-act="qset" title="Set this token's quota">Set…</button>
       <button data-act="revoke" class="danger">Revoke</button>
     </div>`;
     el.addEventListener("click", async (e) => {
-      if (e.target.dataset?.act !== "revoke") return;
-      if (!confirm("Revoke this grant? Its link stops working immediately.")) return;
+      const act = e.target.dataset?.act;
+      if (!act) return;
       try {
-        await api("/websearch/" + encodeURIComponent(g.jti), { method: "DELETE" });
+        // Per-token quota control (the secure-workspaces minter control): the
+        // token in circulation stays valid, only its metered allowance moves.
+        if (act === "q-" || act === "q+") {
+          await api("/websearch/" + encodeURIComponent(g.jti), { method: "PATCH", body: { delta: act === "q+" ? 10 : -10 } });
+        } else if (act === "qset") {
+          const raw = prompt("New quota for this token (0 pauses it):", String(g.quota));
+          if (raw == null || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
+          await api("/websearch/" + encodeURIComponent(g.jti), { method: "PATCH", body: { quota: Number(raw) } });
+        } else if (act === "revoke") {
+          if (!confirm("Revoke this grant? Its link stops working immediately.")) return;
+          await api("/websearch/" + encodeURIComponent(g.jti), { method: "DELETE" });
+        } else {
+          return;
+        }
         const d = await api("/websearch");
         renderWsGrantList(container, d.grants);
       } catch (err) {
@@ -914,9 +930,18 @@ async function loadWebsearchGrants() {
 // time (the list never re-exposes the sealed blob/key), so a leaked list hands
 // out nothing.
 
+// Each service row carries its own ± quota controls (per-TOKEN control — a
+// bundle's web and api allowances are administered independently, matching
+// the PATCH /api/admin/proxy/:jti endpoint).
 function bundleServices(b) {
   return b.services
-    .map((s) => (s.svc === "api" ? "🤖 API" : "🔎 Web") + ` ${s.remaining}/${s.quota}`)
+    .map(
+      (s) =>
+        `${s.svc === "api" ? "🤖 API" : "🔎 Web"} ${s.remaining}/${s.quota}` +
+        ` <button data-act="padj" data-jti="${escapeHtml(s.jti)}" data-delta="-10" title="Remove 10 units">−10</button>` +
+        `<button data-act="padj" data-jti="${escapeHtml(s.jti)}" data-delta="10" title="Add 10 units">+10</button>` +
+        `<button data-act="pset" data-jti="${escapeHtml(s.jti)}" data-quota="${s.quota}" title="Set this service's quota">Set…</button>`,
+    )
     .join(" · ");
 }
 
@@ -933,15 +958,29 @@ function renderProxyBundleList(container, bundles) {
     el.innerHTML = `<div class="head">
       <b>${escapeHtml(b.label || "(no label)")}</b>
       <span class="badge">${escapeHtml(b.source || "?")}</span>
-      <span class="muted">${escapeHtml(bundleServices(b))} · expires ${escapeHtml(exp)}</span>
+      <span class="muted">${bundleServices(b)} · expires ${escapeHtml(exp)}</span>
       <span class="spacer"></span>
       <button data-act="revoke" class="danger">Revoke</button>
     </div>`;
     el.addEventListener("click", async (e) => {
-      if (e.target.dataset?.act !== "revoke") return;
-      if (!confirm("Revoke this whole bundle? Its link stops working immediately.")) return;
+      const act = e.target.dataset?.act;
+      if (!act) return;
       try {
-        await api("/proxy/" + encodeURIComponent(b.bundleId), { method: "DELETE" });
+        if (act === "padj") {
+          await api("/proxy/" + encodeURIComponent(e.target.dataset.jti), {
+            method: "PATCH",
+            body: { delta: Number(e.target.dataset.delta) },
+          });
+        } else if (act === "pset") {
+          const raw = prompt("New quota for this service token (0 pauses it):", e.target.dataset.quota);
+          if (raw == null || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
+          await api("/proxy/" + encodeURIComponent(e.target.dataset.jti), { method: "PATCH", body: { quota: Number(raw) } });
+        } else if (act === "revoke") {
+          if (!confirm("Revoke this whole bundle? Its link stops working immediately.")) return;
+          await api("/proxy/" + encodeURIComponent(b.bundleId), { method: "DELETE" });
+        } else {
+          return;
+        }
         const d = await api("/proxy");
         renderProxyBundleList(container, d.bundles);
       } catch (err) {

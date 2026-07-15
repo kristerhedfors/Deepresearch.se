@@ -8,10 +8,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  adjustGrantQuota,
   grantStatus,
   grantWebSearch,
   handleAdminWebSearch,
   handleWebSearch,
+  handleWebSearchAdjust,
   handleWebSearchGrant,
   handleWebSearchStatus,
   mintWebSearchGrant,
@@ -62,6 +64,13 @@ function fakeDb() {
       if (sql.startsWith("INSERT")) {
         const [jti, user_id, quota, created_at, expires_at, label, source] = this._args;
         rows.set(jti, { jti, user_id, quota, used: 0, created_at, expires_at, label, source });
+        return { meta: { changes: 1 } };
+      }
+      if (sql.includes("SET quota =")) {
+        const [jti, quota] = this._args;
+        const r = rows.get(jti);
+        if (!r) return { meta: { changes: 0 } };
+        r.quota = quota;
         return { meta: { changes: 1 } };
       }
       if (sql.includes("used = used + 1")) {
@@ -242,4 +251,94 @@ test("handleAdminWebSearch: mint returns a shareable link, GET lists it, DELETE 
 test("handleWebSearchGrant: 503 without D1", async () => {
   const res = await handleWebSearchGrant(post("/api/websearch/grant", {}), { SESSION_SECRET: SECRET }, log, identity);
   assert.equal(res.status, 503);
+});
+
+// ---- per-token quota adjustment (the secure-workspaces minter control) ---------------
+
+test("adjustGrantQuota: absolute set, relative delta, clamp at 0, pause stops reserving", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const g = await mintWebSearchGrant(env, log, { quota: 10, ttlHours: 24, userId: "42", source: "link" });
+
+  const up = await adjustGrantQuota(env, log, g.jti, { quota: 30 });
+  assert.equal(up.quota, 30);
+  assert.equal(up.remaining, 30);
+
+  const down = await adjustGrantQuota(env, log, g.jti, { delta: -25 });
+  assert.equal(down.quota, 5);
+
+  // Clamp at 0 (pause): the meter's `used < quota` guard stops reserving.
+  const paused = await adjustGrantQuota(env, log, g.jti, { delta: -100 });
+  assert.equal(paused.quota, 0);
+  assert.equal(paused.remaining, 0);
+  const restore = mockFetch([{ title: "t", url: "https://a", text: "x" }]);
+  try {
+    const res = await handleWebSearch(post("/api/websearch", { token: g.token, query: "q" }), env, log);
+    assert.equal(res.status, 429);
+  } finally {
+    restore();
+  }
+
+  // A token already spent past a lowered quota reads remaining 0, never negative.
+  await adjustGrantQuota(env, log, g.jti, { quota: 10 });
+  db._rows.get(g.jti).used = 8;
+  const below = await adjustGrantQuota(env, log, g.jti, { quota: 3 });
+  assert.equal(below.remaining, 0);
+
+  assert.equal((await adjustGrantQuota(env, log, "nope", { quota: 5 })).error, "not_found");
+  assert.equal((await adjustGrantQuota(env, log, g.jti, {})).error, "bad_request");
+});
+
+test("adjustGrantQuota: an increase respects the global budget ceiling; owner scoping hides others' grants", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const mine = await mintWebSearchGrant(env, log, { quota: 30, ttlHours: 24, userId: "42", source: "ghost" });
+
+  // 30 outstanding, budget 50 → +30 would exceed; -5 (a decrease) always passes.
+  const blocked = await adjustGrantQuota(env, log, mine.jti, { delta: 30 }, { budget: 50 });
+  assert.equal(blocked.error, "budget_exceeded");
+  const ok = await adjustGrantQuota(env, log, mine.jti, { delta: -5 }, { budget: 50 });
+  assert.equal(ok.quota, 25);
+
+  // Owner scoping: someone else's ownerId reads as not_found.
+  const foreign = await adjustGrantQuota(env, log, mine.jti, { quota: 1 }, { ownerId: "other" });
+  assert.equal(foreign.error, "not_found");
+  const owner = await adjustGrantQuota(env, log, mine.jti, { quota: 12 }, { ownerId: "42" });
+  assert.equal(owner.quota, 12);
+});
+
+test("handleWebSearchAdjust (authed self-service) and admin PATCH /:jti status codes", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const g = await mintWebSearchGrant(env, log, { quota: 10, ttlHours: 24, userId: "42", source: "ghost" });
+
+  const res = await handleWebSearchAdjust(post("/api/websearch/adjust", { jti: g.jti, quota: 20 }), env, log, identity);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).quota, 20);
+
+  // Another signed-in user cannot touch it (404, not 403 — no confirmation).
+  const other = { ...identity, id: "7" };
+  const denied = await handleWebSearchAdjust(post("/api/websearch/adjust", { jti: g.jti, quota: 1 }), env, log, other);
+  assert.equal(denied.status, 404);
+  const noJti = await handleWebSearchAdjust(post("/api/websearch/adjust", {}), env, log, identity);
+  assert.equal(noJti.status, 400);
+
+  // The admin PATCH reaches any grant.
+  const patched = await handleAdminWebSearch(
+    adminReq("/" + g.jti, "PATCH", { delta: -15 }),
+    env,
+    new URL("https://x/api/admin/websearch/" + g.jti),
+    log,
+    admin,
+  );
+  assert.equal(patched.status, 200);
+  assert.equal((await patched.json()).quota, 5);
+  const missing = await handleAdminWebSearch(
+    adminReq("/does-not-exist", "PATCH", { quota: 5 }),
+    env,
+    new URL("https://x/api/admin/websearch/does-not-exist"),
+    log,
+    admin,
+  );
+  assert.equal(missing.status, 404);
 });

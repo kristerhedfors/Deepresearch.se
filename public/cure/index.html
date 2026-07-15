@@ -295,6 +295,25 @@
         <span id="proxystatus" class="muted setting-note"></span>
       </div>
 
+      <!-- Secure workspace — EVERY session has one: this browser's whole
+           configuration (keys, settings, chats, any borrowed grants) can be
+           sealed into a single offline link at /cure/workspace. Opens the
+           workspace pane (wired in drc.js). -->
+      <div class="settings-item" id="wkrow">
+        <div class="settings-row">
+          <span class="settings-label">Secure workspace
+            <button type="button" class="setting-info" data-pop="wkpop" aria-label="More about secure workspaces">ⓘ</button>
+          </span>
+          <button type="button" id="wkopenbtn" class="btnlike">Share…</button>
+        </div>
+        <div class="setting-pop" id="wkpop" hidden>Package this session — API keys, settings, chats, even a borrowed
+          web-search or research-space allowance — into <b>one link</b> that IS the workspace: everything rides
+          <b>encrypted in the link's #anchor</b>, which browsers never send to any server. Whoever you give the link
+          (and its password, shared separately) opens a fully configured Se<span class="sl">/</span>cure session,
+          completely offline. Same mechanism as <a href="https://github.com/kristerhedfors/hacka.re" target="_blank" rel="noopener">hacka.re</a>'s shared links.</div>
+        <span class="muted setting-note">Your workspace lives at <code>/cure/workspace</code> — share it as one offline link.</span>
+      </div>
+
       <div class="settings-item">
         <div class="settings-row">
           <span class="settings-label">Execution sandbox (bash) <span class="exp-badge">Experimental</span>
@@ -327,6 +346,66 @@
           The composer pane turns <b>white titanium</b> while it's on. With the sandbox also on, the whole source
           tree is mounted at <code>/src</code> in the Linux VM for real shell exploration.</div>
         <span id="devmodestatus" class="muted setting-note"></span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ---- secure workspace pane (right drawer, like settings) ----
+       Two modes, wired in drc.js:
+       · SHARE (default, and what /cure/workspace opens): seal this session
+         into an offline #w= link under a password;
+       · OPEN (when the URL carries #w=<blob>): ask for the password, decrypt
+         locally, apply the workspace to this session. -->
+  <div id="workspaceview" hidden>
+    <aside class="drawer-panel account-panel">
+      <div class="drawer-head">
+        <strong>Secure workspace</strong>
+        <button id="wkclose" type="button" aria-label="Close">›</button>
+      </div>
+
+      <div id="wkopen" hidden>
+        <p class="muted">Someone shared a <b>secure workspace</b> with you: a fully configured
+          Se<span class="sl">/</span>cure session sealed inside this link's <b>#anchor</b> — the encrypted
+          part after <code>#</code> that browsers never send to any server. Enter the password
+          you received separately to open it, entirely in this browser.</p>
+        <form id="wkopenform">
+          <label for="wkpassword">Workspace password</label>
+          <input id="wkpassword" type="password" autocomplete="off" placeholder="the password shared with you">
+          <div class="row">
+            <button type="submit" id="wkunlock">Open workspace</button>
+            <span id="wkopenstatus" class="muted"></span>
+          </div>
+        </form>
+      </div>
+
+      <div id="wkshare">
+        <p class="muted">Seal this session into <b>one offline link</b>: everything you tick below is
+          encrypted into the link's <b>#anchor</b> (never sent to any server — the link IS the workspace).
+          Share the link and the password through <b>different channels</b>.</p>
+        <label class="wk-check"><input type="checkbox" id="wk-inc-keys"> Provider API keys <span class="muted">(+ provider/model choice)</span></label>
+        <label class="wk-check"><input type="checkbox" id="wk-inc-settings" checked> Settings <span class="muted">(research knob, sandbox, introspection, search backend)</span></label>
+        <label class="wk-check"><input type="checkbox" id="wk-inc-chats"> Conversations</label>
+        <label class="wk-check" id="wk-grants-row" hidden><input type="checkbox" id="wk-inc-grants"> Borrowed allowances <span class="muted" id="wk-grants-desc"></span></label>
+        <label for="wk-name" style="display:block;margin-top:.5rem">Workspace name <span class="muted">(optional)</span></label>
+        <input id="wk-name" type="text" maxlength="80" placeholder="e.g. Team research space">
+        <label for="wk-pass" style="display:block;margin-top:.5rem">Password</label>
+        <div class="row">
+          <input id="wk-pass" type="text" autocomplete="off" placeholder="generate or type one" style="flex:1">
+          <button type="button" id="wk-genpass">Generate</button>
+        </div>
+        <div class="row" style="margin-top:.5rem">
+          <button type="button" id="wk-create">Create link</button>
+          <span id="wk-status" class="muted"></span>
+        </div>
+        <div id="wk-result" hidden>
+          <label for="wk-link" style="display:block;margin-top:.5rem">Your workspace link</label>
+          <textarea id="wk-link" readonly rows="4" style="width:100%;font-size:.75rem;word-break:break-all"></textarea>
+          <div class="row">
+            <button type="button" id="wk-copylink">Copy link</button>
+            <button type="button" id="wk-copypass">Copy password</button>
+          </div>
+          <p class="muted" id="wk-result-note"></p>
+        </div>
       </div>
     </aside>
   </div>

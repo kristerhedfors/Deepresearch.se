@@ -73,6 +73,10 @@ test("parseProjectPath: /my/ and /free/ project refs", () => {
 
 test("parsePublicationRef: /cure/<slug> path vs ?continue= legacy", () => {
   assert.deepEqual(parsePublicationRef("/cure/my-slug", ""), { slug: "my-slug", fromPath: true });
+  // "workspace" is a RESERVED word — the secure-workspaces page, never a replay.
+  assert.equal(parsePublicationRef("/cure/workspace", ""), null);
+  assert.equal(parsePublicationRef("/cure/WORKSPACE", ""), null);
+  assert.equal(parsePublicationRef("/cure/", "?continue=workspace"), null);
   assert.deepEqual(parsePublicationRef("/cure/AB-12", ""), { slug: "AB-12", fromPath: true });
   // legacy ?continue= handoff, not from the path
   assert.deepEqual(parsePublicationRef("/cure/", "?continue=legacy-slug"), {

@@ -33,9 +33,11 @@ const MAX_MESSAGES = 200;
 
 // Slugs are URL words completing the "…Se/cure/<slug>" phrase: lowercase,
 // digits, hyphens. No dots — so a slug can never collide with the viewer
-// page's own asset files under /cure/.
+// page's own asset files under /cure/. "workspace" is RESERVED: /cure/workspace
+// is the secure-workspaces page (public/js/workspace-core.js), not a replay —
+// publishing over it would shadow the feature.
 /** @param {unknown} s */
-export const pubSlugOk = (s) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s);
+export const pubSlugOk = (s) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s) && s !== "workspace";
 
 /** @param {string} slug */
 const pubKey = (slug) => `pub/${slug}`;

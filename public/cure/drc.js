@@ -58,6 +58,17 @@ import {
   proxyLlmProvider,
 } from "/js/drc-providers.js";
 import { openBundle, validateBundle } from "/js/proxy-bundle.js";
+import {
+  applyWorkspacePayload,
+  buildWorkspacePayload,
+  generateWorkspacePassword,
+  isWorkspacePath,
+  openWorkspace,
+  parseWorkspaceHash,
+  sealWorkspace,
+  validateWorkspacePayload,
+  workspaceLink,
+} from "/js/workspace-core.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
@@ -1426,6 +1437,10 @@ function renderSearchBackend() {
 const PROXY_WEB_KEY = "dr_proxy_web"; // { token, quota, remaining, expiresAt }
 const PROXY_API_KEY = "dr_proxy_api"; // { token, quota, remaining, expiresAt }
 const PROXY_ENABLED_KEY = "dr_proxy_enabled"; // "1"/"0" — the master toggle
+// The re-shareable GRANT tokens ({ web?, api? } — prg1.…, the tokens that
+// travel in URLs), kept so a secure workspace built here can pass its
+// borrowed allowances on. Working proxy tokens above never enter a link.
+const PROXY_GRANT_TOKENS_KEY = "dr_proxy_grant_tokens";
 
 const proxyGrants = { web: readJson(PROXY_WEB_KEY), api: readJson(PROXY_API_KEY) };
 
@@ -1455,6 +1470,50 @@ function persistProxyGrants() {
   }
 }
 
+// Exchange a list of { svc, token } GRANT tokens ("token-granting tokens",
+// prg1.…) for working proxy tokens — the shared connector behind BOTH arrival
+// paths: the encrypted ?rp=/#rk= bundle and a secure workspace's embedded
+// grants (workspace-core.js). The GRANT tokens are kept too (they are the
+// URL-safe, re-shareable form — exchanging is non-consuming and idempotent),
+// so this session can re-package its borrowed allowances into a workspace
+// link of its own. Fail-soft per service; true when anything connected.
+async function connectProxyGrants(grantsList) {
+  let opened = false;
+  const grantTokens = readJson(PROXY_GRANT_TOKENS_KEY) || {};
+  for (const g of grantsList || []) {
+    try {
+      const res = await fetch("/api/proxy/exchange", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: g.token }),
+      });
+      if (!res.ok) continue;
+      const v = await res.json(); // { svc, proxyToken, quota, used, remaining, expiresAt }
+      if (v.svc !== "web" && v.svc !== "api") continue;
+      proxyGrants[v.svc] = {
+        token: v.proxyToken,
+        quota: v.quota,
+        remaining: typeof v.remaining === "number" ? v.remaining : v.quota,
+        expiresAt: v.expiresAt,
+      };
+      grantTokens[v.svc] = g.token;
+      opened = true;
+    } catch {
+      /* one service failed to exchange — keep any others */
+    }
+  }
+  if (opened) {
+    persistProxyGrants();
+    try {
+      localStorage.setItem(PROXY_GRANT_TOKENS_KEY, JSON.stringify(grantTokens));
+      localStorage.setItem(PROXY_ENABLED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+  return opened;
+}
+
 // Reads an encrypted bundle from THIS page's own URL (ciphertext `?rp=`, key
 // `#rk=`), decrypts it locally, and exchanges each grant token for its working
 // proxy token. Then strips both from the URL so no token lingers in history or a
@@ -1478,35 +1537,7 @@ async function maybeOpenProxyBundle() {
   try {
     const bundle = await openBundle(blob, key);
     if (bundle && validateBundle(bundle)) {
-      for (const g of bundle.grants) {
-        try {
-          const res = await fetch("/api/proxy/exchange", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ token: g.token }),
-          });
-          if (!res.ok) continue;
-          const v = await res.json(); // { svc, proxyToken, quota, used, remaining, expiresAt }
-          if (v.svc !== "web" && v.svc !== "api") continue;
-          proxyGrants[v.svc] = {
-            token: v.proxyToken,
-            quota: v.quota,
-            remaining: typeof v.remaining === "number" ? v.remaining : v.quota,
-            expiresAt: v.expiresAt,
-          };
-          opened = true;
-        } catch {
-          /* one service failed to exchange — keep any others */
-        }
-      }
-      if (opened) {
-        persistProxyGrants();
-        try {
-          localStorage.setItem(PROXY_ENABLED_KEY, "1");
-        } catch {
-          /* ignore */
-        }
-      }
+      opened = await connectProxyGrants(bundle.grants);
     }
   } catch {
     /* bad bundle — nothing borrowed */
@@ -1572,6 +1603,197 @@ function renderProxyRow() {
   const bits = [line("🔎 Web search", proxyGrants.web), line("🤖 LLM API (Berget)", proxyGrants.api)].filter(Boolean);
   $("proxystatus").textContent =
     (on ? "Connected — " : "Off (fully client-side) — ") + bits.join(" · ");
+}
+
+// ---- SECURE WORKSPACES: the /cure/workspace surface -----------------------------------
+//
+// A workspace is this session's whole configuration — keys, settings, chats,
+// any borrowed grants — sealed into ONE OFFLINE LINK: ciphertext riding the
+// URL ANCHOR (`/cure/workspace#w=<blob>`), which browsers never send to any
+// server. The mechanism is cloned from github.com/kristerhedfors/hacka.re
+// (owner directive, 2026-07-15) — the crypto and payload logic live in the
+// pure core /js/workspace-core.js; this is only the pane wiring. Every user
+// "has" a workspace by construction: /cure/workspace with no fragment opens
+// the share composer over THIS session; a #w= fragment opens the unlock flow.
+// The embedded grant tokens stay quota-bound and live-administered: the
+// minter can raise/lower/revoke each token's allowance server-side while the
+// link itself never changes.
+
+let pendingWorkspaceBlob = null; // the #w= blob awaiting its password
+
+function openWorkspaceView(mode) {
+  $("wkopen").hidden = mode !== "open";
+  $("wkshare").hidden = mode === "open";
+  if (mode !== "open") renderWorkspaceShare();
+  $("workspaceview").hidden = false;
+  if (mode === "open") $("wkpassword").focus();
+}
+function closeWorkspaceView() {
+  $("workspaceview").hidden = true;
+}
+
+// The share composer's dynamic bits: show the borrowed-allowances checkbox
+// only when this session actually holds something re-shareable.
+function renderWorkspaceShare() {
+  const g = shareableGrants();
+  const bits = [];
+  if (g.ws) bits.push("web search");
+  for (const p of g.proxy) bits.push(p.svc === "api" ? "LLM API" : "web search (research space)");
+  $("wk-grants-row").hidden = !bits.length;
+  if (bits.length) $("wk-grants-desc").textContent = "(" + bits.join(" + ") + " — quota-bound, minter-controlled)";
+  if (!$("wk-pass").value) $("wk-pass").value = generateWorkspacePassword();
+}
+
+// What this session can pass on: the web-search grant token (wsk1.…, the same
+// token a ?ws= link carries) and the proxy GRANT tokens (prg1.…, the
+// URL-safe tier — never the working proxy tokens). Only live allowances.
+function shareableGrants() {
+  const out = { ws: null, proxy: [] };
+  if (wsGrant && wsGrant.token && wsGrantActive()) out.ws = wsGrant.token;
+  const grantTokens = readJson(PROXY_GRANT_TOKENS_KEY) || {};
+  for (const svc of ["web", "api"]) {
+    if (grantTokens[svc] && proxyLive(proxyGrants[svc])) out.proxy.push({ svc, token: grantTokens[svc] });
+  }
+  return out;
+}
+
+// Recognize a workspace arrival at boot: a #w=<blob> fragment (any /cure
+// path) opens the unlock flow; the bare /cure/workspace page opens YOUR
+// workspace — the share composer. Returns true when either pane opened, so
+// the boot sequence treats it as a deep link (no intro over it).
+function handleWorkspaceLink() {
+  const blob = parseWorkspaceHash(location.hash);
+  if (blob) {
+    pendingWorkspaceBlob = blob;
+    openWorkspaceView("open");
+    return true;
+  }
+  if (isWorkspacePath(location.pathname)) {
+    openWorkspaceView("share");
+    return true;
+  }
+  return false;
+}
+
+// The unlock submit: decrypt the blob LOCALLY (workspace-core's 8192-round
+// KDF + AES-GCM — wrong password just fails soft), apply the payload onto
+// this session, hydrate any embedded grants through the existing fail-soft
+// paths, then strip the fragment so the ciphertext doesn't linger in the
+// address bar / history beyond the open.
+async function unlockWorkspace(ev) {
+  ev.preventDefault();
+  const pw = $("wkpassword").value;
+  if (!pendingWorkspaceBlob || !pw) return;
+  const status = (m) => ($("wkopenstatus").textContent = m);
+  $("wkunlock").disabled = true;
+  status("Deriving keys…");
+  try {
+    const opened = await openWorkspace(pendingWorkspaceBlob, pw);
+    if (!opened || !validateWorkspacePayload(opened.payload)) {
+      status("Wrong password — or the link is damaged.");
+      return;
+    }
+    const { grants, note, name } = applyWorkspacePayload(state, opened.payload);
+    pendingWorkspaceBlob = null;
+
+    // Hydrate embedded grants (all optional and fail-soft — the workspace
+    // itself is already fully applied, offline).
+    if (grants.ws) {
+      try {
+        const res = await fetch("/api/websearch/status", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: grants.ws }),
+        });
+        if (res.ok) {
+          wsGrant = await res.json();
+          persistWsGrant();
+        }
+      } catch {
+        /* offline / revoked — no server web search */
+      }
+    }
+    if (grants.proxy.length) await connectProxyGrants(grants.proxy).catch(() => false);
+
+    // Reflect the applied workspace everywhere.
+    renderKeysPanel();
+    renderConvPicker();
+    renderMessages();
+    renderSearchBackend();
+    renderWsRow();
+    renderProxyRow();
+    $("websearch").checked = state.research !== false;
+    $("bashlite").checked = state.bashLite === true;
+    $("devmode").checked = state.developerMode === true;
+    applyIntrospectionTheme(state.developerMode === true);
+    if (configuredDrcProviders(state.keys).length || apiProxyUsable()) await refreshModels().catch(() => {});
+    await saveState().catch(() => {});
+
+    // Drop the ciphertext from the address bar (the pane is open; the link
+    // holder can always revisit the original link).
+    try {
+      history.replaceState(null, "", location.pathname + (location.search || ""));
+    } catch {
+      /* history API blocked — harmless */
+    }
+    closeWorkspaceView();
+    workStatus(
+      "Secure workspace opened" +
+        (name ? ": " + name : "") +
+        " — applied entirely in this browser." +
+        (note ? " Note from the sender: " + note : "") +
+        " Save it as a project (drawer → Project) to keep it on this device.",
+    );
+  } finally {
+    $("wkunlock").disabled = false;
+    if (!pendingWorkspaceBlob) $("wkpassword").value = "";
+  }
+}
+
+// The share submit: project the ticked sections of THIS session's state into
+// a payload (workspace-core buildWorkspacePayload), seal it under the
+// password, and present the /cure/workspace#w= link. All local — nothing
+// about the workspace touches the server at any point.
+async function createWorkspaceLink() {
+  const status = (m) => ($("wk-status").textContent = m);
+  const password = $("wk-pass").value.trim();
+  if (!password) {
+    status("Set (or generate) a password first.");
+    return;
+  }
+  const include = {
+    keys: $("wk-inc-keys").checked,
+    settings: $("wk-inc-settings").checked,
+    conversations: $("wk-inc-chats").checked,
+    grants: $("wk-inc-grants").checked && !$("wk-grants-row").hidden ? shareableGrants() : null,
+    name: $("wk-name").value.trim(),
+  };
+  const payload = buildWorkspacePayload(state, include);
+  const carries = Object.keys(payload).filter((k) => k !== "v" && k !== "kind" && k !== "name").length;
+  if (!carries) {
+    status("Tick at least one thing to include.");
+    return;
+  }
+  $("wk-create").disabled = true;
+  status("Sealing…");
+  try {
+    const blob = await sealWorkspace(payload, password);
+    const link = workspaceLink(location.origin, blob);
+    $("wk-link").value = link;
+    $("wk-result").hidden = false;
+    $("wk-result-note").textContent =
+      (link.length > 2000
+        ? "⚠ This link is " + link.length + " characters — long links can break in some chat apps; consider fewer conversations. "
+        : "") +
+      "Share the link and the password through DIFFERENT channels. Anyone with both gets everything the workspace carries" +
+      (include.keys ? " — including your API keys" : "") +
+      ".";
+    status("");
+  } catch {
+    status("Sealing failed — try again.");
+  } finally {
+    $("wk-create").disabled = false;
+  }
 }
 
 // ---- send: the client-side research pipeline -----------------------------------------
@@ -1785,6 +2007,9 @@ try {
 }
 
 const projectLinked = handleProjectLink();
+// A secure-workspace arrival (a #w= fragment, or the bare /cure/workspace
+// page) opens its pane immediately — and counts as a deep link below.
+const workspaceLinked = handleWorkspaceLink();
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
@@ -1794,7 +2019,7 @@ renderMessages();
 // than on the promotional pane (afterUmbrella), which stays a tap on the
 // wordmark away.
 handlePublicationLink().then((opened) => {
-  const deepLinked = projectLinked || opened;
+  const deepLinked = projectLinked || workspaceLinked || opened;
   maybePlayUmbrella(deepLinked).then((played) => {
     // The app chrome is ALWAYS painted (the intro is a canvas overlay on top of
     // it, never a gate in front of it) — so a stalled or failed animation can
@@ -1838,6 +2063,41 @@ $("gearbtn").addEventListener("click", openSettings);
 $("settingsclose").addEventListener("click", closeSettings);
 $("settingsview").addEventListener("click", (e) => {
   if (e.target === $("settingsview")) closeSettings();
+});
+// The secure-workspace pane (settings row → share composer; #w= → unlock).
+$("wkopenbtn").addEventListener("click", () => {
+  closeSettings();
+  openWorkspaceView("share");
+});
+$("wkclose").addEventListener("click", closeWorkspaceView);
+$("workspaceview").addEventListener("click", (e) => {
+  if (e.target === $("workspaceview")) closeWorkspaceView();
+});
+$("wkopenform").addEventListener("submit", (ev) => {
+  unlockWorkspace(ev).catch(() => {
+    $("wkopenstatus").textContent = "Opening failed — try again.";
+    $("wkunlock").disabled = false;
+  });
+});
+$("wk-genpass").addEventListener("click", () => {
+  $("wk-pass").value = generateWorkspacePassword();
+});
+$("wk-create").addEventListener("click", createWorkspaceLink);
+$("wk-copylink").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("wk-link").value);
+    $("wk-copylink").textContent = "Copied ✓";
+  } catch {
+    $("wk-copylink").textContent = "Select and copy manually";
+  }
+});
+$("wk-copypass").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("wk-pass").value);
+    $("wk-copypass").textContent = "Copied ✓";
+  } catch {
+    $("wk-copypass").textContent = "Copy manually";
+  }
 });
 // The settings knobs' ⓘ info popovers (the Se/rver settings-pane component,
 // ported here). Click or press-and-hold a ⓘ to open that knob's detail

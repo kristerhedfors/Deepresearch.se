@@ -354,6 +354,59 @@ async function remainingOf(db, jti) {
   return row ? Math.max(0, Number(row.quota) - Number(row.used)) : null;
 }
 
+/**
+ * ADJUST a live proxy grant's quota — the same per-token minter control as
+ * src/websearch.js's adjustGrantQuota (the secure-workspaces directive,
+ * 2026-07-15): the token in circulation stays fixed while its allowance is
+ * administered live on the D1 row. Absolute `quota` or relative `delta`,
+ * clamped ≥ 0; an increase is checked against the shared global budget
+ * ceiling; `opts.ownerId` scopes to the minter's own rows (mismatch reads as
+ * not_found so an endpoint never confirms someone else's jti).
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} jti
+ * @param {{ quota?: number, delta?: number }} patch
+ * @param {{ ownerId?: string, budget?: number }} [opts]
+ * @returns {Promise<(ServiceView & { error?: undefined }) | { error: string, outstanding?: number, budget?: number } | null>}
+ */
+export async function adjustProxyGrantQuota(env, log, jti, patch, opts = {}) {
+  const db = await getDb(env);
+  if (!db) return null;
+  const row = await db
+    .prepare("SELECT jti, user_id, service, quota, used, expires_at FROM proxy_grants WHERE jti = ?1")
+    .bind(String(jti))
+    .first()
+    .catch(() => null);
+  if (!row) return { error: "not_found" };
+  if (opts.ownerId != null && String(row.user_id) !== String(opts.ownerId)) return { error: "not_found" };
+
+  if (!patch || (patch.quota == null && patch.delta == null)) return { error: "bad_request" };
+  const current = Number(row.quota);
+  const next = patch.quota != null ? Math.floor(Number(patch.quota)) : current + Math.floor(Number(patch.delta));
+  if (!Number.isFinite(next)) return { error: "bad_request" };
+  const clamped = Math.max(0, next);
+
+  const increase = clamped - current;
+  const budget = Number(opts.budget) > 0 ? Math.floor(Number(opts.budget)) : 0;
+  if (increase > 0 && budget > 0) {
+    const outstanding = await outstandingRemaining(db);
+    if (outstanding + increase > budget) {
+      log.warn("proxy.adjust_budget_exceeded", { jti: String(jti), increase, outstanding, budget });
+      return { error: "budget_exceeded", outstanding, budget };
+    }
+  }
+
+  const ok = await db
+    .prepare("UPDATE proxy_grants SET quota = ?2 WHERE jti = ?1")
+    .bind(String(jti), clamped)
+    .run()
+    .then((r) => Number(r?.meta?.changes || 0) >= 1)
+    .catch(() => false);
+  if (!ok) return null;
+  log.info("proxy.quota_adjusted", { jti: String(jti), from: current, to: clamped, by: opts.ownerId || "admin" });
+  return serviceView({ ...row, quota: clamped });
+}
+
 // ---- endpoints ------------------------------------------------------------------
 
 /**
@@ -365,6 +418,38 @@ export async function handleProxyGrant(_request, env, log, identity) {
   const bundle = await grantBundle(env, log, identity);
   if (!bundle) return jsonResponse({ error: "Secure-research-space grants are unavailable." }, 503);
   return jsonResponse(bundle);
+}
+
+/**
+ * POST /api/proxy/adjust — AUTHED. Body: { jti, quota | delta }. The minting
+ * user's self-service quota control over their OWN proxy grants (secure
+ * workspaces: administer the tokens you handed out). Scoped to the caller's
+ * rows; budget-checked on increase. Admins adjust ANY grant via
+ * PATCH /api/admin/proxy/:jti instead.
+ * @param {Request} request @param {Env} env @param {Logger} log @param {Identity} identity
+ */
+export async function handleProxyAdjust(request, env, log, identity) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  const jti = typeof body?.jti === "string" ? body.jti : "";
+  if (!jti) return jsonResponse({ error: "jti is required." }, 400);
+  const defaults = await proxyDefaults(env);
+  const adjusted = await adjustProxyGrantQuota(
+    env,
+    log,
+    jti,
+    { quota: body.quota, delta: body.delta },
+    { ownerId: String(identity.id), budget: defaults.budget },
+  );
+  if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
+  if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant of yours." }, 404);
+  if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
+  if (adjusted.error === "budget_exceeded") {
+    return jsonResponse(
+      { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
+      409,
+    );
+  }
+  return jsonResponse(adjusted);
 }
 
 /**
@@ -627,6 +712,26 @@ export async function handleAdminProxy(request, env, url, log, identity) {
     const ok = !!res && Number(res?.meta?.changes || 0) >= 1;
     log.info("proxy.revoked", { bundleId: del[1], ok });
     return jsonResponse({ ok });
+  }
+
+  // PATCH /:jti — adjust ONE service row's quota in place (absolute `quota`
+  // or relative `delta`): the admin's per-token add/remove-quota control.
+  // Note the id here is a service row's JTI, not a bundle id — a bundle's
+  // web and api allowances are administered independently.
+  if (del && method === "PATCH") {
+    const body = /** @type {any} */ (await request.json().catch(() => ({})));
+    const defaults = await proxyDefaults(env);
+    const adjusted = await adjustProxyGrantQuota(env, log, del[1], { quota: body.quota, delta: body.delta }, { budget: defaults.budget });
+    if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
+    if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant." }, 404);
+    if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
+    if (adjusted.error === "budget_exceeded") {
+      return jsonResponse(
+        { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
+        409,
+      );
+    }
+    return jsonResponse(adjusted);
   }
 
   return jsonResponse({ error: "Not found." }, 404);

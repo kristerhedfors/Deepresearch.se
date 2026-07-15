@@ -949,11 +949,11 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 /* The account and settings views: RIGHT-side drawers (mirrors of the
    left #drawer). The settings view (the gear) holds ALL configuration —
    the one-field API-key form and the sandbox knob. */
-#accountview, #settingsview {
+#accountview, #settingsview, #workspaceview {
   position: fixed; inset: 0; z-index: 10;
   background: rgba(61, 52, 24, .45);
 }
-#accountview[hidden], #settingsview[hidden] { display: none; }
+#accountview[hidden], #settingsview[hidden], #workspaceview[hidden] { display: none; }
 .account-panel {
   left: auto; right: 0;
   border-right: none;
@@ -961,13 +961,25 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   box-shadow: -4px 0 30px rgba(60, 50, 10, .3);
   border-radius: 18px 0 0 18px;
 }
-#accountview label, #settingsview label { display: block; font-size: .78rem; font-weight: 600; margin: .55rem 0 .2rem; }
-#accountview input[type="password"], #settingsview input[type="password"], #settingsview select {
+#accountview label, #settingsview label, #workspaceview label { display: block; font-size: .78rem; font-weight: 600; margin: .55rem 0 .2rem; }
+#accountview input[type="password"], #settingsview input[type="password"], #settingsview select,
+#workspaceview input[type="password"], #workspaceview input[type="text"], #workspaceview textarea {
   width: 100%; box-sizing: border-box; padding: .5rem .6rem; font-size: .85rem;
   border: 1px solid rgba(124, 106, 36, .4); border-radius: 10px; background: rgba(255, 255, 255, .6);
   color: var(--text);
 }
-#accountview button, #settingsview button { padding: .45rem .8rem; font-size: .82rem; }
+#accountview button, #settingsview button, #workspaceview button { padding: .45rem .8rem; font-size: .82rem; }
+
+/* The secure-workspace pane's include-checkboxes: inline rows (unlike the
+   drawer's block labels), checkbox left of its caption. */
+#workspaceview .wk-check {
+  display: flex; align-items: baseline; gap: .45rem;
+  font-size: .84rem; font-weight: 500; margin: .3rem 0;
+}
+#workspaceview .wk-check input { flex: none; width: auto; }
+#workspaceview .wk-check[hidden] { display: none; }
+#workspaceview .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .3rem; }
+#workspaceview p.muted { font-size: .8rem; line-height: 1.5; }
 .acct-lead { font-size: .82rem; line-height: 1.5; margin: .1rem 0 .3rem; }
 
 /* The configuration knobs (introspection, sandbox) reuse the Se/rver settings

@@ -8,9 +8,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  adjustProxyGrantQuota,
   exchangeGrant,
   grantBundle,
   handleAdminProxy,
+  handleProxyAdjust,
   handleProxyExchange,
   handleProxyLlm,
   handleProxyStatus,
@@ -80,6 +82,13 @@ function fakeDb() {
       if (sql.startsWith("INSERT INTO proxy_grants")) {
         const [jti, bundle_id, user_id, service, quota, created_at, expires_at, label, source] = this._args;
         rows.set(jti, { jti, bundle_id, user_id, service, quota, used: 0, created_at, expires_at, label, source });
+        return { meta: { changes: 1 } };
+      }
+      if (sql.includes("SET quota =")) {
+        const [jti, quota] = this._args;
+        const r = rows.get(jti);
+        if (!r) return { meta: { changes: 0 } };
+        r.quota = quota;
         return { meta: { changes: 1 } };
       }
       if (sql.includes("used = used + 1")) {
@@ -343,4 +352,96 @@ test("handleProxyStatus / handleProxyExchange fail closed without D1 (503/403)",
   const env = { SESSION_SECRET: SECRET };
   const st = await handleProxyStatus(new Request("https://x", { method: "POST", body: JSON.stringify({ token: "prx1.a.b" }) }), env);
   assert.equal(st.status, 403); // bad token → 403 before the D1 check
+});
+
+// ---- per-token quota adjustment (the secure-workspaces minter control) ---------------
+
+test("adjustProxyGrantQuota: absolute/delta/clamp, budget on increase, owner scoping", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const b = await mintBundle(env, log, { userId: "42", source: "ghost" });
+  const web = b.connected.find((s) => s.svc === "web");
+
+  const up = await adjustProxyGrantQuota(env, log, web.jti, { quota: 60 });
+  assert.equal(up.quota, 60);
+  assert.equal(up.svc, "web");
+
+  const down = await adjustProxyGrantQuota(env, log, web.jti, { delta: -70 });
+  assert.equal(down.quota, 0); // clamped — paused
+  assert.equal(down.remaining, 0);
+
+  // Budget ceiling applies to increases only (outstanding is web 0 + api 40).
+  const blocked = await adjustProxyGrantQuota(env, log, web.jti, { quota: 20 }, { budget: 50 });
+  assert.equal(blocked.error, "budget_exceeded");
+  const allowed = await adjustProxyGrantQuota(env, log, web.jti, { quota: 10 }, { budget: 50 });
+  assert.equal(allowed.quota, 10);
+
+  // Owner scoping: a different ownerId reads as not_found.
+  assert.equal((await adjustProxyGrantQuota(env, log, web.jti, { quota: 5 }, { ownerId: "other" })).error, "not_found");
+  assert.equal((await adjustProxyGrantQuota(env, log, web.jti, { quota: 5 }, { ownerId: "42" })).quota, 5);
+  assert.equal((await adjustProxyGrantQuota(env, log, "missing", { quota: 5 })).error, "not_found");
+  assert.equal((await adjustProxyGrantQuota(env, log, web.jti, {})).error, "bad_request");
+});
+
+test("a paused (quota 0) proxy grant stops reserving until quota returns", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const b = await mintBundle(env, log, { userId: "42", source: "link" });
+  const web = b.connected.find((s) => s.svc === "web");
+  const exchanged = await exchangeGrant(env, b === null ? "" : (await openBundle(b.blob, b.key)).grants.find((g) => g.svc === "web").token);
+  await adjustProxyGrantQuota(env, log, web.jti, { quota: 0 });
+  const send = () =>
+    handleProxyWeb(
+      new Request("https://x/api/proxy/web", { method: "POST", body: JSON.stringify({ token: exchanged.proxyToken, query: "q" }) }),
+      env,
+      log,
+    );
+  assert.equal((await withFetch(exaFetch, send)).status, 429);
+  await adjustProxyGrantQuota(env, log, web.jti, { quota: 5 });
+  assert.equal((await withFetch(exaFetch, send)).status, 200);
+});
+
+test("handleProxyAdjust (authed self-service) and admin PATCH /:jti status codes", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const b = await mintBundle(env, log, { userId: "42", source: "ghost" });
+  const api = b.connected.find((s) => s.svc === "api");
+
+  const res = await handleProxyAdjust(
+    new Request("https://x/api/proxy/adjust", { method: "POST", body: JSON.stringify({ jti: api.jti, quota: 80 }) }),
+    env,
+    log,
+    identity,
+  );
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).quota, 80);
+
+  const denied = await handleProxyAdjust(
+    new Request("https://x/api/proxy/adjust", { method: "POST", body: JSON.stringify({ jti: api.jti, quota: 1 }) }),
+    env,
+    log,
+    { id: "7", role: "user" },
+  );
+  assert.equal(denied.status, 404);
+  const noJti = await handleProxyAdjust(
+    new Request("https://x/api/proxy/adjust", { method: "POST", body: JSON.stringify({}) }),
+    env,
+    log,
+    identity,
+  );
+  assert.equal(noJti.status, 400);
+
+  const patchUrl = new URL("https://x/api/admin/proxy/" + api.jti);
+  const patched = await handleAdminProxy(
+    new Request(patchUrl, { method: "PATCH", body: JSON.stringify({ delta: -75 }) }),
+    env,
+    patchUrl,
+    log,
+    admin,
+  );
+  assert.equal(patched.status, 200);
+  assert.equal((await patched.json()).quota, 5);
+  const missUrl = new URL("https://x/api/admin/proxy/none");
+  const missing = await handleAdminProxy(new Request(missUrl, { method: "PATCH", body: JSON.stringify({ quota: 5 }) }), env, missUrl, log, admin);
+  assert.equal(missing.status, 404);
 });

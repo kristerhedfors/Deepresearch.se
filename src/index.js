@@ -65,8 +65,9 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
-import { handleWebSearch, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
+import { handleWebSearch, handleWebSearchAdjust, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
 import {
+  handleProxyAdjust,
   handleProxyExchange,
   handleProxyGrant,
   handleProxyLlm,
@@ -490,12 +491,23 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/websearch/grant" && request.method === "POST") {
     return handleWebSearchGrant(request, env, log, identity);
   }
+  // Self-service quota control over the caller's OWN web-search grants (the
+  // secure-workspaces minter control): raise / lower / pause a grant they
+  // minted, without touching the token already embedded in shared links.
+  if (url.pathname === "/api/websearch/adjust" && request.method === "POST") {
+    return handleWebSearchAdjust(request, env, log, identity);
+  }
   // Secure-research-space bundle: a signed-in user crossing to Se/cure (the
   // ghost) mints (or reuses) a bundle of account-connected proxy grants (web +
   // LLM API). The client opens the sealed blob and exchanges the grant tokens
   // (public /api/proxy/exchange) for the working proxy tokens. See src/proxy.js.
   if (url.pathname === "/api/proxy/grant" && request.method === "POST") {
     return handleProxyGrant(request, env, log, identity);
+  }
+  // Self-service quota control over the caller's OWN proxy grants (same
+  // minter control as /api/websearch/adjust, per service row).
+  if (url.pathname === "/api/proxy/adjust" && request.method === "POST") {
+    return handleProxyAdjust(request, env, log, identity);
   }
   // Feedback mode (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent.
