@@ -1,0 +1,46 @@
+{
+  "branch": "claude/feedback-image-attachments-kax93r",
+  "requested_at": "2026-07-15",
+  "points": [
+    {
+      "label": "Feedback dialog: attach a screenshot and send",
+      "summary": "Feedback submissions can now carry screenshots. With Feedback mode on, ask anything, then press Feedback under the reply. The dialog has a new '📷 Add screenshot' button: attach 1-2 images (screenshots or photos), see them as removable thumbnails, and send with a short comment. PASS: 'Feedback sent ✓' appears, and the entry in the account panel's Feedback view shows the images as thumbnails under your comment (each opens full size in a new tab).",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openSettings",
+          "knob": "feedback_mode"
+        },
+        {
+          "type": "note",
+          "text": "Make sure Feedback mode is ON, then send any quick question and use the Feedback button under the reply."
+        },
+        {
+          "type": "compose",
+          "text": "What is the capital of Sweden?"
+        }
+      ],
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 24
+    },
+    {
+      "label": "Feedback thread: image-only reply",
+      "summary": "Thread replies can carry screenshots too — including with NO text. Open the account panel → Feedback, pick the entry from the previous point (or any entry), attach an image in its reply box via '📷 Add screenshot', leave the text empty, and press Send reply. PASS: the reply lands in the thread showing just the thumbnail; withdrawing an entry still removes everything.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openAccount",
+          "view": "feedback"
+        },
+        {
+          "type": "note",
+          "text": "Use the reply box of an existing entry: image only, no text."
+        }
+      ],
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 25
+    }
+  ]
+}

@@ -12,6 +12,9 @@
 #   scripts/feedback --id 7                one entry with its full thread
 #   scripts/feedback --status 7 in_progress    set status (new|seen|in_progress|resolved|declined)
 #   scripts/feedback --reply 7 "text"      post the agent's reply onto the thread
+#   scripts/feedback --image 7 12 [out]    download screenshot #12 from entry #7
+#                                          (ids from the IMAGES: lines; default
+#                                          out feedback-7-image-12.jpg)
 #   scripts/feedback --delete 7            delete an entry + its thread
 #   scripts/feedback --q "some term"       substring match on comment OR question
 #   scripts/feedback --json                JSON instead of text (list/--id)
@@ -32,6 +35,7 @@ extra=""
 open="1"
 action=""
 arg=""
+out=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -42,6 +46,9 @@ while [ $# -gt 0 ]; do
     --params) extra="$2"; shift ;;
     --status) action="status"; id="$2"; arg="$3"; shift 2 ;;
     --reply) action="reply"; id="$2"; arg="$3"; shift 2 ;;
+    --image)
+      action="image"; id="$2"; arg="$3"
+      if [ $# -ge 4 ]; then out="$4"; shift 3; else shift 2; fi ;;
     --delete) action="delete"; id="$2"; shift ;;
     [0-9]*) limit="$1" ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -63,6 +70,11 @@ case "$action" in
     curl_auth -X POST -H 'content-type: application/json' \
       -d "$(jq -n --arg b "$arg" '{body:$b}')" \
       "$BASE_URL/api/admin/feedback/$id/messages"
+    exit 0 ;;
+  image)
+    out="${out:-feedback-${id}-image-${arg}.jpg}"
+    curl_auth -o "$out" "$BASE_URL/api/admin/feedback/$id/images/$arg"
+    echo "saved $out"
     exit 0 ;;
   delete)
     curl_auth -X DELETE "$BASE_URL/api/admin/feedback/$id"

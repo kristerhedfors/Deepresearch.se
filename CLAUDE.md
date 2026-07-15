@@ -361,7 +361,7 @@ Server (`src/`):
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
-| `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — see the **feedback-loop** skill + `scripts/feedback` |
+| `feedback.js` | Feedback mode's pipeline (D1 `feedback` + `feedback_messages` + `feedback_images`): per-reply user feedback entries as dialogue threads with the development agent — user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — incl. optional SCREENSHOT attachments on entries and replies (client-downscaled data URLs, one D1 row each, metadata-only in projections, served back as real images via `…/:id/images/:imgId` on both surfaces; `scripts/feedback --image` downloads one) — see the **feedback-loop** skill + `scripts/feedback` |
 | `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, and the `*_reviews` D1 upsert helpers — a new board implements none of this itself. THREE consumers today: the two backlog priority boards `security-risks.js` and `features.js`, plus `panels.js` — the ATTENTION board, a votes-only variant (same core, `"priority"` ordering with no priorities ever set → pure votes-desc) |
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
 | `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
@@ -442,8 +442,11 @@ derivation, history image-stripping, `splitUserContent`, plus
 pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
-`models.js` (model dropdown), `attachments.js` (pending images/docs,
-downscaling), `account.js` (the account panel SHELL: `initAccountPanel`,
+`models.js` (model dropdown), `attachments.js` (pending images/docs;
+the canvas downscaler itself lives in `image-downscale.js`, the shared
+leaf `feedback-attach.js` — the feedback pipeline's add-a-screenshot
+widget — also compresses through),
+`account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
 `account-views.js` (summary, full usage,
 games shelf + the shared building blocks: setting rows, info popovers,
@@ -453,7 +456,9 @@ view renders), `account-messages.js` (the message center),
 Maps knobs plus the Feedback-mode and sandbox knobs; opened from the
 summary's Settings button OR directly via the header's gear icon,
 2026-07-11 directive),
-`account-feedback.js` (the Feedback dialogue-threads view)),
+`account-feedback.js` (the Feedback dialogue-threads view — thread
+screenshots render as thumbnails off the per-image endpoint, and each
+reply box carries the `feedback-attach.js` widget)),
 `notifications.js` (the small rendering fragments — alert severity
 badges, pending-user rows, the K/M `formatCount` abbreviator — genuinely
 shared between `account.js`'s
@@ -461,8 +466,9 @@ message-center admin section and `admin.js`'s full notification center;
 their surrounding markup differs deliberately, so only the identical
 pieces live here),
 `turns.js`
-(bubbles/content/tools — incl. the per-reply Feedback button + inline
-form, present on every turn and shown via the body's `feedback-mode`
+(bubbles/content/tools — incl. the per-reply Feedback button + modal
+dialog (with screenshot attachments via `feedback-attach.js`), present
+on every turn and shown via the body's `feedback-mode`
 class so flipping the knob covers existing replies — plus
 reconstructing a stored conversation on load), `quiz.js` (the interactive inline-quiz card a `quiz` SSE event
 renders into the turn body: sequential questions with alternatives PLUS
@@ -747,8 +753,9 @@ LIKE escaping), `quiz.js` (the inline-quiz pure logic: the
 deterministic intent gate incl. question-count parsing, quiz-JSON
 hardening, grade-request validation/normalization), and `feedback.js`
 (the feedback pipeline's pure logic: create/reply validation incl.
-truncation markers, the status lifecycle, row projection, the
-`?format=text` rendering), and `board.js` (the decision-board core:
+truncation markers, screenshot-image validation/decoding/size caps, the
+status lifecycle, row projection incl. image-metadata splitting, the
+`?format=text` rendering incl. IMAGES lines), and `board.js` (the decision-board core:
 patch/vote validation, the priority/rank orderings incl. stable-sort
 tiebreaks and closed-item sinking, `reviewState` defaults, the D1
 helpers' SQL shape, and the façade contract pinning that a board's

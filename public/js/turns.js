@@ -2,6 +2,7 @@
 // streamed content + Raw/Copy/PDF tools + stats footer). Initialize once
 // with the chat container and a scroll callback.
 
+import { createFeedbackAttach } from "./feedback-attach.js";
 import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
@@ -266,10 +267,14 @@ function openFeedbackDialog(turn) {
   ta.rows = 4;
   ta.placeholder = "What was good or bad about this reply? What should change?";
 
+  // Screenshots ride along with the comment — a picture of a broken layout
+  // or a wrong map frame beats describing it.
+  const attach = createFeedbackAttach();
+
   const note = document.createElement("p");
   note.className = "muted fb-note";
   note.textContent =
-    "This goes to the site's developers — not to the AI. It's sent together with the question and reply above; answers show up under Feedback in your account panel.";
+    "This goes to the site's developers — not to the AI. It's sent together with the question and reply above, plus any screenshots you attach; answers show up under Feedback in your account panel.";
 
   const actions = document.createElement("div");
   actions.className = "fb-actions";
@@ -291,6 +296,11 @@ function openFeedbackDialog(turn) {
       ta.focus();
       return;
     }
+    if (attach.busy()) {
+      status.textContent = "Still compressing an image — one moment.";
+      return;
+    }
+    const images = attach.getImages();
     send.disabled = true;
     send.textContent = "Sending…";
     try {
@@ -303,6 +313,7 @@ function openFeedbackDialog(turn) {
           answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
           model: turn.model || undefined,
           page: location.pathname,
+          images: images.length ? images : undefined,
         }),
       });
       if (!res.ok) {
@@ -333,7 +344,7 @@ function openFeedbackDialog(turn) {
     if (e.key === "Escape") overlay.remove();
   });
 
-  card.append(head, about, ta, note, actions);
+  card.append(head, about, ta, attach.el, note, actions);
   overlay.appendChild(card);
   document.body.appendChild(overlay);
   ta.focus();

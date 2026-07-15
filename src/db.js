@@ -150,6 +150,15 @@ CREATE TABLE IF NOT EXISTS feedback_messages (
   read_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_messages_fb ON feedback_messages(feedback_id, id);
+CREATE TABLE IF NOT EXISTS feedback_images (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  feedback_id INTEGER NOT NULL,
+  message_id INTEGER,
+  name TEXT,
+  data TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_images_fb ON feedback_images(feedback_id, id);
 CREATE TABLE IF NOT EXISTS test_points (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at INTEGER NOT NULL,

@@ -3,7 +3,9 @@
 // end of the account panel's "Feedback mode" knob. With the knob on, every
 // assistant reply grows a Feedback button; a submission lands here as an
 // entry carrying the user's comment plus the reply it's about (question,
-// answer excerpt, model). Each entry is a THREAD: the user and the
+// answer excerpt, model) — and, optionally, screenshot images (client-
+// downscaled data URLs in D1 `feedback_images`, one row per image, served
+// back via …/:id/images/:imgId). Each entry is a THREAD: the user and the
 // development agent exchange messages on it until it's resolved — a
 // user-friendly dialogue between end-users and the Claude Code loop that
 // processes the queue (see the **feedback-loop** skill and
@@ -43,6 +45,14 @@ import { feedbackEnabled } from "./settings.js";
  * A D1 `feedback_messages` row (one turn of an entry's dialogue thread).
  * @typedef {{ id: number, feedback_id: number, author: "user" | "agent", body: string, created_at: number, read_at?: number | null }} FeedbackMessageRow
  */
+/**
+ * A D1 `feedback_images` row's metadata projection (the `data` column —
+ * a client-downscaled data:image/… URL — is only ever loaded one image at
+ * a time, by the serving endpoints). `message_id` null = attached to the
+ * original entry; set = attached to that thread message.
+ * @typedef {{ id: number, feedback_id: number, message_id?: number | null, name?: string | null, chars: number }} FeedbackImageMeta
+ */
+/** @typedef {{ name: string | null, data: string }} FeedbackImageInput */
 
 // ---------------------------------------------------------------------------
 // Pure helpers — unit-tested in src/feedback.test.js
@@ -59,6 +69,21 @@ export const FEEDBACK_CAPS = {
   model: 100,
   page: 200,
 };
+
+// Screenshot attachments: the client downscales to JPEG data URLs (the same
+// canvas walk chat attachments use), so these caps are a backstop against
+// bypassing clients, not the working budget. Each image is its own D1 row
+// (D1 allows ~2 MB per row; a capped data URL is well inside that).
+export const FEEDBACK_IMAGE_CAPS = {
+  count: 3, // images per submission (entry or reply)
+  dataChars: 500_000, // per image, data-URL length (~375 KB decoded)
+  totalChars: 1_200_000, // per submission
+  name: 200,
+};
+
+// Strict data-URL shape — the whole string is the base64 payload, so nothing
+// smuggled after a comma or whitespace ever reaches storage.
+const IMAGE_DATA_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "declined"];
 
@@ -79,17 +104,86 @@ export function normalizeStatus(value) {
   return typeof value === "string" && FEEDBACK_STATUSES.includes(value) ? value : null;
 }
 
+// Optional `images` on create/reply bodies → validated list, or {error}.
+// Rejecting (not silently dropping) a bad image is deliberate: the client
+// downscales before sending, so an invalid or oversize image means a broken
+// client — and silently losing the screenshot a user attached is worse than
+// a clear 400.
+/**
+ * @param {unknown} value
+ * @returns {{ error: string } | { error?: undefined, images: FeedbackImageInput[] }}
+ */
+export function validateFeedbackImages(value) {
+  if (value === undefined || value === null) return { images: [] };
+  if (!Array.isArray(value)) return { error: "images must be an array of {name, data}." };
+  if (value.length > FEEDBACK_IMAGE_CAPS.count) {
+    return { error: `At most ${FEEDBACK_IMAGE_CAPS.count} images per submission.` };
+  }
+  const images = [];
+  let total = 0;
+  for (const item of value) {
+    const data = item && typeof item === "object" ? item.data : null;
+    if (typeof data !== "string" || !IMAGE_DATA_RE.test(data)) {
+      return { error: "Each image needs a data:image/…;base64 URL (png, jpeg, webp or gif)." };
+    }
+    if (data.length > FEEDBACK_IMAGE_CAPS.dataChars) {
+      return { error: "An attached image is too large (~375 KB max after encoding)." };
+    }
+    total += data.length;
+    if (total > FEEDBACK_IMAGE_CAPS.totalChars) {
+      return { error: "The attached images are too large together (~900 KB max per submission)." };
+    }
+    images.push({ name: cleanStr(item.name, FEEDBACK_IMAGE_CAPS.name), data });
+  }
+  return { images };
+}
+
+// A stored data URL → {mime, bytes} for the image-serving endpoints, or
+// null (which the handlers turn into a 404, not a crash).
+/**
+ * @param {unknown} data
+ * @returns {{ mime: string, bytes: Uint8Array } | null}
+ */
+export function decodeImageDataUrl(data) {
+  if (typeof data !== "string") return null;
+  const m = data.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!m) return null;
+  let binary;
+  try {
+    binary = atob(m[2]);
+  } catch {
+    return null;
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return { mime: m[1], bytes };
+}
+
+// Decoded size from a stored data URL's LENGTH() — close enough for the
+// "how big is this screenshot" projections without loading the data column
+// (23 ≈ the `data:image/…;base64,` prefix; base64 is 4 chars per 3 bytes).
+/**
+ * @param {number} dataChars
+ * @returns {number}
+ */
+export function approxImageBytes(dataChars) {
+  return Math.max(0, Math.round(((Number(dataChars) || 0) - 23) * 3 / 4));
+}
+
 // POST /api/feedback body → row fields, or {error}. Only `comment` is
 // required — the reply context (question/answer/model) rides along when the
-// client has it, but a submission must never fail for lacking it.
+// client has it, but a submission must never fail for lacking it. Screenshot
+// attachments are optional and validated as a unit (all-or-nothing).
 /**
  * @param {any} body
- * @returns {{ error: string } | { error?: undefined, entry: { comment: string, question: string | null, answer_excerpt: string | null, model: string | null, page: string | null } }}
+ * @returns {{ error: string } | { error?: undefined, entry: { comment: string, question: string | null, answer_excerpt: string | null, model: string | null, page: string | null }, images: FeedbackImageInput[] }}
  */
 export function validateFeedbackCreate(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
   const comment = cleanStr(body.comment, FEEDBACK_CAPS.comment);
   if (!comment) return { error: "Feedback needs a non-empty comment." };
+  const v = validateFeedbackImages(body.images);
+  if (typeof v.error === "string") return { error: v.error };
   return {
     entry: {
       comment,
@@ -98,29 +192,46 @@ export function validateFeedbackCreate(body) {
       model: cleanStr(body.model, FEEDBACK_CAPS.model),
       page: cleanStr(body.page, FEEDBACK_CAPS.page),
     },
+    images: v.images,
   };
 }
 
-// POST …/messages body → message text, or {error}.
+// POST …/messages body → message text + optional images, or {error}. A
+// reply may be image-only (a screenshot IS an answer to "can you show me?"),
+// so text is required only when no image rides along.
 /**
  * @param {any} body
- * @returns {{ error: string } | { error?: undefined, body: string }}
+ * @returns {{ error: string } | { error?: undefined, body: string, images: FeedbackImageInput[] }}
  */
 export function validateFeedbackReply(body) {
   const text = cleanStr(body?.body, FEEDBACK_CAPS.message);
-  if (!text) return { error: "A reply needs a non-empty body." };
-  return { body: text };
+  const v = validateFeedbackImages(body?.images);
+  if (typeof v.error === "string") return { error: v.error };
+  if (!text && !v.images.length) return { error: "A reply needs a non-empty body." };
+  return { body: text || "", images: v.images };
+}
+
+/**
+ * @param {FeedbackImageMeta} i
+ */
+function projectImage(i) {
+  return { id: i.id, name: i.name || null, bytes: approxImageBytes(i.chars) };
 }
 
 // DB rows → API object. Messages ride inline: a thread is small (prose), and
 // both the account panel and the agent loop want the whole dialogue in one
-// fetch.
+// fetch. Images ride as METADATA only (id/name/size) — the data column stays
+// in D1 until the per-image endpoint (/api/feedback/:id/images/:imgId or the
+// admin twin) serves it, so a 100-entry list never carries megabytes of
+// base64. Entry-level images (message_id null) land on `images`; a reply's
+// screenshots land on that message's own `images`.
 /**
  * @param {FeedbackRow} row
  * @param {FeedbackMessageRow[]} [messages]
+ * @param {FeedbackImageMeta[]} [images]
  * @returns {any} the API projection
  */
-export function projectFeedback(row, messages = []) {
+export function projectFeedback(row, messages = [], images = []) {
   return {
     id: row.id,
     user_id: row.user_id,
@@ -134,6 +245,7 @@ export function projectFeedback(row, messages = []) {
     answer_excerpt: row.answer_excerpt || null,
     model: row.model || null,
     page: row.page || null,
+    images: images.filter((i) => !i.message_id).map(projectImage),
     messages: messages.map((m) => ({
       id: m.id,
       author: m.author, // "user" | "agent"
@@ -141,8 +253,24 @@ export function projectFeedback(row, messages = []) {
       created_at: m.created_at,
       time: new Date(m.created_at).toISOString(),
       read_at: m.read_at || null,
+      images: images.filter((i) => i.message_id === m.id).map(projectImage),
     })),
   };
+}
+
+// One IMAGES line for the text rendering: ids + names + sizes, so the agent
+// loop knows what to fetch (scripts/feedback --image <entry> <img>).
+/**
+ * @param {any[]} images projected image metadata
+ * @returns {string}
+ */
+function imagesLine(images) {
+  return (
+    "IMAGES: " +
+    images
+      .map((i) => `#${i.id} ${i.name || "image"} (~${Math.max(1, Math.round(i.bytes / 1024))} KB)`)
+      .join(", ")
+  );
 }
 
 // Plain-text rendering (?format=text): newest first, one bordered block per
@@ -161,10 +289,12 @@ export function formatFeedbackText(entries) {
           (e.page ? ` page=${e.page}` : ""),
         `FEEDBACK: ${e.comment}`,
       ];
+      if (e.images?.length) lines.push(imagesLine(e.images));
       if (e.question) lines.push(`ABOUT QUESTION: ${e.question}`);
       if (e.answer_excerpt) lines.push(`ABOUT REPLY: ${e.answer_excerpt}`);
       for (const m of e.messages) {
         lines.push(`${m.author === "agent" ? "AGENT" : "USER"} (${m.time}): ${m.body}`);
+        if (m.images?.length) lines.push("  " + imagesLine(m.images));
       }
       return lines.join("\n");
     })
@@ -197,6 +327,84 @@ async function loadMessages(db, feedbackIds) {
   return byId;
 }
 
+// Image METADATA per entry — LENGTH(data), never the data itself, so a list
+// fetch stays list-sized however many screenshots are attached.
+/**
+ * @param {D1Database} db
+ * @param {number[]} feedbackIds
+ * @returns {Promise<Map<number, FeedbackImageMeta[]>>} feedback_id -> images
+ */
+async function loadImages(db, feedbackIds) {
+  if (!feedbackIds.length) return new Map();
+  const placeholders = feedbackIds.map(() => "?").join(",");
+  const { results } = await db
+    .prepare(
+      `SELECT id, feedback_id, message_id, name, LENGTH(data) AS chars
+       FROM feedback_images WHERE feedback_id IN (${placeholders}) ORDER BY id ASC`,
+    )
+    .bind(...feedbackIds)
+    .all();
+  const byId = new Map();
+  for (const i of results || []) {
+    if (!byId.has(i.feedback_id)) byId.set(i.feedback_id, []);
+    byId.get(i.feedback_id).push(i);
+  }
+  return byId;
+}
+
+/**
+ * @param {D1Database} db
+ * @param {number} feedbackId
+ * @param {number | null} messageId null = attached to the original entry
+ * @param {FeedbackImageInput[]} images
+ */
+async function insertImages(db, feedbackId, messageId, images) {
+  const now = Date.now();
+  for (const img of images) {
+    await db
+      .prepare(
+        "INSERT INTO feedback_images (feedback_id, message_id, name, data, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(feedbackId, messageId, img.name, img.data, now)
+      .run();
+  }
+}
+
+// One image WITH its data column — the serving endpoints' fetch. Scoped by
+// feedback_id so an id can never be read across entries.
+/**
+ * @param {D1Database} db
+ * @param {number} feedbackId
+ * @param {number} imageId
+ * @returns {Promise<{ id: number, feedback_id: number, name?: string | null, data: string } | null>}
+ */
+async function getImage(db, feedbackId, imageId) {
+  return /** @type {any} */ (
+    db
+      .prepare("SELECT * FROM feedback_images WHERE id = ? AND feedback_id = ?")
+      .bind(imageId, feedbackId)
+      .first()
+  );
+}
+
+// Decoded image → HTTP response (shared by the user and admin endpoints).
+// Immutable content under a private id → a private cache is fine and saves
+// the panel re-fetching thumbnails on every open.
+/**
+ * @param {{ data: string } | null} imageRow
+ * @returns {Response}
+ */
+function imageResponse(imageRow) {
+  const decoded = imageRow ? decodeImageDataUrl(imageRow.data) : null;
+  if (!decoded) return jsonResponse({ error: "No such image." }, 404);
+  return new Response(decoded.bytes, {
+    headers: {
+      "content-type": decoded.mime,
+      "cache-control": "private, max-age=3600",
+    },
+  });
+}
+
 /**
  * @param {D1Database} db
  * @param {number} id
@@ -218,7 +426,12 @@ async function getEntry(db, id) {
 async function projectedEntry(db, id) {
   const row = await getEntry(db, id);
   const messages = await loadMessages(db, [id]);
-  return projectFeedback(/** @type {FeedbackRow} */ (row), messages.get(id) || []);
+  const images = await loadImages(db, [id]);
+  return projectFeedback(
+    /** @type {FeedbackRow} */ (row),
+    messages.get(id) || [],
+    images.get(id) || [],
+  );
 }
 
 /**
@@ -226,16 +439,18 @@ async function projectedEntry(db, id) {
  * @param {number} feedbackId
  * @param {"user" | "agent"} author
  * @param {string} body
+ * @returns {Promise<number>} the new message's id
  */
 async function addMessage(db, feedbackId, author, body) {
   const now = Date.now();
-  await db
+  const res = await db
     .prepare(
       "INSERT INTO feedback_messages (feedback_id, author, body, created_at) VALUES (?, ?, ?, ?)",
     )
     .bind(feedbackId, author, body, now)
     .run();
   await db.prepare("UPDATE feedback SET updated_at = ? WHERE id = ?").bind(now, feedbackId).run();
+  return /** @type {number} */ (res.meta?.last_row_id);
 }
 
 // Unread agent replies across a user's entries — feeds the /api/me
@@ -305,9 +520,9 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
       )
       .run();
     const id = /** @type {number} */ (res.meta?.last_row_id);
-    log.info("feedback.created", { user_id: userId, feedback_id: id });
-    const row = await getEntry(db, id);
-    return jsonResponse({ feedback: projectFeedback(/** @type {FeedbackRow} */ (row)) }, 201);
+    await insertImages(db, id, null, v.images);
+    log.info("feedback.created", { user_id: userId, feedback_id: id, images: v.images.length });
+    return jsonResponse({ feedback: await projectedEntry(db, id) }, 201);
   }
 
   // GET /api/feedback — the user's own entries, newest first, threads
@@ -320,7 +535,10 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
       .all();
     const rows = /** @type {FeedbackRow[]} */ (results || []);
     const messages = await loadMessages(db, rows.map((r) => r.id));
-    const entries = rows.map((r) => projectFeedback(r, messages.get(r.id) || []));
+    const images = await loadImages(db, rows.map((r) => r.id));
+    const entries = rows.map((r) =>
+      projectFeedback(r, messages.get(r.id) || [], images.get(r.id) || []),
+    );
     await db
       .prepare(
         `UPDATE feedback_messages SET read_at = ?
@@ -333,12 +551,21 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
     return jsonResponse({ feedback: entries });
   }
 
-  const idMatch = path.match(/^\/(\d+)(\/messages)?$/);
+  const imgMatch = path.match(/^\/(\d+)\/images\/(\d+)$/);
+  const idMatch = imgMatch || path.match(/^\/(\d+)(\/messages)?$/);
   if (!idMatch) return jsonResponse({ error: "Not found." }, 404);
   const entry = await getEntry(db, Number(idMatch[1]));
   if (!entry || entry.user_id !== userId) {
     return jsonResponse({ error: "No such feedback entry." }, 404);
   }
+
+  // GET /api/feedback/:id/images/:imgId — a screenshot back as a real image
+  // (the panel's <img> tags point here); own entries only, like everything
+  // above.
+  if (imgMatch && method === "GET") {
+    return imageResponse(await getImage(db, entry.id, Number(imgMatch[2])));
+  }
+  if (imgMatch) return jsonResponse({ error: "Not found." }, 404);
 
   // POST /api/feedback/:id/messages — the user's side of the dialogue.
   // Works regardless of the knob (an open thread must stay answerable), and
@@ -346,16 +573,19 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
   if (idMatch[2] && method === "POST") {
     const v = validateFeedbackReply(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
-    await addMessage(db, entry.id, "user", v.body);
+    const messageId = await addMessage(db, entry.id, "user", v.body);
+    await insertImages(db, entry.id, messageId, v.images);
     if (!isOpenStatus(entry.status)) {
       await db.prepare("UPDATE feedback SET status = 'new' WHERE id = ?").bind(entry.id).run();
     }
-    log.info("feedback.user_reply", { user_id: userId, feedback_id: entry.id });
+    log.info("feedback.user_reply", { user_id: userId, feedback_id: entry.id, images: v.images.length });
     return jsonResponse({ feedback: await projectedEntry(db, entry.id) }, 201);
   }
 
-  // DELETE /api/feedback/:id — the user withdraws an entry (thread included).
+  // DELETE /api/feedback/:id — the user withdraws an entry (thread and
+  // screenshots included).
   if (!idMatch[2] && method === "DELETE") {
+    await db.prepare("DELETE FROM feedback_images WHERE feedback_id = ?").bind(entry.id).run();
     await db.prepare("DELETE FROM feedback_messages WHERE feedback_id = ?").bind(entry.id).run();
     await db.prepare("DELETE FROM feedback WHERE id = ?").bind(entry.id).run();
     log.info("feedback.deleted", { user_id: userId, feedback_id: entry.id });
@@ -374,6 +604,7 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
 //   ?user=<id>  ?since=<epoch ms>  ?before_id=<id>  ?q=<substring>
 //   ?limit=20 (max 200)  ?format=text (readable transcript)
 // GET    /api/admin/feedback/:id    one entry incl. thread (?format=text)
+// GET    /api/admin/feedback/:id/images/:imgId  an attached screenshot (image bytes)
 // PATCH  /api/admin/feedback/:id    {status: new|seen|in_progress|resolved|declined}
 // POST   /api/admin/feedback/:id/messages  {body} — the agent's reply
 // DELETE /api/admin/feedback/:id
@@ -412,19 +643,29 @@ export async function handleAdminFeedback(request, env, url, log) {
     const { results } = await db.prepare(sql).bind(...binds, limit).all();
     const rows = /** @type {FeedbackRow[]} */ (results || []);
     const messages = await loadMessages(db, rows.map((r) => r.id));
-    const entries = rows.map((r) => projectFeedback(r, messages.get(r.id) || []));
+    const images = await loadImages(db, rows.map((r) => r.id));
+    const entries = rows.map((r) =>
+      projectFeedback(r, messages.get(r.id) || [], images.get(r.id) || []),
+    );
     if (p.get("format") === "text") return textResponse(formatFeedbackText(entries));
     return jsonResponse({ feedback: entries, count: entries.length });
   }
 
-  const idMatch = path.match(/^\/(\d+)(\/messages)?$/);
+  const imgMatch = path.match(/^\/(\d+)\/images\/(\d+)$/);
+  const idMatch = imgMatch || path.match(/^\/(\d+)(\/messages)?$/);
   if (!idMatch) return jsonResponse({ error: "Not found." }, 404);
   const entry = await getEntry(db, Number(idMatch[1]));
   if (!entry) return jsonResponse({ error: "No such feedback entry." }, 404);
 
+  // GET /api/admin/feedback/:id/images/:imgId — the agent side's fetch for
+  // an attached screenshot (scripts/feedback --image wraps it).
+  if (imgMatch && method === "GET") {
+    return imageResponse(await getImage(db, entry.id, Number(imgMatch[2])));
+  }
+  if (imgMatch) return jsonResponse({ error: "Not found." }, 404);
+
   if (!idMatch[2] && method === "GET") {
-    const messages = await loadMessages(db, [entry.id]);
-    const projected = projectFeedback(entry, messages.get(entry.id) || []);
+    const projected = await projectedEntry(db, entry.id);
     if (url.searchParams.get("format") === "text") {
       return textResponse(formatFeedbackText([projected]));
     }
@@ -448,12 +689,14 @@ export async function handleAdminFeedback(request, env, url, log) {
   if (idMatch[2] && method === "POST") {
     const v = validateFeedbackReply(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
-    await addMessage(db, entry.id, "agent", v.body);
+    const messageId = await addMessage(db, entry.id, "agent", v.body);
+    await insertImages(db, entry.id, messageId, v.images);
     log.info("feedback.agent_reply", { feedback_id: entry.id });
     return jsonResponse({ feedback: await projectedEntry(db, entry.id) }, 201);
   }
 
   if (!idMatch[2] && method === "DELETE") {
+    await db.prepare("DELETE FROM feedback_images WHERE feedback_id = ?").bind(entry.id).run();
     await db.prepare("DELETE FROM feedback_messages WHERE feedback_id = ?").bind(entry.id).run();
     await db.prepare("DELETE FROM feedback WHERE id = ?").bind(entry.id).run();
     log.info("feedback.admin_deleted", { feedback_id: entry.id });
