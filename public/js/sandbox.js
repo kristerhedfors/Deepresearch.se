@@ -40,6 +40,7 @@ import {
 } from "./sandbox-files.js";
 import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
+import { OUTBOX_PATH, outboxListCommand, parseOutboxListing } from "./bash-core.js";
 
 // xterm is VENDORED (2026-07-15, the Forever Agent user-value pass): the
 // terminal used to load from cdn.jsdelivr.net at runtime, so a CDN outage
@@ -1013,6 +1014,47 @@ export async function exportFile(path) {
     flushSandboxLog();
   }
   return null;
+}
+
+// Collect the OUTBOX deliverables — the download flow's host side. The agent
+// copies finished artifacts into /workspace/outbox (the bash-core convention,
+// taught by bashAgentPrompt); after the loop this lists the folder (one exec)
+// and round-trips each file out via exportFile (base64-through-exec — the one
+// documented host-read route). Bounded by the bash-core caps, entirely
+// fail-soft (any problem → fewer/no deliverables, never a broken reply).
+/**
+ * @returns {Promise<Array<{ name: string, size: number, blob: Blob }>>}
+ */
+export async function collectDeliverables() {
+  try {
+    if (vmState !== "ready" || !cx) return [];
+    const listing = await execInSandbox(outboxListCommand());
+    if (listing.exitCode !== 0) {
+      sblog("debug", "sandbox.fs.deliver", { n: 0, rc: listing.exitCode, ok: false });
+      return [];
+    }
+    const { files, dropped } = parseOutboxListing(listing.stdout);
+    /** @type {Array<{ name: string, size: number, blob: Blob }>} */
+    const out = [];
+    let bytes = 0;
+    for (const f of files) {
+      const blob = await exportFile(OUTBOX_PATH + "/" + f.name);
+      if (blob && blob.size) {
+        out.push({ name: f.name, size: blob.size, blob });
+        bytes += blob.size;
+      }
+    }
+    if (out.length || dropped) {
+      sblog("info", "sandbox.fs.deliver", { n: out.length, bytes, dropped });
+      flushSandboxLog();
+    }
+    return out;
+  } catch (err) {
+    console.warn("[sandbox] collectDeliverables failed", err);
+    sblog("warn", "sandbox.fs.deliver_failed", { error: String((/** @type {any} */ (err))?.message || err).slice(0, 200) });
+    flushSandboxLog();
+    return [];
+  }
 }
 
 // ---- exec bridge (marker protocol) -----------------------------------------

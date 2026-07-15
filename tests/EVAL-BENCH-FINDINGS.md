@@ -286,6 +286,53 @@ citation faithfulness and calibration must NOT drop (the padding-forbidden
 rule exists precisely to protect them). Words up WITH a judge drop = the
 tier bought length, not substance — that blocks the merge, not the bench.
 
-**Scores:** _pending — the seam battery runs once this branch is deployed
-(the override + quiz fix must be live first); appended below when complete._
+**Scores (both sides run 2026-07-15, post-deploy of PR #81; 30/30 judged
+each; PR #82 — front-end only, no pipeline change — merged one minute before
+side A started, so both sides ran on identical pipeline code; no runs
+errored):**
+
+| dim | A: 179s (standard) | B: 180s (extended) | Δ |
+|---|---|---|---|
+| judge citation | 4.60 | 4.53 | −0.07 |
+| judge coverage | 4.10 | 3.83 | −0.27 |
+| judge calibration | 4.33 | 4.20 | −0.13 |
+| judge overall | **4.34** | **4.19** | −0.15 |
+| source diversity | 0.72 | 0.71 | ~0 |
+| citation coverage | 1.00 | 0.93 | −0.07 |
+| words (mean) | 369 | **655** | +78% |
+| h2 sections (mean) | 0.07 | **5.30** | — |
+| hasLimitations rate | 0.00 | **0.97** | — |
+
+**Read:** the tier DELIVERED its structure (words +78%, ~5 `##` sections
+per answer, limitations sections near-universal — none of which the
+standard side produced). The judge-overall drop (−0.156 paired mean,
+stdev 0.84, SE ≈ 0.15, median 0, wins 9 / ties 7 / losses 14) is inside
+noise overall — but it is NOT randomly distributed: **focused-lookup kinds
+(numeric, hf, recency) went 0 wins / 7 losses** (e.g. num_renewable_share
+5→3, hf_gated_llama 5→3.67), while broad kinds netted positive
+(mh_battery_supply_chain 3→5, div_tesla_fsd +1, cmp_ztna_vpn +1, contested
++0.33..+0.67). Structured reports help questions with breadth to organize
+and dilute questions with one fact to state — the OUTPUT-side twin of the
+deep-tier finding. One unexplained single-question outlier (cmp_nis2_sec
+5→3, n=1) noted, not tuned against.
+
+**Mechanical finding:** 4/30 extended answers ended mid-URL inside their
+"Sources:" list with a CLEAN finish (no stream error, ~1.2–2.9k output
+tokens — nowhere near the 4096/6144 caps): Mistral Small simply stops
+early on long generations. That is what dropped citation coverage to 0.93
+(the judge also penalized the two truncated-list answers). Pre-tier
+answers (~600 output tokens) never entered this regime. WATCH item: if it
+recurs across models/batteries, consider a model-profile or a
+tier-vs-model interaction; single-battery, single-model evidence so far.
+
+**Verdict: the tier earns its keep WITH one refinement, shipped in the
+same commit as these scores** — `applyComplexityToPlan` now also caps the
+REPORT TIER at `standard` for triage-`simple` questions (the exact kinds
+that lost), mirroring the research-depth cap it already applies and
+keeping the padding-forbidden rule's promise. Citation faithfulness and
+calibration held within noise, structure moved decisively, and the losing
+cluster is addressed at the cause (simple questions no longer get report
+scaffolding regardless of slider position). Follow-up worth a future
+battery: re-run this same seam A/B post-refinement — the simple-kind
+losses should disappear from side B while the broad-kind gains remain.
 

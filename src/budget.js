@@ -281,6 +281,20 @@ export function applyComplexityToPlan(plan, complexity) {
   plan.gapIterations = Math.min(plan.gapIterations, 1);
   // One initial wave plus at most one follow-up round's worth of searches.
   plan.maxSearches = Math.min(plan.maxSearches, plan.queries + plan.followups);
+  // Output-side counterpart (2026-07-15 seam battery, EVAL-BENCH-FINDINGS):
+  // a simple question gets at most the STANDARD report shape even when the
+  // slider bought extended/full. The paired 179s/180s A/B showed the
+  // structured-report tiers helping broad kinds (comparison, contested,
+  // diversity-trap) but consistently hurting focused-lookup kinds (numeric,
+  // recency, platform lookups: 0 wins / 7 losses) — stretching a one-fact
+  // answer across report sections dilutes it, the same failure mode that
+  // motivated the research-depth cap above. Only ever scales DOWN, and
+  // brief stays brief.
+  if (plan.reportTier === "extended" || plan.reportTier === "full") {
+    plan.reportTier = "standard";
+    plan.synthMaxTokens = REPORT_TIER_CAPS.standard.synthMaxTokens;
+    plan.validateMaxTokens = REPORT_TIER_CAPS.standard.validateMaxTokens;
+  }
   return plan;
 }
 

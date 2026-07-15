@@ -8,6 +8,8 @@ import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
 import { mountBalloonSpinner } from "./balloon-spinner.js";
+import { formatByteSize, mimeForName } from "./bash-core.js";
+import { addFilesToProject, listProjects } from "./projects.js";
 
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -209,6 +211,158 @@ export function addAssistantTurn(question = "", images = []) {
   };
   tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn), makeFeedbackButton(turn));
   return turn;
+}
+
+// ---- sandbox deliverables (the download flow) -------------------------------
+
+// Files the bash-lite agent placed in /workspace/outbox, exported out of the
+// VM (sandbox.js collectDeliverables) and attached to the reply: one chip per
+// file — tapping it downloads; the ▾ caret opens a small menu with Download
+// plus one "Add to project" entry per existing project (projects.js
+// addFilesToProject, the same ingest the project dropzone uses, so a doc gets
+// indexed and an image gets its EXIF pass). Live-session only, like the image
+// deck: the blobs exist in this tab's memory and are not persisted to history —
+// "Add to project" IS the durable path.
+/**
+ * @param {Turn} turn
+ * @param {Array<{ name: string, size: number, blob: Blob }>} files
+ */
+export function renderDeliverables(turn, files) {
+  const list = Array.isArray(files) ? files.filter((f) => f && f.name && f.blob) : [];
+  if (!list.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "deliverables";
+  for (const f of list) wrap.appendChild(makeDeliverableChip(f));
+  turn.el.insertBefore(wrap, turn.stats);
+  scrollDown();
+}
+
+function makeDeliverableChip(f) {
+  const chip = document.createElement("div");
+  chip.className = "dl-chip";
+
+  const main = document.createElement("button");
+  main.type = "button";
+  main.className = "dl-main";
+  main.title = "Download " + f.name;
+  const name = document.createElement("span");
+  name.className = "dl-name";
+  name.textContent = "📄 " + f.name;
+  const size = document.createElement("span");
+  size.className = "dl-size";
+  size.textContent = formatByteSize(f.size);
+  main.append(name, size);
+  main.addEventListener("click", () => downloadDeliverable(f, main));
+
+  const caret = document.createElement("button");
+  caret.type = "button";
+  caret.className = "dl-caret";
+  caret.title = "File options";
+  caret.setAttribute("aria-label", "Options for " + f.name);
+  caret.textContent = "▾";
+  caret.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleDeliverableMenu(chip, f, main);
+  });
+
+  chip.append(main, caret);
+  return chip;
+}
+
+// Downloads wait while an answer is streaming, same as the PDF button: on iOS
+// a download can navigate the page, which aborts the in-flight fetch.
+function downloadDeliverable(f, btn) {
+  if (isBusy()) {
+    const prev = btn.querySelector(".dl-size")?.textContent;
+    const sizeEl = btn.querySelector(".dl-size");
+    if (sizeEl) {
+      sizeEl.textContent = "when done";
+      setTimeout(() => { sizeEl.textContent = prev || ""; }, 1500);
+    }
+    return;
+  }
+  const url = URL.createObjectURL(f.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = f.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// The chip's dropdown. One menu at a time; dismisses on any outside
+// interaction (UX-1 — the shared popover-dismissal convention) while items
+// inside stay clickable.
+let openDlMenu = null;
+function closeDeliverableMenu() {
+  if (openDlMenu) {
+    openDlMenu.el.remove();
+    document.removeEventListener("pointerdown", openDlMenu.onOutside, true);
+    openDlMenu = null;
+  }
+}
+
+async function toggleDeliverableMenu(chip, f, mainBtn) {
+  if (openDlMenu?.chip === chip) {
+    closeDeliverableMenu();
+    return;
+  }
+  closeDeliverableMenu();
+  const menu = document.createElement("div");
+  menu.className = "dl-menu";
+
+  const dl = document.createElement("button");
+  dl.type = "button";
+  dl.className = "dl-item";
+  dl.textContent = "⬇ Download";
+  dl.addEventListener("click", () => {
+    closeDeliverableMenu();
+    downloadDeliverable(f, mainBtn);
+  });
+  menu.appendChild(dl);
+
+  const onOutside = (e) => {
+    if (!menu.contains(e.target)) closeDeliverableMenu();
+  };
+  chip.appendChild(menu);
+  document.addEventListener("pointerdown", onOutside, true);
+  openDlMenu = { chip, el: menu, onOutside };
+
+  // Project entries load async (listProjects hits IndexedDB) after the menu
+  // is already on screen with Download usable.
+  let projects = [];
+  try { projects = await listProjects(); } catch { /* fail-soft: download-only menu */ }
+  if (openDlMenu?.el !== menu) return; // closed (or reopened) while loading
+  if (!projects.length) {
+    const none = document.createElement("div");
+    none.className = "dl-item dl-none";
+    none.textContent = "No projects yet — create one in the sidebar to save files into it";
+    menu.appendChild(none);
+    return;
+  }
+  for (const p of projects) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "dl-item";
+    item.textContent = `＋ Add to “${p.name}”`;
+    item.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      item.disabled = true;
+      item.textContent = "Adding…";
+      try {
+        const file = new File([f.blob], f.name, { type: mimeForName(f.name) });
+        const { errors } = await addFilesToProject(p.id, [file]);
+        if (errors?.length) throw new Error(errors[0]);
+        item.textContent = `Added to “${p.name}” ✓`;
+        setTimeout(closeDeliverableMenu, 1200);
+      } catch (err) {
+        item.disabled = false;
+        item.textContent = "Failed: " + (err?.message || "could not add");
+      }
+    });
+    menu.appendChild(item);
+  }
 }
 
 // Feedback mode (the account panel's knob): while the body carries the
