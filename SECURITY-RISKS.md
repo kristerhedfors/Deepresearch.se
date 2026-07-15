@@ -102,17 +102,19 @@ the repo): `BERGET_API_TOKEN`, `EXA_API_KEY`, `ANTHROPIC_API_KEY`,
 (not a secret but deliberately kept out of the repo). Locally: `.dev.vars`,
 `.env`, and the e2e suite's env-var credentials.
 
-**Current posture:** 🟡 sound but convention-enforced.
-- ✅ Verified 2026-07-12: no credential patterns in the working tree or the
-  fetched git history (see the skill for the scan; note session clones are
-  SHALLOW — a full-history scan needs an unshallowed clone or GitHub secret
-  scanning).
+**Current posture:** ✅ mechanically enforced (P-2 FIXED 2026-07-15).
+- ✅ Verified 2026-07-15: no credential patterns in the working tree or in the
+  FULL git history (clone unshallowed, all 791 commits scanned — see the
+  skill §1 scan and the P-2 entry).
 - ✅ `.gitignore` covers `.dev.vars`, `.env`; no such files exist in the tree.
 - ✅ All server code reads keys via `env.*` only; keys ride in
   headers/query-strings that are never logged (assessment §3 "secrets
   hygiene", re-confirmed).
-- ⚠️ Nothing *mechanically* blocks a future leak: no pre-push secret scan, and
-  GitHub push protection / secret scanning status is unverified (R-1a below).
+- ✅ Mechanical gates: `scripts/scan-secrets` runs on every COMMIT
+  (`.githooks/pre-commit`, staged diff) and every PUSH (`.githooks/pre-push`,
+  outgoing commits), auto-activated per session clone via the SessionStart
+  hook; GitHub secret scanning + push protection default-on for public repos
+  is the server-side backstop (P-2).
 - ⚠️ The agentic debugging workflows (chatlogs pulls, feedback queue, eval
   ledgers) routinely move LIVE data toward the repo — a pasted excerpt could
   carry a user-typed key or PII (R-6).
@@ -288,29 +290,38 @@ History log (values themselves are fine to publish — they are ceilings, not
 credentials). Re-verify quarterly and after adding any provider.
 **Status: 🔴 OPEN — caps unverified from this repo; needs a dashboard pass.**
 
-### P-2 · Mechanical secret-leak prevention on the repo — 🟡 PARTIAL (2026-07-12)
+### P-2 · Mechanical secret-leak prevention on the repo — ✅ FIXED (2026-07-15)
 The issue (R-1): nothing but convention stops a secret reaching a public
-commit; detection was manual greps. Progress:
-- ✅ (b) **Local mechanical scan shipped.** `scripts/scan-secrets` runs the
+commit; detection was manual greps. Fixed across two rounds:
+- ✅ (b) **Local mechanical scan** (2026-07-12): `scripts/scan-secrets` runs the
   credential-pattern set from the security-posture skill §1 (worktree /
   `--staged` / `--range A..B` modes, redacted matches, rotation runbook on
-  fail), a `.githooks/pre-push` hook runs it over outgoing commits and blocks
-  a push on a match, and `scripts/install-git-hooks` activates it in a clone
-  (`git config core.hooksPath .githooks`). Verified: flags a planted fake
-  credential, passes the real working tree clean, and does not self-match.
-  Documented in `docs/SECRET-SCANNING.md`. Note the hook is repo-local and
-  bypassable (`--no-verify`) — it is a fast first line, not the backstop.
-- 🔴 (a) **GitHub secret scanning + push protection** — still to enable in the
-  repo Settings → Code security (free for public repos; the server-side
-  backstop that catches a push even without the local hook). Dashboard action,
-  not code.
-- 🔴 (c) **Full-history scan from an unshallowed clone** — still owed; session
-  clones are shallow (`--range`/history scans cover only fetched commits), so
-  a full-history verdict needs `git fetch --unshallow` first (or relies on
-  (a)). Record the result here when run.
+  fail), and a `.githooks/pre-push` hook runs it over outgoing commits and
+  blocks a push on a match. Verified: flags a planted fake credential, passes
+  the real working tree clean, does not self-match.
+- ✅ **Commit-time gate + auto-activation** (2026-07-15): `.githooks/pre-commit`
+  runs the scanner over the staged diff, so a secret is blocked BEFORE it
+  enters history at all (no rewrite ever needed when it fires; pre-push stays
+  as the second line for commits made while hooks were inactive). And because
+  git never auto-activates a repo's hooks, `scripts/install-git-hooks` now
+  runs automatically at session start (`.claude/settings.json` SessionStart) —
+  so remote-session clones, where nearly all commits are authored, always have
+  both hooks live. Verified end-to-end: a planted fake credential blocks
+  `git commit` with redacted output; a clean tree commits normally. The hooks
+  remain bypassable (`--no-verify`) by design for verified false positives.
+- ✅ (c) **Full-history scan** (2026-07-15): clone unshallowed
+  (`git fetch --unshallow`; 791 commits, the repo's entire history) and the §1
+  pattern set run over every patch in `git log --all -p` — **clean**: no
+  credential-shaped token has ever been committed.
+- ✅ (a) **GitHub-side backstop**: secret scanning + push protection are
+  enabled BY DEFAULT on public repos (GitHub default since 2024) — the
+  server-side net behind the local hooks. The Settings → Code security toggle
+  is not reachable from a session; the owner should eyeball it once to confirm
+  nothing was manually disabled (recorded as a note, not a blocker).
 
-Rotation runbook if anything is ever found: rotate at the provider FIRST,
-then rewrite history, then log the incident here.
+Documented in `docs/SECRET-SCANNING.md`. Rotation runbook if anything is ever
+found: rotate at the provider FIRST, then rewrite history, then log the
+incident here.
 
 ### P-3 · M-1 + M-2 · Quota race + no rate limiting on expensive endpoints — 🟡 PARTIAL (2026-07-12)
 A per-user **concurrent-request cap** now bounds the check-then-act race: a
@@ -422,3 +433,4 @@ so the exception terminates.
 | 2026-07-12 | **Board discovery layer added.** `src/admin-boards.js` (`ADMIN_BOARDS` registry) + `GET /api/admin/boards` + `scripts/boards`: one call lists every Claude-fetchable admin board (security, feedback, chatlogs) with its `?format=text` fetch line and ordering options — the entry point for popping up all boards and fanning out sub-agents on the admin's chosen priority order. Documented across the decision-boards / security-posture / feedback-loop / chat-logs skills. |
 | 2026-07-14 | **New surface: temporary web-search grant for Se/cure** (`src/websearch-key.js` + `src/websearch.js`; client glue in `public/cure/drc.js` + `public/js/drc-research.js`). A signed-in Se/rver user crossing to Se/cure via the ghost mints a short-lived, quota-metered token that authorizes the PUBLIC `POST /api/websearch` to run a bounded number of Exa searches on the server key — a deliberate, bounded relaxation of invariant 4 (see CLAUDE.md). **Threat model.** (1) *Capability transport:* the token is HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace (can't be forged or cross-used as a session/state HMAC); tampering the payload to raise quota fails the signature — covered by `websearch-key.test.js`. (2) *Abuse ceiling:* the D1 `websearch_grants` row is the meter; a leaked token can burn only the grant's remaining quota (default 25, `WEBSEARCH_GRANT_QUOTA`-tunable), tied to one user, expiring ~24h; `grantWebSearch` reuses the active per-user grant so a user can't stack grants to exceed the per-window ceiling. The reserve is an atomic `UPDATE … WHERE used < quota`, so a concurrent burst can't overrun it. This is the endpoint's built-in rate limit (relates to P-3); it is NOT behind `reserveInflight`. (3) *Fail-safe:* no D1 → grants can't be minted and searches can't be metered (503), so no unmetered server-paid search is reachable. (4) *Data minimization:* only the search QUERY reaches the server/Exa (never the conversation); the query is logged at debug level only (matching `exa.js`), the info log carries counts + `jti` + `uid`. **Residual / owed:** a live-verify pass (grant issuance on the real ghost crossing, the 429 path, the refund-on-empty path) per the live-verify skill; consider whether the public endpoint also warrants an IP/global rate limit beyond the per-grant quota. |
 | 2026-07-14 | **Web-search grant → full MINT subsystem + admin control panel.** Extended the above from the ghost-only path to a mintable-link subsystem: an admin mints `…/cure?ws=<token>` links (`POST /api/admin/websearch`, admin-gated) that ANY follower can open to receive the quota; the follower's browser reads it via public non-consuming `POST /api/websearch/status` and spends it via `POST /api/websearch`. Defaults (quota/TTL), a master `enabled` switch, and a GLOBAL BUDGET ceiling (cap on total outstanding remaining across all live grants) live in `config.js`'s `websearch` block, edited in `/admin` → Web search grants (also where links are minted + revoked). **Added threat considerations.** (a) *Token-in-URL:* a shareable link carries the capability in the query string — deliberately (that's the feature); mitigated by short TTL + quota + instant revoke (deleting the row 403s the token), and DRC strips `?ws=` from the URL via `history.replaceState` after reading it so it isn't retained in history/referrer for onward navigation. The token is shown ONLY at mint time — the admin list never re-exposes a live token. (b) *Blast radius of a broad mint:* an admin can mint a large-quota key; the global `budget` ceiling (0=uncapped by default) is the governance knob, enforced at mint time (`outstanding + quota > budget → 409`). (c) *No new unauth surface:* status/search still require a valid signed token; mint/revoke/list are admin-gated. Quota clamps in `config.js` bound a hostile config patch (quota 1..10000, ttl 1..720h). **Residual:** the live-verify pass now also covers the link flow (mint → open link → status → search → revoke) and the budget-exceeded 409. |
+| 2026-07-15 | **P-2 → FIXED.** Secret-leak prevention completed across all three residuals. (1) NEW `.githooks/pre-commit` runs `scripts/scan-secrets --staged` so a credential is blocked BEFORE it enters history (pre-push stays as the second line); verified end-to-end — a planted fake `sk-…` token blocks `git commit` with redacted output, a clean tree commits normally. (2) Hooks now AUTO-ACTIVATE: `.claude/settings.json`'s SessionStart runs `scripts/install-git-hooks`, so every remote-session clone (where nearly all commits are authored) has both hooks live without manual setup — closing the inert-in-fresh-clones gap. (3) Residual (c) done: full-history scan from an unshallowed clone (`git fetch --unshallow`, 791 commits, `git log --all -p` over the §1 pattern set) — **CLEAN**, no credential-shaped token has ever been committed. (4) Residual (a) resolved as default-on: GitHub secret scanning + push protection are enabled by default on public repos (GitHub default since 2024); the Settings toggle is unreachable from a session — owner to eyeball Settings → Code security once to confirm nothing was manually disabled. Catalog mirror flipped in the same commit; `docs/SECRET-SCANNING.md` updated. |

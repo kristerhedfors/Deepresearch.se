@@ -70,9 +70,9 @@ export const SECURITY_RISK_ITEMS = [
     id: "P-2",
     title: "Mechanical secret-leak prevention on the repo",
     severity: "high",
-    status: "open",
+    status: "fixed",
     summary:
-      "PARTIAL (2026-07-12): local mechanical scan shipped — scripts/scan-secrets (worktree/--staged/--range, redacted matches) + a .githooks/pre-push hook that blocks a push on a credential match + scripts/install-git-hooks; see docs/SECRET-SCANNING.md. RESIDUAL (both operational, not code): (a) enable GitHub secret scanning + push protection in repo Settings (server-side backstop); (c) run one full-history scan from an unshallowed clone (session clones are shallow). Rotation runbook: provider first, history second.",
+      "FIXED (2026-07-15): scripts/scan-secrets now gates BOTH commit (.githooks/pre-commit over the staged diff — a secret never enters history) and push (.githooks/pre-push over outgoing commits), and the hooks auto-activate in every remote session (SessionStart runs scripts/install-git-hooks). Full-history scan from an unshallowed clone (791 commits, git log --all -p over the §1 pattern set): CLEAN. GitHub secret scanning + push protection: default-on for public repos (server-side backstop; owner to eyeball Settings once). See docs/SECRET-SCANNING.md. Was: pre-push only, hooks inert in fresh clones, full-history verdict owed.",
   },
   {
     id: "P-3",

@@ -72,16 +72,22 @@ register items take the next free P-n and a catalog entry in the same change.
 
 ## 1. Secret-leak scan (R-1 / P-2) — run before every push touching docs/tests/config
 
-**Now packaged as `scripts/scan-secrets`** (P-2, 2026-07-12): it runs this
-exact pattern set over the working tree (default), the staged diff
+**Now packaged as `scripts/scan-secrets`** (P-2, FIXED 2026-07-15): it runs
+this exact pattern set over the working tree (default), the staged diff
 (`--staged`), or a commit range (`--range A..B`), redacts matches, and prints
-the rotation runbook on a hit. `.githooks/pre-push` runs it over outgoing
-commits and BLOCKS a push on a match — activate it in a clone with
-`scripts/install-git-hooks` (sets `core.hooksPath`). The hook is repo-local
-and bypassable (`--no-verify`), a fast first line, not the backstop; GitHub
-secret scanning + push protection (repo Settings, still to enable) is the
-server-side backstop, and a full-history verdict still needs an unshallowed
-clone (the shallow-clone caveat below). See `docs/SECRET-SCANNING.md`.
+the rotation runbook on a hit. TWO hooks gate history: `.githooks/pre-commit`
+runs it over the staged diff and BLOCKS a commit on a match (the secret never
+enters history), and `.githooks/pre-push` runs it over outgoing commits and
+BLOCKS the push (the second line, for commits made while hooks were
+inactive). Hooks are activated by `scripts/install-git-hooks` (sets
+`core.hooksPath`) — run AUTOMATICALLY per session clone by the SessionStart
+hook in `.claude/settings.json`, so in a remote session they are already
+live. Both are bypassable (`--no-verify`) for verified false positives;
+GitHub secret scanning + push protection (default-on for public repos) is the
+server-side backstop. The one-time FULL-history scan was run 2026-07-15 from
+an unshallowed clone (791 commits): **clean**. A future full-history re-scan
+still needs `git fetch --unshallow` first (the shallow-clone caveat below).
+See `docs/SECRET-SCANNING.md`.
 
 The raw scan (what `scripts/scan-secrets` automates) — working tree + fetched
 history, one command (from repo root):
