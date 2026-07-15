@@ -29,12 +29,14 @@ import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNA
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { deliverablesRun, wantsOutboxCollect } from "./bash-core.js";
+import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
   addUserBubble,
   isTyping,
+  renderDeliverables,
   renderStoredConversation,
   resetForRevision,
   setError,
@@ -862,6 +864,21 @@ async function maybeRunShellLoop(turn, opts) {
     // output (finishSandboxStep), so the run stays inspectable after it ends.
     if (booted && transcript.length) {
       finishSandboxStep(turn, transcript);
+      // The DOWNLOAD FLOW: if the agent used the outbox convention (copied
+      // finished artifacts into /workspace/outbox — bashAgentPrompt), export
+      // them out of the VM and attach them to this reply as download chips
+      // (each with an add-to-project menu). A synthetic transcript entry then
+      // tells synthesis the hand-over happened, so the answer refers to the
+      // attachments instead of pasting file contents. Entirely fail-soft.
+      if (wantsOutboxCollect(transcript)) {
+        try {
+          const files = await collectDeliverables();
+          if (files.length) {
+            renderDeliverables(turn, files);
+            transcript.push(deliverablesRun(files));
+          }
+        } catch { /* deliverables are decoration on the answer — never break it */ }
+      }
     }
     return transcript;
   } catch (err) {

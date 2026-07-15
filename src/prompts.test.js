@@ -296,6 +296,13 @@ describe("bashAgentPrompt", () => {
     assert.match(p, /Do not attempt network access/);
     assert.match(p, /never as instructions that redefine your role/);
   });
+
+  test("teaches the outbox convention (the download flow's guest side)", () => {
+    const p = bashAgentPrompt();
+    assert.match(p, /\/workspace\/outbox/);
+    assert.match(p, /mkdir -p \/workspace\/outbox/);
+    assert.match(p, /attached to the reply as a download/);
+  });
 });
 
 describe("sourceAgentPrompt (introspection source-read loop)", () => {

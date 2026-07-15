@@ -10,16 +10,26 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   MAX_COMMANDS_PER_ROUND,
+  MAX_DELIVERABLE_BYTES,
+  MAX_DELIVERABLES,
+  MAX_DELIVERABLES_TOTAL_BYTES,
   MAX_OUTPUT_CHARS,
+  OUTBOX_PATH,
   bashIntent,
   buildShellTranscript,
   buildStepUserMessage,
+  deliverablesRun,
+  formatByteSize,
   formatShellResult,
+  mimeForName,
   normalizeExecResult,
+  outboxListCommand,
+  parseOutboxListing,
   parseShellRequest,
   runShellLoop,
   sandboxTornDown,
   shellCommandLabel,
+  wantsOutboxCollect,
 } from "./bash-core.js";
 
 // ---- bashIntent ---------------------------------------------------------
@@ -494,5 +504,127 @@ describe("sandboxTornDown", () => {
     assert.equal(sandboxTornDown({ exitCode: 0, stdout: "ok", stderr: "" }), false);
     assert.equal(sandboxTornDown({ exitCode: 1, stdout: "", stderr: "grep: no match" }), false);
     assert.equal(sandboxTornDown(undefined), false);
+  });
+});
+
+// ---- outbox deliverables (the download flow) ------------------------------
+
+describe("outboxListCommand", () => {
+  test("lists only regular files at the outbox root, size+path, fail-soft", () => {
+    const cmd = outboxListCommand();
+    assert.match(cmd, /find \/workspace\/outbox/);
+    assert.match(cmd, /-maxdepth 1/);
+    assert.match(cmd, /-type f/);
+    assert.match(cmd, /\|\| true$/); // a missing dir must not fail the exec
+    assert.ok(cmd.includes(OUTBOX_PATH));
+  });
+});
+
+describe("wantsOutboxCollect", () => {
+  test("true only when some command mentions the outbox path", () => {
+    assert.equal(wantsOutboxCollect([{ command: "mkdir -p /workspace/outbox" }]), true);
+    assert.equal(
+      wantsOutboxCollect([
+        { command: "ls /" },
+        { command: "cp report.csv /workspace/outbox/" },
+      ]),
+      true
+    );
+    assert.equal(wantsOutboxCollect([{ command: "ls /workspace" }]), false);
+    assert.equal(wantsOutboxCollect([]), false);
+    assert.equal(wantsOutboxCollect(/** @type {any} */ (null)), false);
+  });
+});
+
+describe("parseOutboxListing", () => {
+  test("parses size<TAB>path lines into basename metadata", () => {
+    const { files, dropped } = parseOutboxListing(
+      "1234\t/workspace/outbox/report.csv\n77\t/workspace/outbox/notes with spaces.md\n"
+    );
+    assert.deepEqual(files, [
+      { name: "report.csv", size: 1234 },
+      { name: "notes with spaces.md", size: 77 },
+    ]);
+    assert.equal(dropped, 0);
+  });
+
+  test("ignores garbage lines and zero sizes", () => {
+    const { files } = parseOutboxListing(
+      "not a listing\n0\t/workspace/outbox/empty\n12\t/workspace/outbox/ab.txt\n"
+    );
+    assert.deepEqual(files, [{ name: "ab.txt", size: 12 }]);
+  });
+
+  test("drops oversize files and enforces the count and total caps", () => {
+    const big = `${MAX_DELIVERABLE_BYTES + 1}\t/workspace/outbox/huge.bin\n`;
+    const many = Array.from({ length: MAX_DELIVERABLES + 3 }, (_, i) => `10\t/workspace/outbox/f${i}.txt`).join("\n");
+    const { files, dropped } = parseOutboxListing(big + many);
+    assert.equal(files.length, MAX_DELIVERABLES);
+    assert.equal(dropped, 4); // the oversize one + the 3 beyond the count cap
+    // total cap: three files each under the per-file cap, but the third would
+    // exceed the whole-reply budget — first two kept, third dropped
+    const third = 3 * 1024 * 1024; // 3 MB < MAX_DELIVERABLE_BYTES; 3×3 MB > MAX_DELIVERABLES_TOTAL_BYTES
+    const r2 = parseOutboxListing(
+      `${third}\t/workspace/outbox/a.bin\n${third}\t/workspace/outbox/b.bin\n${third}\t/workspace/outbox/c.bin\n`
+    );
+    assert.deepEqual(r2.files.map((f) => f.name), ["a.bin", "b.bin"]);
+    assert.equal(r2.dropped, 1);
+  });
+
+  test("dedupes names keep-first and never escapes the outbox (basename only)", () => {
+    const { files } = parseOutboxListing(
+      "10\t/workspace/outbox/x.txt\n20\t/workspace/outbox/x.txt\n30\t/workspace/outbox/../../etc/passwd\n"
+    );
+    assert.deepEqual(files, [
+      { name: "x.txt", size: 10 },
+      { name: "passwd", size: 30 }, // basename only — the export path stays under the outbox
+    ]);
+  });
+
+  test("empty / non-string input degrades to no files", () => {
+    assert.deepEqual(parseOutboxListing(""), { files: [], dropped: 0 });
+    assert.deepEqual(parseOutboxListing(/** @type {any} */ (undefined)), { files: [], dropped: 0 });
+  });
+});
+
+describe("formatByteSize / mimeForName", () => {
+  test("human-readable sizes", () => {
+    assert.equal(formatByteSize(0), "0 B");
+    assert.equal(formatByteSize(999), "999 B");
+    assert.equal(formatByteSize(2048), "2 kB");
+    assert.equal(formatByteSize(12595), "12.3 kB");
+    assert.equal(formatByteSize(3 * 1024 * 1024), "3 MB");
+  });
+
+  test("mime from extension, octet-stream fallback", () => {
+    assert.equal(mimeForName("report.csv"), "text/csv");
+    assert.equal(mimeForName("README.MD"), "text/markdown");
+    assert.equal(mimeForName("data.json"), "application/json");
+    assert.equal(mimeForName("archive.zip"), "application/zip");
+    assert.equal(mimeForName("mystery"), "application/octet-stream");
+    assert.equal(mimeForName(""), "application/octet-stream");
+  });
+});
+
+describe("deliverablesRun", () => {
+  test("builds the synthetic hand-over transcript entry synthesis reads", () => {
+    const run = deliverablesRun([
+      { name: "report.csv", size: 12595 },
+      { name: "plot.png", size: 2048 },
+    ]);
+    assert.equal(run.exitCode, 0);
+    assert.match(run.command, /deliverables/);
+    assert.ok(run.command.includes(OUTBOX_PATH));
+    assert.match(run.stdout, /report\.csv \(12\.3 kB\)/);
+    assert.match(run.stdout, /plot\.png \(2 kB\)/);
+    assert.match(run.stdout, /attached to this reply/);
+    assert.match(run.stdout, /do not paste/);
+    assert.equal(run.stderr, "");
+  });
+
+  test("passes the shell-transcript contract (formatShellResult renders it)", () => {
+    const rendered = formatShellResult(deliverablesRun([{ name: "a.txt", size: 3 }]));
+    assert.match(rendered, /\$ # deliverables/);
+    assert.match(rendered, /exit: 0/);
   });
 });
