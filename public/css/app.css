@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h37;
+  --css-version: h38;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1512,6 +1512,36 @@ body.feedback-mode .feedback-btn { display: inline-block; }
 .fb-msg.agent { background: var(--panel-2); border: 1px solid var(--border); }
 .fb-msg-head { font-size: .7rem; margin-bottom: .1rem; }
 .fb-replybox { margin-top: .4rem; }
+
+/* Screenshot attachments (feedback-attach.js): the add button + pending
+   thumbnail strip in the dialog/reply boxes, and stored screenshots
+   rendered inside thread messages. */
+.fb-attach { margin-top: .35rem; }
+.fb-attach-row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.fb-attach-btn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .25rem .6rem; font-size: .78rem; cursor: pointer;
+}
+.fb-attach-btn:hover { border-color: var(--accent); }
+.fb-shots { display: flex; gap: .4rem; margin-top: .35rem; flex-wrap: wrap; }
+.fb-shot { position: relative; }
+.fb-shot img {
+  width: 72px; height: 72px; object-fit: cover; display: block;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.fb-shot button {
+  position: absolute; top: -7px; right: -7px;
+  width: 20px; height: 20px; line-height: 1; padding: 0;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: var(--panel); color: var(--muted);
+  font-size: .7rem; cursor: pointer;
+}
+.fb-msg-imgs { display: flex; gap: .4rem; margin-top: .3rem; flex-wrap: wrap; }
+.fb-msg-imgs img {
+  max-width: 150px; max-height: 110px; display: block;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
 
 /* ---- Experimental features: badge + the bash-lite execution sandbox -------- */
 
