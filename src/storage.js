@@ -47,7 +47,7 @@
 
 import { jsonResponse } from "./http.js";
 import { serverHistoryEnabled, storageAvailability } from "./settings.js";
-import { wipeRagForUser } from "./rag.js";
+import { idOk, wipeRagForUser } from "./rag.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -58,9 +58,8 @@ const FILE_MAX_BYTES = 30 * 1024 * 1024; // client caps raw files at 25 MB
 const MAX_OBJECTS_PER_USER = 1000; // per key family — sanity backstop, not a product limit
 
 // Conversation/file ids are client-generated UUIDs; anything else is
-// rejected before it can become a key path segment.
-/** @param {unknown} s */
-const idOk = (s) => typeof s === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(s);
+// rejected before it can become a key path segment (`idOk`, shared with
+// src/rag.js — imported above).
 
 // Two families share the encrypted-record shape and handlers below:
 // "convos" (one conversation each) and "projects" (one project's metadata

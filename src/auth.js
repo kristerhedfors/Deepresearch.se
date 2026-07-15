@@ -30,6 +30,7 @@
 // admin break-glass Basic Auth (below) is independent of this key.
 
 import { getUserById } from "./accounts.js";
+import { safeEqual, toHex } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./accounts.js').User} User */
@@ -242,11 +243,6 @@ async function sessionHmacKeys(env) {
   return [await importHmacKey(enc.encode(String(env.SESSION_SECRET)))];
 }
 
-/** @param {ArrayBuffer} buf @returns {string} */
-function toHex(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /**
  * @param {Env} env
  * @param {string} message
@@ -277,17 +273,4 @@ async function verifyHmac(env, message, sig) {
     if (safeEqual(sig, expected)) return true;
   }
   return false;
-}
-
-/**
- * Constant-time-ish comparison to avoid trivial timing leaks.
- * @param {unknown} a
- * @param {unknown} b
- * @returns {boolean}
- */
-function safeEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }

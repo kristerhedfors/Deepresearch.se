@@ -82,6 +82,7 @@ import {
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
+  wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
@@ -120,15 +121,6 @@ function gateStatus(msg) {
   const el = $("gatestatus");
   el.hidden = !msg;
   el.textContent = msg || "";
-}
-
-// Render prose we build for innerHTML with the Se/cure & Se/rver wordmark
-// slash tightened (the .sl rule) so it reads closer to "secure"/"server".
-// Escapes &<> FIRST, so any plain string stays safe as markup.
-function wmHtml(s) {
-  return String(s)
-    .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
-    .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
 }
 
 function workStatus(msg) {

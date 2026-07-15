@@ -44,6 +44,7 @@ import {
   PHYSICAL_TYPES,
   SPAWN_TABLE,
   SPECIES,
+  STARTERS,
   VILLAINS,
 } from "./tokemon-data.js";
 
@@ -551,6 +552,19 @@ export function haversineM(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+/**
+ * Read a client-supplied position, rejecting anything outside Web Mercator's
+ * usable latitudes.
+ * @param {{lat?: unknown, lng?: unknown} | null | undefined} source
+ * @returns {{lat: number, lng: number} | null}
+ */
+export function parseLatLng(source) {
+  const lat = Number(source?.lat);
+  const lng = Number(source?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 85 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
 // ---------------------------------------------------------------------------
 // Save state
 
@@ -949,6 +963,56 @@ export function publicFoe(battle) {
     maxHp,
     idx: battle.foeIdx,
     count: battle.foes.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Client views — the save goes to the client minus what would enable
+// cheating in a battle (the foe's exact IVs/moves stay server-side).
+
+/** @param {Creature} c */
+export function publicCreature(c) {
+  const stats = statsFor(c.species, c.level, c.ivs);
+  const spec = SPECIES[c.species];
+  return {
+    uid: c.uid,
+    species: c.species,
+    name: spec.name,
+    emoji: spec.emoji,
+    types: spec.types,
+    level: c.level,
+    xp: c.xp,
+    hp: c.hp,
+    maxHp: stats.maxHp,
+    moves: c.moves.map((m) => ({ id: m.id, name: MOVES[m.id].name, type: MOVES[m.id].type, power: MOVES[m.id].power, pp: m.pp, maxPp: MOVES[m.id].pp })),
+    caughtAt: c.caughtAt,
+  };
+}
+
+/** @param {Battle | null} battle */
+export function publicBattle(battle) {
+  if (!battle) return null;
+  return {
+    kind: battle.kind,
+    villain: battle.kind === "villain" ? battle.villain : null,
+    activeUid: battle.activeUid,
+    foe: publicFoe(battle),
+    runAttempts: battle.runAttempts,
+  };
+}
+
+/** @param {Save} save */
+export function publicSave(save) {
+  return {
+    starter: save.starter,
+    items: save.items,
+    party: save.party.map(publicCreature),
+    box: save.box.map(publicCreature),
+    dex: save.dex,
+    stats: save.stats,
+    battle: publicBattle(save.battle),
+    healReadyAt: save.lastHealAt + HEAL_COOLDOWN_MS,
+    starters: STARTERS.map((id) => ({ id, name: SPECIES[id].name, emoji: SPECIES[id].emoji, types: SPECIES[id].types })),
   };
 }
 

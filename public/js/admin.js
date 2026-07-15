@@ -5,7 +5,7 @@
 // actions. Accounts are provisioned by Google sign-in — there is nothing
 // to create here.
 
-import { alertSeverityBadge, escapeHtml, pendingApprovalLine } from "./notifications.js";
+import { alertSeverityBadge, escapeHtml, formatCount as count, pendingApprovalLine } from "./notifications.js";
 
 const $ = (id) => document.getElementById(id);
 const PERIODS = ["h5", "day", "week", "month"];
@@ -25,12 +25,6 @@ async function api(path, opts = {}) {
 }
 
 const euro = (v) => "€" + (Number(v) || 0).toFixed(2);
-const count = (v) => {
-  const n = Number(v) || 0;
-  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K";
-  return String(n);
-};
 
 async function load() {
   try {

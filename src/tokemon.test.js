@@ -25,7 +25,11 @@ import {
   newVillainBattle,
   newWildBattle,
   normalizeSave,
+  parseLatLng,
   promoteForLevel,
+  publicBattle,
+  publicCreature,
+  publicSave,
   seededRng,
   SPECIES,
   spawnById,
@@ -507,4 +511,61 @@ test("hashSeed/seededRng are stable across calls", () => {
   const c = makeCreature("cindron", 5, seededRng(1));
   const d = makeCreature("cindron", 5, seededRng(1));
   assert.deepEqual({ ...c, uid: 0 }, { ...d, uid: 0 });
+});
+
+// ---------------------------------------------------------------------------
+// Client views (moved here from tokemon-api.js, which had no test file)
+
+test("publicCreature exposes derived stats but never the IVs", () => {
+  const c = makeCreature("cindron", 7, seededRng(3));
+  c.caughtAt = 123;
+  const view = publicCreature(c);
+  assert.equal(view.species, "cindron");
+  assert.equal(view.name, SPECIES.cindron.name);
+  assert.equal(view.level, 7);
+  assert.equal(view.maxHp, statsFor(c.species, c.level, c.ivs).maxHp);
+  assert.equal(view.caughtAt, 123);
+  assert.ok(!("ivs" in view)); // the anti-cheat boundary
+  for (const m of view.moves) {
+    assert.equal(m.name, MOVES[m.id].name);
+    assert.equal(m.maxPp, MOVES[m.id].pp);
+  }
+});
+
+test("publicBattle hides the foe roster behind publicFoe; null battle → null", () => {
+  assert.equal(publicBattle(null), null);
+  const save = newSave(1000);
+  save.party.push(makeCreature("cindron", 9, seededRng(4)));
+  const spawn = { id: "s1", kind: "creature", species: "baudrat", level: 5, lat: 0, lng: 0, expiresAt: 2000, emoji: "x", name: "y" };
+  save.battle = newWildBattle(save, /** @type {any} */ (spawn), seededRng(5), 1000);
+  const view = publicBattle(save.battle);
+  assert.equal(view?.kind, "wild");
+  assert.equal(view?.villain, null);
+  assert.ok(!("foes" in (view || {}))); // only the publicFoe projection leaves the server
+  assert.equal(view?.foe?.species, "baudrat");
+});
+
+test("publicSave projects the whole save through the public views", () => {
+  const save = newSave(1000);
+  save.starter = "cindron";
+  save.party.push(makeCreature("cindron", 5, seededRng(6)));
+  save.lastHealAt = 500;
+  const view = publicSave(save);
+  assert.equal(view.starter, "cindron");
+  assert.equal(view.party.length, 1);
+  assert.ok(!("ivs" in view.party[0]));
+  assert.equal(view.battle, null);
+  assert.equal(view.healReadyAt, 500 + 10 * 60 * 1000);
+  assert.deepEqual(view.starters.map((s) => s.id), STARTERS);
+  assert.ok(!("usedSpawns" in view)); // server-side bookkeeping stays server-side
+});
+
+test("parseLatLng accepts Web Mercator-usable positions, rejects the rest", () => {
+  assert.deepEqual(parseLatLng({ lat: "59.33", lng: "18.06" }), { lat: 59.33, lng: 18.06 });
+  assert.deepEqual(parseLatLng({ lat: -85, lng: 180 }), { lat: -85, lng: 180 });
+  assert.equal(parseLatLng({ lat: 86, lng: 0 }), null); // beyond Mercator's usable band
+  assert.equal(parseLatLng({ lat: 0, lng: 181 }), null);
+  assert.equal(parseLatLng({ lat: "abc", lng: 0 }), null);
+  assert.equal(parseLatLng(null), null);
+  assert.equal(parseLatLng({}), null);
 });

@@ -3,7 +3,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { b64ToF32, f32ToB64, validateRagIndexPayload } from "./rag.js";
+import { b64ToF32, f32ToB64, idOk, validateRagIndexPayload } from "./rag.js";
+
+test("idOk accepts only safe key-path id segments (shared with storage.js)", () => {
+  assert.equal(idOk("f47ac10b-58cc-4372-a567-0e02b2c3d479"), true);
+  assert.equal(idOk("doc_1-A"), true);
+  assert.equal(idOk(""), false); // empty
+  assert.equal(idOk("a".repeat(81)), false); // over the 80-char cap
+  assert.equal(idOk("../escape"), false); // path traversal characters
+  assert.equal(idOk("has space"), false);
+  assert.equal(idOk(42), false); // non-string
+});
 
 test("f32/b64 codec round-trips losslessly", () => {
   const v = new Float32Array([0, 1, -1, 0.5, 3.14159, -1e-7, 12345.678]);
