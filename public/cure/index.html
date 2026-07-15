@@ -39,6 +39,13 @@
         <button id="ghostbtn" type="button" class="on" data-feature="ghost" title="You're in ghost mode — Se/cure: this server never sees your chats" aria-label="Ghost mode (you are here)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11a7 7 0 0 1 14 0v9l-2.4-2-2.2 2-2.4-2-2.4 2-2.2-2L5 20z"/><line x1="9.5" y1="10.5" x2="9.51" y2="10.5"/><line x1="14.5" y1="10.5" x2="14.51" y2="10.5"/></svg>
         </button>
+        <!-- Share this workspace (2026-07-15 owner directive: a first-class
+             header icon, not just the settings row) — sits where the ghost
+             used to, the ghost one step left. Opens the workspace pane's
+             share composer (wired in drc.js). -->
+        <button id="sharebtn" type="button" title="Share this workspace — seal keys, settings &amp; chats into one offline link" aria-label="Share secure workspace">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="8.59" y1="10.49" x2="15.41" y2="6.51"/></svg>
+        </button>
         <button id="termbtn" type="button" title="Terminal — tap to switch between the terminal and the conversation" aria-label="Switch between terminal and conversation" aria-pressed="false" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3"/><line x1="13" y1="16" x2="17" y2="16"/></svg>
         </button>

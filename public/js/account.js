@@ -80,13 +80,23 @@ export function initAccountPanel() {
       if (!res.ok) throw new Error("HTTP " + res.status);
       ctx.me = await res.json();
       renderNotifBadge(ctx);
-      ctx.show(view);
+      await ctx.show(view);
     } catch {
       ctx.body.innerHTML = '<p class="muted">Could not load account info.</p>';
     }
   };
   document.getElementById("accountbtn").addEventListener("click", () => openPanel("summary"));
   document.getElementById("gearbtn")?.addEventListener("click", () => openPanel("settings"));
+  // The header's workspace-share icon (right of the ghost, 2026-07-15 owner
+  // directive): a first-class door to "Share a Se/cure workspace" — opens the
+  // Settings view and lands on the share section, whose widget (create link,
+  // copy link/password) lives there (account-settings.js).
+  document.getElementById("sharebtn")?.addEventListener("click", async () => {
+    await openPanel("settings");
+    const create = document.getElementById("wspcreate");
+    create?.scrollIntoView({ block: "center" });
+    create?.focus();
+  });
   document.getElementById("accountclose").addEventListener("click", () => {
     ctx.overlay.hidden = true;
   });
@@ -110,8 +120,9 @@ function showView(ctx, view) {
     return;
   }
   if (view === "settings") {
-    loadSettingsView(ctx);
-    return;
+    // Returned so a caller can act once the (async) view is in the DOM —
+    // the header's share icon scrolls to the workspace section on it.
+    return loadSettingsView(ctx);
   }
   if (view === "feedback") {
     loadFeedbackView(ctx);
