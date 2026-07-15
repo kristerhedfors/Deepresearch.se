@@ -91,3 +91,18 @@ feature maintenance*, and the **feature-maintenance** skill):
 > run did not warm whatever is cold (cache not persisting across sessions?).
 > Not the #52 file-read wedge — no filesystem path involved. Fail-soft held
 > both times. Signature: first-pipe/uncached-binary exec timeout on iOS.
+>
+> **2026-07-15 (third tick) — hypothesis NARROWED → nudged #43
+> (comment 4980601948): the cold unit is the BINARY, not the session.**
+> chat_logs #351 (10:53, `sha256sum` pipe → exit 124, third morning in a
+> row), then #352 (10:56, `file` on an attached PDF → exit 0, fast), then
+> #353 (10:59, `zip` → exit 124 — a *different* previously-unused binary
+> timing out MID-SESSION three minutes after a successful exec), then #354
+> (11:15, `file` again → exit 0). Success sandwiched between two timeouts
+> rules out first-exec-of-session cold: each not-yet-used binary's FIRST
+> invocation blows the 30 s budget (cold disk-block fetches off the network
+> disk on iOS), already-used binaries stay warm, and the block cache does
+> not persist across sessions. Incidentally #352 is the on-device
+> confirmation of #52's owed item (1): a mounted attachment IS readable
+> from the VM (`file` exit 0 on `/workspace/Resume ….pdf`) — #52 still owes
+> (2) overlay persistence + the cross-dir symlink across a reload.
