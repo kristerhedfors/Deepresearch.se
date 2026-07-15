@@ -459,6 +459,95 @@ export function deliverablesRun(files) {
   };
 }
 
+// ---- exec bridge protocol ----------------------------------------------------
+
+// The marker+base64 envelope the sandbox's exec bridge speaks: the pure codec
+// half of public/js/sandbox.js's execInSandbox (the VM/console orchestration
+// stays there). One command's stdout/stderr/RC ride the shared interactive
+// console as a single `###EXEC<id>:<b64 out>:<b64 err>:<rc>###` line, so the
+// captured output survives any stray banner the interactive shell emits.
+
+/**
+ * Builds the wrapped /bin/sh command line + its unique capture marker.
+ * Redirect stdout AND stderr to files, capture $? IMMEDIATELY (before any
+ * pipe), THEN base64 the files. The prior form piped stdout into base64
+ * and read $? after the pipe, so RC was base64's exit (always 0) — the
+ * command's real exit code was lost. /bin/sh here is dash (no PIPESTATUS),
+ * so the temp-file form is the correct way to preserve it. The
+ * marker+base64 envelope is unchanged (base64 emits no ':' or '#').
+ * @param {string} command
+ * @param {string} id a unique run id (uniqueness is the caller's job)
+ * @returns {{ marker: string, wrapped: string }}
+ */
+export function execEnvelope(command, id) {
+  const marker = "###EXEC" + id + ":";
+  const of = "/tmp/_o" + id;
+  const ef = "/tmp/_e" + id;
+  const wrapped =
+    "( " + command + " ) >" + of + " 2>" + ef + "; RC=$?; " +
+    "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
+    "rm -f " + of + " " + ef + "; " +
+    'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
+  return { marker, wrapped };
+}
+
+/**
+ * Joins the captured console chunks into one buffer.
+ * @param {Uint8Array[]} chunks
+ * @returns {Uint8Array}
+ */
+export function concatChunks(chunks) {
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const combined = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { combined.set(c, off); off += c.length; }
+  return combined;
+}
+
+/**
+ * Parses the envelope back out of the raw captured console text. Returns the
+ * command's {exitCode, stdout, stderr}, or null when the marker never made it
+ * through (the caller owns that failure's shape and telemetry).
+ * @param {string} raw the decoded console capture
+ * @param {string} marker the run's marker from execEnvelope
+ * @returns {{ exitCode: number, stdout: string, stderr: string } | null}
+ */
+export function parseExecEnvelope(raw, marker) {
+  const re = new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^:]*):([^:]*):(-?\\d+)###");
+  const m = String(raw || "").match(re);
+  if (!m) return null;
+  let stdout = "";
+  let stderr = "";
+  try { stdout = m[1] ? atob(m[1]) : ""; } catch {}
+  try { stderr = m[2] ? atob(m[2]) : ""; } catch {}
+  return { exitCode: parseInt(m[3], 10), stdout, stderr };
+}
+
+/**
+ * Decodes a base64 capture (e.g. `base64 -w0 <file>` piped out through the
+ * exec bridge) into bytes, tolerating the wrapping whitespace base64 emits.
+ * @param {string} b64
+ * @returns {Uint8Array}
+ */
+export function base64ToBytes(b64) {
+  const bin = atob(String(b64 || "").replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * The host-read policy: only round-trip files out of the mount tree — never
+ * arbitrary guest paths. Lives next to OUTBOX_PATH so the "which guest paths
+ * may leave the VM" surface is defined (and tested) in one place.
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function isExportablePath(path) {
+  return /^\/(workspace|mnt|root|tmp)\//.test(String(path || ""));
+}
+
 // ---- the per-round step message --------------------------------------------
 
 // The USER message for one agent-step model call, shared by both step callers

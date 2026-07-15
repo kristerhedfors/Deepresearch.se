@@ -359,6 +359,19 @@ export function buildWorkspacePayload(state, opts = {}) {
 }
 
 /**
+ * Whether a built payload actually CARRIES anything beyond the envelope
+ * metadata (`v`/`kind`/`name`) — the share pane's "tick at least one thing"
+ * guard. The metadata-key knowledge lives here next to buildWorkspacePayload
+ * so a future payload field can't silently drift the check.
+ * @param {any} payload a buildWorkspacePayload result
+ * @returns {number} the number of content-bearing keys
+ */
+export function workspacePayloadCarries(payload) {
+  const w = payload && typeof payload === "object" ? payload : {};
+  return Object.keys(w).filter((k) => k !== "v" && k !== "kind" && k !== "name").length;
+}
+
+/**
  * Apply an opened workspace payload onto a DRC state, IN PLACE (the receiving
  * half of buildWorkspacePayload). Conversations are APPENDED with fresh ids
  * (never clobbering the local session); keys/settings overwrite only the

@@ -34,14 +34,19 @@
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { webSearch } from "./exa.js";
+import {
+  GRANT_DEPTH,
+  GRANTS_LIST_MAX,
+  QUERY_MAX,
+  adjustResultResponse,
+  budgetExceeded409,
+  emptyWebResultResponse,
+  readTokenBody,
+  resolveQuotaPatch,
+  webResultResponse,
+} from "./grant-http.js";
 import { jsonResponse } from "./http.js";
 import { mintWebSearchToken, verifyWebSearchToken } from "./websearch-key.js";
-
-const QUERY_MAX = 400; // bound the query the server will run
-const GRANTS_LIST_MAX = 200; // admin list cap
-// Modest, fixed server-side depth for a granted search — the DRC session has no
-// time-budget slider, and this shares the server's Exa budget across all users.
-const GRANT_DEPTH = { numResults: 6, type: "auto" };
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -284,11 +289,10 @@ export async function adjustGrantQuota(env, log, jti, patch, opts = {}) {
   if (!row) return { error: "not_found" };
   if (opts.ownerId != null && String(row.user_id) !== String(opts.ownerId)) return { error: "not_found" };
 
-  if (!patch || (patch.quota == null && patch.delta == null)) return { error: "bad_request" };
   const current = Number(row.quota);
-  const next = patch.quota != null ? Math.floor(Number(patch.quota)) : current + Math.floor(Number(patch.delta));
-  if (!Number.isFinite(next)) return { error: "bad_request" };
-  const clamped = Math.max(0, next);
+  const patched = resolveQuotaPatch(current, patch);
+  if (patched.error) return { error: patched.error };
+  const clamped = patched.clamped;
 
   const increase = clamped - current;
   const budget = Number(opts.budget) > 0 ? Math.floor(Number(opts.budget)) : 0;
@@ -379,16 +383,7 @@ export async function handleWebSearchAdjust(request, env, log, identity) {
     { quota: body.quota, delta: body.delta },
     { ownerId: String(identity.id), budget: cfg.budget },
   );
-  if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
-  if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant of yours." }, 404);
-  if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
-  if (adjusted.error === "budget_exceeded") {
-    return jsonResponse(
-      { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
-      409,
-    );
-  }
-  return jsonResponse(adjusted);
+  return adjustResultResponse(adjusted, "No such grant of yours.");
 }
 
 /**
@@ -399,8 +394,7 @@ export async function handleWebSearchAdjust(request, env, log, identity) {
  * @returns {Promise<Response>}
  */
 export async function handleWebSearchStatus(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const token = typeof body?.token === "string" ? body.token : "";
+  const token = await readTokenBody(request);
   if (!token) return jsonResponse({ error: "token is required." }, 400);
   const view = await grantStatus(env, token);
   if (!view) return jsonResponse({ error: "Invalid, expired, or revoked token." }, 403);
@@ -465,7 +459,7 @@ export async function handleWebSearch(request, env, log) {
       .run()
       .catch(() => {});
     log.info("websearch.empty", { uid: claims.uid, jti: claims.jti });
-    return jsonResponse({ content: result?.content || "", items: [], sources: [], resultCount: 0, remaining: null });
+    return emptyWebResultResponse(result);
   }
 
   const row = await db
@@ -476,13 +470,7 @@ export async function handleWebSearch(request, env, log) {
   const remaining = row ? Math.max(0, Number(row.quota) - Number(row.used)) : null;
   log.info("websearch.served", { uid: claims.uid, jti: claims.jti, results: result.resultCount, remaining });
 
-  return jsonResponse({
-    content: result.content,
-    items: result.items,
-    sources: result.sources,
-    resultCount: result.resultCount,
-    remaining,
-  });
+  return webResultResponse(result, remaining);
 }
 
 /**
@@ -525,12 +513,7 @@ export async function handleAdminWebSearch(request, env, url, log, identity) {
       budget: cfg.budget,
     });
     if (!minted) return jsonResponse({ error: "Minting unavailable." }, 503);
-    if (minted.error === "budget_exceeded") {
-      return jsonResponse(
-        { error: `Global budget of ${minted.budget} would be exceeded (${minted.outstanding} already outstanding).` },
-        409,
-      );
-    }
+    if (minted.error === "budget_exceeded") return budgetExceeded409(minted);
     const grant = /** @type {GrantView} */ (minted);
     const link = url.origin + "/cure?ws=" + encodeURIComponent(grant.token);
     return jsonResponse({ ...grant, link });
@@ -550,16 +533,7 @@ export async function handleAdminWebSearch(request, env, url, log, identity) {
     const body = /** @type {any} */ (await request.json().catch(() => ({})));
     const cfg = await grantDefaults(env);
     const adjusted = await adjustGrantQuota(env, log, del[1], { quota: body.quota, delta: body.delta }, { budget: cfg.budget });
-    if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
-    if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant." }, 404);
-    if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
-    if (adjusted.error === "budget_exceeded") {
-      return jsonResponse(
-        { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
-        409,
-      );
-    }
-    return jsonResponse(adjusted);
+    return adjustResultResponse(adjusted, "No such grant.");
   }
 
   return jsonResponse({ error: "Not found." }, 404);

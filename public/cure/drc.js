@@ -63,6 +63,7 @@ import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import {
   applyWorkspacePayload,
   buildWorkspacePayload,
+  workspacePayloadCarries,
   generateWorkspacePassword,
   isWorkspacePath,
   openWorkspace,
@@ -1909,8 +1910,7 @@ async function createWorkspaceLink() {
     name: $("wk-name").value.trim(),
   };
   const payload = buildWorkspacePayload(state, include);
-  const carries = Object.keys(payload).filter((k) => k !== "v" && k !== "kind" && k !== "name").length;
-  if (!carries) {
+  if (!workspacePayloadCarries(payload)) {
     status("Tick at least one thing to include.");
     return;
   }

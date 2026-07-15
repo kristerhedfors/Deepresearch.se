@@ -40,7 +40,16 @@ import {
 } from "./sandbox-files.js";
 import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
-import { OUTBOX_PATH, outboxListCommand, parseOutboxListing } from "./bash-core.js";
+import {
+  OUTBOX_PATH,
+  base64ToBytes,
+  concatChunks,
+  execEnvelope,
+  isExportablePath,
+  outboxListCommand,
+  parseExecEnvelope,
+  parseOutboxListing,
+} from "./bash-core.js";
 
 // xterm is VENDORED (2026-07-15, the Forever Agent user-value pass): the
 // terminal used to load from cdn.jsdelivr.net at runtime, so a CDN outage
@@ -988,8 +997,9 @@ async function seedFiles(fm) {
  */
 export async function exportFile(path) {
   const p = String(path || "");
-  // Only round-trip files out of the mount tree — never arbitrary guest paths.
-  if (!/^\/(workspace|mnt|root|tmp)\//.test(p)) {
+  // Only round-trip files out of the mount tree — never arbitrary guest paths
+  // (the policy predicate lives in bash-core.js next to OUTBOX_PATH).
+  if (!isExportablePath(p)) {
     sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: 0, ok: false, skip: "path" });
     return null;
   }
@@ -1000,10 +1010,7 @@ export async function exportFile(path) {
       flushSandboxLog();
       return null;
     }
-    const bin = atob(r.stdout.replace(/\s+/g, ""));
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes]);
+    const blob = new Blob([base64ToBytes(r.stdout)]);
     sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: blob.size, ok: true });
     flushSandboxLog();
     return blob;
@@ -1104,20 +1111,9 @@ export function execInSandbox(command) {
     // multiple agents each pass their own id and the layer clips between them.
     feedCommand("shell", command);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const marker = "###EXEC" + id + ":";
-    const of = "/tmp/_o" + id;
-    const ef = "/tmp/_e" + id;
-    // Redirect stdout AND stderr to files, capture $? IMMEDIATELY (before any
-    // pipe), THEN base64 the files. The prior form piped stdout into base64
-    // and read $? after the pipe, so RC was base64's exit (always 0) — the
-    // command's real exit code was lost. /bin/sh here is dash (no PIPESTATUS),
-    // so the temp-file form is the correct way to preserve it. The
-    // marker+base64 envelope is unchanged (base64 emits no ':' or '#').
-    const wrapped =
-      "( " + command + " ) >" + of + " 2>" + ef + "; RC=$?; " +
-      "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
-      "rm -f " + of + " " + ef + "; " +
-      'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
+    // The marker+base64 envelope (incl. the RC-before-any-pipe fix) is the
+    // pure codec in bash-core.js — this side only owns the VM/console plumbing.
+    const { marker, wrapped } = execEnvelope(command, id);
     const env = {
       env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
       cwd: "/root",
@@ -1162,20 +1158,9 @@ export function execInSandbox(command) {
       try { feedResult("shell", timeoutRes); } catch { /* decoration */ }
       return timeoutRes;
     }
-    let total = 0;
-    for (const c of chunks) total += c.length;
-    const combined = new Uint8Array(total);
-    let off = 0;
-    for (const c of chunks) { combined.set(c, off); off += c.length; }
-    const raw = new TextDecoder().decode(combined);
-    const re = new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^:]*):([^:]*):(-?\\d+)###");
-    const m = raw.match(re);
-    if (!m) return { exitCode: 1, stdout: "", stderr: "exec: marker not found" };
-    let stdout = "";
-    let stderr = "";
-    try { stdout = m[1] ? atob(m[1]) : ""; } catch {}
-    try { stderr = m[2] ? atob(m[2]) : ""; } catch {}
-    const result = { exitCode: parseInt(m[3], 10), stdout, stderr };
+    const raw = new TextDecoder().decode(concatChunks(chunks));
+    const result = parseExecEnvelope(raw, marker);
+    if (!result) return { exitCode: 1, stdout: "", stderr: "exec: marker not found" };
     feedResult("shell", result); // mirror the raw output to the background layer
     return result;
   };
