@@ -665,6 +665,26 @@ Without this the model treats the sandbox as empty and never looks.
   short hash), `buildSeedScript({projName, projId, hash})` (the mkdir + `cp -a`/
   `cp -an` + `ln -sfn` builder), and `buildFallbackWriteScript(files)` (Tier-3) —
   the deterministic bits, kept out of the browser-only `sandbox.js`.
+### The OUTBOX download flow — the round-trip OUT in practice (added 2026-07-15)
+
+The round-trip-out above (`exportFile`; since the 2026-07-14 overlay fix it is
+base64-through-`exec`, not `readFileAsBlob` — no per-volume `IDBDevice`
+exists anymore) now has its first product surface: **ask for a file, get a
+download**. The convention is a special folder — **`/workspace/outbox/`** —
+the agent copies finished artifacts into (`bashAgentPrompt` teaches it;
+`mkdir -p` by the agent, so no seed dependency and bare pre-warmed boots
+work). After the shell loop, `stream.js` calls `sandbox.js`
+`collectDeliverables()`: one `find -printf` listing exec, the pure
+`parseOutboxListing` (bash-core.js — basename-only, 5 files / 4 MB each /
+8 MB total caps), then `exportFile` per file. `turns.js renderDeliverables`
+attaches the blobs to the reply as download chips, each with a dropdown to
+add the file to a project (`projects.js addFilesToProject` — the durable
+path; the chips themselves are live-session only). A synthetic
+`deliverablesRun` transcript entry rides the existing `shell_transcript`
+contract so synthesis refers to the attachments instead of pasting them.
+DRS only for now; DRC wiring is a documented follow-up (its agent prompt
+deliberately omits the convention until the page renders chips).
+
 - **`public/sw.js`** (Tier 2 only, NEW, deferred) — a Service Worker that
   intercepts fetches under the WebDevice path and serves decrypted OPFS / proxied
   R2 bytes with `application/octet-stream` + `Cross-Origin-Resource-Policy:

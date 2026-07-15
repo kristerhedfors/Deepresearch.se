@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h39;
+  --css-version: h40;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -797,6 +797,46 @@ button:disabled { opacity: .5; cursor: default; }
   background: rgba(255, 255, 255, .6); border: 1px solid var(--border);
   border-radius: 8px; padding: .15rem .5rem; font-size: .75rem;
 }
+
+/* Sandbox deliverables: files the agent placed in /workspace/outbox, attached
+   to the reply as download chips. Chip tap = download; the ▾ caret opens the
+   options menu (Download / Add to project) — dismissed on any outside
+   interaction per UX-1. */
+.deliverables { display: flex; gap: .4rem; margin: .4rem 0 .1rem; flex-wrap: wrap; }
+.dl-chip {
+  position: relative; display: inline-flex; align-items: stretch;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 9px; overflow: visible;
+}
+.dl-main {
+  display: inline-flex; align-items: baseline; gap: .4rem;
+  background: transparent; border: 0; color: var(--text);
+  padding: .3rem .55rem; font-size: .82rem; font-weight: 500; cursor: pointer;
+}
+.dl-main:hover .dl-name { text-decoration: underline; }
+.dl-size { color: var(--muted); font-size: .72rem; }
+.dl-caret {
+  background: transparent; border: 0; border-left: 1px solid var(--border);
+  color: var(--muted); padding: 0 .45rem; font-size: .8rem; cursor: pointer;
+  border-radius: 0 9px 9px 0;
+}
+.dl-caret:hover { background: rgba(255, 255, 255, .5); color: var(--text); }
+.dl-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+  min-width: 210px; max-width: 300px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: .25rem;
+  box-shadow: 0 6px 20px rgba(4, 30, 60, .18);
+  display: flex; flex-direction: column;
+}
+.dl-item {
+  background: transparent; border: 0; text-align: left;
+  color: var(--text); font-size: .8rem; padding: .38rem .55rem;
+  border-radius: 7px; cursor: pointer;
+}
+.dl-item:hover:not(:disabled):not(.dl-none) { background: var(--panel-2); }
+.dl-item:disabled { color: var(--muted); cursor: default; }
+.dl-item.dl-none { color: var(--muted); cursor: default; font-size: .75rem; }
 textarea::placeholder { color: var(--muted); opacity: .75; }
 
 /* Round knob sliding between two positions in a pill track. A spiderweb

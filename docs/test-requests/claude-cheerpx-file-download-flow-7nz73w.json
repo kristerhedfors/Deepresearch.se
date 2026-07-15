@@ -1,0 +1,40 @@
+{
+  "branch": "claude/cheerpx-file-download-flow-7nz73w",
+  "requested_at": "2026-07-15",
+  "points": [
+    {
+      "label": "Sandbox download flow: ask for a generated file",
+      "summary": "Asking the sandbox FOR a file now hands it over as a download chip on the reply. With the execution sandbox on, ask for a small generated file (the composer is prefilled). The agent should create it, copy it into /workspace/outbox, and the reply should carry a chip like '📄 primes.csv (…)' above the stats line. PASS: tapping the chip downloads the file and its contents match what was asked; the answer refers to the attachment instead of pasting the whole file.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openSettings",
+          "knob": "bash_lite_mcp"
+        },
+        {
+          "type": "note",
+          "text": "Make sure the execution sandbox knob is ON (page reloads to isolate), then send the prefilled message."
+        },
+        {
+          "type": "compose",
+          "text": "Generate a CSV file with the first 100 prime numbers, one per line, and give it to me as a downloadable file."
+        }
+      ],
+      "runs": 2,
+      "verdicts": []
+    },
+    {
+      "label": "Sandbox download flow: add the file to a project",
+      "summary": "Each download chip carries a ▾ menu with 'Add to project' entries. Re-use the reply from the previous point (or ask for another file): tap the ▾ caret on the chip — a small menu opens with '⬇ Download' plus one 'Add to …' row per existing project (create a project in the sidebar first if you have none). PASS: picking a project shows 'Added ✓', and the file then appears in that project's file list in the project panel; the menu dismisses when tapping anywhere outside it.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Needs at least one project (left drawer → Project panel). Then use the ▾ caret on a deliverable chip from a sandbox reply."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}

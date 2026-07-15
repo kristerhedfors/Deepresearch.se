@@ -22,7 +22,12 @@ description: >-
   hypercall, no host IDBDevice.writeFile), the /workspace + /mnt/<projname>-<hash>
   layout, the tiered ingest (DataDevice direct-bytes → WebDevice+SW → base64
   fallback), overlay persistence, and the fileProvider seam — load this when
-  adding/changing how attachments or project files reach the sandbox.
+  adding/changing how attachments or project files reach the sandbox. ALSO
+  covers the OUTBOX DOWNLOAD FLOW (files OUT of the VM, 2026-07-15): asking
+  for a file → the agent copies it into /workspace/outbox → exported via
+  exportFile and attached to the reply as download chips with an
+  add-to-project menu (bash-core outbox helpers, sandbox.js
+  collectDeliverables, turns.js renderDeliverables).
 ---
 
 # Execution sandbox (bash-lite)
@@ -391,6 +396,55 @@ round-trip OUT (guest-written files back to the user).
   bytes intact; the bare-`IDBDevice` dir mount times out on `cat`. **Still owed:**
   the same on real iOS Safari under `require-corp`, and overlay persistence of
   `/workspace` + the project dir + the cross-dir symlink across a reload.
+
+## The OUTBOX download flow — files OUT of the VM (2026-07-15)
+
+The user can ask FOR a file ("generate a CSV of … and give it to me") and get
+it as a downloadable attachment on the reply, with an add-to-project menu.
+The whole flow follows the documented routes above — no new device, no new
+API field:
+
+- **Guest-side convention:** the agent copies finished artifacts into
+  **`/workspace/outbox/`** (`mkdir -p` first — the AGENT creates the folder per
+  `bashAgentPrompt`, so it works on bare pre-warmed boots with no seed-script
+  dependency). Taught in `src/prompts.js` `bashAgentPrompt` (DRS); the DRC
+  prompt deliberately does NOT mention it yet (see the follow-up note below).
+- **Host-side collection:** after the loop, `stream.js` `maybeRunShellLoop`
+  checks `wantsOutboxCollect(transcript)` (some command mentioned the outbox
+  path — the cheap guard so a plain "ls /" never pays an extra exec) and calls
+  `sandbox.js` **`collectDeliverables()`**: ONE listing exec
+  (`outboxListCommand()` — GNU `find -printf '%s\t%p\n'`, `|| true` fail-soft),
+  parsed by the pure `parseOutboxListing` (basename-only so a crafted path
+  can't escape; caps: `MAX_DELIVERABLES` 5 files, `MAX_DELIVERABLE_BYTES` 4 MB
+  each, `MAX_DELIVERABLES_TOTAL_BYTES` 8 MB), then each file rides OUT via
+  `exportFile` — the base64-through-exec round-trip, the one documented
+  host-read route since the overlay fix (there is no per-volume IDBDevice to
+  `readFileAsBlob` from). All pure logic in `bash-core.js`, Node-tested.
+- **UI:** `turns.js` `renderDeliverables(turn, files)` — one chip per file
+  above the stats line; tap = download (busy-guarded like the PDF button — an
+  iOS download can navigate and abort the in-flight stream), the ▾ caret opens
+  a dropdown (UX-1 outside-tap dismissal): "⬇ Download" + one
+  "Add to “project”" entry per project (`projects.js addFilesToProject` — the
+  same ingest as the dropzone, so docs get indexed / images get EXIF).
+  Live-session only, like the image deck: blobs are tab memory, not history —
+  **"Add to project" is the durable path**. Styles `.deliverables`/`.dl-*` in
+  `css/app.css` (handshake `h40`).
+- **Synthesis awareness:** when files were actually exported, a synthetic
+  transcript entry (`deliverablesRun(files)` — `# deliverables collected from
+  /workspace/outbox`, exit 0) is appended to `shell_transcript`, so the answer
+  model refers to the attachments by filename instead of pasting contents or
+  denying the capability. It rides the EXISTING contract
+  (`resolveShellTranscript` passes any non-empty command) — zero server
+  changes — and lands in the chat_logs `meta.shell` record for debugging.
+- **Telemetry:** `sandbox.fs.deliver` (info: `{n, bytes, dropped}`) /
+  `sandbox.fs.deliver_failed` (warn) via the debug beacon; each per-file
+  export logs `sandbox.fs.export` as before.
+- **Follow-ups still owed:** live device verification (Chromium + real iOS
+  PWA — the export path itself was proven 2026-07-14, the chips/menu are new);
+  DRC wiring (collect after `runDrcShellPass` + chips in `cure/drc.js` +
+  add-to-DRC-project into the sealed state) — until then DRC's
+  `drcBashAgentPrompt` must NOT teach the outbox convention, or the model
+  would promise downloads the page never renders.
 
 > **Boot HANGS ("booting sandbox" spinner that never finishes) → the
 > `sandbox-debug` skill.** It covers the full boot-stage timeline

@@ -316,6 +316,149 @@ export function buildShellTranscript(runs) {
   );
 }
 
+// ---- outbox deliverables ----------------------------------------------------
+
+// The DOWNLOAD FLOW's guest-side convention: a special folder the agent copies
+// finished artifacts into. Files sitting in /workspace/outbox when the shell
+// loop ends are exported OUT of the VM (sandbox.js collectDeliverables →
+// exportFile's base64-through-exec round-trip — the one documented host-read
+// route now that /workspace lives in the root overlay) and attached to the
+// reply as downloadable chips (turns.js renderDeliverables), each with an
+// add-to-project menu. The folder is created by the AGENT (`mkdir -p`, per
+// bashAgentPrompt) — one mechanism, no seed-script dependency, so it works on
+// bare pre-warmed boots too. Everything here is pure and Node-tested; the
+// caps keep a hostile/runaway guest from flooding the page with blobs.
+export const OUTBOX_PATH = "/workspace/outbox";
+export const MAX_DELIVERABLES = 5; // files handed over per reply
+export const MAX_DELIVERABLE_BYTES = 4 * 1024 * 1024; // per file (base64 rides the exec console)
+export const MAX_DELIVERABLES_TOTAL_BYTES = 8 * 1024 * 1024; // whole reply
+
+// The one listing command the host runs after the loop: byte size + full path,
+// tab-separated, one file per line. GNU findutils (the sandbox is Debian);
+// a missing dir or an image without -printf degrades to empty output → no
+// deliverables (fail-soft, like every helper here).
+/**
+ * @returns {string}
+ */
+export function outboxListCommand() {
+  return `find ${OUTBOX_PATH} -maxdepth 1 -type f -printf '%s\\t%p\\n' 2>/dev/null || true`;
+}
+
+// Cheap guard so the extra listing exec only runs when the agent actually
+// used the convention: some command this loop ran must mention the outbox
+// path (the prompt tells the model to use the literal path).
+/**
+ * @param {Array<{ command?: string }>} runs
+ * @returns {boolean}
+ */
+export function wantsOutboxCollect(runs) {
+  return Array.isArray(runs) && runs.some((r) => typeof r?.command === "string" && r.command.includes(OUTBOX_PATH));
+}
+
+/**
+ * One file the sandbox is handing to the user (metadata only; the bytes are
+ * exported separately).
+ * @typedef {{ name: string, size: number }} DeliverableMeta
+ */
+
+// Parse the outbox listing (`size\tpath` lines) into bounded, sanitized
+// deliverable metadata. Basename only (the export re-derives the path under
+// OUTBOX_PATH, so a crafted path can't escape it), control chars stripped,
+// oversize files skipped, count/total caps enforced, duplicate names dropped
+// keep-first. Never throws; garbage lines are ignored.
+/**
+ * @param {string} stdout the listing command's raw stdout
+ * @returns {{ files: DeliverableMeta[], dropped: number }}
+ */
+export function parseOutboxListing(stdout) {
+  /** @type {DeliverableMeta[]} */
+  const files = [];
+  let dropped = 0;
+  const seen = new Set();
+  let total = 0;
+  for (const line of String(stdout || "").split("\n")) {
+    const m = line.match(/^(\d+)\t(.+)$/);
+    if (!m) continue;
+    const size = Number(m[1]);
+    // eslint-disable-next-line no-control-regex
+    const name = (m[2].split("/").pop() || "").replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 120);
+    if (!name || name === "." || name === ".." || seen.has(name)) continue;
+    if (!Number.isFinite(size) || size <= 0) continue;
+    if (
+      size > MAX_DELIVERABLE_BYTES ||
+      files.length >= MAX_DELIVERABLES ||
+      total + size > MAX_DELIVERABLES_TOTAL_BYTES
+    ) {
+      dropped++;
+      continue;
+    }
+    seen.add(name);
+    total += size;
+    files.push({ name, size });
+  }
+  return { files, dropped };
+}
+
+// Human-readable size for the chips and the synthesis note ("12.3 kB").
+/**
+ * @param {number} n bytes
+ * @returns {string}
+ */
+export function formatByteSize(n) {
+  const b = Number(n) || 0;
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1).replace(/\.0$/, "") + " kB";
+  return (b / (1024 * 1024)).toFixed(1).replace(/\.0$/, "") + " MB";
+}
+
+// Best-effort MIME from the filename extension — for the download anchor and
+// the File handed to addFilesToProject (which routes docs to indexing by
+// name/type). Unknown → octet-stream.
+/**
+ * @param {string} name
+ * @returns {string}
+ */
+export function mimeForName(name) {
+  const ext = String(name || "").toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || "";
+  return MIME_BY_EXT[ext] || "application/octet-stream";
+}
+
+/** @type {Record<string, string>} */
+const MIME_BY_EXT = {
+  txt: "text/plain", md: "text/markdown", csv: "text/csv", tsv: "text/tab-separated-values",
+  json: "application/json", xml: "application/xml", html: "text/html", css: "text/css",
+  js: "text/javascript", py: "text/x-python", sh: "text/x-shellscript",
+  yaml: "text/yaml", yml: "text/yaml", pdf: "application/pdf",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  svg: "image/svg+xml", zip: "application/zip", gz: "application/gzip", tar: "application/x-tar",
+};
+
+// The synthetic transcript entry appended AFTER the real runs once files were
+// actually exported, so the SYNTHESIS model knows the hand-over happened and
+// refers to the attachments instead of pasting their content or denying the
+// capability. It rides the existing `shell_transcript` contract untouched
+// (src/validation.js resolveShellTranscript passes any non-empty command
+// through), so no new API field, and it lands in the chat_logs meta.shell
+// record like every other run — an honest part of the session record, not
+// fabricated guest output.
+/**
+ * @param {DeliverableMeta[]} files
+ * @returns {ShellRun}
+ */
+export function deliverablesRun(files) {
+  const list = (Array.isArray(files) ? files : [])
+    .map((f) => `${f.name} (${formatByteSize(f.size)})`)
+    .join(", ");
+  return {
+    command: `# deliverables collected from ${OUTBOX_PATH}`,
+    exitCode: 0,
+    stdout:
+      `These sandbox files are attached to this reply as downloadable attachments the user can save or add to a project: ${list}. ` +
+      "Refer to them by filename — do not paste their full contents into the answer.",
+    stderr: "",
+  };
+}
+
 // ---- the per-round step message --------------------------------------------
 
 // The USER message for one agent-step model call, shared by both step callers
