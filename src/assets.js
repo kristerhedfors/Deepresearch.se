@@ -80,6 +80,15 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/settings.js" ||
     url.pathname === "/js/drc-research.js" ||
     url.pathname === "/js/drc-store.js" ||
+    // The pluggable web-search backend's shared pure CORE — statically imported
+    // by /cure/drc.js so Se/cure can run browser-direct searches against a
+    // self-hosted (SearXNG / Exa-compatible) backend. Same public-graph rule:
+    // a 401 here 401's drc.js's static import and takes the WHOLE /cure tier
+    // dark — inert page, no umbrella intro, dead buttons — for every
+    // unauthenticated visitor (found live 2026-07-15: the "web-search backend
+    // configurable in Se/cure" commit added the import to drc.js but not this
+    // allowlist, exactly the drc-rag/sandbox breakage class above).
+    url.pathname === "/js/websearch-backends-core.js" ||
     // drc-research.js statically imports the bash-lite sandbox modules (the
     // in-browser Linux execution tier is present on DRC too): the shared pure
     // agent core (bash-core.js — also imported by the DRS driver
