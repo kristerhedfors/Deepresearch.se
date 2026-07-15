@@ -3,6 +3,7 @@
 // Feedback-mode knob lives with the summary in account-views.js.
 
 import { renderNotifBadge } from "./account-views.js";
+import { createFeedbackAttach } from "./feedback-attach.js";
 import { escapeHtml } from "./notifications.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -10,9 +11,10 @@ import { escapeHtml } from "./notifications.js";
 // The Feedback view: the user's submitted entries as dialogue threads —
 // the user-facing half of the development loop (the agent's half is the
 // feedback-loop skill working /api/admin/feedback). Reply boxes keep the
-// dialogue going; Withdraw deletes an entry, thread included. Opening the
-// view marks the agent's replies read server-side (GET does it), so the
-// badge clears like the message center's does.
+// dialogue going (text and/or screenshots); Withdraw deletes an entry,
+// thread included. Opening the view marks the agent's replies read
+// server-side (GET does it), so the badge clears like the message center's
+// does.
 export async function loadFeedbackView(ctx) {
   ctx.body.innerHTML = `
     <button id="fbbackbtn" type="button" class="back-link">← Back</button>
@@ -41,18 +43,32 @@ export async function loadFeedbackView(ctx) {
     <p class="section-lbl">Feedback</p>
     ${list}`;
   document.getElementById("fbbackbtn").addEventListener("click", () => ctx.show("summary"));
+  // Each reply box gets its own screenshot-attach widget (a DOM component,
+  // mounted after the innerHTML render above).
+  const attachWidgets = new Map();
+  ctx.body.querySelectorAll("[data-fb-att]").forEach((slot) => {
+    const w = createFeedbackAttach();
+    attachWidgets.set(slot.dataset.fbAtt, w);
+    slot.appendChild(w.el);
+  });
   ctx.body.querySelectorAll("[data-fb-reply]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.fbReply;
       const ta = ctx.body.querySelector(`textarea[data-fb-ta="${id}"]`);
       const text = ta?.value.trim();
-      if (!text) return;
+      const attach = attachWidgets.get(id);
+      if (attach?.busy()) {
+        btn.textContent = "Compressing image…";
+        return;
+      }
+      const images = attach?.getImages() || [];
+      if (!text && !images.length) return;
       btn.disabled = true;
       try {
         const res = await fetch(`/api/feedback/${id}/messages`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ body: text }),
+          body: JSON.stringify({ body: text || "", images: images.length ? images : undefined }),
         });
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "HTTP " + res.status);
         await loadFeedbackView(ctx);
@@ -83,21 +99,42 @@ const FB_STATUS = {
   declined: ["declined", "done"],
 };
 
+// A message's attached screenshots as thumbnails — the src points at the
+// per-image endpoint (the API projects metadata only), each opening full
+// size in a new tab.
+function renderMsgImages(entryId, images) {
+  if (!images?.length) return "";
+  const thumbs = images
+    .map(
+      (i) => `
+      <a href="/api/feedback/${entryId}/images/${i.id}" target="_blank" rel="noopener">
+        <img src="/api/feedback/${entryId}/images/${i.id}" alt="${escapeHtml(i.name || "screenshot")}" title="${escapeHtml(i.name || "screenshot")}" loading="lazy">
+      </a>`,
+    )
+    .join("");
+  return `<div class="fb-msg-imgs">${thumbs}</div>`;
+}
+
 // One feedback entry: status + date header, the context line (which reply it
-// was about), the dialogue (the original comment is the first user message,
-// then the thread), a reply box, and Withdraw. All user/agent text is
-// escaped — same posture as the message center.
+// was about), the dialogue (the original comment is the first user message —
+// entry-level screenshots render with it; a reply's render with the reply),
+// a reply box with its own screenshot attach, and Withdraw. All user/agent
+// text is escaped — same posture as the message center.
 function renderFeedbackEntry(e) {
   const [statusLabel, statusClass] = FB_STATUS[e.status] || [e.status, "new"];
   const about = e.question
     ? `<div class="muted fb-about">About: “${escapeHtml(e.question.length > 120 ? e.question.slice(0, 120) + "…" : e.question)}”</div>`
     : "";
-  const thread = [{ author: "user", body: e.comment, created_at: e.created_at }, ...e.messages]
+  const thread = [
+    { author: "user", body: e.comment, created_at: e.created_at, images: e.images || [] },
+    ...e.messages,
+  ]
     .map(
       (m) => `
       <div class="fb-msg ${m.author === "agent" ? "agent" : "user"}">
         <div class="fb-msg-head muted">${m.author === "agent" ? "DeepResearch.se" : "You"} · ${escapeHtml(new Date(m.created_at).toLocaleString())}</div>
         <div>${escapeHtml(m.body)}</div>
+        ${renderMsgImages(e.id, m.images)}
       </div>`,
     )
     .join("");
@@ -111,6 +148,7 @@ function renderFeedbackEntry(e) {
       ${thread}
       <div class="fb-replybox">
         <textarea data-fb-ta="${e.id}" rows="2" placeholder="Reply…"></textarea>
+        <div data-fb-att="${e.id}"></div>
         <div class="fb-actions">
           <button type="button" data-fb-reply="${e.id}">Send reply</button>
           <button type="button" class="fb-del" data-fb-del="${e.id}" title="Delete this feedback and its whole dialogue">Withdraw</button>

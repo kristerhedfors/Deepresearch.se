@@ -16,12 +16,13 @@
     },
     {
       "label": "Shodan: stays out of an unrelated answer (relevance-note fix)",
-      "summary": "With Shodan ON, a compute question that merely CONTAINS a hostname must be answered with ONLY the requested result and no infrastructure aside (round-1 point #3's fix). PASS = just the hash; FAIL = any Shodan/ports/Cloudflare commentary bolted on.",
+      "summary": "With Shodan ON, a question that merely CONTAINS a hostname but isn't ABOUT its infrastructure must be answered directly with no Shodan aside (round-1 point #3's fix). The task is a plain string op the model does itself — deliberately NO sandbox and NO web search, so a sandbox timeout can't mask the Shodan result (the flaw that failed queue #5, 2026-07-15). PASS = just the reversed text (es.hcraeserpeed); FAIL = any Shodan/ports/Cloudflare/hosting commentary bolted on.",
       "target": "/rver",
       "actions": [
         { "type": "openSettings", "knob": "shodan_mcp" },
-        { "type": "note", "text": "Keep Shodan ON — the point is that it should NOT intrude here." },
-        { "type": "compose", "text": "Use the sandbox to compute the SHA-256 of the exact text hello world" }
+        { "type": "setSearch", "on": false },
+        { "type": "note", "text": "Keep Shodan ON — the point is that it should NOT intrude. Naming the host fires the lookup; the answer should ignore it." },
+        { "type": "compose", "text": "Spell the text deepresearch.se backwards." }
       ],
       "runs": 1
     }
