@@ -39,8 +39,10 @@ through belongs on a board.
    in the SAME commit, always (the mirror discipline).
 2. **Present.** The admin panel renders the catalog with choice UX
    (§ UX conventions below): ▲/▼ votes, a manual score, a note, an explicit
-   per-item PRIORITY, and a sort toggle between the admin's work order and
-   the documented ranking.
+   per-item PRIORITY (drag-to-reorder — the ONE view is the admin's work
+   order), and a reset button that clears priorities back to the documented
+   ranking (2026-07-15 owner directive: no order-toggle tabs in the panel;
+   the server keeps both `?order=` modes for the scripts).
 3. **Persist.** Choices land in a per-board D1 table
    (`<board>_reviews`: item_id PK, votes, score, note, priority,
    updated_at) keyed by the stable item id — catalog edits never orphan
@@ -162,10 +164,13 @@ this for the mechanism; load **feature-board** to actually stand a board up.
 - The choice row (`.sec-review` styles): Priority (number), Score (short
   free-form — a CVSS vector fits in 120 chars), Note (flex-1), one Save
   button that PATCHes all three (empty = clear).
-- Sort toggle: two buttons, active one gets class `on` — "Fix order
-  (priority)" ⇄ the documented ranking. In the work-order view, open items
-  get their `#n` round position — that numbering is exactly what the loop
-  sees.
+- ONE view, no sort-toggle tabs (2026-07-15 owner directive): the panel
+  always shows the drag-reorderable work order, and open items get their
+  `#n` round position — that numbering is exactly what the loop sees. A
+  "Reset to default order" button (confirm first) PATCHes `priority: null`
+  on every prioritized item, falling the list back to the documented
+  ranking (votes still break ties for an admin who uses them). The grip is
+  a finger-sized ~42px hit target (`admin.css` `.grip`), not just the glyph.
 - Every interpolated value goes through `escapeHtml` (summaries/notes are
   hand-written today, but the pattern must survive user-shaped content).
 - Votes/saves just re-fetch and re-render the section (no optimistic state).
