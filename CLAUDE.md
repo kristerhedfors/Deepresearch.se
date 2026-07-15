@@ -322,10 +322,12 @@ Server (`src/`):
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Entrypoint: request id, identity gate, terms + approval gates, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`, `/terms/accept`), sliding-cookie reissue, request logs (static-asset serving + the public allowlist live in `assets.js`; the response security headers + CSP in `security-headers.js`) |
+| `index.js` | Entrypoint: request id, identity gate, terms + approval gates, routing (`/api/*`, `/admin`, `/auth/google*`, `/login`, `/logout`, `/terms/accept`), sliding-cookie reissue, request logs (static-asset serving + the public allowlist live in `assets.js`; the response security headers + CSP in `security-headers.js`; the canonical-origin 301 in `canonical.js`) |
 | `assets.js` | Static-asset serving (`serveAsset` — the caching policy + the cross-origin-isolation COEP shell) and `isPublicAsset` (the unauthenticated allowlist, dominated by the DRC `/cure` public module graph) — split out of the router so the entrypoint stays about routing |
 | `security-headers.js` | The site-wide response security headers + the (currently opt-in) Content-Security-Policy, and `applySecurityHeaders` — the one function `index.js`'s `fetch` wraps every response with |
+| `canonical.js` | The canonical-origin redirect (`canonicalRedirect` — 301 any www/http arrival to the https apex, preserving path + query): a pure leaf `index.js`'s `route` calls before anything else; carries the Firefox Focus / OAuth `redirect_uri_mismatch` institutional story |
 | `auth.js` | Identity: session cookie (365 d, sliding) + admin-secrets break-glass Basic Auth (fail closed); OAuth state HMAC helpers |
+| `token-crypto.js` | The shared HMAC-token crypto PRIMITIVES leaf (`b64url`/`b64urlDecode`/`toHex`/`safeEqual` + the namespaced `sign`): one implementation behind `auth.js` (toHex/safeEqual) and the `websearch-key.js`/`proxy-grant.js` token families, which each keep their OWN mint/verify (deliberately different claims) and stay mutually unforgeable via the namespace passed into `sign` |
 | `google.js` | Google OIDC sign-in: state cookie, code exchange, claims validation, auto-provisioning (`ADMIN_EMAIL` → admin) |
 | `login.js` | Sign-in, pending-approval, and one-time terms pages (PWAs can't answer a 401 challenge) |
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
@@ -344,9 +346,9 @@ Server (`src/`):
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), so a local-only project gets backup/cross-device transport as pure ciphertext; deliberately NOT `server_history`-gated (each store is its own explicit consent) and excluded from the drain-wipe |
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
-| `websearch-key.js` | The temporary web-search GRANT TOKEN half (leaf module): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
+| `websearch-key.js` | The temporary web-search GRANT TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
 | `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
-| `proxy-grant.js` | The SECURE-RESEARCH-SPACE two-tier TOKEN half (leaf module): mint/verify of the GRANT token `prg1.<payload>.<hmac>` (the bundle's "token-granting token", namespace `proxygrant.`) and the PROXY token `prx1.…` (the post-exchange working credential, namespace `proxytoken.`) — both HMAC-signed with `SESSION_SECRET`, each under its own namespace so the two tiers (and the `wsk1`/session tokens) can never be confused; claims carry `svc` (`web`/`api`). Node-tested |
+| `proxy-grant.js` | The SECURE-RESEARCH-SPACE two-tier TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of the GRANT token `prg1.<payload>.<hmac>` (the bundle's "token-granting token", namespace `proxygrant.`) and the PROXY token `prx1.…` (the post-exchange working credential, namespace `proxytoken.`) — both HMAC-signed with `SESSION_SECRET`, each under its own namespace so the two tiers (and the `wsk1`/session tokens) can never be confused; claims carry `svc` (`web`/`api`). Node-tested |
 | `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, DELETE revoke a bundle). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
@@ -374,7 +376,7 @@ Server (`src/`):
 | `quiz.js` | The inline-quiz capability's pure logic: `quizIntent` (deterministic "quiz me…" gate, EN+SV, typo-tolerant, question-count parsing; triage carries a fail-soft `quiz:true` backup flag for phrasings the regexes miss), `normalizeQuiz` (hardens the quiz-generation JSON the client renders), grade-request validation/normalization — the pipeline phase is `pipeline.js`'s `runQuizGeneration` (JSON model, fail-soft to a normal answer), the interaction runs client-side (`public/js/quiz.js`) |
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
-| `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine — see the **tokemon-game** skill |
+| `tokemon.js` | The Tokemon game's PURE core (Node-tested): Pokémon Gen-1 mechanics verbatim under an AI-themed skin (stat/damage/catch/escape formulas, medium-fast XP, the official type chart renamed 1:1, species stats copied from documented Gen-1 species), seeded-RNG deterministic spawning per (geocell, 15-min bucket), the turn-based battle engine, and the client-view projections (`publicSave`/`publicBattle`/`publicCreature` — the anti-cheat boundary — plus `parseLatLng`) — see the **tokemon-game** skill |
 | `tokemon-data.js` | The game core's static DATA tables (Gen-1 provenance): the renamed type chart, moves, species, starters, balls/heal items, spawn/item-drop tables — re-exported through `tokemon.js`, so consumers see one surface |
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
@@ -445,7 +447,8 @@ summary's Settings button OR directly via the header's gear icon,
 2026-07-11 directive),
 `account-feedback.js` (the Feedback dialogue-threads view)),
 `notifications.js` (the small rendering fragments — alert severity
-badges, pending-user rows — genuinely shared between `account.js`'s
+badges, pending-user rows, the K/M `formatCount` abbreviator — genuinely
+shared between `account.js`'s
 message-center admin section and `admin.js`'s full notification center;
 their surrounding markup differs deliberately, so only the identical
 pieces live here),
@@ -572,8 +575,9 @@ or duplicate: `grantLive`/`grantFlagEnabled` (the ONE liveness + master-
 toggle check both borrowed-capability subsystems — the web-search grant
 AND the proxy bundle — share), `normalizeSearchBackend` (the web-search
 backend config normalizer, one definition for the sealed-state read and
-the settings-form persist), and the deep-link path parsers
-`parseProjectPath`/`parsePublicationRef` — Node-tested).
+the settings-form persist), the deep-link path parsers
+`parseProjectPath`/`parsePublicationRef`, and `wmHtml` (the escape-first
+Se/cure–Se/rver wordmark-slash renderer) — Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
@@ -666,7 +670,8 @@ predicates + the catalog merge/degrade path),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
 `settings.js` (`parseSettings` coercion, `storageAvailability`),
-`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec),
+`rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec,
+the `idOk` key-path id validator shared with `storage.js`),
 `vault.js` (the project-vault endpoints against a mocked R2 bucket:
 id validation, PUT/GET/DELETE round-trip, size/count caps, per-user
 namespacing, and the works-with-the-knob-OFF guarantee),
@@ -704,7 +709,9 @@ dispatch, unknown-game 404s, no-DB degrade), and `tokemon.js` (the
 game core: type-chart parity vs the official matchups, Gen-1
 stat/damage/catch/escape formula checks against hand-computed values,
 spawn determinism + bucket scoping, battle flow incl. catching, fleeing,
-villain rewards, XP/level-up/evolution, save normalization), and
+villain rewards, XP/level-up/evolution, save normalization, and the
+client-view projections — IVs and the foe roster never leak — plus
+`parseLatLng`), and
 `tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
 incl. the Swedish-parity suite, geodesy round-trips, spawn projection
 geometry).
@@ -723,6 +730,11 @@ policy, COEP request shaping) and `security-headers.js` (the site-wide
 header set + the CSP policy), `auth.js` (the session-cookie HMAC keyed
 SOLELY by `SESSION_SECRET` — the no-admin-fallback security properties),
 `answers.js` (the answer-recovery cache's running/lost/done projection),
+`canonical.js` (the canonical-origin 301: scheme/www normalization with
+path + query preserved, pass-through on the https apex),
+`token-crypto.js` (the shared HMAC-token primitives: the base64url codec
+round-trip, `toHex`, `safeEqual` strictness, and `sign`'s namespace
+separation + fail-closed no-secret behavior),
 `websearch-key.js` (the grant token's mint→verify round-trip, the
 `SESSION_SECRET`/namespace/expiry/tamper rejections) and `websearch.js`
 (the mint subsystem + grant meter over an in-memory D1 fake + mocked Exa:
@@ -813,7 +825,8 @@ ciphertext-only at rest, listing, quota/corruption fail-soft),
 `drc-page-core.js` (the DRC page's pure core: `grantLive`'s
 token/expiry/quota liveness, `grantFlagEnabled`'s default-ON master
 toggle, `normalizeSearchBackend`'s backend/URL/key/results normalization,
-and the `parseProjectPath`/`parsePublicationRef` deep-link parsers),
+the `parseProjectPath`/`parsePublicationRef` deep-link parsers, and
+`wmHtml`'s escape-then-tighten wordmark rendering),
 `public/cure/umbrella.js`'s pure core — via
 `public/js/umbrella-intro.test.js` — (the DRC first-visit intro's
 phase timeline and vortex→umbrella geometry: ramp

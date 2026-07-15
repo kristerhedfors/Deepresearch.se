@@ -240,3 +240,38 @@ As before, the point is that a "refactor the whole repo" job on an
 already-modular codebase yields a **short** list of relocations, and that is the
 correct outcome — 1318 logic tests green throughout, typecheck clean, zero
 behavior change.
+
+## Fourth worked example (2026-07-15) — the token-crypto pass
+
+Whole-repo survey again (three `Explore` fan-outs: the new websearch/proxy
+grant subsystems, index.js/chat.js/mcp.js regrowth, and an everything-else
+duplicate sweep). chat.js and mcp.js were byte-unchanged since 2026-07-12 —
+no new seams — and index.js's regrowth was all routing dispatch (correctly
+left alone). Six moves survived:
+- **`token-crypto.js`** (flagship de-dup): `b64url`/`b64urlDecode`/`toHex`/
+  `safeEqual` + the namespaced HMAC `sign` were byte-identical across
+  `websearch-key.js` and `proxy-grant.js` (toHex/safeEqual a THIRD time in
+  `auth.js`) — the proxy subsystem was born by copying the websearch token
+  module. One leaf now owns the primitives; each token family keeps its OWN
+  mint/verify (the `svc` claim differs deliberately — do NOT merge those).
+  Also carried websearch.js's atomic-reserve concurrency comment onto
+  proxy.js's `reserveUnit`, where the generalization had dropped it.
+- **`canonical.js`**: the canonical-origin 301 (pure over `url`) out of the
+  untested entrypoint, with its Firefox Focus/redirect_uri_mismatch comment.
+- **`idOk`**: rag.js ↔ storage.js byte-identical id validator; exported from
+  rag.js (storage.js already imported from it — zero new graph edges).
+- **Tokemon client views + `parseLatLng` → `tokemon.js`**: pure projections
+  in tokemon-api.js (no test file) whose own header says game logic belongs
+  in tokemon.js; now covered by tokemon.test.js (IVs/foe roster never leak).
+- **`formatCount` → `notifications.js`** (client): the K/M abbreviator
+  duplicated in admin.js/account-views.js; notifications.js is exactly the
+  two-views-shared-fragments module and both already import it.
+- **`wmHtml` → `drc-page-core.js`** (client): the one pure fragment the
+  2026-07-13 DRC pass (PR #66) left inlined in drc.js.
+Declined on principle: the Se/cure public route group (dispatch-only glue),
+`rankVisionModels` (a carve-out, not a relocation), the table-name-
+parameterized meter helpers, `normalizeStatus` (needs parameterizing), and
+the cross-tier `b64ToF32` (server/client module graphs must not share).
+OPERATIONAL LESSON: a container reset mid-session destroyed the first,
+uncommitted application of all six moves — commit after EACH extraction,
+not at the end of the pass.
