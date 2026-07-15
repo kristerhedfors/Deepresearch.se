@@ -14,7 +14,7 @@
         }
       ],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 16,
       "verdicts": []
     },
     {
@@ -28,7 +28,7 @@
         }
       ],
       "runs": 2,
-      "minted_id": null,
+      "minted_id": 17,
       "verdicts": []
     }
   ]
