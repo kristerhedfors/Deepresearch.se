@@ -6,7 +6,7 @@ import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
-import { mountUmbrellaSpinner } from "./umbrella-spinner.js";
+import { mountBalloonSpinner } from "./balloon-spinner.js";
 
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
@@ -418,7 +418,7 @@ function renderContent(turn) {
 
 // Below this wait, dismissing the typing indicator is instant (no finale) —
 // a quick direct reply shouldn't be held back by a celebratory flourish. Above
-// it (a research-length wait), the big umbrella plays the same completion finale
+// it (a research-length wait), the big balloon plays the same completion finale
 // the small step spinners do before the answer is revealed.
 const TYPING_FINALE_MIN_MS = 1500;
 
@@ -432,9 +432,9 @@ function showTyping(content) {
   // Best-effort — falls back to the CSS twirly logo on reduced-motion/no-canvas.
   // The animation stops itself when setText/resetForRevision clears the icon.
   // The handle + wait-start are stashed on the content element so setText can
-  // play the pink-umbrella→✓ FINISH FINALE (the same one the small step spinners
+  // play the colored-balloon→blue-✓ FINISH FINALE (the same one the step spinners
   // got) when a research-length wait resolves into an answer.
-  content.__typingSpinner = mountUmbrellaSpinner(icon, { style: 0, size: 72 });
+  content.__typingSpinner = mountBalloonSpinner(icon, { style: 0, size: 72 });
   content.__typingStart = Date.now();
 }
 
@@ -465,7 +465,7 @@ export function isTyping(turn) {
  */
 export function setText(turn, text) {
   if (isTyping(turn)) {
-    // Already mid-finale: keep the latest text and stay under the umbrella; the
+    // Already mid-finale: keep the latest text and stay under the balloon; the
     // finale's completion callback renders whatever accumulated by then.
     if (turn.finaleActive) {
       turn.text = text;
@@ -475,8 +475,8 @@ export function setText(turn, text) {
     const handle = content.__typingSpinner;
     const waited = Date.now() - (content.__typingStart || Date.now());
     // A research-length wait resolving into a real (non-error) answer earns the
-    // big umbrella's COMPLETION FINALE: it speed-runs from wherever its boomerang
-    // is into the fully-bloomed PINK umbrella and folds into the pink ✓ — exactly
+    // big balloon's COMPLETION FINALE: it speed-runs from wherever its boomerang
+    // is into the fully-colored BLUE-AND-GOLD balloon and folds into the blue ✓ — exactly
     // like the small step spinners — and only THEN is the answer revealed. A
     // quick reply, an error, or a reduced-motion/no-canvas mount skips straight
     // to the reveal so nothing is needlessly held back.

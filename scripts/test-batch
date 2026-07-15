@@ -1,0 +1,259 @@
+#!/usr/bin/env node
+// @ts-check
+// Standard test BATCHES — one curated set of try-it points per pipeline case
+// (direct reply, deep research, quiz, Shodan, Maps, sandbox, introspection, …),
+// so you can pull a ready-made batch for a piece of the pipeline instead of
+// hand-writing points every time. The batches live in docs/test-batches/
+// <case>.json and are the RAW MATERIAL the two feeder channels consume:
+//   · --mint <case>          → push a batch straight onto the live try-it queue
+//                              (test-feedback-loop skill; needs break-glass auth)
+//   · --to-request <case>    → emit a docs/test-requests/<branch>.json file a
+//                              worker ships in its PR (request-testing skill)
+// and you can shape a batch with --extend / --shrink so it stays something you
+// can actually work with.
+//
+// Offline (no credentials):
+//   scripts/test-batch --list                       every case + point count
+//   scripts/test-batch --get <case>                 print a batch (text; --json for JSON)
+//   scripts/test-batch --validate                   every point in every batch vs the REAL grammar
+//   scripts/test-batch --extend <case> '<point>'    append a point (JSON: {label,summary,target,actions?,runs?})
+//   scripts/test-batch --shrink <case> <index>      drop point #index (0-based, as --get numbers them)
+//   scripts/test-batch --to-request <case> <branch> [--pr N]   write a request file from the batch
+//
+// Live (break-glass BASIC_AUTH_USER / BASIC_AUTH_PASS, same as scripts/testpoints):
+//   scripts/test-batch --mint <case> [--only i,j]   mint the batch (or just points i,j) onto the queue
+//
+// BASE_URL overrides the target (default https://deepresearch.se).
+
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateTestpointCreate } from "../src/testpoints.js";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const DIR = join(ROOT, "docs", "test-batches");
+const REQ_DIR = join(ROOT, "docs", "test-requests");
+const BASE_URL = process.env.BASE_URL || "https://deepresearch.se";
+
+function flag(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : null;
+}
+
+function batchPath(caseName) {
+  return join(DIR, `${caseName}.json`);
+}
+
+function loadBatch(caseName) {
+  try {
+    return JSON.parse(readFileSync(batchPath(caseName), "utf8"));
+  } catch {
+    console.error(`No such batch: ${caseName}. Run --list for the cases.`);
+    process.exit(2);
+  }
+}
+
+function allBatches() {
+  let names = [];
+  try {
+    names = readdirSync(DIR).filter((n) => n.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  return names.sort().map((name) => {
+    const caseName = name.replace(/\.json$/, "");
+    try {
+      return { caseName, data: JSON.parse(readFileSync(join(DIR, name), "utf8")) };
+    } catch (err) {
+      return { caseName, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+}
+
+function saveBatch(caseName, data) {
+  writeFileSync(batchPath(caseName), JSON.stringify(data, null, 2) + "\n");
+}
+
+function list() {
+  const batches = allBatches();
+  if (!batches.length) {
+    console.log("(no batches yet)");
+    return;
+  }
+  for (const b of batches) {
+    if (b.error) {
+      console.log(`✗ ${b.caseName}: ${b.error}`);
+      continue;
+    }
+    const n = (b.data.points || []).length;
+    console.log(`${b.caseName.padEnd(16)} ${String(n).padStart(2)} point(s)  — ${b.data.title || b.data.description || ""}`);
+  }
+}
+
+function get(caseName) {
+  const data = loadBatch(caseName);
+  if (flag("--json")) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+  console.log(`# ${caseName} — ${data.title || ""}`);
+  if (data.description) console.log(data.description + "\n");
+  (data.points || []).forEach((p, i) => {
+    const runs = p.runs && p.runs > 1 ? ` [runs:${p.runs}]` : "";
+    const acts = (p.actions || []).map((a) => a.type).join(" → ") || "—";
+    console.log(`[${i}] ${p.label}${runs}`);
+    console.log(`     target: ${p.target}   actions: ${acts}`);
+    console.log(`     ${p.summary}`);
+  });
+}
+
+function validate() {
+  let bad = 0;
+  for (const b of allBatches()) {
+    if (b.error) {
+      console.log(`✗ ${b.caseName}: unreadable — ${b.error}`);
+      bad++;
+      continue;
+    }
+    if (typeof b.data.case !== "string" || b.data.case !== b.caseName) {
+      console.log(`✗ ${b.caseName}: "case" field must equal the filename ("${b.caseName}")`);
+      bad++;
+    }
+    (b.data.points || []).forEach((p, i) => {
+      const v = validateTestpointCreate(p);
+      if (v.error) {
+        console.log(`✗ ${b.caseName}[${i}] ("${p?.label ?? "?"}"): ${v.error}`);
+        bad++;
+      } else if (v.dropped) {
+        console.log(`✗ ${b.caseName}[${i}] ("${p.label}"): ${v.dropped} action(s) would be dropped by the grammar`);
+        bad++;
+      }
+    });
+  }
+  if (!bad) console.log(`✓ all batches valid`);
+  process.exit(bad ? 1 : 0);
+}
+
+function extend(caseName, pointJson) {
+  const data = loadBatch(caseName);
+  let point;
+  try {
+    point = JSON.parse(pointJson);
+  } catch (err) {
+    console.error(`--extend needs a JSON point object: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(2);
+  }
+  const v = validateTestpointCreate(point);
+  if (v.error) {
+    console.error(`Point rejected by the grammar: ${v.error}`);
+    process.exit(1);
+  }
+  if (v.dropped) {
+    console.error(`Point has ${v.dropped} action(s) the grammar would drop — fix them first.`);
+    process.exit(1);
+  }
+  data.points = data.points || [];
+  data.points.push(point);
+  saveBatch(caseName, data);
+  console.log(`Added point [${data.points.length - 1}] to ${caseName}; ${data.points.length} total. Commit the file.`);
+}
+
+function shrink(caseName, indexStr) {
+  const data = loadBatch(caseName);
+  const idx = Number(indexStr);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= (data.points || []).length) {
+    console.error(`--shrink needs a valid 0-based index (0..${(data.points || []).length - 1}).`);
+    process.exit(2);
+  }
+  const [removed] = data.points.splice(idx, 1);
+  saveBatch(caseName, data);
+  console.log(`Removed point [${idx}] "${removed.label}" from ${caseName}; ${data.points.length} left. Commit the file.`);
+}
+
+function toRequest(caseName, branch) {
+  const data = loadBatch(caseName);
+  if (!branch) {
+    console.error("--to-request needs a branch name: scripts/test-batch --to-request <case> <branch> [--pr N]");
+    process.exit(2);
+  }
+  const pr = flag("--pr") ? Number(flag("--pr")) : null;
+  const slug = branch.replace(/\//g, "-");
+  const out = {
+    branch,
+    pr,
+    requested_at: new Date().toISOString().slice(0, 10),
+    points: (data.points || []).map((p) => ({
+      label: p.label,
+      summary: p.summary,
+      target: p.target,
+      actions: p.actions || [],
+      runs: p.runs || 1,
+      minted_id: null,
+      verdicts: [],
+    })),
+  };
+  mkdirSync(REQ_DIR, { recursive: true });
+  const dest = join(REQ_DIR, `${slug}.json`);
+  writeFileSync(dest, JSON.stringify(out, null, 2) + "\n");
+  console.log(`Wrote docs/test-requests/${slug}.json from batch "${caseName}" (${out.points.length} points). Validate + commit it in your PR.`);
+}
+
+function auth() {
+  const user = process.env.BASIC_AUTH_USER;
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (!user || !pass) {
+    console.error("Set BASIC_AUTH_USER / BASIC_AUTH_PASS (break-glass credentials) for --mint.");
+    process.exit(2);
+  }
+  return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+}
+
+async function mint(caseName) {
+  const data = loadBatch(caseName);
+  let points = data.points || [];
+  const only = flag("--only");
+  if (only) {
+    const want = new Set(only.split(",").map((s) => Number(s.trim())));
+    points = points.filter((_, i) => want.has(i));
+  }
+  if (!points.length) {
+    console.log("(nothing to mint)");
+    return;
+  }
+  for (const p of points) {
+    const res = await fetch(`${BASE_URL}/api/admin/testpoints`, {
+      method: "POST",
+      headers: { authorization: auth(), "content-type": "application/json" },
+      body: JSON.stringify({
+        label: p.label,
+        summary: p.summary,
+        target: p.target,
+        actions: p.actions || [],
+        ref: p.ref || `batch:${caseName}`,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`mint failed for "${p.label}" → ${res.status}: ${await res.text()}`);
+      process.exit(1);
+    }
+    const created = await res.json();
+    const id = created.testpoint?.id ?? created.id;
+    console.log(`minted "${p.label}" → queue #${id} (/try/${id})`);
+  }
+  console.log(`Minted ${points.length} point(s) from batch "${caseName}".`);
+}
+
+const cmd = process.argv[2];
+const a1 = process.argv[3];
+const a2 = process.argv[4];
+if (cmd === "--list") list();
+else if (cmd === "--get") get(a1);
+else if (cmd === "--validate") validate();
+else if (cmd === "--extend") extend(a1, a2);
+else if (cmd === "--shrink") shrink(a1, a2);
+else if (cmd === "--to-request") toRequest(a1, a2);
+else if (cmd === "--mint") await mint(a1);
+else {
+  console.error("usage: scripts/test-batch [--list | --get <case> | --validate | --extend <case> '<point>' | --shrink <case> <i> | --to-request <case> <branch> [--pr N] | --mint <case> [--only i,j]]");
+  process.exit(2);
+}

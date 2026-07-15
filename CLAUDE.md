@@ -516,7 +516,33 @@ the cache — closing the 2026-07-13 boot-race where a send before `/api/setting
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested), `opfs.js`
+all route through; Node-tested), `balloon.js` (the Se/rver BALLOON GUIDE —
+the blue tier's symbol character, F-16, owner's pick 2026-07-15: the ghost's
+counterpart, a little gold-and-blue balloon hovering among clouds above the
+composer; burner flare + climb + pennant per completed task via `stream.js`'s
+`done` event, cloud swishes on ALL its transitions (boot, new-chat reset),
+pure core Node-tested, DOM layer fail-soft/`pointer-events:none`/reduced-
+motion-static — see `docs/SYMBOL-LANGUAGE.md`), `balloon-intro.js` (the
+Se/rver first-visit LANDING intro — the blue tier's counterpart of /cure's
+umbrella intro, deliberately FASTER (~4.1 s vs ~5.9 s, test-pinned): the logo
+vortex untwists into WIRE balloons seen from above, the camera drops a full
+**180°** (twice the umbrella's quarter-lap) rolling sideways as it descends —
+clouds swishing up past the view, the guide's own vocabulary — and ends
+looking UP from underneath at FIVE same-shape/different-size balloons, color
+flooded back, baskets rigged, burners glowing in the mouths; pure timeline +
+geometry core Node-tested, same watchdog/tap-to-skip/easter-egg/`anim_speed`
+contract as `umbrella.js`, gated in `app.js` on first visit + reduced-motion
+with `?anim=1`/`?anim=rev` as the forced replay; exports the shared
+single-balloon renderer `drawBalloonFigure`), `balloon-spinner.js` (the blue
+tier's WAITING SYMBOL — `mountBalloonSpinner`, the exact
+`mountUmbrellaSpinner` contract, now wired in `turns.js`/`activity.js` where
+the umbrella spinner used to be (the umbrella spinner remains Se/cure's, in
+`cure/drc.js`): each loading slot boomerangs the balloon intro in miniature,
+turning back JUST before the color revival; completion speed-runs INTO the
+fully colored blue-and-gold balloon and folds it into a **BLUE ✓**
+(`--check-blue`, app.css — Se/rver's counterpart of Se/cure's pink ✓);
+reuses balloon-intro's timeline/renderer AND umbrella-spinner's pure
+boomerang/tumble clocks, pure plan helpers Node-tested), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental
@@ -813,7 +839,17 @@ turn, oldest first — moved here next to its consumer `asksDeviceLocation`),
 and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
-core extracted out of `stream.js`'s send path), `imagedeck.js`'s pure
+core extracted out of `stream.js`'s send path), `balloon.js`'s pure core
+(the Se/rver balloon guide: envelope profile, hover/climb/pennant/flare
+params, the deterministic swish-cloud crossing guarantees), `balloon-intro.js`'s
+pure core (the Se/rver landing intro: timeline mark ordering, the 180° camera
+drop's monotone descent, the sideways roll's crest-and-settle, the
+same-shape/five-sizes fleet contract, projection/gore-depth math, the
+faster-than-the-umbrella-intro directive pinned against `umbrella.js`'s own
+constants), `balloon-spinner.js`'s pure side (the blue waiting symbol: the
+loop apex that never reaches the color, the finale plan's speed-run buckets
+into the blue apex, style cycling — plus the sibling contract of reusing
+`umbrella-spinner.js`'s boomerang clock), `imagedeck.js`'s pure
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
@@ -1226,6 +1262,37 @@ what docs claim); and update the skill list below plus the skill's
   the budget, pick a model, highlight an element) — and where it ends
   (navigate-then-do-by-hand; full banner on `/rver` only; admin-only). Load
   when queuing a fix for testing or touching any of those files.
+- **test-feedback-loop** — the standing loop ON TOP of the try-it queue:
+  serve the git test-request channel (`scripts/test-requests --mint`/`--sync`
+  — mint merged workers' request files, stamp verdicts back, post each
+  verdict as a comment on the owning PR), sweep decided verdicts
+  (`scripts/testpoints --verdicts`), MINE EVERY NOTE
+  (a 👍 note can carry a full bug report — point #3, 2026-07-15), ack by
+  archiving, route each finding (feature-maintenance PR comment for owned
+  subsystems / direct fix with the verbatim complaint as the regression test /
+  features board for ideas), and MINT the next batch of points from the
+  standing sources (worker test-request files, MAINTENANCE-OWNERS "owes"
+  items, merged fix PRs, feedback resolutions, chatlogs regressions, SHIPPED
+  feature flips). Load to "run the test loop" / "process the verdicts" /
+  "feed new test cases in".
+- **request-testing** — the WORKER side of that loop: ship your test cases
+  INSIDE your PR as `docs/test-requests/<branch-slug>.json` (git is the
+  transport — no admin credentials; one file per branch, so parallel workers
+  never conflict), each point full try-it grammar plus `runs: N` for repeat
+  confirmations; validate offline with `scripts/test-requests --validate`
+  (the API's own validator). After merge the loop mints the points; each
+  verdict comes back stamped into your file AND as a comment on your PR —
+  which wakes you if you're subscribed (and you must be). Load when a worker
+  wants its feature tried by the owner.
+- **test-batches** — the STANDING library of standard test cases per pipeline
+  case (`docs/test-batches/<case>.json`: direct, search, clarify, quiz,
+  shodan, maps, sandbox, introspection, attachments, providers) + the
+  `scripts/test-batch` CLI to `--list`/`--get`/`--validate` and shape them
+  (`--extend`/`--shrink`), then feed them into either channel (`--mint` onto
+  the live queue, `--to-request` into a worker's PR file). Reuses the real
+  `validateTestpointCreate`, so a batch never holds a point that won't mint.
+  Load to "get the test batch for X", "extend/shrink a batch", or "add a batch
+  for a new pipeline capability".
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated

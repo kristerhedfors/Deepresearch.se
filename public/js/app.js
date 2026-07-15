@@ -20,6 +20,7 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
+import { balloonReset, initBalloonGuide } from "./balloon.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
@@ -118,6 +119,12 @@ const scrollDown = (force = false) => {
 // ---- Module wiring ---------------------------------------------------------
 
 initTurns(chat, scrollDown, { isBusy: isStreaming });
+// The Se/rver balloon guide (F-16): the blue tier's symbol character —
+// the ghost's counterpart — hovering among clouds above the composer. Pure
+// decoration (fail-soft, pointer-events:none); it flares + climbs on every
+// completed task (stream.js's done event) and swishes through clouds on all
+// its transitions.
+initBalloonGuide();
 initModels(document.getElementById("model"), { onChange: syncAttachState });
 initAttachments(
   document.getElementById("attach"),
@@ -374,6 +381,7 @@ function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
+  balloonReset(); // the guide's pennant tail belongs to the conversation
   syncCopyState();
   input.focus();
 }
@@ -580,7 +588,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h36";
+const CSS_VERSION = "h37";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -594,6 +602,65 @@ try {
 } catch {
   // never let the freshness probe break boot
 }
+
+// The Se/rver first-visit LANDING intro (F-16, owner directive 2026-07-15):
+// the blue tier's counterpart of /cure's umbrella intro — the logo vortex
+// untwists into WIRE BALLOONS, the camera drops a full 180° (rolling
+// sideways, clouds swishing past) and ends looking up from underneath at the
+// five-balloon fleet as color floods back (public/js/balloon-intro.js).
+// Gated exactly like /cure's: plays ONCE per browser (marked seen only after
+// it actually ran), never under prefers-reduced-motion, never over a /try
+// deep link — and `?anim=1` (or `?anim=rev` for the reverse play) forces it
+// through every gate as the explicit replay/verification path. The admin
+// /api/anim speed multiplier is fetched time-boxed (~900 ms) so a slow server
+// only ever costs the default speed. Entirely fail-soft: any import, fetch,
+// or play failure leaves the app exactly as it was (dynamic import so boot
+// pays nothing for it on every later visit).
+(() => {
+  try {
+    const rev = /[?&]anim=rev\b/.test(location.search);
+    const force = rev || /[?&]anim=1\b/.test(location.search);
+    const SEEN_KEY = "dr_rver_intro_seen";
+    let seen = false;
+    try {
+      seen = localStorage.getItem(SEEN_KEY) === "1";
+    } catch {
+      // storage blocked — treat as unseen; the flag below just won't stick
+    }
+    let reduced = false;
+    try {
+      reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      // no matchMedia — animate
+    }
+    const deepLinked = /[?&]try=/.test(location.search);
+    if (!force && (reduced || seen || deepLinked)) return;
+    const speedFetch = Promise.race([
+      fetch("/api/anim")
+        .then((r) => r.json())
+        .then((j) => Number(j?.speed) || 1),
+      new Promise((res) => setTimeout(() => res(1), 900)),
+    ]).catch(() => 1);
+    Promise.all([import("./balloon-intro.js"), speedFetch])
+      .then(([m, speed]) =>
+        m.playBalloonIntro({
+          speed,
+          reverse: rev ? true : undefined,
+          onDone: () => {
+            // Seen only once it actually RAN (the /cure discipline): a failed
+            // module load keeps the flag unset so the one first-visit play
+            // isn't burned on a broken attempt.
+            try {
+              localStorage.setItem(SEEN_KEY, "1");
+            } catch {}
+          },
+        })
+      )
+      .catch(() => {});
+  } catch {
+    // decoration — never let it near the boot path
+  }
+})();
 
 // Testable interaction points (public/js/testpoints.js): the try-it queue.
 // On landing with ?try=<id> (a shared /try link) this opens the banner and

@@ -1,0 +1,27 @@
+{
+  "case": "direct",
+  "title": "Direct reply — triage decides no research is needed",
+  "description": "The pipeline's shortest path: triage classifies the ask as answerable from model knowledge and streams a direct reply with no search wave. Web search is left ON so the point proves triage — not the knob — chose to skip it.",
+  "points": [
+    {
+      "label": "Direct reply: no search wave fires",
+      "summary": "A plain factual ask should stream a direct answer; the activity trail should show a 'Direct reply (no research needed)' plan step and NO search step. If it runs a web search anyway, that is a triage failure — report it.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "compose", "text": "What is the capital of Australia?" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Direct reply: conversational follow-up stays direct",
+      "summary": "A short chit-chat / definitional ask should also answer directly without searching. Confirms triage doesn't over-trigger research on trivial turns.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "compose", "text": "In one sentence, what does 'idempotent' mean?" }
+      ],
+      "runs": 1
+    }
+  ]
+}

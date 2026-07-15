@@ -1,0 +1,265 @@
+#!/usr/bin/env node
+// @ts-check
+// The GIT half of the test-request plumbing (see the request-testing skill,
+// consumed by the test-feedback-loop skill): a WORKER that wants its feature
+// tried by the owner commits docs/test-requests/<branch-slug>.json inside its
+// PR; the test-feedback loop MINTS those requests into the live try-it queue
+// after the merge, SYNCS verdicts back into the file (git is the ledger), and
+// posts each verdict as a comment on the owning PR — waking the subscribed
+// author-worker. This script is the file/API mechanics; the PR commenting and
+// the commits stay with the loop session.
+//
+// Worker side (offline, no credentials):
+//   scripts/test-requests --validate            check every pending file against
+//                                               the REAL action grammar
+//   scripts/test-requests --pending             list files with unminted/unfinished points
+//
+// Loop side (break-glass BASIC_AUTH_USER / BASIC_AUTH_PASS, same as scripts/testpoints):
+//   scripts/test-requests --mint                mint every unminted point of every
+//                                               pending file into the live queue and
+//                                               stamp minted_id back into the file
+//   scripts/test-requests --sync                pull new verdicts for minted points,
+//                                               stamp them into the file, re-open a
+//                                               passed point that still owes runs, and
+//                                               print which PRs need a verdict comment
+//
+// File format (one file per branch — parallel workers never conflict):
+//   { "branch": "claude/feature-x-abc12", "pr": 57 | null, "requested_at": "…",
+//     "points": [ { "label", "summary", "target", "actions": […],
+//                   "runs": 1..10 (verdicts wanted, default 1),
+//                   "minted_id": null | <queue id>,       — stamped by --mint
+//                   "verdicts": [{result, note, at}…],    — stamped by --sync
+//                   "done": true                          — stamped by --sync
+//                 } … ] }
+// BASE_URL overrides the target (default https://deepresearch.se).
+
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateTestpointCreate } from "../src/testpoints.js";
+
+const DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "test-requests");
+const BASE_URL = process.env.BASE_URL || "https://deepresearch.se";
+const MAX_RUNS = 10;
+
+function requestFiles() {
+  let names = [];
+  try {
+    names = readdirSync(DIR).filter((n) => n.endsWith(".json"));
+  } catch {
+    return []; // no directory yet — nothing pending
+  }
+  return names.sort().map((name) => {
+    const path = join(DIR, name);
+    try {
+      return { name, path, data: JSON.parse(readFileSync(path, "utf8")) };
+    } catch (err) {
+      return { name, path, error: `unreadable JSON: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  });
+}
+
+/** A point still owes work when it isn't minted or hasn't collected its runs. */
+function unfinished(p) {
+  return !p.done;
+}
+
+function runsWanted(p) {
+  const n = Number(p.runs);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, MAX_RUNS) : 1;
+}
+
+// --validate: every point must pass the SAME validator the admin API applies,
+// so a worker knows before committing that the mint will succeed verbatim.
+function validate(files) {
+  let bad = 0;
+  for (const f of files) {
+    if (f.error) {
+      console.log(`✗ ${f.name}: ${f.error}`);
+      bad++;
+      continue;
+    }
+    const d = f.data;
+    if (!d || typeof d.branch !== "string" || !d.branch.trim()) {
+      console.log(`✗ ${f.name}: missing "branch" (the PR's head branch — how verdicts find their worker)`);
+      bad++;
+      continue;
+    }
+    if (!Array.isArray(d.points) || !d.points.length) {
+      console.log(`✗ ${f.name}: "points" must be a non-empty array`);
+      bad++;
+      continue;
+    }
+    d.points.forEach((p, i) => {
+      const v = validateTestpointCreate(p);
+      if (v.error) {
+        console.log(`✗ ${f.name} point[${i}] ("${p?.label ?? "?"}"): ${v.error}`);
+        bad++;
+      } else if (v.dropped) {
+        console.log(`✗ ${f.name} point[${i}] ("${p.label}"): ${v.dropped} action(s) fail the grammar and would be dropped`);
+        bad++;
+      }
+      if (p.runs !== undefined && runsWanted(p) !== p.runs) {
+        console.log(`✗ ${f.name} point[${i}] ("${p?.label ?? "?"}"): runs must be an integer 1..${MAX_RUNS}`);
+        bad++;
+      }
+    });
+  }
+  if (!bad) console.log(`✓ ${files.length} request file(s) valid`);
+  process.exit(bad ? 1 : 0);
+}
+
+function pending(files) {
+  let any = false;
+  for (const f of files) {
+    if (f.error) {
+      console.log(`?? ${f.name}: ${f.error}`);
+      any = true;
+      continue;
+    }
+    const open = (f.data.points || []).filter(unfinished);
+    if (!open.length) continue;
+    any = true;
+    const pr = f.data.pr ? `PR #${f.data.pr}` : "PR not stamped yet";
+    console.log(`── ${f.name} (${f.data.branch}, ${pr})`);
+    for (const p of open) {
+      const got = (p.verdicts || []).length;
+      const state = p.minted_id ? `queue #${p.minted_id}, ${got}/${runsWanted(p)} verdicts` : "not minted";
+      console.log(`   · ${p.label} — ${state}`);
+    }
+  }
+  if (!any) console.log("(no pending test requests)");
+}
+
+function auth() {
+  const user = process.env.BASIC_AUTH_USER;
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (!user || !pass) {
+    console.error("Set BASIC_AUTH_USER / BASIC_AUTH_PASS (break-glass credentials) for --mint/--sync.");
+    process.exit(2);
+  }
+  return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+}
+
+async function api(method, path, body) {
+  const res = await fetch(`${BASE_URL}/api/admin/testpoints${path}`, {
+    method,
+    headers: { authorization: auth(), ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+function save(f) {
+  writeFileSync(f.path, JSON.stringify(f.data, null, 2) + "\n");
+}
+
+// Non-archived live points that already carry this file's branch in their
+// ref, keyed by label — the IDEMPOTENCY guard for --mint. If a concurrent
+// driver (another session, or the hourly Routine) already minted this file's
+// points before either committed the stamped minted_id back, we ADOPT the
+// existing id instead of creating a duplicate. Ref carries the branch (bare
+// or "PR #N (branch)"), so a substring match on the branch identifies this
+// file's points regardless of whether the PR number was stamped at mint time.
+async function existingByBranchLabel(branch) {
+  const res = await api("GET", "?limit=200");
+  const map = new Map();
+  for (const t of res.testpoints || []) {
+    if (t.status === "archived") continue;
+    if (typeof t.ref === "string" && t.ref.includes(branch)) map.set(t.label, t);
+  }
+  return map;
+}
+
+// --mint: create a live queue point for every unminted point, stamp the id
+// back. Ref carries branch + PR so a verdict is routable at a glance even
+// outside this plumbing. Idempotent: a point already on the queue for this
+// branch+label is adopted, not re-created (concurrent-driver safe).
+async function mint(files) {
+  let minted = 0;
+  let adopted = 0;
+  for (const f of files) {
+    if (f.error) continue;
+    let changed = false;
+    const existing = (f.data.points || []).some((p) => !p.minted_id && !p.done)
+      ? await existingByBranchLabel(f.data.branch)
+      : new Map();
+    for (const p of f.data.points || []) {
+      if (p.minted_id || p.done) continue;
+      p.verdicts = p.verdicts || [];
+      const already = existing.get(p.label);
+      if (already) {
+        p.minted_id = already.id;
+        changed = true;
+        adopted++;
+        console.log(`adopted existing queue #${p.minted_id} for ${f.name} "${p.label}" (concurrent mint — no duplicate created)`);
+        continue;
+      }
+      const ref = f.data.pr ? `PR #${f.data.pr} (${f.data.branch})` : f.data.branch;
+      const created = await api("POST", "", { label: p.label, summary: p.summary, target: p.target, actions: p.actions, ref });
+      p.minted_id = created.testpoint?.id ?? created.id;
+      changed = true;
+      minted++;
+      console.log(`minted ${f.name} "${p.label}" → queue #${p.minted_id} (/try/${p.minted_id})`);
+    }
+    if (changed) save(f);
+  }
+  const parts = [];
+  if (minted) parts.push(`${minted} minted`);
+  if (adopted) parts.push(`${adopted} adopted`);
+  console.log(parts.length ? `${parts.join(", ")} — commit the stamped file(s)` : "(nothing to mint)");
+}
+
+// --sync: pull each minted, unfinished point; a verdict newer than the last
+// stamped one is appended to the file. A PASS that still owes runs re-opens
+// the point for the next confirmation; a FAIL is left for the loop to route
+// (the fix must land before a re-test makes sense). Prints one COMMENT line
+// per new verdict — the loop turns those into PR comments.
+async function sync(files) {
+  let news = 0;
+  for (const f of files) {
+    if (f.error) continue;
+    let changed = false;
+    for (const p of f.data.points || []) {
+      if (!p.minted_id || p.done) continue;
+      const got = await api("GET", `/${p.minted_id}`);
+      const t = got.testpoint || got;
+      if (!t.result || !t.result_at) continue;
+      p.verdicts = p.verdicts || [];
+      const last = p.verdicts[p.verdicts.length - 1];
+      if (last && last.at === t.result_time) continue; // already stamped
+      const v = { result: t.result, note: t.result_note || null, at: t.result_time };
+      p.verdicts.push(v);
+      changed = true;
+      news++;
+      const wanted = runsWanted(p);
+      const doneRuns = p.verdicts.length;
+      if (t.result === "pass" && doneRuns < wanted) {
+        await api("PATCH", `/${p.minted_id}`, { status: "open" });
+        console.log(`reopened queue #${p.minted_id} "${p.label}" — ${doneRuns}/${wanted} confirmations`);
+      } else if (t.result === "pass") {
+        p.done = true;
+      }
+      const pr = f.data.pr ? `#${f.data.pr}` : `(resolve PR for branch ${f.data.branch})`;
+      console.log(
+        `COMMENT ${pr} ${v.result === "pass" ? "👍" : "👎"} "${p.label}" (queue #${p.minted_id}, ${doneRuns}/${wanted})` +
+          (v.note ? ` — note follows:\n${v.note}\n` : ""),
+      );
+    }
+    if (changed) save(f);
+    if ((f.data.points || []).every((p) => p.done)) console.log(`ready to archive: ${f.name} (every point done)`);
+  }
+  if (!news) console.log("(no new verdicts)");
+}
+
+const files = requestFiles();
+const arg = process.argv[2] || "--pending";
+if (arg === "--validate") validate(files);
+else if (arg === "--pending") pending(files);
+else if (arg === "--mint") await mint(files);
+else if (arg === "--sync") await sync(files);
+else {
+  console.error("usage: scripts/test-requests [--validate | --pending | --mint | --sync]");
+  process.exit(2);
+}

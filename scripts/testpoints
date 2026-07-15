@@ -16,6 +16,9 @@
 #   scripts/testpoints --id 7               one point
 #   scripts/testpoints --q "maps"           substring match on label OR summary
 #   scripts/testpoints --json               JSON instead of text
+#   scripts/testpoints --verdicts           decided-but-unconsumed points (passed + failed,
+#                                           archived excluded) — the test-feedback loop's
+#                                           sweep input; archiving a point acks it as consumed
 #
 # Editing / lifecycle:
 #   scripts/testpoints --set 7 '{"status":"open"}'    re-open a fixed point for re-test
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --json) format="json" ;;
     --all) open="" ;;
+    --verdicts) action="verdicts"; open="" ;;
     --status) open=""; status="$2"; shift ;;
     --id) id="$2"; shift ;;
     --q) query="$2"; shift ;;
@@ -75,6 +79,20 @@ case "$action" in
     exit 0 ;;
   delete)
     curl_auth -X DELETE "$BASE_URL/api/admin/testpoints/$id"
+    exit 0 ;;
+  verdicts)
+    # Decided but not yet consumed: passed + failed, in two server-rendered
+    # batches. The API filters one status per call, so the loop makes two —
+    # archived (= already consumed by the loop) never appears here.
+    if [ "$format" = "json" ]; then
+      p="$(curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=passed")"
+      f="$(curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=failed")"
+      jq -n --argjson p "$p" --argjson f "$f" \
+        '{ count: (($f.testpoints + $p.testpoints) | length), testpoints: ($f.testpoints + $p.testpoints) }'
+    else
+      curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=failed&format=text"
+      curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=passed&format=text"
+    fi
     exit 0 ;;
 esac
 

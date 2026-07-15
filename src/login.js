@@ -85,10 +85,13 @@ export function pendingPage(identity) {
 
 /**
  * One-time terms gate, shown after first sign-in until accepted (index.js
- * enforces; acceptance is recorded on the user row). This is the condensed
- * version of the /build/ "About this project" page — what the site is and
- * what it must not be used for — kept to a single page with a single
- * Accept button so consent stays meaningful without ceremony.
+ * enforces; acceptance is recorded on the user row). Deliberately SHORT
+ * (2026-07-15 directive): sign-in is the single point where APIs are
+ * invoked on the user's behalf through this server, so this page states
+ * only what the project is (research and innovation on privacy-capable
+ * LLM application design, invite-only) and that the restricted-use
+ * regulations (/build/#restricted, the EU AI Act section) must be read to
+ * take part — it links to them instead of restating them.
  * @param {Identity} identity
  * @returns {string} full HTML document
  */
@@ -103,21 +106,12 @@ export function termsPage(identity) {
   <meta name="theme-color" content="#6fc3fd">
   <style>${PAGE_CSS}
     body { align-items: start; padding: 1.1rem 1rem 2rem; }
-    .card { width: min(520px, 94vw); text-align: left; gap: .5rem; padding: 1.3rem 1.4rem; }
+    .card { width: min(480px, 94vw); text-align: left; gap: .5rem; padding: 1.3rem 1.4rem; }
     .card h1 { text-align: center; font-size: 1.15rem; margin: 0; }
     .hi { text-align: center; font-size: 1.6rem; line-height: 1; margin: 0; }
     .lead { text-align: center; color: #2f5d8e; font-size: .82rem; margin: 0 0 .2rem; overflow-wrap: anywhere; }
-    .sec { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr); gap: .1rem .55rem; align-items: start; }
-    .sec > div { min-width: 0; }
-    .sec .ico { font-size: 1rem; line-height: 1.5; text-align: center; }
-    .sec h2 { font-size: .9rem; margin: 0; line-height: 1.5; }
-    .sec p { font-size: .84rem; line-height: 1.45; margin: .1rem 0 0; color: #234; overflow-wrap: anywhere; }
-    .rules { grid-column: 2; min-width: 0; list-style: none; margin: .3rem 0 0; padding: 0;
-      display: grid; gap: .18rem; }
-    .rules li { font-size: .82rem; line-height: 1.35; padding-left: 1.15rem;
-      position: relative; color: #234; }
-    .rules li::before { content: "✕"; position: absolute; left: 0; top: 0;
-      color: #b53535; font-weight: 700; }
+    .txt { font-size: .88rem; line-height: 1.5; margin: 0; color: #234; overflow-wrap: anywhere; }
+    .sl { margin: 0 -.12em; }
     a { color: #0d4fa0; overflow-wrap: anywhere; }
     .actions { display: flex; align-items: center; gap: .9rem; margin-top: .7rem; flex-wrap: wrap; }
     form { margin: 0; }
@@ -136,51 +130,27 @@ export function termsPage(identity) {
 <body>
   <div class="card">
     <p class="hi">👋</p>
-    <h1>Welcome — one quick read</h1>
-    <p class="lead">Signed in as <b>${escapeHtml(identity.email)}</b> · about 20 seconds</p>
+    <h1>Welcome to DeepResearch.<b>Se<span class="sl">/</span>rver</b></h1>
+    <p class="lead">Signed in as <b>${escapeHtml(identity.email)}</b></p>
 
-    <div class="sec">
-      <div class="ico">🔬</div>
-      <div>
-        <h2>What this is</h2>
-        <p>A working deep-research assistant — and an experiment in how private
-        an LLM app can be. Built over a weekend, phone-only; invite-only, not a
-        product. More on <a href="/build/">About</a> and
-        <a href="/story/">The build story</a>; source on
-        <a href="https://github.com/kristerhedfors/Deepresearch.se">GitHub</a>.</p>
-      </div>
-    </div>
+    <p class="txt">This is an <b>experimental, invite-only project</b> for
+    research and innovation in the design of privacy-capable LLM
+    applications — not a product.</p>
 
-    <div class="sec">
-      <div class="ico">🚫</div>
-      <div>
-        <h2>House rules</h2>
-        <p>It’s a text research tool. The EU AI Act’s banned uses (Article 5)
-        are hard limits here — don’t use it to:</p>
-      </div>
-      <ul class="rules">
-        <li>Manipulate or deceive anyone into harmful choices</li>
-        <li>Exploit children or other vulnerable people</li>
-        <li>Social-score real, identifiable people</li>
-        <li>Predict a named person’s criminality from profiling</li>
-        <li>Infer someone’s race, politics, religion or feelings</li>
-        <li>Facial recognition or biometric surveillance — or NCII / CSAM</li>
-      </ul>
-    </div>
+    <p class="txt">Signing in here is the <b>only</b> point where you get
+    direct access to APIs — they are invoked on your behalf, through this
+    server. (The open DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+    tier is just this open-source project’s HTML, JavaScript and CSS running
+    in your own browser — no server-side APIs at all.)</p>
 
-    <div class="sec">
-      <div class="ico">🔒</div>
-      <div>
-        <h2>Privacy</h2>
-        <p>Answers run on Berget.ai (EU-hosted), web search via Exa (which
-        keeps queries). Conversations aren’t stored server-side beyond a
-        ≤15-min recovery buffer; logs are metadata only.</p>
-      </div>
-    </div>
+    <p class="txt">Limitations apply to which use cases may be applied.
+    You are <b>obliged to read
+    <a href="/build/#restricted">the regulations</a></b> in order to take
+    part in this research.</p>
 
     <div class="actions">
       <form method="post" action="/terms/accept">
-        <button class="primary" type="submit">I understand — let’s go</button>
+        <button class="primary" type="submit">I’ve read them — let’s go</button>
       </form>
       <form method="post" action="/logout"><button class="plain" type="submit">or sign out</button></form>
     </div>
