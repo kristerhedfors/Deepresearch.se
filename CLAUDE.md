@@ -221,7 +221,10 @@ update the row in the same pass. See the **feature-maintenance** skill.
    public CLIENT-side tier at `/cure` — extends the strict tier to a whole
    surface, structurally: no accounts, and the server is in NO data path
    at all — the browser calls the user's own CORS-capable providers
-   (OpenAI, Groq, Berget) directly, runs the research pipeline client-side, and
+   (OpenAI, Groq, Berget — or, since 2026-07-15, the user's OWN local
+   OpenAI-compatible server: Ollama / LM Studio / llama.cpp, the keyless
+   `local` provider entry, with which NO third party receives the
+   conversation at all) directly, runs the research pipeline client-side, and
    stores the sealed project state (chats AND the user's API keys inside)
    in the BROWSER's own storage; the server serves static files and public
    replay JSONs, so it could not log content or keys even in principle.
@@ -583,11 +586,25 @@ pure core Node-tested). DRC's client modules — the whole public tier:
 `drc-core.js` (DRC's pure core, built on `vault-core.js`: ONE master secret →
 HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
-strings/state-kind constant are frozen pre-rename values — Node-tested),
+strings/state-kind constant are frozen pre-rename values; plus the
+`.drc` encrypted BACKUP helpers (2026-07-15, Forever Agent §8 pick #1):
+`drcBackupFileName` + `openDrcBackup` — the sealed blob exported as a
+downloadable file and restored (file + secret) on any device, the guard
+against silent localStorage eviction; import never clobbers a newer
+local copy (newer state wins, the other's chats merge in — drc.js) —
+Node-tested),
 `drc-providers.js` (the client-side provider registry: the CORS-capable
 providers ONLY — OpenAI, Groq and Berget (CORS confirmed live
 2026-07-11), callable directly from the browser
-with the user's key; per-provider wire quirks, JSON mode, a fixed cheap
+with the user's key — PLUS the keyless `local` entry (2026-07-15,
+Forever Agent §8 pick #2): the user's OWN OpenAI-compatible server
+(Ollama / LM Studio / llama.cpp), "configured" by its base URL alone
+(`configuredDrcProviders`' keyless generalization; the URL lives in the
+sealed state as `localBaseUrl`, set in the /cure settings drawer with a
+`GET /models` detection probe), no Authorization header sent, and with
+no fixed `jsonModel` the planning phases fall back to the chosen model —
+the strongest privacy mode: NO third party receives the conversation;
+per-provider wire quirks, JSON mode, a fixed cheap
 `jsonModel` per provider, live `/models` with a static fallback, plus
 the per-provider `embed` entry + `drcEmbed` — browser-direct embeddings
 on the user's key: OpenAI `text-embedding-3-small` dimension-reduced to
@@ -687,7 +704,11 @@ legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked` and `DOMPurify`
 for Markdown rendering + sanitizing; `jsPDF`, lazy-loaded by `report.js`
-for the PDF report; `pdf.js` for parsing PDF attachments client-side).
+for the PDF report; `pdf.js` for parsing PDF attachments client-side;
+`vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
+vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN
+outage can't break the sandbox; the CheerpX engine stays a CDN load
+pending its license question).
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the

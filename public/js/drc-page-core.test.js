@@ -8,6 +8,7 @@ import {
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
+  providerVisibilityNote,
   wmHtml,
 } from "./drc-page-core.js";
 
@@ -161,4 +162,35 @@ test("disclosureText: recall names the embeddings provider and the local index",
 test("disclosureText: unknown online phases still disclose", () => {
   const t = disclosureText("future-phase", { provider: "OpenAI" });
   assert.match(t, /left your browser/);
+});
+
+test("disclosureText: a local model keeps the conversation on the user's machine", () => {
+  for (const p of ["triage", "synth", "answer"]) {
+    const t = disclosureText(p, { provider: "Local", local: true });
+    assert.match(t, /YOUR OWN machine/i, p);
+    assert.match(t, /never left your device/i, p);
+    // the own-API-key wording would be a lie here
+    assert.doesNotMatch(t, /your own API key/, p);
+  }
+});
+
+test("providerVisibilityNote: the standing model-picker disclosure per provider kind", () => {
+  // No pick yet → nothing to say (the line stays hidden).
+  assert.equal(providerVisibilityNote(""), "");
+  assert.equal(providerVisibilityNote(null), "");
+  // A remote provider: they can read; this site's server can't.
+  const openai = providerVisibilityNote("openai", "OpenAI");
+  assert.match(openai, /OpenAI/);
+  assert.match(openai, /they can read them/i);
+  assert.match(openai, /server can't/i);
+  // An unknown id still discloses, using the id itself.
+  assert.match(providerVisibilityNote("groq"), /groq/);
+  // The local provider: the strongest true statement.
+  const local = providerVisibilityNote("local", "Local (Ollama / LM Studio / llama.cpp)");
+  assert.match(local, /nothing leaves this device/i);
+  assert.doesNotMatch(local, /can read them/i);
+  // The borrowed proxy: the one server-touching path, named as such.
+  const proxy = providerVisibilityNote("proxy");
+  assert.match(proxy, /through this site's server/i);
+  assert.match(proxy, /Berget/);
 });

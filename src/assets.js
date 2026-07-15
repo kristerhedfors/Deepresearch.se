@@ -165,7 +165,13 @@ export function isPublicAsset(url, method) {
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||
-    url.pathname === "/vendor/purify.min.js"
+    url.pathname === "/vendor/purify.min.js" ||
+    // The vendored xterm terminal (sandbox.js loads it same-origin now instead
+    // of from a runtime CDN — a CDN outage must not break the sandbox). The
+    // sandbox runs on public /cure too, so these must serve unauthenticated.
+    url.pathname === "/vendor/xterm/xterm.js" ||
+    url.pathname === "/vendor/xterm/xterm.css" ||
+    url.pathname === "/vendor/xterm/addon-fit.js"
   );
 }
 

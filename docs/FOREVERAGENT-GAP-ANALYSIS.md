@@ -275,3 +275,56 @@ inference (P1/R1)** and the **offline capability (P3/R6)** it unlocks — plus
 already done. **The single highest-leverage move is P1**; the cheapest genuine
 compliance wins are the Track-A disclosures (transparency is literally a MUST
 that you satisfy by *writing the sentence*).
+
+---
+
+## 8. Validated selection (2026-07-15) — the user-value-first cut
+
+The owner re-scored this backlog through a **pure user-value / product-quality
+lens, explicitly ignoring the compliance framing**, and validated the following
+selection. This section is the decision record; spec alignment is a side
+effect, not the goal.
+
+**Approved for implementation (in priority order):**
+
+1. **Project export/import as an encrypted `.drc` file** (from P2/R10, narrowed) —
+   picked as **data-loss protection first**, portability second: a Se/cure
+   project lives in one browser's localStorage, which browsers (iOS Safari
+   especially) silently evict. The sealed blob is already one AES-GCM
+   ciphertext, so a file backup/restore is small. *Scope note:* secure
+   workspaces (2026-07-15, `workspace-core.js`) already shipped the
+   URL-fragment carry for **sessions** (keys/settings/chats/grants) — what
+   remains is the **project** blob (documents + RAG index) and the file
+   transport. QR stays future work.
+2. **Local / custom-endpoint inference** (P1/R1) — picked because it *is* the
+   project's mission ("how far can a real research assistant be pushed toward
+   provable privacy"), not because the spec mandates it: your model, your
+   device, network tab shows localhost only — and it removes the paid-API-key
+   barrier to trying the tier. The `baseUrl` plumbing already threads through
+   every wire call.
+3. **Honest disclosures** (D1/R5) — the "your words go to {provider}; they can
+   read them — this site can't" line and an AI self-intro: picked as a
+   product-honesty fix (a first-time user could believe "private" means the
+   provider can't read either). With #2 shipped the line flips to *"nothing
+   leaves this device."*
+4. **Vendor xterm + fit addon** (the cheap half of P4/R7) — picked for
+   reliability, not supply-chain purity: the sandbox is the most
+   regression-prone feature and a third-party CDN outage can break it from
+   outside the repo. The CheerpX engine stays a disclosed CDN dependency
+   pending the license question (§5 of the trajectory doc).
+
+**Deferred (real value, but not yet):**
+
+- **transformers.js local embeddings** (P7/R12) — would fix the genuine
+  "Groq/Berget-only users get no RAG" gap, but in-browser embedding
+  quality/speed needs validation before committing.
+- **Service worker offline shell** (P3/R6) — offline chat reading is nice, but
+  this repo's documented cache-staleness history plus the SW×COEP hazard make
+  it the riskiest item relative to its user value.
+
+**Skipped as compliance-flavored or premature:** `file://` deployability
+(P5/R9 — near-zero value to users of the deployed site), WebLLM in-browser
+inference (P6/R11 — small in-browser models would produce weak deep-research
+answers and hurt perceived quality; revisit after the local-server path proves
+the seams), full-disk offline sandbox (P8 — niche, actively risky on iOS
+quota), edge deployment (R14 — nothing to build).

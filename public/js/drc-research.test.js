@@ -223,6 +223,27 @@ describe("runDrcResearch end to end (mock provider)", () => {
     }
   });
 
+  test("the keyless local provider runs the whole flow: no auth header, one model for both roles", async () => {
+    requests.length = 0;
+    gapAlreadyAsked = false;
+    const result = await runDrcResearch({
+      providerId: "local",
+      apiKey: "", // keyless — the local entry demands no key
+      model: "llama3.2:latest",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      baseUrl, // the user-configured server URL is the whole wire config
+    });
+    assert.equal(result.validated, true);
+    assert.equal(result.answer, "REVISED final answer.");
+    for (const r of requests) {
+      // Nothing to authorize with — the header is omitted outright…
+      assert.equal(r.headers.authorization, undefined);
+      // …and with no fixed jsonModel, the planning phases fall back to the
+      // chosen model: ONE local server serves both pipeline roles.
+      assert.equal(r.body.model, "llama3.2:latest", r.phase);
+    }
+  });
+
   test("a direct answer (research off) still carries the recall block as context", async () => {
     const result = await runDrcResearch({
       providerId: "groq",

@@ -689,6 +689,9 @@ button:disabled { opacity: .5; cursor: default; }
 
 .statusline { margin: .25rem .35rem 0; font-size: .78rem; color: var(--muted); }
 .statusline[hidden] { display: none; }
+/* The standing "where your words go" disclosure under the composer row —
+   quieter than workstatus (it is always there once a model is picked). */
+.provnote { font-size: .72rem; opacity: .85; }
 
 /* ---- the research step list: a spinning umbrella per phase, a pink ✓ on done.
    The /cure analog of the DRS app's activity steps (css/app.css .step/.spin/

@@ -96,6 +96,14 @@ describe("isPublicAsset", () => {
     assert.ok(seen.size >= 25, `suspiciously small /cure module graph (${seen.size} modules) — walker broken?`);
   });
 
+  test("the vendored xterm files are public (sandbox.js loads them same-origin, /cure included)", () => {
+    // These load via <script>/<link> injection (loadScript/loadCSS), not ES
+    // imports, so the graph walker above can't derive them — pin them here.
+    for (const p of ["/vendor/xterm/xterm.js", "/vendor/xterm/xterm.css", "/vendor/xterm/addon-fit.js"]) {
+      assert.equal(isPublicAsset(u(p), "GET"), true, p);
+    }
+  });
+
   test("vault.js (DRS store/load) is NOT public — only the pure core is", () => {
     // vault.js statically imports the DRS storage stack; a 401 inside the
     // public /cure graph would kill the whole tier, so it must stay gated.

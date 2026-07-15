@@ -21,16 +21,34 @@ import {
   toOpenAiTools,
 } from "./drc-providers.js";
 
-test("the registry holds exactly the CORS-capable providers", () => {
-  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq", "berget"]);
+test("the registry holds the CORS-capable providers plus the keyless local entry", () => {
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq", "berget", "local"]);
   assert.equal(drcProvider("openai").label, "OpenAI");
   assert.equal(drcProvider("groq").label, "Groq");
   assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
   assert.equal(drcProvider("anthropic"), null); // no browser CORS — not in this registry
   for (const p of DRC_PROVIDERS) {
+    if (p.keyless) continue; // the local entry: no key, no fixed catalog (below)
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
     assert.ok(p.fallbackModels.length, p.id + " needs a fallback catalog");
   }
+});
+
+test("the local entry is keyless, defaults to Ollama, and declares NO fixed models", () => {
+  const local = drcProvider("local");
+  assert.equal(local.keyless, true);
+  assert.equal(local.keyPattern, null); // nothing to auto-detect — chosen explicitly
+  assert.equal(local.base, "http://localhost:11434/v1"); // Ollama's default; user URL overrides
+  // One local server serves BOTH pipeline roles: jsonModel null means the
+  // planning phases fall back to the chosen model (drc-research.js).
+  assert.equal(local.jsonModel, null);
+  assert.deepEqual(local.fallbackModels, []); // a user's own catalog has no static stand-in
+  assert.equal(local.embed, undefined); // local embeddings are a later, separate step
+  // The curation drops the obvious non-chat modalities a local catalog lists.
+  assert.equal(local.modelFilter("llama3.2:latest"), true);
+  assert.equal(local.modelFilter("qwen2.5-coder:7b"), true);
+  assert.equal(local.modelFilter("nomic-embed-text"), false);
+  assert.equal(local.modelFilter("whisper-large-v3"), false);
 });
 
 test("detectDrcProvider identifies a pasted key by its prefix", () => {
@@ -88,6 +106,22 @@ test("configuredDrcProviders follows the stored keys", () => {
   );
   assert.deepEqual(configuredDrcProviders({ berget: "bk" }).map((p) => p.id), ["berget"]);
   assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
+});
+
+test("configuredDrcProviders: the keyless local entry is configured by its base URL", () => {
+  // No key exists for the local provider — a stored `keys.local` never counts…
+  assert.deepEqual(configuredDrcProviders({ local: "anything" }).map((p) => p.id), []);
+  // …the base URL is the whole configuration…
+  assert.deepEqual(
+    configuredDrcProviders({}, { localBaseUrl: "http://localhost:11434/v1" }).map((p) => p.id),
+    ["local"],
+  );
+  // …blank/whitespace URLs leave it out, and keyed providers are unaffected.
+  assert.deepEqual(configuredDrcProviders({}, { localBaseUrl: "  " }).map((p) => p.id), []);
+  assert.deepEqual(
+    configuredDrcProviders({ openai: "sk" }, { localBaseUrl: "http://localhost:1234/v1" }).map((p) => p.id),
+    ["openai", "local"],
+  );
 });
 
 test("buildDrcPayload carries each provider's wire quirks", () => {
@@ -326,6 +360,22 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     assert.equal(requests.at(-1).body.stream, true);
+  });
+
+  test("the keyless local provider sends NO Authorization header", async () => {
+    // "Bearer undefined" makes some local servers 401 — a keyless call must
+    // omit the header outright, on both wire shapes.
+    const local = drcProvider("local");
+    const res = await drcChatStream(local, "", "llama3.2:latest", [{ role: "user", content: "x" }], { baseUrl });
+    assert.equal(res.ok, true);
+    assert.match(await res.text(), /"content":"streamed"/);
+    const streamReq = requests.at(-1);
+    assert.equal(streamReq.headers.authorization, undefined);
+    assert.equal(streamReq.body.max_tokens, 4096); // the plain OpenAI wire
+
+    const value = await drcCompleteJson(local, "", "llama3.2:latest", [{ role: "user", content: "x" }], { baseUrl });
+    assert.deepEqual(value, { ok: true });
+    assert.equal(requests.at(-1).headers.authorization, undefined);
   });
 
   test("Berget over mock HTTP: bearer auth + the plain OpenAI wire", async () => {

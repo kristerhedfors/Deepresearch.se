@@ -58,8 +58,10 @@ export {
 
 export const DRC_STATE_KIND = "deepresearch-free-project";
 // v2 moved the provider keys into the sealed state; v3 added the client-
-// side RAG index (rag — drc-rag.js), sealed like everything else.
-export const DRC_STATE_V = 3;
+// side RAG index (rag — drc-rag.js), sealed like everything else; v4 added
+// localBaseUrl (the user's own local/custom OpenAI-compatible inference
+// server — drc-providers.js's keyless `local` entry).
+export const DRC_STATE_V = 4;
 
 // ---- derivation ---------------------------------------------------------------
 
@@ -133,6 +135,14 @@ export function emptyDrcState() {
     // self-hosted service. `key` lives inside the sealed state like the provider
     // keys. Absent (older blobs) reads as the grant default.
     searchBackend: { backend: "grant", baseUrl: "", key: "", results: 6 },
+    // The user's own OpenAI-compatible LOCAL inference server (Ollama /
+    // LM Studio / llama.cpp): the base URL the keyless `local` provider
+    // entry (drc-providers.js) calls, e.g. http://localhost:11434/v1.
+    // Setting it is what "configures" that provider (no API key exists);
+    // with it, model calls leave for the user's OWN machine and no third
+    // party receives the conversation at all. Empty/absent (older blobs)
+    // reads as not configured.
+    localBaseUrl: "",
     conversations: [],
     rag: { docs: [] },
   };
@@ -143,7 +153,7 @@ export function validateDrcState(s) {
   const ok = !!(
     s &&
     typeof s === "object" &&
-    (s.v === 1 || s.v === 2 || s.v === DRC_STATE_V) && // older blobs still open
+    (s.v === 1 || s.v === 2 || s.v === 3 || s.v === DRC_STATE_V) && // older blobs still open
     s.kind === DRC_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
@@ -157,7 +167,8 @@ export function validateDrcState(s) {
   return (
     ok &&
     (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys))) &&
-    (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs)))
+    (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs))) &&
+    (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string")
   );
 }
 
@@ -168,6 +179,7 @@ export function migrateDrcState(s) {
   if (s.research === undefined) s.research = true;
   if (s.providerId === undefined) s.providerId = null;
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
+  if (typeof s.localBaseUrl !== "string") s.localBaseUrl = "";
   return s;
 }
 
@@ -187,6 +199,45 @@ export function sealDrcState(state, blobKey) {
  */
 export function openDrcState(bytes, blobKey) {
   return decryptVaultArchive(bytes, blobKey);
+}
+
+// ---- encrypted backup (.drc file export/import) --------------------------------
+//
+// A Se/cure project's ONLY copy is one browser's localStorage, which the
+// browser may silently evict (iOS Safari especially) — so the sealed blob
+// can be downloaded as a `.drc` file and restored later, on this device or
+// another. The file IS the stored ciphertext (putSealedProject's bytes),
+// nothing re-encrypted and nothing new invented: opening it takes the same
+// DR1-… secret, so the file is exactly as unreadable at rest as the
+// localStorage row it mirrors.
+
+// The export filename carries the public reference so a folder of backups
+// is tellable apart — the refHash is deliberately NOT a capability, so the
+// name reveals nothing (see the derivation notes above).
+/** @param {string} refHash */
+export function drcBackupFileName(refHash) {
+  return "project-" + refHash + ".drc";
+}
+
+/**
+ * Open an exported .drc backup with its secret: derive the profile,
+ * decrypt, validate, migrate — the store's own open path, fed from a file.
+ * Returns null on a wrong secret, tampered/corrupted file, or unrecognized
+ * shape (fail-soft: the caller shows one message, never a crash).
+ * @param {Uint8Array} bytes
+ * @param {string} secret
+ * @returns {Promise<{profile: {refHash: string, blobId: string, blobKey: CryptoKey}, state: any} | null>}
+ */
+export async function openDrcBackup(bytes, secret) {
+  if (!vaultSecretValid(secret)) return null;
+  try {
+    const profile = await deriveDrcProfile(secret);
+    const opened = await openDrcState(bytes, profile.blobKey);
+    if (!validateDrcState(opened)) return null;
+    return { profile, state: migrateDrcState(opened) };
+  } catch {
+    return null; // wrong secret or tamper — AES-GCM authentication failed
+  }
 }
 
 // A conversation's display title: its first user line, like the main app.

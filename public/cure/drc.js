@@ -38,10 +38,12 @@
 import {
   deriveDrcProfile,
   deriveDrcTitle,
+  drcBackupFileName,
   emptyDrcState,
   drcSecretValid,
   generateDrcSecret,
   migrateDrcState,
+  openDrcBackup,
   openDrcState,
   sealDrcState,
   validateDrcState,
@@ -96,6 +98,7 @@ import {
   parseProjectPath,
   parsePublicationRef,
   phaseChannel,
+  providerVisibilityNote,
   wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
@@ -116,6 +119,13 @@ let state = emptyDrcState(); // the working state (keys included), from the firs
 let convId = null; // active conversation id
 let sending = false;
 let unsavedHintShown = false;
+
+// The local (keyless) provider's configured base URL — normalized on read so a
+// pasted trailing slash never doubles a "/" on the wire.
+const localUrl = () => (state?.localBaseUrl || "").trim().replace(/\/+$/, "");
+// The providers this session can call: keyed ones, plus Local when a server
+// URL is configured (the keyless generalization in drc-providers.js).
+const configuredProviders = () => configuredDrcProviders(state.keys, { localBaseUrl: localUrl() });
 
 const PHASE_LABELS = {
   triage: "Analyzing the question…",
@@ -590,6 +600,7 @@ function openSettings() {
   $("bashlite").checked = state.bashLite === true; // reflect current state
   $("devmode").checked = state.developerMode === true;
   renderKeysPanel();
+  renderLocalRow(); // reflect the local model server URL (if any)
   renderWsRow(); // reflect the web-search grant (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
@@ -706,12 +717,26 @@ function projectOpened() {
   $("projref").textContent = "project-" + profile.refHash;
   $("projbadge").textContent = "— project-" + profile.refHash;
   $("lockbtn").hidden = false;
+  $("exportbtn").hidden = false; // an open project has bytes to back up
   $("secret").value = "";
   $("secret").setAttribute("autocomplete", "current-password");
   $("newsecret").hidden = true;
   $("projpanel").open = false;
   closeDrawer();
   history.replaceState(null, "", "/my/project-" + profile.refHash);
+}
+
+// Reflect a freshly opened/restored state everywhere the UI shows it — the
+// shared tail of unlock() and importBackup().
+async function reflectOpenedState() {
+  $("websearch").checked = state.research !== false;
+  $("bashlite").checked = state.bashLite === true;
+  $("devmode").checked = state.developerMode === true;
+  applyIntrospectionTheme(state.developerMode === true);
+  renderKeysPanel();
+  renderConvPicker();
+  renderMessages();
+  if (configuredProviders().length) await refreshModels();
 }
 
 // Open OR create, one submit: a sealed state exists in THIS BROWSER under
@@ -761,19 +786,78 @@ async function unlock(ev) {
 
     projectOpened();
     await saveState(); // create, or persist the merge
-    $("websearch").checked = state.research !== false;
-    $("bashlite").checked = state.bashLite === true;
-    $("devmode").checked = state.developerMode === true;
-    applyIntrospectionTheme(state.developerMode === true);
-    renderKeysPanel();
-    renderConvPicker();
-    renderMessages();
-    if (configuredDrcProviders(state.keys).length) await refreshModels();
+    await reflectOpenedState();
   } catch (err) {
     gateStatus(err?.message || "Could not open the project.");
   } finally {
     $("openbtn").disabled = false;
   }
+}
+
+// ---- encrypted backup: the sealed blob as a .drc file --------------------------------
+//
+// Export = the stored ciphertext, byte for byte, as a download — the guard
+// against the browser evicting site data (a Se/cure project's only copy lives
+// in this browser's localStorage). Import = the same bytes + the project's
+// secret, restorable on any device; a local copy that is NEWER than the backup
+// is never clobbered — the newer state wins and the other's chats merge in
+// (the unlock() merge, applied to files).
+
+async function exportBackup() {
+  if (!profile) return;
+  await saveState(); // the file mirrors what's stored, freshest state included
+  const bytes = getSealedProject(profile.blobId);
+  if (!bytes) {
+    gateStatus("Nothing is stored to export yet — storage may be blocked in this browser.");
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  a.download = drcBackupFileName(profile.refHash);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30_000);
+  gateStatus("Backup downloaded. It stays encrypted — only this project's secret opens it.");
+}
+
+/** @param {File} file */
+async function importBackup(file) {
+  const secret = $("secret").value;
+  if (!drcSecretValid(secret)) {
+    $("projpanel").open = true;
+    gateStatus("Enter this backup's secret (DR1-…) in the Secret field first, then pick the file again.");
+    return;
+  }
+  gateStatus("Opening the backup…");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const res = await openDrcBackup(bytes, secret);
+  if (!res) {
+    gateStatus("That backup could not be opened with this secret — wrong secret, or a damaged file.");
+    return;
+  }
+  let next = res.state;
+  const existing = drcStoreAvailable() ? getSealedProject(res.profile.blobId) : null;
+  if (existing) {
+    const cur = await openDrcState(existing, res.profile.blobKey).catch(() => null);
+    if (cur && validateDrcState(cur)) {
+      const local = migrateDrcState(cur);
+      const [base, other] = (local.updatedAt || 0) >= (next.updatedAt || 0) ? [local, next] : [next, local];
+      const known = new Set(base.conversations.map((c) => c.id));
+      for (const c of other.conversations) {
+        if (c.messages?.length && !known.has(c.id)) base.conversations.push(c);
+      }
+      base.keys = { ...other.keys, ...base.keys };
+      next = base;
+    }
+  }
+  profile = res.profile;
+  state = next;
+  projectOpened();
+  await saveState();
+  await reflectOpenedState();
+  gateStatus("");
+  workStatus("Backup restored — project-" + profile.refHash + " is open and saved in this browser.");
 }
 
 // ---- persistence (browser-local, via the drc-store seam) ---------------------------
@@ -860,11 +944,46 @@ async function saveKeys() {
   }
 }
 
+// ---- the local model server (the keyless provider) ----------------------------------
+
+function renderLocalRow() {
+  $("local-url").value = state.localBaseUrl || "";
+}
+
+// Save the URL, then probe it (GET {base}/models — listDrcModels is already
+// the probe: it never throws, and the local entry has no static fallback, so
+// an empty list means "nothing answered"). The URL lives in the sealed state
+// like the keys; an empty URL removes the provider from the dropdown.
+async function saveLocalUrl() {
+  const url = $("local-url").value.trim().replace(/\/+$/, "");
+  state.localBaseUrl = url;
+  const status = (m) => ($("local-status").textContent = m);
+  $("local-save").disabled = true;
+  try {
+    await saveState();
+    if (!url) {
+      status("Local model server removed.");
+      return;
+    }
+    status("Checking " + url + " …");
+    const ids = await listDrcModels(drcProvider("local"), "", { baseUrl: url });
+    status(
+      ids.length
+        ? "✓ Server found — " + ids.length + " model" + (ids.length === 1 ? "" : "s") + ". Nothing leaves this device."
+        : "Saved, but no server answered at " + url + " — is it running, and does it allow this origin? " +
+          "(Ollama needs OLLAMA_ORIGINS=" + location.origin + ")",
+    );
+  } finally {
+    $("local-save").disabled = false;
+  }
+  await refreshModels().catch(() => {});
+}
+
 // One grouped dropdown across the configured providers; option values are
 // "provider::model" so the send knows where to route.
 async function refreshModels() {
   const pick = $("model");
-  const providers = configuredDrcProviders(state.keys);
+  const providers = configuredProviders();
   const proxyOn = apiProxyUsable();
   if (!providers.length && !proxyOn) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
@@ -873,12 +992,17 @@ async function refreshModels() {
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const groups = await Promise.all(
     providers.map(async (p) => {
-      const ids = await listDrcModels(p, state.keys[p.id]);
-      return (
-        `<optgroup label="${esc(labelWithFlag(flagForProvider(p.id), p.label))}">` +
-        ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("") +
-        "</optgroup>"
-      );
+      // The keyless local provider lists models from the user's OWN server (the
+      // configured URL overrides the registry default); everyone else from
+      // their key. An unreachable local server has no static fallback, so its
+      // group says so instead of sitting silently empty.
+      const ids = await listDrcModels(p, state.keys[p.id], p.keyless ? { baseUrl: localUrl() } : {});
+      const opts = ids.length
+        ? ids.map((id) => `<option value="${esc(p.id + "::" + id)}">${esc(id)}</option>`).join("")
+        : p.keyless
+          ? "<option disabled>— no local server answered —</option>"
+          : "";
+      return `<optgroup label="${esc(labelWithFlag(flagForProvider(p.id), p.label))}">` + opts + "</optgroup>";
     }),
   );
   // The SECURE-RESEARCH-SPACE provider (the account-connected LLM proxy), first
@@ -917,6 +1041,20 @@ async function refreshModels() {
     state.providerId = pid;
     state.model = rest.join("::");
   }
+  renderProviderNote();
+}
+
+// The standing "where your words go" line under the composer (drc-page-core's
+// providerVisibilityNote): follows the model pick — the chosen provider can
+// read the conversation, this site's server can't; a local model flips it to
+// "nothing leaves this device". Hidden until a model is picked.
+function renderProviderNote() {
+  const note = $("provnote");
+  if (!note) return;
+  const [pid] = ($("model").value || "").split("::");
+  const text = providerVisibilityNote(pid, drcProvider(pid)?.label);
+  note.textContent = text;
+  note.hidden = !text;
 }
 
 // ---- conversations ------------------------------------------------------------------
@@ -958,7 +1096,9 @@ function renderMessages() {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.textContent =
-      "Ask a research question to get started — it runs right here in your browser, on your own OpenAI, Groq or Berget API key.";
+      "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
+      "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
+      "anything critical. Ask a research question to get started.";
     box.appendChild(empty);
     return;
   }
@@ -1555,7 +1695,7 @@ async function maybeOpenProxyBundle() {
   }
 
   if (opened) {
-    if (configuredDrcProviders(state.keys).length || apiProxyUsable()) await refreshModels().catch(() => {});
+    if (configuredProviders().length || apiProxyUsable()) await refreshModels().catch(() => {});
     announceProxyConnected();
     renderProxyRow();
   }
@@ -1727,7 +1867,7 @@ async function unlockWorkspace(ev) {
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
     applyIntrospectionTheme(state.developerMode === true);
-    if (configuredDrcProviders(state.keys).length || apiProxyUsable()) await refreshModels().catch(() => {});
+    if (configuredProviders().length || apiProxyUsable()) await refreshModels().catch(() => {});
     await saveState().catch(() => {});
 
     // Drop the ciphertext from the address bar (the pane is open; the link
@@ -1811,7 +1951,7 @@ async function send(ev) {
   // an unrecognized one) also surface the key panel so setup is one tap away.
   // A live secure-research-space LLM proxy counts as "has a provider" — a
   // borrowed session with no key of its own can research on the lent API.
-  if (!configuredDrcProviders(state.keys).length && !apiProxyUsable()) {
+  if (!configuredProviders().length && !apiProxyUsable()) {
     const reply = matchCanned(text, { tier: "drc" });
     renderCannedExchange(text, reply);
     $("input").value = "";
@@ -1843,15 +1983,18 @@ async function send(ev) {
   // object with the api PROXY TOKEN as its "key" (runDrcResearch takes a
   // provider override so this needs no registry entry).
   const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
+  const usingLocal = providerId === "local";
   const providerOverride = usingApiProxy ? proxyLlmProvider(location.origin) : null;
   const answerKey = usingApiProxy ? proxyGrants.api?.token : state.keys[providerId];
 
   // The disclosure context for this send's ℹ notices (per-task grammar): who
-  // the provider is, whether calls ride the borrowed proxy, and which route a
-  // web search would take. Captured HERE — the same resolution the send uses.
+  // the provider is, whether calls ride the borrowed proxy or stay on the
+  // user's own machine, and which route a web search would take. Captured
+  // HERE — the same resolution the send uses.
   sendCtx = {
     provider: usingApiProxy ? "Berget (borrowed)" : drcProvider(providerId)?.label || providerId,
     viaProxy: usingApiProxy,
+    local: usingLocal,
     search: directSearchActive() ? "self" : "grant",
     embedProvider: "",
   };
@@ -1899,6 +2042,10 @@ async function send(ev) {
       snapshot: intro.snapshot,
       bash: state.bashLite === true,
       fileProvider: intro.fileProvider,
+      // The local provider's whole wire config is its user-set base URL —
+      // every pipeline call already threads baseUrl down (the trajectory
+      // doc's one-line send-path edit; other providers keep their registry base).
+      baseUrl: usingLocal ? localUrl() : undefined,
       // Web search source, in priority order: (1) the user's OWN self-hosted
       // service called browser-direct (the expert setting — no query touches
       // this server); (2) the secure-research-space web proxy OR the legacy
@@ -2226,6 +2373,14 @@ document.addEventListener("click", (e) => {
 });
 $("unlockform").addEventListener("submit", unlock);
 $("newbtn").addEventListener("click", () => generateNew().catch((e) => gateStatus(e?.message || "Failed.")));
+$("exportbtn").addEventListener("click", () => exportBackup().catch((e) => gateStatus(e?.message || "Export failed.")));
+$("importbtn").addEventListener("click", () => $("importfile").click());
+$("importfile").addEventListener("change", async () => {
+  const file = /** @type {HTMLInputElement} */ ($("importfile")).files?.[0];
+  /** @type {HTMLInputElement} */ ($("importfile")).value = ""; // re-picking the same file must re-fire
+  if (file) await importBackup(file).catch((e) => gateStatus(e?.message || "Restore failed."));
+});
+$("local-save").addEventListener("click", () => saveLocalUrl().catch(() => ($("local-status").textContent = "Saving failed.")));
 $("copysecret").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("newsecrettext").textContent);
@@ -2243,6 +2398,7 @@ $("model").addEventListener("change", () => {
     state.model = rest.join("::");
     saveState();
   }
+  renderProviderNote();
 });
 $("websearch").addEventListener("change", () => {
   state.research = $("websearch").checked;
