@@ -1,0 +1,35 @@
+{
+  "branch": "claude/test-feedback-pipeline-8hg3uv",
+  "pr": null,
+  "requested_at": "2026-07-15",
+  "points": [
+    {
+      "label": "Test-request plumbing: verdict comes back on the PR",
+      "summary": "This point was declared IN the PR as docs/test-requests/….json and minted by the loop — the new worker-side test-request channel. Record any verdict here; PASS criterion checked by the NEXT loop tick: your verdict (thumb + this note) appears as a comment on the PR that shipped this file.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Just record a verdict — the point under test is the plumbing that routes it back to the author PR."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Test-request plumbing: runs:2 re-opens after the first pass",
+      "summary": "This point asks for TWO confirmations (runs:2). Give it a 👍 — within the next loop tick it must REAPPEAR on the queue for its second confirmation. The second 👍 retires it for good. If it never comes back, that is a FAIL to report on the second look.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "First 👍 → the loop re-opens this point; second 👍 → done. Verdict twice on separate passes."
+        }
+      ],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
