@@ -1213,6 +1213,15 @@ what docs claim); and update the skill list below plus the skill's
   verdict comes back stamped into your file AND as a comment on your PR —
   which wakes you if you're subscribed (and you must be). Load when a worker
   wants its feature tried by the owner.
+- **test-batches** — the STANDING library of standard test cases per pipeline
+  case (`docs/test-batches/<case>.json`: direct, search, clarify, quiz,
+  shodan, maps, sandbox, introspection, attachments, providers) + the
+  `scripts/test-batch` CLI to `--list`/`--get`/`--validate` and shape them
+  (`--extend`/`--shrink`), then feed them into either channel (`--mint` onto
+  the live queue, `--to-request` into a worker's PR file). Reuses the real
+  `validateTestpointCreate`, so a batch never holds a point that won't mint.
+  Load to "get the test batch for X", "extend/shrink a batch", or "add a batch
+  for a new pipeline capability".
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated

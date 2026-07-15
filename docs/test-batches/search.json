@@ -1,0 +1,29 @@
+{
+  "case": "search",
+  "title": "Deep web research — the full pipeline (triage → search → gap → synth → validate)",
+  "description": "A current-events / needs-sources question that should run the whole research pipeline: a web search wave, a gap check with at least one follow-up round on a broad ask, streamed synthesis, and validation. The answer should carry numbered citations.",
+  "points": [
+    {
+      "label": "Deep research: cited multi-source answer",
+      "summary": "With search ON and a generous budget, this should run a real search wave and synthesize a CITED answer (numbered sources in the activity trail). PASS = fresh, sourced synthesis; FAIL = an uncited from-memory answer or an errored pipeline.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "setBudget", "seconds": 120 },
+        { "type": "compose", "text": "What are the main findings of the most recent IPCC synthesis report on climate change?" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Deep research: gap check triggers a follow-up round",
+      "summary": "A broad comparative question should make the gap-check phase request a second search round before synthesis (visible as more than one search step). Confirms the gap→follow-up loop still fires. Paste the research-debug JSON in the note if only one round ran.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "setBudget", "seconds": 180 },
+        { "type": "compose", "text": "Compare the battery chemistry, range, and charging speed of the three best-selling electric cars of the last year." }
+      ],
+      "runs": 1
+    }
+  ]
+}

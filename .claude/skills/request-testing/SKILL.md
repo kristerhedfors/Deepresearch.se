@@ -45,6 +45,12 @@ loop re-opens the original point once your fix merges.
 One file per branch: `docs/test-requests/<branch-slug>.json` (slug = branch
 with `/` → `-`). One file per branch means parallel workers never conflict.
 
+**Fastest start — seed from a standard batch.** If your feature touches a
+pipeline case that already has a batch (`scripts/test-batch --list` — the
+**test-batches** skill), generate the file and trim it to your change:
+`scripts/test-batch --to-request <case> <your-branch> --pr <n>`. Then edit
+down to the points your PR actually affects and add any feature-specific ones.
+
 ```json
 {
   "branch": "claude/your-branch-name",

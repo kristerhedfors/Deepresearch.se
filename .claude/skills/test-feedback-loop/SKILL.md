@@ -98,6 +98,11 @@ verdicts.
 
 ## Minting sources (step 5) — where new test cases come from
 
+- **The standard batches** (`scripts/test-batch`, the **test-batches** skill)
+  — the curated library of ready-made points per pipeline case. `--mint
+  <case>` drops a whole case onto the queue; `--to-request <case> <branch>`
+  seeds a worker's PR file. Reach for these before hand-writing points; extend
+  a batch when a new failure mode earns standing coverage.
 - **Worker test-request files** — the first-class channel: a worker ships
   `docs/test-requests/<branch>.json` inside its PR (the **request-testing**
   skill), and step 0 mints it at merge. Prefer nudging workers onto this

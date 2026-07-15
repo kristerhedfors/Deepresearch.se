@@ -1,0 +1,25 @@
+{
+  "case": "quiz",
+  "title": "Inline quiz — generation + grading (English + Swedish parity)",
+  "description": "The quizIntent gate (src/quiz.js) is EN+SV per invariant 6, so the batch tests both languages. A 'quiz me' ask should render the interactive quiz card (sequential questions with alternatives + a free-text field), grade multiple-choice locally, and grade written answers via /api/quiz/grade. The Swedish point guards the parity gate that unit tests can drift on.",
+  "points": [
+    {
+      "label": "Quiz (English): card renders and grades",
+      "summary": "'quiz me' with a topic + question count should produce the interactive quiz card, not a prose answer. Answer a couple, submit, and confirm the score/recap comes back. FAIL = a normal text answer instead of the card.",
+      "target": "/rver",
+      "actions": [
+        { "type": "compose", "text": "Quiz me with 5 questions on the water cycle" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Quiz (Swedish): parity gate fires",
+      "summary": "The Swedish phrasing must trigger the SAME quiz card as English (invariant 6 parity). PASS = the interactive card in Swedish; FAIL = a plain answer, which means the Swedish gate regressed.",
+      "target": "/rver",
+      "actions": [
+        { "type": "compose", "text": "Förhör mig med 5 frågor om vattnets kretslopp" }
+      ],
+      "runs": 1
+    }
+  ]
+}
