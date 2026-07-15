@@ -243,6 +243,36 @@
   </section>
 
   <section>
+    <h2>First-class claim: this code arrives via Cloudflare, straight from GitHub</h2>
+    <p>Before the privacy tables below, the serving chain itself — because
+    every structural guarantee on this page begins only <em>after</em> the
+    code reaches your browser. The live site —
+    <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span>
+    included — is <strong>deployed on Cloudflare and served directly from the
+    public GitHub repository</strong>: git-connected, a push to
+    <code>main</code> is exactly what production serves. That is what makes
+    the no-server-data-path claim independently verifiable — the code your
+    browser runs is the code anyone can read — and it is also, stated
+    plainly, the trust boundary: trusting the live site means trusting that
+    serving chain (the repository and the Cloudflare account that deploys
+    it).</p>
+    <p><strong>So to make it really secure: build upon it.</strong> That is
+    the point of this project — the architecture is meant for anyone to take
+    and deploy for their own use case, ideally into an environment that is
+    already network- and authentication-restricted, so the serving chain is
+    theirs end to end. What it provides in return is an easily extendable
+    platform with some peculiar features — a research pipeline that runs
+    client-side, sealed browser-local state under a user-held secret,
+    lendable capability grants, a Linux VM that boots in the tab — and
+    exactly those features are the subject of the exploration in this
+    research and innovation project.</p>
+    <p class="muted">Fork it:
+    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>
+    — the README's "Installing your own instance" walks through a complete
+    deployment.</p>
+  </section>
+
+  <section>
     <h2>Privacy, paired</h2>
     <p class="muted">The same concerns, answered by each architecture. The
     pattern to notice: on <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span>

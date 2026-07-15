@@ -861,8 +861,34 @@ place by the DRC app so a visitor can continue on their own keys. The
 signed-in app described in the rest of this document is its remote sibling
 tier at `/rver`.
 
+**A first-class claim of the security model: the serving chain.** Se/cure's
+structural guarantee begins only after the code reaches the browser — and
+that code is deployed on Cloudflare, served directly from this public
+GitHub repository (git-connected: a push to `main` is what production
+serves, §2). This transparency is what makes the no-server-data-path claim
+independently verifiable, but it is also the trust boundary: trusting the
+live site means trusting that serving chain — the repository and the
+Cloudflare account that deploys it (`SECURITY-RISKS.md` §1, R-9). So to
+make it *really* secure, build upon it: the point of the project is for
+anyone to fork this architecture and deploy it for their own use case,
+ideally into an environment that is already network- and
+authentication-restricted, so the serving chain is theirs end to end. What
+the architecture provides in return is an easily extendable platform with
+some peculiar features — a browser-side research pipeline, sealed
+browser-local state under a user-held secret, lendable capability grants,
+an in-browser Linux VM — and exactly those features are the subject of the
+exploration in this research and innovation project.
+
 ## 10. Security model
 
+- **The serving chain is a first-class part of the model**: the whole site
+  — the Se/cure tier included — is deployed on Cloudflare and served
+  directly from the public GitHub repo (git-connected auto-deploy from
+  `main`). That makes every claim here verifiable against the exact running
+  source, and makes the repo + Cloudflare account the root of trust
+  (`SECURITY-RISKS.md` R-9). The strongest posture is therefore to build
+  upon it — run your own fork in an already network- and
+  authentication-restricted environment (§9's Se/cure section).
 - **Fail closed**: no admin auth secrets configured ⇒ every request denied.
 - **Two auth mechanisms**: Google-provisioned session cookies (HMAC keyed
   by the dedicated `SESSION_SECRET`, with a legacy fallback to the
