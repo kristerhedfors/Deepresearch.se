@@ -20,7 +20,6 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
-import { balloonReset, initBalloonGuide } from "./balloon.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
@@ -119,12 +118,10 @@ const scrollDown = (force = false) => {
 // ---- Module wiring ---------------------------------------------------------
 
 initTurns(chat, scrollDown, { isBusy: isStreaming });
-// The Se/rver balloon guide (F-16): the blue tier's symbol character —
-// the ghost's counterpart — hovering among clouds above the composer. Pure
-// decoration (fail-soft, pointer-events:none); it flares + climbs on every
-// completed task (stream.js's done event) and swishes through clouds on all
-// its transitions.
-initBalloonGuide();
+// The Se/rver balloon greeter (F-16) is NOT mounted here: no persistent
+// figure follows the user around (owner directive, 2026-07-15 round 4). It
+// appears once, chained onto the first-visit landing intro below, delivers
+// its pointers, and departs.
 initModels(document.getElementById("model"), { onChange: syncAttachState });
 initAttachments(
   document.getElementById("attach"),
@@ -390,7 +387,6 @@ function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
-  balloonReset(); // the guide's pennant tail belongs to the conversation
   syncCopyState();
   input.focus();
 }
@@ -597,7 +593,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h38";
+const CSS_VERSION = "h39";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -662,6 +658,13 @@ try {
             try {
               localStorage.setItem(SEEN_KEY, "1");
             } catch {}
+            // The balloon greeter follows the intro it just watched — the one
+            // and only time the tier's figure appears (owner directive: no
+            // persistent figures; first-visit pointers only). Same gate /cure
+            // uses to chain its strolling ghost onto a real intro play.
+            import("./balloon.js")
+              .then((b) => b.showBalloonGreeter())
+              .catch(() => {});
           },
         })
       )
