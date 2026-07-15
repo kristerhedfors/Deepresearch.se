@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pre-commit git hook (security register P-2): block a COMMIT that would add a
+# credential-shaped token to the PUBLIC, auto-deploying repo. Runs
+# scripts/scan-secrets over the staged diff, so a secret is stopped before it
+# ever enters history — rewriting is never needed when this fires. The
+# pre-push hook remains the second line, covering commits made while the
+# hooks were inactive (a fresh clone before scripts/install-git-hooks ran).
+#
+# Activated by scripts/install-git-hooks (sets core.hooksPath=.githooks); the
+# SessionStart hook in .claude/settings.json runs that automatically in
+# remote-session clones.
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+if ! "$repo_root/scripts/scan-secrets" --staged; then
+  echo "pre-commit: BLOCKED — a credential-shaped token is in the staged diff." >&2
+  echo "pre-commit: unstage/replace it, or (verified false positive) commit with --no-verify." >&2
+  exit 1
+fi
+exit 0

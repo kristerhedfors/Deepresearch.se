@@ -13,6 +13,10 @@
           },
           {
             "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/install-git-hooks\""
+          },
+          {
+            "type": "command",
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-barrier.sh\""
           }
         ]

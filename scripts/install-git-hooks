@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Activate this repo's version-controlled git hooks (security register P-2).
-# Points git at .githooks/ so the pre-push secret scanner runs on every push.
-# Git does NOT auto-activate hooksPath in a fresh clone — run this once per
-# clone (it is idempotent).
+# Points git at .githooks/ so the secret scanner runs on every commit
+# (pre-commit) and every push (pre-push). Git does NOT auto-activate
+# hooksPath in a fresh clone — run this once per clone (it is idempotent;
+# remote sessions run it automatically via the SessionStart hook in
+# .claude/settings.json).
 #
 # Usage:
 #   scripts/install-git-hooks
@@ -20,5 +22,5 @@ for h in .githooks/*; do
   [ -f "$h" ] && echo "  - $(basename "$h")"
 done
 echo
-echo "The pre-push hook now runs scripts/scan-secrets over outgoing commits."
-echo "Bypass a verified false positive with:  git push --no-verify"
+echo "scripts/scan-secrets now runs on every commit (staged diff) and push (outgoing commits)."
+echo "Bypass a verified false positive with:  git commit/push --no-verify"
