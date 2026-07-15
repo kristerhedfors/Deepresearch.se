@@ -31,7 +31,7 @@
 // rendering; this module only emits onStatus/onDelta events.
 
 import { createSseParser } from "./sse.js";
-import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun } from "./drc-providers.js";
+import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun, providerErrorDetail } from "./drc-providers.js";
 import {
   buildShellTranscript,
   buildStepUserMessage,
@@ -562,7 +562,11 @@ export async function runDrcResearch({
     const res = await drcChatStream(provider, apiKey, model, convo, { signal, baseUrl });
     if (!res.ok || !res.body) {
       const hint = res.status === 401 || res.status === 403 ? " Check your " + provider.label + " API key." : "";
-      throw new Error(provider.label + " rejected the request (" + res.status + ")." + hint);
+      // Surface the body's reason (e.g. the proxy's upstream "model under
+      // maintenance" detail) — a bare status number sent test point #10's
+      // tester away with nothing to act on.
+      const detail = res.ok ? "" : await providerErrorDetail(res);
+      throw new Error(provider.label + " rejected the request (" + res.status + ")." + (detail ? " " + detail : "") + hint);
     }
     return readStream(res, onDelta);
   };

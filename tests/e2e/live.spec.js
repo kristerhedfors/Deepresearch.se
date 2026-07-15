@@ -129,3 +129,76 @@ test("@live photo GPS EXIF gets reverse-geocoded server-side and reaches the mod
   await expect(turn.locator(".content")).not.toHaveClass(/error-text/);
   await expect(turn.locator(".content")).toContainText(/new york|manhattan/i);
 });
+
+// The borrowed-visitor scenario needs a page WITHOUT the suite's Basic Auth:
+// a real visitor sends none, and the config's extraHTTPHeaders CLOBBER the
+// page's own `Authorization: Bearer <proxy token>` on /api/proxy/llm/*,
+// 403-ing every proxied call (observed 2026-07-15 — note that in
+// @playwright/test even browser.newContext() inherits the config's `use`
+// options, so opting out takes a scoped test.use). The admin mint/revoke use
+// a manually-authed API context instead of the (now header-free) request
+// fixture.
+test.describe("borrowed visitor (no Basic Auth on the page)", () => {
+  test.use({ extraHTTPHeaders: {} });
+
+  test("@live secure research space: a shared bundle link researches on the lent API", async ({ page, playwright }) => {
+    // The end-to-end repro of test point #10 (2026-07-15): mint a REAL bundle
+    // on the admin surface, open the shareable /cure?rp=…#rk= link like a
+    // visitor, and complete a chat on the borrowed LLM API. Before the fix
+    // this 502'd whenever Berget's catalog put a maintenance-dark model first
+    // (the borrowed session's default pick).
+    const admin = await playwright.request.newContext({
+      baseURL: process.env.BASE_URL || "https://deepresearch.se",
+      extraHTTPHeaders: {
+        authorization:
+          "Basic " + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASS}`).toString("base64"),
+      },
+    });
+    const mintRes = await admin.post("/api/admin/proxy/mint", { data: { label: "e2e proxy-space" } });
+    expect(mintRes.ok()).toBeTruthy();
+    const minted = await mintRes.json();
+    expect(minted.link).toBeTruthy();
+
+    try {
+      await page.addInitScript(() => {
+        localStorage.setItem("dr_umbrella_seen_v2", "1");
+        localStorage.setItem("dr_secure_intro_seen", "1");
+      });
+      const u = new URL(minted.link);
+      await page.goto(u.pathname + u.search + u.hash);
+      await expect(page.locator("#proxybanner")).toBeVisible({ timeout: 30_000 });
+
+      // The default pick is the borrowed provider — and never a model the live
+      // catalog marks down (status.up false), the incident's root cause.
+      expect(await page.locator("#model").inputValue()).toMatch(/^proxy::/);
+      const api = await page.evaluate(() => JSON.parse(localStorage.getItem("dr_proxy_api") || "null"));
+      expect(api?.token).toBeTruthy();
+      const catRes = await page.request.get("/api/proxy/llm/models", {
+        headers: { authorization: "Bearer " + api.token },
+      });
+      expect(catRes.ok()).toBeTruthy();
+      const { data } = await catRes.json();
+      const down = (data || []).filter((m) => m?.status?.up === false).map((m) => m.id);
+      const options = await page
+        .locator("#model option")
+        .evaluateAll((els) => els.map((e) => e.value).filter(Boolean));
+      for (const id of down) expect(options, `down model ${id} must not be offered`).not.toContain("proxy::" + id);
+
+      // One real completion through the proxy (research off = a single call).
+      await page.locator("#websearch").evaluate((el) => {
+        el.checked = false; // the styled knob overlay intercepts real clicks
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await page.fill("#input", "Reply with exactly the code PROXY-SENTINEL-4471 and nothing else.");
+      await page.click("#send");
+      await expect(page.locator(".msg.assistant").last()).toContainText("PROXY-SENTINEL-4471", {
+        timeout: ANSWER_TIMEOUT,
+      });
+      await expect(page.locator("#workstatus")).not.toContainText("rejected the request");
+    } finally {
+      // Revoke so e2e grants never pile onto the global outstanding budget.
+      if (minted.bundleId) await admin.delete("/api/admin/proxy/" + minted.bundleId).catch(() => {});
+      await admin.dispose().catch(() => {});
+    }
+  });
+});
