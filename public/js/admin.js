@@ -13,6 +13,59 @@ const PERIOD_LABEL = { h5: "Last 5 h", day: "Today", week: "This week", month: "
 
 let overview = null;
 
+// ---- collapsible panels -----------------------------------------------------
+// There is a lot of content on this page now, so every panel section renders
+// COLLAPSED to its header row — tap the header to open it, the same gesture as
+// the board items' collapse-to-header. A count badge keeps a collapsed panel
+// informative (open notifications, users, live grants…), and the open set
+// persists in localStorage so a reload keeps the panels you're working in.
+
+const OPEN_PANELS_KEY = "dr_admin_open_panels";
+
+function savePanelState() {
+  const open = [...document.querySelectorAll("section[data-panel].open")].map((s) => s.dataset.panel);
+  try { localStorage.setItem(OPEN_PANELS_KEY, JSON.stringify(open)); } catch {}
+}
+
+// Fill (or clear) the count badge in a panel's header; 0 hides the badge
+// (`h2 .count:empty` in the CSS).
+function setPanelCount(secId, n) {
+  const el = document.querySelector(`#${secId} h2 .count`);
+  if (el) el.textContent = n > 0 ? String(n) : "";
+}
+
+{
+  let openSet;
+  try { openSet = new Set(JSON.parse(localStorage.getItem(OPEN_PANELS_KEY) || "[]")); } catch { openSet = new Set(); }
+  for (const sec of document.querySelectorAll("main > section[data-panel]")) {
+    sec.classList.add("panel-fold");
+    if (openSet.has(sec.dataset.panel)) sec.classList.add("open");
+    const h2 = sec.querySelector("h2");
+    if (!h2) continue;
+    h2.insertAdjacentHTML("afterbegin", '<span class="caret" aria-hidden="true">▸</span>');
+    h2.insertAdjacentHTML("beforeend", '<span class="count"></span>');
+    h2.setAttribute("role", "button");
+    h2.tabIndex = 0;
+    h2.setAttribute("aria-expanded", String(sec.classList.contains("open")));
+    const toggle = () => {
+      sec.classList.toggle("open");
+      h2.setAttribute("aria-expanded", String(sec.classList.contains("open")));
+      savePanelState();
+    };
+    // Anywhere on the header toggles — except the controls that live in it
+    // (the ▲/▼ panel-vote thumbs injected by loadPanels).
+    h2.addEventListener("click", (e) => {
+      if (e.target.closest("button, a, input, select, .pvote")) return;
+      toggle();
+    });
+    h2.addEventListener("keydown", (e) => {
+      if (e.target !== h2 || (e.key !== "Enter" && e.key !== " ")) return;
+      e.preventDefault();
+      toggle();
+    });
+  }
+}
+
 async function api(path, opts = {}) {
   const res = await fetch("/api/admin" + path, {
     headers: opts.body ? { "content-type": "application/json" } : {},
@@ -221,6 +274,7 @@ async function loadSecurity() {
     });
     box.appendChild(el);
   }
+  setPanelCount("security-sec", data.items.filter((it) => it.status === "open").length);
   $("security-sec").hidden = false;
 }
 
@@ -336,6 +390,7 @@ async function loadFeatures() {
     });
     box.appendChild(el);
   }
+  setPanelCount("features-sec", data.items.filter((it) => it.status === "open").length);
   $("features-sec").hidden = false;
 }
 
@@ -438,6 +493,7 @@ function renderAlerts() {
   const box = $("alerts");
   const pending = (overview.users || []).filter((u) => u.status === "pending");
   const openAlerts = (overview.alerts || []).filter((a) => !a.acknowledged_at);
+  setPanelCount("alerts-sec", pending.length + openAlerts.length);
 
   box.innerHTML = "";
   if (!pending.length && !openAlerts.length) {
@@ -683,8 +739,7 @@ function renderUsers() {
     });
     box.appendChild(el);
   }
-  const summary = document.querySelector("#users-fold > summary");
-  if (summary) summary.textContent = `Show users (${overview.users.length})`;
+  setPanelCount("users-sec", overview.users.length);
   $("users-sec").hidden = false;
 }
 
@@ -887,6 +942,7 @@ async function loadWebsearchGrants() {
     </div>
     <div id="ws-mint-result" class="group" hidden></div>
     <div id="ws-grant-list"></div>`;
+  setPanelCount("wsgrants-sec", data.grants.length);
   renderWsGrantList(box.querySelector("#ws-grant-list"), data.grants);
 
   box.querySelector("#ws-mint").addEventListener("click", async () => {
@@ -1015,6 +1071,7 @@ async function loadProxyBundles() {
     </div>
     <div id="px-mint-result" class="group" hidden></div>
     <div id="px-bundle-list"></div>`;
+  setPanelCount("proxybundles-sec", data.bundles.length);
   renderProxyBundleList(box.querySelector("#px-bundle-list"), data.bundles);
 
   box.querySelector("#px-mint").addEventListener("click", async () => {
