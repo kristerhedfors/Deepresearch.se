@@ -1,0 +1,40 @@
+{
+  "case": "sandbox",
+  "title": "In-browser Linux execution sandbox (bash_lite_mcp knob)",
+  "description": "The experimental CheerpX sandbox: a compute/shell ask should boot the VM and run real commands, feeding the transcript into synthesis as ground truth. This is the repo's most regression-prone feature (MAINTENANCE-OWNERS #43/#52), so several points are runs:2 — confirm once in a browser tab and once in the installed PWA.",
+  "points": [
+    {
+      "label": "Sandbox: boots and lists the real root",
+      "summary": "With the sandbox knob ON, 'list files in /' should boot the VM and return the real Debian root (bin, etc, usr, …). PASS = a real listing; FAIL = 'sandbox not ready', a hang on 'booting sandbox', or a from-memory guess.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "bash_lite_mcp" },
+        { "type": "note", "text": "Turn the sandbox ON first, then send. Confirm once in a tab AND once in the installed PWA." },
+        { "type": "compose", "text": "List the files in / using the sandbox" }
+      ],
+      "runs": 2
+    },
+    {
+      "label": "Sandbox: offline compute (real digest)",
+      "summary": "An offline-compute ask should run sha256sum/python3 in the VM and return the REAL digest — and nothing unrelated. PASS = the correct hash only; FAIL = a wedge, a wrong/hallucinated digest, or extra commentary.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "bash_lite_mcp" },
+        { "type": "note", "text": "Sandbox ON, then send." },
+        { "type": "compose", "text": "Use the sandbox to compute the SHA-256 of the exact text hello world" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Sandbox: /workspace persists across a reload",
+      "summary": "Writes a marker file to /workspace. Then RELOAD (or relaunch the PWA) and in a NEW message ask the sandbox to cat /workspace/persist-check.txt — PASS only if it still reads PERSIST-CHECK. Guards PR #52's overlay-persistence owe.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "bash_lite_mcp" },
+        { "type": "note", "text": "Sandbox ON. After the reply: reload/relaunch, then in a new message ask it to cat /workspace/persist-check.txt." },
+        { "type": "compose", "text": "In the sandbox, write the text PERSIST-CHECK to /workspace/persist-check.txt and confirm it was written" }
+      ],
+      "runs": 2
+    }
+  ]
+}

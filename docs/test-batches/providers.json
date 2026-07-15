@@ -1,0 +1,29 @@
+{
+  "case": "providers",
+  "title": "Split model routing — answer model varies, JSON phases stay fixed",
+  "description": "Invariant 3: the answer/synthesis model is the user's pick (any provider — Berget, Anthropic claude-*, OpenAI gpt-*), while triage/gap/validation always run on the fixed reliable Berget JSON model. The batch picks a secondary-provider answer model and confirms the pipeline still completes with correct split billing.",
+  "points": [
+    {
+      "label": "Anthropic answer model completes the pipeline",
+      "summary": "Pick a claude-* model, keep search ON, and send a research ask. PASS = a synthesized cited answer AND the research plan/gap steps still ran (those are Berget-Mistral under the hood). FAIL = an errored pipeline or JSON-phase failure when the answer model is non-Berget. (Skip if no claude-* model is in the dropdown — the provider key isn't set.)",
+      "target": "/rver",
+      "actions": [
+        { "type": "selectModel", "model": "claude-sonnet-5" },
+        { "type": "setSearch", "on": true },
+        { "type": "setBudget", "seconds": 90 },
+        { "type": "compose", "text": "What are the leading approaches to grid-scale energy storage right now?" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Provider switch mid-conversation stays coherent",
+      "summary": "After the first answer, switch to a different provider's model and ask a follow-up. PASS = the follow-up answers coherently on the new model with history intact; FAIL = lost context or a routing error on the switch.",
+      "target": "/rver",
+      "actions": [
+        { "type": "note", "text": "Send the first message, then change the model in the dropdown and send the follow-up below." },
+        { "type": "compose", "text": "Now compare those approaches on cost per kWh." }
+      ],
+      "runs": 1
+    }
+  ]
+}

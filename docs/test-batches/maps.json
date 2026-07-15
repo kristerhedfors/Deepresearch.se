@@ -1,0 +1,29 @@
+{
+  "case": "maps",
+  "title": "Google Maps / Street View enrichment (English + Swedish parity)",
+  "description": "The google_maps knob and its intent gates (src/googlemaps-text.js), EN+SV per invariant 6. A street-view / map ask should capture Street View and map imagery and fold it into the answer as embeds. The Swedish 'gatuvy' point guards the parity gate.",
+  "points": [
+    {
+      "label": "Street view (English): imagery embed appears",
+      "summary": "With the Maps knob ON, a street-view ask for a well-known place should capture a Street View frame and show it as an embed in the reply. PASS = a Street View image + place description; FAIL = a text-only answer with no imagery.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "google_maps" },
+        { "type": "note", "text": "Turn Google Maps ON first (this point tests that gate), then send." },
+        { "type": "compose", "text": "Show me the street view of the Eiffel Tower" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Gatuvy (Swedish): parity gate fires",
+      "summary": "The Swedish 'gatuvy' phrasing must trigger the SAME Street View capture as English (invariant 6 parity). PASS = a Street View embed; FAIL = a plain answer, meaning the Swedish maps gate regressed.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "google_maps" },
+        { "type": "note", "text": "Maps ON, then send the Swedish ask." },
+        { "type": "compose", "text": "Visa gatuvy av Turning Torso i Malmö" }
+      ],
+      "runs": 1
+    }
+  ]
+}

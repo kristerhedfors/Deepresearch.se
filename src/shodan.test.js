@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { extractTargets, shodanAvailable } from "./shodan.js";
+import { extractTargets, shodanAvailable, buildShodanBlock, SHODAN_RELEVANCE_NOTE } from "./shodan.js";
 
 test("shodanAvailable reflects the SHODAN_API_KEY secret", () => {
   assert.equal(shodanAvailable({}), false);
@@ -66,4 +66,50 @@ test("extractTargets caps hostnames at 4", () => {
 test("extractTargets lowercases hostnames and trims a trailing dot", () => {
   const { hostnames } = extractTargets("Scan Example.COM. now");
   assert.deepEqual(hostnames, ["example.com"]);
+});
+
+// ---- buildShodanBlock — the labeled context block --------------------------
+
+const HOST = {
+  ip: "104.21.12.87",
+  resolvedFrom: "deepresearch.se",
+  org: "Cloudflare, Inc.",
+  isp: "Cloudflare, Inc.",
+  asn: "AS13335",
+  location: "San Francisco, US",
+  os: null,
+  hostnames: ["www.example.com"],
+  ports: [80, 443],
+  products: ["nginx"],
+  vulns: [],
+  lastUpdate: "2026-07-01",
+};
+
+test("buildShodanBlock renders host lines inside the labeled block", () => {
+  const block = buildShodanBlock([HOST], []);
+  assert.ok(block.includes("--- Shodan host intelligence"));
+  assert.ok(block.includes("--- End of Shodan host intelligence ---"));
+  assert.ok(block.includes("deepresearch.se → 104.21.12.87"));
+  assert.ok(block.includes("Open ports: 80, 443"));
+});
+
+test("buildShodanBlock frames the data as background context, not part of the ask", () => {
+  // The instruction-following guard: a question that merely CONTAINS a
+  // hostname must not get infrastructure commentary bolted onto its answer
+  // (test point #3's verdict note, 2026-07-15).
+  const withHosts = buildShodanBlock([HOST], []);
+  assert.ok(withHosts.includes(SHODAN_RELEVANCE_NOTE));
+  assert.ok(SHODAN_RELEVANCE_NOTE.includes("not part of the user's request"));
+  assert.ok(SHODAN_RELEVANCE_NOTE.includes("do not") && SHODAN_RELEVANCE_NOTE.includes("mention"));
+});
+
+test("buildShodanBlock's empty-result block stays honest AND carries the relevance note", () => {
+  const block = buildShodanBlock([], ["ghost.example (203.0.113.9)"]);
+  assert.ok(block.includes("No Shodan records were found for: ghost.example (203.0.113.9)"));
+  assert.ok(block.includes(SHODAN_RELEVANCE_NOTE));
+});
+
+test("buildShodanBlock appends the not-found tail when some hosts resolved", () => {
+  const block = buildShodanBlock([HOST], ["ghost.example (203.0.113.9)"]);
+  assert.ok(block.includes("No Shodan records for: ghost.example (203.0.113.9)"));
 });

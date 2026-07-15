@@ -1,0 +1,27 @@
+{
+  "case": "attachments",
+  "title": "Attachments — document RAG + image vision (manual attach)",
+  "description": "Attachments are outside the deep-link action grammar, so every point here is navigate-then-attach-by-hand: the actions land you on a fresh chat and the summary tells you what to attach. Covers the client-side document parse + RAG-excerpt block and the multimodal vision path.",
+  "points": [
+    {
+      "label": "Document RAG: answer cites the attached file",
+      "summary": "Attach a PDF or DOCX via the paperclip BY HAND, then ask about its contents. The reply should quote/summarize the REAL document (its text travels inside the message; large docs are indexed and retrieved). PASS = grounded in the file; FAIL = a generic answer ignoring the attachment.",
+      "target": "/rver",
+      "actions": [
+        { "type": "newChat" },
+        { "type": "note", "text": "Attach a short PDF/DOCX via the paperclip, then ask: 'Summarize the key points of the attached document.'" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Vision: model reads an attached image",
+      "summary": "Attach a photo BY HAND, then ask what's in it. The multimodal path should describe the actual image contents. PASS = an accurate description of the attached image; FAIL = a refusal or a description of something not in the image.",
+      "target": "/rver",
+      "actions": [
+        { "type": "newChat" },
+        { "type": "note", "text": "Attach a clear photo via the paperclip, then ask: 'What is shown in this image?'" }
+      ],
+      "runs": 1
+    }
+  ]
+}

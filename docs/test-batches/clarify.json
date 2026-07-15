@@ -1,0 +1,23 @@
+{
+  "case": "clarify",
+  "title": "Clarify — triage asks to narrow scope before researching",
+  "description": "When a request is too vague to research usefully, triage should return a 'Need to narrow the scope first' step and ask a clarifying question instead of burning a search wave on an unanswerable ask.",
+  "points": [
+    {
+      "label": "Clarify: vague ask gets a narrowing question",
+      "summary": "An under-specified request should make the pipeline ASK what you mean (budget, region, use-case) rather than research blindly. PASS = a short clarifying question; FAIL = it invents a scope and runs a full search anyway.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "setSearch",
+          "on": true
+        },
+        {
+          "type": "compose",
+          "text": "What should I buy?"
+        }
+      ],
+      "runs": 1
+    }
+  ]
+}

@@ -254,6 +254,44 @@ function renderHost(h) {
   return lines.join("\n");
 }
 
+// The block must present itself as background data, not as part of the ask:
+// without this line, a compute-style question that merely CONTAINS a hostname
+// (e.g. "hash the text deepresearch.se") gets an answer padded with
+// unrequested infrastructure commentary (test point #3's verdict note,
+// 2026-07-15 — the instruction-following complaint).
+export const SHODAN_RELEVANCE_NOTE =
+  "This lookup ran automatically because the message names a host — it is background context, " +
+  "not part of the user's request. Use it only if the question is actually about this host's " +
+  "infrastructure, services, or security posture; otherwise ignore it entirely and do not " +
+  "mention it in the answer.";
+
+// Assembles the labeled context block from the summarized hosts + the
+// not-found list. Pure — exported for unit tests.
+/**
+ * @param {ShodanHost[]} hosts
+ * @param {string[]} notFound
+ */
+export function buildShodanBlock(hosts, notFound) {
+  if (!hosts.length) {
+    return (
+      "\n\n--- Shodan host intelligence ---\n" +
+      `No Shodan records were found for: ${notFound.join(", ")}. ` +
+      "These hosts are not in Shodan's database (or were not reachable when last scanned).\n" +
+      SHODAN_RELEVANCE_NOTE +
+      "\n--- End of Shodan host intelligence ---"
+    );
+  }
+  let body = hosts.map(renderHost).join("\n\n");
+  if (notFound.length) body += `\n\nNo Shodan records for: ${notFound.join(", ")}.`;
+  return (
+    "\n\n--- Shodan host intelligence (live infrastructure data from Shodan.io) ---\n" +
+    body +
+    "\n" +
+    SHODAN_RELEVANCE_NOTE +
+    "\n--- End of Shodan host intelligence ---"
+  );
+}
+
 // A one-line summary of a host for the UI activity step's expandable list.
 /** @param {ShodanHost} h */
 function hostDetailLine(h) {
@@ -324,23 +362,12 @@ export async function runShodanLookup(env, log, conversation) {
   if (!hosts.length) {
     // Every target came back empty — still surface that, so the model
     // doesn't hallucinate infrastructure Shodan has no record of.
-    const block =
-      "\n\n--- Shodan host intelligence ---\n" +
-      `No Shodan records were found for: ${notFound.join(", ")}. ` +
-      "These hosts are not in Shodan's database (or were not reachable when last scanned).\n" +
-      "--- End of Shodan host intelligence ---";
+    const block = buildShodanBlock([], notFound);
     return { block, details: notFound.map((t) => `${t} — no Shodan record`), count: 0, ips: [], durationMs };
   }
 
-  let body = hosts.map(renderHost).join("\n\n");
-  if (notFound.length) body += `\n\nNo Shodan records for: ${notFound.join(", ")}.`;
-  const block =
-    "\n\n--- Shodan host intelligence (live infrastructure data from Shodan.io) ---\n" +
-    body +
-    "\n--- End of Shodan host intelligence ---";
-
   return {
-    block,
+    block: buildShodanBlock(hosts, notFound),
     details: hosts.map(hostDetailLine).concat(notFound.map((t) => `${t} — no Shodan record`)),
     count: hosts.length,
     ips: hosts.map((h) => h.ip),

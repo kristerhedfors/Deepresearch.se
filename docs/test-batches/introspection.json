@@ -1,0 +1,29 @@
+{
+  "case": "introspection",
+  "title": "Introspection / developer mode — answers about the site's own source",
+  "description": "The developer_mode knob: a question about how the site is built should be answered from the DEPLOYED source (the committed snapshot + dense RAG index), not a denial. The activity trail should show an introspection/source-reading step and cite real file paths.",
+  "points": [
+    {
+      "label": "Introspection: answers from real source",
+      "summary": "With developer mode ON, 'how does the research pipeline work' should read the site's own source (activity shows a 'Reading the site's own source' step + real file paths like src/pipeline.js) and answer from it. PASS = a source-grounded answer with paths; FAIL = 'I'm not a coding tool' or a generic non-specific reply.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "developer_mode" },
+        { "type": "note", "text": "Turn developer mode ON first (this point tests that gate), then send." },
+        { "type": "compose", "text": "How does your deep-research pipeline decide whether to run a web search?" }
+      ],
+      "runs": 1
+    },
+    {
+      "label": "Introspection: names a specific file's role",
+      "summary": "A pointed 'what does file X do' ask should retrieve and explain that file from the snapshot. PASS = an accurate description tied to the real file; FAIL = a vague guess or a refusal.",
+      "target": "/rver",
+      "actions": [
+        { "type": "openSettings", "knob": "developer_mode" },
+        { "type": "note", "text": "Developer mode ON, then send." },
+        { "type": "compose", "text": "What is the responsibility of src/triage.js in this codebase?" }
+      ],
+      "runs": 1
+    }
+  ]
+}
