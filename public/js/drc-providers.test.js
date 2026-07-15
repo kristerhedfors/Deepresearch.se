@@ -15,6 +15,7 @@ import {
   drcProvider,
   drcToolRun,
   filterAndSortModels,
+  modelAvailable,
   listDrcModels,
   proxyLlmProvider,
   toOpenAiTools,
@@ -188,6 +189,27 @@ test("filterAndSortModels curates by the predicate and orders newest-first", () 
   // Fail-soft over a non-array (a bad /models body) → empty list, never a throw.
   assert.deepEqual(filterAndSortModels(null, openai.modelFilter), []);
   assert.deepEqual(filterAndSortModels(undefined, () => true), []);
+});
+
+test("filterAndSortModels excludes catalog entries the provider marks unavailable (the GLM-5.2 502, point #10)", () => {
+  // The live failure (2026-07-15): Berget's catalog listed zai-org/GLM-5.2 with
+  // status.up:false + lifecycle_state:"maintenance"; it sorted newest-first and
+  // became the borrowed-workspace dropdown DEFAULT, so the first send 502'd.
+  const data = [
+    { id: "zai-org/GLM-5.2", status: { up: false }, lifecycle_state: "maintenance" },
+    { id: "zai-org/GLM-4.9", lifecycle_state: "maintenance" }, // maintenance alone excludes
+    { id: "zai-org/GLM-4.8", status: { up: false } }, // down alone excludes
+    { id: "zai-org/GLM-4.7-FP8", status: { up: true }, lifecycle_state: "stable" },
+    { id: "moonshotai/Kimi-K2.6" }, // no flags at all (OpenAI/Groq shape) → kept, fail-open
+  ];
+  assert.deepEqual(filterAndSortModels(data, bergetCatalogFilter), [
+    "zai-org/GLM-4.7-FP8",
+    "moonshotai/Kimi-K2.6",
+  ]);
+  assert.equal(modelAvailable({ id: "x" }), true);
+  assert.equal(modelAvailable({ id: "x", status: { up: false } }), false);
+  assert.equal(modelAvailable({ id: "x", lifecycle_state: "maintenance" }), false);
+  assert.equal(modelAvailable(null), true); // junk entries are dropped by the id filter, not here
 });
 
 describe("provider calls over mock HTTP", () => {

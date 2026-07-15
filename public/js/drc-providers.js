@@ -387,17 +387,39 @@ export async function drcToolRun(
 }
 
 /**
+ * Is a raw /models catalog entry actually SERVABLE? Berget's catalog keeps
+ * listing models it cannot currently run — `status.up: false` and/or
+ * `lifecycle_state: "maintenance"` — and a completion on one is a hard
+ * upstream reject. Found live 2026-07-15 (try-it point #10): the dropdown's
+ * newest-first default landed on `zai-org/GLM-5.2` (listed, but "currently
+ * undergoing maintenance"), so every keyless borrowed-workspace session
+ * opened straight onto a 502 ("Secure research space rejected the request").
+ * The server catalog already tracks the same flag (src/berget.js `up:
+ * m.status?.up !== false`); this is the client-side counterpart. FAIL-OPEN
+ * for providers whose entries carry neither field (OpenAI, Groq): only an
+ * explicit down/maintenance marker excludes.
+ * @param {any} m a raw catalog entry
+ * @returns {boolean}
+ */
+export function modelAvailable(m) {
+  return m?.status?.up !== false && m?.lifecycle_state !== "maintenance";
+}
+
+/**
  * The curated, ordered model-id list from a raw /models `data` array: keep the
- * string ids the provider's `modelFilter` accepts, sorted newest-generation
- * first (gpt-5.6 above gpt-5.4). Pure — the shaping half of `listDrcModels`,
- * split out so it is unit-testable without a mock /models fetch (and reused by
- * any future keyless/local provider that lists models the same way).
+ * string ids the provider's `modelFilter` accepts — excluding entries the
+ * catalog itself marks unavailable (`modelAvailable`) — sorted
+ * newest-generation first (gpt-5.6 above gpt-5.4). Pure — the shaping half of
+ * `listDrcModels`, split out so it is unit-testable without a mock /models
+ * fetch (and reused by any future keyless/local provider that lists models
+ * the same way).
  * @param {any} data the parsed `/models` response's `data` field
  * @param {(id: string) => boolean} modelFilter the provider's curation predicate
  * @returns {string[]}
  */
 export function filterAndSortModels(data, modelFilter) {
   return (Array.isArray(data) ? data : [])
+    .filter(modelAvailable)
     .map((m) => m?.id)
     .filter((id) => typeof id === "string" && modelFilter(id))
     .sort()
