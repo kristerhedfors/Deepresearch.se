@@ -267,7 +267,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // (attachments/project blocks ride inside it) plus, when triage chose
   // research, the search wave's source registry. Fully fail-soft: an
   // unusable quiz JSON falls through to the normal answer path below.
-  let quizReq = state.quizzes ? quizIntent(ctx.lastUser) : null;
+  // Tested against the CLEAN message (cleanLastUser), NOT the enrichment-
+  // appended lastUser — the introspection block folded into lastUser carries
+  // the CLAUDE.md orientation, whose prose contains literal "quiz me…"
+  // examples, so with developer mode on EVERY request quiz-triggered and the
+  // whole answer became a 5-question quiz (chat_logs #360, 2026-07-15; the
+  // same bug class as externalSourceIntent's cleanLastUser fix below).
+  let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
   // Web search off: answer purely from Berget — no triage, no Exa.
   if (!state.webSearch) {
@@ -300,7 +306,9 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // but the triage model recognized a quiz request. The message still
   // decides the question count.
   if (state.quizzes && !quizReq && decision.quiz === true) {
-    quizReq = { questions: quizQuestionCount(ctx.lastUser) || DEFAULT_QUIZ_QUESTIONS };
+    // cleanLastUser for the same reason as the primary gate above: the count
+    // must come from the user's own words, not an enrichment block's prose.
+    quizReq = { questions: quizQuestionCount(ctx.cleanLastUser) || DEFAULT_QUIZ_QUESTIONS };
   }
   if (decision.action === "direct") {
     // Quiz from the material already in front of us (conversation, attached

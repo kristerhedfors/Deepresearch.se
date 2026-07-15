@@ -84,6 +84,18 @@ DRC has no server embedder of the right model, so it can't do dense retrieval
 (orientation + named files, full index on strong intent) whenever developer
 mode is on — same "always on in dev mode" rule, minus retrieval.
 
+**Off-only request override (2026-07-15):** `/api/chat` accepts
+`developer_mode: false` in the body to SKIP the introspection enrichment for
+that one request (never enables — the incognito pattern; `chat.js
+resolveEnrichmentOptions`). Exists because developer mode is ALWAYS ON for
+the break-glass admin (`settings.js` — no settings row to flip, the PUT
+refuses break-glass), which made the eval harnesses structurally unable to
+measure the web pipeline: every bench request routed introspection-first,
+and pre-fix even quiz-triggered off the injected CLAUDE.md prose (chat_logs
+#360 — the quiz gate now reads `cleanLastUser`, source-pinned in
+`pipeline.test.js`). `tests/eval-bench.mjs` and `tests/model-eval.mjs`
+always send it.
+
 ## Agentic source investigation — read loop + native tools (2026-07-12)
 
 Injecting retrieved excerpts is not enough for "assess/audit/how does X work"

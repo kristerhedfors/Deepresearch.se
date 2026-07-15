@@ -164,6 +164,25 @@ describe("report-comprehensiveness tiers — the slider buys output depth too", 
     assert.equal(plan.synthMaxTokens, 4096);
     assert.equal(plan.validateMaxTokens, 3000);
   });
+
+  test("179s vs 180s: identical research plan, different report tier — the bench A/B seam", () => {
+    // The rubric bench's tier A/B (tests/EVAL-BENCH-FINDINGS.md, 2026-07-15)
+    // compares EVAL_BUDGET_S=179 vs 180 on the same deploy: the one budget
+    // pair that crosses a report-tier boundary while every research-depth
+    // knob stays identical, so any judge/structure delta isolates the
+    // report-tier prompt change. This pin is what makes that protocol valid
+    // — if a future depth boundary lands between 179 and 180, this fails and
+    // the protocol must pick a new seam.
+    const a = planResearch(MODEL, 179);
+    const b = planResearch(MODEL, 180);
+    for (const k of ["queries", "gapIterations", "followups", "validate", "maxSearches", "maxSources", "digestCap"]) {
+      assert.deepEqual(b[k], a[k], `research knob ${k} identical across the seam`);
+    }
+    assert.deepEqual(a.searchDepth, b.searchDepth);
+    assert.equal(a.reportTier, "standard");
+    assert.equal(b.reportTier, "extended");
+    assert.ok(b.synthMaxTokens > a.synthMaxTokens);
+  });
 });
 
 describe("planResearch — estimates carry the budget-gated phases", () => {

@@ -66,6 +66,7 @@ import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled
  * @property {boolean} [incognito] ghost toggle: suppresses the chat-log row
  * @property {number} [time_budget_s] UI slider value (clamped server-side)
  * @property {boolean} [web_search] knob, default on (only `false` disables)
+ * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -557,7 +558,16 @@ async function enforceQuotaGate(env, log, config, identity) {
 function resolveEnrichmentOptions(body, env, identity, catalog, model) {
   const shodanOn = shodanEnabled(env, identity);
   const googleMapsOn = googleMapsEnabled(env, identity);
-  const developerOn = developerModeEnabled(env, identity);
+  // OFF-ONLY request override (the incognito pattern — a client may DECLINE
+  // a capability it holds, never acquire one it doesn't): `developer_mode:
+  // false` in the body skips the introspection enrichment for THIS request,
+  // so an account with the knob on — including the break-glass admin, for
+  // whom developer mode is ALWAYS on by definition (settings.js) and who has
+  // no settings row to flip — can still get a normal web-research answer.
+  // The eval harnesses (tests/eval-bench.mjs, tests/model-eval.mjs) depend on
+  // this: without it every break-glass bench request routes introspection-
+  // first and measures source reading instead of the research pipeline.
+  const developerOn = body.developer_mode === false ? false : developerModeEnabled(env, identity);
   const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
   const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
   const visionModels = (modelIsVision
