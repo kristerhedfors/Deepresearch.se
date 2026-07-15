@@ -26,7 +26,7 @@ feature maintenance*, and the **feature-maintenance** skill):
 | Subsystem | Owner PR | Author session (see PR trailer) | Files it guards | Regression signatures to watch |
 |---|---|---|---|---|
 | **Execution sandbox — boot + reliability** (standing maintenance owner; MUST stay subscribed) | **#43** (`claude/sandbox-pwa-failure-ijgemh`, session `01LQuhduTgD8g92dTMtSEPgS`) — the Playwright worker; supersedes the earlier `sandbox-terminal-visibility-ujgu88` owner | in each PR's `Claude-Session:` trailer | `public/js/sandbox.js`, `public/js/bash-core.js`, `src/bash-agent.js`, `src/bash-api.js`, `public/js/boot-messages.js`, `public/js/agent-backdrop*.js`, `tests/e2e/sandbox.spec.js` | `sandbox not ready`, `stream stalled`, `sandbox.boot_stalled`, `sandbox.exec_timeout`, `sandbox.exec_not_ready`, `sandbox.boot_torn_down`, high `client_diag.fs.ms` (11–27 s = iOS `/workspace` mount stall), never reaching `boot_done` |
-| **Sandbox FILE MOUNTING** (attached/project files read from inside the VM) | **#52** (`claude/file-integrations-workspace-read-ndhwt5`, session `01GE154SMjg759eTivTkpV8d`, merged `9e341c0`) — root-caused + fixed the `/workspace`/`/mnt` read wedge | `public/js/sandbox.js` (device mounts), `public/js/sandbox-files.js`, `docs/SANDBOX-HOST-COMMANDS.md` | file read wedges to `sandbox not ready` / `cat` exit 124; corrupt `dr-sandbox-workspace` IDB. **ROOT-FIXED by #52**: bare `IDBDevice {type:"dir"}` hangs on first read in CheerpX 1.2.6 → now `/workspace` + project dirs are plain dirs in the root `OverlayDevice`. Retires the whole corrupt-volume class. **On-device: `/workspace` write+read confirmed green 2026-07-15 (chat_logs #345, iOS 18.7, fs.ms 968).** Still owes: attached/project file `cat`-able from the VM + overlay persistence across reload. |
+| **Sandbox FILE MOUNTING** (attached/project files read from inside the VM) | **#52** (`claude/file-integrations-workspace-read-ndhwt5`, session `01GE154SMjg759eTivTkpV8d`, merged `9e341c0`) — root-caused + fixed the `/workspace`/`/mnt` read wedge | `public/js/sandbox.js` (device mounts), `public/js/sandbox-files.js`, `docs/SANDBOX-HOST-COMMANDS.md` | file read wedges to `sandbox not ready` / `cat` exit 124; corrupt `dr-sandbox-workspace` IDB. **ROOT-FIXED by #52**: bare `IDBDevice {type:"dir"}` hangs on first read in CheerpX 1.2.6 → now `/workspace` + project dirs are plain dirs in the root `OverlayDevice`. Retires the whole corrupt-volume class. **On-device: FULLY CONFIRMED 2026-07-15** — `/workspace` write+read (chat_logs #345, iOS 18.7, fs.ms 968), attached-file read (chat_logs #352, `file` on an attached PDF exit 0), and overlay persistence across reload (try-it #7 PASSED). No items owed; watch the signatures. |
 | **Sandbox SELF-HOSTED IMAGE** (admin-selectable R2 ext2 boot disk; INERT by default) | **#62** (`claude/local-linux-image-serving-3dsu2g`, session `01BuSBKyRzjn1fyqXWohdstS`, merged `01d9c14`) | `src/sandbox-image.js`, `src/config.js` (`sandbox` block), `public/js/sandbox.js` (`HttpBytesDevice` branch), `public/js/admin.js` (image panel), `scripts/build-sandbox-image.sh`, `docs/SANDBOX-LOCAL-IMAGE.md` | boot regresses with NO image selected (must stay byte-identical to `CloudDevice`); a selected image fails to boot (206/Range/`require-corp` CORP); non-`i386` image picked (CheerpX is i386-only — won't boot). **Inert until an operator uploads an image to R2 AND selects it. Owes:** build+upload a real i386 image and boot it end-to-end on a real device (iOS Safari under `require-corp`) before flipping its `verified` flag / selecting it as default. |
 | Sandbox agentic shell loop | #37 (`claude/last-chats-failure-logs-87jlxp`) | PR #37 trailer | `public/js/bash-core.js` (`runShellLoop`, `sandboxTornDown`) | `Ran N commands, all sandbox not ready`; loop not stopping on teardown |
 | DRC umbrella intro / loading spinners | #36 (`claude/intro-animation-loading-states-djis82`) | PR #36 trailer | `public/cure/umbrella.js`, `public/js/umbrella-spinner.js` | intro/spinner not rendering, canvas errors |
@@ -91,3 +91,26 @@ feature maintenance*, and the **feature-maintenance** skill):
 > run did not warm whatever is cold (cache not persisting across sessions?).
 > Not the #52 file-read wedge — no filesystem path involved. Fail-soft held
 > both times. Signature: first-pipe/uncached-binary exec timeout on iOS.
+>
+> **2026-07-15 (third tick) — hypothesis NARROWED → nudged #43
+> (comment 4980601948): the cold unit is the BINARY, not the session.**
+> chat_logs #351 (10:53, `sha256sum` pipe → exit 124, third morning in a
+> row), then #352 (10:56, `file` on an attached PDF → exit 0, fast), then
+> #353 (10:59, `zip` → exit 124 — a *different* previously-unused binary
+> timing out MID-SESSION three minutes after a successful exec), then #354
+> (11:15, `file` again → exit 0). Success sandwiched between two timeouts
+> rules out first-exec-of-session cold: each not-yet-used binary's FIRST
+> invocation blows the 30 s budget (cold disk-block fetches off the network
+> disk on iOS), already-used binaries stay warm, and the block cache does
+> not persist across sessions. Incidentally #352 is the on-device
+> confirmation of #52's owed item (1): a mounted attachment IS readable
+> from the VM (`file` exit 0 on `/workspace/Resume ….pdf`) — #52 still owes
+> (2) overlay persistence + the cross-dir symlink across a reload.
+>
+> **2026-07-15 (merge tick) — #52 loop CLOSED: overlay persistence confirmed
+> on-device (try-it #7 PASSED).** With the attachment-read confirmation
+> (chat_logs #352, previous tick) this completes every owed item; the row
+> above flips to fully confirmed. Confirmation posted on #52
+> (the /try/10 502 was a DIFFERENT subsystem — fixed by PR #83: Berget's
+> down-for-maintenance GLM-5.2 was the DRC dropdown default for borrowed
+> sessions; down models are now excluded and upstream error detail surfaces).

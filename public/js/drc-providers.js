@@ -254,6 +254,32 @@ export function drcChatStream(provider, apiKey, model, messages, { signal, baseU
   });
 }
 
+/**
+ * A human-readable reason out of a FAILED provider response body, or "".
+ * Reads both wire shapes a DRC call can fail with: the OpenAI-wire
+ * `{error:{message}}` the direct providers return, and the secure-research-
+ * space proxy's `{error, detail}` where `detail` carries the UPSTREAM
+ * OpenAI-wire error text (src/proxy.js) — that detail is the difference
+ * between a user seeing "rejected the request (502)" and "Model X is
+ * currently undergoing maintenance" (test point #10, 2026-07-15). Consumes
+ * the body, so error paths only; never throws.
+ * @param {Response} res
+ * @returns {Promise<string>}
+ */
+export async function providerErrorDetail(res) {
+  try {
+    const data = /** @type {any} */ (await res.json());
+    const nested = typeof data?.detail === "string" ? extractJson(data.detail) : null;
+    const msg =
+      nested?.error?.message ||
+      data?.error?.message ||
+      (typeof data?.error === "string" ? data.error : "");
+    return typeof msg === "string" ? msg.slice(0, 300) : "";
+  } catch {
+    return "";
+  }
+}
+
 // Lenient JSON extraction — models wrap JSON in code fences or prose often
 // enough that strict parsing alone loses good answers (the server's
 // hardenJson lesson, in miniature).
@@ -289,7 +315,10 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { json: true, maxTokens })),
     signal: timeout,
   });
-  if (!res.ok) throw new Error(provider.label + " rejected the request (" + res.status + ").");
+  if (!res.ok) {
+    const detail = await providerErrorDetail(res);
+    throw new Error(provider.label + " rejected the request (" + res.status + ")." + (detail ? " " + detail : ""));
+  }
   const data = await res.json();
   const value = extractJson(data?.choices?.[0]?.message?.content || "");
   if (!value) throw new Error(provider.label + " returned no usable JSON.");
@@ -398,6 +427,14 @@ export async function drcToolRun(
  */
 export function filterAndSortModels(data, modelFilter) {
   return (Array.isArray(data) ? data : [])
+    // Berget's catalog keeps listing models that are DOWN for inference
+    // (status.up false / lifecycle "maintenance") — picking one gets a 502 on
+    // every call, and the newest-first sort loves to put exactly those first
+    // (zai-org/GLM-5.2 landed as a borrowed session's DEFAULT while dark,
+    // 2026-07-15, test point #10). Same treatment as the DRS dropdown's
+    // `up === false` disable; fail-open when the field is absent (OpenAI and
+    // Groq /models entries carry no `status`).
+    .filter((m) => m?.status?.up !== false)
     .map((m) => m?.id)
     .filter((id) => typeof id === "string" && modelFilter(id))
     .sort()
