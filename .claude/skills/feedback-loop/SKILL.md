@@ -46,6 +46,7 @@ scripts/feedback --all                  # every entry, any status
 scripts/feedback --id 7                 # one entry, full thread
 scripts/feedback --status 7 in_progress # set status
 scripts/feedback --reply 7 "text"       # message the user on the thread
+scripts/feedback --image 7 12 [out]     # download screenshot #12 from entry #7
 scripts/feedback --delete 7             # remove entry + thread (rare; user withdrawal is theirs)
 scripts/feedback --q "pdf"              # search comment/question text
 ```
@@ -53,7 +54,18 @@ scripts/feedback --q "pdf"              # search comment/question text
 Raw endpoints (same query params as the script; `?format=text` for
 reading): `GET /api/admin/feedback[?open=1&status=&user=&since=&before_id=&q=&limit=]`,
 `GET/PATCH/DELETE /api/admin/feedback/:id`,
-`POST /api/admin/feedback/:id/messages` `{body}`.
+`POST /api/admin/feedback/:id/messages` `{body}`,
+`GET /api/admin/feedback/:id/images/:imgId` (an attached screenshot,
+served as image bytes).
+
+**Screenshots.** Users can attach images (up to 3 per submission,
+client-downscaled) both when filing feedback and on thread replies — a
+picture of a broken layout usually beats the description of one. In the
+text rendering they appear as `IMAGES: #<id> <name> (~<size> KB)` lines
+under the FEEDBACK line (entry-level) or indented under a USER message
+(reply-level). Download one with `scripts/feedback --image <entry> <img>`
+and Read the saved file — actually LOOK at attached screenshots during
+step 1 (gather context); they are frequently the whole bug report.
 
 Status lifecycle: `new → seen → in_progress → resolved | declined`.
 "Open" (`?open=1`) = not resolved/declined = the work queue. A user reply
