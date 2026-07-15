@@ -65,11 +65,35 @@
     card has a <b>✓ complete a task</b> button — press it a few times to see the
     per-task landing event (the umbrella-landing counterpart). Pick one, or a
     combination.</p>
+    <p><b>DECIDED (owner, 2026-07-15): the balloons.</b> And refined: the
+    balloon itself is the symbol — one little balloon following you around as
+    the tier's guide, just as the ghost does on the secure side, hovering
+    among the clouds and swishing by clouds in all of its transitions. The
+    preview below shows the guide as shipped (<code>public/js/balloon.js</code>);
+    candidates B–D stay for the record.</p>
   </div>
+
+  <!-- THE PICK -->
+  <section class="card">
+    <span class="tag">THE PICK · AS SHIPPED</span>
+    <h2>The balloon guide — hovering among the clouds</h2>
+    <canvas id="cG" width="840" height="330"></canvas>
+    <div class="controls">
+      <button data-task="G">✓ complete a task</button>
+      <button class="ghosty" data-replay="G">＋ new chat</button>
+      <span class="count" id="nG">0 tasks</span>
+    </div>
+    <dl class="sig">
+      <dt>Where it lives</dt><dd>A small corner of the app above the composer — the ghost's counterpart, always with you, always among its clouds.</dd>
+      <dt>Per completed task</dt><dd>The burner flares gold, the balloon climbs a notch, a pennant unfurls under the basket — and clouds streak <b>downward</b> past it: the relative motion of the climb.</dd>
+      <dt>All other transitions</dt><dd>Appearing at boot and resetting for a new chat, clouds swish <b>past</b> it sideways. Every move the guide makes goes through clouds.</dd>
+    </dl>
+    <div class="tells">The ghost holds umbrellas — <em>sheltered</em>. The balloon hovers among clouds — <b>carried: the server does the lifting.</b></div>
+  </section>
 
   <!-- A -->
   <section class="card">
-    <span class="tag">CANDIDATE A</span>
+    <span class="tag">CANDIDATE A · ✓ CHOSEN 2026-07-15</span>
     <h2>The Lift — hot-air balloons</h2>
     <canvas id="cA" width="840" height="470"></canvas>
     <div class="controls">
@@ -88,7 +112,7 @@
 
   <!-- B -->
   <section class="card">
-    <span class="tag">CANDIDATE B</span>
+    <span class="tag">CANDIDATE B · not selected — kept for the record</span>
     <h2>The Keeper — lighthouse over a harbor</h2>
     <canvas id="cB" width="840" height="470"></canvas>
     <div class="controls">
@@ -107,7 +131,7 @@
 
   <!-- C -->
   <section class="card">
-    <span class="tag">CANDIDATE C</span>
+    <span class="tag">CANDIDATE C · not selected — kept for the record</span>
     <h2>The Star Chart — a growing constellation</h2>
     <canvas id="cC" width="840" height="470"></canvas>
     <div class="controls">
@@ -126,7 +150,7 @@
 
   <!-- D -->
   <section class="card">
-    <span class="tag">CANDIDATE D</span>
+    <span class="tag">CANDIDATE D · not selected — kept for the record</span>
     <h2>The Messengers — homing doves</h2>
     <canvas id="cD" width="840" height="470"></canvas>
     <div class="controls">
@@ -726,11 +750,125 @@ function doveScene(W, H) {
   };
 }
 
+// ---- THE PICK · the guide as shipped (mirrors public/js/balloon.js) ------------
+function guideScene(W, H) {
+  const st = { tasks: 0, flareAt: -1e9, rise: 0, swish: null };
+  const prof = s => .02 + 0.997 * Math.pow(clamp01(s), .55) * Math.pow(1 - clamp01(s), .75) / .412 + .10 * clamp01(s);
+  const swishClouds = (n, seed) => {
+    const rnd = prng(seed);
+    return Array.from({ length: n }, () => {
+      const delay = rnd() * .3;
+      return { lane: .1 + rnd() * .8, scale: .5 + rnd() * .8, speed: 1 + delay + .35 + rnd() * .5, delay };
+    });
+  };
+  const cloudPos = (c, p) => -.25 + 1.5 * clamp01(p * c.speed - c.delay);
+  const puff = (ctx, x, y, r, a) => {
+    ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = "#fff";
+    for (const [dx, dy, rr] of [[-r * .8, 0, r * .72], [0, -r * .4, r], [r * .85, 0, r * .66]]) {
+      ctx.beginPath(); ctx.arc(x + dx, y + dy, rr, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  };
+  const SWISH = 1100, FLARE = 900, STEP = 12, CAP = 36, PEN = 6;
+  // the guide's own box: the right corner of the mock app view
+  const box = { x: W - 150, y: 26, w: 128, h: H - 100 };
+  const startSwish = dir => { st.swish = { t0: performance.now() - startEpoch.G, dir, clouds: swishClouds(5, ((Date.now() & 0xffff) | 1)) }; };
+
+  return {
+    intro: 1200,
+    draw(ctx, W, H, t, it) {
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, "#bfe4ff"); sky.addColorStop(1, SKY);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+      // a faint mock of the app: composer bar + a chat bubble, for placement
+      ctx.globalAlpha = .55; ctx.fillStyle = PANEL;
+      ctx.beginPath(); ctx.roundRect(24, H - 58, W - 48, 40, 20); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(24, 30, W * .5, 54, 14); ctx.fill();
+      ctx.globalAlpha = .5; ctx.fillStyle = INK;
+      ctx.font = "13px system-ui, sans-serif"; ctx.textAlign = "left";
+      ctx.fillText("Ask anything…", 44, H - 34);
+      ctx.fillText("…the finished research reply lands here.", 44, 60);
+      ctx.globalAlpha = 1;
+
+      const flare = Math.max(0, 1 - (t - st.flareAt) / FLARE);
+      st.rise += (Math.min(st.tasks * STEP, CAP) - st.rise) * .05;
+      let sw = null;
+      if (st.swish) {
+        const p = (t - st.swish.t0) / SWISH;
+        if (p >= 1) st.swish = null; else sw = { p, dir: st.swish.dir, clouds: st.swish.clouds };
+      }
+      const cx = box.x + box.w / 2, R = 34, EH = R * 2.05;
+      const top = box.y + box.h - 66 - st.rise + Math.sin(t * .0011) * 3.5;
+      // ambient clouds — it hovers among them
+      const drift = (t * .008) % (box.w + 80);
+      puff(ctx, box.x + ((drift + 26) % (box.w + 80)) - 40, top + EH * .25, 11, .5);
+      puff(ctx, box.x + box.w - (((drift * .7 + 90) % (box.w + 80)) - 40), top + EH + 18, 9, .45);
+      if (sw) for (const c of sw.clouds) {
+        const q = cloudPos(c, sw.p);
+        if (q <= -.24 || q >= 1.24) continue;
+        const fade = Math.sin(Math.PI * clamp01((q + .25) / 1.5));
+        if (sw.dir === "y") puff(ctx, box.x + c.lane * box.w, box.y + q * box.h, 11 * c.scale, .75 * fade);
+        else puff(ctx, box.x + q * box.w, box.y + c.lane * box.h, 11 * c.scale, .75 * fade);
+      }
+      // the balloon (same gore/limb-shading draw as the fleet, one guide)
+      const appear = smooth(it);
+      const spin = t * .00018, STEPS = 12, seam = Math.PI / 8;
+      const edge = (th, s) => cx + prof(s) * R * 1.35 * Math.sin(th);
+      for (let k = 0; k < 16; k++) {
+        const a0 = k * seam + spin, a1 = a0 + seam, mid = (a0 + a1) / 2;
+        if (Math.cos(mid) <= .02) continue;
+        ctx.beginPath();
+        for (let i = 0; i <= STEPS; i++) { const s = i / STEPS; ctx[i ? "lineTo" : "moveTo"](edge(a0, s), top + s * EH); }
+        for (let i = STEPS; i >= 0; i--) { const s = i / STEPS; ctx.lineTo(edge(a1, s), top + s * EH); }
+        ctx.closePath();
+        ctx.fillStyle = k % 2 ? LBLUE : GOLD;
+        ctx.globalAlpha = (.55 + .45 * Math.cos(mid)) * appear;
+        ctx.fill();
+      }
+      ctx.globalAlpha = appear;
+      ctx.beginPath();
+      for (let i = 0; i <= STEPS; i++) { const s = i / STEPS; ctx[i ? "lineTo" : "moveTo"](cx - prof(s) * R * 1.35, top + s * EH); }
+      for (let i = STEPS; i >= 0; i--) { const s = i / STEPS; ctx.lineTo(cx + prof(s) * R * 1.35, top + s * EH); }
+      ctx.closePath(); ctx.strokeStyle = INK; ctx.lineWidth = 1.4; ctx.stroke();
+      const neckY = top + EH, nw = prof(1) * R * 1.35, bw = R * .36, bh = R * .28, by = neckY + R * .32;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - nw, neckY); ctx.lineTo(cx - bw / 2, by);
+      ctx.moveTo(cx + nw, neckY); ctx.lineTo(cx + bw / 2, by);
+      ctx.stroke();
+      ctx.fillStyle = "#a97b46";
+      ctx.fillRect(cx - bw / 2, by, bw, bh); ctx.strokeRect(cx - bw / 2, by, bw, bh);
+      if (flare > .01) {
+        const fy = neckY + R * .14, fr = R * .55 * flare + 5;
+        const g = ctx.createRadialGradient(cx, fy, 1, cx, fy, fr);
+        g.addColorStop(0, "rgba(255,240,150,.95)"); g.addColorStop(.5, "rgba(245,197,24,.55)"); g.addColorStop(1, "rgba(245,197,24,0)");
+        ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, fy, fr, 0, TAU); ctx.fill(); ctx.restore();
+      }
+      const n = Math.min(st.tasks, PEN);
+      if (n > 0) {
+        const px = cx + bw / 2 + 2;
+        ctx.strokeStyle = INK; ctx.lineWidth = .9;
+        ctx.beginPath(); ctx.moveTo(px, by + bh * .3); ctx.lineTo(px, by + bh * .3 + n * 11 + 3); ctx.stroke();
+        for (let i = 0; i < n; i++) {
+          const py = by + bh * .3 + 5 + i * 11 + Math.sin(t * .003 + i) * .9;
+          ctx.fillStyle = i % 2 ? GOLD : PANEL;
+          ctx.beginPath(); ctx.moveTo(px, py - 3.2); ctx.lineTo(px + 10, py); ctx.lineTo(px, py + 3.2);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+    },
+    task() { st.tasks++; st.flareAt = performance.now() - startEpoch.G; startSwish("y"); },
+    reset() { st.tasks = 0; startSwish("x"); },
+  };
+}
+
 // ---- wiring -------------------------------------------------------------------
 const startEpoch = {};
-const scenes = {}, counts = { A: 0, B: 0, C: 0, D: 0 };
-const factories = { A: liftScene, B: keeperScene, C: chartScene, D: doveScene };
-for (const id of ["A", "B", "C", "D"]) {
+const scenes = {}, counts = { G: 0, A: 0, B: 0, C: 0, D: 0 };
+const factories = { G: guideScene, A: liftScene, B: keeperScene, C: chartScene, D: doveScene };
+for (const id of ["G", "A", "B", "C", "D"]) {
   const el = document.getElementById("c" + id);
   // Build the scene against the LOGICAL (attribute) dimensions BEFORE run()
   // rescales the backing store for devicePixelRatio.

@@ -78,16 +78,38 @@ Semantic pairing with Se/cure (always named first): the umbrella says
 truthfully — *"carried"* (A), *"watched over"* (B), *"remembered"* (C),
 *"fetched for you"* (D).
 
-## 5. Selection and next steps
+## 5. THE DECISION (owner, 2026-07-15): the balloon — refined into the guide
 
-- The owner reviews the demos and picks one concept (or a combination — e.g.
-  the Keeper's lamp as the persistent memory mark inside another concept's
-  scene).
-- Implementation then follows the umbrella conventions: a
-  `public/js/…-intro.js` (or `public/rver/…`) module with a PURE timeline +
-  geometry core (Node-tested like `umbrella-intro.test.js`), the DOM layer
-  gated on first visit + `prefers-reduced-motion`, the admin `anim_speed`
-  multiplier honored, and the per-task landing wired to the same completion
-  signal the activity UI already has.
-- FEATURES.md F-16 tracks the work; flip its status (and the
-  `src/features.js` catalog mirror, same commit) when it ships.
+The owner picked **A, the balloons** ("we like the balloons very much, they
+still hover among the clouds") and REFINED the concept: no fleet, no separate
+intro spectacle — **the balloon itself is the symbol**, one little balloon
+that follows you around as the tier's guide, exactly the role the ghost plays
+on the secure side. And a standing animation rule: **it swishes by clouds in
+ALL of its transitions.**
+
+The refined language, as shipped:
+
+- **The balloon** (logotype gold-and-blue gores — the umbrellas' geometric
+  sibling, powered and rising) hovers among small clouds in the corner of the
+  app above the composer: the ghost's Se/rver counterpart, always with you.
+- **Per completed task** (the pipeline's `done` event): the burner flares
+  gold, the balloon climbs a notch (capped so it stays in its corner), a
+  pennant unfurls under the basket — and clouds streak DOWNWARD past it (the
+  relative motion of the climb).
+- **All other transitions** — appearing at boot, resetting for a new chat
+  (the pennant tail belongs to the conversation) — clouds swish PAST it
+  sideways. Every move the guide makes goes through clouds.
+
+Implementation (umbrella conventions): `public/js/balloon.js` — a PURE core
+(envelope profile, hover/climb/pennant/flare params, deterministic
+swish-cloud crossings; Node-tested in `public/js/balloon.test.js`) under a
+browser-only DOM layer (one small fixed canvas, `pointer-events:none`,
+`aria-hidden`, fail-soft everywhere, static under `prefers-reduced-motion`,
+paused while the tab is hidden). Wired in `app.js` (`initBalloonGuide` at
+boot, `balloonReset` on new chat) and `stream.js` (`balloonTaskDone` on the
+`done` SSE event). Candidates B–D stay recorded in `proposals.html` for the
+record; the "THE PICK" section there previews the guide as shipped.
+
+Residual (F-16 stays 🟡 PARTIAL): live verification on real devices (iOS PWA
+especially), and any grown-up guide duties (a tap-to-explain bubble like the
+ghost's, per the ux-conventions registry) if the owner wants them.

@@ -20,6 +20,7 @@
 
 import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
+import { balloonReset, initBalloonGuide } from "./balloon.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
@@ -118,6 +119,12 @@ const scrollDown = (force = false) => {
 // ---- Module wiring ---------------------------------------------------------
 
 initTurns(chat, scrollDown, { isBusy: isStreaming });
+// The Se/rver balloon guide (F-16): the blue tier's symbol character —
+// the ghost's counterpart — hovering among clouds above the composer. Pure
+// decoration (fail-soft, pointer-events:none); it flares + climbs on every
+// completed task (stream.js's done event) and swishes through clouds on all
+// its transitions.
+initBalloonGuide();
 initModels(document.getElementById("model"), { onChange: syncAttachState });
 initAttachments(
   document.getElementById("attach"),
@@ -374,6 +381,7 @@ function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
+  balloonReset(); // the guide's pennant tail belongs to the conversation
   syncCopyState();
   input.focus();
 }

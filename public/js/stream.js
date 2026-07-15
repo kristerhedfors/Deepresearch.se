@@ -23,6 +23,7 @@ import {
   startSearchStep,
   updateGenericStep,
 } from "./activity.js";
+import { balloonTaskDone } from "./balloon.js";
 import { bashLiteOn, developerModeOn } from "./settings.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
@@ -536,6 +537,7 @@ function handleEvent(turn, evt, acc) {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export
       renderStats(turn, s);
+      balloonTaskDone(); // the guide flares, climbs a notch, hangs a pennant
     }
     else if (s.type === "discard_text") {
       resetForRevision(turn);

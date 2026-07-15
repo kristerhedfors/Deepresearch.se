@@ -186,7 +186,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "open",
     summary:
-      "DeepResearch.Se/cure speaks in symbols (the ghost holding pink umbrellas; the umbrella intro; an umbrella landing per completed task). DeepResearch.Se/rver needs a sibling language — positive, telling something true about the tier (memory, stewardship, reach, lift), tied into a similar vortex-derived intro + per-task landing event + mascot. Brief: docs/SYMBOL-LANGUAGE.md; four animated candidates await the owner's pick in docs/symbol-language/proposals.html.",
+      "DECIDED (owner, 2026-07-15) and shipped client-side: the BALLOON GUIDE — the balloon itself is the symbol, a little gold-and-blue balloon (the umbrellas' geometric sibling: 'the server does the lifting') hovering among clouds in the app's corner, the ghost's Se/rver counterpart. Burner flare + climb + pennant per completed task; clouds swish past it in ALL transitions (public/js/balloon.js, wired in app.js/stream.js). Record: docs/SYMBOL-LANGUAGE.md. RESIDUAL: live device verification; tap-to-explain bubble.",
   },
 ];
 

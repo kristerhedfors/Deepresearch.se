@@ -184,21 +184,23 @@ working on now (`src/panels.js`, D1 `panels_reviews`, façade over
 "attention loop" variant is documented in the **feature-board** skill and
 `docs/DECISION-BOARD-LOOPS.md`.
 
-### F-16 · Symbol language for DeepResearch.**Se/rver** — 🔵 OPEN (medium)
+### F-16 · Symbol language for DeepResearch.**Se/rver** — 🟡 PARTIAL (medium)
 
 DeepResearch.**Se/cure** already speaks in symbols: the ghost (anonymity)
 holding **pink umbrellas** (shelter), the first-visit umbrella intro
 (`public/cure/umbrella.js`), and an umbrella landing for every completed
-task. DeepResearch.**Se/rver** needs a sibling language — **positive**, and it
-must **tell something true** about the tier (memory, stewardship, reach,
-lift), tied into a similar animation: a vortex-derived first-visit intro, a
-per-completed-task landing event, an ambient idle state, and a mascot
-counterpart to the ghost. Design brief: `docs/SYMBOL-LANGUAGE.md`. Four
-animated candidate concepts await the owner's pick in
-`docs/symbol-language/proposals.html` (the Lift balloons / the Keeper
-lighthouse / the Star Chart constellation / the Messenger doves); the chosen
-one is then implemented in the umbrella conventions (pure Node-tested core,
-DOM layer, tap-to-skip, reduced-motion, admin `anim_speed`).
+task. DeepResearch.**Se/rver**'s sibling language is now DECIDED and shipped
+client-side (owner's pick 2026-07-15 from the four animated candidates in
+`docs/symbol-language/proposals.html`): **the BALLOON GUIDE** — the balloon
+itself is the symbol, one little gold-and-blue balloon (the umbrellas'
+geometric sibling, powered and rising: "the server does the lifting")
+hovering among clouds in the app's corner, following you around as the
+tier's guide the way the ghost does on the secure side. Per completed task
+the burner flares, it climbs a notch and hangs a pennant; clouds swish past
+it in ALL of its transitions (`public/js/balloon.js` — pure Node-tested core
++ fail-soft DOM layer; wired in `app.js`/`stream.js`). Design record:
+`docs/SYMBOL-LANGUAGE.md`. RESIDUAL: live verification on real devices, and
+any grown-up guide duties (a tap-to-explain bubble like the ghost's).
 
 ---
 
@@ -228,3 +230,13 @@ DOM layer, tap-to-skip, reduced-motion, admin `anim_speed`).
   owner to pick from (`docs/symbol-language/proposals.html` — the Lift
   balloons, the Keeper lighthouse, the Star Chart constellation, the
   Messenger doves), each with a working per-completed-task landing event.
+- **2026-07-15** — F-16 decided + first tier shipped: the owner picked the
+  balloons from the four candidates and refined the concept — the balloon
+  ITSELF is the symbol, a little guide hovering among clouds that follows the
+  user around like the ghost does on Se/cure, swishing by clouds in all of
+  its transitions. Shipped `public/js/balloon.js` (pure core + fail-soft DOM
+  layer, Node-tested in `balloon.test.js`): burner flare + climb + pennant
+  per completed task (stream.js `done` event), cloud swishes on boot/new-chat
+  transitions, reduced-motion static, hidden-tab pause. Recorded the decision
+  in `docs/SYMBOL-LANGUAGE.md` §5 and marked the pick on the proposals page.
+  Status → PARTIAL (residual: live device verification, tap-to-explain).

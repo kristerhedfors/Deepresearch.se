@@ -508,7 +508,13 @@ the cache — closing the 2026-07-13 boot-race where a send before `/api/setting
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested), `opfs.js`
+all route through; Node-tested), `balloon.js` (the Se/rver BALLOON GUIDE —
+the blue tier's symbol character, F-16, owner's pick 2026-07-15: the ghost's
+counterpart, a little gold-and-blue balloon hovering among clouds above the
+composer; burner flare + climb + pennant per completed task via `stream.js`'s
+`done` event, cloud swishes on ALL its transitions (boot, new-chat reset),
+pure core Node-tested, DOM layer fail-soft/`pointer-events:none`/reduced-
+motion-static — see `docs/SYMBOL-LANGUAGE.md`), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental
@@ -791,7 +797,9 @@ turn, oldest first — moved here next to its consumer `asksDeviceLocation`),
 and `conversationCopyText` (the
 copy-conversation export: turn labeling, image/attachment references,
 block-body suppression), the pure
-core extracted out of `stream.js`'s send path), `imagedeck.js`'s pure
+core extracted out of `stream.js`'s send path), `balloon.js`'s pure core
+(the Se/rver balloon guide: envelope profile, hover/climb/pennant/flare
+params, the deterministic swish-cloud crossing guarantees), `imagedeck.js`'s pure
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
