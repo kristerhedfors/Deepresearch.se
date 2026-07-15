@@ -77,16 +77,19 @@ import {
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import {
+  disclosureText,
   grantFlagEnabled,
   grantLive,
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
+  phaseChannel,
   wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
+import { mountBalloonSpinner } from "/js/balloon-spinner.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -151,9 +154,58 @@ function workStatus(msg) {
 // tiers now match.) `beginPhaseSteps` builds a fresh host per send; the module
 // keeps a handle to it so phaseStep/finish/reset don't have to thread it.
 
-let curPhaseStep = null; // { key, details, summary, label, spin, spinner, body } — running step, or null
+let curPhaseStep = null; // { key, channel, details, summary, label, spin, spinner, body } — running step, or null
 let phaseHost = null; // the .phasesteps container for the current send, inside #chat
-let phaseStepSeq = 0; // rotates the umbrella STYLE so adjacent steps differ
+let phaseStepSeq = 0; // rotates the spinner STYLE so adjacent steps differ
+
+// The send-time DISCLOSURE context (the per-task symbol grammar,
+// docs/SYMBOL-LANGUAGE.md §6): captured when the send resolves its provider
+// and web-search route, read when an ONLINE step completes into its ℹ notice
+// so the bubble can say exactly what that task sent and where. `search` is
+// "self" (own browser-direct service) | "grant" (server-metered) | null.
+let sendCtx = { provider: "", viaProxy: false, search: null, embedProvider: "" };
+
+// One ℹ bubble open at a time; any outside interaction dismisses it while the
+// text inside stays selectable (UX-1, the speaker-bubble dismissal rule).
+let openLeakNote = null;
+document.addEventListener("pointerdown", (e) => {
+  if (openLeakNote && !openLeakNote.contains(/** @type {Node} */ (e.target))) {
+    openLeakNote.remove();
+    openLeakNote = null;
+  }
+});
+
+// The tappable ℹ a completed ONLINE step carries instead of the pink ✓ —
+// Se/cure's honesty marker: this task went online; tap to read what it sent.
+function addLeakNotice(step) {
+  if (step.summary.querySelector(".notice")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "notice";
+  btn.textContent = "ℹ";
+  btn.title = "This step used an online API — tap to see what it sent";
+  const text = disclosureText(step.key, sendCtx);
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (openLeakNote && openLeakNote.parentElement === step.summary) {
+      openLeakNote.remove();
+      openLeakNote = null;
+      return;
+    }
+    openLeakNote?.remove();
+    const note = document.createElement("div");
+    note.className = "leak-note";
+    note.textContent =
+      text + "\n\nSymbols: umbrella = stayed on this device · balloon = went online.";
+    // Live content inside stays clickable/selectable (UX-1) — only outside
+    // interaction dismisses (the document handler above).
+    note.addEventListener("pointerdown", (e2) => e2.stopPropagation());
+    step.summary.appendChild(note);
+    openLeakNote = note;
+  });
+  step.summary.prepend(btn);
+}
 
 // Start a fresh step list inside the conversation flow. `beforeEl` is the live
 // answer element the steps should sit above (matching DRS, where activity
@@ -168,19 +220,23 @@ function beginPhaseSteps(beforeEl) {
   return host;
 }
 
-// Finish the running step with the umbrella spinner's COMPLETION FINALE: the
-// spinner speed-runs from wherever its boomerang is into the fully-bloomed PINK
-// umbrella (the beat the loop deliberately never reaches) and folds it into the
-// pink ✓, then we drop the canvas and prepend the real .check (same rose, so
-// the handoff is seamless). Fail-soft: a no-op mount fires the callback at once.
-// Detached from curPhaseStep immediately so a new step can start over the ~1 s
-// finale without the old one clobbering it.
+// Finish the running step with its spinner's COMPLETION FINALE — which one
+// depends on the step's CHANNEL (the per-task symbol grammar):
+//   LOCAL  — the umbrella speed-runs into the fully-bloomed PINK umbrella and
+//            folds into the pink ✓ (unchanged: sheltered work earns the ✓).
+//   ONLINE — the balloon speed-runs into the fully-colored balloon and folds
+//            into an ℹ, handed off to a tappable .notice whose bubble
+//            (disclosureText + sendCtx) says exactly what this task sent and
+//            where — the read-up on what each online instance does or leaks.
+// Fail-soft: a no-op mount fires the callback at once. Detached from
+// curPhaseStep immediately so a new step can start over the ~1 s finale.
 function finishCurPhaseStep() {
   if (!curPhaseStep) return;
   const step = curPhaseStep;
   curPhaseStep = null;
-  const addCheck = () => {
-    if (!step.summary.querySelector(".check")) {
+  const settle = () => {
+    if (step.channel === "online") addLeakNotice(step);
+    else if (!step.summary.querySelector(".check")) {
       const check = document.createElement("span");
       check.className = "check";
       check.textContent = "✓";
@@ -189,8 +245,8 @@ function finishCurPhaseStep() {
     step.spinner?.stop?.();
     step.spin?.remove();
   };
-  if (step.spinner?.finish) step.spinner.finish(addCheck);
-  else addCheck();
+  if (step.spinner?.finish) step.spinner.finish(settle);
+  else settle();
 }
 
 // Start (or update-in-place) the step for `key`. A new key finishes the
@@ -227,10 +283,16 @@ function phaseStep(key, label) {
     if (!details.classList.contains("expandable")) e.preventDefault();
   });
   host.appendChild(details);
-  // The same spinning umbrella the DRS steps use; best-effort, and it stops
-  // itself when finishCurPhaseStep removes the `.spin` host.
-  const spinner = mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
-  curPhaseStep = { key, details, summary, label: lab, spin, spinner, body: null };
+  // The step wears its CHANNEL's symbol (docs/SYMBOL-LANGUAGE.md §6): the
+  // UMBRELLA for work that stays on this device (→ the pink ✓), the BALLOON
+  // for work that goes online (→ the ℹ notice). Best-effort either way, and
+  // the spinner stops itself when finishCurPhaseStep removes the `.spin` host.
+  const channel = phaseChannel(key);
+  const spinner =
+    channel === "online"
+      ? mountBalloonSpinner(spin, { style: phaseStepSeq++, size: 30, finale: "info" })
+      : mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
+  curPhaseStep = { key, channel, details, summary, label: lab, spin, spinner, body: null };
 }
 
 // Re-label the running step WITHOUT starting a new one — for the live tool
@@ -956,6 +1018,7 @@ async function recallContext(conv, query) {
   if (!hookup || !state.rag?.docs?.length) return "";
   try {
     phaseStep("recall", "Recalling project context…");
+    sendCtx.embedProvider = drcProvider(hookup.embedder?.provider)?.label || hookup.embedder?.provider || "";
     const rag = ensureDrcRag(state, hookup.embedder);
     const { block } = await retrieveDrcContext({
       rag,
@@ -1560,6 +1623,16 @@ async function send(ev) {
   const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
   const providerOverride = usingApiProxy ? proxyLlmProvider(location.origin) : null;
   const answerKey = usingApiProxy ? proxyGrants.api?.token : state.keys[providerId];
+
+  // The disclosure context for this send's ℹ notices (per-task grammar): who
+  // the provider is, whether calls ride the borrowed proxy, and which route a
+  // web search would take. Captured HERE — the same resolution the send uses.
+  sendCtx = {
+    provider: usingApiProxy ? "Berget (borrowed)" : drcProvider(providerId)?.label || providerId,
+    viaProxy: usingApiProxy,
+    search: directSearchActive() ? "self" : "grant",
+    embedProvider: "",
+  };
 
   let conv = activeConv();
   if (!conv) {

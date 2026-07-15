@@ -149,3 +149,37 @@ Residual (F-16 stays 🟡 PARTIAL): live verification on real devices (iOS PWA
 especially — intro, spinner finale, and guide alike), and any grown-up guide
 duties (a tap-to-explain bubble like the ghost's, per the ux-conventions
 registry) if the owner wants them.
+
+## 6. The granular per-task grammar (owner, 2026-07-15, round 3)
+
+The symbols are no longer only tier identities — they are **per-task channel
+badges**, in BOTH tiers:
+
+- **The umbrella = OFFLINE.** A task that runs entirely on this device wears
+  the umbrella while it works — even on Se/rver ("the server can do secure
+  tasks and it's clear in the UI"): the in-browser sandbox step shows the
+  pink umbrella spinner on the blue tier. Classification is pure and
+  Node-tested (`stepIsLocal`, `activity-core.js`; `phaseChannel`,
+  `drc-page-core.js`), and **unknown defaults to ONLINE** — over-disclosing
+  is the safe failure.
+- **The balloon = ONLINE.** Any task that crosses the network wears the
+  balloon — on Se/cure too, where the browser-direct provider calls, the
+  grant/proxy web search, and recall's embedding call are all honest
+  exceptions to "nothing leaves".
+- **Completion splits by tier.** Se/rver folds everything into the plain
+  **blue ✓** — it already assumes cloud (local steps pass `check: "blue"` to
+  the umbrella spinner). Se/cure folds a LOCAL step into the **pink ✓** as
+  before, but an ONLINE step into a tappable **ℹ information notice**
+  (`finale: "info"` on the balloon spinner → the `.notice` button): its
+  bubble (`disclosureText`, computed from the send-time `sendCtx` — provider,
+  borrowed-proxy flag, search route, embeddings provider) states exactly what
+  that task sent, to whom, on whose credential — so the user can read up on
+  what every such instance is doing or leaking. Bubble dismissal follows
+  UX-1; the whole rule is codified as **UX-2** in the ux-conventions skill.
+
+Disclosure texts live in ONE pure place (`drc-page-core.js`) per phase:
+own-key provider calls ("directly from your browser on your own API key —
+the DeepResearch.Se server was not involved"), the borrowed proxy ("THROUGH
+the DeepResearch.Se server to Berget — the one call path where your text
+touches the server"), grant search ("only the search QUERY… the conversation
+never left your browser"), self-hosted search, and recall embeddings.

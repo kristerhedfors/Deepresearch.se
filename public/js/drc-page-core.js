@@ -109,3 +109,68 @@ export function wmHtml(s) {
     .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
     .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
 }
+
+// ---- the per-task ONLINE/OFFLINE symbol grammar (owner directive, 2026-07-15) ----
+
+// Every research step wears the symbol of its CHANNEL: the UMBRELLA for work
+// that stays on this device (Se/cure's own symbol — shelter), the BALLOON for
+// work that crosses the network (Se/rver's symbol — carried). On Se/cure an
+// ONLINE step also completes into an INFORMATION NOTICE (ℹ) instead of the
+// pink ✓, whose bubble (disclosureText below) says exactly what left the
+// browser and where it went — the read-up on what each task is doing or
+// leaking. Pure and Node-tested; drc.js consumes both.
+
+// Phase → channel. Unknown phases default to ONLINE: over-disclosing is the
+// safe failure for a privacy tier (a local task wrongly wearing the balloon
+// invites a read; an online task wrongly wearing the umbrella lies).
+const LOCAL_PHASES = new Set([
+  "sandbox", // the CheerpX VM runs entirely in this browser
+  "clarify", // asking the user a question — no call of its own
+  "introspect", // reads the committed source snapshot (same-origin static)
+  "_note", // the running step's re-label pseudo-phase
+]);
+
+/** @param {string} phase @returns {"local"|"online"} */
+export function phaseChannel(phase) {
+  return LOCAL_PHASES.has(String(phase)) ? "local" : "online";
+}
+
+/**
+ * The information-notice text for a completed ONLINE step: what this task
+ * sent, to whom, on whose credential. `ctx` is the send-time context drc.js
+ * captures when it resolves the provider and search route:
+ *   provider   — the answer provider's display label (e.g. "OpenAI")
+ *   viaProxy   — true when the secure-research-space LLM proxy carries calls
+ *   search     — "self" (own browser-direct service) | "grant" (server-metered)
+ *   embedProvider — the embeddings provider label (recall), if any
+ * Returns "" for local phases (they complete to the pink ✓, no notice).
+ * @param {string} phase
+ * @param {{provider?: string, viaProxy?: boolean, search?: string|null,
+ *          embedProvider?: string}} [ctx]
+ * @returns {string}
+ */
+export function disclosureText(phase, ctx = {}) {
+  if (phaseChannel(phase) === "local") return "";
+  const provider = ctx.provider || "your model provider";
+  const llm = ctx.viaProxy
+    ? "This step sent the conversation text it needed THROUGH the DeepResearch.Se server to Berget — the borrowed secure-research-space API (metered, time-limited, Berget-only). This is the one call path where your text touches the server."
+    : `This step sent the conversation text it needed to ${provider}, directly from your browser on your own API key. The DeepResearch.Se server was not involved.`;
+  switch (String(phase)) {
+    case "search":
+      return ctx.search === "self"
+        ? "Only the search QUERY was sent — directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
+        : "Only the search QUERY was sent — through the DeepResearch.Se server to the Exa search service, metered by your temporary web-search grant. The conversation itself never left your browser.";
+    case "recall":
+      return `Recall embedded your question with ${ctx.embedProvider || provider}'s embedding API (your key) to search the project index stored in this browser. Only the question text was sent; the index never leaves.`;
+    case "triage":
+    case "harvest":
+    case "gap":
+    case "synth":
+    case "validate":
+    case "answer":
+    case "source":
+      return llm;
+    default:
+      return "This step called an online API — the text it needed left your browser. " + llm;
+  }
+}

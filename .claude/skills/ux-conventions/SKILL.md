@@ -152,3 +152,50 @@ core `public/js/agent-backdrop-core.js` (`nextLayerMode`, `isTapGesture`,
 `public/css/app.css` (the two-layer-view-switch block). Pure logic is
 Node-tested in `agent-backdrop-core.test.js`; the DOM glue is browser-verified
 (tap-vs-message, swap opacity/z-index, tap-vs-swipe, both parallax directions).
+
+---
+
+## UX-2 — Every task wears its channel's symbol; on Se/cure an online task completes into a readable ℹ notice, never a bare ✓
+
+**Rule.** A research/task step's WAITING SYMBOL is its **channel**, not its
+tier: the **umbrella** (Se/cure's symbol — sheltered) for work that runs
+entirely on this device, the **balloon** (Se/rver's symbol — carried) for work
+that crosses the network — in BOTH tiers. Completion then splits by tier:
+
+- **Se/rver** completes everything to a plain **blue ✓** (the tier already
+  assumes cloud) — including its local (umbrella-spinner) steps, which pass
+  `check: "blue"`. The pink-umbrella spinner appearing on the blue tier IS the
+  "this ran privately" signal; the checkmark stays the tier's.
+- **Se/cure** completes a LOCAL step to the **pink ✓**, but an ONLINE step to
+  a tappable **ℹ information notice** (the balloon spinner's `finale: "info"`),
+  whose bubble says exactly WHAT that task sent, TO WHOM, on WHOSE credential
+  (`disclosureText`, `drc-page-core.js`) — the user can read up on what every
+  online instance is doing or leaking. The bubble follows UX-1 dismissal.
+
+**Why.** The symbols are the site's honesty channel (the privacy mission made
+visible): "did this leave my device?" must be answerable at a glance for every
+step, and on the privacy tier every network crossing must be one tap away from
+its full disclosure. A pink ✓ on an online step would be a small lie.
+
+**The mechanics:**
+
+1. Channel classification is PURE and Node-tested: `phaseChannel()` in
+   `public/js/drc-page-core.js` (Se/cure phases), `stepIsLocal()` in
+   `public/js/activity-core.js` (Se/rver step ids). **Unknown defaults to
+   ONLINE** — over-disclosing is the safe failure; a local badge on an online
+   task lies.
+2. The disclosure text is pure too (`disclosureText(phase, ctx)`), computed
+   from the SEND-TIME context (provider label, borrowed-proxy flag, search
+   route, embed provider) captured where the send resolves those —
+   `sendCtx` in `public/cure/drc.js`.
+3. The ℹ is a real `<button.notice>` in the step summary (accent blue ring,
+   matching the balloon spinner's canvas ℹ so the finale hands off
+   seamlessly); its click `preventDefault + stopPropagation` so it never
+   toggles the step's `<details>`.
+
+**Canonical implementations:** `public/cure/drc.js` (`addLeakNotice`,
+`finishCurPhaseStep`, `phaseStep`, `sendCtx`), `public/js/activity.js`
+(`makeStepDom`'s spinner pick), `public/js/balloon-spinner.js`
+(`finale: "info"`), `public/js/umbrella-spinner.js` (`check: "blue"`),
+`public/cure/drc.css` (`.notice` / `.leak-note`). Grammar record:
+`docs/SYMBOL-LANGUAGE.md` §6.

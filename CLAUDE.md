@@ -602,8 +602,11 @@ toggle check both borrowed-capability subsystems — the web-search grant
 AND the proxy bundle — share), `normalizeSearchBackend` (the web-search
 backend config normalizer, one definition for the sealed-state read and
 the settings-form persist), the deep-link path parsers
-`parseProjectPath`/`parsePublicationRef`, and `wmHtml` (the escape-first
-Se/cure–Se/rver wordmark-slash renderer) — Node-tested).
+`parseProjectPath`/`parsePublicationRef`, `wmHtml` (the escape-first
+Se/cure–Se/rver wordmark-slash renderer), and the per-task symbol grammar's
+`phaseChannel`/`disclosureText` (umbrella = offline, balloon = online;
+the ℹ-notice disclosure text per online phase — UX-2, SYMBOL-LANGUAGE.md §6)
+— Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
@@ -827,7 +830,9 @@ faster-than-the-umbrella-intro directive pinned against `umbrella.js`'s own
 constants), `balloon-spinner.js`'s pure side (the blue waiting symbol: the
 loop apex that never reaches the color, the finale plan's speed-run buckets
 into the blue apex, style cycling — plus the sibling contract of reusing
-`umbrella-spinner.js`'s boomerang clock), `imagedeck.js`'s pure
+`umbrella-spinner.js`'s boomerang clock; its `finale:"info"` ℹ and the
+umbrella spinner's `check:"blue"` are the per-task channel grammar's DOM
+knobs, with `stepIsLocal` in `activity-core.js` classifying Se/rver steps), `imagedeck.js`'s pure
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
