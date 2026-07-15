@@ -18,10 +18,14 @@
 // D1 row meters. Signed with SESSION_SECRET (the same sole HMAC key as the
 // session cookie — see src/auth.js), under an independent `websearch.` message
 // namespace so a grant token can never be confused with a session/state HMAC.
-// Leaf module: imports nothing, so websearch.js and its tests share ONE
+// Near-leaf module: imports only the shared crypto primitives leaf
+// (src/token-crypto.js), so websearch.js and its tests share ONE
 // implementation.
 
+import { b64url, b64urlDecode, safeEqual, sign } from "./token-crypto.js";
+
 const TOKEN_PREFIX = "wsk1"; // versioned wire prefix
+const NS = "websearch."; // HMAC message namespace for grant tokens
 
 /** @typedef {import('./types.js').Env} Env */
 /**
@@ -35,60 +39,6 @@ const TOKEN_PREFIX = "wsk1"; // versioned wire prefix
  * @property {number} exp expiry (epoch seconds)
  */
 
-/** @param {Uint8Array} bytes @returns {string} */
-function b64url(bytes) {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** @param {string} str @returns {Uint8Array} */
-function b64urlDecode(str) {
-  const norm = str.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(norm);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** @param {ArrayBuffer} buf @returns {string} */
-function toHex(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * @param {Env} env
- * @param {string} message
- * @returns {Promise<string>} hex HMAC-SHA-256 tag over `websearch.<message>`
- */
-async function sign(env, message) {
-  // Fail closed: no SESSION_SECRET → no signing key (mirrors src/auth.js). The
-  // entrypoint gates the whole site on the secret, so this is belt-and-braces.
-  if (!env.SESSION_SECRET) throw new Error("SESSION_SECRET is not configured");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(String(env.SESSION_SECRET)),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("websearch." + message));
-  return toHex(sig);
-}
-
-/**
- * Constant-time-ish string compare (timing-leak resistant).
- * @param {unknown} a
- * @param {unknown} b
- * @returns {boolean}
- */
-function safeEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 /**
  * Mints a `wsk1.<payload>.<hmac>` grant token from the given claims.
  * @param {Env} env
@@ -97,7 +47,7 @@ function safeEqual(a, b) {
  */
 export async function mintWebSearchToken(env, claims) {
   const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, payload);
+  const sig = await sign(env, NS, payload);
   return `${TOKEN_PREFIX}.${payload}.${sig}`;
 }
 
@@ -117,7 +67,7 @@ export async function verifyWebSearchToken(env, token, nowMs = Date.now()) {
   const [, payload, sig] = parts;
   let expected;
   try {
-    expected = await sign(env, payload);
+    expected = await sign(env, NS, payload);
   } catch {
     return null; // no signing key configured
   }

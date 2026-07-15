@@ -313,6 +313,9 @@ export async function proxyStatus(env, token) {
 /**
  * Atomically reserve one unit from a proxy grant's row. Returns "ok",
  * "exhausted" (used up / expired / revoked), or "error" (no row).
+ * The row-level guard `used < quota AND not expired` means a concurrent burst
+ * can't overrun the grant — at most `quota` UPDATEs ever change a row (the
+ * same concurrency proof as src/websearch.js's inline reserve).
  * @param {D1Database} db @param {string} jti @param {"web"|"api"} svc
  * @returns {Promise<"ok"|"exhausted"|"error">}
  */

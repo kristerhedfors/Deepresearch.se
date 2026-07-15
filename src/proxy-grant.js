@@ -26,9 +26,12 @@
 //
 // Signed with SESSION_SECRET (the site's sole HMAC key — src/auth.js), each
 // tier under its OWN message namespace so the three token families
-// (session/state, websearch `wsk1`, and these) can never be confused. Leaf
-// module: imports nothing, so src/proxy.js and the tests share ONE
+// (session/state, websearch `wsk1`, and these) can never be confused.
+// Near-leaf module: imports only the shared crypto primitives leaf
+// (src/token-crypto.js), so src/proxy.js and the tests share ONE
 // implementation.
+
+import { b64url, b64urlDecode, safeEqual, sign } from "./token-crypto.js";
 
 const GRANT_PREFIX = "prg1"; // the token-granting token (in the bundle)
 const PROXY_PREFIX = "prx1"; // the working proxy token (post-exchange)
@@ -47,59 +50,6 @@ const PROXY_NS = "proxytoken."; // HMAC message namespace for proxy tokens
  * @property {number} iat issued-at (epoch seconds)
  * @property {number} exp expiry (epoch seconds)
  */
-
-/** @param {Uint8Array} bytes @returns {string} */
-function b64url(bytes) {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** @param {string} str @returns {Uint8Array} */
-function b64urlDecode(str) {
-  const norm = str.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(norm);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** @param {ArrayBuffer} buf @returns {string} */
-function toHex(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * @param {Env} env
- * @param {string} ns the message namespace (GRANT_NS / PROXY_NS)
- * @param {string} message
- * @returns {Promise<string>} hex HMAC-SHA-256 tag over `<ns><message>`
- */
-async function sign(env, ns, message) {
-  // Fail closed: no SESSION_SECRET → no signing key (mirrors src/auth.js and
-  // src/websearch-key.js). The entrypoint gates the whole site on the secret.
-  if (!env.SESSION_SECRET) throw new Error("SESSION_SECRET is not configured");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(String(env.SESSION_SECRET)),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(ns + message));
-  return toHex(sig);
-}
-
-/**
- * Constant-time-ish string compare (timing-leak resistant).
- * @param {unknown} a @param {unknown} b @returns {boolean}
- */
-function safeEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
 
 /**
  * Mint a token of a given tier from the given claims.
