@@ -281,6 +281,22 @@ describe("applyComplexityToPlan — complexity-scaled effort", () => {
     assert.ok(plan.maxSearches <= before.maxSearches);
   });
 
+  test("'simple' also caps the report tier at standard (2026-07-15 seam-battery evidence)", () => {
+    // The paired 179/180s A/B: structured-report tiers helped broad kinds
+    // but went 0 wins / 7 losses on focused-lookup kinds — a simple question
+    // must keep the focused answer shape even when the slider bought more.
+    const ext = applyComplexityToPlan(planResearch(MODEL, 300), "simple");
+    assert.equal(ext.reportTier, "standard");
+    assert.equal(ext.synthMaxTokens, 4096);
+    assert.equal(ext.validateMaxTokens, 3000);
+    const full = applyComplexityToPlan(planResearch(MODEL, 600), "simple");
+    assert.equal(full.reportTier, "standard");
+    assert.equal(full.synthMaxTokens, 4096);
+    // Never scales UP: brief stays brief, standard stays standard.
+    assert.equal(applyComplexityToPlan(planResearch(MODEL, 15), "simple").reportTier, "brief");
+    assert.equal(applyComplexityToPlan(planResearch(MODEL, 60), "simple").reportTier, "standard");
+  });
+
   test("non-simple complexities leave the plan untouched (budget stays the ceiling)", () => {
     for (const complexity of ["multihop", "comparison", "survey"]) {
       const plan = planResearch(MODEL, 300);
