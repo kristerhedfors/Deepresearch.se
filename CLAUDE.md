@@ -1191,6 +1191,15 @@ what docs claim); and update the skill list below plus the skill's
   the budget, pick a model, highlight an element) — and where it ends
   (navigate-then-do-by-hand; full banner on `/rver` only; admin-only). Load
   when queuing a fix for testing or touching any of those files.
+- **test-feedback-loop** — the standing loop ON TOP of the try-it queue:
+  sweep decided verdicts (`scripts/testpoints --verdicts`), MINE EVERY NOTE
+  (a 👍 note can carry a full bug report — point #3, 2026-07-15), ack by
+  archiving, route each finding (feature-maintenance PR comment for owned
+  subsystems / direct fix with the verbatim complaint as the regression test /
+  features board for ideas), and MINT the next batch of points from the
+  standing sources (MAINTENANCE-OWNERS "owes" items, merged fix PRs, feedback
+  resolutions, chatlogs regressions, SHIPPED feature flips). Load to "run the
+  test loop" / "process the verdicts" / "feed new test cases in".
 - **execution-sandbox** — the EXPERIMENTAL in-browser Linux execution sandbox
   and bash-lite agent (the `bash_lite_mcp` knob, default OFF, on both DRS and
   DRC): a CheerpX WASM x86 Linux boots in the browser, a client-orchestrated

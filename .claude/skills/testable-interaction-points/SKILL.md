@@ -66,6 +66,12 @@ Status lifecycle: `open` (on the queue) → `passed` | `failed` (a recorded
 verdict) → re-open a `failed` one after the next fix, or `archived` to retire.
 Only `open` points are on the queue; the launcher badge counts them.
 
+The STANDING loop around this — sweeping verdicts (`--verdicts`), mining
+notes (a 👍 note can carry a full bug report), archiving as the consumed-ack,
+routing each finding to its fix channel, and minting the next batch of points
+— is the **test-feedback-loop** skill. This skill owns the queue mechanics;
+that one owns the process.
+
 ## The ACTION GRAMMAR — this IS the reachability boundary
 
 An **action** is one step the landing page's client runs on arrival to set
