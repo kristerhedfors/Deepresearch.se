@@ -6,6 +6,7 @@ import {
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
+  wmHtml,
 } from "./drc-page-core.js";
 
 test("grantLive: token + unexpired + quota-remaining all required", () => {
@@ -86,4 +87,14 @@ test("parsePublicationRef: /cure/<slug> path vs ?continue= legacy", () => {
   assert.equal(parsePublicationRef("/cure/", ""), null);
   assert.equal(parsePublicationRef("/other", "?continue=bad slug!"), null);
   assert.equal(parsePublicationRef(null, null), null);
+});
+
+test("wmHtml escapes markup first, then tightens the wordmark slash", () => {
+  assert.equal(wmHtml("Se/cure ready"), 'Se<span class="sl">/</span>cure ready');
+  assert.equal(wmHtml("a Se/rver feature"), 'a Se<span class="sl">/</span>rver feature');
+  // Escaping happens BEFORE the wordmark wrap, so injected markup stays inert.
+  assert.equal(wmHtml("<b>x</b> & y"), "&lt;b&gt;x&lt;/b&gt; &amp; y");
+  // Case-insensitive wordmark match, and unrelated slashes untouched.
+  assert.equal(wmHtml("SE/CURE"), 'SE<span class="sl">/</span>CURE');
+  assert.equal(wmHtml("a/b"), "a/b");
 });

@@ -97,3 +97,15 @@ export function parsePublicationRef(pathname, search) {
   if (!slug || !/^[a-z0-9-]{1,80}$/i.test(slug)) return null;
   return { slug, fromPath: !!m };
 }
+
+// ---- wordmark rendering --------------------------------------------------------
+
+// Render prose we build for innerHTML with the Se/cure & Se/rver wordmark
+// slash tightened (the .sl rule) so it reads closer to "secure"/"server".
+// Escapes &<> FIRST, so any plain string stays safe as markup.
+/** @param {*} s @returns {string} */
+export function wmHtml(s) {
+  return String(s)
+    .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
+    .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
+}
