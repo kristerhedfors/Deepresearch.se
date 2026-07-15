@@ -54,8 +54,20 @@ pre {
 .muted { color: var(--muted); font-size: .8rem; }
 .err { color: var(--warn); font-size: .85rem; }
 
-/* Collapsible ("one layer down") — the usage tables fold under a summary so
-   the admin view leads with the boards, not the money tables. */
+/* Collapsible panels: every data-panel section renders COLLAPSED to its
+   header row — tap the header to open it, the same gesture as the board
+   items' collapse-to-header. The open set persists in localStorage
+   (admin.js), so a reload keeps the panels you're working in open. */
+section.panel-fold > h2 { cursor: pointer; margin-bottom: 0; user-select: none; }
+section.panel-fold.open > h2 { margin-bottom: .8rem; }
+section.panel-fold:not(.open) > :not(h2) { display: none; }
+section.panel-fold > h2 .caret {
+  color: var(--muted); font-size: .7rem; transition: transform .15s; flex: 0 0 auto;
+}
+section.panel-fold.open > h2 .caret { transform: rotate(90deg); }
+
+/* Collapsible ("one layer down") — per-row usage details fold under a
+   summary so a user row leads with identity + actions, not the bars. */
 .fold > summary {
   cursor: pointer; color: var(--accent); font-size: .82rem; font-weight: 600;
   list-style: revert; padding: .1rem 0; user-select: none;

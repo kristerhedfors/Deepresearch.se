@@ -36,21 +36,15 @@
 
     <section id="totals-sec" data-panel="usage" hidden>
       <h2>Usage (all users)</h2>
-      <details class="fold">
-        <summary>Show usage totals</summary>
-        <div class="cards" id="totals"></div>
-      </details>
+      <div class="cards" id="totals"></div>
     </section>
 
     <section id="models-sec" data-panel="models" hidden>
       <h2>Usage by model</h2>
-      <details class="fold">
-        <summary>Show per-model usage</summary>
-        <p class="muted">Token counts per model and what they actually cost
-        (each model bills its own per-token price — this is the ground truth
-        behind the budgets).</p>
-        <div class="table-scroll"><table id="models-table"></table></div>
-      </details>
+      <p class="muted">Token counts per model and what they actually cost
+      (each model bills its own per-token price — this is the ground truth
+      behind the budgets).</p>
+      <div class="table-scroll"><table id="models-table"></table></div>
     </section>
 
     <section id="users-sec" data-panel="users" hidden>
@@ -59,10 +53,7 @@
       sign-in — the address configured as <code>ADMIN_EMAIL</code> becomes
       admin, everyone else a regular user with the default quota. Manage
       roles, status, and per-user quotas here.</p>
-      <details class="fold" id="users-fold">
-        <summary>Show users</summary>
-        <div id="users"></div>
-      </details>
+      <div id="users"></div>
     </section>
 
     <section id="security-sec" data-panel="security" hidden>
