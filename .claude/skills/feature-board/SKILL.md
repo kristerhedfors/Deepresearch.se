@@ -150,13 +150,16 @@ reference):
 4. **Route** in `src/admin-api.js` — `/<board>` + `/<board>/…` → the handler
    (the admin gate is already upstream in `index.js`).
 5. **Panel section** in `public/admin/index.html` + a render fn in
-   `public/js/admin.js` — reuse the shared board UX: `class="board"`
-   (+ `reorderable` in the priority view), `class="rowitem board-item"` with
-   `dataset.id`, a `.head` (grip · rank badge · status/priority badges · title
-   · votes · caret) and a `.board-detail` (summary + the priority/score/note
-   inputs + Save). Wire `wireBoardItemToggle(el)` for tap-to-open and
-   `enableBoardReorder(container, ids => …)` for drag-to-priority. Add rank
-   badge colors to `public/css/admin.css`.
+   `public/js/admin.js` — reuse the shared board UX: `class="board
+   reorderable"` (the panel has ONE view — the drag-reorderable work order;
+   no order-toggle tabs, 2026-07-15 owner directive), `class="rowitem
+   board-item"` with `dataset.id`, a `.head` (grip · rank badge ·
+   status/priority badges · title · votes · caret) and a `.board-detail`
+   (summary + the priority/score/note inputs + Save). Wire
+   `wireBoardItemToggle(el)` for tap-to-open, `enableBoardReorder(container,
+   ids => …)` for drag-to-priority, and `wireBoardReset(btn, path, getItems,
+   reload)` for the "Reset to default order" button (clears every priority →
+   the documented ranking). Add rank badge colors to `public/css/admin.css`.
 6. **CLI** `scripts/<board>` — copy `scripts/features`
    (list / `--json` / the second ordering / `--vote ID up` / `--set ID '{…}'`).
    `chmod +x`.

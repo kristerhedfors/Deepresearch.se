@@ -109,12 +109,14 @@ async function load() {
 // ---- decision-board interaction (shared by every selection board) ---------
 // Every selection board renders its items COLLAPSED to their header row:
 // badges + title + votes only. Tapping a header opens that item's full
-// detail (summary + the review controls); in the work-order (priority) view
-// each header carries a drag GRIP, and dragging reorders the list — the new
-// top-to-bottom order is written back as the items' priority (1..N), i.e. the
-// fixed order the agent loop consumes. The mechanics below are generic
-// (`.board` / `.board-item` / `.board-detail` / `.grip`), so any future board
-// reuses them; the security board is the only client-rendered consumer today.
+// detail (summary + the review controls). There is ONE view — the work
+// order (2026-07-15 owner directive: no order-toggle tabs): each header
+// carries a drag GRIP, and dragging reorders the list — the new top-to-bottom
+// order is written back as the items' priority (1..N), i.e. the fixed order
+// the agent loop consumes — plus a RESET button that clears every explicit
+// priority, falling the list back to its documented default ranking. The
+// mechanics below are generic (`.board` / `.board-item` / `.board-detail` /
+// `.grip`), so any future board reuses them.
 
 // Tap a header (anywhere but a control or the grip) to open/close its detail.
 function wireBoardItemToggle(el) {
@@ -184,20 +186,45 @@ function enableBoardReorder(container, onReorder) {
   container.addEventListener("pointercancel", finish);
 }
 
+// "Reset to default order": clear every explicit priority so the board falls
+// back to its documented default ranking (severity/impact — votes first, but
+// an admin who never votes sees exactly the register order). Confirms first —
+// it discards the whole dragged-in work order.
+function wireBoardReset(btn, path, getItems, reload) {
+  btn.addEventListener("click", async () => {
+    if (!confirm("Reset to the default order? This clears every explicit priority.")) return;
+    btn.disabled = true;
+    try {
+      for (const it of getItems()) {
+        if (it.priority != null) {
+          await api(`${path}/${it.id}`, { method: "PATCH", body: { priority: null } });
+        }
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+    btn.disabled = false;
+    await reload();
+  });
+}
+
 // ---- security-risk review board -------------------------------------------
 // The register's (SECURITY-RISKS.md §3) open-fix backlog with admin review
 // state on top: up/down votes, a manual severity score (CVSS or free-form),
 // a note, and the explicit PRIORITY — the fixed order the Claude Code
 // security-fix loop works through (?format=text / scripts/security reads the
-// same ordering). Two views: fix order (priority) and documented severity.
+// same ordering). ONE view (2026-07-15 owner directive — the old fix-order ⇄
+// documented-severity toggle is gone): always the drag-reorderable work
+// order; "Reset to default order" clears every priority, which falls the
+// list back to documented severity (the server's ?order=severity view still
+// exists for scripts/security --severity).
 
-let secOrder = "priority";
 let secItems = [];
 
 async function loadSecurity() {
   let data;
   try {
-    data = await api(`/security?order=${secOrder}`);
+    data = await api(`/security?order=priority`);
   } catch (err) {
     $("security").innerHTML = `<p class="err">${escapeHtml(err.message)}</p>`;
     $("security-sec").hidden = false;
@@ -206,17 +233,12 @@ async function loadSecurity() {
   secItems = data.items;
   const box = $("security");
   box.innerHTML = "";
-  // Reorder is only meaningful in the work-order view (severity view is a
-  // fixed documented ranking).
-  box.className = "board" + (secOrder === "priority" ? " reorderable" : "");
-  $("sec-order-priority").className = secOrder === "priority" ? "on" : "secondary";
-  $("sec-order-severity").className = secOrder === "severity" ? "on" : "secondary";
+  box.className = "board reorderable";
 
   let fixPos = 0;
   for (const it of data.items) {
     const open = it.status === "open";
-    const posLabel =
-      secOrder === "priority" && open ? `<b class="muted">#${++fixPos}</b>` : "";
+    const posLabel = open ? `<b class="muted">#${++fixPos}</b>` : "";
     const el = document.createElement("div");
     el.className = "rowitem board-item";
     el.dataset.id = it.id;
@@ -295,28 +317,23 @@ enableBoardReorder($("security"), async (ids) => {
   await loadSecurity();
 });
 
-for (const mode of ["priority", "severity"]) {
-  $(`sec-order-${mode}`).addEventListener("click", () => {
-    secOrder = mode;
-    loadSecurity();
-  });
-}
+wireBoardReset($("sec-reset-order"), "/security", () => secItems, loadSecurity);
 
 // ---- features/priority board ----------------------------------------------
 // The SECOND loop channel (see the feature-board skill): FEATURES.md §3's
 // backlog with the same board choice UX as security — votes, an EFFORT
 // estimate (the shared "score" field, relabelled), a note, and the explicit
 // PRIORITY (drag the headers) that is the build loop's fixed order. Same
-// collapse-to-header + drag mechanics; impact instead of severity, build order
-// instead of fix order. ?format=text / scripts/features reads the same order.
+// collapse-to-header + drag mechanics and the same single work-order view +
+// reset; impact instead of severity, build order instead of fix order.
+// ?format=text / scripts/features reads the same order.
 
-let featOrder = "priority";
 let featItems = [];
 
 async function loadFeatures() {
   let data;
   try {
-    data = await api(`/features?order=${featOrder}`);
+    data = await api(`/features?order=priority`);
   } catch (err) {
     $("features").innerHTML = `<p class="err">${escapeHtml(err.message)}</p>`;
     $("features-sec").hidden = false;
@@ -325,15 +342,12 @@ async function loadFeatures() {
   featItems = data.items;
   const box = $("features");
   box.innerHTML = "";
-  box.className = "board" + (featOrder === "priority" ? " reorderable" : "");
-  $("feat-order-priority").className = featOrder === "priority" ? "on" : "secondary";
-  $("feat-order-impact").className = featOrder === "impact" ? "on" : "secondary";
+  box.className = "board reorderable";
 
   let buildPos = 0;
   for (const it of data.items) {
     const open = it.status === "open";
-    const posLabel =
-      featOrder === "priority" && open ? `<b class="muted">#${++buildPos}</b>` : "";
+    const posLabel = open ? `<b class="muted">#${++buildPos}</b>` : "";
     const el = document.createElement("div");
     el.className = "rowitem board-item";
     el.dataset.id = it.id;
@@ -411,12 +425,7 @@ enableBoardReorder($("features"), async (ids) => {
   await loadFeatures();
 });
 
-for (const mode of ["priority", "impact"]) {
-  $(`feat-order-${mode}`).addEventListener("click", () => {
-    featOrder = mode;
-    loadFeatures();
-  });
-}
+wireBoardReset($("feat-reset-order"), "/features", () => featItems, loadFeatures);
 
 // ---- panel selection board (the ATTENTION loop) ---------------------------
 // A board whose ITEMS are the admin panels themselves — and it has NO board

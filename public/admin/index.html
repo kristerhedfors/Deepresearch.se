@@ -61,15 +61,14 @@
       <p class="muted">The open items from <code>SECURITY-RISKS.md</code>
       (the living register in the repo). Items are collapsed to their
       headers — <b>tap a header</b> to open its full details (summary, votes,
-      score, note), <b>drag the ⠿ grip</b> to reorder. In the fix-order view
-      the top-to-bottom order you drag into IS the explicit <b>priority</b>:
-      the FIXED order the Claude&nbsp;Code security-fix loop works through on
-      its next round (unprioritized items follow by votes, then documented
-      severity). You can still set a priority number by hand inside an item.
-      Switch the view between that fix order and documented severity.</p>
-      <p class="seg" role="group" aria-label="Sort order">
-        <button type="button" id="sec-order-priority" class="on">Fix order (priority)</button>
-        <button type="button" id="sec-order-severity" class="secondary">Documented severity</button>
+      score, note), <b>drag the ⠿ grip</b> to reorder. The top-to-bottom
+      order you drag into IS the explicit <b>priority</b>: the FIXED order
+      the Claude&nbsp;Code security-fix loop works through on its next round —
+      top is first in line to be fixed. <b>Reset order</b> clears every
+      explicit priority, returning the list to its default: documented
+      severity (votes break ties first, if any were cast).</p>
+      <p class="seg">
+        <button type="button" id="sec-reset-order" class="secondary">Reset to default order</button>
       </p>
       <div id="security"></div>
     </section>
@@ -80,15 +79,15 @@
       living roadmap in the repo) — the <b>second channel</b> that feeds a
       Claude&nbsp;Code loop (the first is Security). Items are collapsed to
       their headers — <b>tap a header</b> to open its full details (summary,
-      votes, effort, note), <b>drag the ⠿ grip</b> to reorder. In the
-      build-order view the top-to-bottom order you drag into IS the explicit
-      <b>priority</b>: the FIXED order the feature-build loop works through on
-      its next round (unprioritized items follow by votes, then documented
-      impact). Shipped/dropped items sink to the bottom as the record. Switch
-      the view between that build order and documented impact.</p>
-      <p class="seg" role="group" aria-label="Sort order">
-        <button type="button" id="feat-order-priority" class="on">Build order (priority)</button>
-        <button type="button" id="feat-order-impact" class="secondary">Documented impact</button>
+      votes, effort, note), <b>drag the ⠿ grip</b> to reorder. The
+      top-to-bottom order you drag into IS the explicit <b>priority</b>: the
+      FIXED order the feature-build loop works through on its next round —
+      top is first in line to be built. <b>Reset order</b> clears every
+      explicit priority, returning the list to its default: documented
+      impact (votes break ties first, if any were cast). Shipped/dropped
+      items sink to the bottom as the record.</p>
+      <p class="seg">
+        <button type="button" id="feat-reset-order" class="secondary">Reset to default order</button>
       </p>
       <div id="features"></div>
     </section>

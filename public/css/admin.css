@@ -128,10 +128,10 @@ section.panel-fold.open > h2 .caret { transform: rotate(90deg); }
 .badge.shipped { background: #e3f2e3; color: #2c662c; border-color: #9cc79c; }
 .badge.dropped { background: #eee; color: #666; border-color: #ccc; }
 
-/* Decision boards (Security risks, and any future selection board): items
-   render COLLAPSED to their header — tap a header to open its full detail,
-   drag the grip (work-order view only) to reorder. */
-.seg button.on { outline: 2px solid var(--accent); }
+/* Decision boards (Security risks, Features, and any future selection
+   board): items render COLLAPSED to their header — tap a header to open its
+   full detail, drag the grip to reorder (the one view IS the work order;
+   the Reset button clears priorities back to the documented default). */
 .board-item .board-detail { display: none; }
 .board-item.open .board-detail { display: block; }
 .board-item .head { cursor: pointer; }
@@ -140,15 +140,24 @@ section.panel-fold.open > h2 .caret { transform: rotate(90deg); }
   flex: 0 0 auto;
 }
 .board-item.open .caret { transform: rotate(90deg); }
-/* The drag grip only appears (and only grabs) in the reorderable work order.
-   touch-action:none lets a touch on the grip drag instead of scrolling; the
-   rest of the header keeps its default touch-action so the list still scrolls
-   and headers still tap. */
+/* The drag grip. touch-action:none lets a touch on the grip drag instead of
+   scrolling; the rest of the header keeps its default touch-action so the
+   list still scrolls and headers still tap. The hit target is a finger-sized
+   ~42px square (2026-07-15: the bare glyph was too small to grab on touch);
+   negative margins eat into the row's own padding so the rows still pack
+   tight — the overflow only bleeds into dead space, later rows paint above. */
 .board-item .grip { display: none; }
 .board.reorderable .board-item .grip {
-  display: inline-flex; cursor: grab; touch-action: none;
-  color: var(--muted); user-select: none; padding: 0 .1rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: grab; touch-action: none;
+  color: var(--muted); user-select: none; line-height: 1;
+  font-size: .95rem;
+  flex: 0 0 auto;
+  min-width: 2.6rem; min-height: 2.6rem;
+  margin: -.55rem -.35rem -.55rem -.7rem;
+  border-radius: 8px;
 }
+.board.reorderable .board-item .grip:active { background: var(--panel-2); }
 .board.reordering .board-item .grip { cursor: grabbing; }
 .board-item.dragging {
   opacity: .65; background: var(--panel-2); border-color: var(--accent);
