@@ -110,14 +110,8 @@ body::before {
   color: rgba(61, 52, 24, .66);
   white-space: pre-wrap;
   word-break: break-word;
-  animation: agent-wave 7.5s ease-in-out infinite;
-}
-@keyframes agent-wave {
-  0%, 100% { transform: translateX(0) skewX(0deg); }
-  50% { transform: translateX(7px) skewX(-1.1deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .dr-agent-backdrop-pre { animation: none; }
+  /* NO side-to-side sway (2026-07-14 directive) — see app.css for the note; the
+     terminal text stays put, its only motion is the north-south scroll follow. */
 }
 /* The transparency slider was removed (2026-07-13 directive): the backdrop is
    always shown at its fixed faint ceiling — public/js/agent-backdrop.js. */

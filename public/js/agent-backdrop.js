@@ -33,15 +33,22 @@
 // (2026-07-14 directive: replaced the old tap-on-the-background switch — the icon
 // is now the only switcher, and its only job is switching).
 //
-// SCROLLING is per-mode. In CONVERSATION mode the conversation scrolls natively
-// and the terminal (the background pane) does NOT move — it stays pinned at the
-// live tail (its last command); the terminal has no history worth paging while
-// you read the chat, so it holds still (2026-07-14 directive). In TERMINAL mode
-// a wheel/drag pages BACK through the command history and the conversation (now
-// the background pane) leans along in synchronization — a faint up/down follow,
-// weaker and shorter, just enough to keep the two panes feeling coherent. The
-// newest command line sits ABOVE the composer (the CSS raises the viewport) so
-// it's visible, not hidden behind the input.
+// The terminal text NEVER sways side to side — the old ambient horizontal wave
+// was removed (2026-07-14 directive). Its only motion is north-south, and only
+// in the two scroll cases below.
+//
+// SCROLLING is per-mode, always vertical. In CONVERSATION mode the conversation
+// scrolls natively and the terminal (the background pane) KEEPS PACE with it: the
+// backdrop offset tracks the conversation's scroll position proportionally
+// (convoSyncOffset), so scrolling back through the messages walks the terminal
+// back through its command history and the commands/output behind the chat line
+// up with the prompts and research jobs on screen (2026-07-14 directive). It is
+// directly scroll-linked, so it stays smooth. In TERMINAL mode a wheel/drag pages
+// BACK through the command history and the conversation (now the background pane)
+// leans along in synchronization — a faint up/down follow, weaker and shorter,
+// just enough to keep the two panes feeling coherent. The newest command line
+// sits ABOVE the composer (the CSS raises the viewport) so it's visible, not
+// hidden behind the input.
 
 import {
   CHANNEL_CLIP_MS,
@@ -52,6 +59,7 @@ import {
   channelCount,
   clampLine,
   clipToNextChannel,
+  convoSyncOffset,
   createBackdropModel,
   ensureChannel,
   nextLayerMode,
@@ -315,6 +323,24 @@ function leanChat(signed) {
   chatParTimer = setTimeout(() => { chatParY = 0; applyChatTransform(); }, 150);
 }
 
+// In CONVERSATION mode the backdrop offset is a pure function of how far the
+// conversation is scrolled (convoSyncOffset), so the terminal behind the chat
+// keeps pace with the messages being read. Recompute it from the LIVE scroll
+// position; returns true when it applied (convo mode with content), false in
+// terminal mode where the wheel/touch handlers own the offset instead.
+function recomputeConvoSync() {
+  if (layerMode !== LAYER_CONVO || !hasBackdropContent()) return false;
+  const c = chatEl();
+  if (!c || !pre || !view) return false;
+  const step = convoSyncOffset(
+    c.scrollTop, c.scrollHeight, c.clientHeight,
+    pre.scrollHeight, view.clientHeight,
+  );
+  bgOffset = step.offset;
+  bgPinned = step.pinned;
+  return true;
+}
+
 function render() {
   if (!pre) return;
   // Newest at the bottom, like a real terminal tail; the CSS clips the top so
@@ -325,9 +351,13 @@ function render() {
   let lines = activeLines(model);
   if (model.active === TERM_CHANNEL && termBuf) lines = lines.concat([clampLine(termBuf)]);
   pre.textContent = lines.join("\n");
-  // Fresh output re-pins to the live tail unless the user has scrolled back to
-  // read history; either way keep the offset inside the (now-changed) range.
-  if (bgPinned) bgOffset = 0;
+  // In convo mode, re-derive the offset from the conversation's current scroll
+  // position (the content height just changed). In terminal mode, fresh output
+  // re-pins to the live tail unless the user has scrolled back to read history;
+  // either way keep the offset inside the (now-changed) range.
+  if (!recomputeConvoSync()) {
+    if (bgPinned) bgOffset = 0;
+  }
   applyBgScroll();
 }
 
@@ -439,18 +469,21 @@ function wireScroll() {
   );
   window.addEventListener("touchend", () => { touchActive = false; }, { passive: true });
 
-  // --- CONVO mode: the terminal (background pane) holds STILL. It has no
-  //     history to page while you read the chat, so it stays pinned at its live
-  //     tail (last command) rather than drifting along with the conversation
-  //     scroll (2026-07-14 directive). We keep lastChatTop current so the delta
-  //     is right if we ever lean again, but the scroll itself moves nothing on
-  //     the terminal side. ---
+  // --- CONVO mode: the terminal (background pane) KEEPS PACE with the messages
+  //     (2026-07-14 directive). As the conversation scrolls, the backdrop offset
+  //     tracks it proportionally (convoSyncOffset): at the newest end it pins to
+  //     its live tail; scrolling up toward older messages walks the terminal
+  //     back through its command history so the commands/output behind the chat
+  //     line up with the prompts and research jobs on screen. Purely vertical,
+  //     and directly scroll-linked so it stays smooth. In terminal mode the
+  //     wheel/touch handlers own the offset, so this defers to them. ---
   const c = chatEl();
   if (c) {
     lastChatTop = c.scrollTop;
     c.addEventListener("scroll", () => {
       try {
         lastChatTop = c.scrollTop;
+        if (recomputeConvoSync()) applyBgScroll();
       } catch { /* decoration — never break the page */ }
     }, { passive: true });
   }
