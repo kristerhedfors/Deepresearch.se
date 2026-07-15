@@ -11,7 +11,7 @@
 // Feedback-mode / execution-sandbox rows (renderConfigKnobs +
 // wireFeedbackKnob / wireSandboxKnob — rendered by account-settings.js).
 
-import { escapeHtml } from "./notifications.js";
+import { escapeHtml, formatCount as fmtN } from "./notifications.js";
 import {
   bashLiteAvailable,
   bashLiteOn,
@@ -448,11 +448,6 @@ export function renderDocs() {
 // only a percentage ever reaches the client — never amounts) and plain
 // search counts. Currency is the admin's concern.
 function usageBlock(label, win, rolling) {
-  const fmtN = (n) => {
-    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
-    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K";
-    return String(n);
-  };
   const track = (pct) =>
     `<div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${Math.min(100, pct)}%"></div></div>`;
   const budgetPct = win.budget_pct;
