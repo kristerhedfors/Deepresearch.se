@@ -1171,6 +1171,16 @@ what docs claim); and update the skill list below plus the skill's
   per-token quota-adjust control surfaces (self-service + admin), the
   frozen KDF constants, the URL-safe-token-tiers-only rule, and the
   reserved "workspace" slug. Architecture: `docs/WORKSPACE-SECURITY.md`.
+- **quota-grant-assessment** — testing/auditing the quota-limited,
+  account-bound temporary grant tokens (the secure-workspace borrowed
+  capabilities): the invariant checklist (token-fixed/row-metered under live
+  adjusts, concurrency overrun, refund floors, expiry, budget ceilings,
+  account binding, the cross-family forgery matrix, the workspace flow end
+  to end), the combined-D1-fake test technique behind
+  `src/workspace-grants.test.js`, the snapshot-regeneration gotcha, and the
+  extension checklist for a new grant family/service. Companion to
+  secure-workspaces (the feature map); this one is the verification
+  methodology.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
   `server_history` cloud knob, RAG documents, projects, the secret-keyed
   project vault, and the encryption-asymmetry rule (`storage.js`,
