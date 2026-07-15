@@ -12,6 +12,21 @@ Still experimental and nowhere near production-ready; MIT-licensed, so every
 privacy claim is yours to verify. The `/architecture/` page visualizes the
 trade.
 
+A first-class part of that security story, stated up front: the live site —
+the **Se/cure** tier included — is deployed on Cloudflare and served
+directly from this GitHub repository (git-connected: a push to `main` is
+what production runs). That serving chain is what makes the claims
+independently verifiable, and it is also the trust boundary. So to make it
+really secure, build upon it: the point of the project is for anyone to
+fork this architecture and deploy it for their own use case, ideally in an
+environment that is already network- and authentication-restricted — the
+"Installing your own instance" section below is the complete walkthrough.
+What the architecture provides is an easily extendable platform with some
+peculiar features (a browser-side research pipeline, sealed browser-local
+state, lendable capability grants, an in-browser Linux VM), and those
+features are the subject of the exploration in this research and innovation
+project.
+
 The **Se/rver** tier is a deep-research AI assistant on Cloudflare Workers: a
 static chat UI plus a streaming `/api/chat` endpoint that runs a
 Worker-orchestrated research pipeline (triage → search waves → gap check →
