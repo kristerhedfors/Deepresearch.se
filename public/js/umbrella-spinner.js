@@ -177,6 +177,10 @@ const CREAM = "#fff4f8"; // the fringe tassels of the revived rim
 const HANDLE = "#9c6472"; // the handle's dusty-rose shaft once alive
 const CHECK_PINK = "#e06c8c"; // the finale's ✓ — the fleet rose, matching the
 // CSS `.check` (--check-pink / --pink) so the canvas ✓ hands off seamlessly.
+// Se/rver's LOCAL steps borrow this spinner (the umbrella marks on-device work
+// in BOTH tiers — the per-task symbol grammar, docs/SYMBOL-LANGUAGE.md §6) but
+// keep the blue tier's checkmark: opts.check = "blue" folds into --check-blue.
+const CHECK_BLUE = "#0d4fa0";
 
 /** "#rrggbb" → [r,g,b]. @param {string} c */
 function hex(c) {
@@ -215,10 +219,12 @@ function reducedMotion() {
  * cleanup callers need).
  *
  * @param {HTMLElement} host  the `.spin` / `.typing-icon` element
- * @param {{ size?: number, style?: number, speed?: number }} [opts]
+ * @param {{ size?: number, style?: number, speed?: number, check?: "pink"|"blue" }} [opts]
  *   size  — the drawing box in px (defaults to ~2.4× the host's rendered size)
  *   style — which fleet canopy (see spinnerStyle); adjacent slots pass 0,1,…
  *   speed — the admin anim multiplier (1 = default; BASE_SPEED applied on top)
+ *   check — the finale ✓'s color: "pink" (default, Se/cure) or "blue" (Se/rver's
+ *           local steps — the umbrella works, the tier's checkmark completes)
  * @returns {{ stop: () => void, finish: (onDone?: () => void) => void }}
  *   stop   — tear down immediately (no finale), for cancel/settle paths.
  *   finish — play the completion finale (speed-run into the pink umbrella, then
@@ -243,6 +249,7 @@ export function mountUmbrellaSpinner(host, opts = {}) {
     const base = Math.max(hostBox.width, hostBox.height) || 32;
     const size = Math.round(opts.size || base * 2.4);
     const style = spinnerStyle(opts.style ?? 0);
+    const checkCol = opts.check === "blue" ? CHECK_BLUE : CHECK_PINK;
     const clockRate = BASE_SPEED * clampAnimMult(opts.speed);
 
     // Neutralize the CSS twirly-logo look; the canvas is the indicator now.
@@ -582,7 +589,7 @@ export function mountUmbrellaSpinner(host, opts = {}) {
       ctx.scale(sc2, sc2);
       ctx.translate(-ccx, -ccy);
       ctx.globalAlpha = a;
-      ctx.strokeStyle = CHECK_PINK;
+      ctx.strokeStyle = checkCol;
       ctx.lineWidth = Math.max(2, R * 0.16);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";

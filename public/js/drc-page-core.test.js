@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  disclosureText,
+  phaseChannel,
   grantFlagEnabled,
   grantLive,
   normalizeSearchBackend,
@@ -101,4 +103,62 @@ test("wmHtml escapes markup first, then tightens the wordmark slash", () => {
   // Case-insensitive wordmark match, and unrelated slashes untouched.
   assert.equal(wmHtml("SE/CURE"), 'SE<span class="sl">/</span>CURE');
   assert.equal(wmHtml("a/b"), "a/b");
+});
+
+// ---- the per-task ONLINE/OFFLINE symbol grammar (SYMBOL-LANGUAGE.md §6) ----
+
+test("phaseChannel: on-device phases are local, network phases online, unknown defaults ONLINE", () => {
+  for (const p of ["sandbox", "clarify", "introspect", "_note"])
+    assert.equal(phaseChannel(p), "local", p);
+  for (const p of ["triage", "search", "harvest", "gap", "synth", "validate", "answer", "source", "recall"])
+    assert.equal(phaseChannel(p), "online", p);
+  // Over-disclosing is the safe failure: a NEW phase wears the balloon until
+  // someone proves it never crosses the network.
+  assert.equal(phaseChannel("future-phase"), "online");
+  assert.equal(phaseChannel(undefined), "online");
+});
+
+test("disclosureText: local phases carry no notice", () => {
+  assert.equal(disclosureText("sandbox"), "");
+  assert.equal(disclosureText("clarify", { provider: "OpenAI" }), "");
+});
+
+test("disclosureText: provider phases name the provider and the own-key path", () => {
+  for (const p of ["triage", "harvest", "synth", "validate", "answer", "source", "gap"]) {
+    const t = disclosureText(p, { provider: "OpenAI", viaProxy: false });
+    assert.match(t, /OpenAI/, p);
+    assert.match(t, /your own API key/, p);
+    assert.match(t, /server was not involved/i, p);
+  }
+});
+
+test("disclosureText: the borrowed proxy is disclosed as the one server-touching path", () => {
+  const t = disclosureText("synth", { provider: "Berget (borrowed)", viaProxy: true });
+  assert.match(t, /THROUGH the DeepResearch\.Se server/);
+  assert.match(t, /Berget/);
+  assert.match(t, /metered/i);
+});
+
+test("disclosureText: search discloses query-only, per route", () => {
+  const grant = disclosureText("search", { search: "grant" });
+  assert.match(grant, /Only the search QUERY/);
+  assert.match(grant, /Exa/);
+  assert.match(grant, /grant/);
+  assert.match(grant, /conversation itself never left/i);
+  const self = disclosureText("search", { search: "self" });
+  assert.match(self, /Only the search QUERY/);
+  assert.match(self, /configured yourself/);
+  assert.match(self, /No DeepResearch\.Se server/);
+});
+
+test("disclosureText: recall names the embeddings provider and the local index", () => {
+  const t = disclosureText("recall", { provider: "OpenAI", embedProvider: "Groq" });
+  assert.match(t, /Groq/);
+  assert.match(t, /embedding/i);
+  assert.match(t, /index never leaves/i);
+});
+
+test("disclosureText: unknown online phases still disclose", () => {
+  const t = disclosureText("future-phase", { provider: "OpenAI" });
+  assert.match(t, /left your browser/);
 });

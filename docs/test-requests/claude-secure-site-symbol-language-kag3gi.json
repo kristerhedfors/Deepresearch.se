@@ -43,6 +43,29 @@
       "runs": 2,
       "minted_id": 20,
       "verdicts": []
+    },
+    {
+      "label": "Per-task channel: sandbox step wears the UMBRELLA on Se/rver",
+      "summary": "NEW granular symbol grammar: a step that runs entirely on-device wears Se/cure's umbrella even on the blue tier. Turn the sandbox knob ON (Settings → the experimental Linux sandbox), then send the prefilled request. PASS: the sandbox step's waiting symbol is the PINK UMBRELLA spinner (clearly different from the balloon spinners on the other steps), and on completion it folds into the tier's plain BLUE check mark like every other step. FAIL: the sandbox step showing a balloon, or a pink check mark appearing on /rver.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "compose",
+          "text": "Use the shell to count the lines in /etc/os-release and tell me the distro name."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Se/cure: online steps end as tappable ℹ notices, local ones as pink ✓",
+      "summary": "NEW on /cure (needs a provider key, or a borrowed research-space link): send any research question. PASS: steps that go ONLINE (analyzing/harvesting/writing/reviewing — your provider; any web search) show the BALLOON spinner and complete into a small blue ℹ instead of the pink check; tapping the ℹ opens a bubble that says exactly what that step sent and where (e.g. 'sent to OpenAI directly from your browser on your own API key — the DeepResearch.Se server was not involved'), and tapping anywhere else closes it; steps that stay on-device (the sandbox, a clarify question) keep the umbrella spinner and the pink check. FAIL: a pink check on a step that called a provider, an ℹ that opens nothing, or a bubble that won't dismiss. Please read one bubble fully and judge whether the disclosure is accurate and understandable — that text is the feature.",
+      "target": "/cure",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
     }
   ]
 }

@@ -207,7 +207,17 @@ than the umbrella intro, test-pinned) and the WAITING SYMBOL
 (`public/js/balloon-spinner.js` — the blue tier's typing/step spinners
 boomerang the balloon intro in miniature and fold, on completion, into a
 BLUE ✓ via the colored balloon, where Se/cure's umbrella folds to pink;
-`--check-blue` in app.css). Design record: `docs/SYMBOL-LANGUAGE.md`.
+`--check-blue` in app.css). Round 3 (same day) made the grammar GRANULAR
+per task, in both tiers: a step's waiting symbol is its CHANNEL — the
+umbrella for on-device work (Se/rver's in-browser sandbox step wears the
+pink umbrella, folding into the blue ✓: the tier just goes to checkmarks,
+already assuming cloud), the balloon for anything that crosses the network.
+On Se/cure an ONLINE step (own-key provider calls, grant/proxy search,
+recall embeddings) completes into a tappable ℹ INFORMATION NOTICE instead
+of the pink ✓, whose bubble discloses exactly what that task sent, to whom,
+on whose credential (pure `phaseChannel`/`disclosureText` in
+`drc-page-core.js`; `stepIsLocal` in `activity-core.js`; UX-2 in the
+ux-conventions registry). Design record: `docs/SYMBOL-LANGUAGE.md` §6.
 RESIDUAL: live verification on real devices, and any grown-up guide duties
 (a tap-to-explain bubble like the ghost's).
 
@@ -261,3 +271,12 @@ RESIDUAL: live verification on real devices, and any grown-up guide duties
   app.css --check-blue). One shared renderer (drawBalloonFigure) keeps the
   intro, spinner, and guide the same figure; the umbrella spinner stays
   Se/cure's. CSS handshake bumped h36→h37 for the .check color change.
+- **2026-07-15** — F-16 round 3: the granular per-task channel grammar. The
+  umbrella now marks OFFLINE work and the balloon ONLINE work in BOTH tiers:
+  Se/rver's in-browser sandbox step wears the umbrella spinner (blue-✓ finale
+  via the new `check` option); on Se/cure every online step wears the balloon
+  and completes into a tappable ℹ notice (`finale: "info"`) whose bubble says
+  what it sent and where (`disclosureText` + the send-time `sendCtx`), while
+  local steps keep the pink ✓. Unknown phases default ONLINE (over-disclosing
+  is the safe failure). Codified as UX-2; classification + disclosure pure and
+  Node-tested; balloon modules added to the /cure public allowlist.
