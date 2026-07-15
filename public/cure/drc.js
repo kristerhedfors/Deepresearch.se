@@ -2287,7 +2287,14 @@ $("settingsclose").addEventListener("click", closeSettings);
 $("settingsview").addEventListener("click", (e) => {
   if (e.target === $("settingsview")) closeSettings();
 });
-// The secure-workspace pane (settings row → share composer; #w= → unlock).
+// The secure-workspace pane (header share icon / settings row → share
+// composer; #w= → unlock). The header icon (2026-07-15 owner directive) is
+// the first-class door — it sits where the ghost used to, ghost one step
+// left; the settings row stays as the explained entry next to the ⓘ.
+$("sharebtn").addEventListener("click", () => {
+  closeSettings();
+  openWorkspaceView("share");
+});
 $("wkopenbtn").addEventListener("click", () => {
   closeSettings();
   openWorkspaceView("share");
