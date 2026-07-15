@@ -34,6 +34,15 @@ XSalsa20-Poly1305 (no TweetNaCl dependency here; WebCrypto has no Salsa).
 | Reserved slug ("workspace" is never a publication) | `src/pub.js` `pubSlugOk`, `public/js/drc-page-core.js` `parsePublicationRef` |
 | Public allowlist entry | `src/assets.js` (`/js/workspace-core.js`) |
 
+Two unlock-pane touches (owner directive, 2026-07-15): the `#wkopen`
+explainer text EMBEDS a link to `/welcome/` on the tier name (a workspace
+link is many recipients' first contact with the site; `target=_blank` so the
+pending `#w=` blob isn't dropped), and the CORRECT password fires
+`playUnlockCelebration` (drc.js) — one LARGE umbrella playing the intro's
+arc fast, full-screen, folding into the pink ✓ (mountUmbrellaSpinner's
+completion finale at `unlockCelebrationSize` scale, drc-page-core.js;
+tap-to-skip, reduced-motion-skipped, watchdog-cleared, entirely fail-soft).
+
 ## Rules that must hold
 
 1. **Fragment-only transport.** The blob rides `#w=` (never the query); the

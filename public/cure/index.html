@@ -406,8 +406,13 @@
       </div>
 
       <div id="wkopen" hidden>
+        <!-- The tier name is a LINK (owner directive, 2026-07-15): a workspace
+             link is many recipients' very first contact with the site, so the
+             text embeds the door to what they just landed on. target=_blank —
+             navigating this tab away would drop the pending #w= blob. -->
         <p class="muted">Someone shared a <b>secure workspace</b> with you: a fully configured
-          Se<span class="sl">/</span>cure session sealed inside this link's <b>#anchor</b> — the encrypted
+          <a href="/welcome/" target="_blank" rel="noopener">DeepResearch.<b>Se<span class="sl">/</span>cure</b></a>
+          session sealed inside this link's <b>#anchor</b> — the encrypted
           part after <code>#</code> that browsers never send to any server. Enter the password
           you received separately to open it, entirely in this browser.</p>
         <form id="wkopenform">
