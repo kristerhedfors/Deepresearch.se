@@ -275,3 +275,40 @@ the cross-tier `b64ToF32` (server/client module graphs must not share).
 OPERATIONAL LESSON: a container reset mid-session destroyed the first,
 uncommitted application of all six moves — commit after EACH extraction,
 not at the end of the pass.
+
+## Fifth worked example (2026-07-15) — the grant-presentation pass
+
+Whole-repo survey again (three `Explore` fan-outs: the websearch/proxy grant
+subsystems incl. the new quota-adjust endpoints, the PR #87 sandbox outbox
+flow, and drc.js/workspace + an everything-else src sweep). Two scopes came
+back essentially "nothing left" — the outbox flow was AUTHORED with the
+pure-core convention already applied, and the src-wide sweep found only
+same-name-different-body pairs (feedback vs testpoints `normalizeStatus`) and
+the intentional per-board façade parallels. Three moves survived:
+- **`src/grant-http.js`** (flagship de-dup): websearch.js and proxy.js (born
+  by generalizing it) carried six byte-identical inline blocks — the
+  budget-exceeded 409 builder (×6!), the adjust-result response ladder (×4,
+  free variable = the not_found wording), the `resolveQuotaPatch` set/±/pause
+  clamp arithmetic (×2), the web-result projections, the token-body parse
+  guard, and three constants. One leaf (imports only `jsonResponse`) now owns
+  them; every moved symbol was PRIVATE, so zero re-exports and zero test
+  edits — the cleanest possible cut. The table-name-parameterized meter set
+  (`outstandingRemaining`, reserve/refund) stays declined per the prior pass,
+  and the token-family mint/verify duplication stays fenced off by the
+  token-crypto.js namespace comment.
+- **Exec bridge codec → `bash-core.js`** (client): the marker+base64 envelope
+  inside `sandbox.js`'s `execInSandbox` — `execEnvelope` (carrying the
+  RC-before-any-pipe exit-code fix comment verbatim, now PINNED by a unit
+  test), `parseExecEnvelope`, `concatChunks`, `base64ToBytes` — plus
+  `exportFile`'s mount-tree guard as `isExportablePath` next to `OUTBOX_PATH`.
+  An "output parser mixed into orchestration" carve-out that earns its keep
+  because it makes the exec protocol testable; sandbox.js keeps only VM glue
+  (verified with `node --check` — the file is deliberately not Node-importable).
+- **`workspacePayloadCarries` → `workspace-core.js`**: drc.js's share-pane
+  guard inlined the which-payload-keys-are-envelope-metadata fact
+  (`v`/`kind`/`name`) that belongs beside `buildWorkspacePayload`.
+Declined on principle: the repo-wide `base64ToBytes` idiom dedup (7 files
+across separate module graphs — churn, not drift risk) and unifying the two
+FNV-1a hashes (`sandbox-files.js` `projHash` vs `sandbox.js` `cacheIdFor` —
+the latter feeds the VM disk-cache identity, where even an
+equivalent-looking rewrite risks invalidating every user's cached VM image).

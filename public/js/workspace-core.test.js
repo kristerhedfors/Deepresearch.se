@@ -12,6 +12,7 @@ import {
   WORKSPACE_V,
   applyWorkspacePayload,
   buildWorkspacePayload,
+  workspacePayloadCarries,
   bytesToHex,
   deriveLinkKey,
   deriveMasterKeyHex,
@@ -180,6 +181,18 @@ test("buildWorkspacePayload projects only the selected sections", () => {
   assert.deepEqual(minimal, { v: WORKSPACE_V, kind: WORKSPACE_KIND });
   const noKeys = buildWorkspacePayload({ keys: {} }, { keys: true });
   assert.equal(noKeys.keys, undefined);
+});
+
+test("workspacePayloadCarries counts content keys, never the envelope metadata", () => {
+  // v/kind/name are envelope metadata — a named-but-empty workspace carries nothing
+  assert.equal(workspacePayloadCarries({ v: 1, kind: "k", name: "Empty" }), 0);
+  assert.equal(workspacePayloadCarries(buildWorkspacePayload({}, { name: "Empty" })), 0);
+  const carrying = buildWorkspacePayload(
+    { keys: { openai: "sk-x" }, research: true },
+    { keys: true, settings: true, name: "Full" },
+  );
+  assert.equal(workspacePayloadCarries(carrying), 2); // keys + settings
+  assert.equal(workspacePayloadCarries(null), 0);
 });
 
 test("applyWorkspacePayload merges into a DRC state and hands back the grants", () => {
