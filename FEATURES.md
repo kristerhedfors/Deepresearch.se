@@ -184,6 +184,22 @@ working on now (`src/panels.js`, D1 `panels_reviews`, façade over
 "attention loop" variant is documented in the **feature-board** skill and
 `docs/DECISION-BOARD-LOOPS.md`.
 
+### F-16 · Symbol language for DeepResearch.**Se/rver** — 🔵 OPEN (medium)
+
+DeepResearch.**Se/cure** already speaks in symbols: the ghost (anonymity)
+holding **pink umbrellas** (shelter), the first-visit umbrella intro
+(`public/cure/umbrella.js`), and an umbrella landing for every completed
+task. DeepResearch.**Se/rver** needs a sibling language — **positive**, and it
+must **tell something true** about the tier (memory, stewardship, reach,
+lift), tied into a similar animation: a vortex-derived first-visit intro, a
+per-completed-task landing event, an ambient idle state, and a mascot
+counterpart to the ghost. Design brief: `docs/SYMBOL-LANGUAGE.md`. Four
+animated candidate concepts await the owner's pick in
+`docs/symbol-language/proposals.html` (the Lift balloons / the Keeper
+lighthouse / the Star Chart constellation / the Messenger doves); the chosen
+one is then implemented in the umbrella conventions (pure Node-tested core,
+DOM layer, tap-to-skip, reduced-motion, admin `anim_speed`).
+
 ---
 
 ## 4. History log (append-only)
@@ -204,3 +220,11 @@ working on now (`src/panels.js`, D1 `panels_reviews`, façade over
   in `ADMIN_BOARDS`; documented the new loop type in the feature-board skill
   and `docs/DECISION-BOARD-LOOPS.md`. Also folded the two usage tables one
   layer down under `<details>` so the admin view leads with the boards.
+- **2026-07-15** — F-16 opened: a symbol language for DeepResearch.**Se/rver**
+  to pair with DeepResearch.**Se/cure**'s ghost-and-pink-umbrellas language
+  (the umbrella intro; an umbrella landing per completed task). Documented the
+  established Se/cure symbolism + the design brief in
+  `docs/SYMBOL-LANGUAGE.md` and built four animated candidate concepts for the
+  owner to pick from (`docs/symbol-language/proposals.html` — the Lift
+  balloons, the Keeper lighthouse, the Star Chart constellation, the
+  Messenger doves), each with a working per-completed-task landing event.

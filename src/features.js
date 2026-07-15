@@ -180,6 +180,14 @@ export const FEATURE_ITEMS = [
     summary:
       "A third decision-board channel of a new KIND: its items ARE the admin panels themselves, reshaped purely by the owner's ▲/▼ thumbs (no drag, no priority, no board widget). The votes-driven focus order is what a Claude Code session reads (scripts/panels) to know which admin surface the owner is working on now (src/panels.js, D1 panels_reviews, façade over board.js). See the feature-board skill (the attention board).",
   },
+  {
+    id: "F-16",
+    title: "Symbol language for DeepResearch.Se/rver",
+    impact: "medium",
+    status: "open",
+    summary:
+      "DeepResearch.Se/cure speaks in symbols (the ghost holding pink umbrellas; the umbrella intro; an umbrella landing per completed task). DeepResearch.Se/rver needs a sibling language — positive, telling something true about the tier (memory, stewardship, reach, lift), tied into a similar vortex-derived intro + per-task landing event + mascot. Brief: docs/SYMBOL-LANGUAGE.md; four animated candidates await the owner's pick in docs/symbol-language/proposals.html.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
