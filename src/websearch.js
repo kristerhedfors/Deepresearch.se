@@ -254,6 +254,73 @@ async function listGrants(env) {
 }
 
 /**
+ * ADJUST a live grant's quota — the minting user's per-token control (the
+ * secure-workspaces directive, 2026-07-15: a grant embedded in a shared
+ * workspace link stays FIXED as a token, while its allowance is administered
+ * live — the minter adds or removes quota, and every holder of the link feels
+ * it immediately, because the D1 row is the meter, not the token). Takes an
+ * ABSOLUTE `quota` or a RELATIVE `delta`; the new quota is clamped to ≥ 0
+ * (0 = paused — `used < quota` stops reserving; remaining reads clamp at 0
+ * even when quota drops below used). An INCREASE is checked against the
+ * global outstanding-remaining budget ceiling, exactly like a mint.
+ * `opts.ownerId` restricts the adjustment to rows minted by that user (the
+ * authed self-service path); a mismatch reads as not_found so the endpoint
+ * never confirms someone else's jti.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} jti
+ * @param {{ quota?: number, delta?: number }} patch
+ * @param {{ ownerId?: string, budget?: number }} [opts]
+ * @returns {Promise<(Omit<GrantView, "token"> & { error?: undefined }) | { error: string, outstanding?: number, budget?: number } | null>}
+ */
+export async function adjustGrantQuota(env, log, jti, patch, opts = {}) {
+  const db = await getDb(env);
+  if (!db) return null;
+  const row = await db
+    .prepare("SELECT jti, user_id, quota, used, expires_at, label, source FROM websearch_grants WHERE jti = ?1")
+    .bind(String(jti))
+    .first()
+    .catch(() => null);
+  if (!row) return { error: "not_found" };
+  if (opts.ownerId != null && String(row.user_id) !== String(opts.ownerId)) return { error: "not_found" };
+
+  if (!patch || (patch.quota == null && patch.delta == null)) return { error: "bad_request" };
+  const current = Number(row.quota);
+  const next = patch.quota != null ? Math.floor(Number(patch.quota)) : current + Math.floor(Number(patch.delta));
+  if (!Number.isFinite(next)) return { error: "bad_request" };
+  const clamped = Math.max(0, next);
+
+  const increase = clamped - current;
+  const budget = Number(opts.budget) > 0 ? Math.floor(Number(opts.budget)) : 0;
+  if (increase > 0 && budget > 0) {
+    const outstanding = await outstandingRemaining(db);
+    if (outstanding + increase > budget) {
+      log.warn("websearch.adjust_budget_exceeded", { jti: String(jti), increase, outstanding, budget });
+      return { error: "budget_exceeded", outstanding, budget };
+    }
+  }
+
+  const ok = await db
+    .prepare("UPDATE websearch_grants SET quota = ?2 WHERE jti = ?1")
+    .bind(String(jti), clamped)
+    .run()
+    .then((r) => Number(r?.meta?.changes || 0) >= 1)
+    .catch(() => false);
+  if (!ok) return null;
+  const used = Number(row.used);
+  log.info("websearch.quota_adjusted", { jti: String(jti), from: current, to: clamped, by: opts.ownerId || "admin" });
+  return {
+    jti: String(row.jti),
+    quota: clamped,
+    used,
+    remaining: Math.max(0, clamped - used),
+    expiresAt: Number(row.expires_at) * 1000,
+    label: row.label ? String(row.label) : null,
+    source: row.source ? String(row.source) : null,
+  };
+}
+
+/**
  * Revokes a grant by deleting its row — the token stops verifying immediately.
  * @param {Env} env
  * @param {string} jti
@@ -285,6 +352,43 @@ export async function handleWebSearchGrant(_request, env, log, identity) {
   const grant = await grantWebSearch(env, log, identity);
   if (!grant) return jsonResponse({ error: "Web-search grants are unavailable." }, 503);
   return jsonResponse(grant);
+}
+
+/**
+ * POST /api/websearch/adjust — AUTHED. Body: { jti, quota | delta }. The
+ * minting user's self-service quota control over their OWN grants (the
+ * secure-workspaces "control the tokens you minted" surface): raise, lower,
+ * or pause (quota 0) a grant they minted — scoped to rows whose user_id is
+ * the caller, and budget-checked on increase like a mint. Admins adjust ANY
+ * grant via PATCH /api/admin/websearch/:jti instead.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
+export async function handleWebSearchAdjust(request, env, log, identity) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  const jti = typeof body?.jti === "string" ? body.jti : "";
+  if (!jti) return jsonResponse({ error: "jti is required." }, 400);
+  const cfg = await grantDefaults(env);
+  const adjusted = await adjustGrantQuota(
+    env,
+    log,
+    jti,
+    { quota: body.quota, delta: body.delta },
+    { ownerId: String(identity.id), budget: cfg.budget },
+  );
+  if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
+  if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant of yours." }, 404);
+  if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
+  if (adjusted.error === "budget_exceeded") {
+    return jsonResponse(
+      { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
+      409,
+    );
+  }
+  return jsonResponse(adjusted);
 }
 
 /**
@@ -437,6 +541,25 @@ export async function handleAdminWebSearch(request, env, url, log, identity) {
     const ok = await revokeGrant(env, del[1]);
     log.info("websearch.revoked", { jti: del[1], ok });
     return jsonResponse({ ok });
+  }
+
+  // PATCH /:jti — adjust a grant's quota in place (absolute `quota` or
+  // relative `delta`): the admin's per-token add/remove-quota control. The
+  // token in circulation stays valid; only its metered allowance moves.
+  if (del && method === "PATCH") {
+    const body = /** @type {any} */ (await request.json().catch(() => ({})));
+    const cfg = await grantDefaults(env);
+    const adjusted = await adjustGrantQuota(env, log, del[1], { quota: body.quota, delta: body.delta }, { budget: cfg.budget });
+    if (!adjusted) return jsonResponse({ error: "Quota adjustment unavailable." }, 503);
+    if (adjusted.error === "not_found") return jsonResponse({ error: "No such grant." }, 404);
+    if (adjusted.error === "bad_request") return jsonResponse({ error: "quota or delta must be a number." }, 400);
+    if (adjusted.error === "budget_exceeded") {
+      return jsonResponse(
+        { error: `Global budget of ${adjusted.budget} would be exceeded (${adjusted.outstanding} already outstanding).` },
+        409,
+      );
+    }
+    return jsonResponse(adjusted);
   }
 
   return jsonResponse({ error: "Not found." }, 404);

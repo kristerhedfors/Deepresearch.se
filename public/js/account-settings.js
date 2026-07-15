@@ -9,6 +9,8 @@
 import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setServerHistory, setShodanMcp } from "./settings.js";
 import { syncToClient, syncToServer } from "./sync.js";
+import { openBundle } from "./proxy-bundle.js";
+import { buildWorkspacePayload, generateWorkspacePassword, sealWorkspace, workspaceLink } from "./workspace-core.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -125,12 +127,14 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    ${workspaceShareSection(!!ctx.me?.email)}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
+  if (ctx.me?.email) wireWorkspaceShare();
 
   if (usable) wireCloudStorageKnob();
   if (shodanUsable) {
@@ -145,6 +149,120 @@ export async function loadSettingsView(ctx) {
       off: "Google Maps is off — nothing is sent to Google.",
     });
   }
+}
+
+// ---- the secure-workspace share (Se/cure workspaces, minted from Se/rver) ----
+//
+// Packages this account's TEMPORARY, QUOTA-BOUND grants (the ghost-crossover
+// web-search grant + secure-research-space bundle — the same allowances the
+// ghost button lends) into ONE OFFLINE Se/cure workspace link:
+// /cure/workspace#w=<ciphertext>. The sealing happens ENTIRELY in this
+// browser (public/js/workspace-core.js — the hacka.re-cloned mechanism): the
+// server mints the grant tokens through the two existing authed endpoints
+// and never sees the password or the assembled link. The minter keeps
+// control afterwards: each embedded token's quota can be raised, lowered,
+// paused, or revoked (POST /api/websearch/adjust, /api/proxy/adjust — or the
+// admin panel) while the link itself never changes.
+
+const WORKSPACE_INFO = `<strong>Share a Se/cure workspace</strong><br>
+  Creates a <b>single offline link</b> to a ready-to-use
+  <b>Se/cure</b> session carrying a bounded allowance from YOUR account:
+  a few server web searches and LLM calls (the same temporary grants the
+  ghost button lends you). Everything is <b>encrypted into the link's
+  #anchor</b> — browsers never send that part to any server — and the
+  password travels separately, so the link alone reveals nothing. You stay
+  in control: the allowances are quota-metered per token, and you can add
+  or remove quota (or revoke) at any time without changing the link.`;
+
+/** @param {boolean} signedIn */
+function workspaceShareSection(signedIn) {
+  if (!signedIn) return "";
+  return `
+    <div class="settings-item" id="wsprow">
+      <div class="settings-row">
+        <span class="settings-label">Share a Se<span class="sl">/</span>cure workspace
+          <button type="button" class="setting-info" data-pop="wsppop" aria-label="More about secure workspaces">ⓘ</button>
+        </span>
+        <button type="button" id="wspcreate">Create link</button>
+      </div>
+      <div class="setting-pop" id="wsppop" hidden>${WORKSPACE_INFO}</div>
+      <p id="wspstatus" class="muted setting-note" hidden></p>
+      <div id="wspresult" hidden>
+        <textarea id="wsplink" readonly rows="3" style="width:100%;font-size:.72rem;word-break:break-all"></textarea>
+        <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button type="button" id="wspcopylink">Copy link</button>
+          <button type="button" id="wspcopypass">Copy password</button>
+        </div>
+        <p class="muted setting-note" id="wsppassnote"></p>
+      </div>
+    </div>`;
+}
+
+function wireWorkspaceShare() {
+  const btn = document.getElementById("wspcreate");
+  const status = document.getElementById("wspstatus");
+  if (!btn) return;
+  let password = "";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    status.hidden = false;
+    status.textContent = "Minting your temporary grants…";
+    try {
+      // 1. The two existing authed mints (both reuse-per-user; each fail-soft —
+      //    a workspace with only one allowance is still a workspace).
+      const post = (path) =>
+        fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+      const [ws, bundle] = await Promise.all([post("/api/websearch/grant"), post("/api/proxy/grant")]);
+      // The proxy bundle's GRANT tokens ride sealed in its blob — open it
+      // locally with the key that came alongside (never sent anywhere).
+      let proxy = [];
+      if (bundle?.blob && bundle?.key) {
+        const opened = await openBundle(bundle.blob, bundle.key).catch(() => null);
+        if (opened && Array.isArray(opened.grants)) {
+          proxy = opened.grants.filter((g) => g && (g.svc === "web" || g.svc === "api") && typeof g.token === "string");
+        }
+      }
+      const grants = { ws: ws?.token || null, proxy };
+      if (!grants.ws && !proxy.length) {
+        status.textContent = "No grants available right now (the feature may be disabled) — nothing to share.";
+        return;
+      }
+      // 2. Seal + link, entirely in this browser.
+      status.textContent = "Sealing the workspace…";
+      const payload = buildWorkspacePayload({}, { grants, settings: false, name: "Borrowed research space" });
+      password = generateWorkspacePassword();
+      const blob = await sealWorkspace(payload, password);
+      const link = workspaceLink(location.origin, blob);
+      document.getElementById("wsplink").value = link;
+      document.getElementById("wsppassnote").textContent =
+        `Password: ${password} — share it through a DIFFERENT channel than the link. ` +
+        "The allowance is your account's temporary quota; adjust or revoke it any time (the link stays the same).";
+      document.getElementById("wspresult").hidden = false;
+      status.textContent = "Workspace link ready.";
+    } catch (err) {
+      status.textContent = err?.message || "Could not create the workspace link.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("wspcopylink")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("wsplink").value);
+      document.getElementById("wspcopylink").textContent = "Copied ✓";
+    } catch {
+      document.getElementById("wspcopylink").textContent = "Select and copy manually";
+    }
+  });
+  document.getElementById("wspcopypass")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(password);
+      document.getElementById("wspcopypass").textContent = "Copied ✓";
+    } catch {
+      document.getElementById("wspcopypass").textContent = "Copy manually";
+    }
+  });
 }
 
 // The cloud knob is the one setting whose flip triggers a bulk move

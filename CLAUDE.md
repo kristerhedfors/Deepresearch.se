@@ -288,6 +288,14 @@ update the row in the same pass. See the **feature-maintenance** skill.
    `POST /api/admin/proxy` (link). Same FAIL-SAFE posture (no D1 → 503, no
    unmetered spend), the same atomic reserve/refund meter, and per-service
    quota/TTL + a shared global `budget` ceiling governed in the control panel.
+   **SECURE WORKSPACES (2026-07-15) add NO third exception:** a workspace
+   link (`/cure/workspace#w=<ciphertext>` — `public/js/workspace-core.js`,
+   `docs/WORKSPACE-SECURITY.md`) travels entirely in the URL FRAGMENT, which
+   never reaches any server; the only server-touching things it can carry are
+   the two grant families above, reused under their existing meters — plus
+   the per-token quota-ADJUST control surfaces (authed
+   `/api/websearch/adjust`, `/api/proxy/adjust`; admin PATCH), which move a
+   grant row's allowance without changing any token in circulation.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -347,9 +355,9 @@ Server (`src/`):
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Groq, Berget — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `websearch-key.js` | The temporary web-search GRANT TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
-| `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
+| `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `adjustGrantQuota` (the secure-workspaces MINTER CONTROL, 2026-07-15: set/±/pause a live grant's quota on the D1 row — the token in circulation never changes; increases budget-checked like a mint, owner-scoped via `user_id`), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchAdjust` (AUTHED `POST /api/websearch/adjust` — the minter's self-service quota control over their own grants), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, PATCH /:jti quota adjust, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
 | `proxy-grant.js` | The SECURE-RESEARCH-SPACE two-tier TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of the GRANT token `prg1.<payload>.<hmac>` (the bundle's "token-granting token", namespace `proxygrant.`) and the PROXY token `prx1.…` (the post-exchange working credential, namespace `proxytoken.`) — both HMAC-signed with `SESSION_SECRET`, each under its own namespace so the two tiers (and the `wsk1`/session tokens) can never be confused; claims carry `svc` (`web`/`api`). Node-tested |
-| `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, DELETE revoke a bundle). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
+| `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, PATCH /:jti per-service quota adjust, DELETE revoke a bundle); plus `adjustProxyGrantQuota` + AUTHED `POST /api/proxy/adjust` (the secure-workspaces minter control — same set/±/pause semantics as `websearch.js`'s, per service row). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
@@ -602,8 +610,22 @@ toggle check both borrowed-capability subsystems — the web-search grant
 AND the proxy bundle — share), `normalizeSearchBackend` (the web-search
 backend config normalizer, one definition for the sealed-state read and
 the settings-form persist), the deep-link path parsers
-`parseProjectPath`/`parsePublicationRef`, and `wmHtml` (the escape-first
-Se/cure–Se/rver wordmark-slash renderer) — Node-tested).
+`parseProjectPath`/`parsePublicationRef` (with "workspace" a RESERVED slug),
+and `wmHtml` (the escape-first
+Se/cure–Se/rver wordmark-slash renderer) — Node-tested), and
+`workspace-core.js` (SECURE WORKSPACES' pure core, 2026-07-15: a fully
+configured Se/cure session — keys, settings, chats, borrowed grant tokens —
+sealed into ONE OFFLINE LINK, `/cure/workspace#w=<ciphertext>`; the
+mechanism is CLONED from github.com/kristerhedfors/hacka.re (owner
+directive) — the `[salt10][nonce10][cipher]` base64url fragment, the
+8192-round iterative-SHA-512 KDF, the dual-key split (link key opens the
+blob; a never-transmitted master key for local at-rest use), the
+namespace-from-SHA-256(blob) — with AES-256-GCM as the one substitution
+(no TweetNaCl dependency); the fragment never reaches any server, embedded
+grants stay quota-metered and live-administered by their minter (the
+adjust endpoints above); pane wiring in `cure/drc.js`, the Se/rver minting
+row in `account-settings.js`, architecture in `docs/WORKSPACE-SECURITY.md`
+— Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
@@ -861,8 +883,14 @@ ciphertext-only at rest, listing, quota/corruption fail-soft),
 `drc-page-core.js` (the DRC page's pure core: `grantLive`'s
 token/expiry/quota liveness, `grantFlagEnabled`'s default-ON master
 toggle, `normalizeSearchBackend`'s backend/URL/key/results normalization,
-the `parseProjectPath`/`parsePublicationRef` deep-link parsers, and
+the `parseProjectPath`/`parsePublicationRef` deep-link parsers incl. the
+reserved "workspace" slug, and
 `wmHtml`'s escape-then-tighten wordmark rendering),
+`workspace-core.js` (secure workspaces: the seal→open round-trip incl.
+wrong-password/tamper fail-soft, the hacka.re wire format, the 8192-round
+KDF's determinism + salt sensitivity, the dual-key independence, the
+namespace derivation, fragment/link parsing, and the payload
+build→seal→open→apply flow end to end),
 `public/cure/umbrella.js`'s pure core — via
 `public/js/umbrella-intro.test.js` — (the DRC first-visit intro's
 phase timeline and vortex→umbrella geometry: ramp
@@ -1075,6 +1103,13 @@ what docs claim); and update the skill list below plus the skill's
 - **model-eval** — the model-matrix eval harness, `QUERY_SETS`, the findings
   ledger, deciding evidence-driven `model-profiles.js` entries, and
   don't-commit-mid-battery.
+- **secure-workspaces** — the shareable, completely OFFLINE Se/cure
+  workspaces contained only in a link (`/cure/workspace#w=<ciphertext>`,
+  mechanism cloned from github.com/kristerhedfors/hacka.re): the pure core
+  `public/js/workspace-core.js`, the /cure pane + Se/rver minting row, the
+  per-token quota-adjust control surfaces (self-service + admin), the
+  frozen KDF constants, the URL-safe-token-tiers-only rule, and the
+  reserved "workspace" slug. Architecture: `docs/WORKSPACE-SECURITY.md`.
 - **storage-privacy** — chat-history encryption + key hierarchy, the
   `server_history` cloud knob, RAG documents, projects, the secret-keyed
   project vault, and the encryption-asymmetry rule (`storage.js`,
