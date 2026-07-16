@@ -100,28 +100,39 @@
 
   <section>
     <h2>The header</h2>
-    <img src="/help/img/header.png" alt="Header: history, new chat, model selector, account button" width="390">
+    <img src="/help/img/header.png" alt="Header: history and new chat on the left; ghost, share, settings and account buttons on the right" width="390">
     <ul>
-      <li><b>History</b> (clock icon, left) — opens the chat history panel:
-        see "Chat history" below. Hidden entirely if this server hasn't set
-        up encrypted history.</li>
-      <li><b>New chat</b> (pencil icon) — saves the current conversation (if
-        it has one) and starts a fresh one on screen. The old one isn't
-        erased — find it again in the History panel, or delete it there if
-        you're done with it.</li>
-      <li><b>Model selector</b> (middle) — picks which AI model answers.
-        Models that are down for maintenance show as greyed out and come back
-        automatically. Your choice is remembered in this browser.</li>
+      <li><b>History</b> (list icon, far left) — opens the chat history
+        panel: see "Chat history" below. Hidden entirely if this server
+        hasn't set up encrypted history.</li>
+      <li><b>New chat</b> (speech-bubble icon) — saves the current
+        conversation (if it has one) and starts a fresh one on screen. The
+        old one isn't erased — find it again in the History panel, or delete
+        it there if you're done with it.</li>
+      <li><b>Ghost button</b> — the door to ghost mode:
+        DeepResearch.<b>Se<span class="sl">/</span>cure</b>, the client-side
+        twin of this app where the server is never in the data path (see
+        "Privacy in one line" above).</li>
+      <li><b>Share button</b> (three connected dots) — share a
+        Se<span class="sl">/</span>cure workspace: one offline link carrying
+        a bounded allowance from your account. Opens the share section in
+        Settings.</li>
+      <li><b>Settings</b> (gear icon) — opens your account's Settings
+        directly: see "Settings" below.</li>
       <li><b>Account button</b> (person icon, right) — opens your usage
         panel: see below.</li>
     </ul>
+    <p class="muted">Looking for the model selector? It lives in the input
+    area at the bottom, next to the send arrow — see "The input area" below.
+    A copy-conversation button also appears under the header once a
+    conversation is on screen.</p>
   </section>
 
   <section id="history">
     <h2>Chat history — encrypted, and yours alone</h2>
     <p>Every conversation you have is saved automatically, right here in
     your browser, so you can pick it back up later — the History panel
-    (clock icon in the header) lists them by their first question, most
+    (list icon in the header) lists them by their first question, most
     recent first. Click one to reopen it (this also restores the model,
     time target, and web-search setting it was sent with); the pencil
     renames it, the trash bin deletes it.</p>
@@ -232,6 +243,13 @@
         travels inside your message; the files themselves are never
         uploaded anywhere. Images need a vision-capable model (you'll be
         offered a switch) and are downscaled in your browser first.</li>
+      <li><b>Camera</b> — take a photo with your device's camera and attach
+        it, same rules as an attached image.</li>
+      <li><b>Model selector</b> (next to the send arrow) — picks which AI
+        model answers, flagged with its provider's country (🇸🇪 EU-hosted
+        Berget models by default; 🇺🇸 Claude or GPT models if enabled here).
+        Models that are down for maintenance show as greyed out and come
+        back automatically. Your choice is remembered in this browser.</li>
       <li><b>Attachments can carry more than their visible content</b> —
         photos often embed where and when they were taken and what device
         took them; Word documents can carry the author's name, edit
@@ -353,14 +371,23 @@
 
   <section>
     <h2>Your account panel</h2>
-    <img src="/help/img/account-panel.png" alt="Account and usage panel with quota bars" width="390">
+    <img src="/help/img/account-panel.png" alt="Account and usage panel: 5-hour quota bars and buttons for messages, feedback, full usage, settings, games, documentation and sign out" width="390">
     <ul>
       <li><b>Research budget</b> — an opaque percentage of your allowance
-        for AI-model usage in each window (last 5 hours, today, this week,
-        this month). When a bar reaches 100% you'll be asked to wait until
-        the window shown next to it resets.</li>
+        for AI-model usage in the last 5 hours. When a bar reaches 100%
+        you'll be asked to wait until the window resets. <b>Full usage &amp;
+        history</b> shows the same bars for every window (last 5 hours,
+        today, this week, this month) with their reset times.</li>
       <li><b>Web searches</b> — how many live searches you've used of your
-        allowance per window.</li>
+        allowance in the window.</li>
+      <li><b>Messages</b> — account notices from this site (sign-in
+        approved, quota exhausted or changed). <b>Feedback</b> holds your
+        feedback threads with the developers (see Feedback mode in
+        Settings).</li>
+      <li><b>Settings</b> — your account's on/off switches (also reachable
+        straight from the header's gear icon): see below.</li>
+      <li><b>Games</b> — the games shelf, if any are enabled here.</li>
+      <li><b>Documentation</b> — this page.</li>
       <li><b>Sign out</b> — ends your session on this device. You stay
         signed in for a year otherwise (sessions renew themselves while you
         use the site).</li>

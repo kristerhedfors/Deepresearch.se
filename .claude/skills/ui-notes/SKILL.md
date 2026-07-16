@@ -161,10 +161,24 @@ description: >-
   (`src/pub.js` `pubSlugOk`, `drc-page-core.js` `parsePublicationRef`).
   The Se/rver page keeps real screenshots (`public/help/img/`, captured
   via Playwright) — re-capture when the composer/header changes visibly
-  (the header and composer screenshots are now stale — the history button
-  was added, then the model selector moved from the header into the
-  composer row with the search knob/slider on their own row below — not
-  yet recaptured).
+  (last recaptured 2026-07-16 — user report: the header illustration
+  still showed the pre-move layout with the model selector).
+  The recipe: a standalone Playwright script run from `tests/` (so
+  `@playwright/test` resolves) against the live site with the break-glass
+  env creds, 390×844 viewport at `deviceScaleFactor: 2`; pre-seed the
+  cookie `dr_privacy_ack=1` + localStorage `dr_rver_intro_seen=1` (skips
+  notice/intro), mock `/api/me` + GET `/api/settings` + `/api/messages`
+  as a plain user (hides the admin-only test-queue button, keeps
+  `bob@gmail.com` in the panel shot instead of a real account), force
+  `historybtn`/`ghostbtn` visible and `tryqueuebtn`/`termbtn`/
+  `projectchip` hidden, then clip element rects: `.header-bar`
+  (header.png), `#composer` (composer-on/off.png — toggle
+  `.knob-track` between shots), `#searchpop` unhidden + `#composer`
+  union (popover.png), `#account .account-card` (account-panel.png).
+  Same launch quirks as `tests/playwright.config.js` (pre-installed
+  Chromium path, HTTPS_PROXY + `--ssl-version-max=tls1.2`,
+  ignoreHTTPSErrors).
+>>>>>>> 64065c7 (help: recapture stale screenshots, fix header section to match the real UI)
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
   demonstration of building a SaaS-style app over a weekend, **entirely
