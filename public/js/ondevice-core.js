@@ -58,6 +58,37 @@ export function onDeviceModel(id) {
   return ONDEVICE_MODELS.find((m) => m.id === id) || null;
 }
 
+// ---- the never-hang deadline ------------------------------------------------------
+//
+// Every engine call the settings drawer awaits runs under one of these: the
+// first live device report was "Checking this device…" forever — a probe or
+// worker call that neither resolved nor rejected left the UI with nothing to
+// say. A deadline turns any silent stall into a rejection whose message NAMES
+// the stage (the on-device-trace convention: the failure text is the remote
+// debugger).
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} message the self-explaining stage-naming error text
+ * @returns {Promise<T>}
+ */
+export function withDeadline(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 // ---- Hugging Face wire shapes ---------------------------------------------------
 
 // The tree API lists every file with its size and (for LFS files) the sha256
@@ -156,12 +187,21 @@ export function fmtBytes(n) {
 // navigator.deviceMemory where it exists); this stays pure so the ladder is
 // unit-testable.
 /**
- * @param {{hasWebGpu: boolean, deviceMemoryGb?: ?number, maxBufferBytes?: ?number}} probe
+ * @param {{hasWebGpu: boolean, deviceMemoryGb?: ?number, maxBufferBytes?: ?number, gpuTimedOut?: boolean}} probe
  * @param {{minDeviceMemoryGb?: number, approxBytes?: number}} model
  * @returns {{verdict: "ok"|"marginal"|"unsupported", reason: string}}
  */
 export function capabilityVerdict(probe, model) {
   if (!probe?.hasWebGpu) {
+    // A probe that timed out is INCONCLUSIVE, not a "no" — blocking on it
+    // would hide a working feature behind a flaky driver, so the row stays
+    // downloadable and says exactly what happened instead.
+    if (probe?.gpuTimedOut) {
+      return {
+        verdict: "marginal",
+        reason: "This device's GPU didn't answer the WebGPU probe — the model may not run here.",
+      };
+    }
     return { verdict: "unsupported", reason: "This browser has no WebGPU — on-device models can't run here." };
   }
   // navigator.deviceMemory is Chrome-only and CAPPED at 8, so it can prove

@@ -24,7 +24,7 @@
 //     ort-wasm-simd-threaded.asyncify.mjs   5959c6733039619c9af710d8e1bae8d6e84402787990637be987c2b1bd6c5fa9
 //     ort-wasm-simd-threaded.asyncify.wasm  e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786
 
-import { ONDEVICE_MAX_TOKENS, completionEnvelope, sseDeltaLine, sseDoneLine } from "/js/ondevice-core.js";
+import { ONDEVICE_MAX_TOKENS, completionEnvelope, sseDeltaLine, sseDoneLine, withDeadline } from "/js/ondevice-core.js";
 
 export { ONDEVICE_MODELS, capabilityVerdict, fmtBytes, onDeviceModel } from "/js/ondevice-core.js";
 
@@ -36,8 +36,29 @@ let worker = null;
 let genSeq = 0;
 const genHandlers = new Map(); // id → {onToken, resolve, reject}
 const dlHandlers = new Map(); // modelId → {onProgress, resolve, reject}
-let listWaiters = [];
+const planHandlers = new Map(); // modelId → {resolve, reject}
+const deleteHandlers = new Map(); // modelId → {resolve, reject}
+let listWaiters = []; // {resolve, reject}
 let loadStatusCb = null;
+
+// EVERY pending call fails together — including the list/plan/delete waiters.
+// The first live device report was the settings drawer stuck on "Checking
+// this device…" forever: the original onerror rejected only gen/dl handlers,
+// so a worker that failed to even load left listCachedModels() pending with
+// nothing to reject it. Nothing may wait on a dead worker.
+function failAllPending(message) {
+  const err = new Error(message);
+  for (const [, h] of genHandlers) h.reject(err);
+  genHandlers.clear();
+  for (const [, h] of dlHandlers) h.reject(err);
+  dlHandlers.clear();
+  for (const [, h] of planHandlers) h.reject(err);
+  planHandlers.clear();
+  for (const [, h] of deleteHandlers) h.reject(err);
+  deleteHandlers.clear();
+  for (const w of listWaiters) w.reject(err);
+  listWaiters = [];
+}
 
 function getWorker() {
   if (worker) return worker;
@@ -58,20 +79,32 @@ function getWorker() {
     } else if (m.t === "dlerror") {
       dlHandlers.get(m.modelId)?.reject(new Error(m.message));
       dlHandlers.delete(m.modelId);
+    } else if (m.t === "plan") {
+      planHandlers.get(m.modelId)?.resolve({ published: !!m.published, reason: m.reason || null, totalBytes: m.totalBytes ?? null });
+      planHandlers.delete(m.modelId);
+    } else if (m.t === "deleted") {
+      deleteHandlers.get(m.modelId)?.resolve(undefined);
+      deleteHandlers.delete(m.modelId);
     } else if (m.t === "list") {
-      for (const w of listWaiters) w(m.entries);
+      for (const w of listWaiters) w.resolve(m.entries);
       listWaiters = [];
+    } else if (m.t === "workererror") {
+      // A dispatch-level throw in the worker (generate/download carry their
+      // own error replies; this covers list/plan/delete). The worker itself
+      // is still alive — fail the waiting calls so no caller hangs; the next
+      // call retries normally.
+      failAllPending(m.message || "The on-device engine failed.");
     } else if (m.t === "loadstatus") loadStatusCb?.(m.status);
   };
-  worker.onerror = () => {
-    // A dead worker fails every pending call (fail-soft at the call sites)
-    // and a fresh one spawns on next use.
-    for (const [, h] of genHandlers) h.reject(new Error("The on-device engine crashed."));
-    genHandlers.clear();
-    for (const [, h] of dlHandlers) h.reject(new Error("The on-device engine crashed."));
-    dlHandlers.clear();
+  // A dead worker fails every pending call (fail-soft at the call sites)
+  // and a fresh one spawns on next use. onerror also covers the worker
+  // SCRIPT failing to load or parse at all — the pending calls are the only
+  // place that failure can surface.
+  worker.onerror = (e) => {
+    failAllPending("The on-device engine crashed" + (e?.message ? ": " + e.message : "."));
     worker = null;
   };
+  worker.onmessageerror = () => failAllPending("The on-device engine sent an unreadable message.");
   return worker;
 }
 
@@ -79,35 +112,57 @@ function getWorker() {
 
 let probeCache = null;
 
-/** @returns {Promise<{hasWebGpu: boolean, deviceMemoryGb: ?number, maxBufferBytes: ?number}>} */
+// requestAdapter() has been observed to neither resolve nor reject on some
+// devices (the "Checking this device…" hang) — the deadline turns that into
+// an inconclusive-probe verdict instead of an eternal wait.
+const GPU_PROBE_TIMEOUT_MS = 10_000;
+
+/** @returns {Promise<{hasWebGpu: boolean, deviceMemoryGb: ?number, maxBufferBytes: ?number, gpuTimedOut: boolean}>} */
 export async function probeOnDevice() {
   if (probeCache) return probeCache;
   let hasWebGpu = false;
   let maxBufferBytes = null;
+  let gpuTimedOut = false;
   try {
     if (navigator.gpu) {
-      const adapter = await navigator.gpu.requestAdapter();
+      const adapter = await withDeadline(navigator.gpu.requestAdapter(), GPU_PROBE_TIMEOUT_MS, "gpu probe timed out");
       if (adapter) {
         hasWebGpu = true;
         maxBufferBytes = adapter.limits?.maxBufferSize ?? null;
       }
     }
-  } catch {
+  } catch (err) {
     hasWebGpu = false;
+    gpuTimedOut = /gpu probe timed out/.test(err?.message || "");
   }
   const deviceMemoryGb = typeof navigator.deviceMemory === "number" ? navigator.deviceMemory : null;
-  probeCache = { hasWebGpu, deviceMemoryGb, maxBufferBytes };
-  return probeCache;
+  const probe = { hasWebGpu, deviceMemoryGb, maxBufferBytes, gpuTimedOut };
+  // A timed-out probe is inconclusive — don't cache it, so reopening the
+  // drawer (or retrying) probes again instead of pinning the stale verdict.
+  if (!gpuTimedOut) probeCache = probe;
+  return probe;
 }
 
 // ---- settings-drawer API ------------------------------------------------------------
 
+// Worker round-trip deadlines (the never-hang rule): a call that outlives
+// its deadline rejects with a stage-naming message the settings drawer shows
+// verbatim. LIST covers the first call's worker spawn + module fetch on a
+// slow connection; PLAN additionally covers one small huggingface.co fetch.
+const LIST_TIMEOUT_MS = 20_000;
+const PLAN_TIMEOUT_MS = 30_000;
+const DELETE_TIMEOUT_MS = 10_000;
+
 /** @returns {Promise<Array<{id: string, cachedBytes: ?number}>>} */
 export function listCachedModels() {
-  return new Promise((resolve) => {
-    listWaiters.push(resolve);
-    getWorker().postMessage({ t: "list" });
-  });
+  return withDeadline(
+    new Promise((resolve, reject) => {
+      listWaiters.push({ resolve, reject });
+      getWorker().postMessage({ t: "list" });
+    }),
+    LIST_TIMEOUT_MS,
+    "The on-device engine did not answer the device check — reload the page and try again.",
+  );
 }
 
 /**
@@ -119,17 +174,14 @@ export function listCachedModels() {
  * @returns {Promise<{published: boolean, reason: ?string, totalBytes: ?number}>}
  */
 export function planModelDownload(modelId) {
-  return new Promise((resolve) => {
-    const w = getWorker();
-    const onMsg = (e) => {
-      if (e.data?.t === "plan" && e.data.modelId === modelId) {
-        w.removeEventListener("message", onMsg);
-        resolve({ published: e.data.published, reason: e.data.reason || null, totalBytes: e.data.totalBytes });
-      }
-    };
-    w.addEventListener("message", onMsg);
-    w.postMessage({ t: "plan", modelId });
-  });
+  return withDeadline(
+    new Promise((resolve, reject) => {
+      planHandlers.set(modelId, { resolve, reject });
+      getWorker().postMessage({ t: "plan", modelId });
+    }),
+    PLAN_TIMEOUT_MS,
+    "The on-device engine did not answer the size check — reload the page and try again.",
+  );
 }
 
 /**
@@ -153,17 +205,14 @@ export function cancelDownload(modelId) {
 
 /** Delete the cached weights — the consent's one-tap reversal. @param {string} modelId */
 export function deleteModel(modelId) {
-  return new Promise((resolve) => {
-    const w = getWorker();
-    const onMsg = (e) => {
-      if (e.data?.t === "deleted" && e.data.modelId === modelId) {
-        w.removeEventListener("message", onMsg);
-        resolve(undefined);
-      }
-    };
-    w.addEventListener("message", onMsg);
-    w.postMessage({ t: "delete", modelId });
-  });
+  return withDeadline(
+    new Promise((resolve, reject) => {
+      deleteHandlers.set(modelId, { resolve, reject });
+      getWorker().postMessage({ t: "delete", modelId });
+    }),
+    DELETE_TIMEOUT_MS,
+    "The on-device engine did not answer the delete — reload the page and try again.",
+  );
 }
 
 /** @param {(status: string) => void} cb model-load status lines for the phase UI */

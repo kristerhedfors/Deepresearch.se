@@ -23,6 +23,7 @@ import {
   sseDeltaLine,
   sseDoneLine,
   wasmPathsFor,
+  withDeadline,
   withJsonReminder,
 } from "./ondevice-core.js";
 
@@ -242,6 +243,26 @@ test("capabilityVerdict ladder: no WebGPU → unsupported; low RAM/buffers → m
   assert.equal(capabilityVerdict({ hasWebGpu: true, deviceMemoryGb: null }, model).verdict, "ok");
   assert.equal(capabilityVerdict({ hasWebGpu: true, maxBufferBytes: 256 * 1024 * 1024 }, model).verdict, "marginal");
   assert.equal(capabilityVerdict({ hasWebGpu: true, maxBufferBytes: 2 ** 31 }, model).verdict, "ok");
+});
+
+test("capabilityVerdict: a timed-out GPU probe is inconclusive — marginal (still downloadable), never a WebGPU denial", () => {
+  const model = ONDEVICE_MODELS[0];
+  const v = capabilityVerdict({ hasWebGpu: false, gpuTimedOut: true }, model);
+  assert.equal(v.verdict, "marginal");
+  assert.match(v.reason, /didn't answer the WebGPU probe/);
+  // a plain "no" (no timeout flag) stays a hard unsupported
+  assert.equal(capabilityVerdict({ hasWebGpu: false, gpuTimedOut: false }, model).verdict, "unsupported");
+});
+
+// ---- the never-hang deadline -------------------------------------------------------------
+
+test("withDeadline: passes a settle through, and turns a silent stall into a stage-naming rejection", async () => {
+  assert.equal(await withDeadline(Promise.resolve("ok"), 1000, "nope"), "ok");
+  await assert.rejects(withDeadline(Promise.reject(new Error("real failure")), 1000, "nope"), /real failure/);
+  await assert.rejects(
+    withDeadline(new Promise(() => {}), 10, "the device check timed out"),
+    /the device check timed out/,
+  );
 });
 
 // ---- wasm pair -------------------------------------------------------------------------

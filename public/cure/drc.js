@@ -1080,7 +1080,9 @@ async function renderOnDeviceRows() {
         btn.textContent = "Delete";
         btn.onclick = async () => {
           btn.disabled = true;
-          await (await odEngine()).deleteModel(m.id);
+          // A failed delete must not strand a disabled button — re-render
+          // either way; the row then shows the model's true current state.
+          await (await odEngine()).deleteModel(m.id).catch(() => {});
           await renderOnDeviceRows();
           await refreshModels().catch(() => {});
         };
@@ -1097,8 +1099,14 @@ async function renderOnDeviceRows() {
       row.append(label, note, btn);
       wrap.appendChild(row);
     }
-  } catch {
-    wrap.innerHTML = '<span class="muted setting-note">The on-device engine failed to load — try reloading the page.</span>';
+  } catch (err) {
+    // The engine's deadline errors NAME the failing stage (the on-device-
+    // trace convention: this line is the remote debugger on a real phone) —
+    // show them verbatim. textContent, never innerHTML: the message can
+    // carry a worker error string.
+    wrap.innerHTML = '<span class="muted setting-note"></span>';
+    wrap.firstElementChild.textContent =
+      err?.message || "The on-device engine failed to load — try reloading the page.";
   }
 }
 
@@ -1115,15 +1123,21 @@ async function odOpenConsent(m) {
   yes.textContent = "Download";
   yes.onclick = null;
   $("odconsent").hidden = false;
-  const plan = await eng.planModelDownload(m.id).catch(() => ({ published: false, reason: "network" }));
+  const plan = await eng
+    .planModelDownload(m.id)
+    .catch((err) => ({ published: false, reason: "engine", message: err?.message || "" }));
   if ($("odconsent").hidden) return; // dismissed while the listing loaded
   if (!plan?.published || !plan.totalBytes) {
-    // Two different truths need two different messages: "not published" is
-    // about the model, "couldn't reach" is about the connection.
+    // Three different truths need three different messages: "not published"
+    // is about the model, "couldn't reach" is about the connection, and an
+    // engine failure (crash or deadline) is about this device — its message
+    // names the failing stage.
     $("odc-body").textContent =
       plan?.reason === "network"
         ? "Couldn't reach huggingface.co to compute the download size — check your connection and try again. Nothing was downloaded."
-        : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
+        : plan?.reason === "engine"
+          ? (plan.message || "The on-device engine failed.") + " Nothing was downloaded."
+          : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
     return;
   }
   const size = eng.fmtBytes(plan.totalBytes);
