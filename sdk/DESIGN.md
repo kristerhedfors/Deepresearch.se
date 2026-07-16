@@ -218,7 +218,35 @@ layer, and emits/builds one module at a time, each landing with its unit
 tests green and its acceptance checklist satisfied before the next starts.
 That is also the wiring path for the existing site: replace one module's
 files with the SDK-generated equivalent, hold the acceptance checklist
-constant, and the swap is provably behavior-preserving.
+constant, and the swap is provably behavior-preserving. The mechanical half
+is tooled: `sdk/pair-cli.mjs` (`list` / `show` / `plan` / `validate`)
+computes closures, build orders, and manifest integrity — on a desktop
+checkout or inside the pair's own sandbox VM (`node /src/sdk/pair-cli.mjs`).
+
+### 3.1 Platform types — what a generated app IS
+
+A build produced through the SDK declares one of two **platform types**,
+and the type is its logical boundary:
+
+- **A client-tier build** ("Se/cure-type" in the reference) is class-C only:
+  static, no-build, sealed local state, browser-direct upstream APIs (the
+  user's keys, their local model server, or grant tokens borrowed through
+  the bridge). Because it is just static files, it is **instantly
+  runnable**: the `pair-studio` module preview-deploys it into an in-app
+  pane, and the saved artifact runs from any static host. This is the
+  default type, and deliberately so — it is the pair's own mission posture
+  applied to what the pair builds.
+- **A server-tier build** adds the one server component. The pair's own
+  server **never executes or hosts generated server code** (a hard rule —
+  anything else breaks the zero-or-one-server property and the trust
+  boundary at once), so a server-tier build exports as a deployable bundle
+  for the user's own infrastructure, while its client half can still be
+  previewed in-app against generated mocks.
+
+The full prompt → design-in-the-VM → try-out-in-the-same-UI loop over these
+types is the `pair-studio` module; the VM-side development environment (the
+SDK mounted inside the prepackaged Linux, the small self-hosted image, the
+in-app skills catalog) is the `vm-toolchain` module.
 
 ---
 

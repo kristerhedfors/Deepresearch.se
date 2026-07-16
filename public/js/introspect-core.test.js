@@ -444,6 +444,18 @@ const skillSnap = () =>
           s: 1,
           t: '---\nname: feedback-loop\ndescription: "Process user feedback from the live site."\n---\n\n# Feedback',
         },
+        // Agent-Pair SDK module skills: one whose id collides with an
+        // operational skill (deploy) and one that is SDK-only.
+        {
+          p: "sdk/skills/deploy/SKILL.md",
+          s: 1,
+          t: '---\nname: deploy\ndescription: "Build the deploy capability from scratch."\n---\n\n# SDK deploy',
+        },
+        {
+          p: "sdk/skills/pair-generator/SKILL.md",
+          s: 1,
+          t: '---\nname: pair-generator\ndescription: "Generate a pair from a feature selection."\n---\n\n# Generator',
+        },
       ],
     })
   );
@@ -464,9 +476,14 @@ test("parseSkillFrontmatter: folded (>-), inline-quoted, and missing frontmatter
 
 test("skillsCatalog: one entry per SKILL.md, sorted by name, non-skill files ignored", () => {
   const cat = skillsCatalog(skillSnap());
-  assert.deepEqual(cat.map((s) => s.name), ["deploy", "feedback-loop"]);
+  assert.deepEqual(
+    cat.map((s) => s.name),
+    ["deploy", "feedback-loop", "sdk/deploy", "sdk/pair-generator"],
+  );
   assert.equal(cat[0].path, ".claude/skills/deploy/SKILL.md");
   assert.match(cat[0].description, /Load when deploying/);
+  // SDK module skills are namespaced, so a colliding id stays distinguishable.
+  assert.equal(cat.find((s) => s.name === "sdk/deploy")?.path, "sdk/skills/deploy/SKILL.md");
   // A snapshot with no skills yields an empty catalog (no throw).
   assert.deepEqual(skillsCatalog(snap()), []);
 });
@@ -490,11 +507,24 @@ test("mentionedSkills: slash form and '<name> skill' (hyphen/space tolerant)", (
   assert.deepEqual(mentionedSkills("", s), []);
 });
 
+test("mentionedSkills: SDK skills — namespaced form always, bare id only when unshadowed", () => {
+  const s = skillSnap();
+  // The namespaced form resolves the SDK skill, colliding id or not.
+  assert.deepEqual(mentionedSkills("read the sdk/deploy skill", s), ["sdk/skills/deploy/SKILL.md"]);
+  assert.deepEqual(mentionedSkills("open /sdk/pair-generator", s), ["sdk/skills/pair-generator/SKILL.md"]);
+  // An SDK-only id is mentionable bare, the way the manifest names it.
+  assert.deepEqual(mentionedSkills("use the pair-generator skill", s), ["sdk/skills/pair-generator/SKILL.md"]);
+  // A bare id shadowed by an operational skill resolves ONLY the operational one.
+  assert.deepEqual(mentionedSkills("the deploy skill", s), [".claude/skills/deploy/SKILL.md"]);
+});
+
 test("buildIntrospectionBlock: surfaces the skills catalog and inlines a named skill", () => {
   const block = buildIntrospectionBlock(skillSnap(), { latestText: "show me the deploy skill" });
-  assert.match(block, /# Skills — the project's 2 institutional playbooks/);
-  assert.match(block, /guides any coding agent via the repo's AGENTS\.md/);
+  assert.match(block, /# Skills — the project's 4 institutional playbooks/);
+  assert.match(block, /guide any coding agent via the repo's AGENTS\.md/);
   assert.match(block, /^- deploy — Load when deploying/m);
+  // SDK module skills appear in the same catalog, namespaced.
+  assert.match(block, /^- sdk\/pair-generator — Generate a pair/m);
   // Naming a skill inlines its full SKILL.md body.
   assert.match(block, /# \.claude\/skills\/deploy\/SKILL\.md \(1 bytes\)/);
   assert.match(block, /# Deployment/);

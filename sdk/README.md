@@ -26,9 +26,10 @@ they are.
 | File | What it is |
 |---|---|
 | `DESIGN.md` | The agent-pair abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
-| `MANIFEST.json` | The machine-readable module registry: 28 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `MANIFEST.json` | The machine-readable module registry: 30 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
+| `pair-cli.mjs` | The dependency-free CLI over the manifest: `list`, `show <id>`, `plan <id …>` (dependency closure → build order), `validate` (integrity + class rules). Runs on any desktop Node and inside the sandbox VM (`node /src/sdk/pair-cli.mjs …`); unit-tested by `pair-cli.test.mjs` in the repo's `npm test` |
 
 Each skill follows one shape: **capability class & tier story** → the
 **PA contracts** it carries → a from-scratch **build plan** → the
@@ -94,14 +95,31 @@ evidence-driven decisions).
 | `publish-replays` | S | Frozen research sessions as public replay pages |
 | `symbol-language` | X | Per-tier symbols, disclosure grammar, wordmark discipline, UX registry |
 | `games-shelf` | S | The registry seam for whole product surfaces (worked example: a game) |
+| `vm-toolchain` | X | The SDK inside the prepackaged Linux VM: self-hosted small images (archlinux32 dev default, i386-only fact), full-prefetch, `/src/sdk` mount, the in-app `sdk/<name>` skills catalog, desktop parity |
 
-**Layer 6 — Generation**
+**Layer 6 — Generation & studio**
 
 | Module | Class | Provides |
 |---|---|---|
 | `pair-generator` | D | Selection → dependency closure → module-at-a-time generation; adoption mode |
+| `pair-studio` | X | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application; platform types (client-tier builds run instantly, server-tier builds export) |
 
 ## How to use it
+
+**From a desktop** (VS Code, any editor, any agent harness): clone the repo,
+open it, and work the skills directly — `node sdk/pair-cli.mjs list` for the
+catalog, `plan <modules>` for a build order, `validate` before committing a
+manifest change. The vendor-neutral `AGENTS.md` at the repo root points any
+coding agent at both skill catalogs.
+
+**From the application itself:** the SDK rides the committed source snapshot,
+so both tiers can browse and quote every SDK skill in-app (cataloged as
+`sdk/<name>` next to the operational playbooks), and the sandbox VM mounts
+the whole SDK at `/src/sdk` — with a nodejs-equipped image (see
+`vm-toolchain`), `node /src/sdk/pair-cli.mjs …` runs inside the browser's own
+Linux. The `pair-studio` module is the full in-app loop: prompt an app, have
+it designed in the VM, try it out in a preview pane in the same UI, and save
+it as a runnable test application.
 
 **To learn the architecture:** read `DESIGN.md`, then the
 `pair-architecture` skill.

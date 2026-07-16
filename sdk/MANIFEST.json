@@ -17,8 +17,9 @@
     "3": "Privacy & storage plane",
     "4": "Operations & feedback plane",
     "5": "Extension surfaces",
-    "6": "Generation"
+    "6": "Generation & studio"
   },
+  "cli": "sdk/pair-cli.mjs",
   "baseplate": ["pair-architecture", "baseplate-worker", "baseplate-client"],
   "modules": [
     {
@@ -263,6 +264,24 @@
       "provides": "The declarative game registry + dispatch (a new game touches no shelf code), the pure-core/API/client split, server-authoritative rules with anti-cheat view projections, the no-invented-game-logic rule",
       "reference": ["src/games.js", "src/tokemon.js", "src/tokemon-api.js", "src/tokemon-nav.js", "public/games/tokemon"],
       "acceptance": "Registry dispatch suites green; a second registered game appears on the shelf with zero client changes"
+    },
+    {
+      "id": "vm-toolchain",
+      "name": "The SDK inside the prepackaged Linux VM",
+      "layer": 5, "class": "X", "deps": ["execution-sandbox", "introspection-help"],
+      "skill": "sdk/skills/vm-toolchain/SKILL.md",
+      "provides": "Self-hosted small Linux images (archlinux32 SDK-dev default once verified, Alpine fallback; i386-only platform fact), the R2 Range streamer + config registry + per-image caches, the full-prefetch loads-in-its-entirety mode, the SDK mounted in-VM at /src/sdk with nodejs for pair-cli, the in-app skills catalog namespaced as sdk/<name>, desktop parity",
+      "reference": ["docs/SANDBOX-LOCAL-IMAGE.md", "src/sandbox-image.js", "src/config.js", "public/js/sandbox.js", "public/js/sandbox-files.js", "scripts/build-sandbox-image.sh", "public/js/introspect-core.js", "sdk/pair-cli.mjs"],
+      "acceptance": "Image plumbing inert without a selection; arch32 image boots verified on real devices incl. iOS Safari; node /src/sdk/pair-cli.mjs validate passes in-VM; sdk/<name> entries in the in-app catalog (test-pinned); prefetch makes second boots network-free"
+    },
+    {
+      "id": "pair-studio",
+      "name": "The in-app pair builder (prompt → VM design → same-UI try-out)",
+      "layer": 6, "class": "X", "deps": ["vm-toolchain", "secure-tier", "pair-generator"],
+      "skill": "sdk/skills/pair-studio/SKILL.md",
+      "provides": "Studio conversation mode driving SDK-guided generation in the sandbox VM; platform types (client-tier builds instantly preview-deployable in an in-app pane via a reserved-scope service worker; server-tier builds export as deployable bundles with mocked-API client preview); save as runnable test application (download / project / sealed link); the never-host-generated-server-code rule",
+      "reference": ["public/js/bash-core.js", "public/js/sandbox.js", "public/js/sandbox-files.js", "public/js/workspace-core.js", "public/js/projects.js", "public/js/embeds.js", "sdk/pair-cli.mjs"],
+      "acceptance": "Prompt → generated client-tier app previews in-pane in the same session on both tiers; preview survives COEP on real devices; exported bundle runs from a plain static host; S-class modules refused in client-tier selections; no code path hosts generated server code"
     },
     {
       "id": "pair-generator",

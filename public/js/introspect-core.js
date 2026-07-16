@@ -413,6 +413,16 @@ export function snapshotIndex(snapshot) {
 /** A skill's SKILL.md path → its slug name (the catalog key). */
 export const SKILL_PATH_RE = /^\.claude\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
 
+/**
+ * The Agent-Pair SDK's constructive module skills (sdk/skills/<name>/SKILL.md)
+ * — cataloged alongside the operational playbooks so both tiers can browse the
+ * SDK from the app itself, but NAMESPACED as `sdk/<name>`: two module ids
+ * deliberately reuse operational skill names (execution-sandbox,
+ * decision-boards), and the two catalogs answer different questions ("how do I
+ * operate this deployment" vs "how do I build this capability from scratch").
+ */
+export const SDK_SKILL_PATH_RE = /^sdk\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
+
 /** Each catalog line's description is clipped to this in the (always-on) block. */
 export const SKILL_SUMMARY_CHARS = 240;
 
@@ -484,10 +494,13 @@ export function parseSkillFrontmatter(text) {
 export function skillsCatalog(snapshot) {
   const out = [];
   for (const f of (snapshot && snapshot.files) || []) {
-    const m = SKILL_PATH_RE.exec(f.p);
-    if (!m) continue;
+    const op = SKILL_PATH_RE.exec(f.p);
+    const sdk = op ? null : SDK_SKILL_PATH_RE.exec(f.p);
+    if (!op && !sdk) continue;
+    const m = /** @type {RegExpExecArray} */ (op || sdk);
     const fm = parseSkillFrontmatter(f.t);
-    out.push({ name: fm.name || m[1], path: f.p, description: fm.description });
+    const base = fm.name || m[1];
+    out.push({ name: sdk ? `sdk/${base}` : base, path: f.p, description: fm.description });
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
@@ -525,12 +538,26 @@ export function skillsIndex(snapshot, opts = {}) {
 export function mentionedSkills(text, snapshot) {
   const s = String(text || "");
   if (!s.trim()) return [];
+  const catalog = skillsCatalog(snapshot);
+  const names = new Set(catalog.map((sk) => sk.name));
   const out = [];
-  for (const sk of skillsCatalog(snapshot)) {
-    const n = sk.name.replace(/[-\s]+/g, "[-\\s]");
-    const slash = new RegExp(`(?:^|\\s)/${n}\\b`, "i");
-    const named = new RegExp(`\\b(?:${n}\\s+skill|skill\\s+${n})\\b`, "i");
-    if (slash.test(s) || named.test(s)) out.push(sk.path);
+  for (const sk of catalog) {
+    // An SDK skill whose bare module id shadows no operational skill is also
+    // mentionable bare ("the pair-generator skill") — users name modules the
+    // way the manifest does; the namespaced form always works too.
+    const aliases = [sk.name];
+    const bare = sk.name.startsWith("sdk/") ? sk.name.slice(4) : "";
+    if (bare && !names.has(bare)) aliases.push(bare);
+    const hit = aliases.some((a) => {
+      const n = a.replace(/[-\s]+/g, "[-\\s]");
+      const slash = new RegExp(`(?:^|\\s)/${n}\\b`, "i");
+      // The leading [^\w/-] guard (not a lookbehind — older Safari throws on
+      // those) keeps a bare name from matching inside its namespaced form:
+      // "sdk/deploy skill" must not also resolve the operational "deploy".
+      const named = new RegExp(`(?:^|[^\\w/-])(?:${n}\\s+skill|skill\\s+${n})\\b`, "i");
+      return slash.test(s) || named.test(s);
+    });
+    if (hit) out.push(sk.path);
   }
   return out;
 }
@@ -796,7 +823,7 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
   if (skills.length) {
     lines.push("");
     lines.push(
-      `# Skills — the project's ${skills.length} institutional playbooks (.claude/skills/<name>/SKILL.md). These encode how recurring work is actually done here; the same catalog also guides any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill" or /deploy) for its full text, or just ask — the relevant one is retrieved into context:`,
+      `# Skills — the project's ${skills.length} institutional playbooks: operational (.claude/skills/<name>/SKILL.md — how this deployment is run) and the Agent-Pair SDK's constructive modules (sdk/skills/<name>/SKILL.md, listed as sdk/<name> — how each capability is built from scratch; see sdk/README.md). The same catalogs guide any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill", /deploy, or "the sdk/pair-generator skill") for its full text, or just ask — the relevant one is retrieved into context:`,
     );
     lines.push(skillsIndex(snapshot));
   }

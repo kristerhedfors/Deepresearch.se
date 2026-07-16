@@ -1053,7 +1053,7 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
@@ -1129,6 +1129,26 @@ never committed). Its pure helpers are unit-tested in
 `tests/hf-bench-lib.test.js` (`node --test`). Same disciplines as the other
 ledgers: fixed seed/judge/budget across a before/after comparison, don't
 deploy mid-battery, append-only ledgers.
+
+## The Agent-Pair SDK (`sdk/`)
+
+`sdk/` is the **Agent-Pair SDK** (2026-07-16): the constructive counterpart to
+the operational skills — a design (`sdk/DESIGN.md`: the Se/cure + Se/rver pair
+abstraction, zero-or-one server, capability classes C/S/B/X/D, contracts
+PA-1..PA-10), a 30-module registry (`sdk/MANIFEST.json`) with one buildable
+skill per module (`sdk/skills/<id>/SKILL.md`), the implementation-order
+rationale (`sdk/ROADMAP.md`), and a dependency-free CLI
+(`node sdk/pair-cli.mjs list|show|plan|validate`, unit-tested in `npm test`).
+It is distilled FROM this repo (every module maps back to the files realizing
+it) and is design-only — nothing in `src/`/`public/` imports it; wiring the
+app to SDK modules is the generator skill's adoption mode. The SDK rides the
+introspection snapshot, so both tiers surface its skills in-app (cataloged as
+`sdk/<name>` — see `introspect-core.js`) and the sandbox VM mounts it at
+`/src/sdk` (the `vm-toolchain` module skill; the archlinux32 SDK-dev image +
+in-app builder loop are the `vm-toolchain`/`pair-studio` modules). Editing an
+SDK skill or the manifest: run `node sdk/pair-cli.mjs validate` (the manifest
+integrity + class rules are also test-pinned) and regenerate the introspection
+artifacts like any other tracked-text change.
 
 ## Skills
 

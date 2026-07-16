@@ -177,16 +177,33 @@ order:
 - `execution-sandbox` is the deepest well — treat it as its own project
   with a standing maintenance owner (the reference's regression history
   says so).
+- `vm-toolchain` follows directly on `execution-sandbox` + `introspection-help`
+  when the pair should become its own development environment: the
+  self-hosted small image (the archlinux32 SDK-dev default — i386 is the
+  platform fact; verified-gate before it becomes fleet default), full
+  prefetch so the image loads in its entirety, the SDK mounted in-VM, and
+  the in-app `sdk/<name>` skills catalog.
 - `publish-replays` and `games-shelf` are small and land whenever wanted.
 
-## Phase 6 — Generation & adoption (module: `pair-generator`)
+## Phase 6 — Generation, adoption & the studio (modules: `pair-generator`, `pair-studio`)
 
-Not a build phase: the generator skill is *used* from day one (it is how
-phases 0–5 are executed) and is listed last only because it is meta. Its
-adoption mode — wiring an existing product to SDK modules one at a time,
-holding each module's acceptance checklist constant across the swap — is
-the later task for deepresearch.se itself, and follows this same phase
-order.
+`pair-generator` is not a build phase: the generator skill is *used* from
+day one (it is how phases 0–5 are executed) and is listed last only because
+it is meta. Its adoption mode — wiring an existing product to SDK modules
+one at a time, holding each module's acceptance checklist constant across
+the swap — is the later task for deepresearch.se itself, and follows this
+same phase order.
+
+`pair-studio` IS a build phase — the capstone: the generator's walk moved
+into the product itself. It lands last by dependency reality (it composes
+the sandbox, the VM toolchain, the secure tier and the generator), and its
+ordering rationale is the same twin argument as phase 2: the **client-tier
+platform type first** — a generated client-tier app is class-C static
+files, so "try it out" is an in-UI preview pane with zero hosting risk,
+while server-tier builds are exports by rule (the pair's server never hosts
+generated server code). Exit criterion: prompt → generated client-tier app
+previewed in the same session → exported bundle runs from a plain static
+host.
 
 ---
 
@@ -215,5 +232,6 @@ order.
 | 19 | decision-boards | 4 | The human-decision mechanism |
 | 20 | feedback-loops | 4 | The boards' heaviest consumers |
 | 21 | agent-dev-workflow | 4‡ | ‡ configure hooks/ledgers in phase 0–1; full loop needs shipped features |
-| 22–27 | extensions | 5 | Leaves; product priority decides |
-| 28 | pair-generator | 6 | Meta — used throughout, listed last |
+| 22–28 | extensions (incl. vm-toolchain) | 5 | Leaves; product priority decides |
+| 29 | pair-generator | 6 | Meta — used throughout, listed last |
+| 30 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
