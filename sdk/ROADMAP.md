@@ -177,12 +177,19 @@ order:
 - `execution-sandbox` is the deepest well — treat it as its own project
   with a standing maintenance owner (the reference's regression history
   says so).
-- `vm-toolchain` follows directly on `execution-sandbox` + `introspection-help`
-  when the pair should become its own development environment: the
-  self-hosted small image (the archlinux32 SDK-dev default — i386 is the
-  platform fact; verified-gate before it becomes fleet default), full
-  prefetch so the image loads in its entirety, the SDK mounted in-VM, and
-  the in-app `sdk/<name>` skills catalog.
+- `exec-engine` sits under the sandbox: the engine is **CheerpX** (decided —
+  proprietary, i386, not source-built, accepted), and the substance is
+  building **our own SMALL, FAST image from scratch** (a reproducible
+  Alpine-i386 recipe, tools pinned and added as we go), self-hosted from our
+  origin, with **full prefetch** so it loads quickly and commands never stall
+  fetching hundreds of MB. The thin `ExecEngine` seam + the c2w/v86/qemu
+  fallback ladder are recorded as optional future-proofing, not a migration.
+  Decision matrix: `docs/JS-VM-RESEARCH.md`.
+- `vm-toolchain` follows `exec-engine` + `introspection-help` when the pair
+  should become its own development environment: the small fast Alpine image
+  loaded in its entirety by prefetch, the SDK mounted in-VM, and the in-app
+  `sdk/<name>` skills catalog. Verified-gate before any image becomes fleet
+  default.
 - `publish-replays` and `games-shelf` are small and land whenever wanted.
 
 ## Phase 6 — Generation, adoption & the studio (modules: `pair-generator`, `pair-studio`)
@@ -232,6 +239,6 @@ host.
 | 19 | decision-boards | 4 | The human-decision mechanism |
 | 20 | feedback-loops | 4 | The boards' heaviest consumers |
 | 21 | agent-dev-workflow | 4‡ | ‡ configure hooks/ledgers in phase 0–1; full loop needs shipped features |
-| 22–28 | extensions (incl. vm-toolchain) | 5 | Leaves; product priority decides |
-| 29 | pair-generator | 6 | Meta — used throughout, listed last |
-| 30 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
+| 22–29 | extensions (incl. exec-engine, vm-toolchain) | 5 | Leaves; product priority decides. exec-engine is the source-built substrate under the sandbox |
+| 30 | pair-generator | 6 | Meta — used throughout, listed last |
+| 31 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |

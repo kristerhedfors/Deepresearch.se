@@ -3,7 +3,7 @@ name: vm-toolchain
 description: >-
   Load when making the SDK available INSIDE the pair's in-browser Linux VM or
   from the application interface itself — "the SDK in the sandbox", picking or
-  building the prepackaged Linux image (the smaller-Arch/archlinux32 default,
+  building the prepackaged Linux image (CheerpX engine i386; small Alpine
   Alpine fallback), the self-hosted image pipeline (R2 Range streamer, config
   registry, HttpBytesDevice, per-image caches), the full-prefetch
   "loads-in-its-entirety" mode, running sdk/pair-cli.mjs inside the VM, or the
@@ -50,25 +50,39 @@ structurally).
 - **PA-10** — the boot path is protected: a new image becomes the default only
   after booting end-to-end on real devices (the `verified` flag gate).
 
-## The image decision (owner directive, 2026-07-16)
+## Engine CheerpX; our own small, fast image (owner directives, 2026-07-16)
 
-**The default is "a smaller version of Arch Linux".** The platform fact that
-shapes it: the VM engine (CheerpX) executes **32-bit x86 (i386) only** —
-mainline Arch has been x86_64-only since 2017 and **cannot boot**. "Arch" that
-runs here is the **archlinux32 (i686) community fork**, built minimal:
+This module sits on top of the **`exec-engine`** module. Two settled
+decisions:
+
+- **Engine: CheerpX** (proprietary, CDN-loaded — the one part not built from
+  source, accepted). It is **i386-only**, so images are i386.
+- **Image: built from scratch by our own recipe, and SMALL + FAST.** The
+  requirement that governs the image is: load quickly enough to be convenient,
+  and **never stall a command while fetching hundreds of MB of blocks.** That
+  makes the default the **smallest practical image — Alpine i386** — served
+  self-hosted and **fully prefetched** so after the first (small) load the
+  disk is entirely local and commands issue zero network reads.
+
+archlinux32 (i686) remains a *selectable* option for anyone who specifically
+wants Arch, but at several hundred MB it is the heavy choice — it works
+against the load-fast requirement unless fully prefetched, so it is **not the
+default** (this supersedes the earlier "smaller Arch as default" steer). The
+image table, all i386:
 
 | Image | Role | Contents |
 |---|---|---|
-| `arch32-i686-*` | **The SDK dev default** (once verified) | base + research toolchain (`bash coreutils grep sed gawk findutils file less python3 jq`) + **`nodejs` + `git`** so `pair-cli` and generated-app tests run in-VM; trimmed hard (docs/man/caches stripped); target well under 1 GB so full prefetch stays practical |
-| `alpine-i386-*` | The small fallback | same toolchain, musl, ~10× smaller — the choice when size beats glibc compatibility |
-| `debian-i386-slim-*` | Compatibility option | glibc, the known-good lineage |
+| `alpine-i386-*` | **The default** (small + fast, once verified) | base + research toolchain (`bash coreutils grep sed gawk findutils file less python3 jq`) + **`nodejs` + `git`** so `pair-cli` and generated-app tests run in-VM; musl; trimmed hard (docs/man/caches stripped, `resize2fs -M`); target **well under ~200 MB** so full prefetch loads it in its entirety quickly |
+| `debian-i386-slim-*` | Compatibility option | glibc, the known-good lineage; larger than Alpine |
+| `arch32-i686-*` | Selectable (heavy) | archlinux32 for those who specifically want Arch; several hundred MB — needs prefetch to not stall, not the speed default |
 
-**"Loads in its entirety"** = the **prefetch mode**: block-lazy streaming is
-inherent to how the engine mounts a disk, so the goal is not "no blocks" but
-"all blocks local" — a one-time background fetch of the whole image into the
-browser cache after first boot, after which boots touch the network **zero
-times**. Prefetch is config-gated, only ever for a small self-hosted image,
-never for the multi-GB third-party default.
+**"Loads in its entirety" = full prefetch.** Block-lazy streaming is inherent
+to how CheerpX mounts a disk, so the goal is not "no blocks" but "all blocks
+local": a one-time fetch of the whole small image into the browser's IndexedDB
+cache, after which boots and commands touch the network zero times. Prefetch
+is config-gated and only ever for a small self-hosted image — never the
+multi-GB third-party default. Small image + prefetch together are the answer
+to "load quickly, don't stall fetching more data."
 
 ## Build plan
 

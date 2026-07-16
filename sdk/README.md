@@ -26,7 +26,7 @@ they are.
 | File | What it is |
 |---|---|
 | `DESIGN.md` | The agent-pair abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
-| `MANIFEST.json` | The machine-readable module registry: 30 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `MANIFEST.json` | The machine-readable module registry: 31 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
 | `pair-cli.mjs` | The dependency-free CLI over the manifest: `list`, `show <id>`, `plan <id …>` (dependency closure → build order), `validate` (integrity + class rules). Runs on any desktop Node and inside the sandbox VM (`node /src/sdk/pair-cli.mjs …`); unit-tested by `pair-cli.test.mjs` in the repo's `npm test` |
@@ -95,7 +95,8 @@ evidence-driven decisions).
 | `publish-replays` | S | Frozen research sessions as public replay pages |
 | `symbol-language` | X | Per-tier symbols, disclosure grammar, wordmark discipline, UX registry |
 | `games-shelf` | S | The registry seam for whole product surfaces (worked example: a game) |
-| `vm-toolchain` | X | The SDK inside the prepackaged Linux VM: self-hosted small images (archlinux32 dev default, i386-only fact), full-prefetch, `/src/sdk` mount, the in-app `sdk/<name>` skills catalog, desktop parity |
+| `exec-engine` | X | Engine CheerpX (decided); building our own SMALL, FAST image from scratch (Alpine-i386 recipe, self-hosted, full-prefetch so commands never stall); the thin `ExecEngine` seam + c2w/v86/qemu fallback ladder as future-proofing; the in-VM agent egress design |
+| `vm-toolchain` | X | The SDK inside the prepackaged Linux VM: our small fast Alpine image + full-prefetch, `/src/sdk` mount, the in-app `sdk/<name>` skills catalog, desktop parity |
 
 **Layer 6 — Generation & studio**
 

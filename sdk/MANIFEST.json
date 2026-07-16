@@ -266,11 +266,20 @@
       "acceptance": "Registry dispatch suites green; a second registered game appears on the shelf with zero client changes"
     },
     {
+      "id": "exec-engine",
+      "name": "The in-browser execution engine, built from source",
+      "layer": 5, "class": "X", "deps": ["execution-sandbox"],
+      "skill": "sdk/skills/exec-engine/SKILL.md",
+      "provides": "Engine CheerpX (decided; proprietary, i386, not source-built — accepted). Building OUR OWN small Linux image from scratch (reproducible Alpine-i386 recipe, tools pinned + added as we go), self-hosted same-origin, SMALL + FAST + full-prefetch so it loads quickly and commands never stall fetching hundreds of MB. Plus the thin engine-agnostic ExecEngine seam + the c2w/v86/qemu fallback ladder as optional future-proofing, and the in-VM agent egress design (host-shim keeps keys/egress out of the VM; metered relay via the grant bridge only for genuine internet needs)",
+      "reference": ["docs/JS-VM-RESEARCH.md", "docs/SANDBOX-LOCAL-IMAGE.md", "public/js/bash-core.js", "public/js/sandbox.js", "src/sandbox-image.js", "scripts/build-sandbox-image.sh", "src/server-token.js"],
+      "acceptance": "Small Alpine-i386 image builds reproducibly (all binaries Intel 80386), served same-origin with Range, boots on Chrome/Firefox/real iOS Safari; loads fast and after prefetch a second boot + commands issue ZERO network block reads (no stalls); adding a tool = edit recipe + rebuild + new id; bash-core loop still passes against a mock engine"
+    },
+    {
       "id": "vm-toolchain",
       "name": "The SDK inside the prepackaged Linux VM",
-      "layer": 5, "class": "X", "deps": ["execution-sandbox", "introspection-help"],
+      "layer": 5, "class": "X", "deps": ["exec-engine", "execution-sandbox", "introspection-help"],
       "skill": "sdk/skills/vm-toolchain/SKILL.md",
-      "provides": "Self-hosted small Linux images (archlinux32 SDK-dev default once verified, Alpine fallback; i386-only platform fact), the R2 Range streamer + config registry + per-image caches, the full-prefetch loads-in-its-entirety mode, the SDK mounted in-VM at /src/sdk with nodejs for pair-cli, the in-app skills catalog namespaced as sdk/<name>, desktop parity",
+      "provides": "Self-hosted small Linux image built from our own recipe (Alpine-i386 default — small + fast; CheerpX engine i386; archlinux32 selectable but heavy), the R2 Range streamer + config registry + per-image caches, the full-prefetch loads-in-its-entirety mode so commands never stall, the SDK mounted in-VM at /src/sdk with nodejs for pair-cli, the in-app skills catalog namespaced as sdk/<name>, desktop parity",
       "reference": ["docs/SANDBOX-LOCAL-IMAGE.md", "src/sandbox-image.js", "src/config.js", "public/js/sandbox.js", "public/js/sandbox-files.js", "scripts/build-sandbox-image.sh", "public/js/introspect-core.js", "sdk/pair-cli.mjs"],
       "acceptance": "Image plumbing inert without a selection; arch32 image boots verified on real devices incl. iOS Safari; node /src/sdk/pair-cli.mjs validate passes in-VM; sdk/<name> entries in the in-app catalog (test-pinned); prefetch makes second boots network-free"
     },
