@@ -123,7 +123,7 @@ any static host.
    different storage module behind it.
 9. **`public/js/settings.js`** — the cached settings client: one fetch,
    memoized promise, and SYNCHRONOUS question functions
-   (`serverHistoryOn()`-style) so hot paths never await a knob. Staleness
+   (`storageAvailable()`-style) so hot paths never await a fetch. Staleness
    window accepted and self-healing: another device's flip lands on next
    load, and the server rejects writes its own copy forbids.
 10. **First-paint localStorage mirrors** — for any knob that must apply

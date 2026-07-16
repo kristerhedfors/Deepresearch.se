@@ -88,8 +88,9 @@
     its provider's country so you can tell at a glance. Web searches go
     through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
     <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
-    is encrypted in your browser, and — while the cloud-storage switch is on
-    (the default) — an encrypted copy follows your account across devices
+    is encrypted in your browser, and an encrypted copy is <b>always</b>
+    kept in this site's storage — that is what a signed-in tier is for — so
+    it follows your account across devices
     (see "Chat history" below). To improve
     the service, the server keeps a log of completed research interactions —
     the question, the answer, and the research steps. For chats that should
@@ -139,13 +140,13 @@
     renames it, the trash bin deletes it.</p>
     <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
     modern, larger-capacity successor to <code>localStorage</code>) — and,
-    while <b>Store history in the cloud</b> is on in Settings (it is on by
-    default), an <b>encrypted copy</b> in this site's storage as well, so
-    your history follows your account across devices. The server never holds
-    a <i>readable</i> copy of your saved history in either mode — the cloud
-    copy is ciphertext; separate from history, completed exchanges go to the
-    server's interaction log unless the conversation was started incognito
-    (see "Privacy, in full" below).</p>
+    always, an <b>encrypted copy</b> in this site's storage as well, so
+    your history follows your account across devices. There is no switch:
+    on this signed-in tier, cloud storage simply is how history works. The
+    server never holds a <i>readable</i> copy of your saved history — the
+    cloud copy is ciphertext; separate from history, completed exchanges go
+    to the server's interaction log unless the conversation was started
+    incognito (see "Privacy, in full" below).</p>
     <p class="muted">If you want conversations that are stored in the
     browser <b>only</b> — with no server copy even possible, because the
     server is never in the data path at all — that is the client-side tier,
@@ -164,39 +165,36 @@
         or cloned device, a forensic disk image — the attacker finds only
         ciphertext. The key that would unlock it was never written down in
         that browser to begin with.</li>
-      <li><b>If our server is ever compromised</b>, the attacker could
-        recover the secret the key derives from and compute your key — but,
-        <b>with cloud storage switched off</b>, would still have no
-        ciphertext to decrypt with it, because your conversations then never
-        leave your browser.</li>
+      <li><b>The key is never stored beside the ciphertext.</b> It is
+        derived on the server, fetched fresh each page load, and held only
+        in memory — so neither storage location ever contains both halves
+        at rest.</li>
     </ul>
-    <div class="privacy-flag"><b>Honest limitation:</b> with cloud storage
-    <b>off</b>, only the <i>combination</i> of both — someone who has
-    compromised the server (able to derive your key) <i>and</i> has
-    separately obtained your browser's stored data — could decrypt your
-    history; that is a materially higher bar than either alone. With cloud
-    storage <b>on</b> (the default), the server holds both the encrypted
-    copies and the secret your key derives from, so a full server compromise
-    could decrypt them — the cloud copy trades some of that guarantee for
-    cross-device sync. Turn the switch off for the stronger browser-only
-    posture, or use DeepResearch.<b>Se<span class="sl">/</span>cure</b>
-    (<a href="/cure/help/">its documentation</a>) for the strongest one,
-    where the server never sees ciphertext <i>or</i> key.</div>
+    <div class="privacy-flag"><b>Honest limitation:</b> this tier stores
+    your history in the cloud <i>by design</i>, and the server holds both
+    the encrypted copies and the secret your key derives from — so a full
+    server compromise could decrypt them. The encryption is a real barrier
+    against storage examined at rest (a disk image, a leaked bucket — the
+    key isn't there), not against a fully compromised live server. If a
+    conversation must not carry that trade-off, that is exactly what
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b> is for
+    (<a href="/cure/help/">its documentation</a>): there the server never
+    sees ciphertext <i>or</i> key, because it is never in the data path at
+    all.</div>
     <h3>What this means day to day</h3>
     <ul>
-      <li><b>With cloud storage on (the default), history follows your
-        account.</b> Sign in on your phone and your conversations are there
-        too, pulled down as encrypted records and decrypted locally.</li>
-      <li><b>With cloud storage off, it's this browser only.</b> History
-        doesn't sync between devices or browsers, and clearing your
-        browser's site data deletes it for good — there is no server-side
-        backup to restore from. That isolation is the same fact that makes
-        a server compromise alone insufficient. (Switching the cloud knob
-        off first downloads everything to this browser and deletes the
-        cloud copies.)</li>
-      <li>If this server hasn't configured the feature, the History button
-        simply doesn't appear — conversations still work, they just don't
-        persist across a reload, the previous behavior.</li>
+      <li><b>History follows your account.</b> Sign in on your phone and
+        your conversations are there too, pulled down as encrypted records
+        and decrypted locally. Clearing one browser's site data loses
+        nothing — the cloud copy restores it.</li>
+      <li><b>Conversations that must stay out of any cloud</b> don't belong
+        on this tier at all — use
+        DeepResearch.<b>Se<span class="sl">/</span>cure</b> (the ghost
+        button), where everything rests in your browser only and the server
+        is never in the data path.</li>
+      <li>If this server hasn't configured cloud storage, the app runs
+        browser-only: conversations still save locally, they just don't
+        follow the account.</li>
     </ul>
     <h3>The exception: chats inside a project</h3>
     <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the
@@ -205,7 +203,7 @@
     keeps growing as the conversation does: each new exchange is added to
     it. Because a search index needs readable text, indexed material is
     stored <b>readable, not encrypted</b> — and that includes project chats
-    themselves, in this browser and (when cloud storage is on) in the cloud
+    themselves, in this browser and in the cloud
     copy. Chats outside projects are not indexed and stay encrypted exactly
     as described above. If a conversation shouldn't be readable at rest —
     or retrievable from your other chats — keep it outside projects, or
@@ -401,13 +399,15 @@
       your account. Each is a single line; press and hold (or click) the
       <b>ⓘ</b> next to a switch for the full explanation.</p>
     <ul>
-      <li><b>Store history in the cloud</b> (on by default) — keeps a copy of
-        your conversations, files and search index in this site's storage so
-        your history follows your account across devices. Conversations and
+      <li><b>History is stored in the cloud</b> (always on — an
+        informational row, not a switch) — your conversations, files and
+        search index are kept in this site's storage so your history follows
+        your account across devices; that is what this signed-in tier is
+        for, and the opposite of Se<span class="sl">/</span>cure, which
+        never stores anything server-side. Conversations and
         files are stored encrypted; indexed material — large documents,
         project files and notes, project chats, and the search index itself —
-        is stored readable, since retrieval needs readable text. Switching it
-        off downloads everything to this browser and deletes the cloud copies.
+        is stored readable, since retrieval needs readable text.
         See "Chat history" above for how the encryption works.</li>
       <li><b>Shodan host intelligence</b> (off by default) — when on, if a
         question mentions an IP address or hostname, the site looks it up on
@@ -498,8 +498,8 @@
         question or anything identifying you.</li>
       <li><b>What our server keeps</b>: your account (Google email, name),
         per-request usage numbers — token counts, search counts, durations —
-        used for the quota bars, the interaction log above, and — while the
-        cloud-storage switch is on — the encrypted history copies plus the
+        used for the quota bars, the interaction log above, the encrypted
+        history copies, and the
         readable indexed material described under Settings (chats in
         ghost mode — Se<span class="sl">/</span>cure — never reach the server to begin with).</li>
       <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and

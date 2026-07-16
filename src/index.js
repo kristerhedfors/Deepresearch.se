@@ -20,7 +20,7 @@
 //   src/quota.js     — usage accounting + quota enforcement
 //   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
 //   src/history-key.js — per-user key for the client's encrypted local history
-//   src/settings.js  — per-user settings (/api/settings: server_history + shodan_mcp knobs)
+//   src/settings.js  — per-user settings (/api/settings: the opt-in feature knobs; cloud storage is implicit, not a knob)
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
@@ -520,7 +520,7 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/messages" && request.method === "GET") {
     return handleMessages(env, identity);
   }
-  // Per-user settings (server_history + shodan_mcp knobs).
+  // Per-user settings (the opt-in feature knobs — cloud storage is implicit).
   if (url.pathname === "/api/settings" && request.method === "GET") {
     return handleSettingsGet(env, identity);
   }

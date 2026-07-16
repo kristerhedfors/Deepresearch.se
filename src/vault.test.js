@@ -117,7 +117,7 @@ test("an over-cap declared content-length is rejected without reading the body",
   assert.equal(res.status, 413);
 });
 
-test("the vault works with the server_history knob OFF — that is the point", async () => {
+test("the vault ignores legacy settings flags — it is consent-per-PUT, not knob-gated", async () => {
   const env = makeEnv();
   const identity = identityFor(JSON.stringify({ server_history: false }));
   const put = await call(env, identity, "PUT", VALID_ID, new Uint8Array(64));

@@ -41,8 +41,9 @@ deliberately different trust models:
 - **DeepResearch.Se/rver** (`/rver`) — the signed-in tier. The server
   orchestrates the research pipeline, so conversation content transits the
   server by necessity. At rest, conversations and attached-file originals are
-  ciphertext in both the browser (IndexedDB/OPFS) and, when the opt-in cloud
-  knob is on, Cloudflare R2 — encrypted **client-side** under a per-user key
+  ciphertext in both the browser (IndexedDB/OPFS) and — always; cloud
+  storage is implicit on the signed-in tier, with no per-account knob —
+  Cloudflare R2, encrypted **client-side** under a per-user key
   that is derived server-side on demand but **never stored at rest anywhere**.
 
 Five properties define the architecture, in decreasing order of strength:
@@ -102,7 +103,7 @@ flowchart LR
     CURE -- "user's own API keys<br/>(direct, CORS)" --> LLM
     CURE -. "opt-in quota grants only<br/>(query / prompt, metered)" .-> CF
     RVER -- "questions & answers<br/>(TLS, session cookie)" --> PIPE
-    RVER -- "client-encrypted blobs<br/>(opt-in cloud knob)" --> R2
+    RVER -- "client-encrypted blobs<br/>(implicit cloud copy)" --> R2
     PIPE --> LLM
     PIPE --> EXA
     CF --> D1
@@ -271,18 +272,18 @@ CSPRNG IV per record. Two stored shapes:
 |---|---|---|
 | Offline browser-storage extraction (stolen device, disk image) | Ciphertext only — the key was never at rest | **No** |
 | Server storage dump (R2/D1 at rest) | Ciphertext blobs + `HISTORY_KEY_SECRET` is *not* in R2/D1 (it's a Worker secret) | **No** |
-| Live server compromise (can read env secrets) | Can **derive any user's key on demand**, but holds no ciphertext unless the user's cloud knob is on | **Only with the cloud knob on**, or combined with access to that browser's storage |
+| Live server compromise (can read env secrets) | Can **derive any user's key on demand**, and the cloud copy's ciphertext rests in R2 | **Yes — the designed Se/rver trade-off** (the tier that avoids it is Se/cure, where no server holds ciphertext or key) |
 
 That last row is the honest limitation: this is a **"combination required"**
 model, not end-to-end encryption — see §11-1.
 
-**Cloud mirror (opt-in `server_history` knob):** the *same* ciphertext blob is
+**Cloud mirror (implicit — no knob, 2026-07-16 directive):** the *same*
+ciphertext blob is
 PUT to R2 (`convos/{uid}/{id}`, `projects/{uid}/{id}` — `src/storage.js`); the
 server stores, lists and serves it back without ever holding key material at
 rest. Attached files carry an `x-file-enc` header so the server knows which
-stored form it has without being able to tell the contents. Flipping the knob
-off triggers the drain: the client pulls everything down and deletes the
-server copies.
+stored form it has without being able to tell the contents. `DELETE
+/api/storage` remains as the account's one-call data-deletion tool.
 
 ### 5.3 The project vault — user-held secret, server as blind blob store
 
@@ -453,8 +454,8 @@ here).
 
 | Store | Contents | Form | Server can read? |
 |---|---|---|---|
-| R2 `convos/{uid}/{id}`, `projects/{uid}/{id}` | Cloud mirror of history/project records (opt-in knob) | The client's `{iv, ciphertext}` blob, verbatim | **No** — key never at rest server-side (live derivation caveat §11-1). Exception: project chats `{data}` (§7-2) |
-| R2 `files/{uid}/{fileId}` | Attached-file originals (opt-in knob) | Client's stored form, `x-file-enc` flag: ciphertext for ordinary files, **readable for RAG-indexed documents** | Only the RAG-indexed class (§7-2) |
+| R2 `convos/{uid}/{id}`, `projects/{uid}/{id}` | Cloud mirror of history/project records (implicit, always on) | The client's `{iv, ciphertext}` blob, verbatim | **No** — key never at rest server-side (live derivation caveat §11-1). Exception: project chats `{data}` (§7-2) |
+| R2 `files/{uid}/{fileId}` | Attached-file originals (implicit, always on) | Client's stored form, `x-file-enc` flag: ciphertext for ordinary files, **readable for RAG-indexed documents** | Only the RAG-indexed class (§7-2) |
 | R2 `vault/{uid}/{id}` | Project-vault archives | `IV ‖ ciphertext` under the user-held DR1 secret | **No — cryptographically excluded** (server never sees secret or key) |
 | R2 `rag/{uid}/{docId}` | Exportable RAG index copies | **Readable** | Yes (§7-2) |
 | R2 `pub/{slug}` | Published research replays | **Readable** | Yes — public by intent (§7-4) |
@@ -580,10 +581,13 @@ trust the rest of the document less.
 
 1. **The history key is server-derivable.** Property "key never at rest" ≠
    end-to-end encryption: a live, compromised server can compute any user's
-   history key from `HISTORY_KEY_SECRET`. Content is at risk only in
-   *combination* (derived key + that browser's ciphertext, or derived key +
-   cloud-knob-ON R2 blobs). This is the designed trade-off for a no-stored-key
-   UX, and it is disclosed to users at `/help/` and in the first-run notice.
+   history key from `HISTORY_KEY_SECRET` — and since the cloud copy always
+   rests in R2 on this tier, a live server compromise can decrypt stored
+   history. The encryption is a real barrier against storage examined AT
+   REST (R2/D1 dumps, disk images — no key there), not against a fully
+   compromised live server. This is the designed trade-off for a signed-in,
+   cross-device tier, and it is disclosed to users at `/help/` and in the
+   first-run notice.
    Users wanting server-excluded crypto have the vault and the entire Se/cure
    tier for exactly that.
 2. **The workspace KDF is not memory-hard.** 8192 rounds of SHA-512 is a

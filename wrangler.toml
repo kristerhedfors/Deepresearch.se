@@ -72,7 +72,7 @@ binding = "DB"
 database_name = "deepresearch-se"
 database_id = "d9144c29-c8b2-4914-a795-37f8df393ac8"
 
-# ---- Opt-in cloud storage (per-user server_history knob) --------------------
+# ---- Cloud storage (implicit on the Se/rver tier — no per-account knob) -----
 # R2 holds encrypted conversation records, attached original files, and the
 # exportable RAG index copies (src/storage.js, src/rag.js); Vectorize holds
 # the document-RAG vectors (dimensions must match src/berget.js's embedding

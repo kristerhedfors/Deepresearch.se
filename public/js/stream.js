@@ -49,7 +49,6 @@ import {
   activeProject,
   activeProjectId,
   getProject,
-  projectCloudOn,
   setActiveProject,
 } from "./projects.js";
 import { listOriginals, loadOriginal } from "./opfs.js";
@@ -279,7 +278,6 @@ async function persistConversation(opts) {
         createdAt: convCreatedAt,
         updatedAt: now,
       },
-      { cloud: projectCloudOn(convProjectId) },
     );
     onHistoryChange(currentId);
   } catch {
@@ -296,7 +294,6 @@ async function persistConversation(opts) {
       convId: currentId,
       title: convTitle,
       messages: history.slice(),
-      cloud: projectCloudOn(convProjectId),
     }).catch(() => {});
   }
 }

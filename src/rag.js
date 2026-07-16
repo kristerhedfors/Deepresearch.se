@@ -6,18 +6,20 @@
 // chunked and embedded, and each question retrieves only the most relevant
 // excerpts. Embeddings come from Berget's embedding model in BOTH storage
 // modes (the API token is a Worker secret, so the client always embeds
-// through POST /api/embed here); where the INDEX lives follows the
-// per-user `server_history` knob (src/settings.js):
+// through POST /api/embed here); where the INDEX lives follows
+// availability (src/settings.js cloudStorageEnabled — cloud storage is
+// implicit on Se/rver, no per-account knob):
 //
-//   knob OFF (default) — the index lives in the browser (IndexedDB,
-//     public/js/rag.js does its own cosine top-k). This endpoint file only
-//     supplies the embedding proxy.
-//   knob ON — the index ALSO lives here: vectors in Vectorize (binding
-//     `RAG_INDEX` — similarity search runs off-Worker instead of burning
-//     the isolate's CPU budget), chunk text riding in vector metadata, and
-//     one exportable JSON copy per document in R2 (`rag/{uid}/{docId}`,
-//     chunks + vectors) so flipping the knob off can drain the whole index
-//     back to the client without re-embedding (and re-paying).
+//   storage unavailable (no R2/Vectorize binding, or break-glass) — the
+//     index lives in the browser (IndexedDB, public/js/rag.js does its own
+//     cosine top-k). This endpoint file only supplies the embedding proxy.
+//   storage available — the index ALSO lives here: vectors in Vectorize
+//     (binding `RAG_INDEX` — similarity search runs off-Worker instead of
+//     burning the isolate's CPU budget), chunk text riding in vector
+//     metadata, and one exportable JSON copy per document in R2
+//     (`rag/{uid}/{docId}`, chunks + vectors) so a drain (account
+//     deletion, DELETE /api/storage) can hand the whole index back to the
+//     client without re-embedding (and re-paying).
 //
 // The RAG index is NOT encrypted — retrieval needs readable chunk text —
 // which is why conversations (encrypted, src/storage.js) and the index are
@@ -42,7 +44,7 @@ import {
   releaseInflight,
   reserveInflight,
 } from "./quota.js";
-import { serverHistoryEnabled, storageAvailability } from "./settings.js";
+import { cloudStorageEnabled, storageAvailability } from "./settings.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -322,8 +324,8 @@ async function ragIndex(request, env, log, identity, uid, available) {
   if (!available.rag) {
     return jsonResponse({ error: "Server-side RAG is not configured (Vectorize binding missing)." }, 503);
   }
-  if (!serverHistoryEnabled(env, identity)) {
-    return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
+  if (!cloudStorageEnabled(env, identity)) {
+    return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
   let body;
   try {
@@ -397,8 +399,8 @@ async function ragQuery(request, env, log, identity, uid, available) {
   if (!available.rag) {
     return jsonResponse({ error: "Server-side RAG is not configured (Vectorize binding missing)." }, 503);
   }
-  if (!serverHistoryEnabled(env, identity)) {
-    return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
+  if (!cloudStorageEnabled(env, identity)) {
+    return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
   /** @type {any} */
   let body;
@@ -467,9 +469,9 @@ async function ragList(env, uid) {
   return jsonResponse({ docs: out });
 }
 
-// GET /api/rag/docs/:id — the full exportable copy (chunks + vectors), used
-// by the knob-off drain so the client can rebuild its local index without
-// re-embedding. Allowed while the knob is off — that IS the drain.
+// GET /api/rag/docs/:id — the full exportable copy (chunks + vectors), so
+// a client can rebuild its local index without re-embedding (import on a
+// new device, or a pull-down before DELETE /api/storage).
 /** @param {Env} env @param {number | string} uid @param {string} docId */
 async function ragExport(env, uid, docId) {
   const obj = await bucket(env).get(ragKey(uid, docId));

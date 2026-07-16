@@ -120,13 +120,13 @@ test("a chat inside a project retrieves the project's material, carries image EX
   expect(plain).not.toContain(NOTE_A);
 });
 
-test("the per-project cloud knob pushes and drains exactly that project's cloud objects", async ({ page }) => {
+test("projects mirror to the cloud implicitly — and there is no per-project switch", async ({ page }) => {
   const calls = [];
   const json = (b, s = 200) => ({ status: s, headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
   const track = (route) => calls.push(route.request().method() + " " + new URL(route.request().url()).pathname);
   await page.route("**/api/settings", (r) => {
     track(r);
-    return r.fulfill(json({ server_history: true, available: { storage: true, rag: true } }));
+    return r.fulfill(json({ available: { storage: true, rag: true } }));
   });
   for (const family of ["projects", "convos"]) {
     await page.route(`**/api/${family}**`, (r) => {
@@ -163,32 +163,17 @@ test("the per-project cloud knob pushes and drains exactly that project's cloud 
 
   await createProject(page, "CloudProj");
   await addNote(page, "Cloud note", "Content that gets indexed and mirrored.");
-  // While the knob is on: record + file + index all reached the cloud.
+  // Cloud storage is implicit (2026-07-16 — no knob): the record + file +
+  // index all reach the cloud without any switch being touched.
   await expect
     .poll(() => calls.filter((c) => c.startsWith("PUT /api/projects/")).length, { timeout: 15_000 })
     .toBeGreaterThan(0);
   await expect.poll(() => calls.filter((c) => c.startsWith("PUT /api/files/")).length).toBeGreaterThan(0);
   await expect.poll(() => calls.filter((c) => c === "POST /api/rag/index").length).toBeGreaterThan(0);
+  // Nothing ever fires the account-wide wipe on its own.
+  expect(calls.some((c) => c === "DELETE /api/storage")).toBeFalsy();
 
-  // Knob OFF → drain: exactly this project's objects deleted.
-  calls.length = 0;
-  await page.click("#projectpanel .switch-track");
-  await expect(page.locator("#projectsyncstatus")).toContainText("only in this browser", { timeout: 20_000 });
-  expect(calls.some((c) => c.startsWith("DELETE /api/files/"))).toBeTruthy();
-  expect(calls.some((c) => c.startsWith("DELETE /api/rag/docs/"))).toBeTruthy();
-  expect(calls.some((c) => c.startsWith("DELETE /api/projects/"))).toBeTruthy();
-  expect(calls.some((c) => c === "DELETE /api/storage")).toBeFalsy(); // never the account-wide wipe
-
-  // While OFF: new material stays local — nothing new reaches the cloud.
-  calls.length = 0;
-  await addNote(page, "Local-only note", "This one must not be uploaded.");
-  expect(calls.filter((c) => c.startsWith("PUT /api/") || c === "POST /api/rag/index")).toEqual([]);
-
-  // Knob ON again → push: everything (both notes) goes up.
-  calls.length = 0;
-  await page.click("#projectpanel .switch-track");
-  await expect(page.locator("#projectsyncstatus")).toContainText("stored in the cloud", { timeout: 20_000 });
-  expect(calls.some((c) => c.startsWith("PUT /api/projects/"))).toBeTruthy();
-  expect(calls.filter((c) => c.startsWith("PUT /api/files/")).length).toBeGreaterThanOrEqual(2);
-  expect(calls.filter((c) => c === "POST /api/rag/index").length).toBeGreaterThanOrEqual(2);
+  // And the open project panel offers no cloud switch to flip.
+  await expect(page.locator("#projectcloud")).toHaveCount(0);
+  await expect(page.locator("#projectpanel")).not.toContainText("Store this project in the cloud");
 });

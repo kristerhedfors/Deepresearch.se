@@ -25,7 +25,7 @@ export interface Env {
   ASSETS: Fetcher;
   /** D1 database — optional; absent means break-glass-auth-only, no quotas. */
   DB?: D1Database;
-  /** R2 bucket for cloud conversation/file/RAG storage (the server_history knob). */
+  /** R2 bucket for cloud conversation/file/RAG storage (implicit on Se/rver — no per-account knob). */
   STORAGE?: R2Bucket;
   /** Vectorize index for server-side RAG retrieval. */
   RAG_INDEX?: VectorizeIndex;
@@ -322,8 +322,6 @@ export interface PipelineCtx {
 // ---- Per-user settings (src/settings.js parseSettings) ---------------------
 /** The effective per-account knob state parseSettings coerces to. */
 export interface Settings {
-  /** Cloud storage of history (default ON — explicit false opts out). */
-  server_history: boolean;
   /** Shodan host-intelligence enrichment (default OFF — opt-in). */
   shodan_mcp: boolean;
   /** Google Maps / Street View enrichment (default OFF — opt-in). */

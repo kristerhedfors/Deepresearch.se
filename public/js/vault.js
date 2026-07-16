@@ -2,11 +2,11 @@
 // original file bytes, and its slice of the RAG index (the dr_rag vector
 // "database", vectors included so nothing re-embeds) — as ONE archive,
 // encrypted IN THIS BROWSER under a secret only the user holds, and parked
-// server-side (PUT /api/vault/:id, src/vault.js). This is how a LOCAL-ONLY
-// project (its cloud knob off, or the whole account knob off) gets a
-// backup / cross-device transport without giving up its privacy posture:
-// the server stores one opaque blob — no names, no text, no index, not
-// even which project it is.
+// server-side (PUT /api/vault/:id, src/vault.js). Where the implicit cloud
+// copy is the account's WORKING copy (conversations encrypted, indexed
+// material readable), this is the strictest tier: the server stores one
+// opaque blob — no names, no text, no index, not even which project it
+// is — locatable and decryptable only with the user-held secret.
 //
 // The secret is the whole key hierarchy:
 //   secret (160 bits, CSPRNG)
@@ -190,9 +190,10 @@ export async function storeProjectToVault(projectId, onProgress = () => {}) {
 /**
  * Fetches and decrypts the archive the secret points at, then imports it —
  * last-write-wins by updatedAt (the app-wide rule), gap-filling everything
- * missing. Import honors the archived project's OWN cloud posture: a
- * local-only project loads as local-only (its dual-writes stay off), so
- * loading never silently uploads anything readable.
+ * missing. Imported records rejoin the implicit cloud copy through the
+ * normal save paths (dual-writes included), like any other record on this
+ * tier. (A legacy archive's serverStorage flag is ignored — the
+ * per-project knob is gone.)
  * @param {string} secret
  * @param {(msg: string) => void} [onProgress]
  * @returns {Promise<{projectId: string, name: string,
@@ -222,7 +223,6 @@ export async function loadProjectFromVault(secret, onProgress = () => {}) {
   if (!validateVaultArchive(archive)) throw new Error("The archive contents are not usable.");
 
   const project = archive.project;
-  const cloud = project.serverStorage !== false; // dual-writes follow the project's own knob
   const imported = { record: false, conversations: 0, files: 0, docs: 0 };
 
   // The record — LWW against any local copy of the same project.
@@ -230,7 +230,7 @@ export async function loadProjectFromVault(secret, onProgress = () => {}) {
   const existing = getProject(project.id);
   if (!existing || (existing.updatedAt || 0) < (project.updatedAt || 0)) {
     const { id, ...data } = project;
-    await saveProjectRecord(id, data, { cloud });
+    await saveProjectRecord(id, data);
     imported.record = true;
   }
 
@@ -241,7 +241,7 @@ export async function loadProjectFromVault(secret, onProgress = () => {}) {
   );
   for (const c of archive.conversations) {
     if ((existingConvs.get(c.id) || 0) >= (c.data.updatedAt || 0)) continue;
-    await saveConversation(c.id, { ...c.data, projectId: project.id }, { cloud });
+    await saveConversation(c.id, { ...c.data, projectId: project.id });
     imported.conversations++;
   }
 

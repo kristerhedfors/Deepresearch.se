@@ -133,7 +133,7 @@ Known provider limits baked into the design:
 - `[[r2_buckets]] binding = "STORAGE"` and `[[vectorize]] binding =
   "RAG_INDEX"` — the opt-in cloud-storage/RAG layer (§9). The bound
   resources must exist before deploy or every deploy fails; removing the
-  bindings just switches the feature off (the settings knob disappears).
+  bindings just switches the feature off (clients run browser-only).
 - `[vars] LOG_LEVEL = "info"`; `[observability] enabled = true` persists
   logs to Workers Logs.
 - Secrets are set only in the dashboard/CLI, never in the repo. Required:
@@ -681,7 +681,7 @@ the architectural highlights:
 |---|---|---|
 | Send loop & streaming | `app.js`, `stream.js`, `embeds.js`, `recovery.js`, `sse.js`, `message-content.js` | Conversation history + `/api/chat` SSE loop; the embeds registry and answer-recovery poll client are split-out collaborators; the pure SSE line-buffer parser and outgoing-message block builders are Node-tested |
 | Turn rendering | `turns.js`, `activity.js`, `markdown.js`, `quiz.js`, `imagedeck.js` | Bubbles, live step bars, sanitized Markdown (`<img>` forbidden), the interactive quiz card, the conversation-wide image deck for Street View/map frames |
-| History & storage | `history-store.js`, `history-ui.js`, `sync.js`, `settings.js`, `opfs.js` | **Encrypted local history** (IndexedDB + AES-256-GCM under the `/api/history-key` key), the history sidebar, cloud dual-write/sync when the `server_history` knob is on, original file bytes in OPFS |
+| History & storage | `history-store.js`, `history-ui.js`, `sync.js`, `settings.js`, `opfs.js` | **Encrypted local history** (IndexedDB + AES-256-GCM under the `/api/history-key` key), the history sidebar, the implicit cloud dual-write/sync (always on whenever the server has storage), original file bytes in OPFS |
 | RAG & projects | `rag.js`, `chat-rag.js`, `projects.js`, `project-context.js`, `projects-ui.js` | Client-side chunking/embedding (`POST /api/embed`), local or server vector index, project records and project-chat retrieval |
 | Attachments | `attachments.js`, `exif.js`, `docs.js`, `report.js` | Image downscaling, EXIF/GPS extraction, docx/pdf parsing, the PDF report export |
 | Account & misc | `account.js` + `account-views.js`/`account-messages.js`/`account-settings.js`/`account-feedback.js`, `models.js`, `notifications.js`, `timescale.js` | The account panel shell + its split-out views (summary/usage/games, message center, settings knobs, Feedback threads); model dropdown; the budget slider's quadratic scale |
@@ -695,7 +695,7 @@ Client-side behaviors that matter architecturally:
   images are stripped from all but the latest message when resending
   history — together staying under Berget's ~1 MB body limit.
 - **Persistence**: conversations persist in the **encrypted local
-  history** (IndexedDB, AES-256-GCM) and — when the cloud knob is on — as
+  history** (IndexedDB, AES-256-GCM) and — always — as
   the *same ciphertext* in R2 (§9). Project chats rest readable because
   they are RAG-indexed. Model selection and budget position in
   `localStorage`; session auth in the `dr_session` cookie.
@@ -761,7 +761,8 @@ EN+SV parity). See the **tokemon-game** skill.
 The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
 
 > Conversations and attached-file originals rest as **ciphertext** in BOTH
-> the browser and (if the cloud knob is on) R2 — the ONLY readable
+> the browser and R2 (cloud storage is implicit on the signed-in tier —
+> no knob) — the ONLY readable
 > exceptions are RAG-indexed material and project chats, because retrieval
 > needs plaintext. The encryption key is derived server-side and held only
 > in memory, never at rest beside the ciphertext.
@@ -773,20 +774,21 @@ The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
   endpoint 503s and the client hides history rather than storing
   plaintext. The server can *re-derive* the key but never stores it beside
   the ciphertext (compromise of the R2 bucket alone reveals nothing).
-- **The `server_history` knob** (`src/settings.js`, default ON, per-user
-  opt-out): with it on, the client dual-writes each record to R2 via
+- **Implicit cloud storage** (2026-07-16 directive — the former
+  `server_history` knob is gone; the TIER is the choice): the client
+  dual-writes each record to R2 via
   `src/storage.js` — `convos/{uid}/…` and `projects/{uid}/…` as the same
   encrypted `{iv, ciphertext}` blobs the browser holds (project chats as
   readable records, since they're RAG-indexed), `files/{uid}/…` as
   original attached-file bytes (readable — the server must serve them back
   and index document text; disclosed in the settings UI), and
-  `rag/{uid}/…` as exportable RAG index copies. Flipping the knob off
-  pulls everything down and the client wipes the server copies;
-  `DELETE /api/storage` is the full drain-wipe.
+  `rag/{uid}/…` as exportable RAG index copies. Gated only on
+  availability (the R2 binding + a user row);
+  `DELETE /api/storage` remains as the account's data-deletion tool.
 - **Document RAG** (`src/rag.js`): embeddings always come from Berget via
   `POST /api/embed` (the API token is a Worker secret); the *index* lives
-  in the browser (IndexedDB, local cosine top-k) with the knob off, or in
-  Vectorize (+R2 export copies) with it on. The index is necessarily NOT
+  in the browser (IndexedDB, local cosine top-k) when the server has no
+  storage/Vectorize, or in Vectorize (+R2 export copies) when it does. The index is necessarily NOT
   encrypted — retrieval needs readable chunk text.
 - **The chat interaction log** (`src/chatlog.js`, D1 `chat_logs`) — an
   explicit product decision (2026-07-08): every completed `/api/chat` and
@@ -837,9 +839,9 @@ ever sees as ciphertext. Both the R2 object id AND the AES-256-GCM key are
 derived in the browser (HKDF) from a copy-safe 160-bit secret the user
 holds; the server never receives it and cannot derive either value
 (`public/js/vault-core.js`). So a local-only project gains backup and
-cross-device transport as pure ciphertext. Unlike cloud history it is NOT
-gated on the `server_history` knob — each store is its own explicit
-consent — and it is excluded from the drain-wipe. Endpoints:
+cross-device transport as pure ciphertext. Unlike the implicit cloud
+copy, each vault store is its own explicit
+consent act — and it is excluded from the account-wide wipe. Endpoints:
 `PUT/GET/DELETE /api/vault/:id`, R2 `vault/{uid}/{id}`.
 
 ### DeepResearch.Se/cure — the client-side tier

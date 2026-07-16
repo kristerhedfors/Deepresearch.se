@@ -267,9 +267,11 @@ plaintext, readable by any admin via `GET /api/admin/chatlogs`.
 
 Aggravating: **`DELETE /api/storage` (the drain) does not touch `chat_logs`** — it
 wipes only convos/projects/files/rag. There is **no endpoint that deletes
-`chat_logs` rows at all**; the table is append-only and never pruned. A user who
-turns the cloud knob off and drains everything still leaves a permanent,
-un-wipeable plaintext copy of all prior conversations server-side. An incognito
+`chat_logs` rows at all**; the table is append-only and never pruned. Even
+after a full `DELETE /api/storage` wipe there remains a permanent,
+un-wipeable plaintext copy of all prior conversations server-side. (Since
+2026-07-16 cloud storage is implicit — the former opt-out knob is gone —
+which widens this consideration to every account.) An incognito
 choice also cannot be applied retroactively.
 
 **Remediation:** encrypt `question`/`answer`/`conversation_json`/`meta_json` at

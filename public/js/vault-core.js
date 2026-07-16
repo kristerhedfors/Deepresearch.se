@@ -167,7 +167,7 @@ export async function decryptVaultArchive(bytes, key) {
 
 // ---- the archive shape ------------------------------------------------------------
 
-// {v: 1, kind, exportedAt, project: {id, name, files, serverStorage, …},
+// {v: 1, kind, exportedAt, project: {id, name, files, …},
 //  conversations: [{id, data}], files: [{id, name, type, bytes(b64)}],
 //  ragDocs: [{docId, name, chunks, vectors}]}
 export const ARCHIVE_KIND = "deepresearch-project";

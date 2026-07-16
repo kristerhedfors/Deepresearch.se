@@ -1,14 +1,18 @@
 // @ts-check
-// Opt-in server-side storage (R2 binding `STORAGE`) for the per-user
-// `server_history` knob (src/settings.js). Three key families, all
-// namespaced per user id:
+// Server-side cloud storage (R2 binding `STORAGE`) — IMPLICIT on the
+// signed-in Se/rver tier: every conversation and project is stored here,
+// always, with no per-account opt-out (2026-07-16 owner directive; the
+// never-cloud tier is Se/cure, where the server is in no data path at
+// all). Gated only on availability (src/settings.js cloudStorageEnabled:
+// the R2 binding + a user row). Three key families, all namespaced per
+// user id:
 //
 //   projects/{uid}/{projectId} — one PROJECT record as JSON, same encrypted
 //       {iv, ciphertext} shape as a conversation: the project's name, file
-//       inventory (incl. extracted image metadata), notes, and per-project
-//       cloud knob all live inside the ciphertext. Which files/convos
-//       belong to a project is therefore invisible server-side — the
-//       per-project drain is client-driven (it knows the ids and deletes
+//       inventory (incl. extracted image metadata) and notes all live
+//       inside the ciphertext. Which files/convos
+//       belong to a project is therefore invisible server-side —
+//       project deletion is client-driven (it knows the ids and deletes
 //       them individually through the endpoints below).
 //   convos/{uid}/{convId} — one conversation record as JSON. Two stored
 //       forms, chosen by the client the same way it chooses a file's
@@ -40,13 +44,13 @@
 // not R2 (src/rag.js), because similarity search inside the Worker would
 // burn CPU-time budget the pipeline already competes for.
 //
-// Write access (PUT) requires the knob to be ON. Read + delete stay
-// allowed while it's OFF — that is exactly the drain path: flipping the
-// knob off makes the client pull everything down and then delete the
-// server-side copies (public/js/sync.js).
+// Every endpoint (PUT included) gates only on availability
+// (cloudStorageEnabled): storage is implicit, so there is no off state to
+// honor. DELETE /api/storage below remains as the account's one-call
+// data-deletion tool.
 
 import { jsonResponse } from "./http.js";
-import { serverHistoryEnabled, storageAvailability } from "./settings.js";
+import { cloudStorageEnabled, storageAvailability } from "./settings.js";
 import { idOk, wipeRagForUser } from "./rag.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -63,7 +67,7 @@ const MAX_OBJECTS_PER_USER = 1000; // per key family — sanity backstop, not a 
 
 // Two families share the encrypted-record shape and handlers below:
 // "convos" (one conversation each) and "projects" (one project's metadata
-// record each — name, file inventory, notes, per-project knob — all inside
+// record each — name, file inventory, notes — all inside
 // the ciphertext; the server can't tell them apart and doesn't need to).
 /** @type {Record<string, string>} family -> the list response's key */
 const ENC_FAMILIES = { convos: "conversations", projects: "projects" };
@@ -175,8 +179,8 @@ async function getEncRecord(env, uid, family, id) {
  * @param {string} id
  */
 async function putEncRecord(request, env, log, identity, uid, family, id) {
-  if (!serverHistoryEnabled(env, identity)) {
-    return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
+  if (!cloudStorageEnabled(env, identity)) {
+    return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
   /** @type {any} */
   let body;
@@ -268,8 +272,8 @@ async function getFile(env, uid, id) {
  * @param {string} id
  */
 async function putFile(request, env, log, identity, uid, id) {
-  if (!serverHistoryEnabled(env, identity)) {
-    return jsonResponse({ error: "Cloud history is switched off for this account." }, 403);
+  if (!cloudStorageEnabled(env, identity)) {
+    return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
   const declared = Number(request.headers.get("content-length")) || 0;
   if (declared > FILE_MAX_BYTES) return jsonResponse({ error: "File too large." }, 413);
@@ -295,9 +299,10 @@ async function deleteObject(env, key) {
   return new Response(null, { status: 204 });
 }
 
-// DELETE /api/storage — the drain path's final step: after sync-to-client
-// completes, everything this user ever stored server-side (conversations,
-// files, RAG exports AND their Vectorize vectors) is removed in one call.
+// DELETE /api/storage — the account's data-deletion tool: everything this
+// user ever stored server-side (conversations, files, RAG exports AND
+// their Vectorize vectors) is removed in one call. (Historically the final
+// step of the knob-off drain; the knob is gone, the wipe remains.)
 /**
  * @param {Env} env
  * @param {Logger} log
@@ -307,8 +312,7 @@ async function deleteObject(env, key) {
 async function wipeAll(env, log, identity, uid) {
   // vault/{uid}/ (src/vault.js) is deliberately NOT in this list: vault
   // objects are secret-encrypted archives stored by explicit user action —
-  // often made precisely BECAUSE the knob is going off — so the knob-driven
-  // drain must never destroy them.
+  // deliberate backups the account-wide wipe must never destroy.
   const prefixes = [`convos/${uid}/`, `projects/${uid}/`, `files/${uid}/`];
   let deleted = 0;
   for (const prefix of prefixes) {

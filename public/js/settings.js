@@ -1,18 +1,20 @@
 // @ts-check
 // Per-account settings (GET/PUT /api/settings — src/settings.js): the
-// server_history (cloud storage), shodan_mcp (Shodan host-intel),
-// google_maps, and feedback_mode knobs. The cached copy answers the
-// hot-path question every storage-touching module asks — "is cloud storage
-// on?" — without a fetch per call; the answer only ever changes through
-// updateSetting below (this tab) or on the next page load (another tab or
-// device flipped it — an accepted, self-healing staleness window: the
-// server rejects writes that its own copy of the knob forbids).
+// shodan_mcp (Shodan host-intel), google_maps, feedback_mode,
+// bash_lite_mcp, and developer_mode knobs. Cloud storage is NOT a knob
+// (2026-07-16 owner directive): on this signed-in tier history is always
+// cloud-stored whenever the server can store it — the cached
+// `available.storage` answers the hot-path question every storage-touching
+// module asks ("does the cloud copy exist here?", storageAvailable below)
+// without a fetch per call. Knob changes go through updateSetting below
+// (this tab) or the next page load (another tab or device flipped one — an
+// accepted, self-healing staleness window: the server rejects writes that
+// its own copy of a knob forbids).
 
 /**
  * The server's effective-settings response: the per-user knobs plus which
  * server-side capabilities exist at all (secrets/bindings present).
  * @typedef {object} Settings
- * @property {boolean} [server_history]
  * @property {boolean} [shodan_mcp]
  * @property {boolean} [google_maps]
  * @property {boolean} [feedback_mode]
@@ -52,13 +54,6 @@ export function loadSettings(force = false) {
   return loadPromise;
 }
 
-// Synchronous view for hot paths (persist-after-every-turn, retrieval
-// backend choice). False until loadSettings has resolved — the safe
-// default: local-only behavior.
-export function serverHistoryOn() {
-  return settings?.server_history === true;
-}
-
 // Whether /api/settings has actually answered this page load. Lets UI
 // distinguish "the knob is off" from "we never learned the knob's state"
 // (auth or network failure) — the two need opposite user guidance.
@@ -66,6 +61,10 @@ export function settingsLoaded() {
   return settings !== null;
 }
 
+// Synchronous view for hot paths (persist-after-every-turn, retrieval
+// backend choice): whether this server holds the implicit cloud copy at
+// all (R2 binding + a signed-in account). False until loadSettings has
+// resolved — the safe default: local-only behavior until we know.
 export function storageAvailable() {
   return settings?.available?.storage === true;
 }
@@ -119,11 +118,6 @@ async function updateSetting(patch) {
   settings = data;
   loadPromise = Promise.resolve(data);
   return data;
-}
-
-/** @param {boolean} on */
-export function setServerHistory(on) {
-  return updateSetting({ server_history: on });
 }
 
 /** @param {boolean} on */
