@@ -89,6 +89,68 @@ export function withDeadline(promise, ms, message) {
   });
 }
 
+// ---- crash diagnostics ------------------------------------------------------------
+//
+// The engine's worker.onerror often receives a DEGRADED ErrorEvent ("Script
+// error." with no location) — especially for errors that propagated up from
+// the nested pthread workers ort-wasm-simd-threaded spawns — and the original
+// handler discarded even the filename/lineno the browser DID report. These
+// compose the most useful one-line detail an ErrorEvent / rejection reason
+// actually carries, so the message the UI shows verbatim names the script and
+// line whenever possible (the on-device-trace convention: the failure text IS
+// the remote debugger — this tier has no server logs by design).
+
+/**
+ * One line from an ErrorEvent-shaped object: "message (file:line:col)" with
+ * every absent part omitted; "" when the event carries nothing usable.
+ * @param {{message?: string, filename?: string, lineno?: number, colno?: number}|null} [e]
+ */
+export function errorEventDetail(e) {
+  const msg = (e && typeof e.message === "string" && e.message.trim()) || "";
+  let where = "";
+  if (e && typeof e.filename === "string" && e.filename) {
+    where = e.filename.split("/").pop() || e.filename;
+    if (typeof e.lineno === "number" && e.lineno > 0) {
+      where += ":" + e.lineno;
+      if (typeof e.colno === "number" && e.colno > 0) where += ":" + e.colno;
+    }
+  }
+  if (msg && where) return msg + " (" + where + ")";
+  return msg || where || "";
+}
+
+/**
+ * One line from an unhandledrejection reason (an Error, a string, or any
+ * structured value — wasm aborts have thrown all three); "" when empty.
+ * @param {unknown} reason
+ */
+export function rejectionDetail(reason) {
+  if (reason === undefined || reason === null) return "";
+  if (reason instanceof Error) return reason.message || String(reason);
+  if (typeof reason === "string") return reason;
+  try {
+    const s = JSON.stringify(reason);
+    // Clamped: this ends up in a UI-verbatim error message, not a log file.
+    if (typeof s === "string") return s.length > 200 ? s.slice(0, 200) + "…" : s;
+  } catch {
+    /* circular or unserializable — fall through */
+  }
+  return String(reason);
+}
+
+/**
+ * The verbose-console debug switch's decision (the dr_sandbox_debug pattern —
+ * see the sandbox-debug skill): ON when localStorage dr_ondevice_debug="1" or
+ * the URL carries ?oddebug=1. Workers can't read localStorage, so the engine
+ * forwards the flag into the worker via its spawn URL and a live {t:"debug"}
+ * message; both sides decide through this one predicate.
+ * @param {string} [search] location.search (page or worker)
+ * @param {?string} [stored] localStorage.getItem("dr_ondevice_debug"), null where unavailable
+ */
+export function debugFlagFrom(search, stored) {
+  return stored === "1" || /[?&]oddebug=1(&|$)/.test(search || "");
+}
+
 // ---- Hugging Face wire shapes ---------------------------------------------------
 
 // The tree API lists every file with its size and (for LFS files) the sha256
