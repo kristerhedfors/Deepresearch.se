@@ -13,13 +13,16 @@ import {
   completionEnvelope,
   createSha256,
   createThinkFilter,
+  debugFlagFrom,
   downloadProgress,
   downloadTotalBytes,
+  errorEventDetail,
   fmtBytes,
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
   planModelFiles,
+  rejectionDetail,
   sseDeltaLine,
   sseDoneLine,
   wasmPathsFor,
@@ -280,4 +283,49 @@ test("wasmPathsFor mirrors the runtime's Safari/asyncify selection, on our vendo
 
 test("ONDEVICE_MAX_TOKENS is a phone-sane output cap", () => {
   assert.ok(ONDEVICE_MAX_TOKENS >= 512 && ONDEVICE_MAX_TOKENS <= 2048);
+});
+
+// ---- crash diagnostics -------------------------------------------------------------------
+
+test("errorEventDetail: message + basename:line:col, every absent part omitted", () => {
+  assert.equal(
+    errorEventDetail({
+      message: "RuntimeError: abort",
+      filename: "https://x/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs",
+      lineno: 12,
+      colno: 34,
+    }),
+    "RuntimeError: abort (ort-wasm-simd-threaded.asyncify.mjs:12:34)",
+  );
+  assert.equal(errorEventDetail({ message: "Script error." }), "Script error.");
+  assert.equal(errorEventDetail({ filename: "a/b.js", lineno: 5 }), "b.js:5"); // location alone still beats nothing
+  assert.equal(errorEventDetail({ message: "x", lineno: 3 }), "x"); // a line number without a file is noise
+  assert.equal(errorEventDetail({ message: "  " }), ""); // whitespace-only is not a message
+  assert.equal(errorEventDetail({}), "");
+  assert.equal(errorEventDetail(null), "");
+  assert.equal(errorEventDetail(undefined), "");
+});
+
+test("rejectionDetail: Error, string, structured value (clamped), empty", () => {
+  assert.equal(rejectionDetail(new Error("boom")), "boom");
+  assert.equal(rejectionDetail(new Error("")), "Error"); // an empty-message Error still says what it is
+  assert.equal(rejectionDetail("plain string reason"), "plain string reason");
+  assert.equal(rejectionDetail({ code: 7 }), '{"code":7}');
+  const long = rejectionDetail({ x: "y".repeat(500) });
+  assert.ok(long.length <= 201 && long.endsWith("…")); // UI-verbatim message, not a log file
+  assert.equal(rejectionDetail(undefined), "");
+  assert.equal(rejectionDetail(null), "");
+  const circular = /** @type {any} */ ({});
+  circular.self = circular;
+  assert.equal(rejectionDetail(circular), "[object Object]"); // unserializable falls through to String()
+});
+
+test("debugFlagFrom: the stored flag or the ?oddebug=1 param, default off", () => {
+  assert.equal(debugFlagFrom("", null), false);
+  assert.equal(debugFlagFrom("", "1"), true);
+  assert.equal(debugFlagFrom("", "0"), false);
+  assert.equal(debugFlagFrom("?oddebug=1", null), true);
+  assert.equal(debugFlagFrom("?x=2&oddebug=1&y=3", null), true);
+  assert.equal(debugFlagFrom("?oddebug=10", null), false); // exact value, not a prefix
+  assert.equal(debugFlagFrom(undefined, undefined), false);
 });

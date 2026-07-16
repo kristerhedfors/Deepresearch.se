@@ -24,11 +24,71 @@
 //     ort-wasm-simd-threaded.asyncify.mjs   5959c6733039619c9af710d8e1bae8d6e84402787990637be987c2b1bd6c5fa9
 //     ort-wasm-simd-threaded.asyncify.wasm  e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786
 
-import { ONDEVICE_MAX_TOKENS, completionEnvelope, sseDeltaLine, sseDoneLine, withDeadline } from "/js/ondevice-core.js";
+import {
+  ONDEVICE_MAX_TOKENS,
+  completionEnvelope,
+  debugFlagFrom,
+  errorEventDetail,
+  sseDeltaLine,
+  sseDoneLine,
+  withDeadline,
+} from "/js/ondevice-core.js";
 
 export { ONDEVICE_MODELS, capabilityVerdict, fmtBytes, onDeviceModel } from "/js/ondevice-core.js";
 
 export const ONDEVICE_PROVIDER_ID = "ondevice";
+
+// ---- verbose debug switch ----------------------------------------------------------
+//
+// The sandbox's dr_sandbox_debug pattern (sandbox-debug skill) for THIS
+// subsystem. OFF by default and byte-silent; when ON, both sides of the
+// worker protocol narrate to the console — the only observability this tier
+// can have, since Se/cure keeps the server out of every data path (no
+// chatlogs, no Workers Logs). Toggle: localStorage dr_ondevice_debug="1",
+// the ?oddebug=1 URL param, or window.__DR_ONDEVICE_DEBUG(true|false) from
+// a device console.
+let _odDebug = false;
+try {
+  _odDebug = debugFlagFrom(
+    typeof location !== "undefined" ? location.search : "",
+    typeof localStorage !== "undefined" ? localStorage.getItem("dr_ondevice_debug") : null,
+  );
+} catch {
+  /* storage/location unavailable */
+}
+
+/** @param {...unknown} args */
+function dbg(...args) {
+  if (_odDebug) console.info("[ondevice]", ...args);
+}
+
+/**
+ * Turn verbose on-device debugging on/off (persists in localStorage; also
+ * flips a live worker). Call with no argument to read the current state.
+ * Exposed as window.__DR_ONDEVICE_DEBUG so the operator can flip it from a
+ * real device's console.
+ * @param {boolean} [on]
+ * @returns {boolean}
+ */
+export function onDeviceDebug(on) {
+  if (on === undefined) return _odDebug;
+  _odDebug = !!on;
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem("dr_ondevice_debug", _odDebug ? "1" : "0");
+  } catch {
+    /* storage unavailable */
+  }
+  worker?.postMessage({ t: "debug", on: _odDebug });
+  console.info("[ondevice] debug " + (_odDebug ? "on" : "off"));
+  return _odDebug;
+}
+if (typeof window !== "undefined") {
+  try {
+    /** @type {any} */ (window).__DR_ONDEVICE_DEBUG = onDeviceDebug;
+  } catch {
+    /* ignore */
+  }
+}
 
 // ---- worker lifecycle ------------------------------------------------------------
 
@@ -40,6 +100,11 @@ const planHandlers = new Map(); // modelId → {resolve, reject}
 const deleteHandlers = new Map(); // modelId → {resolve, reject}
 let listWaiters = []; // {resolve, reject}
 let loadStatusCb = null;
+// The most recent workerdiag detail: the worker-side error listener's full
+// copy of an uncaught error that is ALSO propagating to worker.onerror below,
+// which often arrives degraded ("Script error.", no location) — this is
+// onerror's fallback message when its own event carries nothing.
+let lastWorkerDiag = "";
 
 // EVERY pending call fails together — including the list/plan/delete waiters.
 // The first live device report was the settings drawer stuck on "Checking
@@ -62,9 +127,13 @@ function failAllPending(message) {
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker("/js/ondevice-worker.js", { type: "module" });
+  // The debug flag rides the spawn URL — a worker can't read localStorage
+  // (onDeviceDebug() covers flips while it's already alive).
+  worker = new Worker("/js/ondevice-worker.js" + (_odDebug ? "?oddebug=1" : ""), { type: "module" });
+  dbg("worker spawned");
   worker.onmessage = (e) => {
     const m = e.data || {};
+    if (m.t !== "token" && m.t !== "progress") dbg("←", m.t, m.modelId ?? m.id ?? "", m.status ?? m.message ?? "");
     if (m.t === "token") genHandlers.get(m.id)?.onToken(m.text);
     else if (m.t === "gendone") {
       genHandlers.get(m.id)?.resolve(m.text);
@@ -94,6 +163,12 @@ function getWorker() {
       // is still alive — fail the waiting calls so no caller hangs; the next
       // call retries normally.
       failAllPending(m.message || "The on-device engine failed.");
+    } else if (m.t === "workerdiag") {
+      // Detail only — the paired crash surfaces through onerror below. Keep
+      // it for onerror's message and put it on the page console either way
+      // (the worker's own console context is easy to miss in devtools).
+      lastWorkerDiag = m.message || "";
+      if (lastWorkerDiag) console.error("[ondevice] worker error:", lastWorkerDiag);
     } else if (m.t === "loadstatus") loadStatusCb?.(m.status);
   };
   // A dead worker fails every pending call (fail-soft at the call sites)
@@ -101,7 +176,12 @@ function getWorker() {
   // SCRIPT failing to load or parse at all — the pending calls are the only
   // place that failure can surface.
   worker.onerror = (e) => {
-    failAllPending("The on-device engine crashed" + (e?.message ? ": " + e.message : "."));
+    // The full event always hits the page console — filename/lineno were
+    // previously discarded, and there is no server log to fall back on.
+    console.error("[ondevice] worker crashed:", e);
+    const detail = errorEventDetail(e) || lastWorkerDiag;
+    failAllPending("The on-device engine crashed" + (detail ? ": " + detail : "."));
+    lastWorkerDiag = "";
     worker = null;
   };
   worker.onmessageerror = () => failAllPending("The on-device engine sent an unreadable message.");
@@ -137,6 +217,7 @@ export async function probeOnDevice() {
   }
   const deviceMemoryGb = typeof navigator.deviceMemory === "number" ? navigator.deviceMemory : null;
   const probe = { hasWebGpu, deviceMemoryGb, maxBufferBytes, gpuTimedOut };
+  dbg("gpu probe", probe);
   // A timed-out probe is inconclusive — don't cache it, so reopening the
   // drawer (or retrying) probes again instead of pinning the stale verdict.
   if (!gpuTimedOut) probeCache = probe;
@@ -233,6 +314,7 @@ function generateSerialized({ modelId, messages, maxTokens, json, signal, onToke
     new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(new Error("Aborted."));
       const id = ++genSeq;
+      dbg("generate #" + id, modelId, json ? "(json)" : "");
       genHandlers.set(id, { onToken: onToken || (() => {}), resolve, reject });
       const w = getWorker();
       const onAbort = () => w.postMessage({ t: "abort", id });

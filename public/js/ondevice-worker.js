@@ -9,26 +9,77 @@
 // Protocol (all messages carry `t`):
 //   in:  plan{modelId} · download{modelId} · canceldl{modelId} · delete{modelId}
 //        · list{} · generate{id, modelId, messages, maxTokens, json} · abort{id}
+//        · debug{on}
 //   out: plan{modelId, published, files?, totalBytes?} · progress{modelId, pct,
 //        loaded, total} · downloaded{modelId} · dlerror{modelId, message}
 //        · deleted{modelId} · list{entries} · loadstatus{modelId, status}
 //        · token{id, text} · gendone{id, text} · generror{id, message}
+//        · workererror{message} · workerdiag{message}
 
 import {
   ONDEVICE_MODELS,
   completionEnvelope,
   createSha256,
   createThinkFilter,
+  debugFlagFrom,
   downloadProgress,
+  errorEventDetail,
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
   planModelFiles,
+  rejectionDetail,
   wasmPathsFor,
   withJsonReminder,
 } from "/js/ondevice-core.js";
 
 const MODELS_DIR = "ondevice-models";
+
+// ---- verbose debug + the uncaught-error surface -----------------------------------
+
+// A worker can't read localStorage — the engine forwards dr_ondevice_debug
+// via the spawn URL (?oddebug=1) and flips it live with {t:"debug"}.
+let debug = false;
+try {
+  debug = debugFlagFrom(self.location.search, null);
+} catch {
+  /* location unavailable */
+}
+
+/** @param {...unknown} args */
+function dbg(...args) {
+  if (debug) console.info("[ondevice-worker]", ...args);
+}
+
+// Uncaught errors in this scope — including ones that propagate up from the
+// NESTED pthread workers ort-wasm-simd-threaded spawns — bypass the dispatch
+// try/catch below, and the copy the main thread's worker.onerror receives is
+// often degraded ("Script error.", no location). Ship the full detail ahead
+// of it (workerdiag), and do NOT preventDefault(): the event must still
+// propagate so the engine keeps its crash semantics (fail every pending
+// call, respawn on next use).
+self.addEventListener("error", (e) => {
+  console.error("[ondevice-worker] uncaught error:", e);
+  try {
+    self.postMessage({ t: "workerdiag", message: errorEventDetail(e) });
+  } catch {
+    /* posting must never throw out of an error handler */
+  }
+});
+
+// Unhandled REJECTIONS never propagate to the parent at all — before this
+// listener a stray async failure inside the runtime was fully silent, and
+// every pending call just hung to its deadline. Fail them with the real
+// reason instead (the worker itself stays alive; the next call retries).
+self.addEventListener("unhandledrejection", (e) => {
+  console.error("[ondevice-worker] unhandled rejection:", e?.reason);
+  const detail = rejectionDetail(e?.reason);
+  try {
+    self.postMessage({ t: "workererror", message: "The on-device engine failed" + (detail ? ": " + detail : ".") });
+  } catch {
+    /* posting must never throw out of an error handler */
+  }
+});
 
 // ---- OPFS helpers -----------------------------------------------------------------
 
@@ -281,6 +332,7 @@ async function ensureLoaded(modelId) {
   const model = onDeviceModel(modelId);
   if (!model) throw new Error("Unknown model " + modelId);
   loadingPromise = (async () => {
+    const t0 = Date.now();
     const { AutoTokenizer, AutoModelForCausalLM } = await importRuntime();
     self.postMessage({ t: "loadstatus", modelId, status: "Loading tokenizer…" });
     const tokenizer = await AutoTokenizer.from_pretrained(model.repo);
@@ -290,6 +342,7 @@ async function ensureLoaded(modelId) {
       device: "webgpu",
     });
     loaded = { modelId, tokenizer, model: lm };
+    dbg("model loaded:", modelId, "in", Date.now() - t0, "ms");
     return loaded;
   })();
   try {
@@ -348,8 +401,11 @@ async function generate({ id, modelId, messages, maxTokens, json }) {
 
 self.onmessage = async (e) => {
   const msg = e.data || {};
+  dbg("←", msg.t, msg.modelId ?? msg.id ?? "");
   try {
-    if (msg.t === "list") {
+    if (msg.t === "debug") {
+      debug = !!msg.on;
+    } else if (msg.t === "list") {
       self.postMessage({ t: "list", entries: await listEntries() });
     } else if (msg.t === "plan") {
       const model = onDeviceModel(msg.modelId);
