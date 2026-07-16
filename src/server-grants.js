@@ -23,6 +23,13 @@
 // module (storage.js, vault.js, chatlog.js, accounts.js, rag.js, pub.js,
 // answers.js, settings.js, …) — a unit test pins this module graph
 // (src/server-grants.test.js), so adding such an import fails the suite.
+// AND THE ADMIN INTERFACE IS NEVER REACHABLE WITH A TOKEN (owner directive,
+// 2026-07-16): handleAdminServerToken below manages tokens, but the route
+// that reaches it (/api/admin/server-token*) sits behind the identity gate's
+// proper sign-in — a session identity with the admin role — like every other
+// admin surface. A Se/rver token is not a login: src/auth.js's identify()
+// can never be satisfied by one (pinned in src/server-token.test.js), so
+// tokens are administered FROM the admin interface and can never open it.
 // The name says the rest: it is called a SERVER token so nobody forgets that
 // using one sends data to a server somewhere.
 // ══════════════════════════════════════════════════════════════════════════
@@ -623,7 +630,11 @@ export async function handleAdminServerToken(request, env, url, log, identity) {
     });
     if (!minted) return jsonResponse({ error: "Minting unavailable." }, 503);
     if (minted.error === "budget_exceeded") return budgetExceeded409(minted);
-    return jsonResponse(minted);
+    const grant = /** @type {ServerTokenView} */ (minted);
+    // The shareable link: the /cure client reads ?st=, verifies it via the
+    // public status endpoint, and strips it from the URL (public/cure/drc.js).
+    const link = url.origin + "/cure?st=" + encodeURIComponent(String(grant.token));
+    return jsonResponse({ ...grant, link });
   }
 
   // PATCH /:jti/:svc — adjust ONE permission row's quota in place.

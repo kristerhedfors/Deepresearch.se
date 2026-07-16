@@ -51,6 +51,7 @@ import {
 import {
   DRC_PROVIDERS,
   PROXY_LLM_PROVIDER_ID,
+  SERVER_TOKEN_LLM_PROVIDER_ID,
   configuredDrcProviders,
   detectDrcProvider,
   drcEmbed,
@@ -58,6 +59,7 @@ import {
   drcProvider,
   listDrcModels,
   proxyLlmProvider,
+  serverTokenLlmProvider,
 } from "/js/drc-providers.js";
 import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import {
@@ -99,6 +101,8 @@ import {
   parsePublicationRef,
   phaseChannel,
   providerVisibilityNote,
+  serverTokenLive,
+  serverTokenService,
   unlockCelebrationSize,
   wmHtml,
 } from "/js/drc-page-core.js";
@@ -619,6 +623,7 @@ function openSettings() {
   renderKeysPanel();
   renderLocalRow(); // reflect the local model server URL (if any)
   renderWsRow(); // reflect the web-search grant (if any)
+  renderStRow(); // reflect the consolidated Se/rver token (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
   $("settingsview").hidden = false;
@@ -1002,7 +1007,8 @@ async function refreshModels() {
   const pick = $("model");
   const providers = configuredProviders();
   const proxyOn = apiProxyUsable();
-  if (!providers.length && !proxyOn) {
+  const stOn = stApiUsable();
+  if (!providers.length && !proxyOn && !stOn) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
     return;
   }
@@ -1036,6 +1042,23 @@ async function refreshModels() {
     groups.unshift(
       `<optgroup label="🔒 Secure research space — connected">` +
         ids.map((id) => `<option value="${esc(pp.id + "::" + id)}">${esc(id)}</option>`).join("") +
+        "</optgroup>",
+    );
+  }
+  // The consolidated Se/rver TOKEN's LLM permission (one ticket, one JWT):
+  // the same Berget reverse proxy, the JWT itself as the bearer. Unshifted
+  // after the bundle group so it lands FIRST — the going-forward grant.
+  if (stOn) {
+    const sp = serverTokenLlmProvider(location.origin);
+    let ids = [];
+    try {
+      ids = await listDrcModels(sp, stGrant.token);
+    } catch {
+      ids = [...sp.fallbackModels];
+    }
+    groups.unshift(
+      `<optgroup label="🎫 Se/rver token — connected">` +
+        ids.map((id) => `<option value="${esc(sp.id + "::" + id)}">${esc(id)}</option>`).join("") +
         "</optgroup>",
     );
   }
@@ -1416,10 +1439,34 @@ async function maybeRequestWsGrant() {
 // any error, or the toggle off → null, and the pipeline falls back to the
 // offline harvest. Keeps `remaining` fresh from each server response.
 async function drcServerWebSearch(query) {
-  // Prefer the secure-research-space WEB proxy (the bundle's web grant) when
-  // it's live and the space is enabled; fall back to the legacy web-search
-  // grant. Both are fail-soft — any problem returns null and the pipeline uses
-  // the offline harvest instead.
+  // Source priority: (1) the consolidated Se/rver token's web permission
+  // ("one ticket, one JWT" — the preferred, going-forward path), (2) the
+  // secure-research-space WEB proxy, (3) the legacy web-search grant. All
+  // fail-soft — any problem returns null and the pipeline uses the offline
+  // harvest instead.
+  if (stWebUsable()) {
+    try {
+      const res = await fetch("/api/server-token/web", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: stGrant.token, query }),
+      });
+      if (res.status === 429) {
+        setStRemaining("web", 0);
+        return null;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.remaining === "number") setStRemaining("web", data.remaining);
+        return Array.isArray(data.items) && data.items.length
+          ? { items: data.items, content: data.content, sources: data.sources, resultCount: data.resultCount }
+          : null;
+      }
+    } catch {
+      /* fail-soft — the offline harvest takes over */
+    }
+    return null;
+  }
   if (webProxyUsable()) {
     try {
       const res = await fetch("/api/proxy/web", {
@@ -1501,6 +1548,189 @@ function renderWsRow() {
   $("wsstatus").textContent = !active
     ? "This session's web-search allowance is used up (or expired)."
     : (wsEnabled() ? "On" : "Off") + " — " + remaining + " of " + wsGrant.quota + " server web searches left this session.";
+}
+
+// ---- the consolidated Se/rver TOKEN ("one ticket, one JWT") --------------------------
+//
+// The CONSOLIDATED grant (src/server-token.js + src/server-grants.js,
+// docs/SERVER-TOKENS.md): ONE JWT carrying a PERMISSION SET over the site's
+// UPSTREAM APIs — `web` (metered Exa searches, query-only) and `api` (metered
+// LLM completions on the server's Berget key). THE SERVER-TOKEN GUARANTEE:
+// the token only ever opens doors that lead OUT of the site — it can never
+// read any Se/rver data (no projects, no chats), and it is never a login.
+// Arrives via a shared `…/cure?st=<jwt>` link (admin-minted) or the ghost
+// crossover — which now asks for the consolidated token FIRST, leaving the
+// intent marker in place for the legacy web-search grant if that fails (an
+// older deploy, offline). Stored in localStorage like the legacy grants (a
+// temporary credential, not part of the sealed project state).
+const ST_GRANT_KEY = "dr_st_grant"; // { token, perms, services: [{svc,quota,used,remaining}], expiresAt }
+const ST_ENABLED_KEY = "dr_st_enabled"; // "1"/"0" — the master toggle
+
+let stGrant = readJson(ST_GRANT_KEY);
+
+function stEnabled() {
+  return grantFlagEnabled(localStorage.getItem(ST_ENABLED_KEY)); // default ON while a token is present
+}
+function stWebUsable() {
+  return serverTokenLive(stGrant, "web") && stEnabled(); // drc-page-core.js: per-permission liveness
+}
+function stApiUsable() {
+  return serverTokenLive(stGrant, "api") && stEnabled();
+}
+function persistStGrant() {
+  try {
+    if (stGrant && stGrant.token) localStorage.setItem(ST_GRANT_KEY, JSON.stringify(stGrant));
+    else localStorage.removeItem(ST_GRANT_KEY);
+  } catch {
+    /* storage blocked — the token just won't survive a reload */
+  }
+}
+function setStRemaining(svc, remaining) {
+  const s = serverTokenService(stGrant, svc);
+  if (!s) return;
+  s.remaining = remaining;
+  persistStGrant();
+  renderStRow();
+}
+
+// Non-consuming status read (POST /api/server-token/status) → the stored shape.
+async function fetchStStatus(token) {
+  const res = await fetch("/api/server-token/status", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) return null;
+  const v = await res.json();
+  return { token, perms: v.perms, services: v.services, expiresAt: v.expiresAt };
+}
+
+// Populates the Se/rver token from either a SHARED LINK (/cure?st=<jwt>) or
+// the ghost-crossover INTENT marker. The intent is only PEEKED here — it is
+// consumed on success and left in place otherwise, so the legacy web-search
+// grant request that runs after this can still serve it (fallback against an
+// older deploy). A plain visitor with neither never pings the server.
+// Fail-soft throughout; returns true when a token connected.
+async function maybeRequestServerToken() {
+  let linkToken = "";
+  try {
+    linkToken = new URLSearchParams(location.search).get("st") || "";
+  } catch {
+    /* no search params */
+  }
+  if (linkToken) {
+    try {
+      const v = await fetchStStatus(linkToken);
+      if (v) {
+        stGrant = v;
+        persistStGrant();
+      }
+    } catch {
+      /* invalid/expired/revoked link — nothing borrowed */
+    }
+    // Strip the token from the URL so it isn't left in history/referrer.
+    try {
+      const u = new URL(location.href);
+      u.searchParams.delete("st");
+      history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+    } catch {
+      /* history API blocked — harmless */
+    }
+    if (stGrant && stGrant.token) {
+      if (stApiUsable()) await refreshModels().catch(() => {});
+      announceStConnected();
+    }
+    renderStRow();
+    return !!(stGrant && stGrant.token);
+  }
+
+  let intent = false;
+  try {
+    intent = localStorage.getItem(WS_INTENT_KEY) === "1";
+  } catch {
+    /* storage blocked — treat as no intent */
+  }
+  if (intent) {
+    try {
+      const res = await fetch("/api/server-token/grant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      if (res.ok) {
+        const v = await res.json();
+        stGrant = { token: v.token, perms: v.perms, services: v.services, expiresAt: v.expiresAt };
+        persistStGrant();
+        try {
+          localStorage.removeItem(WS_INTENT_KEY); // consumed — the legacy path stands down
+        } catch {
+          /* ignore */
+        }
+        if (stApiUsable()) await refreshModels().catch(() => {});
+        announceStConnected();
+        renderStRow();
+        return true;
+      }
+    } catch {
+      /* offline / not signed in — the legacy grant path follows */
+    }
+    return false;
+  }
+
+  if (stGrant && !serverTokenLive(stGrant, "web") && !serverTokenLive(stGrant, "api")) {
+    // A stored token with nothing left on any permission (or expired): forget it.
+    stGrant = null;
+    persistStGrant();
+  }
+  renderStRow();
+  return false;
+}
+
+// The prominent "which APIs are connected" notice — the same disclosure
+// requirement (and banner element) as the proxy bundle.
+function announceStConnected() {
+  const parts = [];
+  if (serverTokenLive(stGrant, "web")) parts.push("🔎 Web search");
+  if (serverTokenLive(stGrant, "api")) parts.push("🤖 LLM API (Berget)");
+  if (!parts.length) return;
+  const banner = $("proxybanner");
+  if (banner) {
+    $("proxybannertext").innerHTML = wmHtml(
+      "<b>Se/rver token connected.</b> One ticket, one JWT — this session borrowed: " +
+        parts.join(" + ") +
+        ". Upstream APIs only (the token can never read any Se/rver data); the LLM API routes your messages through the server. Manage it under ⚙ Settings.",
+    );
+    banner.hidden = false;
+  }
+  workStatus(
+    "Se/rver token connected — " +
+      parts.join(" + ") +
+      ". Bounded, temporary, upstream-only. (The LLM API routes your conversation through the server; turn it off under Settings to stay client-side.)",
+  );
+}
+
+// Reflects the token into its settings row: per-permission remaining + the
+// master toggle. One permission running dry never hides the other.
+function renderStRow() {
+  const row = $("strow");
+  if (!row) return;
+  const has = !!(stGrant && stGrant.token);
+  row.hidden = !has;
+  if (!has) return;
+  const toggle = /** @type {HTMLInputElement} */ ($("stenabled"));
+  const anyLive = serverTokenLive(stGrant, "web") || serverTokenLive(stGrant, "api");
+  toggle.checked = stEnabled() && anyLive;
+  toggle.disabled = !anyLive;
+  const line = (label, svc) => {
+    const s = serverTokenService(stGrant, svc);
+    if (!s) return null;
+    const rem = s.remaining == null ? s.quota : s.remaining;
+    return label + ": " + (serverTokenLive(stGrant, svc) ? rem + " of " + s.quota + " left" : "used up / expired");
+  };
+  const bits = [line("🔎 Web search", "web"), line("🤖 LLM API (Berget)", "api")].filter(Boolean);
+  $("ststatus").textContent = !anyLive
+    ? "This token's allowances are used up (or expired)."
+    : (stEnabled() ? "On" : "Off") + " — " + bits.join(" · ");
 }
 
 // ---- web search SERVICE: the expert, browser-direct backend --------------------------
@@ -1712,7 +1942,7 @@ async function maybeOpenProxyBundle() {
   }
 
   if (opened) {
-    if (configuredProviders().length || apiProxyUsable()) await refreshModels().catch(() => {});
+    if (configuredProviders().length || apiProxyUsable() || stApiUsable()) await refreshModels().catch(() => {});
     announceProxyConnected();
     renderProxyRow();
   }
@@ -1935,11 +2165,12 @@ async function unlockWorkspace(ev) {
     renderSearchBackend();
     renderWsRow();
     renderProxyRow();
+    renderStRow();
     $("websearch").checked = state.research !== false;
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
     applyIntrospectionTheme(state.developerMode === true);
-    if (configuredProviders().length || apiProxyUsable()) await refreshModels().catch(() => {});
+    if (configuredProviders().length || apiProxyUsable() || stApiUsable()) await refreshModels().catch(() => {});
     await saveState().catch(() => {});
 
     // Drop the ciphertext from the address bar (the pane is open; the link
@@ -2021,9 +2252,10 @@ async function send(ev) {
   // canned, not the model), never an error wall. The question is echoed as a
   // normal bubble; nothing typed is lost. For an explicit get-started ask (or
   // an unrecognized one) also surface the key panel so setup is one tap away.
-  // A live secure-research-space LLM proxy counts as "has a provider" — a
-  // borrowed session with no key of its own can research on the lent API.
-  if (!configuredProviders().length && !apiProxyUsable()) {
+  // A live secure-research-space LLM proxy — or a Se/rver token carrying the
+  // api permission — counts as "has a provider": a borrowed session with no
+  // key of its own can research on the lent API.
+  if (!configuredProviders().length && !apiProxyUsable() && !stApiUsable()) {
     const reply = matchCanned(text, { tier: "drc" });
     renderCannedExchange(text, reply);
     $("input").value = "";
@@ -2055,17 +2287,25 @@ async function send(ev) {
   // object with the api PROXY TOKEN as its "key" (runDrcResearch takes a
   // provider override so this needs no registry entry).
   const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
+  const usingStApi = providerId === SERVER_TOKEN_LLM_PROVIDER_ID;
   const usingLocal = providerId === "local";
-  const providerOverride = usingApiProxy ? proxyLlmProvider(location.origin) : null;
-  const answerKey = usingApiProxy ? proxyGrants.api?.token : state.keys[providerId];
+  const providerOverride = usingApiProxy
+    ? proxyLlmProvider(location.origin)
+    : usingStApi
+      ? serverTokenLlmProvider(location.origin)
+      : null;
+  const answerKey = usingApiProxy ? proxyGrants.api?.token : usingStApi ? stGrant?.token : state.keys[providerId];
 
   // The disclosure context for this send's ℹ notices (per-task grammar): who
   // the provider is, whether calls ride the borrowed proxy or stay on the
   // user's own machine, and which route a web search would take. Captured
   // HERE — the same resolution the send uses.
   sendCtx = {
-    provider: usingApiProxy ? "Berget (borrowed)" : drcProvider(providerId)?.label || providerId,
-    viaProxy: usingApiProxy,
+    // The Se/rver-token LLM path shares the proxy's disclosure semantics: the
+    // conversation routes through this site's server to Berget, borrowed and
+    // metered — so it wears the same viaProxy notice.
+    provider: usingApiProxy || usingStApi ? "Berget (borrowed)" : drcProvider(providerId)?.label || providerId,
+    viaProxy: usingApiProxy || usingStApi,
     local: usingLocal,
     search: directSearchActive() ? "self" : "grant",
     embedProvider: "",
@@ -2125,7 +2365,7 @@ async function send(ev) {
       // (3) null → the offline harvest, unchanged.
       webSearch: directSearchActive()
         ? drcDirectWebSearch
-        : webProxyUsable() || (wsGrantActive() && wsEnabled())
+        : stWebUsable() || webProxyUsable() || (wsGrantActive() && wsEnabled())
           ? drcServerWebSearch
           : null,
       onStatus: (s) => {
@@ -2508,14 +2748,29 @@ $("proxyenabled").addEventListener("change", () => {
   renderProxyRow();
   refreshModels().catch(() => {});
 });
+// The Se/rver-token master toggle: turn the whole borrowed token off to go
+// fully client-side, or back on. Refreshes the model dropdown (the token's
+// LLM provider appears/disappears) and the row.
+$("stenabled").addEventListener("change", () => {
+  try {
+    localStorage.setItem(ST_ENABLED_KEY, $("stenabled").checked ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  renderStRow();
+  refreshModels().catch(() => {});
+});
 $("proxybannerclose")?.addEventListener("click", () => {
   $("proxybanner").hidden = true;
 });
-// Open an account-connected proxy bundle (secure research space) if this page
-// was reached with one in its URL (ghost crossover or shared link); otherwise
-// fall back to the legacy web-search grant path. Both fire-and-forget.
-maybeOpenProxyBundle().then((opened) => {
-  if (!opened) maybeRequestWsGrant();
+// Borrowed-capability arrival chain, consolidated-first: (1) a Se/rver token
+// (?st= link, or the ghost intent — which the token path consumes on success
+// and leaves for the legacy path otherwise); (2) an encrypted proxy bundle
+// (?rp=/#rk=); (3) the legacy web-search grant. All fire-and-forget/fail-soft.
+maybeRequestServerToken().then(() => {
+  maybeOpenProxyBundle().then((opened) => {
+    if (!opened) maybeRequestWsGrant();
+  });
 });
 $("form").addEventListener("submit", send);
 

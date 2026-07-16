@@ -189,6 +189,24 @@ export function proxyLlmProvider(origin) {
   };
 }
 
+// The consolidated Se/rver-TOKEN LLM provider ("one ticket, one JWT" —
+// src/server-token.js + src/server-grants.js): the same account-connected
+// Berget reverse proxy as above, reached through the token subsystem's own
+// endpoint (/api/server-token/llm) with the ONE JWT itself as the bearer —
+// no exchange tier, the token IS the working credential. Wire-identical to
+// the proxy provider (the server reuses the same forwarders), so this is a
+// two-field respin of it. Upstream APIs only, per THE SERVER-TOKEN GUARANTEE:
+// the JWT can never read any Se/rver data, and it is never a login.
+export const SERVER_TOKEN_LLM_PROVIDER_ID = "servertoken";
+export function serverTokenLlmProvider(origin) {
+  return {
+    ...proxyLlmProvider(origin),
+    id: SERVER_TOKEN_LLM_PROVIDER_ID,
+    label: "Se/rver token",
+    base: (origin || "") + "/api/server-token/llm",
+  };
+}
+
 /**
  * Identify the provider a pasted API key belongs to by its prefix
  * (sk_ber_… → Berget, gsk_… → Groq, sk-… → OpenAI), or null for an

@@ -43,6 +43,43 @@ export function grantFlagEnabled(rawValue) {
   return rawValue == null ? true : rawValue === "1";
 }
 
+// ---- the consolidated Se/rver token ("one ticket, one JWT") -------------------
+//
+// The Se/rver token (src/server-token.js + src/server-grants.js) bundles the
+// legacy single-capability grants into ONE JWT carrying a PERMISSION SET —
+// so its client-side liveness question is per permission: the stored view is
+// { token, perms, services: [{svc, quota, used, remaining}], expiresAt }.
+// Same shape family as grantLive above, extended one level.
+
+/**
+ * One permission's live meter view inside a stored Se/rver-token grant, or
+ * null when the token never carried (or has been stripped of) that service.
+ * @param {{services?: Array<{svc?: string}>}|null|undefined} g
+ * @param {string} svc
+ * @returns {{svc: string, quota?: number, used?: number, remaining?: number|null}|null}
+ */
+export function serverTokenService(g, svc) {
+  if (!g || !Array.isArray(g.services)) return null;
+  return g.services.find((s) => s && s.svc === svc) || null;
+}
+
+/**
+ * A Se/rver token is live FOR A GIVEN PERMISSION iff it has a token, has not
+ * expired, and that permission's row has quota left (absent `remaining` =
+ * not yet spent, so it counts as available — same convention as grantLive).
+ * One permission running dry never kills the others: web can be exhausted
+ * while api still serves.
+ * @param {{token?: string, expiresAt?: number|string, services?: Array<{svc?: string, remaining?: number|string|null}>}|null|undefined} g
+ * @param {string} svc
+ * @param {number} [now] epoch millis (injectable for tests)
+ * @returns {boolean}
+ */
+export function serverTokenLive(g, svc, now = Date.now()) {
+  if (!g || !g.token || !(Number(g.expiresAt) > now)) return false;
+  const s = serverTokenService(g, svc);
+  return !!(s && (s.remaining == null || Number(s.remaining) > 0));
+}
+
 // ---- web-search backend config ----------------------------------------------
 
 /**

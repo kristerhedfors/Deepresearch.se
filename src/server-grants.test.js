@@ -376,6 +376,9 @@ test("handleAdminServerToken: mint returns the JWT, GET lists grouped by jti, PA
   const minted = await mint.json();
   assert.ok(await verifyServerToken(env, minted.token));
   assert.deepEqual(minted.perms, ["web", "api"]);
+  // The shareable link the /cure client reads (?st=), same convention as ?ws=.
+  assert.ok(minted.link.startsWith("https://x/cure?st="), minted.link);
+  assert.ok(await verifyServerToken(env, decodeURIComponent(minted.link.split("?st=")[1])));
 
   const list = await handleAdminServerToken(adminReq("", "GET"), env, adminUrl(""), log, admin);
   const body = await list.json();

@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { SERVER_TOKEN_ISS, SERVER_TOKEN_SERVICES, mintServerToken, verifyServerToken } from "./server-token.js";
 import { mintWebSearchToken, verifyWebSearchToken } from "./websearch-key.js";
 import { mintGrantToken, mintProxyToken, verifyGrantToken, verifyProxyToken } from "./proxy-grant.js";
+import { identify } from "./auth.js";
 
 const SECRET = "3f8ab5da9aab9d62f8a311109ded0a2d4e838e1c1c7c65fef7b784c9623ee113";
 const env = { SESSION_SECRET: SECRET };
@@ -143,4 +144,43 @@ test("legacy family tokens never verify as Se/rver tokens, and vice versa", asyn
   const [, wp, ws] = wsk.split(".");
   const h = jwt.split(".")[0];
   assert.equal(await verifyServerToken(env, `${h}.${wp}.${ws}`), null);
+});
+
+// ---- the admin boundary --------------------------------------------------------------
+// THE GUARANTEE's admin clause (owner directive, 2026-07-16): the admin
+// interface is reachable ONLY through a proper login — a Se/rver token is
+// never one. identify() (src/auth.js) is the site's single identity gate;
+// /admin and every /api/admin/* route sit behind it requiring the admin
+// role, so if no presentation of the JWT can produce an identity, the admin
+// interface (and every other authed surface) is out of reach with a token.
+
+test("a Se/rver token is NOT a login: identify() rejects it in every position, so /admin stays out of reach", async () => {
+  // Admin break-glass creds configured — the realistic worst case, where the
+  // Basic path is live and a session cookie would work if forgeable.
+  const authedEnv = { SESSION_SECRET: SECRET, BASIC_AUTH_USER: "op", BASIC_AUTH_PASS: "hunter2-hunter2" };
+  const jwt = await mintServerToken(authedEnv, claims());
+  const [, , sig] = jwt.split(".");
+
+  // As the session cookie — raw, and mangled into the cookie's own
+  // `u.<uid>.<exp>.<sig>` shape with the JWT (or its signature) inside.
+  for (const cookie of [
+    `dr_session=${jwt}`,
+    `dr_session=u.${jwt}`,
+    `dr_session=u.42.${nowS + 3600}.${sig}`,
+    `dr_session=u.admin.${nowS + 3600}.${sig}`,
+  ]) {
+    const req = new Request("https://x/api/admin/server-token", { headers: { cookie } });
+    assert.equal(await identify(req, authedEnv), null);
+  }
+
+  // As an Authorization header — Bearer (how the LLM endpoint takes it) and
+  // smuggled into Basic credentials.
+  for (const authorization of [
+    `Bearer ${jwt}`,
+    `Basic ${Buffer.from(`op:${jwt}`).toString("base64")}`,
+    `Basic ${Buffer.from(`${jwt}:${jwt}`).toString("base64")}`,
+  ]) {
+    const req = new Request("https://x/api/admin/server-token", { headers: { authorization } });
+    assert.equal(await identify(req, authedEnv), null);
+  }
 });

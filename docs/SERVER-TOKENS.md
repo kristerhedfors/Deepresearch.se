@@ -32,7 +32,15 @@ client-side Se/cure posture.
 > the token only opens doors that lead OUT of the site, never doors that
 > lead into its storage.**
 
-This is not a policy note; it is enforced structurally, three ways:
+And its corollary, stated just as hard:
+
+> **A Se/rver token is never a login. The admin interface — `/admin` and
+> every `/api/admin/*` route, including the token subsystem's own control
+> surface — is reachable ONLY through a proper sign-in (a session identity
+> with the admin role, or the break-glass Basic secrets). Tokens are
+> administered FROM the admin interface; they can never open it.**
+
+This is not a policy note; it is enforced structurally, four ways:
 
 1. **The permission vocabulary is closed.** `SERVER_TOKEN_SERVICES` in
    `src/server-token.js` names upstream services only (`web` = Exa search on
@@ -51,6 +59,13 @@ This is not a policy note; it is enforced structurally, three ways:
    verified by a different scheme entirely. The JWT is only ever examined by
    the `server-token` endpoints; presenting it anywhere else is just an
    unauthenticated request.
+4. **The admin boundary is test-pinned.** `src/server-token.test.js` proves
+   `identify()` rejects the JWT in every position it could be presented —
+   as the session cookie (raw and mangled into the cookie's own
+   `u.<uid>.<exp>.<sig>` shape), as a `Bearer` header, and smuggled into
+   Basic credentials. `/api/admin/*` additionally requires
+   `identity.role === "admin"` in the entrypoint, so even a future identity
+   bug would still leave the admin surface role-gated.
 
 The one nuance, stated plainly: an LLM call (`api` permission) necessarily
 carries the **caller's own prompt** upstream — that is the caller's data
@@ -113,7 +128,7 @@ unmetered server-paid usage is possible.
 | `POST /api/server-token/web` | token | One metered Exa search — only the query string crosses the wire |
 | `GET /api/server-token/llm/models` | token (`api`) | Berget catalog, non-metered |
 | `POST /api/server-token/llm/chat/completions` | token (`api`) | One metered OpenAI-wire completion (JWT as bearer; shares `src/proxy.js`'s forwarders) |
-| `GET/POST/PATCH/DELETE /api/admin/server-token*` | admin | List (grouped by jti) / mint / per-permission adjust (`/:jti/:svc`) / revoke (`/:jti`) |
+| `GET/POST/PATCH/DELETE /api/admin/server-token*` | admin **login only** (a token is never accepted) | List (grouped by jti) / mint / per-permission adjust (`/:jti/:svc`) / revoke (`/:jti`) |
 
 ## Governance
 
@@ -123,12 +138,42 @@ master `enabled` switch, per-permission default quotas (`web_quota`,
 `budget` ceiling on total outstanding-remaining across all live rows —
 the same governance vocabulary as the legacy families.
 
+## Client consumption (Se/cure)
+
+The `/cure` client consumes Se/rver tokens end to end (`public/cure/drc.js`,
+pure helpers `serverTokenService`/`serverTokenLive` in
+`public/js/drc-page-core.js`):
+
+- **Arrival** — a shared `…/cure?st=<jwt>` link (read via the public status
+  endpoint, then stripped from the URL/history), or the **ghost crossover**,
+  which now asks `POST /api/server-token/grant` FIRST and leaves the intent
+  marker for the legacy web-search grant only if that fails (fallback
+  against an older deploy). A plain visitor never pings the server.
+- **Web search** — the token's `web` permission is the first choice in
+  `drcServerWebSearch` (before the proxy bundle and the legacy grant),
+  spending `POST /api/server-token/web`.
+- **LLM** — `serverTokenLlmProvider` (`public/js/drc-providers.js`): the
+  same Berget-wire provider as the proxy bundle's, pointed at
+  `/api/server-token/llm` with the JWT itself as the bearer (no exchange
+  tier). It appears first in the model dropdown while live.
+- **Disclosure** — the connected-APIs banner on arrival, a dedicated
+  Settings row (per-permission remaining + master off switch), and the
+  same per-step ℹ notices as the proxy path (the conversation routes
+  through the server on the `api` permission — said plainly).
+- The token is a temporary credential in localStorage (like the legacy
+  grants), never part of the sealed project state.
+
+The admin `/admin` → **Se/rver tokens** panel mints shareable `?st=` links,
+lists live tokens grouped by `jti`, adjusts each permission's quota in place
+(±10 / set / pause), and revokes; defaults live in Configuration.
+
 ## Migration
 
 The legacy families (`wsk1` web-search grants, `prg1`/`prx1` proxy bundles)
 keep working **unchanged** — every existing link, workspace, and client flow
-is intact. New grants should be Se/rver tokens; client-side consumption in
-`/cure` (a `?st=` link reader + settings wiring, mirroring `?ws=`/`?rp=`)
-and an admin-panel section are the natural follow-ups. Once clients have
-moved, the legacy mint paths can be retired — the *verification* paths stay
-until the last legacy token has expired.
+is intact; only the ghost crossover prefers the consolidated token now.
+Remaining follow-up: secure-workspace links (`workspace-core.js`) still
+embed the legacy grant tokens only — extending the workspace payload to
+carry a Se/rver token is future work. Once everything has moved, the legacy
+mint paths can be retired — the *verification* paths stay until the last
+legacy token has expired.

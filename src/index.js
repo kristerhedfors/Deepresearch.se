@@ -307,7 +307,10 @@ async function route(request, env, url, log, ctx, requestId) {
   // chat contents, no history, no accounts). PUBLIC because a Se/cure session
   // has no identity: the signed, quota-metered JWT is the authority; the
   // grant is minted for a signed-in user at POST /api/server-token/grant
-  // (below the gate) or by an admin. Fail-safe: no D1 → 503.
+  // (below the gate) or by an admin. The token is also NEVER a login: /admin
+  // and /api/admin/* stay behind the identity gate's proper sign-in — a
+  // Se/rver token cannot satisfy identify(), so the admin interface is out
+  // of reach with one by construction. Fail-safe: no D1 → 503.
   if (request.method === "POST" && url.pathname === "/api/server-token/status") {
     return { response: await handleServerTokenStatus(request, env) };
   }

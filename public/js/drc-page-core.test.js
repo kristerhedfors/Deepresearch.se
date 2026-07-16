@@ -9,6 +9,8 @@ import {
   parseProjectPath,
   parsePublicationRef,
   providerVisibilityNote,
+  serverTokenLive,
+  serverTokenService,
   unlockCelebrationSize,
   wmHtml,
 } from "./drc-page-core.js";
@@ -210,4 +212,27 @@ test("unlockCelebrationSize: ~72% of the short viewport side, clamped, garbage-s
   // Garbage in → the safe default, never NaN.
   assert.equal(unlockCelebrationSize(NaN, undefined), 320);
   assert.equal(unlockCelebrationSize(-5, 0), 320);
+});
+
+test("serverTokenService: finds one permission's view; null for absent/garbage", () => {
+  const g = { token: "jwt", expiresAt: 2_000, services: [{ svc: "web", quota: 25, remaining: 5 }, { svc: "api", quota: 40, remaining: 0 }] };
+  assert.equal(serverTokenService(g, "web").remaining, 5);
+  assert.equal(serverTokenService(g, "api").quota, 40);
+  assert.equal(serverTokenService(g, "projects"), null); // no such permission — ever
+  assert.equal(serverTokenService(null, "web"), null);
+  assert.equal(serverTokenService({ services: "web" }, "web"), null);
+});
+
+test("serverTokenLive: per-permission liveness — one permission dry never kills the other", () => {
+  const now = 1_000;
+  const g = { token: "jwt", expiresAt: 2_000, services: [{ svc: "web", quota: 25, remaining: 0 }, { svc: "api", quota: 40, remaining: 7 }] };
+  assert.equal(serverTokenLive(g, "web", now), false); // exhausted
+  assert.equal(serverTokenLive(g, "api", now), true); // still live
+  // Absent remaining counts as available (not yet spent), like grantLive.
+  assert.equal(serverTokenLive({ token: "j", expiresAt: 2_000, services: [{ svc: "web", quota: 5 }] }, "web", now), true);
+  // Expiry, missing token, missing service, garbage — all dead.
+  assert.equal(serverTokenLive({ ...g, expiresAt: 500 }, "api", now), false);
+  assert.equal(serverTokenLive({ ...g, token: "" }, "api", now), false);
+  assert.equal(serverTokenLive(g, "nope", now), false);
+  assert.equal(serverTokenLive(null, "web", now), false);
 });

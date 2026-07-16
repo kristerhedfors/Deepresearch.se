@@ -33,6 +33,15 @@
 //      identity gate (src/auth.js verifies session cookies by a different
 //      scheme entirely), so every data-bearing /api/* route is out of reach
 //      by construction.
+//   3. THE ADMIN INTERFACE IS OUT OF REACH THE SAME WAY (owner directive,
+//      2026-07-16): a Se/rver token is NEVER a login. /admin and every
+//      /api/admin/* route — including the token subsystem's own control
+//      surface — sit behind the identity gate's proper sign-in (a session
+//      identity with the admin role, or the break-glass Basic secrets);
+//      src/auth.js's identify() cannot be satisfied by a JWT in any position
+//      (cookie, Bearer, Basic), a fact pinned by a unit test
+//      (src/server-token.test.js). Tokens are ADMINISTERED from the admin
+//      interface; they never open it.
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Wire format: a STANDARD JWS/JWT (RFC 7519, HS256) — `header.payload.sig`,
