@@ -159,7 +159,8 @@ Fixed vs still running on the global constant (as of 2026-07-16):
 
 | surface | rule | bold wordmarks? | status |
 |---|---|---|---|
-| `public/help/index.html` | `-.12em` + `b .sl -.04em` | yes (3 of 4) | FIXED 2026-07-16 (the reported instance) |
+| `public/help/index.html` (Se/rver docs) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (the reported instance) |
+| `public/cure/help/index.html` (Se/cure docs, split 2026-07-16) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (same fix at merge time) |
 | `public/css/app.css` (app + header brand) | `-.12em` | yes (header `<b>`) | on the global constant — owner-tuned, leave unless reported |
 | `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` | many | partial (hand-tuned before this skill) |
 | `public/welcome/index.html` | `-.12em` + `#mbubble +.02em` | yes | partial |
