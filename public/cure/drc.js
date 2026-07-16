@@ -97,9 +97,8 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
+import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
-  depthPosForTier,
-  depthTierForPos,
   disclosureText,
   grantFlagEnabled,
   grantLive,
@@ -819,38 +818,43 @@ function projectOpened() {
   history.replaceState(null, "", "/my/project-" + profile.refHash);
 }
 
-// ---- the research-depth slider ------------------------------------------------
+// ---- the research time slider (the Se/rver slider, mirrored) --------------------
 //
-// REAL on this tier, like the knob (2026-07-16): the slider steers how deep
-// the CLIENT-SIDE pipeline researches — angles, coverage-audit rounds, the
-// strict review, and the report's output shape (drc-research.js
-// DRC_DEPTH_TIERS). Position ⇄ tier mapping is pure (drc-page-core.js); the
-// tier id persists in the sealed state and rides into runDrcResearch as
-// `depth`. The server's TIME budget remains a Se/rver feature — this control
-// spends no wall clock, only calls on the user's own key.
+// The Se/rver composer's time slider, mirrored here as closely as the tier
+// allows (owner directive, 2026-07-16): the same quadratic 15 s–10 min scale
+// and the same time-stacked-over-tier readout (public/js/timescale.js —
+// budgetTier names the report the setting BUYS, not just the duration). The
+// seconds persist in the sealed state (`budgetS`, the DRS `budget_s`
+// counterpart) and ride into runDrcResearch, where they are the wall-clock
+// ROOF on the client-side research (drc-research.js drcPlanForBudget + the
+// deadline guards) exactly as src/budget.js plans the hosted pipeline.
 
-/** Repaints the label/tooltip from the slider's position; returns the tier. */
-function renderDepthLabel() {
-  const t = depthTierForPos(Number($("budget").value));
-  $("budgetval").textContent = t.label;
-  $("budgetwrap").title = "Research depth · " + t.desc;
-  return t;
+/** Repaints the time/tier readout from the slider's position; returns seconds. */
+function renderBudgetReadout() {
+  const s = posToSeconds(Number($("budget").value));
+  const tier = budgetTier(s);
+  $("budgettime").textContent = fmtBudget(s);
+  $("budgettier").textContent = tier.label;
+  $("budgetval").title = "Research time target · " + tier.desc;
+  return s;
 }
 
-/** Points the slider at the state's stored tier (absent reads as standard). */
-function reflectDepth() {
-  $("budget").value = String(depthPosForTier(state.depth));
-  // Depth only steers the research phases — with the knob off (direct
-  // answers) the slider dims, the same coupling the Se/rver twin has.
+/** Points the slider at the state's stored seconds (absent reads as 60 s). */
+function reflectBudget() {
+  const s = Number(state.budgetS);
+  $("budget").value = String(secondsToPos(s >= BUDGET_MIN_S && s <= BUDGET_MAX_S ? s : 60));
+  // The budget only governs the research phases — with the knob off (direct
+  // answers) the slider is moot and dims, the Se/rver twin's coupling.
   $("budget").disabled = !$("websearch").checked;
-  renderDepthLabel();
+  $("composer").classList.toggle("nosearch", !$("websearch").checked);
+  renderBudgetReadout();
 }
 
 // Reflect a freshly opened/restored state everywhere the UI shows it — the
 // shared tail of unlock() and importBackup().
 async function reflectOpenedState() {
   $("websearch").checked = state.research !== false;
-  reflectDepth();
+  reflectBudget();
   $("bashlite").checked = state.bashLite === true;
   $("devmode").checked = state.developerMode === true;
   applyIntrospectionTheme(state.developerMode === true);
@@ -2512,7 +2516,7 @@ async function unlockWorkspace(ev) {
     renderProxyRow();
     renderStRow();
     $("websearch").checked = state.research !== false;
-    reflectDepth();
+    reflectBudget();
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
     $("ondevice").checked = state.onDevice === true;
@@ -2628,7 +2632,7 @@ async function send(ev) {
   state.providerId = providerId;
   state.model = model;
   state.research = $("websearch").checked;
-  state.depth = depthTierForPos(Number($("budget").value)).id;
+  state.budgetS = posToSeconds(Number($("budget").value));
 
   // Resolve the answer provider + credential: normally a user-key provider, but
   // when the pick is the secure-research-space proxy it's the proxy provider
@@ -2703,7 +2707,7 @@ async function send(ev) {
       model,
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
-      depth: state.depth,
+      budgetS: state.budgetS,
       retrieved,
       introspection: intro.block,
       snapshot: intro.snapshot,
@@ -2829,7 +2833,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d31 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d32 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -2841,7 +2845,7 @@ const workspaceLinked = handleWorkspaceLink();
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
-reflectDepth(); // the depth slider's label/tooltip (standard until a state loads)
+reflectBudget(); // the time slider's readout (the 60 s default until a state loads)
 // A replay deep link counts like a project link — no intro over it.
 // On a genuine first visit the umbrella intro plays first (over the bare
 // page); when it finishes, new users land straight in the chat input rather
@@ -3110,14 +3114,16 @@ $("model").addEventListener("change", () => {
 });
 $("websearch").addEventListener("change", () => {
   state.research = $("websearch").checked;
-  $("budget").disabled = !$("websearch").checked; // depth applies to research runs only
+  // The time budget governs research runs only — knob off dims it (DRS twin).
+  $("budget").disabled = !$("websearch").checked;
+  $("composer").classList.toggle("nosearch", !$("websearch").checked);
   saveState();
 });
-// The research-depth slider: live label while dragging; persist the tier on
+// The time slider: live readout while dragging; persist the seconds on
 // release (change), not per input tick — sealing the state is not free.
-$("budget").addEventListener("input", renderDepthLabel);
+$("budget").addEventListener("input", renderBudgetReadout);
 $("budget").addEventListener("change", () => {
-  state.depth = renderDepthLabel().id;
+  state.budgetS = renderBudgetReadout();
   saveState();
 });
 // The server-proxied web-search toggle (only meaningful when a grant is live).

@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import {
   DRC_DEPTH_TIERS,
+  GAP_DEADLINE_FRACTION,
+  VALIDATE_DEADLINE_FRACTION,
   drcContext,
-  drcDepthConfig,
   drcDirectPrompt,
   drcDirectPromptWeb,
   drcGapPrompt,
@@ -16,11 +17,14 @@ import {
   drcValidatePrompt,
   drcValidatePromptWeb,
   drcWebHarvestPrompt,
+  drcPlanForBudget,
   normalizeDrcNotes,
   normalizeDrcTriage,
+  phaseWithinBudget,
   renderDrcNotes,
   runDrcResearch,
 } from "./drc-research.js";
+import { budgetTier } from "./timescale.js";
 
 // ---- normalizers ------------------------------------------------------------------
 
@@ -106,11 +110,11 @@ test("the web-search prompt variants flip the honesty rules to citation rules", 
   assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
 });
 
-// ---- the research-depth tiers (the /cure slider) ------------------------------------
+// ---- the research time budget (the /cure slider — Se/rver's, mirrored) ---------------
 
 test("depth tiers: standard IS today's behavior; the others scale around it", () => {
   // The standard tier must pin the legacy constants exactly — the default
-  // depth stays byte-identical to the pre-slider pipeline.
+  // 60 s budget stays byte-identical to the pre-slider pipeline.
   assert.deepEqual(DRC_DEPTH_TIERS.standard, {
     maxSubquestions: 4,
     gapRounds: 1,
@@ -124,10 +128,41 @@ test("depth tiers: standard IS today's behavior; the others scale around it", ()
   assert.equal(DRC_DEPTH_TIERS.brief.validate, false);
   assert.equal(DRC_DEPTH_TIERS.full.gapRounds, 2);
   assert.ok(DRC_DEPTH_TIERS.full.synthMaxTokens > DRC_DEPTH_TIERS.standard.synthMaxTokens);
-  // Unknown/absent ids read as standard — older sealed states are safe.
-  assert.equal(drcDepthConfig("bogus"), DRC_DEPTH_TIERS.standard);
-  assert.equal(drcDepthConfig(undefined), DRC_DEPTH_TIERS.standard);
-  assert.equal(drcDepthConfig("full"), DRC_DEPTH_TIERS.full);
+});
+
+test("drcPlanForBudget: the tier boundaries ARE the slider readout's (budgetTier)", () => {
+  // The plan's tier must agree with what the slider shows for the same
+  // seconds — timescale.js's budgetTier, which mirrors src/budget.js's
+  // reportTierFor: <60 brief, 60 standard, 180 extended, 420 full.
+  for (const s of [15, 30, 59, 60, 90, 179, 180, 300, 419, 420, 600]) {
+    assert.equal(drcPlanForBudget(s).tier, budgetTier(s).id, `at ${s}s`);
+  }
+  assert.equal(drcPlanForBudget(59).tier, "brief");
+  assert.equal(drcPlanForBudget(60).tier, "standard");
+  assert.equal(drcPlanForBudget(180).tier, "extended");
+  assert.equal(drcPlanForBudget(420).tier, "full");
+  // The plan carries the tier's phase config and the roof in ms.
+  assert.equal(drcPlanForBudget(60).budgetMs, 60_000);
+  assert.equal(drcPlanForBudget(480).gapRounds, 2);
+  // Seconds clamp to the slider's own range; garbage reads as the 60 s default.
+  assert.equal(drcPlanForBudget(5).budgetMs, 15_000); // BUDGET_MIN_S
+  assert.equal(drcPlanForBudget(9_999).budgetMs, 600_000); // BUDGET_MAX_S
+  for (const bad of [NaN, -1, 0, "x", null, undefined]) {
+    assert.equal(drcPlanForBudget(bad).tier, "standard", String(bad));
+    assert.equal(drcPlanForBudget(bad).budgetMs, 60_000, String(bad));
+  }
+});
+
+test("phaseWithinBudget: the wall-clock roof on optional phases", () => {
+  const start = 100_000;
+  const budgetMs = 60_000;
+  // Inside the gap share → the audit round may start; past it → skipped.
+  assert.equal(phaseWithinBudget(start, budgetMs, GAP_DEADLINE_FRACTION, start + 35_000), true);
+  assert.equal(phaseWithinBudget(start, budgetMs, GAP_DEADLINE_FRACTION, start + 36_000), false);
+  // The review gets a later cutoff than the audit (it costs less to run).
+  assert.ok(VALIDATE_DEADLINE_FRACTION > GAP_DEADLINE_FRACTION);
+  assert.equal(phaseWithinBudget(start, budgetMs, VALIDATE_DEADLINE_FRACTION, start + 50_000), true);
+  assert.equal(phaseWithinBudget(start, budgetMs, VALIDATE_DEADLINE_FRACTION, start + 51_000), false);
 });
 
 test("depth-parametrized prompts: defaults unchanged, tiers reshape only their own line", () => {
@@ -423,7 +458,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
     }
   });
 
-  test("depth 'brief' skips the coverage audit and the review, and asks for the brief shape", async () => {
+  test("a sub-60s budget (brief) skips the coverage audit and the review, and asks for the brief shape", async () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     const phases = [];
@@ -432,7 +467,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
-      depth: "brief",
+      budgetS: 30,
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
       baseUrl,
     });
@@ -448,7 +483,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
     assert.match(requests.find((r) => r.phase === "synth").body.messages[0].content, /REPORT DEPTH — BRIEF/);
   });
 
-  test("depth 'full' runs a second coverage-audit round and raises the output caps", async () => {
+  test("a 420s+ budget (full) runs a second coverage-audit round and raises the output caps", async () => {
     requests.length = 0;
     gapAlreadyAsked = false; // round 1 finds a gap, round 2 reports complete
     const phases = [];
@@ -457,7 +492,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
-      depth: "full",
+      budgetS: 480,
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
       baseUrl,
     });
@@ -473,7 +508,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
     assert.equal(requests.find((r) => r.phase === "validate").body.max_tokens, DRC_DEPTH_TIERS.full.validateMaxTokens);
   });
 
-  test("depth 'standard' is the wire default: an omitted depth changes nothing", async () => {
+  test("the 60s budget (standard) is the wire default: an omitted budget changes nothing", async () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     await runDrcResearch({
@@ -481,7 +516,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
-      depth: "standard",
+      budgetS: 60,
       baseUrl,
     });
     const explicit = requests.map((r) => ({ phase: r.phase, body: r.body }));

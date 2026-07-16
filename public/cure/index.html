@@ -128,13 +128,14 @@
             </button>
           </div>
           <div id="search-row">
-            <!-- The research-depth slider — REAL here, like the knob: it sets how
-                 deep the CLIENT-SIDE pipeline researches (angles, audit rounds,
-                 review, report shape — drc-page-core.js depthTierForPos). The
-                 server's TIME budget stays a Se/rver feature; this steers depth. -->
-            <span id="budgetwrap" title="Research depth">
-              <input id="budget" type="range" min="0" max="100" step="1" value="37" aria-label="Research depth">
-              <span id="budgetval">Answer</span>
+            <!-- The research time slider — the Se/rver slider MIRRORED (same
+                 15 s–10 min scale, same time-over-tier readout — timescale.js):
+                 here the time is the roof on the CLIENT-SIDE pipeline's research
+                 (drc-research.js drcPlanForBudget + the deadline guards) and
+                 buys the same report tiers. -->
+            <span id="budgetwrap" title="Research time target">
+              <input id="budget" type="range" min="0" max="100" step="1" value="28" aria-label="Research time target">
+              <span id="budgetval" title="Research time target"><span id="budgettime">1 m</span><span id="budgettier">Answer</span></span>
             </span>
             <label id="searchtoggle" aria-label="Research phases on/off" title="Research phases on/off — Off answers in one pass; live WEB search is a Se/rver feature">
               <input id="websearch" type="checkbox" checked>
