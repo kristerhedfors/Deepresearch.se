@@ -507,10 +507,15 @@ async function runSourceResearchTools(ctx, snapshot) {
   // injected explicitly here or the tool-driven answer would lose the OWASP
   // grounding the deterministic path gets for free.
   const owaspBlock = /** @type {any} */ (ctx.state).owaspBlock || "";
+  // The HELP documentation block (retrieved by the introspection enrichment —
+  // the docs-first layer of help mode) needs the same explicit injection for
+  // the same clean-conversation reason.
+  const helpBlock = /** @type {any} */ (ctx.state).helpBlock || "";
   const userText =
     `Question (latest user message):\n${ctx.cleanLastUser}\n\n` +
     `Conversation context:\n${ctx.cleanConvText}\n\n` +
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
+    (helpBlock ? `${helpBlock}\n\n` : "") +
     (owaspBlock ? `${owaspBlock}\n\n` : "") +
     `File index (repo paths — investigate with grep_source / read_file):\n${sitemap}\n\n` +
     "Investigate the ACTUAL source with the tools, then write the answer.";

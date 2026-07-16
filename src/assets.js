@@ -162,6 +162,14 @@ export function isPublicAsset(url, method) {
     // OWASP material, so serving it unauthenticated exposes nothing. (The dense
     // owasp-rag.json is DRS-only, read through the ASSETS binding — not here.)
     url.pathname === "/introspect/owasp-corpus.json" ||
+    // The HELP documentation corpus + its copied doc images — public so DRC
+    // (Se/cure, server in no data path) fetches the corpus and the chat renders
+    // the documentation's embedded images on both tiers. All of it is the
+    // public repo's own Markdown docs, so serving it unauthenticated exposes
+    // nothing. (The dense docs-rag.json is DRS-only, read through the ASSETS
+    // binding — not here.)
+    url.pathname === "/introspect/docs-corpus.json" ||
+    url.pathname.startsWith("/introspect/docs-img/") ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||

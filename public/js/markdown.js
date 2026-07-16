@@ -52,6 +52,20 @@ export function normalizeLlmMarkdown(text) {
   return result.join("\n");
 }
 
+// The ONLY image sources an answer may render inline: this site's OWN static
+// documentation images (fixed same-origin prefixes, no query/traversal —
+// they're plain static assets). Everything else stays forbidden below. Exists
+// for HELP mode: an answer quoting the documentation verbatim reproduces its
+// `![caption](/introspect/docs-img/…)` lines and the chat shows the real
+// screenshots. Same-origin static files can't track or exfiltrate anything.
+const SAFE_IMG_PREFIXES = ["/introspect/docs-img/", "/help/img/"];
+
+/** @param {string} src @returns {boolean} */
+export function isSafeDocImage(src) {
+  const s = String(src || "");
+  return SAFE_IMG_PREFIXES.some((p) => s.startsWith(p)) && !s.includes("..") && !s.includes("//");
+}
+
 /**
  * Render markdown into an element, sanitized; plain text when the vendored
  * libs are missing.
@@ -65,9 +79,28 @@ export function renderMarkdownInto(el, text) {
     el.textContent = text;
     return;
   }
-  // FORBID img: beyond XSS, a rendered <img> from answer text would fire
-  // third-party requests (tracking pixels) — sources stay links.
-  el.innerHTML = DOMPurify.sanitize(marked.parse(normalizeLlmMarkdown(text)), { FORBID_TAGS: ["img"] });
+  // img is forbidden by DEFAULT: beyond XSS, a rendered <img> from answer text
+  // would fire third-party requests (tracking pixels) — sources stay links.
+  // The one exception is the site's own documentation images (isSafeDocImage):
+  // a DOMPurify hook drops every <img> whose src isn't one of those fixed
+  // same-origin static prefixes, so the third-party-request class stays closed.
+  const hook = (/** @type {any} */ node) => {
+    if (node.tagName === "IMG" && !isSafeDocImage(node.getAttribute("src"))) node.remove();
+  };
+  DOMPurify.addHook("afterSanitizeAttributes", hook);
+  try {
+    el.innerHTML = DOMPurify.sanitize(marked.parse(normalizeLlmMarkdown(text)), {
+      FORBID_TAGS: [], // img allowed into the hook above, which enforces the allowlist
+    });
+  } finally {
+    // removeHook pops the most recently added hook for the entry point —
+    // ours, since add/sanitize/remove run synchronously right here.
+    DOMPurify.removeHook("afterSanitizeAttributes");
+  }
+  for (const img of el.querySelectorAll("img")) {
+    img.loading = "lazy";
+    img.classList.add("doc-img");
+  }
   for (const a of el.querySelectorAll("a")) {
     a.target = "_blank";
     a.rel = "noopener";

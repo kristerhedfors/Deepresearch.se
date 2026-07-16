@@ -88,6 +88,9 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   `FEATURES.md`), and the general playbook for a new priority board.
 - **feedback-loop** — Claude Code as the back end of Feedback mode
   (`src/feedback.js`); the gather → decide → act → message-back loop.
+- **help-docs** — HELP MODE, the documentation-first layer of introspection:
+  the docs corpus + index (symbol references, served doc images), the
+  docs→source escalation, the `bundle:docs` regeneration discipline.
 - **integrations** — external providers and the enrichment pattern (Berget,
   Anthropic, OpenAI, Exa, geocoding, Shodan, Google Maps, Hugging Face).
 - **introspection** — introspection mode / the `developer_mode` knob: the
