@@ -1115,11 +1115,15 @@ async function odOpenConsent(m) {
   yes.textContent = "Download";
   yes.onclick = null;
   $("odconsent").hidden = false;
-  const plan = await eng.planModelDownload(m.id).catch(() => null);
+  const plan = await eng.planModelDownload(m.id).catch(() => ({ published: false, reason: "network" }));
   if ($("odconsent").hidden) return; // dismissed while the listing loaded
   if (!plan?.published || !plan.totalBytes) {
+    // Two different truths need two different messages: "not published" is
+    // about the model, "couldn't reach" is about the connection.
     $("odc-body").textContent =
-      m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
+      plan?.reason === "network"
+        ? "Couldn't reach huggingface.co to compute the download size — check your connection and try again. Nothing was downloaded."
+        : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
     return;
   }
   const size = eng.fmtBytes(plan.totalBytes);

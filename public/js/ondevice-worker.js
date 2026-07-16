@@ -98,11 +98,26 @@ async function deleteModel(modelId) {
 
 const dlAborts = new Map(); // modelId → AbortController
 
+// Plan result: {files} on success, or {reason: "unpublished"|"network"} —
+// the two failure kinds NEED different messages: "not published yet" is a
+// statement about the model, "couldn't reach huggingface.co" is a statement
+// about the connection, and telling a user the wrong one sends them away
+// from a working feature (found in the first headless verify run: a blocked
+// fetch read as "isn't published").
 async function planFor(model) {
-  const res = await fetch(hfTreeUrl(model.repo));
-  if (!res.ok) return null; // 404 = repo/conversion not published yet
-  const tree = await res.json();
-  return planModelFiles(tree, model.dtype);
+  let res;
+  try {
+    res = await fetch(hfTreeUrl(model.repo));
+  } catch {
+    return { reason: "network" };
+  }
+  if (!res.ok) return { reason: res.status === 404 ? "unpublished" : "network" };
+  try {
+    const files = planModelFiles(await res.json(), model.dtype);
+    return files ? { files } : { reason: "unpublished" }; // repo exists, variant doesn't
+  } catch {
+    return { reason: "network" };
+  }
 }
 
 // One file: resume from whatever OPFS already holds (re-hash the partial
@@ -170,8 +185,15 @@ async function downloadFile(dir, model, file, signal, onLoaded) {
 async function download(modelId) {
   const model = onDeviceModel(modelId);
   if (!model) throw new Error("Unknown model " + modelId);
-  const files = await planFor(model);
-  if (!files) throw new Error("The " + model.label + " browser build isn't published yet.");
+  const plan = await planFor(model);
+  const files = plan.files;
+  if (!files) {
+    throw new Error(
+      plan.reason === "unpublished"
+        ? "The " + model.label + " browser build isn't published yet."
+        : "Couldn't reach huggingface.co — check the connection and try again.",
+    );
+  }
   const ctrl = new AbortController();
   dlAborts.set(modelId, ctrl);
   try {
@@ -331,12 +353,13 @@ self.onmessage = async (e) => {
       self.postMessage({ t: "list", entries: await listEntries() });
     } else if (msg.t === "plan") {
       const model = onDeviceModel(msg.modelId);
-      const files = model ? await planFor(model).catch(() => null) : null;
+      const plan = model ? await planFor(model).catch(() => ({ reason: "network" })) : { reason: "unpublished" };
       self.postMessage({
         t: "plan",
         modelId: msg.modelId,
-        published: !!files,
-        totalBytes: files ? files.reduce((n, f) => n + f.size, 0) : null,
+        published: !!plan.files,
+        reason: plan.reason || null,
+        totalBytes: plan.files ? plan.files.reduce((n, f) => n + f.size, 0) : null,
       });
     } else if (msg.t === "download") {
       await download(msg.modelId).catch((err) => {

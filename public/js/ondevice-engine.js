@@ -112,9 +112,11 @@ export function listCachedModels() {
 
 /**
  * The pre-consent probe: is the browser build published, and exactly how big?
- * (The consent popup shows THIS number, not the catalog estimate.)
+ * (The consent popup shows THIS number, not the catalog estimate.) A failed
+ * probe distinguishes `reason: "unpublished"` from `"network"` — the wrong
+ * message sends a user away from a working feature.
  * @param {string} modelId
- * @returns {Promise<{published: boolean, totalBytes: ?number}>}
+ * @returns {Promise<{published: boolean, reason: ?string, totalBytes: ?number}>}
  */
 export function planModelDownload(modelId) {
   return new Promise((resolve) => {
@@ -122,7 +124,7 @@ export function planModelDownload(modelId) {
     const onMsg = (e) => {
       if (e.data?.t === "plan" && e.data.modelId === modelId) {
         w.removeEventListener("message", onMsg);
-        resolve({ published: e.data.published, totalBytes: e.data.totalBytes });
+        resolve({ published: e.data.published, reason: e.data.reason || null, totalBytes: e.data.totalBytes });
       }
     };
     w.addEventListener("message", onMsg);
