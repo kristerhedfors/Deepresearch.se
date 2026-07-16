@@ -1,0 +1,277 @@
+{
+  "sdk": "agent-pair-sdk",
+  "version": "0.1.0",
+  "status": "design-only — not wired into the application",
+  "reference_product": "deepresearch.se (DeepResearch.Se/cure + DeepResearch.Se/rver)",
+  "classes": {
+    "C": "client-pure — no server in the data path; must work on a static host",
+    "S": "server-backed — lives in the one server component",
+    "B": "bridged — server capability lent to the client tier via metered grant tokens",
+    "X": "shared substrate — one pure core under the client tree, server façade re-export",
+    "D": "development system — loops/evals/workflows that keep the pair maintainable"
+  },
+  "layers": {
+    "0": "Foundation (baseplate)",
+    "1": "Model & search plane",
+    "2": "The two tiers",
+    "3": "Privacy & storage plane",
+    "4": "Operations & feedback plane",
+    "5": "Extension surfaces",
+    "6": "Generation"
+  },
+  "baseplate": ["pair-architecture", "baseplate-worker", "baseplate-client"],
+  "modules": [
+    {
+      "id": "pair-architecture",
+      "name": "The agent-pair architecture and its contracts",
+      "layer": 0, "class": "D", "deps": [],
+      "skill": "sdk/skills/pair-architecture/SKILL.md",
+      "provides": "The pair abstraction (client tier + server tier, zero-or-one server), the capability classes C/S/B/X/D, contracts PA-1..PA-10, the naming/wordplay convention, module-graph constraints",
+      "reference": ["CLAUDE.md", "docs/ARCHITECTURE.md", "docs/ARCHITECTURE-ROADMAP.md", "sdk/DESIGN.md"],
+      "acceptance": "Every later module cites the PA contracts it touches; class-C module graphs contain no class-S imports (pinned by tests)"
+    },
+    {
+      "id": "baseplate-worker",
+      "name": "The one server component (edge worker skeleton)",
+      "layer": 0, "class": "S", "deps": ["pair-architecture"],
+      "skill": "sdk/skills/baseplate-worker/SKILL.md",
+      "provides": "Entrypoint routing, static-asset serving + public allowlist, security headers/CSP, canonical-origin redirect, optional-D1 + lazy schema, site config, structured logging, http helpers, node:test harness, zero-build typecheck",
+      "reference": ["src/index.js", "src/assets.js", "src/security-headers.js", "src/canonical.js", "src/db.js", "src/config.js", "src/log.js", "src/http.js", "wrangler.toml", "package.json"],
+      "acceptance": "npm test green on the skeleton; serves the client shell; headers verified with a live probe; works with NO D1 binding"
+    },
+    {
+      "id": "baseplate-client",
+      "name": "The browser chat client shell",
+      "layer": 0, "class": "C", "deps": ["pair-architecture"],
+      "skill": "sdk/skills/baseplate-client/SKILL.md",
+      "provides": "No-build ES-module client: glass chrome, composer, conversation turns, sanitized markdown, SSE line parser, history sidebar, settings client, attachments, the pure-core (Node-testable) module convention",
+      "reference": ["public/index.html", "public/css/app.css", "public/js/app.js", "public/js/stream.js", "public/js/turns.js", "public/js/markdown.js", "public/js/sse.js", "public/js/message-content.js", "public/js/history-store.js", "public/js/attachments.js"],
+      "acceptance": "Pure cores import-safe in Node with tests; page renders and round-trips a mocked chat"
+    },
+    {
+      "id": "provider-registry",
+      "name": "LLM provider registry and stream consumption",
+      "layer": 1, "class": "X", "deps": ["baseplate-worker", "baseplate-client"],
+      "skill": "sdk/skills/provider-registry/SKILL.md",
+      "provides": "Namespace-dispatched multi-provider catalog (server: providers.js pattern; client: CORS-capable + local registry), wire adapters (adapt-at-the-wire SSE vs native), key gating, pricing metadata, the hardened stream loop (idle/total guards, finish_reason, retries)",
+      "reference": ["src/providers.js", "src/berget.js", "src/anthropic.js", "src/openai.js", "src/answer-stream.js", "public/js/drc-providers.js", "public/js/models.js"],
+      "acceptance": "Unit + mock-HTTP smoke per provider; live probe per key-gated provider; catalog degrades when a key is absent"
+    },
+    {
+      "id": "research-pipeline",
+      "name": "The deterministic deep-research pipeline",
+      "layer": 1, "class": "X", "deps": ["provider-registry"],
+      "skill": "sdk/skills/research-pipeline/SKILL.md",
+      "provides": "Triage → search → gap → synthesis → validation with NO function calling; fail-soft phases; split model routing; time-budget/EWMA planner; report tiers; JSON hardening (schema validator + normalizers); per-model profiles; the client-side port of the same flow",
+      "reference": ["src/pipeline.js", "src/pipeline-inputs.js", "src/triage.js", "src/schema.js", "src/budget.js", "src/model-profiles.js", "src/prompts.js", "src/notes.js", "public/js/drc-research.js"],
+      "acceptance": "Flow unit-tested end-to-end against a mock provider on BOTH tiers; PA-1/2/3 asserted by tests"
+    },
+    {
+      "id": "web-search",
+      "name": "Web search plane (default + pluggable backends)",
+      "layer": 1, "class": "X", "deps": ["baseplate-worker", "baseplate-client"],
+      "skill": "sdk/skills/web-search/SKILL.md",
+      "provides": "Default search provider client (Exa pattern), the pluggable-backend shared core (SearXNG/self-hosted, browser-direct on the client tier), edge result cache, the numbered source registry with per-origin diversity caps, auxiliary search-source registry (HF Hub pattern)",
+      "reference": ["src/exa.js", "src/websearch-backends.js", "public/js/websearch-backends-core.js", "src/sources.js", "src/search-sources.js", "src/edge-cache.js", "src/hf.js"],
+      "acceptance": "Registry/diversity unit tests; mocked backend dispatch tests; one live search probe; fallback-to-default verified"
+    },
+    {
+      "id": "enrichments",
+      "name": "Opt-in context enrichment registry",
+      "layer": 1, "class": "S", "deps": ["research-pipeline"],
+      "skill": "sdk/skills/enrichments/SKILL.md",
+      "provides": "The enrichment contract (deterministic target extraction → bounded privacy-minimal lookup → capped summary → ONE labeled context block → fail soft → counted), the registry seam, worked integrations (geocode, Shodan, Maps incl. vision describe), EN+SV intent-gate parity",
+      "reference": ["src/enrichment.js", "src/maps-enrichment.js", "src/geocode.js", "src/shodan.js", "src/googlemaps.js", "src/googlemaps-text.js", "src/googlemaps-blocks.js"],
+      "acceptance": "Pure gates/builders unit-tested with language parity; live probe per integration; chat never errors when an enrichment fails"
+    },
+    {
+      "id": "secure-tier",
+      "name": "The client tier (Se/cure archetype)",
+      "layer": 2, "class": "C", "deps": ["baseplate-client", "provider-registry", "sealed-crypto"],
+      "skill": "sdk/skills/secure-tier/SKILL.md",
+      "provides": "The wholly-in-browser assistant: chat-first UX, browser-direct providers incl. keyless local server, sealed project state in browser storage, the twin look-and-feel with dimmed server-only affordances, deep links, encrypted backup files, the minimal-server-by-design page",
+      "reference": ["public/cure/index.html", "public/cure/drc.js", "public/cure/drc.css", "public/js/drc-core.js", "public/js/drc-store.js", "public/js/drc-page-core.js"],
+      "acceptance": "Works served from a static host; no authenticated endpoint in the module graph (test-pinned); state round-trips sealed"
+    },
+    {
+      "id": "identity-access",
+      "name": "Identity, accounts and the admin gate",
+      "layer": 2, "class": "S", "deps": ["baseplate-worker"],
+      "skill": "sdk/skills/identity-access/SKILL.md",
+      "provides": "OIDC sign-in (Google pattern), session cookies (sliding, HMAC), terms + approval gates, auto-provisioned accounts, break-glass Basic Auth (fail closed), the admin surface gate, PWA-longevity decisions",
+      "reference": ["src/auth.js", "src/google.js", "src/login.js", "src/accounts.js", "src/token-crypto.js", "src/admin-api.js"],
+      "acceptance": "Cookie/HMAC security properties unit-tested (no-secret fails closed); live sign-in round-trip; grant tokens can never pass the identity gate"
+    },
+    {
+      "id": "quota-metering",
+      "name": "Quotas, usage accounting and alerts",
+      "layer": 2, "class": "S", "deps": ["identity-access"],
+      "skill": "sdk/skills/quota-metering/SKILL.md",
+      "provides": "Multi-window quota model, split-billing cost math per provider catalog rate, usage recording, per-user in-flight concurrency caps, 429 payload conventions, operational alerts (typed, upserted), the per-user message center (metadata-only)",
+      "reference": ["src/quota.js", "src/billing.js", "src/alerts.js", "src/user-messages.js", "src/user-api.js"],
+      "acceptance": "Window/boundary math unit-tested; breach + concurrency paths tested; alert classification tested"
+    },
+    {
+      "id": "sse-recovery",
+      "name": "Chat transport: SSE contract + answer recovery",
+      "layer": 2, "class": "S", "deps": ["research-pipeline", "baseplate-client"],
+      "skill": "sdk/skills/sse-recovery/SKILL.md",
+      "provides": "The /api/chat SSE event vocabulary + forward-compatibility rule, heartbeats, the TTL'd answer-recovery cache, the client poller, the resume-across-relaunch metadata-only marker, stall watchdogs, stop-mid-stream",
+      "reference": ["src/chat.js", "src/answers.js", "public/js/sse.js", "public/js/recovery.js", "public/js/pending-answer.js", "public/js/activity.js"],
+      "acceptance": "SSE parser + recovery projections unit-tested; disconnect/recover verified live (only reproduces in production)"
+    },
+    {
+      "id": "sealed-crypto",
+      "name": "Sealed client-side crypto core",
+      "layer": 3, "class": "C", "deps": ["baseplate-client"],
+      "skill": "sdk/skills/sealed-crypto/SKILL.md",
+      "provides": "User-held secrets (copy-safe Crockford base32, forgiving normalization), HKDF-independent derivations (ids vs keys), AES-256-GCM archives with tamper detection, the master-secret profile (keys INSIDE the sealed state), password-manager-compatible secret forms",
+      "reference": ["public/js/vault-core.js", "public/js/drc-core.js", "docs/ENCRYPTION.md"],
+      "acceptance": "Determinism/independence/tamper suites green in Node; no plaintext key material at rest anywhere in the module"
+    },
+    {
+      "id": "ciphertext-storage",
+      "name": "Cloud ciphertext storage and the vault tier",
+      "layer": 3, "class": "S", "deps": ["identity-access", "sealed-crypto"],
+      "skill": "sdk/skills/ciphertext-storage/SKILL.md",
+      "provides": "Knob-gated R2 storage of encrypted conversations/projects/files, the encryption asymmetry rule (RAG-indexed plaintext exception, declared), server-derived in-memory history keys, the blind-blob vault (server never sees the secret), full drain-wipe semantics",
+      "reference": ["src/storage.js", "src/vault.js", "src/history-key.js", "src/settings.js", "public/js/history-store.js", "public/js/sync.js", "public/js/vault.js"],
+      "acceptance": "Vault round-trip vs mocked R2; works-with-knob-OFF pinned; vault excluded from drain-wipe; ciphertext-only at rest verified"
+    },
+    {
+      "id": "client-rag",
+      "name": "Client-side RAG over documents, projects and chats",
+      "layer": 3, "class": "X", "deps": ["provider-registry", "sealed-crypto"],
+      "skill": "sdk/skills/client-rag/SKILL.md",
+      "provides": "Chunking/cosine/top-k pure core, embedding via server proxy (server tier) or browser-direct (client tier), incremental chat indexing, sibling-scope retrieval, recall blocks as context-not-instructions, vectors sealed at rest on the client tier, cap/eviction policies",
+      "reference": ["public/js/rag.js", "public/js/chat-rag.js", "public/js/drc-rag.js", "public/js/project-context.js", "src/rag.js"],
+      "acceptance": "Chunker/codec/scope suites green; embedder-change wipe tested; recall block threaded into pipeline phases (never harvest) tested"
+    },
+    {
+      "id": "grant-bridge",
+      "name": "The grant-token bridge between tiers",
+      "layer": 3, "class": "B", "deps": ["identity-access", "quota-metering", "secure-tier", "web-search"],
+      "skill": "sdk/skills/grant-bridge/SKILL.md",
+      "provides": "Token families under one root secret with structural namespace separation; the consolidated JWT server token (perms set, per-permission meter rows, THE GUARANTEE: upstream APIs only, never server data, never a login); atomic reserve/refund meters; global budget ceilings; ghost-crossover + shareable-link minting; admin governance panels; quota adjust/pause/revoke",
+      "reference": ["src/token-crypto.js", "src/server-token.js", "src/server-grants.js", "src/websearch-key.js", "src/websearch.js", "src/proxy-grant.js", "src/proxy.js", "src/grant-http.js", "docs/SERVER-TOKENS.md"],
+      "acceptance": "The full quota-grant invariant checklist green (cross-family forgery matrix, concurrency overrun, refund floors, expiry, budget, account binding, module-graph pin) over a combined D1 fake"
+    },
+    {
+      "id": "offline-workspaces",
+      "name": "Offline workspace links (fragment crypto)",
+      "layer": 3, "class": "C", "deps": ["sealed-crypto", "grant-bridge", "secure-tier"],
+      "skill": "sdk/skills/offline-workspaces/SKILL.md",
+      "provides": "A fully configured client-tier session sealed into one link (fragment never reaches a server), the iterative-KDF + dual-key split wire format, embedded grant tokens that stay minter-administered, reserved slugs, the share/mint UX on both tiers",
+      "reference": ["public/js/workspace-core.js", "docs/WORKSPACE-SECURITY.md", "public/js/proxy-bundle.js"],
+      "acceptance": "Seal→open round-trip + tamper/wrong-password fail-soft green; end-to-end mint→seal→open→hydrate→spend→pause→revoke flow tested"
+    },
+    {
+      "id": "observability",
+      "name": "Observability, interaction logs and live verification",
+      "layer": 4, "class": "S", "deps": ["baseplate-worker", "identity-access"],
+      "skill": "sdk/skills/observability/SKILL.md",
+      "provides": "Structured JSON logging, request-id correlation end to end, the full-visibility interaction log with per-conversation incognito opt-out (a declared PA-4 exception), client error/telemetry beacons, admin read APIs + CLI, the live-verify and on-device-trace disciplines",
+      "reference": ["src/log.js", "src/chatlog.js", "src/user-api.js", "scripts/chatlogs", "src/alerts.js"],
+      "acceptance": "Log row shape/truncation/opt-out unit-tested; a live request traced by id through worker logs; no secrets in any log (scanned)"
+    },
+    {
+      "id": "decision-boards",
+      "name": "Admin decision boards feeding agent loops",
+      "layer": 4, "class": "S", "deps": ["identity-access", "observability"],
+      "skill": "sdk/skills/decision-boards/SKILL.md",
+      "provides": "The shared board core (votes/score/note/priority state, priority-vs-rank orderings, review upserts), catalog/façade/mirror disciplines, priority boards + the votes-only attention-board variant, ?format=text loop input + per-board CLIs, the boards discovery index",
+      "reference": ["src/board.js", "src/security-risks.js", "src/features.js", "src/panels.js", "src/admin-boards.js", "docs/DECISION-BOARD-LOOPS.md"],
+      "acceptance": "Core + each consumer's suites green; catalog mirrors its register file in the same commit (test-named drift); a loop can consume ?format=text"
+    },
+    {
+      "id": "feedback-loops",
+      "name": "User feedback and testing loops",
+      "layer": 4, "class": "D", "deps": ["decision-boards", "observability"],
+      "skill": "sdk/skills/feedback-loops/SKILL.md",
+      "provides": "Per-reply feedback threads with screenshots, the testable-interaction-points queue (try-it deep links, action grammar, three-verdict dialogue), the git-transported test-request channel, standing test batteries, the human-in-the-loop discipline",
+      "reference": ["src/feedback.js", "src/testpoints.js", "public/js/testpoints.js", "public/js/testpoints-core.js", "scripts/feedback", "scripts/testpoints", "scripts/test-requests", "docs/test-batches"],
+      "acceptance": "Pure validation/projection suites green; a point mints → deep-links → records a verdict end to end"
+    },
+    {
+      "id": "eval-harness",
+      "name": "Model evaluation and scored benchmarks",
+      "layer": 4, "class": "D", "deps": ["research-pipeline"],
+      "skill": "sdk/skills/eval-harness/SKILL.md",
+      "provides": "The model-matrix trace harness, the LLM-judged rubric bench, the external gold-answer bench (contamination-aware), append-only findings ledgers, the evidence-before-override rule for model profiles, don't-deploy-mid-battery",
+      "reference": ["tests/model-eval.mjs", "tests/eval-bench.mjs", "tests/hf-bench.mjs", "tests/MODEL-EVAL-FINDINGS.md", "tests/EVAL-BENCH-FINDINGS.md", "tests/HF-BENCH-FINDINGS.md"],
+      "acceptance": "A baseline battery runs and lands in a ledger before any pipeline-quality change merges"
+    },
+    {
+      "id": "agent-dev-workflow",
+      "name": "The agent development system",
+      "layer": 4, "class": "D", "deps": ["pair-architecture"],
+      "skill": "sdk/skills/agent-dev-workflow/SKILL.md",
+      "provides": "Slim-memory + on-demand skills structure, sync-main/merge-barrier/branch-ledger git discipline, PR watching + regression routing to author-workers, maintenance ownership registry, secret scanning hooks, docs-mirror drift tests, persist-solved-tasks-as-skills",
+      "reference": ["CLAUDE.md", ".claude/skills", ".claude/hooks", "docs/MAINTENANCE-OWNERS.md", "docs/MERGED-BRANCHES.md", "scripts/scan-secrets"],
+      "acceptance": "Hooks fire on session start/commit/push; a regression routes to its owning PR; skills list matches the skills directory"
+    },
+    {
+      "id": "execution-sandbox",
+      "name": "In-browser Linux execution sandbox + bash agent",
+      "layer": 5, "class": "X", "deps": ["baseplate-client", "research-pipeline"],
+      "skill": "sdk/skills/execution-sandbox/SKILL.md",
+      "provides": "WASM x86 Linux in the browser (cross-origin-isolated), the client-orchestrated fenced-block shell loop (no function calling), the shared bash core + server step endpoint, exec bridge envelope codec, file mounts + outbox deliverables, boot observability",
+      "reference": ["public/js/bash-core.js", "src/bash-agent.js", "src/bash-api.js", "public/js/sandbox.js", "public/js/sandbox-files.js", "public/js/bash-agent.js", "docs/SANDBOX-HOST-COMMANDS.md"],
+      "acceptance": "Pure core suites green incl. EN+SV parity; live browser boot + one command round-trip verified on a real device"
+    },
+    {
+      "id": "introspection-help",
+      "name": "Self-introspection and interactive help",
+      "layer": 5, "class": "X", "deps": ["research-pipeline", "secure-tier"],
+      "skill": "sdk/skills/introspection-help/SKILL.md",
+      "provides": "Committed source snapshot + dense int8 RAG index (delta builds, freshness test-enforced), the shared intent/retrieval core, docs corpus as the help layer (verbatim quoting, images, symbol refs), the scoped dev-mode tool-loop exception to PA-1, the skills catalog surfaced to answer models",
+      "reference": ["public/js/introspect-core.js", "src/introspect.js", "src/introspect-tools.js", "scripts/bundle-source.mjs", "scripts/bundle-docs.mjs", "public/js/introspect-ui.js"],
+      "acceptance": "Freshness tests fail npm test on stale artifacts; both tiers answer a how-are-you-built question from real source"
+    },
+    {
+      "id": "mcp-surface",
+      "name": "The pair as an MCP server",
+      "layer": 5, "class": "S", "deps": ["research-pipeline", "identity-access", "quota-metering"],
+      "skill": "sdk/skills/mcp-surface/SKILL.md",
+      "provides": "Hand-rolled JSON-RPC 2.0 / Streamable HTTP endpoint exposing the pipeline as one tool; pure-protocol-static / pipeline-dynamic import layout; inherits identity gate, quota and billing; the outbound-edge-only MCP stance",
+      "reference": ["src/mcp.js", "src/model-routing.js", "src/billing.js"],
+      "acceptance": "Protocol suite green without importing the pipeline; live JSON-RPC probe completes a tool call with usage recorded"
+    },
+    {
+      "id": "publish-replays",
+      "name": "Published research replays",
+      "layer": 5, "class": "S", "deps": ["secure-tier", "baseplate-worker"],
+      "skill": "sdk/skills/publish-replays/SKILL.md",
+      "provides": "Frozen research sessions as public read-only pages under the client tier's path (slug completes the wordplay), admin-only publish, the continue-on-own-keys handoff seeding a client-tier conversation in place",
+      "reference": ["src/pub.js", "public/cure/drc.js"],
+      "acceptance": "Slug rules + round-trip suites green vs mocked R2; a replay opens and continues on visitor keys live"
+    },
+    {
+      "id": "symbol-language",
+      "name": "Symbol language, wordmark and UX conventions",
+      "layer": 5, "class": "X", "deps": ["baseplate-client"],
+      "skill": "sdk/skills/symbol-language/SKILL.md",
+      "provides": "Per-tier symbol characters and palettes, first-visit intros + waiting-symbol grammar (offline vs online channels, disclosure notices), the wordmark slash-spacing measurement discipline, the numbered UX-conventions registry, low-animation directives",
+      "reference": ["docs/SYMBOL-LANGUAGE.md", "public/js/balloon.js", "public/cure/umbrella.js", "scripts/slash-gap.mjs", ".claude/skills/ux-conventions"],
+      "acceptance": "Pure timeline/geometry cores tested; slash gaps measured not eyeballed; every online phase carries its disclosure"
+    },
+    {
+      "id": "games-shelf",
+      "name": "The games registry seam",
+      "layer": 5, "class": "S", "deps": ["identity-access"],
+      "skill": "sdk/skills/games-shelf/SKILL.md",
+      "provides": "The declarative game registry + dispatch (a new game touches no shelf code), the pure-core/API/client split, server-authoritative rules with anti-cheat view projections, the no-invented-game-logic rule",
+      "reference": ["src/games.js", "src/tokemon.js", "src/tokemon-api.js", "src/tokemon-nav.js", "public/games/tokemon"],
+      "acceptance": "Registry dispatch suites green; a second registered game appears on the shelf with zero client changes"
+    },
+    {
+      "id": "pair-generator",
+      "name": "Generating a pair from a feature selection",
+      "layer": 6, "class": "D", "deps": ["pair-architecture"],
+      "skill": "sdk/skills/pair-generator/SKILL.md",
+      "provides": "The selection → dependency closure → layer-ordered, module-at-a-time generation workflow; acceptance gating between modules; the adoption path for wiring an existing product to SDK modules; contract enforcement (no class violations)",
+      "reference": ["sdk/MANIFEST.json", "sdk/ROADMAP.md", "sdk/DESIGN.md"],
+      "acceptance": "A minimal selection generates to a working product with all landed modules' acceptance checklists satisfied"
+    }
+  ]
+}
