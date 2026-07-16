@@ -844,6 +844,20 @@ button:disabled { opacity: .5; cursor: default; }
   max-height: 15rem;
   overflow-y: auto;
 }
+/* Plain outcome lines (planned sub-questions, per-angle fact counts, follow-up
+   questions, fact-check issues) and per-search linked source groups — the
+   /cure mirror of the DRS app's step details (css/app.css .step ul / .step a),
+   so every research phase expands here too, not just tool/sandbox steps. */
+.phase-lines {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: .78rem;
+}
+.phase-lines li { margin: .15rem 0; overflow-wrap: anywhere; }
+.phase-lines a { color: var(--accent); text-decoration: none; }
+.phase-lines a:hover { text-decoration: underline; }
+.search-group { display: flex; flex-direction: column; gap: .2rem; }
+.search-head { font-size: .78rem; color: var(--text); overflow-wrap: anywhere; }
 
 /* ---- the left drawer: the app's history sidebar, mirrored ---- */
 #drawer {
