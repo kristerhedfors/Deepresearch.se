@@ -425,6 +425,55 @@ export function isTapGesture(dx, dy, dt, moveTol = TAP_MOVE_TOL_PX, timeTol = TA
   return mx <= num(moveTol) && my <= num(moveTol) && t >= 0 && t <= num(timeTol);
 }
 
+// ---- direct terminal typing ---------------------------------------------------
+// In TERMINAL mode a tap on the terminal pane focuses a hidden input whose
+// keystrokes are sent straight into the VM's console — input lands at the live
+// shell prompt (the terminal's own cursor), while the composer stays the other,
+// unchanged way to type (2026-07-16 directive: two input points in terminal
+// mode). This is the pure half: mapping a KeyboardEvent key (+modifiers) to the
+// byte sequence a terminal expects. Printable characters deliberately return
+// null — they ride the input event (IME-safe) in the DOM glue, not keydown.
+
+/** Named keys → the control/escape sequences an interactive shell understands.
+ * @type {Record<string, string>} */
+export const TERM_KEY_SEQUENCES = {
+  Enter: "\r",
+  Backspace: "\x7f",
+  Tab: "\t",
+  Escape: "\x1b",
+  ArrowUp: "\x1b[A",
+  ArrowDown: "\x1b[B",
+  ArrowRight: "\x1b[C",
+  ArrowLeft: "\x1b[D",
+  Home: "\x1b[H",
+  End: "\x1b[F",
+  Delete: "\x1b[3~",
+};
+
+/**
+ * The byte sequence to send to the terminal for one keydown, or null when the
+ * key is not ours to handle (printable text arrives via the input event; other
+ * modifier chords stay with the browser). Ctrl+letter maps to the control byte
+ * (Ctrl+C → \x03 interrupts the foreground command). Total — never throws.
+ * @param {unknown} key KeyboardEvent.key
+ * @param {{ ctrl?: boolean, alt?: boolean, meta?: boolean }} [mods]
+ * @returns {string | null}
+ */
+export function termKeySequence(key, mods = {}) {
+  const k = String(key == null ? "" : key);
+  const ctrl = !!(mods && mods.ctrl);
+  const alt = !!(mods && mods.alt);
+  const meta = !!(mods && mods.meta);
+  if (ctrl && !alt && !meta && k.length === 1) {
+    const c = k.toLowerCase().charCodeAt(0);
+    if (c >= 97 && c <= 122) return String.fromCharCode(c - 96); // ^A..^Z
+  }
+  if (ctrl || alt || meta) return null; // other chords are the browser's
+  return Object.prototype.hasOwnProperty.call(TERM_KEY_SEQUENCES, k)
+    ? TERM_KEY_SEQUENCES[k]
+    : null;
+}
+
 // The BACKGROUND pane leans in the SAME direction as the foreground scroll, but
 // weaker and shorter — the parallax the request describes as "in synchronization
 // … weaker". Same clamped shape as parallaxNudge but NOT inverted (the caller
