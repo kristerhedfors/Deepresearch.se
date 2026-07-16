@@ -253,3 +253,31 @@ the tier's handshake.
 `ghost-glow`/`ghost-shimmer` 180s cycles), `public/cure/drc.css`
 (`ghost-contour 7.2s`), `public/welcome/index.html` (the landing's matching
 ghost cycle). Record: `docs/SYMBOL-LANGUAGE.md` §5, FEATURES.md F-16 round 4.
+
+## UX-4 — A consent dialog's dismissal is a NO; only an explicit, cost-labeled button is a YES
+
+**When** a dialog asks the user to approve something with a real cost —
+bandwidth (a multi-GB model download), storage, spend — **then** every
+dismissal path (outside/backdrop tap, an explicit "Not now", Escape, the ×)
+means NO and does nothing, and the ONE affirmative button carries the cost in
+its own label ("Download 3.9 GB", never a bare "OK"). The exact figure is
+computed live (the model repo's file listing) before the button enables —
+a consent over a guessed number isn't consent.
+
+This deliberately inverts UX-1's spirit for a different dialog KIND: an
+EXPLAINER (drspop, setting-pops, speech bubbles) can dismiss casually because
+dismissing it costs nothing; a CONSENT dialog must never let the casual-tap
+habit trigger the costly action. The two kinds may look similar (glass card),
+so the affirmative button's cost label is the tell.
+
+1. **Backdrop + "Not now" both just hide** the dialog; no state changes.
+2. **The YES button states the cost** and stays disabled until the real
+   figure is known (the live listing resolved).
+3. **The reversal lives next to the consent**: whatever was approved shows a
+   one-tap undo (the model row's Delete with its size) in the same surface.
+
+**Canonical implementation:** the on-device model download consent —
+`public/cure/index.html` `#odconsent`, `public/cure/drc.js`
+`odOpenConsent()` (live-size fetch → size-labeled `#odc-yes`, backdrop/
+`#odc-no` dismissal) and `renderOnDeviceRows()` (the Delete reversal row).
+Record: docs/BONSAI-27B-PHONE-INFERENCE.md §6.

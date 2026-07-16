@@ -274,6 +274,32 @@
         </div>
       </div>
 
+      <!-- ON-DEVICE models — phone-local inference (the 1-bit Bonsai family,
+           docs/BONSAI-27B-PHONE-INFERENCE.md): the model runs INSIDE this
+           browser on WebGPU. The switch only reveals the section (the
+           bandwidth guarantee — nothing loads while it's off); each model's
+           one-time download is gated by the explicit consent popup
+           (#odconsent below). Wired by drc.js renderOnDeviceRows(). -->
+      <div class="settings-item" id="odrow">
+        <div class="settings-row">
+          <span class="settings-label">On-device model <span class="exp-badge">Experimental</span>
+            <button type="button" class="setting-info" data-pop="odpop" aria-label="More about on-device models">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="ondevice">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="odpop" hidden>Runs a 1-bit <b>Bonsai</b> model (a compressed Qwen3.6)
+          <b>inside this browser</b> on your device's GPU — after the one-time download, research works with
+          <b>no network at all</b>: nothing you type ever leaves this device, not even to a model provider.
+          Each model is a large one-time download (shown before anything starts) stored only on this device,
+          with a Delete button to free the space. Phones need WebGPU (Android Chrome works; iOS Safari is
+          experimental) and answers stream slower than hosted models.</div>
+        <div id="odmodels" hidden></div>
+        <span id="odstatus" class="muted setting-note"></span>
+      </div>
+
       <!-- Server-proxied web search — visible ONLY when this session carries a
            temporary grant (crossed over signed-in from Se/rver via the ghost).
            Revealed by renderWsRow() in drc.js. -->
@@ -427,6 +453,22 @@
         <span id="devmodestatus" class="muted setting-note"></span>
       </div>
     </aside>
+  </div>
+
+  <!-- ON-DEVICE download consent (the "~4 GB notice"): a REAL choice, not an
+       explainer — unlike #drspop, dismissing it (outside tap / Not now) is a
+       NO. Only the explicit size-labeled Download button starts a download;
+       the exact byte total comes from the model repo's live file listing,
+       never a guess. Wired by drc.js showOdConsent(). -->
+  <div id="odconsent" hidden>
+    <div class="odc-card" role="dialog" aria-modal="true" aria-labelledby="odc-title">
+      <strong id="odc-title"></strong>
+      <p id="odc-body"></p>
+      <div class="row">
+        <button type="button" id="odc-yes"></button>
+        <button type="button" id="odc-no">Not now</button>
+      </div>
+    </div>
   </div>
 
   <!-- The account view (right drawer, the person icon): the same menu spot

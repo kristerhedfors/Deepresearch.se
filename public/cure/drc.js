@@ -637,6 +637,8 @@ function openSettings() {
   closeDrawer();
   $("bashlite").checked = state.bashLite === true; // reflect current state
   $("devmode").checked = state.developerMode === true;
+  $("ondevice").checked = state.onDevice === true;
+  renderOnDeviceRows().catch(() => {}); // reflect the on-device model states
   renderKeysPanel();
   renderLocalRow(); // reflect the local model server URL (if any)
   renderWsRow(); // reflect the web-search grant (if any)
@@ -1018,6 +1020,196 @@ async function saveLocalUrl() {
   await refreshModels().catch(() => {});
 }
 
+// ---- ON-DEVICE models (phone-local Bonsai — ondevice-engine.js) ---------------------
+//
+// The strongest privacy mode after `local`: the model runs INSIDE this
+// browser on WebGPU (docs/BONSAI-27B-PHONE-INFERENCE.md), so after the
+// one-time weight download research needs no network at all. The engine
+// module itself loads LAZILY and only while the knob is on — the contract is
+// "off means zero bytes for the feature" — and weights download ONLY through
+// the explicit consent popup (#odconsent): its dismissal is a NO; only the
+// size-labeled Download button starts a fetch.
+
+const ONDEVICE_ID = "ondevice";
+let odEngineModule = null;
+async function odEngine() {
+  if (!odEngineModule) odEngineModule = await import("/js/ondevice-engine.js");
+  return odEngineModule;
+}
+const odDownloading = new Set(); // modelIds with a download in flight (UI state)
+
+// The settings section: one row per catalog model with its true state —
+// on this device (Delete) / downloadable (Download → consent) / not yet
+// published (the 27B today) / unsupported here (the self-explaining verdict).
+async function renderOnDeviceRows() {
+  const wrap = $("odmodels");
+  const on = state.onDevice === true;
+  wrap.hidden = !on;
+  if (!on) {
+    wrap.innerHTML = "";
+    $("odstatus").textContent = "";
+    return;
+  }
+  $("odstatus").textContent = "";
+  if (!wrap.childElementCount) wrap.innerHTML = '<span class="muted setting-note">Checking this device…</span>';
+  try {
+    const eng = await odEngine();
+    const probe = await eng.probeOnDevice();
+    const cached = await eng.listCachedModels();
+    wrap.innerHTML = "";
+    for (const m of eng.ONDEVICE_MODELS) {
+      const entry = cached.find((c) => c.id === m.id);
+      const verdict = eng.capabilityVerdict(probe, m);
+      const row = document.createElement("div");
+      row.className = "od-model";
+      row.dataset.od = m.id;
+      const label = document.createElement("span");
+      label.className = "od-label";
+      label.textContent = m.label;
+      const note = document.createElement("span");
+      note.className = "od-note muted setting-note";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btnlike od-btn";
+      if (odDownloading.has(m.id)) {
+        note.textContent = "Downloading…";
+        btn.textContent = "Cancel";
+        btn.onclick = async () => (await odEngine()).cancelDownload(m.id);
+      } else if (entry?.cachedBytes) {
+        note.textContent = "On this device · " + eng.fmtBytes(entry.cachedBytes) + " — pick it in the model dropdown.";
+        btn.textContent = "Delete";
+        btn.onclick = async () => {
+          btn.disabled = true;
+          // A failed delete must not strand a disabled button — re-render
+          // either way; the row then shows the model's true current state.
+          await (await odEngine()).deleteModel(m.id).catch(() => {});
+          await renderOnDeviceRows();
+          await refreshModels().catch(() => {});
+        };
+      } else if (verdict.verdict === "unsupported") {
+        note.textContent = verdict.reason;
+        btn.hidden = true;
+      } else {
+        note.textContent =
+          "~" + eng.fmtBytes(m.approxBytes) + " one-time download" +
+          (verdict.verdict === "marginal" ? " — " + verdict.reason : "");
+        btn.textContent = "Download…";
+        btn.onclick = () => odOpenConsent(m).catch(() => {});
+      }
+      row.append(label, note, btn);
+      wrap.appendChild(row);
+    }
+  } catch (err) {
+    // The engine's deadline errors NAME the failing stage (the on-device-
+    // trace convention: this line is the remote debugger on a real phone) —
+    // show them verbatim. textContent, never innerHTML: the message can
+    // carry a worker error string.
+    wrap.innerHTML = '<span class="muted setting-note"></span>';
+    wrap.firstElementChild.textContent =
+      err?.message || "The on-device engine failed to load — try reloading the page.";
+  }
+}
+
+// The consent popup: states the EXACT one-time size (from the repo's live
+// file listing — never a guess), where it's stored, and the free-space and
+// connection context; only the size-labeled button downloads (UX-4:
+// dismissing a consent dialog is a NO, never a YES).
+async function odOpenConsent(m) {
+  const eng = await odEngine();
+  $("odc-title").textContent = "Download " + m.label + "?";
+  $("odc-body").textContent = "Checking the exact size…";
+  const yes = $("odc-yes");
+  yes.disabled = true;
+  yes.textContent = "Download";
+  yes.onclick = null;
+  $("odconsent").hidden = false;
+  const plan = await eng
+    .planModelDownload(m.id)
+    .catch((err) => ({ published: false, reason: "engine", message: err?.message || "" }));
+  if ($("odconsent").hidden) return; // dismissed while the listing loaded
+  if (!plan?.published || !plan.totalBytes) {
+    // Three different truths need three different messages: "not published"
+    // is about the model, "couldn't reach" is about the connection, and an
+    // engine failure (crash or deadline) is about this device — its message
+    // names the failing stage.
+    $("odc-body").textContent =
+      plan?.reason === "network"
+        ? "Couldn't reach huggingface.co to compute the download size — check your connection and try again. Nothing was downloaded."
+        : plan?.reason === "engine"
+          ? (plan.message || "The on-device engine failed.") + " Nothing was downloaded."
+          : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
+    return;
+  }
+  const size = eng.fmtBytes(plan.totalBytes);
+  let freeLine = "";
+  try {
+    const est = await navigator.storage.estimate();
+    if (est?.quota) freeLine = " Free space available here: ~" + eng.fmtBytes(Math.max(0, est.quota - (est.usage || 0))) + ".";
+  } catch {
+    /* estimate unavailable — the line is optional */
+  }
+  const cellular = /** @type {any} */ (navigator).connection?.type === "cellular";
+  $("odc-body").textContent =
+    "This downloads the model ONCE (" + size + ") and stores it only on this device — delete it any time in Settings." +
+    freeLine +
+    (cellular ? " You appear to be on CELLULAR data — Wi-Fi is strongly recommended." : " Wi-Fi recommended.") +
+    " After the download, this model answers with no network at all.";
+  yes.textContent = "Download " + size;
+  yes.disabled = false;
+  yes.onclick = () => {
+    $("odconsent").hidden = true;
+    odRunDownload(m).catch(() => {});
+  };
+}
+
+// The download itself (post-consent): worker-side fetch → streaming SHA-256
+// → OPFS, resumable — a cancel or lost connection keeps the verified bytes
+// and the next Download continues where it stopped.
+async function odRunDownload(m) {
+  const eng = await odEngine();
+  odDownloading.add(m.id);
+  await renderOnDeviceRows();
+  try {
+    await eng.downloadModel(m.id, (p) => {
+      const el = document.querySelector('[data-od="' + m.id + '"] .od-note');
+      if (el) el.textContent = "Downloading… " + p.pct + "% · " + eng.fmtBytes(p.loaded) + " of " + eng.fmtBytes(p.total);
+    });
+    workStatus(m.label + " is on this device — pick it in the model dropdown. Nothing you ask it will leave this browser.");
+  } catch (err) {
+    workStatus(
+      (err?.message || "The download failed.") + " Already-verified parts are kept — Download again to resume.",
+    );
+  } finally {
+    odDownloading.delete(m.id);
+    await renderOnDeviceRows();
+    await refreshModels().catch(() => {});
+  }
+}
+
+// The dropdown group: ONLY models already on this device — picking a model
+// in the dropdown must never trigger a multi-GB surprise download; downloads
+// live in Settings behind the consent popup.
+async function odDropdownGroup(esc) {
+  if (state.onDevice !== true) return "";
+  try {
+    const eng = await odEngine();
+    const cached = (await eng.listCachedModels()).filter((c) => c.cachedBytes);
+    if (!cached.length) return "";
+    return (
+      '<optgroup label="📱 On-device — nothing leaves this device">' +
+      cached
+        .map((c) => {
+          const m = eng.onDeviceModel(c.id);
+          return `<option value="${esc(ONDEVICE_ID + "::" + c.id)}">${esc(m?.label || c.id)}</option>`;
+        })
+        .join("") +
+      "</optgroup>"
+    );
+  } catch {
+    return ""; // engine unavailable — the dropdown just goes without
+  }
+}
+
 // One grouped dropdown across the configured providers; option values are
 // "provider::model" so the send knows where to route.
 async function refreshModels() {
@@ -1025,11 +1217,14 @@ async function refreshModels() {
   const providers = configuredProviders();
   const proxyOn = apiProxyUsable();
   const stOn = stApiUsable();
-  if (!providers.length && !proxyOn && !stOn) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  // A downloaded on-device model is a configured provider in its own right —
+  // a session with ONLY it (no key, no grant) still gets a working dropdown.
+  const odGroup = await odDropdownGroup(esc);
+  if (!providers.length && !proxyOn && !stOn && !odGroup) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
     return;
   }
-  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const groups = await Promise.all(
     providers.map(async (p) => {
       // The keyless local provider lists models from the user's OWN server (the
@@ -1079,6 +1274,9 @@ async function refreshModels() {
         "</optgroup>",
     );
   }
+  // The ON-DEVICE group (downloaded models only) lands FIRST: the most
+  // private option a session can hold outranks every borrowed/keyed one.
+  if (odGroup) groups.unshift(odGroup);
   // The tier's provider limit, made visible: only CORS-capable providers
   // can serve DRC (direct browser calls); the hosted ones stay listed,
   // disabled, pointing at DRS. Berget graduated OFF this list 2026-07-11
@@ -2236,6 +2434,7 @@ async function unlockWorkspace(ev) {
     $("websearch").checked = state.research !== false;
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
+    $("ondevice").checked = state.onDevice === true;
     applyIntrospectionTheme(state.developerMode === true);
     if (configuredProviders().length || apiProxyUsable() || stApiUsable()) await refreshModels().catch(() => {});
     await saveState().catch(() => {});
@@ -2356,11 +2555,17 @@ async function send(ev) {
   const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
   const usingStApi = providerId === SERVER_TOKEN_LLM_PROVIDER_ID;
   const usingLocal = providerId === "local";
+  // The on-device engine provider is built on demand exactly like the proxy
+  // providers (drc-providers.js has no registry entry for it) — its wire IS
+  // the in-browser engine, so the pipeline runs with no network at all.
+  const usingOnDevice = providerId === ONDEVICE_ID;
   const providerOverride = usingApiProxy
     ? proxyLlmProvider(location.origin)
     : usingStApi
       ? serverTokenLlmProvider(location.origin)
-      : null;
+      : usingOnDevice
+        ? (await odEngine()).onDeviceProvider()
+        : null;
   const answerKey = usingApiProxy ? proxyGrants.api?.token : usingStApi ? stGrant?.token : state.keys[providerId];
 
   // The disclosure context for this send's ℹ notices (per-task grammar): who
@@ -2371,9 +2576,9 @@ async function send(ev) {
     // The Se/rver-token LLM path shares the proxy's disclosure semantics: the
     // conversation routes through this site's server to Berget, borrowed and
     // metered — so it wears the same viaProxy notice.
-    provider: usingApiProxy || usingStApi ? "Berget (borrowed)" : drcProvider(providerId)?.label || providerId,
+    provider: usingApiProxy || usingStApi ? "Berget (borrowed)" : usingOnDevice ? "On-device" : drcProvider(providerId)?.label || providerId,
     viaProxy: usingApiProxy || usingStApi,
-    local: usingLocal,
+    local: usingLocal || usingOnDevice,
     search: directSearchActive() ? "self" : "grant",
     embedProvider: "",
   };
@@ -2723,6 +2928,21 @@ $("bashlite").addEventListener("change", () => {
   saveState().catch(() => {});
   if (state.bashLite) prewarmDrcSandbox(); // enabling now → start Linux immediately + show icon
   else hideTerminalIcon(); // disabling → drop the header terminal icon
+});
+// ON-DEVICE knob: reveals the model section in Settings (downloads stay
+// behind the per-model consent popup — flipping this never fetches weights).
+$("ondevice").addEventListener("change", () => {
+  state.onDevice = $("ondevice").checked;
+  saveState().catch(() => {});
+  renderOnDeviceRows().catch(() => {});
+  refreshModels().catch(() => {});
+});
+// The consent popup's NO paths: the explicit button and the backdrop tap
+// both just close it (dismissal is never consent — only the size-labeled
+// Download button acts).
+$("odc-no").addEventListener("click", () => ($("odconsent").hidden = true));
+$("odconsent").addEventListener("click", (e) => {
+  if (e.target === $("odconsent")) $("odconsent").hidden = true;
 });
 // Introspection mode's mascot (developer mode): TIN, the titanium robot,
 // slides in when what the user is TYPING reads as an ask about this site's

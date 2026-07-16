@@ -151,3 +151,14 @@ test("deriveDrcTitle uses the first non-empty user line", () => {
   assert.equal(deriveDrcTitle([{ role: "assistant", content: "hi" }]), "New chat");
   assert.equal(deriveDrcTitle([{ role: "user", content: "x".repeat(200) }]).length, 80);
 });
+
+test("v5 onDevice: absent (older blobs) migrates to false, non-boolean rejects", () => {
+  const v4 = { ...emptyDrcState(), v: 4 };
+  delete v4.onDevice;
+  assert.equal(validateDrcState(v4), true); // a v4 blob still opens
+  const migrated = migrateDrcState({ ...v4 });
+  assert.equal(migrated.v, DRC_STATE_V);
+  assert.equal(migrated.onDevice, false); // default OFF — the bandwidth guarantee
+  assert.equal(validateDrcState({ ...emptyDrcState(), onDevice: true }), true);
+  assert.equal(validateDrcState({ ...emptyDrcState(), onDevice: "yes" }), false);
+});

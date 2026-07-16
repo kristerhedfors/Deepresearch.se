@@ -196,6 +196,11 @@ test("providerVisibilityNote: the standing model-picker disclosure per provider 
   const local = providerVisibilityNote("local", "Local (Ollama / LM Studio / llama.cpp)");
   assert.match(local, /nothing leaves this device/i);
   assert.doesNotMatch(local, /can read them/i);
+  // The on-device tier: same strongest statement, in-browser wording.
+  const ondevice = providerVisibilityNote("ondevice", "On-device");
+  assert.match(ondevice, /nothing leaves this device/i);
+  assert.match(ondevice, /inside this browser/i);
+  assert.doesNotMatch(ondevice, /can read them/i);
   // The borrowed proxy: the one server-touching path, named as such.
   const proxy = providerVisibilityNote("proxy");
   assert.match(proxy, /through this site's server/i);

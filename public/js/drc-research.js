@@ -250,7 +250,10 @@ export function drcContext(messages) {
 
 // Reads one provider SSE stream, emitting text deltas; an idle stall becomes
 // a normal, catchable error (the consumeChatStream lesson, client-side).
-async function readStream(response, onDelta) {
+// `idleMs` is per-provider: the 90 s default fits hosted APIs, while the
+// on-device engine declares streamIdleMs — phone-speed prompt processing can
+// sit far longer than 90 s before the first token (plan §8).
+async function readStream(response, onDelta, idleMs = STREAM_IDLE_MS) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const parser = createSseParser();
@@ -260,7 +263,7 @@ async function readStream(response, onDelta) {
     const { done, value } = await Promise.race([
       reader.read(),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("The model stream stalled.")), STREAM_IDLE_MS);
+        timer = setTimeout(() => reject(new Error("The model stream stalled.")), idleMs);
       }),
     ]).finally(() => clearTimeout(timer));
     if (done) break;
@@ -313,7 +316,7 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
         { signal, baseUrl },
       );
       if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };
-      return parseShellRequest(await readStream(res, () => {}));
+      return parseShellRequest(await readStream(res, () => {}, provider.streamIdleMs));
     },
     exec: (command) => sb.exec(command),
     ensureReady: async () => {
@@ -582,7 +585,7 @@ export async function runDrcResearch({
       const detail = res.ok ? "" : await providerErrorDetail(res);
       throw new Error(provider.label + " rejected the request (" + res.status + ")." + (detail ? " " + detail : "") + hint);
     }
-    return readStream(res, onDelta);
+    return readStream(res, onDelta, provider.streamIdleMs);
   };
 
   // A one-pass direct answer, optionally grounded in ONE server-proxied web
@@ -685,8 +688,17 @@ export async function runDrcResearch({
       return { subquestion, notes: { facts: [], uncertain: [] } }; // fail-soft: a lost angle, not a lost answer
     }
   };
+  // The harvest fan-out: parallel for hosted providers, SEQUENTIAL when the
+  // provider declares serialize (the on-device engine — one GPU serves every
+  // call, so concurrent decodes only steal each other's throughput; plan §8).
+  const harvestAll = async (subquestions) => {
+    if (!provider.serialize) return Promise.all(subquestions.map(harvestOne));
+    const out = [];
+    for (const s of subquestions) out.push(await harvestOne(s));
+    return out;
+  };
   onStatus({ type: "phase", phase: webOn ? "search" : "harvest", detail: triage.subquestions.length });
-  const harvest = await Promise.all(triage.subquestions.map(harvestOne));
+  const harvest = await harvestAll(triage.subquestions);
 
   // ---- gap check: one follow-up harvest round (fail-soft: skip) ------------
   try {
@@ -706,7 +718,7 @@ export async function runDrcResearch({
       .slice(0, MAX_GAP_FOLLOWUPS);
     if (missing.length) {
       onStatus({ type: "phase", phase: webOn ? "search" : "harvest", detail: missing.length });
-      harvest.push(...(await Promise.all(missing.map(harvestOne))));
+      harvest.push(...(await harvestAll(missing)));
     }
   } catch {
     // coverage audit is a helper — the harvest we have is what we answer from

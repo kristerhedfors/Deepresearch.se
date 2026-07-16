@@ -498,3 +498,77 @@ describe("drcToolRun over mock HTTP", () => {
     assert.match(toolMsg.content, /SESSION_SECRET/);
   });
 });
+
+// ---- the engine provider seam (the on-device tier) ------------------------------------
+//
+// An ENGINE provider (ondevice-engine.js's onDeviceProvider) has no wire:
+// drcChatStream/drcCompleteJson branch to its callables instead of fetch.
+// The mock engine here mirrors the real provider's shape — the real one is
+// browser glue (Worker/WebGPU) and deliberately not Node-importable, like
+// sandbox.js.
+
+import { completionEnvelope, sseDeltaLine, sseDoneLine } from "./ondevice-core.js";
+
+function mockEngineProvider(overrides = {}) {
+  const calls = [];
+  const provider = {
+    id: "ondevice",
+    label: "On-device",
+    base: "",
+    keyless: true,
+    jsonModel: null,
+    fallbackModels: [],
+    modelFilter: () => true,
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    jsonTimeoutMs: 600_000,
+    streamIdleMs: 300_000,
+    serialize: true,
+    engine: {
+      chatStream: async (model, messages, opts) => {
+        calls.push({ kind: "stream", model, messages, opts });
+        const body = new TextEncoder().encode(sseDeltaLine("on-") + sseDeltaLine("device") + sseDoneLine());
+        return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+      },
+      complete: async (model, messages, opts) => {
+        calls.push({ kind: "complete", model, messages, opts });
+        return completionEnvelope('{"action":"direct"}');
+      },
+    },
+    ...overrides,
+  };
+  return { provider, calls };
+}
+
+test("drcChatStream routes an engine provider to its callable — no fetch, SSE wire out", async () => {
+  const { provider, calls } = mockEngineProvider();
+  const res = await drcChatStream(provider, "", "bonsai-8b-1bit", [{ role: "user", content: "hej" }], {
+    maxTokens: 512,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].kind, "stream");
+  assert.equal(calls[0].model, "bonsai-8b-1bit");
+  assert.equal(calls[0].opts.maxTokens, 512);
+  // The Response body is the exact OpenAI SSE the pipeline's readStream parses.
+  const text = await res.text();
+  assert.match(text, /"delta":\{"content":"on-"\}/);
+  assert.ok(text.endsWith("data: [DONE]\n\n"));
+});
+
+test("drcCompleteJson routes an engine provider to complete() with json + its OWN deadline", async () => {
+  const { provider, calls } = mockEngineProvider();
+  const value = await drcCompleteJson(provider, "", "bonsai-8b-1bit", [{ role: "user", content: "plan" }]);
+  assert.deepEqual(value, { action: "direct" });
+  assert.equal(calls[0].kind, "complete");
+  assert.equal(calls[0].opts.json, true);
+  // The per-provider deadline rides in as the abort signal (never the hosted
+  // 45 s default): an already-aborted signal proves which one was wired.
+  assert.ok(calls[0].opts.signal instanceof AbortSignal);
+});
+
+test("drcCompleteJson: engine JSON still goes through the lenient extraction", async () => {
+  const { provider } = mockEngineProvider();
+  provider.engine.complete = async () => completionEnvelope('```json\n{"a":1}\n```');
+  assert.deepEqual(await drcCompleteJson(provider, "", "m", []), { a: 1 });
+  provider.engine.complete = async () => completionEnvelope("no json at all");
+  await assert.rejects(() => drcCompleteJson(provider, "", "m", []), /no usable JSON/);
+});

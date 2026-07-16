@@ -1,7 +1,15 @@
 # Bonsai 27B — phone-local inference for DeepResearch.**Se/cure** (integration plan)
 
-Status: **PLAN** (2026-07-16). No code yet; this document is the design the
-implementation PR(s) will follow. It realizes milestone **M4** of
+Status: **PR 2 IMPLEMENTED** (2026-07-16; §11's slicing — the engine, knob,
+consent popup, OPFS download manager, provider seam, and timeout overrides
+are live behind the Se/cure settings knob). One reality-driven refinement vs
+§6: the catalog is data-driven (`public/js/ondevice-core.js`) because the
+27B's ONNX browser conversion is not yet published — Bonsai 8B (1.11 GiB
+q1f16) and 1.7B (278 MB q1) work today, and the pre-wired 27B entry lights
+up the day `onnx-community/Bonsai-27B-ONNX` ships; the consent popup
+therefore opens per-model from its Download button (exact live-computed
+size in the button label, UX-4) rather than from the switch itself, which
+only reveals the section. It realizes milestone **M4** of
 `docs/FOREVERAGENT-TRAJECTORY.md` (in-browser inference) and closes gaps
 **R11/R12** of `docs/FOREVERAGENT-GAP-ANALYSIS.md`, with a concrete model that
 finally makes M4 worth shipping: a 27B-class model that fits on a phone.
