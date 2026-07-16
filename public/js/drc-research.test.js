@@ -7,6 +7,7 @@ import {
   drcDirectPromptWeb,
   drcGapPrompt,
   drcHarvestPrompt,
+  drcSourceToolPrompt,
   drcSynthPrompt,
   drcSynthPromptWeb,
   drcTriagePrompt,
@@ -464,6 +465,17 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
 // client twin of the server's runSourceResearchTools. Mock server returns a
 // tool_call, then the final answer once the tool result comes back.
 describe("DRC developer-mode tool loop", () => {
+  // The client twin of src/prompts.js sourceToolAgentPrompt must carry the
+  // same tool-economy guidance: the shared read budget stated up front, and
+  // the targeted-extraction routes (grep context, offset/limit ranged reads).
+  test("drcSourceToolPrompt states the read budget and targeted extraction", () => {
+    const p = drcSourceToolPrompt();
+    assert.match(p, /TOOL ECONOMY/);
+    assert.match(p, /60000/); // MAX_READ_TOTAL_CHARS
+    assert.match(p, /offset\/limit/);
+    assert.match(p, /context parameter/);
+  });
+
   const SNAP = {
     v: 1,
     digest: "abc123def4567890",

@@ -42,7 +42,14 @@ import {
   shellCommandLabel,
 } from "./bash-core.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
-import { INTROSPECTION_TOOLS, buildSourceSitemap, runIntrospectionTool, toolResultLines, toolStepHeadline } from "./introspect-core.js";
+import {
+  INTROSPECTION_TOOLS,
+  MAX_READ_TOTAL_CHARS,
+  buildSourceSitemap,
+  runIntrospectionTool,
+  toolResultLines,
+  toolStepHeadline,
+} from "./introspect-core.js";
 
 const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
@@ -171,11 +178,12 @@ export const drcBashAgentPrompt = () =>
 // investigates and writes the answer.
 export const drcSourceToolPrompt = ({ bash = false } = {}) =>
   `You are the research assistant for DeepResearch.Se/cure, Deepresearch.se's client-side mode, answering a question about THIS SITE'S OWN implementation by investigating its ACTUAL source code. Today's date: ${today()}.\n` +
-  "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`), read_file (read full files like `cat`), and list_files (see what exists)" +
+  "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`, with optional context lines like `grep -C`), read_file (read files whole like `cat`, or a line range via offset/limit like `sed -n`), and list_files (see what exists, with byte sizes)" +
   (bash
     ? ", plus run_bash (run any command in a real in-browser Linux sandbox with the source tree mounted at /src). "
     : ". ") +
   "USE the tools — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following references until you have really seen how it works.\n" +
+  `TOOL ECONOMY — plan around the read budget: all read_file output in this investigation shares ONE fixed budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used so far); once spent, read_file returns nothing more. grep_source and list_files are free. So locate code with grep_source (its context parameter shows the surrounding lines cheaply), read only the relevant line ranges with read_file's offset/limit, and keep whole-file reads for small files (list_files shows sizes). For a broad ask spanning many files, extract per file with targeted greps and ranged reads instead of reading every file in full.\n` +
   "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY: the request entrypoint and routing (src/index.js), auth (src/auth.js), the response security headers/CSP (src/security-headers.js), request validation (src/validation.js), storage/crypto, and the pipeline — plus whatever those reference.\n" +
   "Do NOT trust the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, skills) or code comments as proof — they describe intent and may be outdated or wrong. Verify every claim against the implementation and call out where the docs and the code disagree.\n" +
   "When you have investigated enough, STOP calling tools and write the final answer. For an audit/assessment/review, produce CONCRETE findings grounded in the code you read, each citing a file path (and a function/line where you can) — summarizing the repo's own security docs is NOT an assessment. Format in Markdown: a bold 1-3 sentence conclusion, then short sections/bullets, each citing the file path(s) it rests on. Be honest about what you did not read." +

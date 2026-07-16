@@ -7,6 +7,7 @@ import {
   readFileTool,
   listFilesTool,
   runIntrospectionTool,
+  MAX_GREP_CONTEXT,
   MAX_GREP_MATCHES,
   MAX_READ_TOTAL_CHARS,
 } from "./introspect-tools.js";
@@ -34,6 +35,19 @@ describe("INTROSPECTION_TOOLS schema", () => {
     }
     const grep = INTROSPECTION_TOOLS.find((t) => t.name === "grep_source");
     assert.deepEqual(grep.input_schema.required, ["pattern"]);
+  });
+
+  // The standard file-exploration surface: grep with context, read with
+  // offset/limit — and the read budget stated up front in the description,
+  // so a model can plan targeted extraction instead of whole-file reads.
+  test("declares the targeted-extraction params and states the read budget", () => {
+    const grep = INTROSPECTION_TOOLS.find((t) => t.name === "grep_source");
+    assert.equal(grep.input_schema.properties.context.type, "integer");
+    const read = INTROSPECTION_TOOLS.find((t) => t.name === "read_file");
+    assert.equal(read.input_schema.properties.offset.type, "integer");
+    assert.equal(read.input_schema.properties.limit.type, "integer");
+    assert.match(read.description, new RegExp(String(MAX_READ_TOTAL_CHARS)));
+    assert.match(read.description, /offset\/limit/);
   });
 });
 
@@ -68,6 +82,34 @@ describe("grepSource", () => {
     assert.match(out, /5 matches \(capped at 5\)/);
     assert.ok(MAX_GREP_MATCHES >= 5);
   });
+
+  // The standard `grep -C` shape: context lines marked with `-`, hunks
+  // separated by `--` — the free way to see usage without a read_file spend.
+  test("context returns surrounding lines with - markers and -- between hunks", () => {
+    const f = { p: "a.js", s: 0, t: ["one", "two", "HIT a", "four", "five", "six", "seven", "HIT b", "nine"].join("\n") };
+    const out = grepSource({ files: [f] }, { pattern: "HIT", context: 1 });
+    assert.match(out, /^2 matches:/);
+    assert.match(out, /a\.js-2- two/); // context line before the first match
+    assert.match(out, /a\.js:3: HIT a/); // the match keeps the : marker
+    assert.match(out, /a\.js-4- four/);
+    assert.match(out, /\n--\n/); // gap between the two hunks
+    assert.match(out, /a\.js:8: HIT b/);
+  });
+
+  test("overlapping context hunks merge without duplicate lines", () => {
+    const f = { p: "b.js", s: 0, t: ["one", "HIT a", "three", "HIT b", "five"].join("\n") };
+    const out = grepSource({ files: [f] }, { pattern: "HIT", context: 1 });
+    assert.equal(out.split("\n").filter((l) => l.includes("-3-") || l.includes(":3:")).length, 1);
+    assert.doesNotMatch(out, /--/); // contiguous — no hunk separator
+  });
+
+  test("context is clamped to MAX_GREP_CONTEXT and defaults to 0", () => {
+    const f = { p: "c.js", s: 0, t: Array.from({ length: 30 }, (_, i) => (i === 15 ? "HIT" : `line ${i}`)).join("\n") };
+    const plain = grepSource({ files: [f] }, { pattern: "HIT" });
+    assert.equal(plain.split("\n").length, 2); // header + the one match, no context
+    const clamped = grepSource({ files: [f] }, { pattern: "HIT", context: 99 });
+    assert.equal(clamped.split("\n").length, 2 + 2 * MAX_GREP_CONTEXT);
+  });
 });
 
 describe("readFileTool", () => {
@@ -84,6 +126,30 @@ describe("readFileTool", () => {
   test("unknown paths return a helpful pointer, not an error", () => {
     assert.match(readFileTool(SNAP, { paths: ["nope.js"] }, { used: 0 }), /No files resolved/);
     assert.match(readFileTool(SNAP, {}, { used: 0 }), /needs a non-empty 'paths'/);
+  });
+
+  // Targeted extraction without bash: offset/limit reads a line range and
+  // charges the budget only for the slice — the `sed -n` of the tool set.
+  test("offset/limit reads a line range and charges only the slice", () => {
+    const budget = { used: 0 };
+    const out = readFileTool(SNAP, { paths: ["src/auth.js"], offset: 2, limit: 2 }, budget);
+    assert.match(out, /# src\/auth\.js \(lines 2-3 of 6\)/);
+    assert.match(out, /sessionHmacKeys/); // line 2
+    assert.match(out, /SESSION_SECRET/); // line 3
+    assert.doesNotMatch(out, /const SESSION = 1/); // line 5 not included
+    const slice = SNAP.files[0].t.split("\n").slice(1, 3).join("\n");
+    assert.equal(budget.used, slice.length);
+  });
+
+  test("offset beyond EOF clamps to the last line; limit alone starts at line 1", () => {
+    assert.match(readFileTool(SNAP, { paths: ["src/auth.js"], offset: 999 }, { used: 0 }), /\(lines 6-6 of 6\)/);
+    assert.match(readFileTool(SNAP, { paths: ["src/auth.js"], limit: 1 }, { used: 0 }), /\(lines 1-1 of 6\)/);
+  });
+
+  test("every read result reports the running shared budget", () => {
+    const budget = { used: 0 };
+    const out = readFileTool(SNAP, { paths: ["src/index.js"] }, budget);
+    assert.match(out, new RegExp(`\\(read budget used: ${budget.used} of ${MAX_READ_TOTAL_CHARS} chars\\)`));
   });
 
   // Regression (2026-07-16): once an earlier batch had spent the shared read

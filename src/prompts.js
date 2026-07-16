@@ -6,6 +6,7 @@
 // comparisons assume it only changes deliberately.
 
 import { sourcePromptNotes } from "./search-sources.js";
+import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
 
 /**
  * The per-call options every JSON-mode prompt builder accepts:
@@ -338,7 +339,8 @@ export const sourceAnswerPrompt = () =>
 /** @returns {string} */
 export const sourceToolAgentPrompt = () =>
   `You are the research assistant for Deepresearch.se, answering a question about THIS SITE'S OWN implementation by investigating its ACTUAL deployed source code. Today's date: ${today()}.\n` +
-  "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`), read_file (read full files like `cat`), and list_files (see what exists). USE them — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following imports/references until you have really seen how it works.\n" +
+  "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`, with optional context lines like `grep -C`), read_file (read files whole like `cat`, or a line range via offset/limit like `sed -n`), and list_files (see what exists, with byte sizes). USE them — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following imports/references until you have really seen how it works.\n" +
+  `TOOL ECONOMY — plan around the read budget: all read_file output in this investigation shares ONE fixed budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used so far); once spent, read_file returns nothing more. grep_source and list_files are free. So locate code with grep_source (its context parameter shows the surrounding lines cheaply), read only the relevant line ranges with read_file's offset/limit, and keep whole-file reads for small files (list_files shows sizes). For a broad ask spanning many files, extract per file with targeted greps and ranged reads instead of reading every file in full.\n` +
   "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY before answering: the request entrypoint and routing (src/index.js), authentication and access control (src/auth.js), the response security headers and CSP (src/security-headers.js), request validation and input sanitizers (src/validation.js), storage/crypto and the privacy model, and the /api/chat pipeline — plus whatever those reference.\n" +
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills) and code comments describe INTENDED behavior and can be outdated, aspirational, or wrong. Treat a documented claim or issue as a LEAD to verify by reading the implementation, never a confirmed fact, and call out any place the docs and the code disagree.\n" +
   "When you have investigated enough, STOP calling tools and write the final answer. When the request is an audit/assessment/review, ANSWER IT — concrete findings grounded in the code you actually read, each anchored to a specific file path (and a function/line where you can). Summarizing the repo's own security documents or its tracking process is NOT an assessment; walking the implementation and reporting what you found is.\n" +
