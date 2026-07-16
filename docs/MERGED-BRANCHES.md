@@ -39,7 +39,7 @@ These override the heuristic in the inventory table.
 | `claude/firefox-focus-auth-redirect-u52ljv` | `f0304de` | Superseded | `main` `src/index.js:157-159` already forces `https:` in the canonical redirect. |
 | `claude/tool-calling-visibility-wlroih` | `5e914ca` | Superseded | `main` `src/chatlog.js:100-105` already records shell tool calls. |
 | `claude/whitespace-slash-animation-juizwv` | `404e73a` | Superseded | CamelCase tier wordmarks are the current CLAUDE.md branding rule — already live. |
-| `claude/server-secure-storage-clarity-x677jc` | `5c1da8c` | Dropped | "always store in cloud, remove the storage knobs" conflicts with `main`, which deliberately keeps the `server_history` knob (invariant 4). |
+| `claude/server-secure-storage-clarity-x677jc` | `5c1da8c` | Dropped | "always store in cloud, remove the storage knobs" conflicted with `main` at the time, which then kept the `server_history` knob. SUPERSEDED 2026-07-16: the owner directed exactly this change (implicit always-on cloud storage, knobs removed) and it landed via `claude/cloud-storage-behavior-x3rrsy` — invariant 4 now reads accordingly. |
 | `claude/tokemon-game-subsystem-30a8r7` | `4f677fc` | Superseded | `src/tokemon.js` / `src/tokemon-api.js` present in `main`. |
 | `claude/refactor-skill-repo-kb1c7k` | `f9ee2ab` | **Merged** | `src/billing.js` extraction integrated 2026-07-13 (tests 70/70). |
 | `claude/glass-pane-close-icon-v451n4` | `189db14` | **Merged** | close chevrons integrated 2026-07-13. |

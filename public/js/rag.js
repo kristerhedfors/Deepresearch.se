@@ -27,7 +27,7 @@
 // exported for the Node unit suite — keep this module import-safe outside
 // a browser (no top-level DOM/IDB access).
 
-import { serverHistoryOn, serverRagAvailable } from "./settings.js";
+import { serverRagAvailable, storageAvailable } from "./settings.js";
 
 const DB_NAME = "dr_rag";
 const DB_VERSION = 1;
@@ -342,17 +342,17 @@ export async function pushDocToServer(docId) {
 }
 
 /**
- * Chunk + embed + store one document. opts.cloud=false skips the server
+ * Chunk + embed + store one document. The server mirror rides along; it
  * mirror even when the account knob is on — the per-project storage opt-out
  * (public/js/projects.js decides).
  * @param {string} docId
  * @param {string} name display name
  * @param {string} fullText
- * @param {{onProgress?: (done: number, total: number) => void, cloud?: boolean}} [opts]
+ * @param {{onProgress?: (done: number, total: number) => void}} [opts]
  *   onProgress drives the attachment card's indexing badge
  * @returns {Promise<{chunkCount: number, truncated: boolean}>}
  */
-export async function indexDocument(docId, name, fullText, { onProgress, cloud = true } = {}) {
+export async function indexDocument(docId, name, fullText, { onProgress } = {}) {
   const chunks = chunkText(fullText);
   if (!chunks.length) throw new Error("No indexable text.");
   const truncated = chunks.length >= MAX_CHUNKS; // chunker stops there — tail unindexed
@@ -374,7 +374,7 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
   await putDocLocally(doc, chunks, vectors);
   // Mirror to the server index when cloud storage is on — fail-soft: a
   // hiccup here leaves a perfectly working local index (sync.js re-pushes).
-  if (cloud && serverHistoryOn() && serverRagAvailable()) {
+  if (serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
@@ -395,10 +395,10 @@ export async function indexDocument(docId, name, fullText, { onProgress, cloud =
  * @param {string} docId
  * @param {string} name display name
  * @param {string} text the NEW text only
- * @param {{meta?: object, cloud?: boolean}} [opts]
+ * @param {{meta?: object}} [opts]
  * @returns {Promise<{chunkCount: number, appended: number}>}
  */
-export async function appendToDoc(docId, name, text, { meta = {}, cloud = true } = {}) {
+export async function appendToDoc(docId, name, text, { meta = {} } = {}) {
   const existing = await getDoc(docId);
   const startSeq = existing?.chunkCount || 0;
   const pieces = chunkText(text)
@@ -421,7 +421,7 @@ export async function appendToDoc(docId, name, text, { meta = {}, cloud = true }
     ...meta,
   };
   await putDocLocally(doc, pieces, vectors);
-  if (cloud && serverHistoryOn() && serverRagAvailable()) {
+  if (serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
@@ -476,7 +476,7 @@ async function retrieveServer(docIds, queryText, topK) {
  */
 export async function retrieve(docIds, queryText, topK = 8) {
   if (!docIds.length || !queryText.trim()) return [];
-  if (serverHistoryOn() && serverRagAvailable()) {
+  if (serverRagAvailable()) {
     try {
       const matches = await retrieveServer(docIds, queryText, topK);
       if (matches.length) return matches;

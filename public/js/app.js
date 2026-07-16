@@ -131,11 +131,11 @@ initAttachments(
   document.getElementById("camerafile"),
 );
 const account = initAccountPanel();
-// Account settings (the cloud-storage knob): fetched once at boot so the
-// storage modules' synchronous serverHistoryOn() checks have an answer.
-// Cloud storage is ON by default — most accounts never touch the knob —
-// so boot also runs a quiet background reconcile: push anything local the
-// cloud doesn't have yet (diff-only; skips up-to-date items) and pull
+// Account settings: fetched once at boot so the storage modules'
+// synchronous storageAvailable() checks have an answer. Cloud storage is
+// implicit (always on whenever this server can store — no knob), so boot
+// also runs a quiet background reconcile: push anything local the cloud
+// doesn't have yet (diff-only; skips up-to-date items) and pull
 // conversations written from other devices. Entirely fail-soft and
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
@@ -170,7 +170,7 @@ loadSettings()
     // (a cross-device enable that had no local cache at first paint) or hide a
     // stale-cache icon when the server says the sandbox is off.
     if (sandboxOn) { showTerminalIcon(); applySandboxImage().finally(prewarmSandbox); } else hideTerminalIcon();
-    if (!s?.server_history) return;
+    if (!s?.available?.storage) return;
     syncToServer().catch(() => {});
     pullNewer().catch(() => {});
   })

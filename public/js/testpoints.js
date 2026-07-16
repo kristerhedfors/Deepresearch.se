@@ -33,7 +33,6 @@ const API = "/api/admin/testpoints";
 // renders (account-views.js / account-settings.js). Used to pulse the right
 // row after an openSettings action.
 const KNOB_SELECTORS = {
-  server_history: "#cloudknob",
   shodan_mcp: "#shodanknob",
   google_maps: "#gmapsknob",
   feedback_mode: "#fbknob",

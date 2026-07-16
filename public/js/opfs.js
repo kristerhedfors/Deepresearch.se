@@ -23,7 +23,7 @@
 
 import { encryptBytes } from "./history-store.js";
 import { filesMetaStore } from "./rag.js";
-import { serverHistoryOn } from "./settings.js";
+import { storageAvailable } from "./settings.js";
 
 const DIR = "originals";
 
@@ -111,9 +111,9 @@ export async function listOriginals() {
 // search index needs readable text anyway (disclosed in the settings UI).
 // Images especially always take the encrypted path. If the key is
 // unavailable, the encrypted class stores NOTHING at all — never a
-// plaintext fallback. `cloud: false` skips the R2 mirror even when the
+// plaintext fallback. The R2 mirror rides along whenever the
 // account knob is on (the per-project storage opt-out).
-export async function archiveFile(fileId, file, { plaintext = false, cloud = true } = {}) {
+export async function archiveFile(fileId, file, { plaintext = false } = {}) {
   try {
     let stored = file;
     let enc = false;
@@ -130,7 +130,7 @@ export async function archiveFile(fileId, file, { plaintext = false, cloud = tru
     if (await opfsAvailable()) {
       await saveOriginal(fileId, stored, { name: file.name, type: file.type, enc });
     }
-    if (cloud && serverHistoryOn()) {
+    if (storageAvailable()) {
       fetch("/api/files/" + encodeURIComponent(fileId), {
         method: "PUT",
         headers: {
@@ -148,11 +148,11 @@ export async function archiveFile(fileId, file, { plaintext = false, cloud = tru
 }
 
 // Remove a file everywhere it can rest: OPFS + meta row, and (when the
-// account knob is on) the R2 copy. Used by projects.js when a file is
+// server has storage) the R2 copy. Used by projects.js when a file is
 // removed from a project or the project is deleted.
 export async function purgeFile(fileId) {
   await deleteOriginal(fileId);
-  if (serverHistoryOn()) {
+  if (storageAvailable()) {
     fetch("/api/files/" + encodeURIComponent(fileId), { method: "DELETE" }).catch(() => {});
   }
 }

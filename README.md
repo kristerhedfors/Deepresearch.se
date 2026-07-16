@@ -197,10 +197,12 @@ table).
 
 ### 7. Optional: cloud storage + document RAG (R2 + Vectorize)
 
-Enables the per-account **"Store history in the cloud"** knob (account
-panel → Settings) and server-side retrieval for large attached documents.
-Entirely optional — without these resources the knob never appears and
-everything stays client-side (large-document RAG still works locally via
+Enables the signed-in tier's implicit cloud storage — conversations and
+projects are always stored in the cloud when these resources exist (there
+is no per-account switch; the never-cloud tier is Se/cure) — and
+server-side retrieval for large attached documents.
+Entirely optional — without these resources the app runs browser-only
+(large-document RAG still works locally via
 OPFS/IndexedDB, using `POST /api/embed` for embeddings only):
 
 ```bash

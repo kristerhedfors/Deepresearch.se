@@ -10,18 +10,16 @@
 // the same secret (HKDF, separate info string), so knowing the secret is
 // both the locator and the key — the server stores unlabeled ciphertext.
 //
-// This is what lets a LOCAL-ONLY project (per-project cloud knob off, or
-// the whole account knob off) still be backed up / moved across devices
-// through the server without giving up the local-only privacy posture:
-// nothing readable — no project name, no file names, no text, no index —
-// ever leaves the browser. For that reason the endpoints are NOT gated on
-// the `server_history` knob (unlike src/storage.js): each PUT is its own
-// explicit, user-initiated act of consent, and the knob governs the
-// readable-adjacent knob-driven store, not this ciphertext-only one. For
-// the same reason the account-wide drain (DELETE /api/storage, flipping
-// the knob off) deliberately does NOT touch vault objects — they were
-// stored by explicit action while the knob may well have been off, and
-// wiping them would destroy the very backups the user made on purpose.
+// The vault is a SEPARATE tier from the implicit cloud storage
+// (src/storage.js): there the server holds the account's working copies
+// (conversations encrypted, indexed material readable — see the storage
+// split); here the server holds ONE opaque archive per secret that it can
+// neither locate nor read without the user-held secret. Each PUT is its
+// own explicit, user-initiated act of consent — a deliberate backup, not
+// the automatic account copy. For the same reason the account-wide drain
+// (DELETE /api/storage — the data-deletion tool) deliberately does NOT
+// touch vault objects: they were stored by explicit action, and wiping
+// them would destroy the very backups the user made on purpose.
 //
 // Object lifecycle: the client keeps the current vault id inside the
 // (encrypted) project record and re-stores by PUT-ting the new blob under

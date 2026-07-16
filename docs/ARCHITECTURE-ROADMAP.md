@@ -120,7 +120,7 @@ class of bug this codebase is now *growing into* as it scales:
   `jsonTotals`, `visionTotals`, `shodanCount`, `mapsCount`,
   `cachedSearchCount`, …); the SSE event vocabulary that client
   `activity.js`/`turns.js` must stay in sync with; the settings JSON
-  (`server_history` / `shodan_mcp` / `google_maps`) parsed in three
+  (`shodan_mcp` / `google_maps` / …) parsed in three
   places. These are exactly the seams where a 16K-line two-sided codebase
   starts leaking, and exactly what structural typing catches.
 - **Refactoring confidence** for the pipeline changes in §5.
@@ -276,7 +276,7 @@ embarrassingly well, because the doc already has skill-shaped seams:
   mid-battery", how to decide profile entries. Loads exactly when a
   battery is being run or a model quirk investigated.
 - **`storage-privacy` skill**: the key hierarchy, the
-  encrypted-vs-indexed-readable rule, the knob/sync/drain semantics, and
+  encrypted-vs-indexed-readable rule, the implicit-cloud sync semantics, and
   the "keep `/help/`, popover, privacy notice in sync" checklist —
   loaded when touching `storage.js`/`history-store.js`/`sync.js`/
   `projects.js`.

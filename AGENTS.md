@@ -122,8 +122,8 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   `SECURITY-RISKS.md`; the secret-leak scans, header/CSP probes, review board.
 - **sse-protocol** — the `/api/chat` SSE event vocabulary and the
   forward-compatibility rule for clients.
-- **storage-privacy** — chat-history encryption, the `server_history` cloud
-  knob, RAG documents, projects, the secret-keyed vault, and DRC.
+- **storage-privacy** — chat-history encryption, the implicit always-on
+  cloud storage, RAG documents, projects, the secret-keyed vault, and DRC.
 - **sync-main** — the fetch-latest-`origin/main`-first rule every session must
   follow before implementing anything.
 - **tokemon-game** — the games subsystem (`src/games.js` registry) and the

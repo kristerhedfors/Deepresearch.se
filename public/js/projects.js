@@ -2,9 +2,9 @@
 // renders them; this module owns the data and the rules).
 //
 // A project's record — name, file inventory (with extracted image/document
-// metadata), notes, and its per-project cloud knob — is ONE encrypted blob
-// (history-store.js `projects` store locally, R2 `projects/{uid}/{id}` in
-// cloud mode), exactly the conversation-record pattern. Its files live in
+// metadata), and notes — is ONE encrypted blob (history-store.js
+// `projects` store locally, R2 `projects/{uid}/{id}` in the cloud),
+// exactly the conversation-record pattern. Its files live in
 // the same OPFS/R2 file store as attachment originals (encrypted, except
 // RAG-indexed documents) and its indexable material (documents AND text
 // notes, of any size — project material is reference material, so
@@ -22,12 +22,11 @@
 // indexed, their records rest READABLE like every other indexed material
 // (history-store.js documents the rule).
 //
-// The per-project cloud knob is a SCOPED version of the account knob:
-// serverStorage !== false means the project follows the account setting;
-// an explicit false keeps everything in this project — record,
-// conversations, files, RAG index — out of the cloud (dual-writes skip it,
-// sync skips it, and flipping it off drains what was already up there;
-// public/js/sync.js implements the bulk moves).
+// Projects are cloud-stored like everything else on this tier — implicitly
+// and always (no per-project knob; the 2026-07-16 owner directive removed
+// both it and the account-level switch). A legacy record's serverStorage
+// field is simply ignored. Work that must stay out of any cloud belongs on
+// Se/cure, where the server is in no data path at all.
 
 import { deleteChatIndex } from "./chat-rag.js";
 import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
@@ -43,7 +42,7 @@ import {
 import { archiveFile, listOriginals, loadOriginal, purgeFile } from "./opfs.js";
 import { buildProjectContext, normalizeProjectName, noteToText, projectDocIds } from "./project-context.js";
 import { deleteDoc, indexDocument } from "./rag.js";
-import { serverHistoryOn } from "./settings.js";
+import { storageAvailable } from "./settings.js";
 
 const MAX_FILES_PER_PROJECT = 100;
 const MAX_RAW_BYTES = 25 * 1024 * 1024; // same input cap as attachments
@@ -104,22 +103,6 @@ export function activeProject() {
   return activeId ? getProject(activeId) : null;
 }
 
-/**
- * The knob answer every storage-touching module asks. Unknown/absent
- * project (or none active) means "follow the account setting" — true.
- * @param {?string} projectId
- * @returns {boolean}
- */
-export function projectCloudOn(projectId) {
-  if (!projectId) return true;
-  const p = getProject(projectId);
-  return p ? p.serverStorage !== false : true;
-}
-
-export function activeProjectCloudOn() {
-  return projectCloudOn(activeId);
-}
-
 export function activeProjectDocIds() {
   return projectDocIds(activeProject());
 }
@@ -128,22 +111,12 @@ export function activeProjectContext() {
   return buildProjectContext(activeProject());
 }
 
-// fileId → projectId across every project (sync.js uses this to honor
-// cloud-off projects when pushing files/RAG docs).
-export function fileProjectMap() {
-  const map = new Map();
-  for (const p of projects) {
-    for (const f of p.files || []) map.set(f.id, p.id);
-  }
-  return map;
-}
-
 // ---- record persistence -------------------------------------------------------
 
 async function persistProject(project) {
   project.updatedAt = Date.now();
   const { id, ...data } = project;
-  await saveProjectRecord(id, { ...data }, { cloud: project.serverStorage !== false });
+  await saveProjectRecord(id, { ...data });
   const i = projects.findIndex((p) => p.id === id);
   if (i >= 0) projects[i] = project;
   else projects.unshift(project);
@@ -155,7 +128,6 @@ export async function createProject(name) {
   const project = {
     id: crypto.randomUUID(),
     name: normalizeProjectName(name),
-    serverStorage: true, // follow the account default; the knob opts out
     files: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -167,16 +139,6 @@ export async function renameProject(id, name) {
   const p = getProject(id);
   if (!p) return null;
   p.name = normalizeProjectName(name);
-  return persistProject(p);
-}
-
-// Flip the record's knob only — the bulk consequences (push up / drain
-// down) are sync.js's pushProjectScope / drainProjectScope, driven by the
-// UI so it can show progress.
-export async function setProjectCloud(id, on) {
-  const p = getProject(id);
-  if (!p) return null;
-  p.serverStorage = on !== false;
   return persistProject(p);
 }
 
@@ -202,7 +164,6 @@ async function addOneFile(project, file, onProgress = () => {}) {
     throw new Error(`A project holds at most ${MAX_FILES_PER_PROJECT} files.`);
   }
   if (file.size > MAX_RAW_BYTES) throw new Error(file.name + " is too large (25 MB max).");
-  const cloud = project.serverStorage !== false;
   const fileId = crypto.randomUUID();
   const entry = {
     id: fileId,
@@ -227,7 +188,7 @@ async function addOneFile(project, file, onProgress = () => {}) {
     // of JPEG data URL), so the panel can show the picture itself — the
     // OPFS/R2 original is ciphertext and can't be used as an <img> src.
     entry.thumb = await makeThumb(file);
-    await archiveFile(fileId, file, { cloud });
+    await archiveFile(fileId, file);
     return entry;
   }
 
@@ -240,7 +201,6 @@ async function addOneFile(project, file, onProgress = () => {}) {
     try {
       onProgress(`Indexing ${file.name}…`);
       const { chunkCount } = await indexDocument(fileId, file.name, text, {
-        cloud,
         onProgress: (done, total) =>
           onProgress(`Indexing ${file.name}… ${Math.round((100 * done) / total)}%`),
       });
@@ -248,16 +208,16 @@ async function addOneFile(project, file, onProgress = () => {}) {
       entry.chunkCount = chunkCount;
       // Indexed → its original is the one readable class (the index has
       // the text anyway).
-      await archiveFile(fileId, file, { plaintext: true, cloud });
+      await archiveFile(fileId, file, { plaintext: true });
     } catch (err) {
       console.warn("projects: indexing failed, storing unindexed", err);
-      await archiveFile(fileId, file, { cloud }); // encrypted, unindexed
+      await archiveFile(fileId, file); // encrypted, unindexed
     }
     return entry;
   }
 
   // Unsupported for indexing — archived (encrypted) so it's not lost.
-  await archiveFile(fileId, file, { cloud });
+  await archiveFile(fileId, file);
   return entry;
 }
 
@@ -294,7 +254,6 @@ export async function addTextToProject(id, title, content) {
   if (!p) throw new Error("Project not found.");
   const text = noteToText(title, content);
   if (!text.trim()) throw new Error("The note needs some content.");
-  const cloud = p.serverStorage !== false;
   const fileId = crypto.randomUUID();
   const name = (String(title || "").trim() || "Note").slice(0, 120);
   const entry = {
@@ -307,16 +266,15 @@ export async function addTextToProject(id, title, content) {
     addedAt: Date.now(),
   };
   try {
-    const { chunkCount } = await indexDocument(fileId, name, text, { cloud });
+    const { chunkCount } = await indexDocument(fileId, name, text, {});
     entry.indexed = true;
     entry.chunkCount = chunkCount;
     await archiveFile(fileId, new File([text], name + ".md", { type: "text/markdown" }), {
       plaintext: true,
-      cloud,
     });
   } catch (err) {
     console.warn("projects: note indexing failed, storing encrypted", err);
-    await archiveFile(fileId, new File([text], name + ".md", { type: "text/markdown" }), { cloud });
+    await archiveFile(fileId, new File([text], name + ".md", { type: "text/markdown" }));
   }
   p.files = [...(p.files || []), entry];
   await persistProject(p);
@@ -392,7 +350,7 @@ export async function removeFileFromProject(id, fileId) {
   await purgeFile(fileId);
   if (entry?.indexed) {
     await deleteDoc(fileId).catch(() => {});
-    if (serverHistoryOn()) {
+    if (storageAvailable()) {
       fetch("/api/rag/docs/" + encodeURIComponent(fileId), { method: "DELETE" }).catch(() => {});
     }
   }
@@ -406,8 +364,7 @@ export async function conversationsOfProject(id) {
 
 // Deleting a project removes EVERYTHING in its scope: files (both rests),
 // its slice of the RAG index (both rests), its conversations (both rests),
-// then the record itself. The remote deletes are harmless no-ops for a
-// project that was cloud-off (nothing is up there).
+// then the record itself.
 export async function deleteProject(id) {
   const p = getProject(id);
   if (!p) return;

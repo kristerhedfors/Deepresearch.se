@@ -25,7 +25,7 @@ sees, where even a live server compromise recovers nothing decryptable.
 ## Capability class & tier story
 
 **Class S — server-backed.** This module exists only in the server tier:
-the client tier has no accounts, no cloud knob, and no server in its data
+the client tier has no accounts, no cloud storage, and no server in its data
 path (its persistence is the sealed local state from `sealed-crypto`). The
 client HALF of this module (the encrypting history store, the sync engine,
 the OPFS original store, the vault pack/load orchestration) ships in the
@@ -100,24 +100,24 @@ client-side and reduces the server to a namespaced blob shelf.
    and id validation (client-generated UUIDs only). Blobs go to the blob
    store, not the SQL DB — records with inline images blow past SQL row
    ceilings (the reference's judgement call at a 2 MB row limit).
-5. **The opt-in knob** — `src/settings.js`: a per-user `server_history`
-   boolean in the account's settings JSON. Decide the default deliberately
-   and report the EFFECTIVE state: an identity that cannot use storage
-   (break-glass auth, missing blob-store binding) always reads as off, so
-   clients never dual-write into 503s. **Writes (PUT) require the knob ON;
-   reads and deletes stay allowed while OFF — that IS the drain path.**
-6. **Dual-write + bulk sync** — steady-state, the client's save path writes
+5. **Decide whether storage is a knob or implicit** — the reference made
+   it IMPLICIT (2026-07-16): on the signed-in tier every record is
+   cloud-stored, always; the only gate is availability (`src/settings.js`
+   `cloudStorageEnabled`: blob-store binding + a real account row), and
+   the client's `available.storage` reads as off for identities that
+   cannot store (break-glass auth, missing binding) so clients never
+   dual-write into 503s. The privacy CHOICE lives at the tier boundary
+   (the client-only tier stores nothing server-side), not in a switch.
+   Keep a one-call account wipe endpoint as the data-deletion tool.
+6. **Dual-write + reconcile** — steady-state, the client's save path writes
    locally and mirrors to the cloud in the same call (fire-and-forget,
-   fail-soft); `public/js/sync.js` owns the bulk moves: knob ON →
-   `syncToServer()` pushes every eligible local record in its STORED FORM
+   fail-soft); `public/js/sync.js` owns reconciliation:
+   `syncToServer()` (boot) pushes every local record in its STORED FORM
    (ciphertext moved as-is, no decrypt/re-encrypt round trip; vectors ride
-   along so nothing re-embeds); knob OFF → `syncToClient()` pulls
-   everything newer/missing down, and ONLY if every item came down clean
-   fires the one-call full wipe. Reconciliation is last-write-wins by
+   along so nothing re-embeds). Reconciliation is last-write-wins by
    `updatedAt`, per-item fail-soft (a failed item is counted and skipped,
-   never a wedged sync); `pullNewer()` on sidebar open/boot makes cloud
-   mode double as cross-device sync. Per-project knobs reuse the same
-   machinery scoped to one project's ids.
+   never a wedged sync); `pullNewer()` on sidebar open/boot is what makes
+   the cloud copy double as cross-device sync.
 7. **The drain-wipe** — `DELETE /api/storage`: wipes conversations, files,
    RAG exports and vectors in one call, **with the vault family explicitly
    excluded** — vault copies are often made precisely because the knob is
@@ -194,14 +194,15 @@ client-side and reduces the server to a namespaced blob shelf.
   `/api/settings` reported storage availability, break-glass identities and
   binding-less deploys dual-wrote every save into 503s. Report what the
   caller can actually do, not what the flag says.
-- **Reads/deletes stay open while the knob is off — deliberately.** They
-  ARE the drain. A well-meaning "knob off should block everything" change
-  strands users' only cloud copies. Same class: the drain deletes only
-  after a *fully clean* pull — a partial pull that deletes is data loss.
-- **The vault is not knob-gated and not wiped — both are product decisions
-  with tests.** The 2026-07-10 design explicitly serves knob-off projects
-  and survives the account wipe. Any refactor that routes vault writes
-  through `serverHistoryEnabled` or the wipe through `vault/` breaks them.
+- **Reads/deletes stay open even when writes can't happen — deliberately.**
+  They ARE the exit path. A well-meaning "block reads too" change
+  strands users' only cloud copies. Same class: any drain-style flow must
+  delete only after a *fully clean* pull — a partial pull that deletes is
+  data loss.
+- **The vault is a separate consent tier and is never wiped — both are
+  product decisions with tests.** The 2026-07-10 design survives the
+  account wipe. Any refactor that routes the wipe through `vault/`
+  breaks it.
 - **Blob store vs SQL DB sizing.** Conversation records with inline images
   run to several MB — past D1's 2 MB row ceiling in the reference. Blobs
   belong in the blob store; the SQL DB gains only the settings column.
@@ -212,7 +213,7 @@ client-side and reduces the server to a namespaced blob shelf.
   wrong-form remote copies opportunistically — a one-shot migration would
   have missed offline devices.
 - **`projectId` rides plaintext locally, and only locally** — a random UUID
-  revealing grouping, not content; sync needs it to honor per-project knobs
+  revealing grouping, not content; sync needs it to attribute chat docs
   without decrypting. Don't "fix" it into the ciphertext (sync breaks) and
   don't mirror it server-side beyond the record itself.
 - **The live-server caveat belongs in the disclosure.** This model is

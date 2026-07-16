@@ -150,9 +150,9 @@ description: >-
 - **User documentation is split PER TIER** (2026-07-16 directive — the
   shared page misled Se/cure users with Se/rver's storage story and the
   blue palette): `/help/` documents **Se/rver** (blue palette; its history
-  section now describes BOTH storage modes — encrypted browser copy plus
-  the default-on encrypted cloud copy — the old "browser only, doesn't
-  sync" claims are true only with the cloud knob off), and `/cure/help/`
+  section describes the tier's storage as it is — an encrypted browser
+  copy plus the ALWAYS-ON encrypted cloud copy; cloud storage is implicit
+  on Se/rver, there is no switch), and `/cure/help/`
   documents **Se/cure** (khaki palette matching drc.css, self-contained;
   chats/keys in this browser only, own providers, the two disclosed grant
   exceptions). Each page cross-links the other at top and bottom. Both are

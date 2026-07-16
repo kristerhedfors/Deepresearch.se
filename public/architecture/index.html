@@ -298,7 +298,7 @@
         <tr>
           <th>Conversations at rest</th>
           <td class="drc-c">One sealed archive in the browser's own storage: chats, the RAG index (chunk text <em>and</em> vectors), and your provider API keys, AES-256-GCM under a secret only you hold. Stricter than Se<span class="sl">/</span>rver's RAG exception — even indexed material rests as ciphertext.</td>
-          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — only if the cloud knob is on — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
+          <td class="drs-c">Ciphertext in the browser (IndexedDB, AES-GCM) and — always, no knob — the same ciphertext in R2. Readable exceptions, because retrieval needs plaintext: RAG-indexed material and project chats. The encryption key is derived server-side, held only in memory, never at rest beside the ciphertext.</td>
         </tr>
         <tr>
           <th>Interaction log</th>

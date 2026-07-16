@@ -15,7 +15,7 @@ import {
   undecryptableConversations,
 } from "./history-store.js";
 import { renderProjectsList } from "./projects-ui.js";
-import { loadSettings, serverHistoryOn, settingsLoaded, storageAvailable } from "./settings.js";
+import { loadSettings, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
 
@@ -78,7 +78,6 @@ export function initHistorySidebar(opts = {}) {
       if (projectChats) parts.push(`${projectChats} conversation${projectChats === 1 ? " lives" : "s live"} inside projects — open the project to see them.`);
       if (!settingsLoaded()) parts.push("Account settings couldn't be loaded, so cloud copies weren't checked — reload the page to retry.");
       else if (!storageAvailable()) parts.push("Cloud storage isn't available for this account, so only this device's copies can be shown.");
-      else if (!serverHistoryOn()) parts.push("Cloud backup is switched off in Settings, so only this device's copies can be shown.");
       else if (lastPull) {
         if (lastPull.failed) parts.push(`Cloud restore incomplete: ${lastPull.pulled} restored, ${lastPull.failed} failed — reopen this panel to retry.`);
         else if (lastPull.checked && lastPull.pulled) parts.push(`${lastPull.pulled} conversation${lastPull.pulled === 1 ? " was" : "s were"} restored from the cloud but this device's storage didn't keep them — fully close and reopen the app, then reopen this panel.`);
@@ -476,13 +475,14 @@ export function initHistorySidebar(opts = {}) {
     // .open in the same frame would skip the transition entirely.
     requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("open")));
     refresh();
-    // Cloud-storage accounts: fetch anything newer written from another
-    // device (no-op while the knob is off) and re-render if it actually
-    // brought something down. Visible while it runs — a device restoring
-    // its whole history pulls for several seconds and must not read as
-    // "no saved conversations" meanwhile.
+    // Cloud storage is implicit for signed-in accounts: fetch anything
+    // newer written from another device (skipped only when this server has
+    // no storage at all) and re-render if it actually brought something
+    // down. Visible while it runs — a device restoring its whole history
+    // pulls for several seconds and must not read as "no saved
+    // conversations" meanwhile.
     lastPull = null;
-    if (serverHistoryOn()) {
+    if (storageAvailable()) {
       pulling = true;
       updateNote();
       pullNewer()

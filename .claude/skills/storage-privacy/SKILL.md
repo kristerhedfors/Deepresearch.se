@@ -5,7 +5,7 @@ description: >-
   src/rag.js, public/js/history-store.js, sync.js, projects.js,
   public/js/vault.js, public/js/vault-core.js (the vault's public pure
   crypto core), or anything about chat-history encryption, the
-  per-account server_history cloud-storage knob, RAG document indexing,
+  implicit always-on cloud storage (no knob since 2026-07-16), RAG document indexing,
   projects, the secret-keyed project vault (store/load a project with a
   DR1-… secret), DRC — "deep research secure", the client-side public tier
   at /cure (the root redirects there; /my/project-<hash>; public/cure/,
@@ -34,7 +34,7 @@ history remains browser-first and encrypted; the log is the server's
 own product-improvement record. Keep `/help/`, the privacy notice, and
 the ghost button titles consistent with this whenever any of it changes.
 
-## Chat history — encrypted (project chats excepted); browser-local, with an opt-out cloud copy
+## Chat history — encrypted (project chats excepted); browser-local, mirrored to the cloud
 
 Conversations are encrypted client-side before they rest anywhere
 (the cloud-storage mode below stores the same ciphertext), with ONE
@@ -44,16 +44,16 @@ locations, because they are RAG-indexed for cross-chat retrieval (see
 rests readable — the index already holds the text in the clear, so
 encrypting the record would protect nothing the index doesn't expose
 (the same exception RAG-indexed documents have always had; disclosed in
-`/help/`, the privacy notice, and the cloud-knob popover — the history
+`/help/`, the privacy notice, and the cloud-storage ⓘ popover — the history
 sidebar's own footnote was removed 2026-07-08 to declutter the pane).
 Unlike
 the original ephemeral-only design (history erased by "New chat" or a
 reload), every conversation **persists across reloads inside the
 browser itself**, listed in a left-side history panel (`history-ui.js`)
 the same way a normal chat app's sidebar works: labelled by its first
-question, clickable to reopen, renamable, deletable. Accounts that
-switch the cloud knob OFF (see the next section) hold their history in
-this browser ONLY — nothing conversation-derived server-side.
+question, clickable to reopen, renamable, deletable. The browser copy is
+the lazy cache the app reads first; the cloud copy (next section) is the
+account-wide one that follows the user across devices.
 
 **Storage**: IndexedDB (`history-store.js`, database `dr_history`) — the
 modern, higher-capacity, async successor to `localStorage`, appropriate
@@ -152,31 +152,26 @@ either (their text was already embedded inline in the message when
 sent) — both are accepted, cosmetic simplifications, not correctness
 gaps.
 
-## Cloud storage — the per-account `server_history` knob (default ON)
+## Cloud storage — IMPLICIT and always on (no knob; 2026-07-16 directive)
 
-`/api/settings` (`src/settings.js`, stored in `users.settings_json`)
-carries two knobs, rendered in the account panel's **Settings sub-view**
-(its own level below the summary, like "Full usage & history" — a list
-of `.settings-row` slide-switch rows, the ORIGINAL pre-spiderweb toggle
-design as generic `.switch` classes, so future settings just add rows):
-**"Store history in the cloud"** (documented here) and **"Shodan host
-intelligence"** (default OFF — see "Shodan host intelligence" below). PUT
-accepts a partial body (`{server_history?, shodan_mcp?}`) so each knob
-saves independently. Each row is a SINGLE line — label, an **ⓘ** glyph,
-and the switch — with the full explanation behind a press-and-hold (or
-click-the-ⓘ) popover, the same gesture the composer's web-search knob
-uses (`wireSettingPopovers` in `public/js/account.js`); the popover keeps
-the panel compact as knobs are added. The cloud knob is remembered
-server-side (follows the account). **ON is the default** (an explicit product decision when
-the feature shipped — only a stored, explicit `false` opts out; absent/
-malformed settings mean on), and `/api/settings` reports the EFFECTIVE
-state: an identity that can't use storage (break-glass, missing R2
-binding) always reads as off, so clients never dual-write into 503s.
-Because most accounts never touch the knob, `app.js` runs a quiet,
-fail-soft boot reconcile whenever the effective state is on: a diff-only
-`syncToServer()` push plus `pullNewer()`. OFF restores exactly the
-original posture above — nothing conversation-derived stored
-server-side.
+**Cloud storage is not a setting.** On the signed-in Se/rver tier every
+conversation and project is stored in the cloud, always — the owner's
+2026-07-16 directive removed the founding `server_history` knob (and the
+per-project knob below) so the two tiers' storage stories stay
+structurally distinct: Se/rver = always cloud, Se/cure = never cloud (the
+server is in no data path there). The only gate left is AVAILABILITY
+(`src/settings.js` `cloudStorageEnabled`: the R2 binding + a D1 user row)
+— a server without storage runs browser-only, and `/api/settings` reports
+`available.storage` so clients never dual-write into 503s (the client's
+synchronous question is `storageAvailable()` in `public/js/settings.js`).
+A legacy stored `server_history` flag parses away like any unknown key.
+The Settings sub-view keeps a DISCLOSURE row ("History is stored in the
+cloud — always on", with the ⓘ popover explaining the encryption split
+and pointing at Se/cure), deliberately informational rather than a
+switch. `app.js` runs a quiet, fail-soft boot reconcile whenever storage
+is available: a diff-only `syncToServer()` push plus `pullNewer()`.
+`DELETE /api/storage` remains as the account's one-call data-deletion
+tool (vault objects excluded); nothing in the normal flow calls it.
 
 **The storage split is the point to preserve when touching any of this:**
 - **Conversations** (`src/storage.js`, R2 `convos/{uid}/{convId}`): the
@@ -219,19 +214,17 @@ commented out in `wrangler.toml` (creating them is a one-time
 `wrangler r2 bucket create` / `vectorize create` — see the file's
 comments; declaring a binding for a nonexistent resource fails every
 deploy). Without them the feature is invisible: `/api/settings` reports
-it unavailable and the UI never shows the knob.
+it unavailable and clients run browser-only.
 
-**Flipping the knob is a sync, not just a flag** (`public/js/sync.js`):
-- **On** → push all local conversation ciphertexts (compared by
-  `updatedAt`), OPFS originals, and locally-indexed RAG docs (vectors
-  included). Local copies stay — the app keeps working local-first, with
-  the cloud as the account-wide copy.
-- **Off** → pull down everything newer/missing, and ONLY if every item
-  came down clean, `DELETE /api/storage` wipes convos + files + RAG
-  exports + vectors in one call. A partial pull never deletes the only
-  complete copy; the toggle reports it kept the cloud copies and can be
-  retried. Read/delete endpoints deliberately stay open while the knob
-  is off — that IS the drain path.
+**Sync is reconciliation, not a mode change** (`public/js/sync.js`):
+`syncToServer()` (boot) pushes every local record the cloud is missing or
+has older — conversation ciphertexts (compared by `updatedAt`), OPFS
+originals, locally-indexed RAG docs (vectors included) — and local copies
+stay: the app keeps working local-first, with the cloud as the
+account-wide copy. `pullNewer()` (boot + sidebar open) brings down
+records written from other devices. The old flip flows (`syncToClient`
+account drain, `pushProjectScope`/`drainProjectScope`) were removed with
+the knobs.
 
 ## Large documents — RAG (OPFS + IndexedDB locally, Vectorize + R2 in cloud mode)
 
@@ -253,8 +246,9 @@ At send time (`stream.js`), every question retrieves the top-k most
 relevant chunks across ALL of the conversation's indexed docs and embeds
 them as labeled excerpt blocks (bounded to ~12K chars) — follow-up
 questions keep retrieving without re-attaching. Where retrieval runs
-follows the knob: local mode does cosine top-k over IndexedDB vectors in
-the browser; cloud mode queries Vectorize (`POST /api/rag/query`) — which
+follows availability: without server storage, cosine top-k runs over
+IndexedDB vectors in
+the browser; with it, queries go to Vectorize (`POST /api/rag/query`) — which
 can hold docs indexed on another device — and falls back to the local
 index if the server comes up empty or errors. A newly attached doc that
 retrieval misses entirely still contributes its opening chunks
@@ -268,7 +262,7 @@ originals, and project-chat records (indexed by `chat-rag.js`) — because
 retrieval requires readable text. Keep the settings UI, `/help/`, and
 the privacy notice consistent with that whenever any of it changes.
 
-## Projects — collections of chats and files, with their own cloud knob
+## Projects — collections of chats and files
 
 A project (`public/js/projects.js` data/rules, `projects-ui.js` panel,
 `project-context.js` pure builders) is a named collection of
@@ -276,12 +270,12 @@ conversations and materials. Everything reuses the machinery above —
 nothing project-specific was invented storage-side:
 
 - **The record**: one encrypted blob per project (name, file inventory
-  incl. extracted metadata, the per-project knob — all inside the
+  incl. extracted metadata — all inside the
   ciphertext), in the `dr_history` IndexedDB's `projects` store (DB v2)
   and mirrored to R2 `projects/{uid}/{id}` (same handler as
   conversations, `src/storage.js`). Conversation rows carry a `projectId`
   — plaintext LOCALLY only (a random uuid revealing grouping, not
-  content; sync needs it to honor project knobs without decrypting), and
+  content), and
   additionally inside the record data. The project's CONVERSATIONS are
   the readable exception documented under "Chat history" — their records
   rest plaintext because of the chat indexing below.
@@ -316,23 +310,16 @@ nothing project-specific was invented storage-side:
   (inventory + image EXIF — how a text pipeline "sees" project images).
   A fresh chat adopts the ACTIVE project on its first send; reopening a
   conversation re-enters its project (header chip shows which).
-- **The per-project knob** (top of the open project panel, same slide
-  switch): `serverStorage !== false` follows the account setting; an
-  explicit false keeps the whole project — record, conversations, files,
-  index — out of the cloud. Dual-writes consult it (`projectCloudOn`),
-  bulk sync skips cloud-off projects, and flipping it drives the scoped
-  moves (`sync.js`: `pushProjectScope` / `drainProjectScope` — the drain
-  deletes ONLY that project's cloud objects, item by item, after
-  confirming local copies; never the account-wide wipe).
+- **No per-project cloud knob** (removed with the account knob,
+  2026-07-16): projects are cloud-stored implicitly like everything else
+  on this tier; a legacy record's `serverStorage` field is ignored. Work
+  that must stay out of any cloud belongs on Se/cure.
 - **Deleting a project** removes its files, index entries (chat docs
-  included), conversations and record from BOTH rests; the per-project
-  drain (`drainProjectScope`) likewise pulls down and deletes the
-  project's chat docs alongside its files and records.
+  included), conversations and record from BOTH rests.
 
 ## The project vault — store/load a whole project under a user-held secret
 
-The strictest storage tier (added 2026-07-10): any project — INCLUDING a
-local-only one (its knob off, or the whole account knob off) — can be
+The strictest storage tier (added 2026-07-10): any project can be
 parked server-side as ONE client-encrypted archive and loaded back on any
 of the account's devices, without the server ever holding anything
 readable or any key material. `src/vault.js` (endpoints) +
@@ -367,18 +354,19 @@ secret" form).
   under the history key (RAG-indexed docs readable, as always; no key →
   file skipped, never stored readable), records via the normal
   save paths, LWW by updatedAt, gap-filling.
-- **Import honors the archived project's own cloud posture** — a
-  local-only project loads as local-only (`cloud` follows the record's
-  `serverStorage`), so loading never silently uploads anything readable.
-- **NOT `server_history`-gated** (unlike every `src/storage.js` write):
-  each store is its own explicit consent act, and the whole point is
-  serving knob-off projects. Gated only on `storageAvailability` (R2
+- **Import rejoins the implicit cloud copy** through the normal save
+  paths (dual-writes included) — a legacy archive's `serverStorage` flag
+  is ignored, since the per-project knob is gone.
+- **A separate consent tier from the implicit cloud copy**: each store is
+  its own explicit, user-initiated act, and the server holds one opaque
+  blob it can neither locate nor read. Gated only on
+  `storageAvailability` (R2
   binding + user row). Per-user namespacing means a vault blob is only
   reachable from the account that stored it — the secret alone is not
   enough from another account.
-- **Excluded from the drain-wipe**: `DELETE /api/storage` (account knob
-  off) deliberately does NOT touch `vault/{uid}/` — those copies are
-  often made precisely because the knob is going off. Keep it that way.
+- **Excluded from the account wipe**: `DELETE /api/storage`
+  deliberately does NOT touch `vault/{uid}/` — vault copies are
+  deliberate backups the wipe must never destroy. Keep it that way.
 - **Re-storing rotates**: the record remembers its `vaultId` (inside the
   encrypted record); a new store uploads under the NEW secret's id,
   updates `vaultId`, deletes the old blob — the old secret stops
