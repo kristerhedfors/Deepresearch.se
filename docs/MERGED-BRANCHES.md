@@ -50,6 +50,7 @@ These override the heuristic in the inventory table.
 | `claude/selection-boards-headers-v9xhgp` | `7c11c47` | Superseded | Landed in `main` earlier via PR #6 (collapse-to-headers + features board); not in the unmerged set. |
 | `claude/victorian-umbrella-animation-vooqu6` | `6a10191` | **Merged** | DRC umbrella intro: Victorian umbrellas revive from wire into colour. Merged 2026-07-13; only source-snapshot/rag conflicted (regenerated). 1224/1224 tests. |
 | `claude/server-secure-docs-split-m4j48m` | `6c86f12` | **Merged** | Per-tier documentation split: /cure/help/ (Se/cure, khaki) + /help/ reworked as the Se/rver docs with accurate knob-dependent storage claims; cross-links both ways; `help` reserved slug. Merged 2026-07-16 (owner: "Merge"), 1603/1603 tests, typecheck clean. |
+| `claude/slush-spacing-precision-jqty1f` | `fd993bc` | **Merged** | slash-spacing skill + scripts/slash-gap.mjs (true ink-gap meter, headless Chromium) + the measured `b .sl { margin: 0 -.04em }` bold fix on BOTH docs pages (/help/ and the just-split /cure/help/). Merged 2026-07-16 (owner: "Merge"), 1603/1603 tests, typecheck clean. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 
