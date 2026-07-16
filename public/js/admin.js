@@ -101,6 +101,7 @@ async function load() {
   loadWebsearchService();
   loadWebsearchGrants();
   loadProxyBundles();
+  loadServerTokens();
   loadSecurity();
   loadFeatures();
   loadPanels();
@@ -1108,6 +1109,140 @@ async function loadProxyBundles() {
   $("proxybundles-sec").hidden = false;
 }
 
+// ---- Se/rver tokens (the consolidated mint control panel) ------------------
+// Mint shareable `…/cure?st=<jwt>` links carrying ONE consolidated Se/rver
+// token — a single JWT bundling a permission set over UPSTREAM APIs only
+// (web search + LLM API on Berget, metered per permission — src/server-grants.js).
+// THE GUARANTEE: a token never reads any Se/rver data, and it is never a
+// login — this panel is reachable only through the admin's proper sign-in.
+// The link/JWT is shown ONLY at mint time (the list never re-exposes a live
+// token). Per-permission quotas are administered independently on live rows.
+
+function stServices(g) {
+  return g.services
+    .map(
+      (s) =>
+        `${s.svc === "api" ? "🤖 API" : "🔎 Web"} ${s.remaining}/${s.quota}` +
+        ` <button data-act="stadj" data-svc="${escapeHtml(s.svc)}" data-delta="-10" title="Remove 10 units">−10</button>` +
+        `<button data-act="stadj" data-svc="${escapeHtml(s.svc)}" data-delta="10" title="Add 10 units">+10</button>` +
+        `<button data-act="stset" data-svc="${escapeHtml(s.svc)}" data-quota="${s.quota}" title="Set this permission's quota">Set…</button>`,
+    )
+    .join(" · ");
+}
+
+function renderStGrantList(container, grants) {
+  if (!grants.length) {
+    container.innerHTML = '<p class="muted">No live tokens.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  for (const g of grants) {
+    const el = document.createElement("div");
+    el.className = "rowitem";
+    const exp = new Date(g.expiresAt).toLocaleString();
+    el.innerHTML = `<div class="head">
+      <b>${escapeHtml(g.label || "(no label)")}</b>
+      <span class="badge">${escapeHtml(g.source || "?")}</span>
+      <span class="muted">${stServices(g)} · expires ${escapeHtml(exp)}</span>
+      <span class="spacer"></span>
+      <button data-act="revoke" class="danger">Revoke</button>
+    </div>`;
+    el.addEventListener("click", async (e) => {
+      const act = e.target.dataset?.act;
+      if (!act) return;
+      try {
+        // Per-permission quota control (token fixed, rows metered): the JWT in
+        // circulation stays valid, only that permission's allowance moves.
+        if (act === "stadj") {
+          await api("/server-token/" + encodeURIComponent(g.jti) + "/" + encodeURIComponent(e.target.dataset.svc), {
+            method: "PATCH",
+            body: { delta: Number(e.target.dataset.delta) },
+          });
+        } else if (act === "stset") {
+          const raw = prompt("New quota for this permission (0 pauses it):", e.target.dataset.quota);
+          if (raw == null || raw.trim() === "" || !Number.isFinite(Number(raw))) return;
+          await api("/server-token/" + encodeURIComponent(g.jti) + "/" + encodeURIComponent(e.target.dataset.svc), {
+            method: "PATCH",
+            body: { quota: Number(raw) },
+          });
+        } else if (act === "revoke") {
+          if (!confirm("Revoke this token? All its permissions stop working immediately.")) return;
+          await api("/server-token/" + encodeURIComponent(g.jti), { method: "DELETE" });
+        } else {
+          return;
+        }
+        const d = await api("/server-token");
+        renderStGrantList(container, d.grants);
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    container.appendChild(el);
+  }
+}
+
+async function loadServerTokens() {
+  let data;
+  try {
+    data = await api("/server-token");
+  } catch (err) {
+    $("stgrants").innerHTML = `<p class="muted">${escapeHtml(err.message)}</p>`;
+    $("stgrants-sec").hidden = false;
+    return;
+  }
+  const box = $("stgrants");
+  const budgetLine =
+    data.budget > 0
+      ? `${data.outstanding} of ${data.budget} units outstanding (global budget).`
+      : `${data.outstanding} units outstanding · no global budget set.`;
+  box.innerHTML = `
+    <p class="muted">One ticket, one JWT: mint a link that hands a Se/cure session a single consolidated
+      token — web search AND LLM API (Berget), each metered per permission on the server. Upstream APIs
+      ONLY: a token can never read any Se/rver data, and it is never a login. ${budgetLine}</p>
+    <div class="group">
+      <label>Web quota <input type="number" id="st-mint-web" min="1" step="1" value="${data.config.quotas.web}" style="width:6rem"></label>
+      <label>API quota <input type="number" id="st-mint-api" min="1" step="1" value="${data.config.quotas.api}" style="width:6rem"></label>
+      <label>TTL (h) <input type="number" id="st-mint-ttl" min="1" max="720" step="1" value="${data.config.ttlHours}" style="width:6rem"></label>
+      <label>Label <input id="st-mint-label" placeholder="(optional)" maxlength="80"></label>
+      <button type="button" id="st-mint">Mint link</button>
+    </div>
+    <div id="st-mint-result" class="group" hidden></div>
+    <div id="st-grant-list"></div>`;
+  setPanelCount("stgrants-sec", data.grants.length);
+  renderStGrantList(box.querySelector("#st-grant-list"), data.grants);
+
+  box.querySelector("#st-mint").addEventListener("click", async () => {
+    try {
+      const r = await api("/server-token", {
+        method: "POST",
+        body: {
+          quotas: { web: Number($("st-mint-web").value), api: Number($("st-mint-api").value) },
+          ttlHours: Number($("st-mint-ttl").value),
+          label: $("st-mint-label").value || undefined,
+        },
+      });
+      const res = box.querySelector("#st-mint-result");
+      res.hidden = false;
+      res.innerHTML = `<label style="flex:1">Shareable link
+        <input id="st-link" readonly value="${escapeHtml(r.link)}" style="width:100%" onclick="this.select()"></label>
+        <button type="button" id="st-copy">Copy</button>`;
+      box.querySelector("#st-copy").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(r.link);
+          box.querySelector("#st-copy").textContent = "Copied ✓";
+        } catch {
+          box.querySelector("#st-link").select();
+        }
+      });
+      const d = await api("/server-token");
+      renderStGrantList(box.querySelector("#st-grant-list"), d.grants);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  $("stgrants-sec").hidden = false;
+}
+
 // ---- config ---------------------------------------------------------------
 
 // Build the `sandbox` config patch from the form: the surviving registry rows
@@ -1176,6 +1311,17 @@ function renderConfig() {
       <label>API quota / bundle <input type="number" min="1" step="1" name="px_api_quota" value="${c.proxy?.api_quota ?? 40}"></label>
       <label>API TTL (h) <input type="number" min="1" max="720" step="1" name="px_api_ttl" value="${c.proxy?.api_ttl_hours ?? 24}"></label>
       <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="px_budget" value="${c.proxy?.budget ?? 0}"></label>
+    </div>
+    <h3>Se/rver tokens</h3>
+    <p class="muted">Defaults for the CONSOLIDATED one-JWT grants minted below (and for a signed-in
+      user crossing to Se/cure via the ghost, which now receives one token covering both permissions).
+      Upstream APIs only — a token never reads any Se/rver data, and it is never a login.</p>
+    <div class="group">
+      <label><input type="checkbox" name="st_enabled" ${c.server_token?.enabled !== false ? "checked" : ""}> Enable Se/rver tokens</label>
+      <label>Web quota / token <input type="number" min="1" step="1" name="st_web_quota" value="${c.server_token?.web_quota ?? 25}"></label>
+      <label>API quota / token <input type="number" min="1" step="1" name="st_api_quota" value="${c.server_token?.api_quota ?? 40}"></label>
+      <label>TTL (hours) <input type="number" min="1" max="720" step="1" name="st_ttl" value="${c.server_token?.ttl_hours ?? 24}"></label>
+      <label>Global budget (0 = uncapped) <input type="number" min="0" step="10" name="st_budget" value="${c.server_token?.budget ?? 0}"></label>
     </div>
     <h3>Linux sandbox image</h3>
     <p class="muted">The experimental in-browser Linux sandbox boots this ext2 image
@@ -1264,6 +1410,13 @@ function renderConfig() {
             api_quota: Number(f.get("px_api_quota")),
             api_ttl_hours: Number(f.get("px_api_ttl")),
             budget: Number(f.get("px_budget")),
+          },
+          server_token: {
+            enabled: f.get("st_enabled") === "on",
+            web_quota: Number(f.get("st_web_quota")),
+            api_quota: Number(f.get("st_api_quota")),
+            ttl_hours: Number(f.get("st_ttl")),
+            budget: Number(f.get("st_budget")),
           },
           sandbox: buildSandboxPatch(f, c.sandbox?.images || []),
         },

@@ -35,6 +35,9 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  *   pluggable backends live in src/websearch-backends.js
  * @property {ProxyGrantConfig} proxy the secure-research-space proxy BUNDLE
  *   defaults + governance (per-service quota/TTL + shared budget — src/proxy.js)
+ * @property {ServerTokenConfig} server_token the CONSOLIDATED Se/rver-token
+ *   grant defaults + governance (one JWT, a permission set over upstream APIs
+ *   only — src/server-grants.js / src/server-token.js)
  * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
  *   selection + registry (admin-selectable small image — src/sandbox-image.js)
  */
@@ -93,6 +96,19 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  * @property {number} budget cap on total OUTSTANDING remaining across all live
  *   proxy grants (0 = uncapped)
  */
+/**
+ * The consolidated Se/rver-token defaults + budget governance ("one ticket,
+ * one JWT" — src/server-grants.js). One TTL for the whole token; quota is
+ * per permission (the token's `perms` set names upstream services ONLY —
+ * see THE SERVER-TOKEN GUARANTEE in src/server-token.js).
+ * @typedef {Object} ServerTokenConfig
+ * @property {boolean} enabled master switch for the whole subsystem
+ * @property {number} web_quota default Exa searches per token's web permission
+ * @property {number} api_quota default LLM completions per token's api permission
+ * @property {number} ttl_hours default lifetime of a token, in hours
+ * @property {number} budget cap on total OUTSTANDING remaining across all live
+ *   server_tokens rows (0 = uncapped)
+ */
 
 /** @type {SiteConfig} */
 export const DEFAULT_CONFIG = {
@@ -142,6 +158,17 @@ export const DEFAULT_CONFIG = {
     api_quota: 40, // LLM completions per bundled api grant
     api_ttl_hours: 24,
     budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live proxy_grants
+  },
+  // The CONSOLIDATED Se/rver token (src/server-grants.js): one JWT bundling
+  // the grant families' properties — a permission set (web + api upstream
+  // access ONLY, never any Se/rver data), one duration, per-permission quota,
+  // and the same global outstanding-remaining budget governance.
+  server_token: {
+    enabled: true,
+    web_quota: 25, // Exa searches per token's web permission
+    api_quota: 40, // LLM completions per token's api permission
+    ttl_hours: 24,
+    budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live server_tokens
   },
   // Self-hosted Linux sandbox image (src/sandbox-image.js). Empty `image` = the
   // built-in streamed default (today's webvm.io Debian), so this is INERT until
@@ -270,6 +297,16 @@ export function mergeConfig(base, patch) {
     if (Number.isFinite(px.api_ttl_hours)) out.proxy.api_ttl_hours = Math.min(720, Math.max(1, Math.round(px.api_ttl_hours)));
     if (Number.isFinite(px.budget)) out.proxy.budget = Math.max(0, Math.round(px.budget));
   }
+  const st = patch.server_token;
+  if (st && typeof st === "object") {
+    if (typeof st.enabled === "boolean") out.server_token.enabled = st.enabled;
+    // Same non-hostile clamps as the sibling grant blocks: per-permission
+    // quota 1..10000, ttl 1..720h (30d), budget ≥0 with 0 = uncapped.
+    if (Number.isFinite(st.web_quota)) out.server_token.web_quota = Math.min(10000, Math.max(1, Math.round(st.web_quota)));
+    if (Number.isFinite(st.api_quota)) out.server_token.api_quota = Math.min(10000, Math.max(1, Math.round(st.api_quota)));
+    if (Number.isFinite(st.ttl_hours)) out.server_token.ttl_hours = Math.min(720, Math.max(1, Math.round(st.ttl_hours)));
+    if (Number.isFinite(st.budget)) out.server_token.budget = Math.max(0, Math.round(st.budget));
+  }
   const sb = patch.sandbox;
   if (sb && typeof sb === "object") {
     // The image registry: keep only well-formed rows (a hostile/malformed patch
@@ -324,6 +361,7 @@ function sanitizeConfigPatch(patch) {
     websearch: patch?.websearch,
     search: patch?.search,
     proxy: patch?.proxy,
+    server_token: patch?.server_token,
     sandbox: patch?.sandbox,
   };
 }
