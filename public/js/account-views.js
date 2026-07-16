@@ -423,7 +423,9 @@ export function renderFullUsage(me) {
 // Static list; the pages themselves are served from public/ (see the ui-notes
 // skill).
 const DOC_LINKS = [
-  ["/help/", "Documentation", "How to use the site — features, privacy, and the deep-research pipeline."],
+  // This tier's own docs; the page cross-links the Se/cure documentation
+  // (/cure/help/) — the docs were split per tier 2026-07-16.
+  ["/help/", "Documentation", "How this tier works — features, privacy, and the deep-research pipeline."],
   ["/build/", "About this project", "What DeepResearch is and the ideas behind it."],
   ["/story/", "The build story", "How the site was built, session by session."],
   ["/architecture/", "The architecture story", "How the Worker, pipeline, and privacy split fit together."],

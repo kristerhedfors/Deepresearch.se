@@ -49,6 +49,7 @@ These override the heuristic in the inventory table.
 | `claude/introspection-ui-styling-dz4b0o` | `38750f8` | Dropped | Owner directive 2026-07-13: the titanium-white introspection styling already in `main` (`45d8288`, `98faa03`) is the accepted version. This branch's parallel restyle is SCRAPPED — it conflicts with the merged titanium work across `app.css`/`drc.css`/`drc.js`/`app.js`. Do NOT merge or rebuild on it. (Its PR still needs closing via the GitHub UI once the connector is back; branch delete was blocked by repo rules.) |
 | `claude/selection-boards-headers-v9xhgp` | `7c11c47` | Superseded | Landed in `main` earlier via PR #6 (collapse-to-headers + features board); not in the unmerged set. |
 | `claude/victorian-umbrella-animation-vooqu6` | `6a10191` | **Merged** | DRC umbrella intro: Victorian umbrellas revive from wire into colour. Merged 2026-07-13; only source-snapshot/rag conflicted (regenerated). 1224/1224 tests. |
+| `claude/server-secure-docs-split-m4j48m` | `6c86f12` | **Merged** | Per-tier documentation split: /cure/help/ (Se/cure, khaki) + /help/ reworked as the Se/rver docs with accurate knob-dependent storage claims; cross-links both ways; `help` reserved slug. Merged 2026-07-16 (owner: "Merge"), 1603/1603 tests, typecheck clean. |
 
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.Se/cure — documentation</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#c3b091">
+  <style>
+    /* The Se/cure tier's documentation wears the tier's own KHAKI palette
+       (public/cure/drc.css) — opening the docs from /cure must feel like
+       staying on /cure, not like being teleported to the blue Se/rver
+       tier. Self-contained on purpose: drc.css styles the app page, and
+       this page must render with no dependency on it. */
+    :root {
+      --bg: #c3b091; --panel: #faf6e8; --panel-2: #f0e9d2; --border: #b3a26e;
+      --text: #3d3418; --muted: #75683f; --accent: #7c6a24;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem;
+      line-height: 1.55;
+    }
+    main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem 1.15rem;
+    }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+    .privacy-flag {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
+    }
+    .privacy-flag b { color: var(--accent); }
+    .tier-switch {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: .5rem .8rem; font-size: .86rem;
+    }
+    /* Tighten the slash so Se/cure and Se/rver read closer to
+       "secure"/"server". */
+    .sl { margin: 0 -.12em; }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>How DeepResearch.<b>Se<span class="sl">/</span>cure</b> works</h1>
+    <a class="back" href="/cure">← Back to the app</a>
+  </div>
+
+  <p class="tier-switch">This page documents the <b>client-side</b> tier,
+  DeepResearch.<b>Se<span class="sl">/</span>cure</b> — the khaki app that runs
+  in your browser with no account. Looking for the signed-in tier with hosted
+  web search, cloud storage and accounts? Read the
+  <a href="/help/">DeepResearch.<b>Se<span class="sl">/</span>rver</b>
+  documentation</a>.</p>
+
+  <section>
+    <h2>What this tier is</h2>
+    <p>Se<span class="sl">/</span>cure is a deep-research assistant that runs
+    <b>in your browser</b>. You bring your own AI provider (an API key, or a
+    model server on your own machine), and the research pipeline — planning,
+    knowledge gathering, gap checking, synthesis, fact-checking — runs as
+    client-side code on this page.</p>
+    <div class="privacy-flag"><b>Privacy in one line:</b> this server is in
+    <b>no data path</b>. It serves the page's static files and public replay
+    pages, and nothing else — your questions go directly from your browser to
+    the AI provider <i>you</i> configure, and your chats, projects and API
+    keys are stored <b>only in this browser</b>, encrypted. The server could
+    not log your conversations or keys even in principle. (The two narrow,
+    opt-in exceptions — borrowed web search and a borrowed research space —
+    are described below, and each is disclosed in the app when active.)</div>
+  </section>
+
+  <section id="storage">
+    <h2>Chats are stored in this browser only</h2>
+    <p>Everything you make here — conversations, projects, notes, the search
+    index, and the API keys you enter — is sealed into <b>one encrypted
+    archive</b> (AES-256-GCM) kept in this browser's local storage, locked by
+    a master secret that never leaves your device. There is <b>no cloud
+    copy</b>: nothing is uploaded, nothing syncs, and no account exists that
+    anything could sync to.</p>
+    <ul>
+      <li><b>This browser is the only copy.</b> Another device or another
+        browser starts empty. To move or back up your work, use a project
+        secret or a <code>.drc</code> backup file (below) — those are the
+        <i>only</i> transports, and both stay encrypted end to end.</li>
+      <li><b>Clearing this browser's site data deletes your work for good.</b>
+        There is no server-side copy to restore from — that absence is the
+        privacy guarantee itself. Export a backup first if it matters.</li>
+      <li><b>Your API keys live inside the same sealed archive</b> — they are
+        never sent to this server, and reach only the provider they belong
+        to.</li>
+    </ul>
+    <p class="muted">This browser-only storage is specific to
+    Se<span class="sl">/</span>cure. On the signed-in
+    Se<span class="sl">/</span>rver tier, history is encrypted in the browser
+    <i>and</i> — while its cloud-storage switch is on — an encrypted copy
+    follows your account across devices; see the
+    <a href="/help/#history">Se<span class="sl">/</span>rver documentation</a>
+    for that tier's storage story.</p>
+    <h3>Backups and moving devices</h3>
+    <ul>
+      <li><b>Project secret</b> — saving your session as a project generates a
+        master secret (the project form works with password managers, so
+        1Password or Apple Passwords can keep it). On any device,
+        <code>/my/project-…</code> plus the secret reopens the project.</li>
+      <li><b>.drc backup file</b> — the settings drawer can export your whole
+        sealed archive as a downloadable file. Restoring it (file + secret) on
+        any device brings everything back; importing never overwrites newer
+        local work — the newer state wins and the other's chats merge in.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Bring your own AI</h2>
+    <p>Open the settings drawer (the <b>gear icon</b> in the header) and paste
+    an API key — the provider is detected from the key itself
+    (<code>sk-…</code> OpenAI, <code>gsk_…</code> Groq,
+    <code>sk_ber_…</code> Berget). Your browser then calls that provider
+    <b>directly</b>; the conversation travels from your device to your
+    provider and nowhere else.</p>
+    <ul>
+      <li><b>OpenAI, Groq, Berget</b> — the providers whose APIs a browser can
+        call directly. The key is yours, the usage is billed to you, and the
+        provider's own data policies apply to what it receives.</li>
+      <li><b>Your own local server</b> — point Se<span class="sl">/</span>cure
+        at an OpenAI-compatible server on your own machine (Ollama, LM Studio,
+        llama.cpp) by its base URL, no key needed. This is the strongest
+        privacy mode: <b>no third party receives the conversation at
+        all</b>.</li>
+    </ul>
+    <p>You can type immediately — the first send without a key answers with a
+    friendly pointer to the settings drawer, never an error wall.</p>
+  </section>
+
+  <section>
+    <h2>Research without web search</h2>
+    <p>The spiderweb knob works here too: with research mode on, the pipeline
+    plans angles, gathers what the model actually knows (and is honest about
+    the limits of that knowledge), audits the gaps, runs a follow-up round,
+    writes the answer on your chosen model, and fact-checks it. By default
+    this is <b>completely offline</b> research — no web request is made
+    beyond the calls to your own provider.</p>
+  </section>
+
+  <section id="borrowed">
+    <h2>Borrowed capabilities — the two disclosed exceptions</h2>
+    <p>Fresh web results normally require the
+    Se<span class="sl">/</span>rver tier. Two <b>opt-in, quota-metered,
+    time-limited</b> mechanisms can lend a Se<span class="sl">/</span>cure
+    session bounded server capabilities without an account. Both are off
+    unless you (or a link you follow) bring one, both show up in the app when
+    active, and a master switch in settings turns them off entirely.</p>
+    <ul>
+      <li><b>Temporary web search</b> — a signed-in user crossing over (the
+        ghost), or a shared <code>…/cure?ws=…</code> link, carries a grant
+        for a fixed number of live web searches routed through this server's
+        search key. Only the short <b>search query</b> reaches the server and
+        the search provider — never your conversation.</li>
+      <li><b>Secure research space</b> — a shared bundle can also lend a
+        proxied AI model. Be aware: using a borrowed <i>model</i> necessarily
+        routes <b>the conversation itself</b> through this server to the
+        model provider (an AI call carries the prompt) — the one case where
+        a Se<span class="sl">/</span>cure session's content touches this
+        server. It is clearly disclosed in the app (a connected-APIs banner
+        and a settings row) whenever it is active.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Sharing and replays</h2>
+    <ul>
+      <li><b>Secure workspaces</b> — seal a fully configured session (keys,
+        settings, chats, any borrowed grants) into <b>one offline link</b>
+        under a password. The workspace rides the link's
+        <code>#fragment</code>, which browsers never send to any server.</li>
+      <li><b>Published replays</b> — pages under
+        <code>/cure/&lt;name&gt;</code> are frozen, read-only research
+        sessions published by the site owner. Opening one seeds it as a
+        conversation here, so continuing it on your own key is just
+        typing.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Execution sandbox</h2>
+    <p>The experimental execution sandbox exists on this tier too (settings
+    drawer): for questions that call for running code, a small Linux
+    environment boots <b>inside this browser tab</b> and the assistant runs
+    shell commands in it. Nothing about the commands or their output leaves
+    your device.</p>
+  </section>
+
+  <section>
+    <h2>Privacy, in full</h2>
+    <ul>
+      <li><b>Conversations</b>: travel only between your browser and the AI
+        provider you configured (or stay entirely on your machine with a
+        local model). This server never receives them — except through the
+        borrowed research space's proxied model, if you knowingly use one
+        (see above).</li>
+      <li><b>Storage</b>: everything rests in this browser as one encrypted
+        archive under your master secret — chats, projects, search index,
+        API keys. No cloud copy, no account, no server-side log of your
+        messages (there is nothing to log: the messages never arrive).</li>
+      <li><b>Web searches</b>: none, unless a borrowed web-search grant is
+        active — then only the short AI-derived query reaches the server and
+        the search provider, metered against the grant's quota.</li>
+      <li><b>Cookies and sign-in</b>: none on this tier. No account exists,
+        and the page sets no identifying cookie.</li>
+      <li><b>The dimmed buttons</b>: features that need a server — accounts,
+        hosted web search, cloud documents, the camera — appear dimmed where
+        the signed-in app has them, and explain themselves when tapped. They
+        belong to DeepResearch.<b>Se<span class="sl">/</span>rver</b>, the
+        hosted tier.</li>
+    </ul>
+  </section>
+
+  <p class="tier-switch">Jump to the signed-in tier's documentation:
+  <a href="/help/">DeepResearch.<b>Se<span class="sl">/</span>rver</b>
+  documentation →</a></p>
+
+  <p class="muted">Questions or something unclear? Ask the site owner.</p>
+</main>
+</body>
+</html>

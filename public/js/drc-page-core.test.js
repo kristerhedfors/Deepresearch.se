@@ -79,6 +79,10 @@ test("parsePublicationRef: /cure/<slug> path vs ?continue= legacy", () => {
   assert.equal(parsePublicationRef("/cure/workspace", ""), null);
   assert.equal(parsePublicationRef("/cure/WORKSPACE", ""), null);
   assert.equal(parsePublicationRef("/cure/", "?continue=workspace"), null);
+  // "help" is RESERVED too — the Se/cure documentation page at /cure/help.
+  assert.equal(parsePublicationRef("/cure/help", ""), null);
+  assert.equal(parsePublicationRef("/cure/HELP", ""), null);
+  assert.equal(parsePublicationRef("/cure/", "?continue=help"), null);
   assert.deepEqual(parsePublicationRef("/cure/AB-12", ""), { slug: "AB-12", fromPath: true });
   // legacy ?continue= handoff, not from the path
   assert.deepEqual(parsePublicationRef("/cure/", "?continue=legacy-slug"), {

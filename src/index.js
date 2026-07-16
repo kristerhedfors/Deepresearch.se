@@ -174,6 +174,21 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await serveAsset(request, env) };
   }
 
+  // The Se/cure tier's OWN documentation (public/cure/help/): served under the
+  // /cure sub-URL in the tier's khaki palette, so opening the docs from /cure
+  // stays visually and address-wise on /cure (owner directive, 2026-07-16 —
+  // the docs split: /help/ documents Se/rver, /cure/help/ documents Se/cure,
+  // each cross-linking the other). Must be routed BEFORE the wordplay map
+  // below: "/cure/help" matches the replay-slug pattern, so without this the
+  // page would be swallowed as a (nonexistent) publication — "help" is a
+  // RESERVED slug for the same reason "workspace" is (src/pub.js pubSlugOk).
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/cure/help" || url.pathname === "/cure/help/")
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/cure/help/") };
+  }
+
   // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
   // The .se domain completes English words, and the two product tiers live
   // under them:

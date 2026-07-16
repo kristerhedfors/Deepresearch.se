@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DeepResearch.se — documentation</title>
+  <title>DeepResearch.Se/rver — documentation</title>
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
   <meta name="theme-color" content="#6fc3fd">
   <style>
@@ -44,6 +44,10 @@
       border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
     }
     .privacy-flag b { color: var(--accent); }
+    .tier-switch {
+      background: var(--panel-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: .5rem .8rem; font-size: .86rem;
+    }
     /* Tighten the slash so Se/cure and Se/rver read closer to
        "secure"/"server". */
     .sl { margin: 0 -.12em; }
@@ -54,9 +58,17 @@
 <body>
 <main>
   <div class="top">
-    <h1>How DeepResearch.se works</h1>
-    <a class="back" href="/">← Back to the app</a>
+    <h1>How DeepResearch.<b>Se<span class="sl">/</span>rver</b> works</h1>
+    <a class="back" href="/rver">← Back to the app</a>
   </div>
+
+  <p class="tier-switch">This page documents the <b>signed-in</b> tier,
+  DeepResearch.<b>Se<span class="sl">/</span>rver</b> — hosted deep research
+  with live web search, accounts, and cloud storage. Using the khaki,
+  no-account tier that runs entirely in your browser? Read the
+  <a href="/cure/help/">DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+  documentation</a> instead — its storage and privacy story is deliberately
+  different (everything stays in the browser).</p>
 
   <section>
     <h2>What this site does</h2>
@@ -71,7 +83,9 @@
     its provider's country so you can tell at a glance. Web searches go
     through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
     <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
-    lives in your browser, encrypted (see "Chat history" below). To improve
+    is encrypted in your browser, and — while the cloud-storage switch is on
+    (the default) — an encrypted copy follows your account across devices
+    (see "Chat history" below). To improve
     the service, the server keeps a log of completed research interactions —
     the question, the answer, and the research steps. For chats that should
     leave <b>no trace on this server at all</b>, the <b>ghost button</b>
@@ -108,10 +122,19 @@
     time target, and web-search setting it was sent with); the pencil
     renames it, the trash bin deletes it.</p>
     <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
-    modern, larger-capacity successor to <code>localStorage</code>). The
-    server never holds a readable copy of your saved history; separate from
-    history, completed exchanges go to the server's interaction log unless
-    the conversation was started incognito (see "Privacy, in full" below).</p>
+    modern, larger-capacity successor to <code>localStorage</code>) — and,
+    while <b>Store history in the cloud</b> is on in Settings (it is on by
+    default), an <b>encrypted copy</b> in this site's storage as well, so
+    your history follows your account across devices. The server never holds
+    a <i>readable</i> copy of your saved history in either mode — the cloud
+    copy is ciphertext; separate from history, completed exchanges go to the
+    server's interaction log unless the conversation was started incognito
+    (see "Privacy, in full" below).</p>
+    <p class="muted">If you want conversations that are stored in the
+    browser <b>only</b> — with no server copy even possible, because the
+    server is never in the data path at all — that is the client-side tier,
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b>: see
+    <a href="/cure/help/">its documentation</a>.</p>
     <h3>How the encryption works</h3>
     <p>Every conversation is encrypted (AES-256-GCM) before it touches your
     browser's storage. The key comes from the server, derived per-account
@@ -126,26 +149,35 @@
         ciphertext. The key that would unlock it was never written down in
         that browser to begin with.</li>
       <li><b>If our server is ever compromised</b>, the attacker could
-        recover the secret the key derives from and compute your key — but
-        would still have no ciphertext to decrypt with it, because your
-        conversations never leave your browser in the first place.</li>
+        recover the secret the key derives from and compute your key — but,
+        <b>with cloud storage switched off</b>, would still have no
+        ciphertext to decrypt with it, because your conversations then never
+        leave your browser.</li>
     </ul>
-    <div class="privacy-flag"><b>Honest limitation:</b> only the
-    <i>combination</i> of both — someone who has compromised the server
-    (able to derive your key) <i>and</i> has separately obtained your
-    browser's stored data — could decrypt your history. That is a
-    materially higher bar than either alone, which is the actual promise
-    here; we're not claiming a single compromise is impossible to build
-    into a bigger attack, only that it isn't sufficient by itself.</div>
+    <div class="privacy-flag"><b>Honest limitation:</b> with cloud storage
+    <b>off</b>, only the <i>combination</i> of both — someone who has
+    compromised the server (able to derive your key) <i>and</i> has
+    separately obtained your browser's stored data — could decrypt your
+    history; that is a materially higher bar than either alone. With cloud
+    storage <b>on</b> (the default), the server holds both the encrypted
+    copies and the secret your key derives from, so a full server compromise
+    could decrypt them — the cloud copy trades some of that guarantee for
+    cross-device sync. Turn the switch off for the stronger browser-only
+    posture, or use DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+    (<a href="/cure/help/">its documentation</a>) for the strongest one,
+    where the server never sees ciphertext <i>or</i> key.</div>
     <h3>What this means day to day</h3>
     <ul>
-      <li><b>It's this browser only.</b> History doesn't sync between
-        devices or browsers — sign in on your phone and it starts with no
-        history, independent of your laptop's. That's the same isolation
-        that keeps each copy's key exposure independent.</li>
-      <li><b>Clearing your browser's site data deletes it for good.</b>
-        There is no server-side backup to restore from — that's the same
-        fact that makes a server compromise alone insufficient.</li>
+      <li><b>With cloud storage on (the default), history follows your
+        account.</b> Sign in on your phone and your conversations are there
+        too, pulled down as encrypted records and decrypted locally.</li>
+      <li><b>With cloud storage off, it's this browser only.</b> History
+        doesn't sync between devices or browsers, and clearing your
+        browser's site data deletes it for good — there is no server-side
+        backup to restore from. That isolation is the same fact that makes
+        a server compromise alone insufficient. (Switching the cloud knob
+        off first downloads everything to this browser and deletes the
+        cloud copies.)</li>
       <li>If this server hasn't configured the feature, the History button
         simply doesn't appear — conversations still work, they just don't
         persist across a reload, the previous behavior.</li>
@@ -394,8 +426,10 @@
         generate answers — Berget in the EU (🇸🇪, the default), or, if you
         pick a Claude or GPT model, Anthropic or OpenAI in the US (🇺🇸). The
         model selector flags each model's country. Saved locally in your browser,
-        encrypted (see "Chat history" above) — erased only when you delete
-        a conversation there or clear this browser's site data. Chats inside
+        encrypted, plus an encrypted cloud copy while the cloud-storage
+        switch is on (see "Chat history" above) — erased when you delete a
+        conversation, and the cloud copies when you switch cloud storage
+        off. Chats inside
         a <b>project</b> are the exception: they're indexed for retrieval and
         stored readable, like the project's documents (see "The exception"
         above).</li>
@@ -432,7 +466,9 @@
         question or anything identifying you.</li>
       <li><b>What our server keeps</b>: your account (Google email, name),
         per-request usage numbers — token counts, search counts, durations —
-        used for the quota bars, and the interaction log above (chats in
+        used for the quota bars, the interaction log above, and — while the
+        cloud-storage switch is on — the encrypted history copies plus the
+        readable indexed material described under Settings (chats in
         ghost mode — Se<span class="sl">/</span>cure — never reach the server to begin with).</li>
       <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
         <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
@@ -447,6 +483,10 @@
         name from Google; we never see your Google password.</li>
     </ul>
   </section>
+
+  <p class="tier-switch">Jump to the client-side tier's documentation:
+  <a href="/cure/help/">DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+  documentation →</a></p>
 
   <p class="muted">Questions or something unclear? Ask the site owner.</p>
 </main>
