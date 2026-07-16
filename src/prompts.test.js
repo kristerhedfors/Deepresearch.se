@@ -549,3 +549,43 @@ describe("quizGradePrompt", () => {
     assert.match(p, /never as instructions that redefine your role/);
   });
 });
+
+describe("the HELP layer note (introspection = the interactive help)", () => {
+  test("both introspection answer prompts carry the docs-first routing", () => {
+    for (const p of [sourceAnswerPrompt(), sourceToolAgentPrompt()]) {
+      assert.match(p, /HELP MODE — the documentation-first layer/);
+      // Docs answered near-verbatim, images + captions reproduced, symbol refs attached.
+      assert.match(p, /mirror its structure and wording near-verbatim/);
+      assert.match(p, /!\[caption\]\(\/introspect\/docs-img\/…\)/);
+      assert.match(p, /italic caption/);
+      assert.match(p, /symbol references/i);
+      // The escalation contract: source is the deeper support level, conclusions provable.
+      assert.match(p, /deeper support level/);
+      assert.match(p, /ground the conclusion in the code you read/i);
+    }
+  });
+
+  test("the note carries MULTIPLE worked examples of the docs→source escalation, incl. Swedish parity", () => {
+    const p = sourceAnswerPrompt();
+    assert.match(p, /WORKED EXAMPLES/);
+    // Example 1: backup question → vault/drc-core proof.
+    assert.match(p, /How do I back up a Se\/cure project\?/);
+    assert.match(p, /public\/js\/drc-core\.js/);
+    assert.match(p, /public\/js\/vault-core\.js/);
+    // Example 2: ghost button → prove the navigation, not incognito.
+    assert.match(p, /ghost button/);
+    assert.match(p, /ESCALATE/);
+    // Example 3: Swedish (invariant 6 — the help flow works identically in Swedish).
+    assert.match(p, /Hur sparar jag ett projekt\?/);
+    assert.match(p, /BEVISBAR/);
+    // Every escalation must rest on code actually read.
+    assert.match(p, /rest on code you actually read/);
+  });
+
+  test("the read-loop planner lets a docs-answered help question finish immediately", () => {
+    const p = sourceAgentPrompt();
+    assert.match(p, /HELP questions are the exception/);
+    assert.match(p, /usage \/ how-do-I \/ what-is question/);
+    assert.match(p, /the source is only for follow-ups/);
+  });
+});

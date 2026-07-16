@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h41;
+  --css-version: h42;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -298,6 +298,10 @@ header {
 /* Rendered markdown (default answer view) */
 .content.md { white-space: normal; }
 .content.md > :first-child { margin-top: 0; }
+/* Documentation images quoted verbatim by HELP mode (markdown.js tags the
+   allowlisted same-origin /introspect/docs-img/ images with .doc-img) —
+   screenshots must scale to the bubble, never overflow it. */
+img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); margin: .35rem 0; display: block; }
 .content.md > :last-child { margin-bottom: 0; }
 .content.md p, .content.md ul, .content.md ol { margin: .5em 0; }
 .content.md ul, .content.md ol { padding-left: 1.4em; }

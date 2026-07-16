@@ -79,11 +79,16 @@ import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backen
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
+  DOCS_CORPUS_PATH,
   OWASP_CORPUS_PATH,
   SNAPSHOT_PATH,
+  buildHelpDocsBlock,
   buildIntrospectionBlock,
   buildOwaspReferenceBlock,
+  docsCorpusMeta,
+  helpIntent,
   introspectionActive,
+  lexicalRetrieveCorpus,
   lexicalRetrieveOwasp,
   securityAssessmentIntent,
   validateSnapshot,
@@ -1251,6 +1256,43 @@ async function owaspBlockFor(texts, latestText) {
   return buildOwaspReferenceBlock(hits, corpus.sources);
 }
 
+// The HELP documentation corpus (the docs-first layer of help mode), fetched
+// once per page load as a PUBLIC static file — the server stays in no data
+// path. Same self-contained arrangement as the OWASP corpus: retrieval is the
+// embedding-free lexical path (no Berget e5 in the browser). Fail-soft: any
+// problem → no docs block, and the prompt-level guidance still holds.
+let docsCorpusCache = null;
+async function loadDocsCorpusOnce() {
+  if (!docsCorpusCache) {
+    docsCorpusCache = fetch(DOCS_CORPUS_PATH)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const raw = await res.json();
+        const snapshot = validateSnapshot(raw);
+        return snapshot ? { snapshot, meta: docsCorpusMeta(raw) } : null;
+      })
+      .catch(() => null);
+  }
+  return docsCorpusCache;
+}
+
+// Build the help documentation block: always on in dev mode (the same
+// no-brittle-gate rule as the source injection); a help-shaped ask (helpIntent,
+// sticky over the conversation) widens the retrieval. "" when the corpus is
+// unavailable or nothing matches.
+async function helpDocsBlockFor(texts, latestText) {
+  const corpus = await loadDocsCorpusOnce();
+  if (!corpus) return "";
+  const helpAsk = texts.some((t) => helpIntent(t));
+  const hits = lexicalRetrieveCorpus(corpus.snapshot, latestText, { k: helpAsk ? 8 : 4, perCat: 2 });
+  return buildHelpDocsBlock(hits, {
+    sources: corpus.meta.sources,
+    symbols: corpus.meta.symbols,
+    repo: corpus.meta.repo,
+    helpAsk,
+  });
+}
+
 async function introspectionContext(conv, latestText) {
   // Developer mode on = always give the model the site's own source, so any
   // phrasing ("code examples from the site") works — no brittle intent gate.
@@ -1272,6 +1314,11 @@ async function introspectionContext(conv, latestText) {
       includeIndex: introspectionActive(texts, snap),
       sandboxMounted: state.bashLite === true,
     });
+    // HELP layer: the documentation passages relevant to this question (the
+    // docs-first layer of help mode — retrieved OFFLINE via lexical TF-IDF over
+    // the committed docs corpus), with symbol references resolved to the source.
+    const helpDocs = await helpDocsBlockFor(texts, latestText);
+    if (helpDocs) block += helpDocs;
     // Security assessment: also append the OWASP Top 10 reference (retrieved
     // OFFLINE via lexical TF-IDF over the committed corpus), so DRC classifies
     // findings against — and quotes — the real OWASP text with no server call.

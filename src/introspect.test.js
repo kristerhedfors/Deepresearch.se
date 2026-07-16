@@ -34,8 +34,8 @@ const jsonRes = (payload, status = 200) =>
 // An env whose ASSETS binding routes by path so the enrichment can load the
 // snapshot AND (optionally) the rag index. `rag: null` → 404 there, so
 // retrieval fails soft to the orientation-only block.
-/** @param {{ snapshot?: any, snapshotStatus?: number, rag?: any, berget?: boolean, owaspCorpus?: any, owaspRag?: any }} [opts] */
-function makeEnv({ snapshot = SNAPSHOT, snapshotStatus = 200, rag = null, berget = false, owaspCorpus = null, owaspRag = null } = {}) {
+/** @param {{ snapshot?: any, snapshotStatus?: number, rag?: any, berget?: boolean, owaspCorpus?: any, owaspRag?: any, docsCorpus?: any, docsRag?: any }} [opts] */
+function makeEnv({ snapshot = SNAPSHOT, snapshotStatus = 200, rag = null, berget = false, owaspCorpus = null, owaspRag = null, docsCorpus = null, docsRag = null } = {}) {
   return /** @type {any} */ ({
     BERGET_API_TOKEN: berget ? "k" : undefined,
     ASSETS: {
@@ -43,6 +43,8 @@ function makeEnv({ snapshot = SNAPSHOT, snapshotStatus = 200, rag = null, berget
         const p = new URL(req.url).pathname;
         if (p.endsWith("owasp-corpus.json")) return owaspCorpus ? jsonRes(owaspCorpus) : jsonRes(null, 404);
         if (p.endsWith("owasp-rag.json")) return owaspRag ? jsonRes(owaspRag) : jsonRes(null, 404);
+        if (p.endsWith("docs-corpus.json")) return docsCorpus ? jsonRes(docsCorpus) : jsonRes(null, 404);
+        if (p.endsWith("docs-rag.json")) return docsRag ? jsonRes(docsRag) : jsonRes(null, 404);
         if (p.endsWith("source-rag.json")) return rag ? jsonRes(rag) : jsonRes(null, 404);
         return jsonRes(snapshot, snapshotStatus);
       },
@@ -210,6 +212,51 @@ test("runIntrospectionEnrichment: a NON-security dev-mode ask injects NO OWASP b
   }
 });
 
+test("runIntrospectionEnrichment: the HELP layer injects the docs block + stashes it in state", async () => {
+  // A one-doc docs corpus with the help metadata (title, resolved symbols,
+  // repo link base) — the shape scripts/bundle-docs.mjs writes. Lexical
+  // retrieval (no embed mocked here) must surface it, the block must quote it
+  // verbatim (image line included) and list the symbol reference with a link.
+  const docText =
+    "## Saving a project\n\nUse the `saveProject` flow from the Project panel to save your work.\n" +
+    "![The Project panel with the save form](/introspect/docs-img/docs/img/save.png)\n" +
+    "*The save form in the drawer.*\n";
+  const docsCorpus = {
+    v: 1, digest: "docsdigest001", count: 1, bytes: docText.length,
+    files: [{ p: "docs/GUIDE.md", s: docText.length, t: docText }],
+    sources: { "docs/GUIDE.md": { title: "User Guide" } },
+    symbols: { "docs/GUIDE.md": [{ sym: "saveProject", file: "public/js/projects.js", line: 42 }] },
+    repo: "https://github.com/kristerhedfors/Deepresearch.se/blob/main/",
+  };
+  const s = steps();
+  const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
+  const out = await runIntrospectionEnrichment(
+    makeEnv({ docsCorpus }),
+    noopLog, s.step, s.stepDone,
+    /** @type {any} */ (convo("how do I save a project?")),
+    state,
+  );
+  const text = /** @type {any} */ (out[out.length - 1]).content;
+  assert.match(text, /--- Site documentation \(help layer\) ---/);
+  assert.match(text, /# docs\/GUIDE\.md — "User Guide" \(verbatim excerpt\)/);
+  assert.match(text, /!\[The Project panel with the save form\]\(\/introspect\/docs-img\/docs\/img\/save\.png\)/);
+  assert.match(text, /\*The save form in the drawer\.\*/); // the italic caption rides along verbatim
+  assert.match(text, /`saveProject` — public\/js\/projects\.js:42 \(https:\/\/github\.com\/kristerhedfors\/Deepresearch\.se\/blob\/main\/public\/js\/projects\.js#L42\)/);
+  // Stashed for the native-tool source-research path (reads the clean text).
+  assert.match(state.helpBlock, /--- Site documentation \(help layer\) ---/);
+  assert.ok(s.details[0].some((d) => /documentation \(help\): docs\/GUIDE\.md/.test(d)), "help docs shown in the step details");
+});
+
+test("runIntrospectionEnrichment: no docs corpus → no help block (fail-soft)", async () => {
+  const s = steps();
+  const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
+  const out = await runIntrospectionEnrichment(makeEnv(), noopLog, s.step, s.stepDone, /** @type {any} */ (convo("how do I save a project?")), state);
+  const text = /** @type {any} */ (out[out.length - 1]).content;
+  assert.match(text, /--- Introspection: deepresearch\.se source/); // the source block still lands
+  assert.doesNotMatch(text, /Site documentation \(help layer\)/);
+  assert.equal(state.helpBlock, undefined);
+});
+
 test("runIntrospectionEnrichment: fail-soft when the snapshot is unavailable", async () => {
   const s = steps();
   const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });
@@ -308,4 +355,54 @@ test("owasp-rag index is consistent with the committed OWASP corpus (no stale ch
   assert.equal(stale, 0, `${stale} owasp-rag chunk refs no longer resolve — re-run \`npm run bundle:owasp-rag\``);
   const covered = new Set(index.map.map((m) => m.p));
   assert.equal(covered.size, 20, `owasp-rag covers ${covered.size}/20 OWASP docs — re-run \`npm run bundle:owasp-rag\``);
+});
+
+test("docs corpus artifact matches the working tree (npm run bundle:docs)", () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  // Exits non-zero (throws here) when public/introspect/docs-corpus.json (or a
+  // copied doc image under docs-img/) is stale — regenerate with
+  // `npm run bundle:docs` and commit the result.
+  execFileSync(process.execPath, [join(root, "scripts/bundle-docs.mjs"), "--check"], {
+    cwd: root,
+    stdio: "pipe",
+  });
+});
+
+test("docs-rag index is consistent with the committed docs corpus (no stale chunk refs)", async (t) => {
+  // Same freshness invariant as the source-rag / owasp-rag checks, for the HELP
+  // documentation corpus/index (scripts/bundle-docs.mjs → docs-corpus.json,
+  // then scripts/bundle-docs-rag.mjs → docs-rag.json). CI can't re-embed, so we
+  // enforce that every indexed (p, ci) still resolves against the CURRENT
+  // corpus's chunking; a docs edit that shifts chunk boundaries trips this →
+  // re-run `npm run bundle:docs-rag`. Optional artifact → SKIP when absent
+  // (help retrieval falls back to the lexical path), enforced when present.
+  const { existsSync } = await import("node:fs");
+  const { validateSnapshot, validateRagIndex, chunkSourceText } = await import("../public/js/introspect-core.js");
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const ragPath = join(root, "public/introspect/docs-rag.json");
+  const corpusPath = join(root, "public/introspect/docs-corpus.json");
+  if (!existsSync(ragPath) || !existsSync(corpusPath)) {
+    t.skip("docs corpus/index absent — run `npm run bundle:docs` && `npm run bundle:docs-rag`");
+    return;
+  }
+  const read = (p) => JSON.parse(readFileSync(p, "utf8"));
+  const corpus = validateSnapshot(read(corpusPath));
+  assert.ok(corpus, "docs-corpus.json must exist and validate");
+  const index = validateRagIndex(read(ragPath));
+  assert.ok(index, "docs-rag.json present but invalid — re-run `npm run bundle:docs-rag`");
+
+  const counts = new Map();
+  for (const f of corpus.files) counts.set(f.p, chunkSourceText(f.t).length);
+  let stale = 0;
+  for (const m of index.map) {
+    const n = counts.get(m.p);
+    if (n === undefined || m.ci >= n) stale++;
+  }
+  assert.equal(stale, 0, `${stale} docs-rag chunk refs no longer resolve — re-run \`npm run bundle:docs-rag\``);
+  const covered = new Set(index.map.map((m) => m.p));
+  assert.equal(
+    covered.size,
+    corpus.count,
+    `docs-rag covers ${covered.size}/${corpus.count} docs — re-run \`npm run bundle:docs-rag\``,
+  );
 });
