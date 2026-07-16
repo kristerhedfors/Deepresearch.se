@@ -193,73 +193,75 @@ export function wmHtml(s) {
     .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
 }
 
-// ---- the per-task ONLINE/OFFLINE symbol grammar (owner directive, 2026-07-15) ----
+// ---- the PRIVACY NOTICE (owner directive, 2026-07-16) --------------------------
 
-// Every research step wears the symbol of its CHANNEL: the UMBRELLA for work
-// that stays on this device (Se/cure's own symbol — shelter), the BALLOON for
-// work that crosses the network (Se/rver's symbol — carried). On Se/cure an
-// ONLINE step also completes into an INFORMATION NOTICE (ℹ) instead of the
-// pink ✓, whose bubble (disclosureText below) says exactly what left the
-// browser and where it went — the read-up on what each task is doing or
-// leaking. Pure and Node-tested; drc.js consumes both.
-
-// Phase → channel. Unknown phases default to ONLINE: over-disclosing is the
-// safe failure for a privacy tier (a local task wrongly wearing the balloon
-// invites a read; an online task wrongly wearing the umbrella lies).
-const LOCAL_PHASES = new Set([
-  "sandbox", // the CheerpX VM runs entirely in this browser
-  "clarify", // asking the user a question — no call of its own
-  "introspect", // reads the committed source snapshot (same-origin static)
-  "_note", // the running step's re-label pseudo-phase
-]);
-
-/** @param {string} phase @returns {"local"|"online"} */
-export function phaseChannel(phase) {
-  return LOCAL_PHASES.has(String(phase)) ? "local" : "online";
-}
+// The animations are tier identity again (Se/cure = umbrella, Se/rver =
+// balloon — the 2026-07-15 per-task channel grammar was reverted the next
+// day: "keep it stringent and clean with the animations"). The privacy
+// communication moved HERE instead: an ℹ INFORMATION NOTICE, always
+// available from the /cure header and popped up automatically when a shared
+// secure workspace opens, whose text lays out in detail what THIS session
+// sends where — the read-up on privacy that used to be spread over per-step
+// bubbles. Pure and Node-tested; drc.js renders it.
 
 /**
- * The information-notice text for a completed ONLINE step: what this task
- * sent, to whom, on whose credential. `ctx` is the send-time context drc.js
- * captures when it resolves the provider and search route:
- *   provider   — the answer provider's display label (e.g. "OpenAI")
- *   viaProxy   — true when the secure-research-space LLM proxy carries calls
- *   local      — true when the model is the user's OWN local server (the
- *                keyless provider): calls stay on the user's machine
- *   search     — "self" (own browser-direct service) | "grant" (server-metered)
- *   embedProvider — the embeddings provider label (recall), if any
- * Returns "" for local phases (they complete to the pink ✓, no notice).
- * @param {string} phase
+ * The privacy notice's paragraphs, from the session's CURRENT configuration
+ * (drc.js gathers `ctx` from the same accessors the send path resolves):
+ *   provider      — the picked answer provider's display label (e.g. "OpenAI")
+ *   viaProxy      — true when a borrowed server allowance (proxy bundle or
+ *                   Se/rver-token api permission) carries the model calls
+ *   local         — true when the model runs on the user's OWN machine (the
+ *                   keyless local provider or the in-browser on-device engine)
+ *   search        — "self" (own browser-direct service) | "grant"
+ *                   (server-metered borrowed allowance) | "off"
+ *   embedProvider — the embeddings provider label (project recall), "" = none
+ *   grantsConnected — true when any borrowed, account-connected allowance
+ *                   (web search or LLM) is live in this session
+ *   workspaceName — set when this session was opened from a shared secure
+ *                   workspace link ("" / absent otherwise)
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
- *          search?: string|null, embedProvider?: string}} [ctx]
- * @returns {string}
+ *          search?: string|null, embedProvider?: string,
+ *          grantsConnected?: boolean, workspaceName?: string}} [ctx]
+ * @returns {string[]} paragraphs, most important first — never empty
  */
-export function disclosureText(phase, ctx = {}) {
-  if (phaseChannel(phase) === "local") return "";
-  const provider = ctx.provider || "your model provider";
-  const llm = ctx.viaProxy
-    ? "This step sent the conversation text it needed THROUGH the DeepResearch.Se server to Berget — the borrowed secure-research-space API (metered, time-limited, Berget-only). This is the one call path where your text touches the server."
-    : ctx.local
-      ? "This step called the model server running on YOUR OWN machine — the conversation never left your device, and no third party (this site's server included) was involved."
-      : `This step sent the conversation text it needed to ${provider}, directly from your browser on your own API key. The DeepResearch.Se server was not involved.`;
-  switch (String(phase)) {
-    case "search":
-      return ctx.search === "self"
-        ? "Only the search QUERY was sent — directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
-        : "Only the search QUERY was sent — through the DeepResearch.Se server to the Exa search service, metered by your temporary web-search grant. The conversation itself never left your browser.";
-    case "recall":
-      return `Recall embedded your question with ${ctx.embedProvider || provider}'s embedding API (your key) to search the project index stored in this browser. Only the question text was sent; the index never leaves.`;
-    case "triage":
-    case "harvest":
-    case "gap":
-    case "synth":
-    case "validate":
-    case "answer":
-    case "source":
-      return llm;
-    default:
-      return "This step called an online API — the text it needed left your browser. " + llm;
+export function privacyNoticeLines(ctx = {}) {
+  const lines = [];
+  if (ctx.workspaceName) {
+    const name = typeof ctx.workspaceName === "string" ? ctx.workspaceName : "";
+    lines.push(
+      `This session was opened from a shared secure workspace link${name ? ` (“${name}”)` : ""}. ` +
+        "Everything the link carried — keys, settings, chats, borrowed allowances — was decrypted and applied IN THIS BROWSER; the link's contents never reach any server (the whole workspace travels in the URL fragment, which browsers do not send).",
+    );
   }
+  lines.push(
+    "Your chats, API keys and projects rest sealed in THIS browser's storage. The DeepResearch.Se server stores none of them and is in no data path unless a line below says otherwise.",
+  );
+  const provider = ctx.provider || "your model provider";
+  lines.push(
+    ctx.viaProxy
+      ? "Model calls: the conversation text is sent THROUGH the DeepResearch.Se server to Berget on a borrowed, metered, time-limited allowance — the one call path where your text touches the server."
+      : ctx.local
+        ? "Model calls: the model runs on YOUR OWN machine — the conversation never leaves your device, and no third party (this site's server included) is involved."
+        : `Model calls: the conversation text is sent to ${provider}, directly from your browser on your own API key — they can read it; the DeepResearch.Se server is not involved.`,
+  );
+  lines.push(
+    ctx.search === "self"
+      ? "Web search: only the search QUERY is sent, directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
+      : ctx.search === "grant"
+        ? "Web search: only the search QUERY is sent, through the DeepResearch.Se server to the Exa search service on a borrowed, metered allowance. The conversation itself never leaves your browser."
+        : "Web search: off — research runs from the model's own knowledge; no search query leaves this browser.",
+  );
+  if (ctx.embedProvider) {
+    lines.push(
+      `Project recall: your question is embedded with ${ctx.embedProvider}'s embedding API (your key) to search the project index stored in this browser. Only the question text is sent; the index never leaves.`,
+    );
+  }
+  if (ctx.grantsConnected) {
+    lines.push(
+      "Borrowed allowances are quota-metered, time-limited, and connected to the account that minted them; the minter can pause or revoke them at any time. Turn them off in Settings to cut every server-touching path.",
+    );
+  }
+  return lines;
 }
 
 // ---- the workspace-unlock celebration ------------------------------------------

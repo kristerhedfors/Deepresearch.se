@@ -3,8 +3,8 @@ name: symbol-language
 description: >-
   Load when designing or extending a generated agent pair's VISUAL IDENTITY
   SYSTEM — per-tier palettes and symbol characters, first-visit intro
-  animations, waiting symbols and completion marks, the per-task
-  offline/online channel grammar with its disclosure notices, the wordmark
+  animations, per-tier waiting symbols and completion marks, the client
+  tier's privacy notice (the what-goes-where read-up), the wordmark
   slash-spacing discipline, or the numbered UX-conventions registry — or when
   wiring ANY new interactive surface (popover, speech bubble, explainer,
   gesture, dismissal) that must match the pair's established feel. The
@@ -21,10 +21,10 @@ Give the pair a visual identity SYSTEM: per-tier palettes, per-tier symbol
 characters, one shared animation grammar, a wordmark discipline, and a
 numbered registry of interaction conventions. The load-bearing idea: the
 symbols are a second, wordless channel that tells the user something TRUE
-about the tier they are standing in and the task they are watching — above
-all, whether work left their device. Decoration that means nothing is cut;
-decoration that answers "did this cross the network?" at a glance is the
-privacy mission made tangible.
+about the TIER they are standing in — each tier wears its own symbol,
+stringent and clean. The "where does my data go" detail is NOT encoded in
+the animations (the reference tried that and reverted it within a day): it
+lives in a readable PRIVACY NOTICE the user can pop up at any time.
 
 ## Capability class & tier story
 
@@ -45,17 +45,19 @@ with their own vocabulary:
   transformation, its own spinner and completion mark — and renders the
   secure marker its own way (a rare glow on the button that is the DOOR to
   the client tier).
-- **Both tiers** share the per-task channel grammar: the offline symbol on
-  work that stays on-device, the online symbol on work that crosses the
-  network — regardless of tier.
+- **Each tier's symbol is TIER identity**: every waiting slot and completion
+  mark on a tier wears that tier's own symbol. The data-exposure detail is
+  carried by the client tier's PRIVACY NOTICE (build plan #8), not by
+  switching symbols per task.
 
 ## Contracts
 
-- **PA-4 made visible** — the channel grammar is the privacy split rendered:
-  every online phase on the client tier completes into a tappable ℹ
-  disclosure stating exactly what that task sent, to whom, on whose
-  credential. Unknown phases classify as ONLINE — over-disclosing is the
-  safe failure; a "local" badge on an online task is a small lie.
+- **PA-4 made readable** — the privacy notice is the privacy split rendered
+  as prose: one always-available ℹ popover on the client tier states exactly
+  what the session's current configuration sends where, on whose credential
+  — and pops up unprompted when a shared workspace/borrowed configuration
+  arrives. An unknown route reads as OFF/none — the notice never claims a
+  send that may not happen, and never hides one that will.
 - **PA-2** — every DOM layer is fail-soft and `pointer-events:none` where it
   overlays the app; an animation error degrades to nothing, never to a
   broken chat.
@@ -121,24 +123,25 @@ with their own vocabulary:
    completion. Completion then speed-runs into the colored symbol and folds
    it into the tier's checkmark. Reuse the intro's renderer and the sibling
    spinner's boomerang/tumble clocks by import.
-8. **The per-task channel grammar.** Classify every pipeline phase/step as
-   OFFLINE (runs entirely on-device — wears the sheltered symbol, in BOTH
-   tiers: an in-browser sandbox step on the server tier still wears it) or
-   ONLINE (crosses the network — wears the carried symbol, on the client
-   tier too: browser-direct provider calls, granted search, embedding calls
-   are honest exceptions to "nothing leaves"). Classification is a pure
-   Node-tested function per tier; **unknown defaults to ONLINE**. Completion
-   splits by tier: the server tier folds everything into its plain check
-   (it already assumes cloud); the client tier folds a local step into its
-   check but an ONLINE step into a tappable **ℹ notice** whose bubble
-   states what that task sent, to whom, on whose credential — computed by a
-   pure `disclosureText(phase, ctx)` from SEND-TIME context (provider
-   label, borrowed-grant flag, search route, embed provider) captured where
-   the send resolves them. The bubble follows the registry's dismissal rule.
+8. **The privacy notice.** Keep the animations tier-pure and put the
+   data-exposure story in PROSE: an ℹ button in the client tier's header
+   opens a popover laying out what the session's CURRENT configuration sends
+   where — the model route (own key browser-direct / local-or-on-device
+   "nothing leaves" / a borrowed server-routed allowance, "the one
+   server-touching path"), the search route (self-hosted / server-metered /
+   off), any embedding/recall call, and a governance line for borrowed
+   allowances (metered, time-limited, revocable, one off switch). The text
+   is a pure Node-tested `privacyNoticeLines(ctx)`; the ctx is gathered at
+   OPEN time from the same accessors the send path resolves, so the notice
+   always reflects the configuration as it stands; an unknown route reads as
+   OFF. **A shared workspace / borrowed-configuration arrival pops the
+   notice automatically**, leading with what the link carried — the
+   recipient reads the privacy story of exactly what they were handed. The
+   popover follows the registry's dismissal rule.
 9. **The low-animation directive.** Ambient always-running motion stays LOW:
    background drifts slow enough to barely register, marker events rare
    (minutes apart, seconds long), breathing loops slow. Functional motion —
-   spinners, per-task finales — is exempt: it communicates state. When in
+   spinners, completion finales — is exempt: it communicates state. When in
    doubt, slower and rarer; the reference lowered every ambient cycle on an
    explicit owner directive after shipping busier versions.
 10. **The numbered UX-conventions registry.** Keep one registry file of
@@ -149,7 +152,7 @@ with their own vocabulary:
     content inside stays clickable: outside-closer bound ONCE on a
     persistent element, containment + opener exclusion, one bubble at a
     time, `click` vs capture-phase `pointerdown` chosen by whether dismiss
-    must beat the underlay), the channel-grammar rule (#8), and the
+    must beat the underlay), the privacy-notice rule (#8), and the
     greeter rule (#6). **ADD an entry whenever a new UX decision is made**
     — consult the registry BEFORE wiring any new interactive surface and
     copy the nearest canonical implementation instead of reinventing a
@@ -164,12 +167,12 @@ with their own vocabulary:
 | Server-tier intro (logo → balloons, 180° drop, faster-pinned) | `public/js/balloon-intro.js` (+ `.test.js`) |
 | Greeters (balloon guide; strolling ghost) | `public/js/balloon.js` (+ `.test.js`), `public/cure/ghostwalk.js`, gates in `public/js/app.js` / `public/cure/drc.js` |
 | Waiting symbols (boomerang + per-tier finale) | `public/js/balloon-spinner.js`, `public/js/umbrella-spinner.js` |
-| Channel classification (pure) | `public/js/drc-page-core.js` (`phaseChannel`, `disclosureText`), `public/js/activity-core.js` (`stepIsLocal`) |
-| ℹ disclosure notice UI | `public/cure/drc.js` (`addLeakNotice`, `sendCtx`), `public/cure/drc.css` (`.notice`, `.leak-note`) |
+| Privacy-notice text (pure) | `public/js/drc-page-core.js` (`privacyNoticeLines`, `providerVisibilityNote`) |
+| ℹ privacy notice UI | `public/cure/drc.js` (`privacyCtx`, `showPrivacyNotice`), `public/cure/index.html` (`#privacybtn`, `#privacypop`) |
 | Secure marker per tier | ghost button glow in `public/css/app.css`; `ghost-contour` in `public/cure/drc.css` |
 | Slash ink meter + gap band + audit table | `scripts/slash-gap.mjs`, `.claude/skills/slash-spacing/SKILL.md` |
 | Wordmark renderer for JS-built prose | `public/js/drc-page-core.js` (`wmHtml`) |
-| UX registry (dismissal, channel badge, greeter rules) | `.claude/skills/ux-conventions/SKILL.md` |
+| UX registry (dismissal, privacy notice, greeter rules) | `.claude/skills/ux-conventions/SKILL.md` |
 | Ambient animation levels | `public/css/app.css` (`bg-drift`, ghost cycles), `public/cure/drc.css` |
 | Naming/ordering convention | CLAUDE.md branding rule (CamelCase tail, secure-first) |
 
@@ -178,8 +181,9 @@ with their own vocabulary:
 - [ ] Pure timeline/geometry cores green: phase-mark ordering and
       monotonicity, projection math, greeter script + bounded
       stay/departure, spinner boomerang turning back before the color beat.
-- [ ] Channel classification unit-tested per tier; unknown phase asserts
-      ONLINE; every online phase on the client tier has a disclosure text.
+- [ ] Privacy-notice text unit-tested: every route variant (own key, local,
+      borrowed, self/metered/off search, recall, shared-workspace lead-in)
+      asserts its key phrases; an unknown search route reads as OFF.
 - [ ] Intros: tap-to-skip works, watchdog fires on a stalled frame,
       reduced-motion suppresses the auto-play, seen-key only after a real
       play, forced-replay param works.
@@ -210,14 +214,12 @@ with their own vocabulary:
   days ("no site should have a persistent small figure following them
   around") and lowered every ambient cycle. Build greeters one-shot from
   the start; make ambient motion boringly rare.
-- **A pink check on an online step is a lie.** The completion-mark split
-  (local → tier check, online → ℹ disclosure on the client tier) is the
-  grammar's honesty guarantee; default-unknown-to-online keeps a new phase
-  from silently under-disclosing.
-- **Disclosure text must come from send-time context.** Computing it at
-  render time from current settings mis-describes a task whose settings
-  changed mid-flight; capture provider/route/credential where the send
-  resolves them.
+- **Don't make the animation carry the privacy story.** The reference tried
+  per-task channel badges (umbrella = offline, balloon = online, per-step ℹ
+  finales) and the owner reverted it the next day: symbols that switch per
+  step stop reading as tier identity, and the disclosure got shredded into
+  bubbles nobody could read as a whole. Keep the animations tier-pure and
+  put the full what-goes-where story in one readable notice.
 - **Registry numbering drifts.** The reference registry accidentally holds
   two entries numbered UX-2 — when adding an entry, take the next FREE
   number and fix collisions on sight; a registry agents cite by number

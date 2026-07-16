@@ -158,8 +158,9 @@ pure helpers `serverTokenService`/`serverTokenLive` in
   tier). It appears first in the model dropdown while live.
 - **Disclosure** — the connected-APIs banner on arrival, a dedicated
   Settings row (per-permission remaining + master off switch), and the
-  same per-step ℹ notices as the proxy path (the conversation routes
-  through the server on the `api` permission — said plainly).
+  same ℹ privacy-notice treatment as the proxy path (the header notice
+  says plainly that the conversation routes through the server on the
+  `api` permission — `privacyNoticeLines`, docs/SYMBOL-LANGUAGE.md §6).
 - The token is a temporary credential in localStorage (like the legacy
   grants), never part of the sealed project state.
 
