@@ -19,7 +19,7 @@ description: >-
 ## What this is
 
 The try-it queue (see **testable-interaction-points**) gives a fix a linkable
-place to be tried and a 👍/👎 verdict. This skill is the LOOP around it: the
+place to be tried and a 👍/👎/❓ verdict. This skill is the LOOP around it: the
 standing process where Claude Code **feeds new test cases in** at one end and
 **consumes verdicts into orchestrated fixes** at the other. One session runs
 it (the "test loop" session — this can be the same session as the
@@ -27,23 +27,25 @@ watcher/merger); the owner just opens the queue on their phone and taps
 verdicts.
 
 ```
-   MINT ────────────► QUEUE (open) ────► owner tests ────► VERDICT (passed|failed)
-    ▲                                                          │
-    │                                                          ▼ sweep (--verdicts)
- sources:                                             MINE THE NOTE (always)
- · MAINTENANCE-OWNERS "owes"                                   │
- · merged fix PRs                                     ┌────────┴─────────┐
- · feedback queue fixes                               ▼                  ▼
- · chatlogs regressions                          clean pass        bug / regression
- · features board SHIPPED flips                       │                  │
-                                                 ARCHIVE (= ack)    ROUTE THE FIX
-                                                                        │
-                                              ┌─────────────────────────┼──────────────────┐
-                                              ▼                         ▼                  ▼
-                                    owned subsystem?          no owner: fix directly   idea/preference:
-                                    feature-maintenance       (bugreport-bugfix +      features board
-                                    PR comment wakes the      regression test)         (FEATURES.md §3)
-                                    author-worker                       │
+   MINT ────────────► QUEUE (open) ────► owner tests ────► VERDICT (passed|failed|untestable)
+    ▲                     ▲                                    │
+    │                     │ --reply answers the ❓ thread      ▼ sweep (--verdicts)
+ sources:                 │ AND re-opens            MINE THE NOTE (always)
+ · MAINTENANCE-OWNERS     │                                    │
+   "owes"                 │                 ┌──────────────────┼─────────────────┐
+ · merged fix PRs         │                 ▼                  ▼                 ▼
+ · feedback queue fixes   │            clean pass        bug / regression   ❓ untestable /
+ · chatlogs regressions   │                 │                  │            needs clarification
+ · features board         │            ARCHIVE (= ack)    ROUTE THE FIX          │
+   SHIPPED flips          │                                    │            ANSWER on the
+                          └────────────────────────────────────┼─────────── point's thread
+                                                               │            (fix target/actions
+                                              ┌────────────────┼──────────┐ too if the scene
+                                              ▼                ▼          ▼ was broken)
+                                    owned subsystem?    no owner: fix   idea/preference:
+                                    feature-maintenance directly        features board
+                                    PR comment wakes    (bugreport-     (FEATURES.md §3)
+                                    the author-worker   bugfix + test)
                                               └───────────┬────────────┘
                                                           ▼
                                             fix merges → declare a NEW point
@@ -64,10 +66,10 @@ verdicts.
    wakes the subscribed author-worker — it IS the verdict delivery. Move a
    fully-`done` file to `docs/test-requests/archive/` and commit.
 1. **Sweep**: `scripts/testpoints --verdicts` — every decided-but-unconsumed
-   point (`passed` + `failed`; `archived` = already consumed, never
-   reappears). Points minted from a request file get their verdict routed by
-   step 0's sync; this sweep still mines their notes for anything the loop
-   itself should act on (routing table below).
+   point (`passed` + `failed` + `untestable`; `archived` = already consumed,
+   never reappears). Points minted from a request file get their verdict
+   routed by step 0's sync; this sweep still mines their notes for anything
+   the loop itself should act on (routing table below).
 2. **Mine every note, pass or fail.** The status is the tester's overall call;
    the NOTE is where the real signal lives. Evidence: point #3 (2026-07-15)
    was 👍 "works" but its note carried a verbatim instruction-following
@@ -81,6 +83,8 @@ verdicts.
    the "processed" marker; there is no separate consumed flag. Keep a `failed`
    point in `failed` until its fix lands, then `--set '{"status":"open"}'` for
    re-test (or declare a fresh point if the fix changed what to look for).
+   An `untestable` point is acked by ANSWERING it (`--reply` re-opens it) —
+   never by archiving it unanswered.
 5. **Mint** the next batch of test points (sources below).
 6. **Report** to the owner: what the verdicts said, what was routed where,
    what's newly on the queue. A tick with no verdicts and nothing to mint is
@@ -90,6 +94,7 @@ verdicts.
 
 | Finding in a verdict/note | Route |
 |---|---|
+| ❓ `untestable` — the tester never reached the point, or asked a question | **Answer it yourself, this tick**: `scripts/testpoints --reply <id> "…"` posts the answer on the point's clarification thread AND re-opens it (the banner shows the dialogue on the tester's next visit). Handle EACH thread input on its subject — a question gets an answer, a broken scene gets the point's `target`/`actions` fixed in the same pass, a missing feature-of-the-grammar goes to the improvements backlog. The thread continues until a real 👍/👎 lands. Do NOT archive an unanswered ❓. |
 | Regression or bug in a subsystem with a `docs/MAINTENANCE-OWNERS.md` row | **feature-maintenance**: comment on the owning PR (`mcp__github__add_issue_comment`) with the note's contents as the regression report — the author-worker wakes and fixes. Do NOT silently fix it yourself. |
 | Bug with no maintenance owner | Fix it directly, **bugreport-bugfix** style: the verbatim complaint becomes the regression test; the fix lands as a focused PR. Worked example: point #3's Shodan-noise complaint → `SHODAN_RELEVANCE_NOTE` in `src/shodan.js` + `buildShodanBlock` tests. |
 | Feature idea, UX preference, "it should also…" | **features board** (`FEATURES.md` §3 + the `src/features.js` catalog, same-commit mirror) so the owner prioritizes it — not an immediate fix. |
@@ -179,7 +184,7 @@ These extend testable-interaction-points' "declaring points well":
   (server `cleanAction` + client executor + `CLIENT_ACTION_TYPES`, one change,
   see the grammar-lockstep rule).
 - A `?decided=1` (or multi-status) filter on `GET /api/admin/testpoints` so
-  `--verdicts` is one call instead of two.
+  `--verdicts` is one call instead of three.
 - A verdict NOTIFICATION (alert row or webhook → wakes the loop session) so
   consumption isn't poll-only.
 - Banner coverage beyond `/rver` (at least `/admin`), so non-DRS points don't

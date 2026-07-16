@@ -10,11 +10,16 @@ After the PR merges, the **test-feedback loop** mints each point into the
 live try-it queue (`scripts/test-requests --mint`), the owner tests from
 their phone, and the loop syncs each verdict back (`--sync`): stamped into
 this file (git is the ledger) AND posted as a comment on the owning PR —
-which wakes the subscribed author-worker. A 👎 comment is the worker's
-regression report; the follow-up fix re-opens the point.
+which wakes the subscribed author-worker. Verdicts are 👍 pass / 👎 fail /
+❓ untestable. A 👎 comment is the worker's regression report; the follow-up
+fix re-opens the point. A ❓ means the owner never reached a state where the
+feature could be tried (or didn't understand what to do) — the note is a
+question on the point's clarification thread, which the loop answers
+(`scripts/testpoints --reply`) before re-opening the point.
 
 A point with `"runs": N` asks for N confirmations (flaky or device-dependent
-behavior): each 👍 before the Nth re-opens the point for the next round.
+behavior): each 👍 before the Nth re-opens the point for the next round
+(only 👍 passes count toward `runs`).
 
 Format, authoring rules, and the full lifecycle: the **request-testing**
 skill (worker side) and the **test-feedback-loop** skill (loop side).

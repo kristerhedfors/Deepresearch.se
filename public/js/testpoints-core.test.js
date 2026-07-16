@@ -62,6 +62,7 @@ test("nextOpenPoint picks the oldest open point, skipping the just-done id", () 
     { id: 9, status: "open" },
     { id: 3, status: "open" },
     { id: 5, status: "passed" },
+    { id: 2, status: "untestable" }, // with the loop, awaiting an answer — not on the queue
     { id: 7, status: "open" },
   ];
   assert.equal(nextOpenPoint(queue).id, 3); // oldest open
