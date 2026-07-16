@@ -571,3 +571,84 @@ describe("DRC developer-mode tool loop", () => {
     assert.deepEqual(toolNames.sort(), ["grep_source", "list_files", "read_file"]);
   });
 });
+
+// ---- the ON-DEVICE engine provider end to end -----------------------------------------
+//
+// A provider with `engine` callables (the on-device tier — ondevice-engine.js)
+// runs the WHOLE flow with no fetch anywhere: chatStream synthesizes the
+// OpenAI SSE readStream consumes, complete() serves the planning phases, and
+// serialize:true turns the harvest fan-out sequential (one GPU). The mock
+// engine mirrors the real provider's shape — the real one is browser glue
+// (Worker/WebGPU), deliberately not Node-importable, like sandbox.js.
+describe("runDrcResearch on an engine provider (the on-device tier)", () => {
+  const sseBody = (chunks) =>
+    new TextEncoder().encode(
+      chunks.map((c) => `data: {"choices":[{"delta":{"content":${JSON.stringify(c)}}}]}`).join("\n\n") +
+        "\n\ndata: [DONE]\n\n",
+    );
+
+  test("full flow: planning on complete(), synthesis streamed, harvest strictly sequential", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const completes = [];
+    const provider = {
+      id: "ondevice",
+      label: "On-device",
+      base: "",
+      keyless: true,
+      jsonModel: null,
+      fallbackModels: [],
+      modelFilter: () => true,
+      params: (maxTokens) => ({ max_tokens: maxTokens }),
+      jsonTimeoutMs: 600_000,
+      streamIdleMs: 300_000,
+      serialize: true,
+      engine: {
+        chatStream: async () =>
+          new Response(sseBody(["Local ", "answer."]), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+        complete: async (model, messages) => {
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          await new Promise((r) => setTimeout(r, 15)); // overlap would show here
+          inFlight--;
+          const phase = phaseOf({ messages });
+          completes.push({ phase, model });
+          const payload =
+            phase === "triage"
+              ? { action: "research", complexity: "comparison", subquestions: ["What is A?", "What is B?"] }
+              : phase === "harvest"
+                ? { facts: ["a fact"], uncertain: [] }
+                : phase === "gap"
+                  ? { complete: true }
+                  : { verdict: "pass" };
+          return { choices: [{ message: { content: JSON.stringify(payload) } }] };
+        },
+      },
+    };
+
+    let streamed = "";
+    const phases = [];
+    const result = await runDrcResearch({
+      providerId: "ondevice",
+      provider, // the providerOverride branch — same as the proxy providers
+      apiKey: "",
+      model: "bonsai-8b-1bit",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      onDelta: (c) => (streamed += c),
+    });
+
+    assert.deepEqual(phases, ["triage", "harvest", "gap", "synth", "validate"]);
+    assert.equal(result.answer, "Local answer.");
+    assert.equal(streamed, "Local answer.");
+    assert.equal(result.validated, true);
+    // serialize:true — the two harvest calls never overlapped.
+    assert.equal(maxInFlight, 1);
+    assert.equal(completes.filter((c) => c.phase === "harvest").length, 2);
+    // jsonModel:null collapses planning onto the one on-device model.
+    for (const c of completes) assert.equal(c.model, "bonsai-8b-1bit");
+  });
+});

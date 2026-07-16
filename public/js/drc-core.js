@@ -60,8 +60,9 @@ export const DRC_STATE_KIND = "deepresearch-free-project";
 // v2 moved the provider keys into the sealed state; v3 added the client-
 // side RAG index (rag — drc-rag.js), sealed like everything else; v4 added
 // localBaseUrl (the user's own local/custom OpenAI-compatible inference
-// server — drc-providers.js's keyless `local` entry).
-export const DRC_STATE_V = 4;
+// server — drc-providers.js's keyless `local` entry); v5 added onDevice
+// (the phone-local Bonsai inference knob — ondevice-engine.js).
+export const DRC_STATE_V = 5;
 
 // ---- derivation ---------------------------------------------------------------
 
@@ -143,6 +144,13 @@ export function emptyDrcState() {
     // party receives the conversation at all. Empty/absent (older blobs)
     // reads as not configured.
     localBaseUrl: "",
+    // ON-DEVICE inference (the phone-local Bonsai models — ondevice-engine.js,
+    // docs/BONSAI-27B-PHONE-INFERENCE.md): the settings knob that reveals the
+    // feature. Default OFF and absent-reads-as-off (older blobs) — while off,
+    // not a byte of the engine, runtime, or weights loads (the bandwidth
+    // guarantee); the weights themselves download only through the explicit
+    // consent popup, never from flipping this.
+    onDevice: false,
     conversations: [],
     rag: { docs: [] },
   };
@@ -153,7 +161,7 @@ export function validateDrcState(s) {
   const ok = !!(
     s &&
     typeof s === "object" &&
-    (s.v === 1 || s.v === 2 || s.v === 3 || s.v === DRC_STATE_V) && // older blobs still open
+    (s.v === 1 || s.v === 2 || s.v === 3 || s.v === 4 || s.v === DRC_STATE_V) && // older blobs still open
     s.kind === DRC_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
@@ -168,7 +176,8 @@ export function validateDrcState(s) {
     ok &&
     (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys))) &&
     (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs))) &&
-    (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string")
+    (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string") &&
+    (s.onDevice === undefined || typeof s.onDevice === "boolean")
   );
 }
 
@@ -180,6 +189,7 @@ export function migrateDrcState(s) {
   if (s.providerId === undefined) s.providerId = null;
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
   if (typeof s.localBaseUrl !== "string") s.localBaseUrl = "";
+  if (typeof s.onDevice !== "boolean") s.onDevice = false;
   return s;
 }
 

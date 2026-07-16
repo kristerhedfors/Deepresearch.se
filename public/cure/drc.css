@@ -1104,3 +1104,42 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   color: var(--muted); font-size: 1.2rem; line-height: 1; padding: 0 .2rem;
 }
 #proxybanner #proxybannerclose:hover { color: var(--text); }
+
+/* ---- ON-DEVICE models (phone-local Bonsai — the settings section + the
+   download-consent modal). The modal is a REAL choice (unlike the #drspop
+   explainer): a fixed backdrop so the size line is read before anything
+   downloads; backdrop tap = Not now (dismissal is never consent). ---- */
+#odmodels { margin: .15rem 0 .3rem; }
+#odmodels[hidden] { display: none; }
+.od-model {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  column-gap: .6rem; row-gap: .1rem; padding: .3rem 0;
+  border-top: 1px dashed var(--border);
+}
+.od-model .od-label { font-size: .85rem; font-weight: 600; }
+.od-model .od-note { grid-column: 1 / -1; margin: 0; }
+.od-model .od-btn { font-size: .78rem; padding: .3rem .6rem; white-space: nowrap; }
+#odconsent {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(40, 36, 18, .45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  padding: 1rem;
+}
+#odconsent[hidden] { display: none; }
+.odc-card {
+  max-width: 420px; width: 100%;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: .9rem 1rem; font-size: .85rem; line-height: 1.5;
+  box-shadow: 0 10px 32px rgba(60, 50, 10, .35);
+}
+.odc-card strong { font-size: .95rem; }
+.odc-card p { margin: .5rem 0 .7rem; }
+.odc-card .row { display: flex; gap: .6rem; justify-content: flex-end; }
+.odc-card button {
+  font-size: .85rem; font-weight: 600; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: .45rem .8rem; cursor: pointer;
+}
+.odc-card #odc-yes { background: var(--accent); color: #fff; border-color: var(--accent); }
+.odc-card #odc-yes:disabled { opacity: .55; cursor: default; }

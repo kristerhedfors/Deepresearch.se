@@ -1,0 +1,25 @@
+{
+  "branch": "claude/bonsai-27b-phone-inference-hqhz6p",
+  "pr": null,
+  "requested_at": "2026-07-16",
+  "points": [
+    {
+      "label": "On-device knob + consent popup",
+      "summary": "Se/cure now has an on-device model tier (1-bit Bonsai, runs in the browser on WebGPU). On /cure open Settings (gear): a new 'On-device model' switch sits under 'Local model server'. PASS: flipping it ON reveals three Bonsai rows (27B / 8B / 1.7B) with real per-device states — on a phone without WebGPU each row must SAY why it can't run (never a silent failure); Bonsai 27B must say its browser build isn't published yet. Tapping 'Download…' on 1.7B or 8B opens a consent card that shows the EXACT download size in the button ('Download 290 MB' style) — tapping outside the card or 'Not now' must close it WITHOUT downloading (watch the network indicator). FAIL: any download starting from the switch itself or from a dismissed card.",
+      "target": "/cure",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Bonsai 1.7B download → offline answer on-device",
+      "summary": "On a WebGPU-capable device (Android Chrome or desktop Chrome; iOS Safari is experimental — a clear 'can't run here' message is a PASS on unsupported devices, not a fail): /cure → Settings → On-device model ON → Download Bonsai 1.7B (~290 MB, Wi-Fi). PASS: progress percent ticks in the row; when done the row reads 'On this device · <size>' with a Delete button, and the model dropdown gains a first group '📱 On-device — nothing leaves this device'. Pick it and ask a question: the answer must stream (slowly is fine — first token can take a minute while the model compiles). The note under the composer must read that nothing leaves this device. Then Delete must free the row back to 'Download…'. FAIL: a hung download with no message, a checksum error on retry, or the dropdown group missing after download.",
+      "target": "/cure",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

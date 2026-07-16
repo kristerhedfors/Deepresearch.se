@@ -665,7 +665,21 @@ fail-soft — the pipeline invariants hold client-side; whole flow
 Node-tested end to end against a mock provider), `drc-store.js`
 (the BROWSER-LOCAL sealed-state storage adapter — localStorage rows of
 ciphertext keyed by blob id, injectable backend, deliberately the seam
-a future remote adapter would slot into — Node-tested), and
+a future remote adapter would slot into — Node-tested),
+`ondevice-core.js` + `ondevice-engine.js` + `ondevice-worker.js` (the
+ON-DEVICE inference tier, 2026-07-16 — `docs/BONSAI-27B-PHONE-INFERENCE.md`:
+1-bit Bonsai models run INSIDE the browser on WebGPU via the VENDORED
+transformers.js (`public/vendor/transformers/`, SHA-256-pinned like xterm),
+weights downloaded from Hugging Face into an OPFS cache with resume +
+streaming-SHA-256 verification, behind the sealed-state `onDevice` knob
+(v5) and the UX-4 consent popup (exact size in the button; dismissal is
+never consent). The engine registers as a built-on-demand `engine` provider
+(the proxyLlmProvider pattern) whose wire calls hit the in-browser engine —
+drcChatStream/drcCompleteJson branch on `provider.engine`, with per-provider
+`jsonTimeoutMs`/`streamIdleMs`/`serialize` overrides for phone-speed
+inference; the pure core (catalog, HF-tree download plan, progress math,
+streaming SHA-256, think-strip filter, capability verdict, wire shapes) is
+Node-tested; the worker is browser-only glue like sandbox.js), and
 `drc-page-core.js` (the DRC page's import-free PURE core — the small
 fragments the `/cure` DOM-wiring layer (`drc.js`) would otherwise inline
 or duplicate: `grantLive`/`grantFlagEnabled` (the ONE liveness + master-
@@ -989,6 +1003,10 @@ toggle, `normalizeSearchBackend`'s backend/URL/key/results normalization,
 the `parseProjectPath`/`parsePublicationRef` deep-link parsers incl. the
 reserved "workspace" slug, and
 `wmHtml`'s escape-then-tighten wordmark rendering),
+`ondevice-core.js` (the on-device tier's pure core: the Bonsai model
+catalog, `planModelFiles` over the HF tree listing, `downloadProgress`,
+the incremental `createSha256`, `createThinkFilter`, `capabilityVerdict`,
+the SSE/completion wire builders, `wasmPathsFor`),
 `workspace-core.js` (secure workspaces: the seal→open round-trip incl.
 wrong-password/tamper fail-soft, the hacka.re wire format, the 8192-round
 KDF's determinism + salt sensitivity, the dual-key independence, the
