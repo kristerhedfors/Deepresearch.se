@@ -1,7 +1,8 @@
 {
   "active": true,
   "merged_at": "2026-07-13",
-  "main_sha": "43ec4b6",
+  "main_sha": "2d5108a",
+  "main_sha_note": "Re-pointed 2026-07-16 (was 43ec4b6, the original reconciliation commit): shallow session clones cannot reach 3-day-old history, so the barrier hook false-positived on every fresh branch. Any branch cut from main at/after 2d5108a satisfies the same 'follows the reconciled main' invariant.",
   "reason": "Mass reconciliation: the pre-existing feature branches were merged into main (safe new work integrated; superseded/dropped ones recorded in docs/MERGED-BRANCHES.md). Branches predating main_sha are stale — sync to main and cut a NEW branch. Owner clears this by setting active:false once the fleet has reset.",
   "ledger": "docs/MERGED-BRANCHES.md",
   "skill": ".claude/skills/merge-branches/SKILL.md"
