@@ -9,7 +9,7 @@
       "target": "/cure",
       "actions": [],
       "runs": 2,
-      "minted_id": null,
+      "minted_id": 44,
       "verdicts": []
     },
     {
@@ -18,7 +18,7 @@
       "target": "/cure",
       "actions": [],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 45,
       "verdicts": []
     }
   ]
