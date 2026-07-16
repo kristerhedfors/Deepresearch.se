@@ -46,3 +46,30 @@ describe("normalizeLlmMarkdown", () => {
     assert.equal(normalizeLlmMarkdown(undefined), undefined);
   });
 });
+
+// The same-origin documentation-image allowlist (HELP mode): the ONLY <img>
+// sources an answer may render inline. Everything else — external hosts,
+// protocol-relative, traversal — stays forbidden (the tracking-pixel class).
+import { isSafeDocImage } from "./markdown.js";
+
+describe("isSafeDocImage", () => {
+  test("allows only the fixed same-origin doc-image prefixes", () => {
+    assert.equal(isSafeDocImage("/introspect/docs-img/docs/img/encryption/rver-app.png"), true);
+    assert.equal(isSafeDocImage("/help/img/header.png"), true);
+  });
+  test("rejects everything else", () => {
+    for (const src of [
+      "https://evil.example/x.png",
+      "//evil.example/x.png",
+      "/introspect/docs-img/../../../api/logout",
+      "/introspect/docs-img//evil",
+      "/icons/icon-192.png",
+      "data:image/png;base64,AAAA",
+      "",
+      null,
+      undefined,
+    ]) {
+      assert.equal(isSafeDocImage(/** @type {any} */ (src)), false, String(src));
+    }
+  });
+});

@@ -29,15 +29,20 @@
 // enrichment.js), so "always inject" here means "always inject in dev mode".
 
 import {
+  DOCS_CORPUS_PATH,
+  DOCS_RAG_PATH,
   OWASP_CORPUS_PATH,
   OWASP_RAG_PATH,
   RAG_PATH,
   SNAPSHOT_PATH,
+  buildHelpDocsBlock,
   buildIntrospectionBlock,
   buildOwaspReferenceBlock,
   diversifyByCategory,
+  docsCorpusMeta,
+  helpIntent,
   introspectionActive,
-  lexicalRetrieveOwasp,
+  lexicalRetrieveCorpus,
   mentionedSnapshotPaths,
   retrieveSourceChunks,
   securityAssessmentIntent,
@@ -54,6 +59,13 @@ const RETRIEVE_K = 6;
 // vulnerabilities the model can quote, not the single closest one.
 const OWASP_RETRIEVE_K = 8;
 const OWASP_PER_CATEGORY = 2;
+// Documentation passages retrieved for the HELP layer (always on in dev mode —
+// the same no-brittle-gate lesson as the source injection). A help-shaped ask
+// (helpIntent) widens the retrieval; per-doc cap keeps the passages spanning
+// several docs rather than k near-duplicates from the closest one.
+const HELP_RETRIEVE_K = 8;
+const HELP_RETRIEVE_K_BASE = 4;
+const HELP_PER_DOC = 2;
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -180,6 +192,97 @@ export async function loadOwaspRag(env, log) {
 }
 
 /**
+ * Fetch + validate the committed HELP docs corpus (snapshot-shaped) AND its
+ * help metadata (per-doc titles, resolved symbol references, the repo link
+ * base) through the ASSETS binding. Null on any failure — the conversation
+ * then simply proceeds without the documentation block.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<{ snapshot: Snapshot, meta: ReturnType<typeof docsCorpusMeta> } | null>}
+ */
+export async function loadDocsCorpus(env, log) {
+  try {
+    const assets = /** @type {any} */ (env).ASSETS;
+    if (!assets?.fetch) return null;
+    const res = await assets.fetch(new Request("https://assets.internal" + DOCS_CORPUS_PATH));
+    if (!res.ok) {
+      log.warn("introspect.docs_corpus_missing", { status: res.status });
+      return null;
+    }
+    const raw = await res.json();
+    const snapshot = validateSnapshot(raw);
+    if (!snapshot) {
+      log.warn("introspect.docs_corpus_invalid", {});
+      return null;
+    }
+    return { snapshot, meta: docsCorpusMeta(raw) };
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.docs_corpus_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Fetch + validate the committed docs RAG index through the ASSETS binding.
+ * Null (never a throw) on any failure — retrieval degrades to the lexical path.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<import('../public/js/introspect-core.js').RagIndex | null>}
+ */
+export async function loadDocsRag(env, log) {
+  try {
+    const assets = /** @type {any} */ (env).ASSETS;
+    if (!assets?.fetch) return null;
+    const res = await assets.fetch(new Request("https://assets.internal" + DOCS_RAG_PATH));
+    if (!res.ok) {
+      log.warn("introspect.docs_rag_missing", { status: res.status });
+      return null;
+    }
+    const index = validateRagIndex(await res.json());
+    if (!index) log.warn("introspect.docs_rag_invalid", {});
+    return index;
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.docs_rag_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
+ * Retrieve the documentation passages relevant to the question for the HELP
+ * layer, spread across several docs (the per-doc cap). Dense retrieval (the
+ * committed e5 index) when the query embed is available, else the embedding-
+ * free lexical path — so the help layer works self-contained, exactly like the
+ * OWASP grounding. Empty on any failure. `mode` reports which path ran.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Float32Array | null} qvec
+ * @param {string} query
+ * @param {boolean} helpAsk widen retrieval for a help-shaped question
+ * @returns {Promise<{ retrieved: Array<{ p: string, text: string, score: number }>, meta: ReturnType<typeof docsCorpusMeta>, mode: string }>}
+ */
+async function retrieveHelpDocs(env, log, qvec, query, helpAsk) {
+  const empty = { retrieved: [], meta: docsCorpusMeta(null), mode: "none" };
+  try {
+    const corpus = await loadDocsCorpus(env, log);
+    if (!corpus) return empty;
+    const k = helpAsk ? HELP_RETRIEVE_K : HELP_RETRIEVE_K_BASE;
+    if (qvec) {
+      const index = await loadDocsRag(env, log);
+      if (index) {
+        const all = retrieveSourceChunks(index, corpus.snapshot, qvec, index.vectors.length);
+        const retrieved = diversifyByCategory(all, k, HELP_PER_DOC);
+        if (retrieved.length) return { retrieved, meta: corpus.meta, mode: "dense" };
+      }
+    }
+    const retrieved = lexicalRetrieveCorpus(corpus.snapshot, query, { k, perCat: HELP_PER_DOC });
+    return { retrieved, meta: corpus.meta, mode: retrieved.length ? "lexical" : "none" };
+  } catch (/** @type {any} */ err) {
+    log.warn("introspect.docs_retrieve_failed", { error: err?.message || String(err) });
+    return empty;
+  }
+}
+
+/**
  * Embed the query once (e5 asymmetric query prefix), so BOTH the source
  * retrieval and the OWASP retrieval reuse one embedding call. Null (never a
  * throw) on empty input or any failure — retrieval then degrades to [].
@@ -251,7 +354,7 @@ async function retrieveOwasp(env, log, qvec, query) {
       }
     }
     // Offline fallback: lexical TF-IDF over the corpus, no embedder needed.
-    const retrieved = lexicalRetrieveOwasp(corpus.snapshot, query, { k: OWASP_RETRIEVE_K, perCat: OWASP_PER_CATEGORY });
+    const retrieved = lexicalRetrieveCorpus(corpus.snapshot, query, { k: OWASP_RETRIEVE_K, perCat: OWASP_PER_CATEGORY });
     return { retrieved, sources: corpus.sources, mode: retrieved.length ? "lexical" : "none" };
   } catch (/** @type {any} */ err) {
     log.warn("introspect.owasp_retrieve_failed", { error: err?.message || String(err) });
@@ -313,6 +416,27 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // Same convention as the Shodan block: appended so every phase sees it.
   let convo = /** @type {Conversation} */ (withAppendedText(conversation, block));
 
+  // HELP layer (always on in dev mode, like the source itself): the
+  // documentation passages relevant to this question, quoted verbatim with
+  // resolved symbol references — the first layer of the one help interface; the
+  // source above is the deeper level a follow-up escalates into. A help-shaped
+  // ask (helpIntent, sticky over the conversation) widens the retrieval.
+  // Stashed in state too: the native-tool source-research path reads the CLEAN
+  // pre-enrichment conversation, so it injects state.helpBlock explicitly
+  // (the owaspBlock pattern); every other phase rides the appended copy.
+  const helpAsk = texts.some((t) => helpIntent(t));
+  const { retrieved: helpDocs, meta: docsMeta, mode: helpMode } = await retrieveHelpDocs(env, log, qvec, latestText, helpAsk);
+  const helpBlock = buildHelpDocsBlock(helpDocs, {
+    sources: docsMeta.sources,
+    symbols: docsMeta.symbols,
+    repo: docsMeta.repo,
+    helpAsk,
+  });
+  if (helpBlock) {
+    /** @type {any} */ (state).helpBlock = helpBlock;
+    convo = /** @type {Conversation} */ (withAppendedText(convo, helpBlock));
+  }
+
   // Security assessment: ALSO inject the OWASP Top 10 reference block (the
   // retrieved OWASP paragraphs) so findings are classified against — and quote —
   // the actual OWASP text. Sticky like the mode itself (any user message in the
@@ -343,6 +467,9 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     [
       `top matches: ${retrieved.map((r) => r.p).slice(0, 4).join(", ") || "(orientation only)"}`,
       ...(inlined.length ? [`inlined: ${inlined.join(", ")}`] : []),
+      ...(helpDocs.length
+        ? [`documentation${helpAsk ? " (help)" : ""}: ${[...new Set(helpDocs.map((r) => r.p))].slice(0, 4).join(", ")}`]
+        : []),
       ...(owaspCats.length ? [`OWASP Top 10 reference: ${[...new Set(owaspCats)].join(", ")}`] : []),
     ],
   );
@@ -355,6 +482,10 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     inlined: inlined.length,
     include_index: strongIntent,
     block_chars: block.length,
+    help_ask: helpAsk,
+    help_docs: helpDocs.length,
+    help_mode: helpMode,
+    help_top: [...new Set(helpDocs.map((r) => r.p))].slice(0, 4),
     owasp: owaspRetrieved.length,
     owasp_mode: owaspMode,
     owasp_cats: [...new Set(owaspCats)].slice(0, 8),

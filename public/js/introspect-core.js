@@ -33,6 +33,18 @@ export const RAG_PATH = "/introspect/source-rag.json";
 // chunker / int8 codec / retrieval below.
 export const OWASP_CORPUS_PATH = "/introspect/owasp-corpus.json";
 export const OWASP_RAG_PATH = "/introspect/owasp-rag.json";
+// The HELP documentation corpus + its dense index (scripts/bundle-docs.mjs,
+// scripts/bundle-docs-rag.mjs) — the repo's whole Markdown documentation
+// (README, CLAUDE.md, FEATURES.md, the security register, docs/*.md) as a
+// snapshot-shaped corpus, each doc carrying its title, its resolved SYMBOL
+// references (backticked names → real source file + definition line) and its
+// images rewritten to served /introspect/docs-img/ URLs. This is help mode's
+// primary layer: usage questions are answered from the documentation near-
+// verbatim (images and captions included), and follow-ups escalate into the
+// source — the deeper support level. Reuses the chunker / int8 codec /
+// retrieval below, exactly like the OWASP corpus.
+export const DOCS_CORPUS_PATH = "/introspect/docs-corpus.json";
+export const DOCS_RAG_PATH = "/introspect/docs-rag.json";
 
 // ---- caps -------------------------------------------------------------------
 
@@ -203,6 +215,47 @@ const SECURITY_ASSESSMENT_PATTERNS = [
 export function securityAssessmentIntent(text) {
   const s = String(text || "");
   return SECURITY_ASSESSMENT_PATTERNS.some((re) => re.test(s));
+}
+
+// ---- help intent (EN + SV, deterministic) --------------------------------------
+
+// Whether a message is a HELP-shaped ask — "how do I…", "what does X do",
+// "where do I find…", "can I…", or an explicit ask for help/guide/manual. Help
+// mode is a SPECIAL VERSION of introspection: the docs block is injected in
+// dev mode regardless (the same no-brittle-gate lesson as the source
+// injection, chat_logs #275), so this gate never decides WHETHER the
+// documentation is available — only the EMPHASIS: a help-shaped ask widens the
+// docs retrieval and labels the step as help. Deliberately generous (a false
+// positive just means richer docs context); Swedish forms carry the same
+// breadth as English (invariant 6).
+const HELP_PATTERNS = [
+  /\bhow\s+(?:do|can|would|should|does)\s+(?:i|one|you)\b/i,
+  /\bhow\s+to\s+\w/i,
+  /\bwhere\s+(?:do|can|would|should)\s+i\b/i,
+  /\bwhere\s+(?:is|are)\s+(?:the|my)\b/i,
+  /\bwhat\s+(?:is|are|does|do|happens|means?)\b/i,
+  /\bcan\s+i\b/i,
+  /\bhelp\b/i,
+  /\b(?:user\s+)?(?:guide|manual|documentation|docs|instructions?|tutorial|walk\s?-?through)\b/i,
+  // Swedish parity.
+  /\bhur\s+(?:gör|kan|ska|bör|använder|fungerar)\s+(?:jag|man|du|det|den)?\b/i,
+  /\bvar\s+(?:hittar|finns|ser|ligger)\b/i,
+  /\bvad\s+(?:är|gör|betyder|händer|innebär)\b/i,
+  /\bkan\s+(?:jag|man)\b/i,
+  /\bhjälp(?:en|a)?\b/i,
+  /\b(?:användar)?(?:guide(?:n)?|manual(?:en)?|dokumentation(?:en)?|instruktion(?:er|erna)?|handbok(?:en)?)\b/i,
+];
+
+/**
+ * Deterministic "this is a help/usage-shaped question" gate for ONE message
+ * (EN+SV) — steers the help layer's docs-retrieval emphasis and step labeling
+ * in introspection mode. Never decides whether documentation is injected.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function helpIntent(text) {
+  const s = String(text || "");
+  return HELP_PATTERNS.some((re) => re.test(s));
 }
 
 // ---- snapshot validation -------------------------------------------------------
@@ -917,18 +970,21 @@ function owaspTerms(s) {
 }
 
 /**
- * OFFLINE lexical retrieval over the OWASP corpus — NO embeddings. Scores each
- * corpus chunk by TF-IDF overlap with the query's content terms (df computed
- * across the corpus's own chunks), then applies the category-diversity cap. This
- * is what lets the OWASP grounding work fully self-contained: DRC uses it (no
- * Berget e5 in the browser), and DRS falls back to it when the query embed is
+ * OFFLINE lexical retrieval over a snapshot-shaped corpus — NO embeddings.
+ * Scores each corpus chunk by TF-IDF overlap with the query's content terms
+ * (df computed across the corpus's own chunks), then applies the per-doc/
+ * category diversity cap (diversifyByCategory keys on the corpus key's leading
+ * token — the OWASP category id, or the whole path for the docs corpus, i.e. a
+ * per-doc cap). This is what lets a committed corpus work fully self-contained:
+ * DRC uses it (no Berget e5 in the browser) for BOTH the OWASP corpus and the
+ * help docs corpus, and DRS falls back to it when the query embed is
  * unavailable. Deterministic and never throws.
- * @param {Snapshot} corpus the OWASP corpus (snapshot-shaped: files:[{p,s,t}])
+ * @param {Snapshot} corpus a snapshot-shaped corpus (files:[{p,s,t}])
  * @param {string} query
  * @param {{ k?: number, perCat?: number }} [opts]
  * @returns {Array<{ p: string, ci: number, text: string, score: number }>}
  */
-export function lexicalRetrieveOwasp(corpus, query, opts = {}) {
+export function lexicalRetrieveCorpus(corpus, query, opts = {}) {
   const k = opts.k || 8;
   const perCat = opts.perCat || 2;
   const chunks = snapshotChunks(corpus); // [{p,ci,text}]
@@ -967,6 +1023,123 @@ export function lexicalRetrieveOwasp(corpus, query, opts = {}) {
     k,
     perCat,
   );
+}
+
+// The original OWASP-named export, kept as a pure alias so existing callers
+// and tests are untouched (the function was always corpus-generic).
+export const lexicalRetrieveOwasp = lexicalRetrieveCorpus;
+
+// ---- the HELP documentation block ---------------------------------------------
+//
+// Help mode is a SPECIAL VERSION of introspection: one interface that answers
+// everything from "what does the ghost button do?" down to "prove the server
+// never sees the vault key". The DOCUMENTATION is the first layer — a help/
+// usage question is answered from the committed docs corpus near-verbatim
+// (structure, wording, images with their captions, links) — and the SOURCE is
+// the deeper support level a follow-up escalates into (the retrieved excerpts
+// / native tools / read loop introspection mode already provides). This block
+// carries the retrieved doc passages plus their resolved SYMBOL references so
+// every documented claim links to the implementation that proves it.
+
+/** How many symbol references the block lists (deduped, relevance-filtered). */
+export const MAX_HELP_SYMBOLS = 20;
+
+/**
+ * The docs corpus's help-specific metadata riding alongside the snapshot
+ * fields (scripts/bundle-docs.mjs): per-doc titles, per-doc resolved symbol
+ * references, and the public repo's blob base URL for clickable links.
+ * Tolerant — missing/malformed fields come back empty, never a throw.
+ * @param {unknown} raw the parsed docs-corpus.json
+ * @returns {{ sources: Record<string, { title?: string }>, symbols: Record<string, Array<{ sym: string, file: string, line?: number }>>, repo: string }}
+ */
+export function docsCorpusMeta(raw) {
+  const v = /** @type {any} */ (raw && typeof raw === "object" ? raw : {});
+  const obj = (/** @type {any} */ x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+  return {
+    sources: obj(v.sources),
+    symbols: obj(v.symbols),
+    repo: typeof v.repo === "string" ? v.repo : "",
+  };
+}
+
+/**
+ * The symbol references relevant to a set of retrieved doc chunks: the
+ * corpus's per-doc resolved symbols, kept only when the symbol actually
+ * appears in a retrieved chunk's text, deduped by (sym, file), capped.
+ * @param {Array<{ p: string, text: string }>} retrieved
+ * @param {Record<string, Array<{ sym: string, file: string, line?: number }>>} symbols
+ * @param {number} [cap]
+ * @returns {Array<{ sym: string, file: string, line?: number }>}
+ */
+export function helpSymbolRefs(retrieved, symbols, cap = MAX_HELP_SYMBOLS) {
+  const list = Array.isArray(retrieved) ? retrieved : [];
+  const joined = list.map((r) => String(r?.text || "")).join("\n");
+  const out = [];
+  const seen = new Set();
+  for (const r of list) {
+    for (const s of (symbols && symbols[r?.p]) || []) {
+      if (!s || !s.sym || !s.file) continue;
+      const key = s.sym + "\0" + s.file;
+      if (seen.has(key)) continue;
+      if (!joined.includes(s.sym)) continue; // only symbols the quoted passages actually show
+      seen.add(key);
+      out.push(s);
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the labeled HELP documentation block appended to the conversation in
+ * developer mode (the OWASP-block convention: explicit begin/end markers, the
+ * instruction carried INSIDE the block so it holds on any answer path). The
+ * doc passages are quoted VERBATIM — unfenced, because documentation contains
+ * its own fenced code blocks — so the model can mirror them, image lines and
+ * caption lines included. "" when nothing was retrieved.
+ * @param {Array<{ p: string, text: string, score?: number }>} retrieved docs chunks (retrieveSourceChunks / lexicalRetrieveCorpus output)
+ * @param {{ sources?: Record<string, { title?: string }>, symbols?: Record<string, Array<{ sym: string, file: string, line?: number }>>, repo?: string, helpAsk?: boolean }} [opts]
+ * @returns {string}
+ */
+export function buildHelpDocsBlock(retrieved, opts = {}) {
+  const list = (Array.isArray(retrieved) ? retrieved : []).filter((r) => r && r.p && typeof r.text === "string" && r.text);
+  if (!list.length) return "";
+  const sources = (opts && opts.sources) || {};
+  const symbols = (opts && opts.symbols) || {};
+  const repo = (opts && opts.repo) || "";
+  const lines = [];
+  lines.push("--- Site documentation (help layer) ---");
+  lines.push(
+    "These are the passages of this project's OWN documentation most relevant to the question, quoted VERBATIM from the committed docs this deployment serves. This is the help interface's FIRST layer:",
+  );
+  lines.push(
+    "- For a usage / how-do-I / what-is question, answer FROM this documentation, mirroring its structure and wording near-verbatim where it answers the question: keep headings, lists, tables, links, and IMAGE lines exactly as written — reproduce `![caption](/introspect/docs-img/…)` image references together with any italic caption line under them (the chat renders these images inline).",
+  );
+  lines.push(
+    "- Attach source references: when your answer shows a code symbol or file the documentation names, add its reference from the symbol list below (path, line, link) so every documented claim is traceable to the implementation.",
+  );
+  lines.push(
+    "- The documentation is the first layer, not the last: when the user asks HOW something is implemented, challenges a documented claim, or wants proof, go DEEPER — investigate the actual source code available in this mode and ground the conclusion in the code you read, citing file paths. Documentation describes intent; the source is the truth.",
+  );
+  for (const r of list) {
+    const title = sources[r.p] && sources[r.p].title ? ` — "${sources[r.p].title}"` : "";
+    lines.push("");
+    lines.push(`# ${r.p}${title} (verbatim excerpt)`);
+    lines.push(r.text);
+  }
+  const refs = helpSymbolRefs(list, symbols);
+  if (refs.length) {
+    lines.push("");
+    lines.push("# Symbol references (named by these docs, resolved to the source):");
+    for (const s of refs) {
+      const loc = s.line ? `${s.file}:${s.line}` : s.file;
+      const link = repo ? ` (${repo}${s.file}${s.line ? `#L${s.line}` : ""})` : "";
+      lines.push(`- \`${s.sym}\` — ${loc}${link}`);
+    }
+  }
+  lines.push("");
+  lines.push("--- End of site documentation ---");
+  return "\n\n" + lines.join("\n");
 }
 
 // ---- the agentic source-read loop (the "read files as it wants" tool) --------

@@ -5,6 +5,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+// The HELP-layer tests at the bottom pull their subjects from this namespace
+// import; the older tests use the named imports below.
+import * as coreExports from "./introspect-core.js";
 import {
   groupIntrospectionModels,
   parseIntrospectionChoice,
@@ -984,4 +987,161 @@ test("toolResultLines: first lines of the result for the expandable details", ()
   const out = toolResultLines(many);
   assert.equal(out.length, 15); // 14 lines + the "(+N more)" marker
   assert.match(out[14], /\+6 more lines/);
+});
+
+// ---- the HELP layer (help mode = the docs-first special version of introspection) ----
+
+test("helpIntent: English help-shaped asks", () => {
+  const {
+    helpIntent,
+  } = coreExports;
+  for (const s of [
+    "How do I save a project?",
+    "how can I export my chat as a PDF",
+    "how to attach a photo",
+    "Where do I find the settings?",
+    "where is the ghost button",
+    "What does the time slider do?",
+    "what is the project vault",
+    "can I use my own API key?",
+    "help",
+    "I need help with the sandbox",
+    "is there a user guide?",
+    "show me the documentation",
+  ]) {
+    assert.equal(helpIntent(s), true, s);
+  }
+});
+
+test("helpIntent: Swedish parity — same breadth as English", () => {
+  const { helpIntent } = coreExports;
+  for (const s of [
+    "Hur gör jag för att spara ett projekt?",
+    "hur kan man exportera chatten som PDF",
+    "hur fungerar tidsreglaget?",
+    "Var hittar jag inställningarna?",
+    "var finns spökknappen",
+    "Vad är projektvalvet?",
+    "vad gör den här knappen",
+    "kan jag använda min egen API-nyckel?",
+    "hjälp",
+    "finns det en användarguide?",
+    "visa dokumentationen",
+  ]) {
+    assert.equal(helpIntent(s), true, s);
+  }
+});
+
+test("helpIntent: non-help asks never trigger it", () => {
+  const { helpIntent } = coreExports;
+  for (const s of [
+    "research the history of the Roman empire",
+    "summarize this paper",
+    "skriv en dikt om hösten",
+    "compare Rust and Go performance",
+  ]) {
+    assert.equal(helpIntent(s), false, s);
+  }
+});
+
+test("docsCorpusMeta: tolerant extraction of the help metadata", () => {
+  const { docsCorpusMeta } = coreExports;
+  const meta = docsCorpusMeta({
+    sources: { "docs/A.md": { title: "A" } },
+    symbols: { "docs/A.md": [{ sym: "x", file: "src/x.js", line: 3 }] },
+    repo: "https://github.com/o/r/blob/main/",
+  });
+  assert.equal(meta.sources["docs/A.md"].title, "A");
+  assert.equal(meta.symbols["docs/A.md"][0].file, "src/x.js");
+  assert.equal(meta.repo, "https://github.com/o/r/blob/main/");
+  // junk in every field → empty, never a throw
+  for (const junk of [null, undefined, 42, "x", [], { sources: [], symbols: "no", repo: 7 }]) {
+    const m = docsCorpusMeta(junk);
+    assert.deepEqual(m.sources, {});
+    assert.deepEqual(m.symbols, {});
+    assert.equal(m.repo, "");
+  }
+});
+
+test("helpSymbolRefs: only symbols the quoted passages show, deduped, capped", () => {
+  const { helpSymbolRefs } = coreExports;
+  const retrieved = [
+    { p: "docs/A.md", text: "Use `alpha` to start. Also mentions beta." },
+    { p: "docs/B.md", text: "The `alpha` helper again." },
+  ];
+  const symbols = {
+    "docs/A.md": [
+      { sym: "alpha", file: "src/a.js", line: 1 },
+      { sym: "gamma", file: "src/g.js", line: 9 }, // not in any retrieved text → dropped
+    ],
+    "docs/B.md": [
+      { sym: "alpha", file: "src/a.js", line: 1 }, // duplicate (sym,file) → deduped
+      { sym: "beta", file: "src/b.js" }, // appears (in A's text) — line optional
+    ],
+  };
+  const refs = helpSymbolRefs(retrieved, symbols);
+  assert.deepEqual(
+    refs.map((r) => r.sym + ":" + r.file),
+    ["alpha:src/a.js", "beta:src/b.js"],
+  );
+  // cap honored
+  const many = { "docs/A.md": Array.from({ length: 40 }, (_, i) => ({ sym: "alpha", file: `src/f${i}.js` })) };
+  assert.equal(helpSymbolRefs(retrieved, many, 5).length, 5);
+  // junk-tolerant
+  assert.deepEqual(helpSymbolRefs(null, null), []);
+});
+
+test("buildHelpDocsBlock: verbatim excerpts + titles + symbol reference links; '' when empty", () => {
+  const { buildHelpDocsBlock } = coreExports;
+  assert.equal(buildHelpDocsBlock([]), "");
+  assert.equal(buildHelpDocsBlock(null), "");
+
+  const docText =
+    "## Backups\n\nUse the `openDrcBackup` flow.\n" +
+    "![The backup dialog](/introspect/docs-img/docs/img/backup.png)\n" +
+    "*The dialog, mid-restore.*";
+  const block = buildHelpDocsBlock(
+    [{ p: "docs/GUIDE.md", text: docText, score: 0.9 }],
+    {
+      sources: { "docs/GUIDE.md": { title: "User Guide" } },
+      symbols: { "docs/GUIDE.md": [{ sym: "openDrcBackup", file: "public/js/drc-core.js", line: 77 }] },
+      repo: "https://github.com/o/r/blob/main/",
+    },
+  );
+  assert.match(block, /--- Site documentation \(help layer\) ---/);
+  assert.match(block, /--- End of site documentation ---/);
+  // The instruction rides INSIDE the block: docs-first, images+captions
+  // verbatim, symbol references, escalate to source for proof.
+  assert.match(block, /near-verbatim/);
+  assert.match(block, /!\[caption\]\(\/introspect\/docs-img\/…\)/);
+  assert.match(block, /italic caption/);
+  assert.match(block, /go DEEPER/);
+  assert.match(block, /the source is the truth/);
+  // The excerpt is quoted verbatim, title attached, UNFENCED (docs carry their
+  // own fenced blocks).
+  assert.match(block, /# docs\/GUIDE\.md — "User Guide" \(verbatim excerpt\)/);
+  assert.ok(block.includes(docText));
+  assert.doesNotMatch(block, /```/);
+  // The symbol reference resolves to path:line with the repo link.
+  assert.match(block, /- `openDrcBackup` — public\/js\/drc-core\.js:77 \(https:\/\/github\.com\/o\/r\/blob\/main\/public\/js\/drc-core\.js#L77\)/);
+});
+
+test("lexicalRetrieveCorpus: generic per-doc diversity over a docs-shaped corpus (owasp alias intact)", () => {
+  const { lexicalRetrieveCorpus, lexicalRetrieveOwasp } = coreExports;
+  assert.equal(lexicalRetrieveOwasp, lexicalRetrieveCorpus); // the alias IS the function
+  const corpus = {
+    v: 1,
+    digest: "",
+    count: 2,
+    bytes: 0,
+    files: [
+      { p: "docs/VAULT.md", s: 1, t: "The vault stores project archives encrypted with a secret. ".repeat(10) },
+      { p: "docs/OTHER.md", s: 1, t: "Completely unrelated prose about balloons and clouds. ".repeat(10) },
+    ],
+  };
+  const hits = lexicalRetrieveCorpus(corpus, "how is the vault secret used to encrypt archives?", { k: 4, perCat: 2 });
+  assert.ok(hits.length >= 1);
+  assert.equal(hits[0].p, "docs/VAULT.md");
+  // Doc paths carry no space, so the diversity key is the whole path → per-DOC cap.
+  assert.ok(hits.filter((h) => h.p === "docs/VAULT.md").length <= 2);
 });

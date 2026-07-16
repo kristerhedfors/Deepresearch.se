@@ -363,6 +363,9 @@ header {
   max-width: 100%;
 }
 .msg.assistant.streaming { white-space: pre-wrap; }
+/* Documentation images quoted verbatim by HELP mode (markdown.js tags the
+   allowlisted same-origin /introspect/docs-img/ images with .doc-img). */
+img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); margin: .35rem 0; display: block; }
 
 /* The prepackaged, non-LLM helper reply (canned-faq.js): a dashed, muted
    frame + a small badge, so it reads unmistakably as canned onboarding help

@@ -305,7 +305,10 @@ so it "follows along" into the web app with no server change; retrieval ignores
 (snapshot) → `npm run bundle:rag` (index, against the FINAL snapshot — now a
 cheap DELTA that only re-embeds the changed files) → commit all three. Doing
 rag before the final snapshot leaves the index chunk-map misaligned and trips
-the consistency check.
+the consistency check. Since the HELP layer (2026-07-16), a source edit can
+ALSO stale the docs corpus (its symbol references carry definition line
+numbers) — add `npm run bundle:docs` + `npm run bundle:docs-rag` to the pass;
+the full order and the whole help layer live in the **help-docs** skill.
 
 ## The OWASP Top 10 reference corpus (security assessments)
 
