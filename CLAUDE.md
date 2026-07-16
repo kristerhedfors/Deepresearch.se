@@ -376,7 +376,7 @@ Server (`src/`):
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
 | `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
 | `panels.js` | The panel-SELECTION board (D1 `panels_reviews`) — a THIRD `board.js` consumer but a different KIND of loop (the ATTENTION loop, not a backlog). Its catalog items ARE the admin panels themselves; it has NO board widget — each panel header on `/admin` carries ▲/▼ thumbs and voting reshapes the admin view in place (up floats to top, net-negative collapses + sinks). Reshapes PURELY on votes: no drag, no explicit priority (reuses the core's `"priority"` ordering with none ever set → votes-desc). The votes-driven focus order (`/api/admin/panels*`, `?format=text` = the attention loop's input; `scripts/panels`) tells a Claude Code session which admin surface the owner is working on now — read it, then read that surface's own board. See the **feature-board** skill §6 |
-| `testpoints.js` | The testable-interaction-points queue (D1 `test_points`): declared, linkable "try-it" points — each a `label` + a "what was fixed" `summary` + a same-origin `target` path + an ordered list of client ACTIONS (the deep-link reachability grammar: open a panel/settings-knob, prefill the composer, flip search, set the budget, pick a model, highlight an element) — plus the 👍/👎 verdict. Pure core (validation/projection/`?format=text`/`deepLink`) + `handleAdminTestpoints` (CRUD + result, admin-gated, `/api/admin/testpoints*`) + `handleTryRedirect` (the `/try/:id` deep link → 302 to `<target>?try=<id>`, home-on-miss). The banner + queue UI live in `public/js/testpoints.js` over the pure `public/js/testpoints-core.js`; `scripts/testpoints` is the producer/reader CLI — see the **testable-interaction-points** skill |
+| `testpoints.js` | The testable-interaction-points queue (D1 `test_points`): declared, linkable "try-it" points — each a `label` + a "what was fixed" `summary` + a same-origin `target` path + an ordered list of client ACTIONS (the deep-link reachability grammar: open a panel/settings-knob, prefill the composer, flip search, set the budget, pick a model, highlight an element) — plus the 👍/👎/❓ verdict (pass / fail / untestable–needs-clarification; the ❓ opens a tester↔loop DIALOGUE THREAD on the point — D1 `test_point_messages`, verdict notes land as tester messages, the loop answers via `…/:id/messages` / `scripts/testpoints --reply` and re-opens the point). Pure core (validation/projection/`?format=text`/`deepLink`) + `handleAdminTestpoints` (CRUD + result + thread, admin-gated, `/api/admin/testpoints*`) + `handleTryRedirect` (the `/try/:id` deep link → 302 to `<target>?try=<id>`, home-on-miss). The banner + queue UI live in `public/js/testpoints.js` over the pure `public/js/testpoints-core.js`; `scripts/testpoints` is the producer/reader CLI — see the **testable-interaction-points** skill |
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, testpoints, boards |
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
@@ -867,8 +867,9 @@ gate), `admin-boards.js` (the boards-discovery registry shape +
 `?format=text`), `testpoints.js` (the try-it queue's pure logic:
 `cleanTarget` same-origin validation, the action-grammar `cleanAction`/
 `validateActions` incl. unknown-drop + count cap, create/patch/result
-validation, `deepLink` query/hash preservation, projection + the
-`?format=text` render), `search-sources.js` (the `SEARCH_SOURCES` registry
+validation incl. the three-verdict 👍/👎/❓ vocabulary + thread-message
+validation/projection, `deepLink` query/hash preservation, projection + the
+`?format=text` render incl. THREAD lines), `search-sources.js` (the `SEARCH_SOURCES` registry
 contract, `sourcePromptNotes`, `platformDiversityKey`), and the outbound
 clients' pure sides — `exa.js` (the normalized search cache key),
 `hf.js` (intent detection, query/attempt planning, dedup keys, item
@@ -1339,10 +1340,11 @@ what docs claim); and update the skill list below plus the skill's
 - **testable-interaction-points** — the try-it queue: declaring linkable
   "test points" the moment a fix ships (a `label` + a "what was fixed"
   summary + a `target` path + deep-link ACTIONS that set the scene), running
-  them from the DRS queue/banner, and recording a 👍/👎 verdict that feeds the
-  next fix round (`src/testpoints.js`, `public/js/testpoints.js` +
-  `testpoints-core.js`, `scripts/testpoints`, the `/try/:id` route, D1
-  `test_points`). Owns the ACTION GRAMMAR — the exact boundary of what
+  them from the DRS queue/banner, and recording a 👍/👎/❓ verdict that feeds
+  the next fix round — the ❓ (untestable / needs clarification) opening a
+  tester↔loop dialogue thread on the point (`src/testpoints.js`,
+  `public/js/testpoints.js` + `testpoints-core.js`, `scripts/testpoints`,
+  the `/try/:id` route, D1 `test_points` + `test_point_messages`). Owns the ACTION GRAMMAR — the exact boundary of what
   "reachable" means (open a panel/knob, prefill the composer, flip search, set
   the budget, pick a model, highlight an element) — and where it ends
   (navigate-then-do-by-hand; full banner on `/rver` only; admin-only). Load

@@ -27,7 +27,7 @@ You do NOT call the admin API, and you do NOT need credentials. You commit a
  YOU (worker)                         THE LOOP (test-feedback-loop)         THE OWNER
  ────────────                         ─────────────────────────────         ─────────
  write docs/test-requests/            after your PR MERGES:                 taps /try/<id>,
-   <branch-slug>.json                   --mint → live queue points,         records 👍/👎
+   <branch-slug>.json                   --mint → live queue points,         records 👍/👎/❓
  validate offline                       ids stamped back + committed          + note
  push; open PR; STAY SUBSCRIBED         --sync each tick → verdict
                                         stamped into your file (git =
@@ -39,6 +39,14 @@ A 👎 comment (or a 👍 whose note carries a complaint — read it fully) is y
 regression report: fix on a fresh branch off the updated `main`, and include
 a new request file for the re-test if what-to-check changed; otherwise the
 loop re-opens the original point once your fix merges.
+
+A ❓ comment means UNTESTABLE — the owner never reached a state where your
+feature could be tried, or didn't understand what to do. The note is a
+question on the point's clarification thread; the loop answers it (and fixes
+the point's target/actions when the scene was broken) and re-opens the point.
+If the answer needs YOUR knowledge, the loop's PR comment will ask — reply
+with what the tester should do, and write the next request file's `summary`
+so it can't happen again (exact steps, exact pass criterion).
 
 ## Declaring a request
 
@@ -106,9 +114,10 @@ comments are useless if nobody is listening for them.
 ## What you'll receive on the PR
 
 One comment per verdict, from the loop:
-`👍/👎 "<label>" (queue #<id>, <k>/<runs>)` plus the owner's note verbatim —
+`👍/👎/❓ "<label>" (queue #<id>, <k>/<runs>)` plus the owner's note verbatim —
 notes routinely carry the full research-debug JSON, i.e. a complete
-diagnosis. Treat any complaint in ANY verdict as actionable, pass or fail.
+diagnosis. Treat any complaint in ANY verdict as actionable, pass or fail;
+only 👍 passes count toward `runs`.
 
 ## Boundaries
 

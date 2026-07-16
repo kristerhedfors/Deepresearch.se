@@ -10,9 +10,14 @@
 //      targets navigate via the point's /try/<id> deep link.
 //   2. The TRY-IT BANNER. On landing with ?try=<id> (a shared /try link, or
 //      a same-page open), fetch the point, run its ACTIONS to set the scene,
-//      and show a fixed bottom sheet: the "what was fixed" summary plus 👍
-//      works / 👎 doesn't and an optional note. Submitting records the
-//      verdict and advances to the next open point.
+//      and show a fixed bottom sheet: the "what was fixed" summary plus the
+//      three verdicts — 👍 works / 👎 doesn't / ❓ can't test (never reached
+//      a state where the fix could be tried, or unclear what to do) — and an
+//      optional note. Submitting records the verdict and advances to the
+//      next open point. An ❓ starts a CLARIFICATION THREAD: the note lands
+//      as a tester message, the Claude Code loop answers on the point and
+//      re-opens it, and the banner shows the whole dialogue on the next
+//      visit — back and forth until a real 👍/👎 lands.
 //
 // The pure plumbing (deep-link parsing, action partitioning, next-in-queue)
 // is public/js/testpoints-core.js. The app-specific side effects an action
@@ -270,9 +275,11 @@ function showBanner(point) {
           : ""
       }
       ${point.ref ? `<p class="trybanner-ref muted"></p>` : ""}
+      <div class="trybanner-thread" hidden></div>
       <div class="trybanner-verdict">
         <button type="button" class="trybanner-up" aria-label="It works">👍 Works</button>
         <button type="button" class="trybanner-down" aria-label="It doesn't work">👎 Doesn't</button>
+        <button type="button" class="trybanner-na" aria-label="Can't test — needs clarification">❓ Can't test</button>
       </div>
       <textarea class="trybanner-note" rows="1" placeholder="Optional note (what you saw)…"></textarea>
       <div class="trybanner-actions">
@@ -283,9 +290,11 @@ function showBanner(point) {
   b.querySelector(".trybanner-label").textContent = point.label;
   b.querySelector(".trybanner-summary").textContent = point.summary;
   if (point.ref) b.querySelector(".trybanner-ref").textContent = "ref: " + point.ref;
+  renderThread(b.querySelector(".trybanner-thread"), point.messages);
 
   const up = b.querySelector(".trybanner-up");
   const down = b.querySelector(".trybanner-down");
+  const na = b.querySelector(".trybanner-na");
   const submit = b.querySelector(".trybanner-submit");
   const note = b.querySelector(".trybanner-note");
   let verdict = null;
@@ -293,10 +302,17 @@ function showBanner(point) {
     verdict = v;
     up.classList.toggle("chosen", v === "pass");
     down.classList.toggle("chosen", v === "fail");
+    na.classList.toggle("chosen", v === "untestable");
+    // An ❓ opens a dialogue — nudge the note toward saying what blocked them.
+    note.placeholder =
+      v === "untestable"
+        ? "What blocked you / what needs clarifying? The loop will answer here…"
+        : "Optional note (what you saw)…";
     submit.disabled = false;
   };
   up.addEventListener("click", () => choose("pass"));
   down.addEventListener("click", () => choose("fail"));
+  na.addEventListener("click", () => choose("untestable"));
   note.addEventListener("input", () => {
     note.style.height = "auto";
     note.style.height = note.scrollHeight + "px";
@@ -349,6 +365,23 @@ async function advance(justDoneId) {
 
 function closeBanner() {
   if (els) els.banner.hidden = true;
+}
+
+// The clarification thread — the ❓ dialogue between the tester's verdict
+// notes and the loop's answers, rendered oldest-first above the verdict
+// buttons so a re-opened point shows what was answered.
+function renderThread(container, messages) {
+  if (!container || !Array.isArray(messages) || !messages.length) return;
+  container.hidden = false;
+  for (const m of messages) {
+    const row = document.createElement("p");
+    row.className = "trybanner-msg " + (m.author === "agent" ? "agent" : "tester");
+    const who = document.createElement("strong");
+    who.textContent = m.author === "agent" ? "Loop: " : "You: ";
+    row.appendChild(who);
+    row.appendChild(document.createTextNode(m.body));
+    container.appendChild(row);
+  }
 }
 
 // ---- tiny DOM helpers -----------------------------------------------------
