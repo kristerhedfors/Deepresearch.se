@@ -39,10 +39,14 @@ the letter before the slash (always an `e`), the slash's own slope and
 stroke width, and the first letter after it (`c` or `r`). Those vary by
 family, by weight (bold ink is wider — the gap shrinks), and by style.
 `-.12em` was tuned by eye for the app's regular-weight UI font; drop the
-same constant into a **bold** run or another family and the glyphs can
-touch (the 2026-07-16 report: the help page's bold
-`DeepResearch.Se/cure` in the privacy-flag box rendered with the slash
-touching the `e` and `c`).
+same constant into a **bold** run, a smaller body-text size, or another
+family and the glyphs can touch (the 2026-07-16 report: the help page's
+bold `DeepResearch.Se/cure` in the privacy-flag box rendered with the
+slash touching the `e` and `c`; a second 2026-07-16 report found the SAME
+page's plain-weight body prose — e.g. "Se/cure is a deep-research
+assistant…" under "What this tier is" — touching too, at the smaller
+`.92rem` paragraph size, disproving the earlier assumption that regular
+weight was safe at `-.12em` on device).
 
 Two hand-tuned overrides already existed before this skill — evidence the
 constant was never universal:
@@ -120,30 +124,45 @@ always tighter than `Se/cure`'s):
 
 Caveat: the fonts real users resolve (`system-ui` → SF Pro on Apple,
 Segoe UI on Windows, Roboto on Android) are NOT installable here. The
-container numbers are the measurable worst-case proxies; `-.12em`
-evidently renders acceptably at REGULAR weight on the owner's devices (it
-is the standing default they chose), while bold at `-.12em` touches on
-device too (the report that created this skill). So: use the tool for the
-relative decision, keep the on-device check for anything user-visible
-(the **testable-interaction-points** flow, or ask the owner — the
+container numbers are the measurable worst-case proxies. `-.12em`
+evidently renders acceptably at REGULAR weight in the app's own UI chrome
+(the standing global default) — but that does NOT generalize to every
+regular-weight context: the docs pages' `.92rem` body prose touched at
+`-.12em` too (2026-07-16, second report), so size matters as much as
+weight. **Don't assume "not bold" means safe — measure the surface's
+actual font-size, not just its weight.** Where `-.04em` measures `ok` at
+BOTH 400 and 700 for a page's font stack (true for both docs pages, see
+the audit table), prefer ONE page-wide `.sl` rule over a `b .sl`-only
+override — it's simpler and covers regular-weight prose the bold-only
+rule would silently miss. So: use the tool for the relative decision,
+keep the on-device check for anything user-visible (the
+**testable-interaction-points** flow, or ask the owner — the
 **on-device-trace** skill if it only reproduces there).
 
 ## How to apply a decision
 
-1. Identify the surface's REAL font context: family stack, weight
-   (wordmarks are usually inside `<b>` — that's `700`), style, and any
-   `letter-spacing` (letter-spacing adds to both gaps; subtract it).
-2. Run the tool for that context; read the recommended margin; round
-   toward less tightening.
+1. Identify the surface's REAL font context: family stack, EVERY weight
+   the slash actually renders at on that page (check for un-bolded
+   `Se<span class="sl">/</span>cure` in body prose, not just the `<b>`
+   wordmark — a page mixing both needs both weights tested), the body
+   font-SIZE (a smaller `.92rem` paragraph is tighter than 16px UI text),
+   style, and any `letter-spacing` (adds to both gaps; subtract it).
+2. Run the tool for each weight present; read the recommended margin;
+   round toward less tightening.
 3. Scope the override NEXT TO the surface's existing `.sl` rule — never
    change the global `-.12em` (it is the owner-approved default for the
-   regular-weight app chrome). Convention:
+   app's own regular-weight UI chrome, not for every page that inherits
+   the rule). Two shapes, pick by what step 2 found:
 
    ```css
+   /* Only bold touches; regular measures ok at -.12em on this surface. */
    .sl { margin: 0 -.12em; }
-   /* Bold ink is wider — the global tightening makes the slash touch
-      (measured: scripts/slash-gap.mjs --weights 700). */
    b .sl { margin: 0 -.04em; }
+
+   /* Both weights touch at this page's font-size (docs pages, 2026-07-16:
+      .92rem body prose plus <b> wordmarks both needed tightening) — one
+      rule, no bold-only carve-out to forget. */
+   .sl { margin: 0 -.04em; }
    ```
 
 4. If the page is served pre-auth, remember the snapshot freshness gate:
@@ -159,8 +178,8 @@ Fixed vs still running on the global constant (as of 2026-07-16):
 
 | surface | rule | bold wordmarks? | status |
 |---|---|---|---|
-| `public/help/index.html` (Se/rver docs) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (the reported instance) |
-| `public/cure/help/index.html` (Se/cure docs, split 2026-07-16) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (same fix at merge time) |
+| `public/help/index.html` (Se/rver docs) | `-.04em` (page-wide) | yes + regular body prose | FIXED 2026-07-16, RE-FIXED 2026-07-16 (regular-weight `.92rem` prose touched too — collapsed to one page-wide rule, see Measured facts) |
+| `public/cure/help/index.html` (Se/cure docs, split 2026-07-16) | `-.04em` (page-wide) | yes + regular body prose | FIXED 2026-07-16, RE-FIXED 2026-07-16 (the reported instance: "Se/cure is a deep-research assistant…" under "What this tier is" — regular weight, not bold) |
 | `public/css/app.css` (app + header brand) | `-.12em` | yes (header `<b>`) | on the global constant — owner-tuned, leave unless reported |
 | `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` + `#proxybanner/#notices -.04em` | many | partial (`#proxybanner`/`#notices` MEASURED + fixed 2026-07-16 — owner report: proxy banner + footer notices too tight) |
 | `public/welcome/index.html` | `-.12em` + `#mbubble +.02em` | yes | partial |

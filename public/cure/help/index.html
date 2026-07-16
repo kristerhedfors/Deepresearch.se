@@ -49,12 +49,13 @@
       border-radius: 10px; padding: .5rem .8rem; font-size: .86rem;
     }
     /* Tighten the slash so Se/cure and Se/rver read closer to
-       "secure"/"server". Bold ink is wider, so the global -.12em makes the
-       slash TOUCH the e/c in bold — measured with scripts/slash-gap.mjs
-       (see the slash-spacing skill); -.04em keeps ≥.04em of ink clearance
-       across every measured font at weight 700. */
-    .sl { margin: 0 -.12em; }
-    b .sl { margin: 0 -.04em; }
+       "secure"/"server". The global -.12em makes the slash TOUCH the e/c
+       at this page's font size — measured with scripts/slash-gap.mjs (see
+       the slash-spacing skill) at BOTH regular (body prose, e.g. the "What
+       this tier is" paragraph) and bold weight: -.04em keeps ≥.04em of ink
+       clearance across every measured font at weight 400 AND 700, so one
+       rule covers both. */
+    .sl { margin: 0 -.04em; }
     code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
     .muted { color: var(--muted); }
     a { color: var(--accent); }

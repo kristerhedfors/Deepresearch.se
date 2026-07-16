@@ -12,12 +12,27 @@
 # Usage:
 #   sudo ./scripts/build-sandbox-image.sh alpine  alpine-i386-2026-07  512
 #   sudo ./scripts/build-sandbox-image.sh debian  debian-i386-slim-2026-07  700
+#   sudo ./scripts/build-sandbox-image.sh arch32  arch32-i686-2026-07     1024
 #   Then: npx wrangler r2 object put \
 #           deepresearch-se-storage/sandbox-images/<id>.ext2 --file build/<id>.ext2
 #   Then register + select it in /admin → Linux sandbox image.
+#
+# Engine is CheerpX (i386). The SMALL + FAST default is the alpine variant —
+# owner directive 2026-07-16: it must load quickly and commands must not stall
+# fetching hundreds of MB, so the default is the smallest practical image
+# (Alpine i386, well under ~200 MB trimmed) paired with sandbox.prefetch=true
+# so the whole disk loads into the browser's IndexedDB cache once ("loads in
+# its entirety") and later commands touch the network zero times. Add nodejs +
+# git (and any tools you need) so sdk/pair-cli.mjs and generated-app tests run
+# inside the VM — the "add tools as we go" surface is this package list.
+# The arch32 variant is a SELECTABLE heavier option (archlinux32 i686, since
+# mainline Arch cannot boot on CheerpX), several hundred MB — NOT the speed
+# default. Rollout stays verified-gated per docs/SANDBOX-LOCAL-IMAGE.md §7:
+# build → upload → boot on a REAL device (iOS Safari under require-corp) → flip
+# verified → only then select default.
 set -euo pipefail
 
-DISTRO="${1:-alpine}"     # alpine | debian
+DISTRO="${1:-alpine}"     # alpine | debian | arch32
 ID="${2:-alpine-i386-$(date +%Y-%m)}"
 SIZE_MB="${3:-512}"       # ext2 size; leave headroom for guest work
 
@@ -27,7 +42,11 @@ MNT="$OUT_DIR/mnt-$ID"
 
 # The research toolchain the model reaches for + the pieces sandbox.js's exec
 # marker protocol and seed script depend on (bash, sh, coreutils, base64).
-PKGS_COMMON="bash coreutils grep sed gawk findutils file less python3 jq"
+# nodejs + git are included so sdk/pair-cli.mjs and generated-app tests run
+# INSIDE the VM (the SDK-dev workflow). Add tools here as we go — this list is
+# the "exactly the tools we need" surface; every addition grows the image, so
+# keep it lean and re-measure the trimmed size against the load-fast target.
+PKGS_COMMON="bash coreutils grep sed gawk findutils file less python3 jq nodejs git"
 
 mkdir -p "$OUT_DIR"
 echo "==> Creating ${SIZE_MB}MB ext2 image at $IMG"
@@ -51,8 +70,25 @@ case "$DISTRO" in
         http://deb.debian.org/debian
     chroot "$MNT" /bin/sh -c "apt-get update && apt-get install -y --no-install-recommends $PKGS_COMMON && apt-get clean"
     ;;
+  arch32)
+    # archlinux32 (i686 community fork) — SELECTABLE heavier option, not the
+    # default. Mainline Arch is x86_64-only and cannot boot on CheerpX;
+    # archlinux32 is the only Arch that can. Bootstrap from the archlinux32
+    # tarball (an i686 userland runs fine chrooted on an x86_64 host kernel),
+    # then install the toolchain (PKGS_COMMON already carries nodejs+git).
+    ARCH32_MIRROR="${ARCH32_MIRROR:-https://mirror.archlinux32.org}"
+    BOOTSTRAP_TAR="${ARCH32_BOOTSTRAP:-}"  # path to archlinux32-bootstrap-*.tar.zst
+    if [ -z "$BOOTSTRAP_TAR" ]; then
+      echo "Set ARCH32_BOOTSTRAP=/path/to/archlinux32-bootstrap-<date>-i686.tar.zst"
+      echo "(download from $ARCH32_MIRROR/archisos/ and verify its signature first)"; exit 1
+    fi
+    tar --zstd -xf "$BOOTSTRAP_TAR" -C "$MNT" --strip-components=1
+    printf 'Server = %s/$repo/os/$arch\n' "$ARCH32_MIRROR" > "$MNT/etc/pacman.d/mirrorlist"
+    chroot "$MNT" /bin/sh -c "pacman-key --init && pacman-key --populate archlinux32 || true"
+    chroot "$MNT" /bin/sh -c "pacman -Sy --noconfirm $PKGS_COMMON && pacman -Scc --noconfirm"
+    ;;
   *)
-    echo "Unknown distro: $DISTRO (alpine|debian)"; exit 1 ;;
+    echo "Unknown distro: $DISTRO (alpine|debian|arch32)"; exit 1 ;;
 esac
 
 echo "==> Configuring root shell + /root (sandbox.js launches /bin/bash --login, HOME=/root, uid 0)"
