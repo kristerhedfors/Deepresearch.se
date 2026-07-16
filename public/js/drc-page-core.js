@@ -95,10 +95,12 @@ export function parsePublicationRef(pathname, search) {
   const m = String(pathname == null ? "" : pathname).match(/^\/cure\/([a-z0-9-]+)$/i);
   const slug = m ? m[1] : new URLSearchParams(search || "").get("continue");
   if (!slug || !/^[a-z0-9-]{1,80}$/i.test(slug)) return null;
-  // "workspace" is a RESERVED word, not a publication: /cure/workspace is the
-  // secure-workspaces page (workspace-core.js; src/pub.js refuses the slug on
-  // the publish side for the same reason).
-  if (slug.toLowerCase() === "workspace") return null;
+  // "workspace" and "help" are RESERVED words, not publications:
+  // /cure/workspace is the secure-workspaces page (workspace-core.js) and
+  // /cure/help is the Se/cure documentation (public/cure/help/, routed
+  // server-side before the replay map; src/pub.js refuses both slugs on the
+  // publish side for the same reason).
+  if (slug.toLowerCase() === "workspace" || slug.toLowerCase() === "help") return null;
   return { slug, fromPath: !!m };
 }
 

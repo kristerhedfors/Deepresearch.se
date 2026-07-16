@@ -35,9 +35,13 @@ const MAX_MESSAGES = 200;
 // digits, hyphens. No dots — so a slug can never collide with the viewer
 // page's own asset files under /cure/. "workspace" is RESERVED: /cure/workspace
 // is the secure-workspaces page (public/js/workspace-core.js), not a replay —
-// publishing over it would shadow the feature.
+// publishing over it would shadow the feature. "help" is RESERVED the same
+// way: /cure/help is the Se/cure tier's documentation page (public/cure/help/,
+// routed in index.js before the replay map).
+const RESERVED_SLUGS = new Set(["workspace", "help"]);
 /** @param {unknown} s */
-export const pubSlugOk = (s) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s) && s !== "workspace";
+export const pubSlugOk = (s) =>
+  typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s) && !RESERVED_SLUGS.has(s);
 
 /** @param {string} slug */
 const pubKey = (slug) => `pub/${slug}`;

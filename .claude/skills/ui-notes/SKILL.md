@@ -147,14 +147,24 @@ description: >-
   it does NOT delete the conversation from encrypted local history (see
   "Chat history" above); the previous conversation stays listed in the
   history panel until explicitly deleted there.
-- **User documentation** at `/help/` (auth-gated static page): every
-  control explained with real screenshots (`public/help/img/`, captured
-  via Playwright) and the privacy meaning of each — linked from the
-  account panel. Re-capture the screenshots when the composer/header
-  changes visibly (the header and composer screenshots are now stale —
-  the history button was added, then the model selector moved from the
-  header into the composer row with the search knob/slider on their own
-  row below — not yet recaptured).
+- **User documentation is split PER TIER** (2026-07-16 directive — the
+  shared page misled Se/cure users with Se/rver's storage story and the
+  blue palette): `/help/` documents **Se/rver** (blue palette; its history
+  section now describes BOTH storage modes — encrypted browser copy plus
+  the default-on encrypted cloud copy — the old "browser only, doesn't
+  sync" claims are true only with the cloud knob off), and `/cure/help/`
+  documents **Se/cure** (khaki palette matching drc.css, self-contained;
+  chats/keys in this browser only, own providers, the two disclosed grant
+  exceptions). Each page cross-links the other at top and bottom. Both are
+  public; `/cure/help` is routed in `index.js` BEFORE the `/cure/<slug>`
+  replay map, and `help` is a RESERVED slug next to `workspace`
+  (`src/pub.js` `pubSlugOk`, `drc-page-core.js` `parsePublicationRef`).
+  The Se/rver page keeps real screenshots (`public/help/img/`, captured
+  via Playwright) — re-capture when the composer/header changes visibly
+  (the header and composer screenshots are now stale — the history button
+  was added, then the model selector moved from the header into the
+  composer row with the search knob/slider on their own row below — not
+  yet recaptured).
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
   demonstration of building a SaaS-style app over a weekend, **entirely
