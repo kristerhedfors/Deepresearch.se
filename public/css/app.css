@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h44;
+  --css-version: h45;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1753,6 +1753,28 @@ body.feedback-mode .feedback-btn { display: inline-block; }
 .tryqueue-item:hover { border-color: var(--accent); }
 .tryqueue-item-label { font-weight: 600; font-size: .86rem; }
 .tryqueue-item-target { font-size: .72rem; overflow-wrap: anywhere; }
+
+/* The detail view a tapped queue item opens IN PLACE (read the task before
+   going anywhere). The verdict widgets reuse the trybanner-* classes, so
+   only the detail-specific pieces are styled here. */
+.tryqueue-back {
+  background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: .82rem; padding: .1rem 0; cursor: pointer;
+}
+.tryqueue-back:hover { color: var(--accent); }
+.tryqueue-detail { display: flex; flex-direction: column; gap: .35rem; margin-top: .3rem; }
+.tryqueue-detail-label { font-size: .92rem; overflow-wrap: anywhere; }
+.tryqueue-detail-target { font-size: .74rem; margin: 0; overflow-wrap: anywhere; }
+.tryqueue-detail-summary { margin: 0; overflow-wrap: anywhere; }
+.tryqueue-detail-steps { margin: 0; padding-left: 1.2rem; font-size: .82rem; }
+.tryqueue-detail-steps li { margin: .15rem 0; overflow-wrap: anywhere; }
+.tryqueue-detail-hint { font-size: .78rem; margin: 0; }
+.tryqueue-go {
+  align-self: stretch; margin: .25rem 0 .1rem;
+  padding: .55rem .8rem; font: inherit; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: #fff;
+  border: 1px solid var(--accent); border-radius: 10px;
+}
 
 #trybanner {
   position: fixed; left: 50%; transform: translateX(-50%);

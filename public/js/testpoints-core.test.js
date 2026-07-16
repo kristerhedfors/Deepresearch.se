@@ -9,9 +9,11 @@ import {
   TRY_PARAM,
   deepLink,
   nextOpenPoint,
+  noteTexts,
   parseTryId,
   partitionActions,
   stripTryParam,
+  targetPath,
 } from "./testpoints-core.js";
 
 test("parseTryId reads a positive integer, else null", () => {
@@ -55,6 +57,31 @@ test("partitionActions splits known vs unknown by the client grammar", () => {
   for (const t of CLIENT_ACTION_TYPES) {
     assert.equal(partitionActions([{ type: t }]).known.length, 1);
   }
+});
+
+test("targetPath normalizes a target to its pathname", () => {
+  assert.equal(targetPath("/cure"), "/cure");
+  assert.equal(targetPath("/rver?x=1"), "/rver");
+  assert.equal(targetPath("/admin#panel"), "/admin");
+  assert.equal(targetPath("/cure", "https://deepresearch.se"), "/cure");
+  // Same-page comparison works for the queue's cross-page decision.
+  assert.equal(targetPath("/rver?try=3", "https://x.test") === "/rver", true);
+});
+
+test("noteTexts extracts note-action guidance, trimmed, in order", () => {
+  assert.deepEqual(
+    noteTexts([
+      { type: "note", text: "  First read this. " },
+      { type: "compose", text: "not a note" },
+      { type: "note", text: "Then check that." },
+      { type: "note", text: "   " }, // blank → dropped
+      { type: "note" }, // no text → dropped
+      null,
+    ]),
+    ["First read this.", "Then check that."],
+  );
+  assert.deepEqual(noteTexts([]), []);
+  assert.deepEqual(noteTexts("bad"), []);
 });
 
 test("nextOpenPoint picks the oldest open point, skipping the just-done id", () => {

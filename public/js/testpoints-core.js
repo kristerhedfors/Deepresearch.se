@@ -81,6 +81,40 @@ export function deepLink(target, id) {
   return hash ? `${withTry}#${hash}` : withTry;
 }
 
+// Normalize a point's target to its pathname — the "does this point live on
+// the current page?" question the queue, the go-navigation, and the
+// advance-to-next flow all ask. Falls back to the raw string when the target
+// doesn't parse as a URL.
+/**
+ * @param {string} target a point's target path
+ * @param {string} [origin] the origin to resolve relative paths against
+ * @returns {string}
+ */
+export function targetPath(target, origin = "https://local.invalid") {
+  try {
+    return new URL(String(target), origin).pathname;
+  } catch {
+    return String(target);
+  }
+}
+
+// The guidance texts carried by a point's `note` actions — rendered as
+// read-before-you-go steps in the queue's detail view (a `note` has no side
+// effect, so it is the one action whose content IS the explanation).
+/**
+ * @param {any[]} actions
+ * @returns {string[]}
+ */
+export function noteTexts(actions) {
+  const out = [];
+  for (const a of Array.isArray(actions) ? actions : []) {
+    if (a && typeof a === "object" && a.type === "note" && typeof a.text === "string" && a.text.trim()) {
+      out.push(a.text.trim());
+    }
+  }
+  return out;
+}
+
 // Split a point's actions into the ones this build can run and the ones it
 // can't (unknown type). Pure — the executor runs `known`, the banner can
 // warn about `unknown.length`.
