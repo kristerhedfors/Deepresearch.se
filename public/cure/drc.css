@@ -237,6 +237,11 @@ header {
    heavier/running body text where the tight negative margin crowds the slash —
    give it a touch more room in just those two surfaces. */
 #ghostsay .sl, #drspop .sl { margin: 0 -.04em; }
+/* Same for the connected-APIs banner and the composer footer notices — running
+   body prose where the global tightening crowds the slash (owner report
+   2026-07-16; measured with scripts/slash-gap.mjs: at 400 weight -.04em keeps
+   every container font's ink gap above the .03em floor). */
+#proxybanner .sl, #notices .sl { margin: 0 -.04em; }
 /* The small "introspection" marker under the wordmark — only present while the
    introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
    (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
@@ -692,6 +697,17 @@ button:disabled { opacity: .5; cursor: default; }
 
 .statusline { margin: .25rem .35rem 0; font-size: .78rem; color: var(--muted); }
 .statusline[hidden] { display: none; }
+/* The footer notices under the composer share ONE dismiss × in the block's
+   upper right (owner request, 2026-07-16) — drc.js shows it only while a
+   notice is visible and hides the notices on click. */
+#notices { position: relative; padding-right: 1.3rem; }
+#noticesclose {
+  position: absolute; top: 0; right: .1rem;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 1.1rem; line-height: 1; padding: .1rem .25rem;
+}
+#noticesclose:hover { color: var(--text); }
+#noticesclose[hidden] { display: none; }
 /* The standing "where your words go" disclosure under the composer row —
    quieter than workstatus (it is always there once a model is picked). */
 .provnote { font-size: .72rem; opacity: .85; }

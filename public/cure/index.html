@@ -137,13 +137,19 @@
               <span class="knob-track"><span class="knob"></span></span>
             </label>
           </div>
-          <!-- The standing "where your words go" disclosure — follows the model
-               picker (drc.js renderProviderNote): the chosen provider CAN read
-               the conversation; this site's server can't. Flips to "nothing
-               leaves this device" on a local model. -->
-          <p id="provnote" class="statusline provnote" hidden></p>
         </form>
-        <p id="workstatus" class="statusline" hidden></p>
+        <!-- The footer notices under the composer, DISMISSABLE via the shared ×
+             (upper right): the standing "where your words go" disclosure — follows
+             the model picker (drc.js renderProviderNote): the chosen provider CAN
+             read the conversation; this site's server can't; flips to "nothing
+             leaves this device" on a local model — plus the workstatus line.
+             Dismissal is per-session: the disclosure returns on reload and when
+             the picked model (and thus the text) changes. -->
+        <div id="notices">
+          <p id="provnote" class="statusline provnote" hidden></p>
+          <p id="workstatus" class="statusline" hidden></p>
+          <button id="noticesclose" type="button" aria-label="Dismiss" hidden>×</button>
+        </div>
       </div>
     </div>
   </div>
