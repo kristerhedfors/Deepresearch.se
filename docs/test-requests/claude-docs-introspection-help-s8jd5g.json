@@ -7,47 +7,84 @@
       "summary": "Introspection is now also the interactive help: with developer mode on, a plain usage question gets the relevant documentation passages injected (a new 'documentation' line in the introspect step details) and the answer should mirror the docs near-verbatim — headings/structure from the documentation, with symbol references (file path + GitHub link) attached to code names it shows. PASS: the composer question below yields a docs-grounded answer about workspace links (not a generic LLM guess), the introspect activity step lists at least one documentation file (e.g. docs/WORKSPACE-SECURITY.md), and any code symbol shown carries a source reference.",
       "target": "/rver",
       "actions": [
-        { "type": "openSettings", "knob": "developer_mode" },
-        { "type": "note", "text": "Make sure the Developer mode knob is ON, then send the prefilled question." },
-        { "type": "compose", "text": "How do I share a secure workspace link?" }
+        {
+          "type": "openSettings",
+          "knob": "developer_mode"
+        },
+        {
+          "type": "note",
+          "text": "Make sure the Developer mode knob is ON, then send the prefilled question."
+        },
+        {
+          "type": "compose",
+          "text": "How do I share a secure workspace link?"
+        }
       ],
       "runs": 1,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 39
     },
     {
       "label": "Help mode: documentation screenshot renders inline in the answer",
       "summary": "Doc images now ride into answers: the docs corpus rewrites documentation image references to served /introspect/docs-img/ URLs, and markdown rendering allows exactly those same-origin images (isSafeDocImage). Asking about the first-run data notice should retrieve docs/ENCRYPTION.md's section that embeds the rver-app.png screenshot, and the model is instructed to reproduce image lines verbatim. PASS: the answer shows the actual screenshot inline (styled, rounded, fitting the bubble) with its caption — not a broken image, not a bare URL. FAIL if the image line appears but renders as text or a broken icon.",
       "target": "/rver",
       "actions": [
-        { "type": "openSettings", "knob": "developer_mode" },
-        { "type": "note", "text": "Developer mode ON. The answer should include the Se/rver first-run data-notice screenshot from the encryption doc, rendered as a real image." },
-        { "type": "compose", "text": "Show me what the documentation says about the Se/rver first-run data notice, exactly as the documentation presents it, images included." }
+        {
+          "type": "openSettings",
+          "knob": "developer_mode"
+        },
+        {
+          "type": "note",
+          "text": "Developer mode ON. The answer should include the Se/rver first-run data-notice screenshot from the encryption doc, rendered as a real image."
+        },
+        {
+          "type": "compose",
+          "text": "Show me what the documentation says about the Se/rver first-run data notice, exactly as the documentation presents it, images included."
+        }
       ],
       "runs": 1,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 40
     },
     {
       "label": "Help mode: Swedish usage question retrieves the English docs (dense index)",
       "summary": "The docs dense index is multilingual e5, so a Swedish help question must retrieve the right English documentation passages (the lexical fallback can't cross languages — dense is the DRS path). PASS: the Swedish question below produces a docs-grounded answer about chat-history encryption (AES-GCM, key never at rest beside ciphertext), with the introspect step's documentation line naming docs/ENCRYPTION.md or similar. FAIL if the answer is generic/unanchored or the documentation line is missing.",
       "target": "/rver",
       "actions": [
-        { "type": "openSettings", "knob": "developer_mode" },
-        { "type": "compose", "text": "Hur är min chathistorik krypterad?" }
+        {
+          "type": "openSettings",
+          "knob": "developer_mode"
+        },
+        {
+          "type": "compose",
+          "text": "Hur är min chathistorik krypterad?"
+        }
       ],
       "runs": 1,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 41
     },
     {
       "label": "Help mode: follow-up escalates from docs into a source-code proof",
       "summary": "The two-layer contract: after a docs-answered question, a follow-up that asks for PROOF must escalate into the source (the read loop / native tools), and the conclusion must quote actual code and cite file paths (e.g. public/js/vault-core.js) — not just re-assert the documentation. PASS: send the first question, then the follow-up; the second answer grounds its conclusion in quoted source lines with file paths (source-investigation steps visible in the activity), and does NOT merely repeat the doc's claim. Run this after the first point in the same chat.",
       "target": "/rver",
       "actions": [
-        { "type": "openSettings", "knob": "developer_mode" },
-        { "type": "note", "text": "First ask: 'How do I store a project in the vault?' — then follow up with the prefilled proof question in the SAME chat." },
-        { "type": "compose", "text": "Prove that the server never sees my vault secret — show me the actual code." }
+        {
+          "type": "openSettings",
+          "knob": "developer_mode"
+        },
+        {
+          "type": "note",
+          "text": "First ask: 'How do I store a project in the vault?' — then follow up with the prefilled proof question in the SAME chat."
+        },
+        {
+          "type": "compose",
+          "text": "Prove that the server never sees my vault secret — show me the actual code."
+        }
       ],
       "runs": 1,
-      "verdicts": []
+      "verdicts": [],
+      "minted_id": 42
     }
   ]
 }
