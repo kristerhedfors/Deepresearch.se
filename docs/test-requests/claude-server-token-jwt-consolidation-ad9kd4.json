@@ -9,7 +9,7 @@
       "target": "/rver",
       "actions": [],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 35,
       "verdicts": []
     },
     {
@@ -18,7 +18,7 @@
       "target": "/admin",
       "actions": [],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 36,
       "verdicts": []
     },
     {
@@ -27,7 +27,7 @@
       "target": "/admin",
       "actions": [],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 37,
       "verdicts": []
     },
     {
@@ -36,7 +36,7 @@
       "target": "/admin",
       "actions": [],
       "runs": 1,
-      "minted_id": null,
+      "minted_id": 38,
       "verdicts": []
     }
   ]
