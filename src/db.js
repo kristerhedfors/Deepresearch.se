@@ -201,6 +201,20 @@ CREATE TABLE IF NOT EXISTS proxy_grants (
 CREATE INDEX IF NOT EXISTS idx_proxy_grants_user ON proxy_grants(user_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_proxy_grants_bundle ON proxy_grants(bundle_id);
 CREATE INDEX IF NOT EXISTS idx_proxy_grants_exp ON proxy_grants(expires_at);
+CREATE TABLE IF NOT EXISTS server_tokens (
+  jti TEXT NOT NULL,
+  service TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  quota INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  label TEXT,
+  source TEXT,
+  PRIMARY KEY (jti, service)
+);
+CREATE INDEX IF NOT EXISTS idx_server_tokens_user ON server_tokens(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_server_tokens_exp ON server_tokens(expires_at);
 `;
 
 // Additive migrations for databases created before the column existed.

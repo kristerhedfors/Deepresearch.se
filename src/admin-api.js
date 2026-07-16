@@ -51,6 +51,7 @@ import { handleAdminWebSearch } from "./websearch.js";
 import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
+import { handleAdminServerToken } from "./server-grants.js";
 import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -199,6 +200,13 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // revoke a whole bundle. (Per-service defaults are edited via PUT /config.)
     if (path === "/proxy" || path.startsWith("/proxy/")) {
       return handleAdminProxy(request, env, url, log, identity);
+    }
+    // The consolidated Se/rver-token control surface (src/server-grants.js):
+    // list live tokens + defaults, mint a one-JWT grant (a permission set over
+    // upstream APIs only — never Se/rver data), per-permission quota adjust,
+    // revoke. (Defaults are edited via PUT /config.)
+    if (path === "/server-token" || path.startsWith("/server-token/")) {
+      return handleAdminServerToken(request, env, url, log, identity);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

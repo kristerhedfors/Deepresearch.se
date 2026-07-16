@@ -305,6 +305,21 @@ update the row in the same pass. See the **feature-maintenance** skill.
    the per-token quota-ADJUST control surfaces (authed
    `/api/websearch/adjust`, `/api/proxy/adjust`; admin PATCH), which move a
    grant row's allowance without changing any token in circulation.
+   **THE CONSOLIDATED Se/rver TOKEN (2026-07-16) also adds NO new exception —
+   it unifies the two above going forward:** "one ticket, one JWT"
+   (`src/server-token.js` + `src/server-grants.js`, D1 `server_tokens`,
+   `docs/SERVER-TOKENS.md`) — one standard HS256 JWT per grant carrying a
+   permission SET (`perms: ["web","api"]`) over the SAME two bounded upstream
+   services, one duration, per-permission quota rows (token fixed, rows
+   metered, same governance/budget/fail-safe posture). It carries THE
+   SERVER-TOKEN GUARANTEE (owner directive, stated so it is never diluted):
+   **an API call bearing a Se/rver token reaches UPSTREAM APIs ONLY — it is
+   NEVER handed project contents, chat contents, or any other Se/rver data**
+   (closed permission vocabulary + a module-graph unit-test pin + the JWT can
+   never pass the identity gate). The name is the reminder: it's called a
+   SERVER token so nobody forgets it goes to a server somewhere. The legacy
+   `wsk1`/`prg1`/`prx1` families keep working unchanged; new grants should be
+   Se/rver tokens.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
    added runtime deps for the Worker/tests. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a reproduced
@@ -368,6 +383,8 @@ Server (`src/`):
 | `websearch.js` | The web-search grant MINT subsystem + METER (D1 `websearch_grants`, keyed by the token's `jti`; defaults in `config.js`'s `websearch` block): `mintWebSearchGrant` (the shared minter — inserts a row + token, enforces the global `budget` ceiling), `grantWebSearch` (the GHOST path — reuse-the-active-`source='ghost'`-grant-per-user, so per-user Exa exposure is bounded to one quota per TTL window), `grantStatus` (non-consuming read), `adjustGrantQuota` (the secure-workspaces MINTER CONTROL, 2026-07-15: set/±/pause a live grant's quota on the D1 row — the token in circulation never changes; increases budget-checked like a mint, owner-scoped via `user_id`), `revokeGrant` (delete = instant kill). Endpoints: `handleWebSearchGrant` (AUTHED `POST /api/websearch/grant` — ghost crossover), `handleWebSearchAdjust` (AUTHED `POST /api/websearch/adjust` — the minter's self-service quota control over their own grants), `handleWebSearchStatus` (PUBLIC `POST /api/websearch/status` — a `…/cure?ws=<token>` link follower reads remaining), `handleWebSearch` (PUBLIC `POST /api/websearch` — verifies the token, atomically reserves one unit, runs Exa on the server key, refunds an empty/failed search), and `handleAdminWebSearch` (`/api/admin/websearch*` — GET list+defaults, POST mint→shareable link, PATCH /:jti quota adjust, DELETE revoke). Fail-SAFE: no D1 → 503, no unmetered server-paid search possible. Client: `public/cure/drc.js` (grant from the ghost intent marker OR a `?ws=` link + the settings toggle), `public/js/drc-research.js` (the injected `webSearch` fn → citation-aware harvest/synth), and the `/admin` → **Web search grants** panel (`public/js/admin.js`) |
 | `proxy-grant.js` | The SECURE-RESEARCH-SPACE two-tier TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of the GRANT token `prg1.<payload>.<hmac>` (the bundle's "token-granting token", namespace `proxygrant.`) and the PROXY token `prx1.…` (the post-exchange working credential, namespace `proxytoken.`) — both HMAC-signed with `SESSION_SECRET`, each under its own namespace so the two tiers (and the `wsk1`/session tokens) can never be confused; claims carry `svc` (`web`/`api`). Node-tested |
 | `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, PATCH /:jti per-service quota adjust, DELETE revoke a bundle); plus `adjustProxyGrantQuota` + AUTHED `POST /api/proxy/adjust` (the secure-workspaces minter control — same set/±/pause semantics as `websearch.js`'s, per service row). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
+| `server-token.js` | The CONSOLIDATED **Se/rver TOKEN**'s JWT half (near-leaf: imports only the `token-crypto.js` primitives) — "one ticket, one JWT" (2026-07-16 directive): mint/verify of a STANDARD HS256 JWT whose claims bundle the grant families' properties — a `perms` permission SET over the site's UPSTREAM APIs only (`web`/`api`, the CLOSED `SERVER_TOKEN_SERVICES` vocabulary), one `exp` duration for the whole grant, `jti` keying the D1 meter rows, `sub` accountability. Carries THE SERVER-TOKEN GUARANTEE (load-bearing): a Se/rver token grants upstream API access ONLY — NEVER any of Se/rver's own data (no project contents, no chat contents, no history, no accounts) — the name itself the reminder that using one sends data to a server somewhere. Family separation from `wsk1`/`prg1`/`prx1`/session HMACs under the one `SESSION_SECRET` is structural (canonical-header pinning kills alg:none/alg-swap; signing-input formats and signature encodings can't collide) and test-pinned. Node-tested; see `docs/SERVER-TOKENS.md` |
+| `server-grants.js` | The Se/rver-token MINT subsystem + per-PERMISSION METER (D1 `server_tokens`, one row per (jti, service) so each permission's quota is administered independently while the ONE JWT in circulation never changes; defaults in `config.js`'s `server_token` block): `mintServerTokenGrant` (one row per permission + one JWT, global `budget` enforced), `grantServerToken` (the GHOST path, reuse-per-user), `serverTokenStatus` (non-consuming), `adjustServerTokenQuota` (the minter control, per permission), `revokeServerToken` (delete all rows = instant kill). Endpoints: AUTHED `POST /api/server-token/grant` + `/adjust`; PUBLIC `POST /api/server-token/status`, `POST /api/server-token/web` (query-only Exa, atomic reserve/refund), `/api/server-token/llm/*` (OpenAI-wire Berget reverse proxy, the JWT as bearer — reuses `proxy.js`'s shared `forwardLlmModels`/`forwardLlmCompletion`); ADMIN `/api/admin/server-token*` (GET list grouped by jti, POST mint, PATCH /:jti/:svc adjust, DELETE /:jti revoke). Fail-SAFE (no D1 → 503); the legacy families stay unchanged. Its module graph must NEVER include a data-bearing module (storage/vault/chatlog/accounts/rag/pub…) — pinned by a unit test (THE GUARANTEE, enforced structurally) |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
@@ -853,7 +870,18 @@ grant→proxy exchange, the atomic web + LLM reserve/refund incl. the LLM
 reverse-proxy models-forward/metered-completion/refund-on-error, non-consuming
 status, and the admin mint-link/list/revoke surface) and (client)
 `proxy-bundle.js` (the AES-GCM seal→open round-trip, wrong-key/tamper/garbage
-fail-soft to null, and the shape validator), and `workspace-grants.js` — the
+fail-soft to null, and the shape validator), and `server-token.js` (the
+consolidated Se/rver-token JWT: mint→verify round-trip, the standard-JWT wire
+shape, canonical-header pinning incl. alg:none/alg-swap/re-serialization
+rejection, the CLOSED perms vocabulary, expiry/tamper/no-secret rejections,
+and the cross-family forgery matrix vs `wsk1`/`prg1`/`prx1`) and
+`server-grants.js` (the consolidated mint subsystem + per-permission meter
+over an in-memory D1 fake + mocked Exa/Berget: ghost reuse of the ONE JWT,
+one-row-per-permission mint, the budget ceiling, atomic reserve/refund per
+permission incl. the shared-forwarder LLM path, non-consuming status,
+per-permission adjust with owner scoping, the admin surface, and THE
+SERVER-TOKEN GUARANTEE's module-graph pin — no data-bearing import may ever
+appear), and `workspace-grants.js` — the
 CROSS-subsystem secure-workspace grant-token invariants end to end, over ONE
 combined in-memory D1 serving both grant tables (the token-fixed/row-metered
 split under live quota adjusts, concurrency-burst overrun proofs, refund

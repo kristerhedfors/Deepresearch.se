@@ -533,16 +533,7 @@ export async function handleProxyLlm(request, env, log, url) {
 
   // Model catalog — a thin forward of Berget's /models (non-metered).
   if (suffix === "/models" && request.method === "GET") {
-    try {
-      const res = await fetch(bergetBase(env) + "/models", {
-        headers: { authorization: `Bearer ${env.BERGET_API_TOKEN}` },
-        signal: AbortSignal.timeout(LLM_CONNECT_TIMEOUT_MS),
-      });
-      const data = await res.json().catch(() => ({ data: [] }));
-      return jsonResponse(data, res.ok ? 200 : 502);
-    } catch {
-      return jsonResponse({ data: [] }, 502);
-    }
+    return forwardLlmModels(env);
   }
 
   if (suffix !== "/chat/completions" || request.method !== "POST") {
@@ -560,10 +551,51 @@ export async function handleProxyLlm(request, env, log, url) {
   if (reserved === "error") return jsonResponse({ error: "Grant not found." }, 403);
   if (reserved === "exhausted") return jsonResponse({ error: "LLM API quota is used up.", remaining: 0 }, 429);
 
-  // Re-serialize ONLY known fields onto the server key — never forward the
-  // client's Authorization header, and clamp the output ceiling. Berget is
-  // OpenAI-compatible, so model/messages/stream/tools/response_format pass
-  // straight through.
+  return forwardLlmCompletion(env, log, body, {
+    refund: () => refundUnit(db, claims.jti),
+    remainingAfter: () => remainingOf(db, claims.jti),
+    tagPrefix: "proxy.llm",
+    ids: { uid: claims.uid, jti: claims.jti },
+  });
+}
+
+/**
+ * The thin Berget /models forward — SHARED by this bundle's LLM proxy and the
+ * consolidated Se/rver-token LLM endpoint (src/server-grants.js), so the two
+ * server-touching grant surfaces present the exact same catalog behavior.
+ * Non-metered; the caller owns token verification.
+ * @param {Env} env @returns {Promise<Response>}
+ */
+export async function forwardLlmModels(env) {
+  try {
+    const res = await fetch(bergetBase(env) + "/models", {
+      headers: { authorization: `Bearer ${env.BERGET_API_TOKEN}` },
+      signal: AbortSignal.timeout(LLM_CONNECT_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => ({ data: [] }));
+    return jsonResponse(data, res.ok ? 200 : 502);
+  } catch {
+    return jsonResponse({ data: [] }, 502);
+  }
+}
+
+/**
+ * Forward ONE OpenAI-wire chat completion to Berget on the SERVER key —
+ * SHARED by this bundle's LLM proxy and the Se/rver-token LLM endpoint
+ * (src/server-grants.js). The caller owns verification and the quota
+ * RESERVE; this owns the upstream call, the refund-on-failure discipline
+ * (never-connected / upstream-rejected → refund; a mid-stream failure does
+ * NOT refund, matching the fail-soft posture), and the response shaping.
+ * Re-serializes ONLY known fields onto the server key — the client's
+ * Authorization header is never forwarded — and clamps the output ceiling.
+ * Berget is OpenAI-compatible, so model/messages/stream/tools/
+ * response_format pass straight through.
+ * @param {Env} env @param {Logger} log
+ * @param {any} body the client's chat-completions body (already validated)
+ * @param {{ refund: () => Promise<void>, remainingAfter: () => Promise<number|null>, tagPrefix: string, ids: Record<string, unknown> }} opts
+ * @returns {Promise<Response>}
+ */
+export async function forwardLlmCompletion(env, log, body, opts) {
   const stream = body.stream === true;
   const upstreamBody = {
     model: typeof body.model === "string" ? body.model : undefined,
@@ -585,23 +617,22 @@ export async function handleProxyLlm(request, env, log, url) {
       signal: AbortSignal.timeout(stream ? LLM_CONNECT_TIMEOUT_MS : LLM_JSON_TIMEOUT_MS),
     });
   } catch (e) {
-    await refundUnit(db, claims.jti); // never connected — don't burn quota
-    log.warn("proxy.llm_failed", { jti: claims.jti, error: String(/** @type {any} */ (e)?.message || e) });
+    await opts.refund(); // never connected — don't burn quota
+    log.warn(`${opts.tagPrefix}_failed`, { ...opts.ids, error: String(/** @type {any} */ (e)?.message || e) });
     return jsonResponse({ error: "The upstream model did not respond." }, 502);
   }
   if (!upstream.ok) {
-    await refundUnit(db, claims.jti);
+    await opts.refund();
     const text = await upstream.text().catch(() => "");
-    log.warn("proxy.llm_upstream_error", { jti: claims.jti, status: upstream.status });
+    log.warn(`${opts.tagPrefix}_upstream_error`, { ...opts.ids, status: upstream.status });
     return jsonResponse({ error: "The upstream model rejected the request.", detail: text.slice(0, 500) }, 502);
   }
-  const remaining = await remainingOf(db, claims.jti);
-  log.info("proxy.llm_served", { uid: claims.uid, jti: claims.jti, stream, remaining });
+  const remaining = await opts.remainingAfter();
+  log.info(`${opts.tagPrefix}_served`, { ...opts.ids, stream, remaining });
 
   if (stream) {
     // Pipe the upstream SSE straight back — consumeChatStream (server) and the
-    // DRC client's parser both read this OpenAI-wire body unchanged. A
-    // mid-stream failure won't refund (matches the fail-soft posture).
+    // DRC client's parser both read this OpenAI-wire body unchanged.
     return new Response(upstream.body, {
       status: 200,
       headers: {
