@@ -165,6 +165,8 @@ describe("runDrcResearch end to end (mock provider)", () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     const phases = [];
+    const details = []; // {label, lines} — every phase-outcome event, in order
+    let detailsAtDiscard = -1; // how many details had arrived when discard_text fired
     let discarded = false;
     let streamed = "";
     const RECALL =
@@ -177,7 +179,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
       retrieved: RECALL,
       onStatus: (s) => {
         if (s.type === "phase") phases.push(s.phase);
+        if (s.type === "detail") details.push({ label: s.label, lines: s.lines });
         if (s.type === "discard_text") {
+          detailsAtDiscard = details.length;
           discarded = true;
           streamed = "";
         }
@@ -187,6 +191,22 @@ describe("runDrcResearch end to end (mock provider)", () => {
     });
 
     assert.deepEqual(phases, ["triage", "harvest", "gap", "harvest", "synth", "validate"]);
+    // Every phase reported its OUTCOME (label + expandable lines) — the
+    // Se/rver step_done parity the /cure step list renders as expandable
+    // notifications: plan, both harvest waves, the gap audit, the fact-check.
+    assert.deepEqual(details.map((d) => d.label), [
+      "Planned 2 research angles · comparison",
+      "Harvested 2 angles · 2 facts · 2 uncertain",
+      "Digging deeper: 1 follow-up harvest",
+      "Harvested 1 angle · 1 fact · 1 uncertain",
+      "Fixed 1 issue found in review",
+    ]);
+    assert.deepEqual(details[0].lines, ["What is A?", "What is B?"]);
+    assert.deepEqual(details[2].lines, ["What changed recently?"]);
+    assert.deepEqual(details.at(-1).lines, ["overclaimed"]);
+    // The fact-check outcome arrives AFTER discard_text, so its label outlives
+    // the "Applying the reviewed revision…" note as the step's resting state.
+    assert.equal(detailsAtDiscard, 4);
     assert.equal(result.action, "research");
     assert.equal(result.validated, true);
     // The gap round's follow-up joined the harvest.
@@ -387,19 +407,41 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       return { items: [{ title: "Result for " + q, url: "https://ex/" + queries.length, highlights: ["hi"] }], resultCount: 1 };
     };
     const phases = [];
+    const details = [];
+    const sourceGroups = []; // {query, items} — one per live search, for the step's linked list
     const result = await runDrcResearch({
       providerId: "groq",
       apiKey: "user-groq-key",
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
-      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      onStatus: (s) => {
+        if (s.type === "phase") phases.push(s.phase);
+        if (s.type === "detail") details.push(s.label);
+        if (s.type === "sources") sourceGroups.push(s);
+      },
       onDelta: () => {},
       baseUrl,
     });
     assert.equal(result.action, "research");
     // A web search ran for each sub-question.
     assert.deepEqual(queries, ["What is A?", "What is B?"]);
+    // Each search surfaced its results as a sources event (query + title/url
+    // items) — what the /cure step body renders as the linked source list.
+    assert.deepEqual(
+      sourceGroups.map((g) => g.query).sort(),
+      ["What is A?", "What is B?"],
+    );
+    for (const g of sourceGroups) {
+      assert.equal(g.items.length, 1);
+      assert.match(g.items[0].title, /^Result for What is /);
+      assert.match(g.items[0].url, /^https:\/\/ex\//);
+    }
+    // The searched wave and the audit reported their outcomes; the pass
+    // verdict used the web-mode wording.
+    assert.match(details[1], /^Searched 2 angles · 2 sources · /);
+    assert.ok(details.includes("Coverage sufficient"));
+    assert.equal(details.at(-1), "All claims verified against sources");
     // The harvest used the web-harvest prompt (given the live results block).
     const harvest = requests.find((r) => r.phase === "harvest");
     assert.match(harvest.body.messages[0].content, /LIVE WEB SEARCH RESULTS/);
@@ -441,6 +483,8 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       queries.push(q);
       return { items: [{ title: "Doc", url: "https://ex/d", highlights: [] }], resultCount: 1 };
     };
+    const sourceGroups = [];
+    const details = [];
     const result = await runDrcResearch({
       providerId: "groq",
       apiKey: "user-groq-key",
@@ -448,11 +492,18 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
       messages: [{ role: "user", content: "latest on A?" }],
       research: false,
       webSearch,
+      onStatus: (s) => {
+        if (s.type === "sources") sourceGroups.push(s);
+        if (s.type === "detail") details.push(s.label);
+      },
       onDelta: () => {},
       baseUrl,
     });
     assert.equal(result.action, "direct");
     assert.deepEqual(queries, ["latest on A?"]);
+    // The one-pass search also surfaced its sources + outcome for the step list.
+    assert.deepEqual(sourceGroups.map((g) => g.query), ["latest on A?"]);
+    assert.deepEqual(details, ["Searched the web · 1 source"]);
     const direct = requests.at(-1);
     assert.match(direct.body.messages[0].content, /grounded in the numbered web search results/);
     assert.match(direct.body.messages.at(-1).content, /Web search results/);

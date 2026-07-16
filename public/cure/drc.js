@@ -300,9 +300,11 @@ function finishCurPhaseStep() {
 // analog of the DRS app's <details class="step"> (public/js/activity.js
 // makeStepDom). It starts NOT expandable (toggling is preventDefault'd until an
 // `expandable` class appears — there's nothing inside yet); the moment detail is
-// added (a tool call's command + output, a sandbox command's transcript) the
+// added (a tool call's command + output, a sandbox command's transcript, a
+// research phase's outcome lines or a web search's linked sources) the
 // body is created and the step becomes tappable, so a visitor can open it to
-// see exactly WHICH commands ran and WHAT they returned — matching Se/rver.
+// see exactly WHAT each phase decided, searched, ran and returned — matching
+// Se/rver, where every research step expands (2026-07-16 parity request).
 function phaseStep(key, label) {
   const host = phaseHost;
   if (!host) return;
@@ -414,6 +416,58 @@ function appendShellRun(run) {
   const stderr = typeof r.stderr === "string" ? r.stderr.replace(/\s+$/, "") : "";
   out.textContent = stdout && stderr ? "stdout:\n" + stdout + "\n\nstderr:\n" + stderr : stdout || stderr || "(no output)";
   wrap.append(cmd, out);
+  body.appendChild(wrap);
+}
+
+// Append plain outcome lines (planned sub-questions, per-angle fact counts,
+// follow-up questions, fact-check issues) to the running step's expandable
+// body — the /cure twin of the DRS app's finishGenericStep <ul> bullets
+// (public/js/activity.js). textContent only: the lines quote model output.
+function appendDetailLines(lines) {
+  const items = (Array.isArray(lines) ? lines : []).filter((s) => typeof s === "string" && s.trim());
+  if (!items.length) return;
+  const body = phaseStepBody();
+  if (!body) return;
+  const ul = document.createElement("ul");
+  ul.className = "phase-lines";
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.textContent = it;
+    ul.appendChild(li);
+  }
+  body.appendChild(ul);
+}
+
+// Append one live web search's result group (the query headline + its linked
+// sources) to the running step's expandable body — the /cure twin of the DRS
+// search step's expandable source list (public/js/activity.js
+// finishSearchStep). Titles via textContent (untrusted), links restricted to
+// http(s), opened in a new tab with rel=noopener like the DRS list.
+function appendSourceGroup(query, items) {
+  const list = (Array.isArray(items) ? items : []).filter(
+    (it) => it && typeof it.url === "string" && /^https?:\/\//i.test(it.url),
+  );
+  if (!list.length) return;
+  const body = phaseStepBody();
+  if (!body) return;
+  const wrap = document.createElement("div");
+  wrap.className = "search-group";
+  const head = document.createElement("div");
+  head.className = "search-head";
+  head.textContent = "“" + (query || "") + "” · " + list.length + (list.length === 1 ? " result" : " results");
+  const ul = document.createElement("ul");
+  ul.className = "phase-lines";
+  for (const it of list) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = it.url;
+    a.textContent = typeof it.title === "string" && it.title ? it.title : it.url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    li.appendChild(a);
+    ul.appendChild(li);
+  }
+  wrap.append(head, ul);
   body.appendChild(wrap);
 }
 
@@ -2659,6 +2713,20 @@ async function send(ev) {
           // re-labels in place. `label` carries a live line (e.g. a rotating
           // sandbox-boot quip); otherwise the phase's static label.
           phaseStep(s.phase, s.label || PHASE_LABELS[s.phase] || s.phase);
+        } else if (s.type === "detail") {
+          // A phase finished with an OUTCOME: rewrite the running step's label
+          // to it (Se/rver's step_done relabel — "Planned 3 research angles",
+          // "Coverage sufficient") and file the detail lines (sub-questions,
+          // fact counts, fact-check issues) into its expandable body, so every
+          // research phase opens to what it actually decided — matching
+          // Se/rver's expandable activity steps.
+          if (s.label) phaseNote(s.label);
+          appendDetailLines(s.lines);
+        } else if (s.type === "sources") {
+          // One live web search finished — file the query + its linked results
+          // into the running step's expandable body (Se/rver's search-step
+          // source list).
+          appendSourceGroup(s.query, s.items);
         } else if (s.type === "discard_text") {
           shown = ""; // the validated revision replaces the draft
           live.textContent = "";

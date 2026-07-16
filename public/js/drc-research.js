@@ -447,7 +447,14 @@ export async function runDrcSourceTools({
  * the mode) — threaded exactly like the recall block; `fileProvider` is the
  * matching sandbox mount provider (the /src source tree), handed to the VM
  * boot when the bash pass runs. Emits
- * onStatus({type:"phase", phase, detail?}) and
+ * onStatus({type:"phase", phase, detail?}),
+ * onStatus({type:"detail", label?, lines?}) — a finished phase's OUTCOME:
+ * an optional completed label (the Se/rver step_done relabel) plus plain
+ * expandable detail lines (planned sub-questions, per-angle fact counts,
+ * follow-up questions, fact-check issues),
+ * onStatus({type:"sources", query, items:[{title,url}]}) — one live web
+ * search's results, for the step's expandable linked source list (the
+ * Se/rver finishSearchStep counterpart), and
  * onStatus({type:"discard_text"}) + onDelta(chunk) events; resolves to
  * {answer, action, subquestions, validated}.
  */
@@ -513,7 +520,17 @@ export async function runDrcResearch({
     if (!webOn) return null;
     try {
       const r = await webSearch(query);
-      if (r && Array.isArray(r.items) && r.items.length) return numberedResults(r.items);
+      if (r && Array.isArray(r.items) && r.items.length) {
+        // Surface this search's results so the UI can file the query + its
+        // linked sources into the running step's expandable body (the same
+        // per-search source list Se/rver's search steps expand into).
+        onStatus({
+          type: "sources",
+          query,
+          items: r.items.map((it) => ({ title: it.title || it.url, url: it.url })),
+        });
+        return numberedResults(r.items);
+      }
     } catch {
       // fail-soft: a lost search, not a lost answer
     }
@@ -599,7 +616,13 @@ export async function runDrcResearch({
     if (webOn && allowWeb) {
       onStatus({ type: "phase", phase: "search" });
       const rb = await webLookup(question);
-      if (rb) webBlock = "Web search results (cite relevant facts as [n]):\n" + rb + "\n\nSources:\n" + sourcesList();
+      if (rb) {
+        webBlock = "Web search results (cite relevant facts as [n]):\n" + rb + "\n\nSources:\n" + sourcesList();
+        onStatus({
+          type: "detail",
+          label: `Searched the web · ${webSources.length} source${webSources.length === 1 ? "" : "s"}`,
+        });
+      }
     }
     const extra = [directExtra, webBlock].filter(Boolean).join("\n\n") || null;
     onStatus({ type: "phase", phase: "answer" });
@@ -640,6 +663,16 @@ export async function runDrcResearch({
     emitChunked(triage.question, onDelta);
     return { answer: triage.question, action: "clarify", subquestions: [], validated: false };
   }
+
+  // The plan's outcome, on the still-running triage step: the completed label
+  // plus the sub-questions as expandable detail (Se/rver's "Planned N search
+  // angles" step_done, src/pipeline.js runTriage).
+  const kindTag = triage.complexity && triage.complexity !== "simple" ? ` · ${triage.complexity}` : "";
+  onStatus({
+    type: "detail",
+    label: `Planned ${triage.subquestions.length} research angle${triage.subquestions.length === 1 ? "" : "s"}${kindTag}`,
+    lines: triage.subquestions,
+  });
 
   // ---- harvest: the search wave, in parallel ------------------------------
   // With a web-search grant active, each sub-question runs a REAL search
@@ -697,8 +730,31 @@ export async function runDrcResearch({
     for (const s of subquestions) out.push(await harvestOne(s));
     return out;
   };
+  // One harvest wave's outcome, on the still-running search/harvest step:
+  // the completed label with wave totals, plus a per-angle count line — the
+  // step's expandable detail next to any linked source groups (web mode).
+  const harvestDetail = (wave, sourcesBefore) => {
+    const facts = wave.reduce((n, h) => n + h.notes.facts.length, 0);
+    const uncertain = wave.reduce((n, h) => n + h.notes.uncertain.length, 0);
+    const gained = webSources.length - sourcesBefore;
+    onStatus({
+      type: "detail",
+      label:
+        (webOn && gained
+          ? `Searched ${wave.length} angle${wave.length === 1 ? "" : "s"} · ${gained} source${gained === 1 ? "" : "s"}`
+          : `Harvested ${wave.length} angle${wave.length === 1 ? "" : "s"}`) +
+        ` · ${facts} fact${facts === 1 ? "" : "s"}` +
+        (uncertain ? ` · ${uncertain} uncertain` : ""),
+      lines: wave.map(
+        (h) =>
+          `“${h.subquestion}” — ${h.notes.facts.length} fact${h.notes.facts.length === 1 ? "" : "s"}` +
+          (h.notes.uncertain.length ? `, ${h.notes.uncertain.length} uncertain` : ""),
+      ),
+    });
+  };
   onStatus({ type: "phase", phase: webOn ? "search" : "harvest", detail: triage.subquestions.length });
   const harvest = await harvestAll(triage.subquestions);
+  harvestDetail(harvest, 0);
 
   // ---- gap check: one follow-up harvest round (fail-soft: skip) ------------
   try {
@@ -717,8 +773,20 @@ export async function runDrcResearch({
       .filter((s) => typeof s === "string" && s.trim())
       .slice(0, MAX_GAP_FOLLOWUPS);
     if (missing.length) {
+      // The audit's outcome + the follow-up questions (Se/rver's "Digging
+      // deeper: N follow-up searches" step_done), then the follow-up wave.
+      onStatus({
+        type: "detail",
+        label: `Digging deeper: ${missing.length} follow-up ${webOn ? (missing.length === 1 ? "search" : "searches") : (missing.length === 1 ? "harvest" : "harvests")}`,
+        lines: missing,
+      });
       onStatus({ type: "phase", phase: webOn ? "search" : "harvest", detail: missing.length });
-      harvest.push(...(await harvestAll(missing)));
+      const sourcesBefore = webSources.length;
+      const followupWave = await harvestAll(missing);
+      harvest.push(...followupWave);
+      harvestDetail(followupWave, sourcesBefore);
+    } else {
+      onStatus({ type: "detail", label: "Coverage sufficient" });
     }
   } catch {
     // coverage audit is a helper — the harvest we have is what we answer from
@@ -763,10 +831,28 @@ export async function runDrcResearch({
     );
     validated = verdict?.verdict === "pass";
     if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
+      const issues = (Array.isArray(verdict.issues) ? verdict.issues : [])
+        .filter((s) => typeof s === "string" && s.trim())
+        .slice(0, 10);
       onStatus({ type: "discard_text" });
       answer = verdict.revised_answer.trim();
       emitChunked(answer, onDelta);
       validated = true;
+      // AFTER the re-emit, so the outcome label outlives the discard_text
+      // "Applying the reviewed revision…" note (Se/rver's "Fixed N issues
+      // found in fact-check" step_done, issues as the expandable detail).
+      onStatus({
+        type: "detail",
+        label: `Fixed ${issues.length || "some"} issue${issues.length === 1 ? "" : "s"} found in review`,
+        lines: issues,
+      });
+    } else if (validated) {
+      onStatus({
+        type: "detail",
+        label: hasWeb ? "All claims verified against sources" : "Draft verified against the harvested notes",
+      });
+    } else {
+      onStatus({ type: "detail", label: "Validation inconclusive — draft kept as-is" });
     }
   } catch {
     // an unvalidated draft beats no answer
