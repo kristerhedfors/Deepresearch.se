@@ -5,9 +5,16 @@
 // the launcher and banner simply never appear for non-admins):
 //
 //   1. The QUEUE. A header launcher (#tryqueuebtn, shown only when there are
-//      open points) opens a list of declared points. Tap one's label to go
-//      try it — same-page targets open the banner in place, cross-page
-//      targets navigate via the point's /try/<id> deep link.
+//      open points) opens a list of declared points. Tapping one opens its
+//      DETAIL view in place — the "what was fixed" summary, note-action
+//      steps, the thread — so the tester READS the task before going
+//      (2026-07-16: tapping used to navigate immediately, so a cross-page
+//      point threw the tester at the target without the explanation ever
+//      being shown — the banner doesn't follow to /cure, /admin, /pulse…).
+//      An explicit "Go try it" then navigates: same-page targets open the
+//      banner in place, cross-page targets go via the point's /try/<id>
+//      deep link. The detail view also records a verdict directly — the
+//      only in-UI way to close the loop for a cross-page point.
 //   2. The TRY-IT BANNER. On landing with ?try=<id> (a shared /try link, or
 //      a same-page open), fetch the point, run its ACTIONS to set the scene,
 //      and show a fixed bottom sheet: the "what was fixed" summary plus the
@@ -25,7 +32,14 @@
 // app.js internals; the generic ones (element highlight, settings-knob
 // pulse) it does itself by stable element id.
 
-import { parseTryId, partitionActions, nextOpenPoint, stripTryParam } from "./testpoints-core.js";
+import {
+  parseTryId,
+  partitionActions,
+  nextOpenPoint,
+  noteTexts,
+  stripTryParam,
+  targetPath,
+} from "./testpoints-core.js";
 
 const API = "/api/admin/testpoints";
 
@@ -165,24 +179,97 @@ async function openQueue() {
       `<span class="tryqueue-item-target muted"></span>`;
     row.querySelector(".tryqueue-item-label").textContent = p.label;
     row.querySelector(".tryqueue-item-target").textContent = p.target;
-    row.addEventListener("click", () => {
-      els.overlay.hidden = true;
-      goToPoint(p);
-    });
+    row.addEventListener("click", () => showDetail(p));
     els.list.appendChild(row);
   }
+}
+
+// ---- the detail view: READ the task, then go -------------------------------
+//
+// Tapping a queue item lands here, not at the target: the tester sees what
+// was fixed (and any note-action steps) BEFORE navigating, because the
+// banner that repeats the summary only exists on this page — a cross-page
+// point (/cure, /admin, /pulse…) would otherwise arrive unexplained. The
+// verdict controls double as the queue-side way to close a cross-page point
+// after trying it by hand.
+function showDetail(point) {
+  if (!els) return;
+  const { unknown } = partitionActions(point.actions || []);
+  const notes = noteTexts(point.actions || []);
+  const crossPage = targetPath(point.target, location.origin) !== location.pathname;
+  els.list.innerHTML = `
+    <button type="button" class="tryqueue-back">‹ All points</button>
+    <div class="tryqueue-detail">
+      <strong class="tryqueue-detail-label"></strong>
+      <p class="tryqueue-detail-target muted"></p>
+      <p class="tryqueue-detail-summary"></p>
+      ${notes.length ? `<ol class="tryqueue-detail-steps"></ol>` : ""}
+      ${
+        unknown.length
+          ? `<p class="trybanner-warn">${unknown.length} setup step${unknown.length > 1 ? "s" : ""} this build can't run — set the scene by hand.</p>`
+          : ""
+      }
+      ${
+        crossPage
+          ? `<p class="tryqueue-detail-hint muted">This point lives on another page — these instructions won't follow you there. Read them first, then come back here to record your verdict.</p>`
+          : ""
+      }
+      <div class="trybanner-thread" hidden></div>
+      ${point.ref ? `<p class="trybanner-ref muted"></p>` : ""}
+      <button type="button" class="tryqueue-go">Go try it →</button>
+      <div class="trybanner-verdict">
+        <button type="button" class="trybanner-up" aria-label="It works">👍 Works</button>
+        <button type="button" class="trybanner-down" aria-label="It doesn't work">👎 Doesn't</button>
+        <button type="button" class="trybanner-na" aria-label="Can't test — needs clarification">❓ Can't test</button>
+      </div>
+      <textarea class="trybanner-note" rows="1" placeholder="Optional note (what you saw)…"></textarea>
+      <div class="trybanner-actions">
+        <button type="button" class="trybanner-submit" disabled>Submit</button>
+      </div>
+    </div>`;
+  const d = els.list;
+  d.querySelector(".tryqueue-detail-label").textContent = point.label;
+  d.querySelector(".tryqueue-detail-target").textContent = point.target;
+  d.querySelector(".tryqueue-detail-summary").textContent = point.summary;
+  if (notes.length) {
+    const ol = d.querySelector(".tryqueue-detail-steps");
+    for (const t of notes) {
+      const li = document.createElement("li");
+      li.textContent = t;
+      ol.appendChild(li);
+    }
+  }
+  if (point.ref) d.querySelector(".trybanner-ref").textContent = "ref: " + point.ref;
+  renderThread(d.querySelector(".trybanner-thread"), point.messages);
+
+  d.querySelector(".tryqueue-back").addEventListener("click", () => openQueue());
+  d.querySelector(".tryqueue-go").addEventListener("click", () => {
+    els.overlay.hidden = true;
+    goToPoint(point);
+  });
+
+  const submit = d.querySelector(".trybanner-submit");
+  const note = d.querySelector(".trybanner-note");
+  const verdict = wireVerdictButtons(d, note, submit);
+  note.addEventListener("input", () => {
+    note.style.height = "auto";
+    note.style.height = note.scrollHeight + "px";
+  });
+  submit.addEventListener("click", async () => {
+    if (!verdict.value) return;
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    await postResult(point.id, verdict.value, note.value);
+    // Back to the (refreshed) list — from the queue, a verdict shouldn't
+    // auto-navigate anywhere the way the banner's advance does.
+    openQueue();
+  });
 }
 
 // Same-page target → open the banner in place; cross-page target → navigate
 // via the /try/<id> deep link so that page's client picks it up.
 function goToPoint(point) {
-  let path = point.target;
-  try {
-    path = new URL(point.target, location.origin).pathname;
-  } catch {
-    /* keep raw */
-  }
-  if (path === location.pathname) {
+  if (targetPath(point.target, location.origin) === location.pathname) {
     openPoint(point.id, point);
   } else {
     location.assign(point.try_url || `/try/${point.id}`);
@@ -291,14 +378,34 @@ function showBanner(point) {
   if (point.ref) b.querySelector(".trybanner-ref").textContent = "ref: " + point.ref;
   renderThread(b.querySelector(".trybanner-thread"), point.messages);
 
-  const up = b.querySelector(".trybanner-up");
-  const down = b.querySelector(".trybanner-down");
-  const na = b.querySelector(".trybanner-na");
   const submit = b.querySelector(".trybanner-submit");
   const note = b.querySelector(".trybanner-note");
-  let verdict = null;
+  const verdict = wireVerdictButtons(b, note, submit);
+  note.addEventListener("input", () => {
+    note.style.height = "auto";
+    note.style.height = note.scrollHeight + "px";
+  });
+  submit.addEventListener("click", async () => {
+    if (!verdict.value) return;
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    await postResult(point.id, verdict.value, note.value);
+    advance(point.id);
+  });
+  b.querySelector(".trybanner-skip").addEventListener("click", () => advance(point.id));
+  b.querySelector(".trybanner-x").addEventListener("click", () => closeBanner());
+}
+
+// The three verdict buttons + note placeholder + submit enablement, shared by
+// the banner and the queue's detail view (same class names, same semantics).
+// Returns a live { value } the caller reads on submit.
+function wireVerdictButtons(root, note, submit) {
+  const up = root.querySelector(".trybanner-up");
+  const down = root.querySelector(".trybanner-down");
+  const na = root.querySelector(".trybanner-na");
+  const verdict = { value: null };
   const choose = (v) => {
-    verdict = v;
+    verdict.value = v;
     up.classList.toggle("chosen", v === "pass");
     down.classList.toggle("chosen", v === "fail");
     na.classList.toggle("chosen", v === "untestable");
@@ -312,36 +419,26 @@ function showBanner(point) {
   up.addEventListener("click", () => choose("pass"));
   down.addEventListener("click", () => choose("fail"));
   na.addEventListener("click", () => choose("untestable"));
-  note.addEventListener("input", () => {
-    note.style.height = "auto";
-    note.style.height = note.scrollHeight + "px";
-  });
-  submit.addEventListener("click", async () => {
-    if (!verdict) return;
-    submit.disabled = true;
-    submit.textContent = "Saving…";
-    await submitVerdict(point, verdict, note.value);
-  });
-  b.querySelector(".trybanner-skip").addEventListener("click", () => advance(point.id));
-  b.querySelector(".trybanner-x").addEventListener("click", () => closeBanner());
+  return verdict;
 }
 
-async function submitVerdict(point, result, noteText) {
+async function postResult(pointId, result, noteText) {
   try {
-    await fetch(`${API}/${point.id}/result`, {
+    await fetch(`${API}/${pointId}/result`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ result, note: noteText || undefined }),
     });
   } catch {
-    /* fail-soft — advancing still moves the tester along */
+    /* fail-soft — moving the tester along matters more than the write */
   }
   refreshBadge();
-  advance(point.id);
 }
 
 // After a verdict/skip, pull the next open point and open it in place (if it
-// lives on this page) or navigate to it; otherwise close and celebrate.
+// lives on this page) or show its detail view (read-first — a cross-page
+// point must be explained HERE, the banner doesn't follow); otherwise close
+// and celebrate.
 async function advance(justDoneId) {
   const queue = await loadQueue();
   const next = nextOpenPoint(queue || [], justDoneId);
@@ -349,16 +446,12 @@ async function advance(justDoneId) {
     closeBanner();
     return;
   }
-  let path = next.target;
-  try {
-    path = new URL(next.target, location.origin).pathname;
-  } catch {
-    /* keep raw */
-  }
-  if (path === location.pathname) {
+  if (targetPath(next.target, location.origin) === location.pathname) {
     openPoint(next.id, next);
   } else {
-    location.assign(next.try_url || `/try/${next.id}`);
+    closeBanner();
+    if (els) els.overlay.hidden = false;
+    showDetail(next);
   }
 }
 

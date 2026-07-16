@@ -63,11 +63,18 @@ client fails soft for everyone else: the launcher and banner never render.
    says *what changed* (not how), a `target`, and the `actions` that land the
    tester on the exact state. Add a `ref` (PR/commit/issue) so the verdict
    traces back.
-2. **Test.** The owner opens the queue (header launcher), taps a label — or
-   opens a shared `/try/<id>` link. The banner shows the summary (and the
-   clarification thread, if one has started); the actions have already set
-   the scene. They click 👍/👎/❓ (+ optional note); the banner advances to
-   the next open point.
+2. **Test.** The owner opens the queue (header launcher) and taps a point,
+   which opens its DETAIL view in place — the summary, any `note` steps, and
+   the clarification thread — so the task is READ before going anywhere
+   (2026-07-16: tapping used to navigate immediately, so a cross-page point
+   threw the tester at the target without the explanation). An explicit
+   "Go try it" then navigates; a shared `/try/<id>` link still lands
+   directly. On `/rver` the banner repeats the summary at the scene (the
+   actions have already set it); on a cross-page target the tester tries it
+   by hand and records the verdict from the detail view afterwards. They
+   click 👍/👎/❓ (+ optional note); the banner advances to the next open
+   point — a cross-page NEXT point opens as its detail view, read-first,
+   never a blind navigation.
 3. **Read verdicts.** `scripts/testpoints --all` (or `--status failed`). A 👎
    with a note is a bug report against your own fix. Fix it, then re-open the
    point for re-test: `scripts/testpoints --set <id> '{"status":"open"}'`.
@@ -142,10 +149,13 @@ capped at `TESTPOINT_CAPS.actions` (25).
   where `testpoints.js` is loaded and where the admin/owner is signed in. A
   point whose `target` is another served page (`/admin`, `/pulse`, `/cure`,
   `/help`, `/build`, `/story`, a game page) still **deep-links there** (you
-  land exactly on it via `/try/<id>`), but the banner does not follow. Record
-  the verdict from the queue afterwards, or `scripts/testpoints --result`.
-  `/cure` (DRC) is deliberately server-less and public, so it is
-  navigate-only by design — it cannot call the admin API.
+  land exactly on it via `/try/<id>`), but the banner does not follow —
+  which is exactly why the queue shows the DETAIL view first: the summary
+  and steps are read on `/rver` BEFORE the "Go try it" navigation, and the
+  detail view's own 👍/👎/❓ controls record the verdict from the queue
+  afterwards (or `scripts/testpoints --result`). `/cure` (DRC) is
+  deliberately server-less and public, so it is navigate-only by design —
+  it cannot call the admin API.
 - **`target` is hard-validated**: a same-origin path with one leading slash
   (query/hash allowed). Absolute URLs, `//host`, and non-slash strings are
   rejected outright — there is no safe fallback for a bad target, unlike the

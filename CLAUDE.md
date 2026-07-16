@@ -945,7 +945,9 @@ availability check). On the client, `pending-answer.js` covers the
 resume-across-relaunch marker (metadata-only, incognito-suppressed), and
 `testpoints-core.js` covers the try-it queue's client pure core
 (`parseTryId`/`stripTryParam`/`deepLink`, `partitionActions` known-vs-unknown
-against the client grammar, `nextOpenPoint` oldest-open selection).
+against the client grammar, `nextOpenPoint` oldest-open selection,
+`targetPath` same-page normalization, `noteTexts` note-action extraction for
+the queue's read-before-you-go detail view).
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
