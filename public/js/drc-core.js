@@ -118,11 +118,14 @@ export function emptyDrcState() {
     providerId: null,
     model: null,
     research: true,
-    // The research-depth tier the composer slider sets ("brief" | "standard" |
-    // "extended" | "full" — drc-research.js DRC_DEPTH_TIERS). Absent (older
-    // blobs) or unknown reads as "standard", today's exact behavior, so no
-    // version bump is needed.
-    depth: "standard",
+    // The research time target in seconds the composer slider sets — the
+    // Se/rver slider mirrored (public/js/timescale.js, 15 s–10 min): the roof
+    // on research time AND the report tier it buys (drc-research.js
+    // drcPlanForBudget). Absent (older blobs) or garbage reads as the 60 s
+    // default — the pre-slider behavior — so no version bump is needed. (A
+    // short-lived interim shape stored a `depth` TIER ID instead; migration
+    // maps it onto this time scale.)
+    budgetS: 60,
     // Experimental in-browser Linux execution sandbox (the DRC counterpart of
     // the server's bash_lite_mcp knob). Default OFF; an absent field (older
     // blobs) reads as off. Purely client-side here, like everything in DRC.
@@ -183,7 +186,7 @@ export function validateDrcState(s) {
     (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs))) &&
     (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string") &&
     (s.onDevice === undefined || typeof s.onDevice === "boolean") &&
-    (s.depth === undefined || typeof s.depth === "string")
+    (s.budgetS === undefined || typeof s.budgetS === "number")
   );
 }
 
@@ -196,7 +199,13 @@ export function migrateDrcState(s) {
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
   if (typeof s.localBaseUrl !== "string") s.localBaseUrl = "";
   if (typeof s.onDevice !== "boolean") s.onDevice = false;
-  if (typeof s.depth !== "string") s.depth = "standard";
+  if (typeof s.budgetS !== "number" || !Number.isFinite(s.budgetS)) {
+    // The interim depth-tier shape (2026-07-16, lived less than a day) stored
+    // a tier ID; map it onto the time scale it stood for. Everything older
+    // gets the 60 s default — the pre-slider behavior.
+    s.budgetS = { brief: 30, standard: 60, extended: 240, full: 480 }[s.depth] || 60;
+  }
+  delete s.depth;
   return s;
 }
 

@@ -163,17 +163,24 @@ test("v5 onDevice: absent (older blobs) migrates to false, non-boolean rejects",
   assert.equal(validateDrcState({ ...emptyDrcState(), onDevice: "yes" }), false);
 });
 
-test("depth (the research-depth slider): absent migrates to standard, non-string rejects", () => {
-  // Additive field, no version bump: absent-reads-as-standard keeps every
-  // older sealed blob opening AND behaving exactly as before the slider.
+test("budgetS (the time slider): absent migrates to the 60 s default, non-number rejects", () => {
+  // Additive field, no version bump: absent-reads-as-60s keeps every older
+  // sealed blob opening AND behaving exactly as before the slider.
   const older = { ...emptyDrcState() };
-  delete older.depth;
+  delete older.budgetS;
   assert.equal(validateDrcState(older), true);
   const migrated = migrateDrcState({ ...older });
-  assert.equal(migrated.depth, "standard");
-  assert.equal(emptyDrcState().depth, "standard");
-  assert.equal(validateDrcState({ ...emptyDrcState(), depth: "full" }), true);
-  // An unknown tier id stays valid — the pipeline reads it as standard.
-  assert.equal(validateDrcState({ ...emptyDrcState(), depth: "bogus" }), true);
-  assert.equal(validateDrcState({ ...emptyDrcState(), depth: 3 }), false);
+  assert.equal(migrated.budgetS, 60);
+  assert.equal(emptyDrcState().budgetS, 60);
+  assert.equal(validateDrcState({ ...emptyDrcState(), budgetS: 480 }), true);
+  assert.equal(validateDrcState({ ...emptyDrcState(), budgetS: "long" }), false);
+  // The interim depth-tier shape (stored a tier ID for less than a day) maps
+  // onto the time scale it stood for — and the stale field is dropped.
+  for (const [depth, s] of [["brief", 30], ["standard", 60], ["extended", 240], ["full", 480], ["bogus", 60]]) {
+    const interim = { ...emptyDrcState(), depth };
+    delete interim.budgetS;
+    const out = migrateDrcState(interim);
+    assert.equal(out.budgetS, s, depth);
+    assert.equal("depth" in out, false, depth);
+  }
 });

@@ -320,13 +320,14 @@ header {
 }
 .drs-wrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; cursor: pointer; }
 .drs-wrap input { pointer-events: none; }
-/* The research-depth slider (REAL here since 2026-07-16 — it steers the
-   client-side pipeline's depth): the .drs-wrap layout without the dimming,
-   the explainer cursor, or the input's pointer-events block. It dims only
-   while the research knob is off (depth applies to research runs only —
-   the same coupling as the Se/rver twin's slider). */
+/* The research time slider (the Se/rver slider MIRRORED, 2026-07-16 — same
+   scale, same time-over-tier readout; here the time roofs the client-side
+   research): the .drs-wrap layout without the dimming, the explainer cursor,
+   or the input's pointer-events block. Dims only while the research knob is
+   off (the budget is moot for one-pass answers — app.css's coupling). */
 #budgetwrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; }
-#budgetwrap input:disabled { opacity: .45; }
+#budgetwrap input:disabled { opacity: .35; }
+#composer.nosearch #budgetval { opacity: .35; }
 
 #chat {
   flex: 1;
@@ -512,8 +513,18 @@ button:disabled { opacity: .5; cursor: default; }
   box-shadow: 0 2px 8px rgba(60, 50, 10, .25);
 }
 
-/* The time slider (DRS feature): the app's clock-thumb slider, dimmed. */
-#budgetval { min-width: 3.6rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+/* The time slider readout — app.css's #budgetval mirrored: the time stacked
+   over the report tier the setting buys (drc.js renderBudgetReadout), so the
+   readout names the deliverable, not just the duration. */
+#budgetval {
+  min-width: 3.6rem;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex; flex-direction: column; align-items: center;
+  line-height: 1.15; text-align: center;
+}
+#budgettier {
+  font-size: .58rem; opacity: .72; letter-spacing: .02em; white-space: nowrap;
+}
 #composer input[type="range"] {
   flex: 1 1 60px; min-width: 40px; margin: 0;
   -webkit-appearance: none; appearance: none;

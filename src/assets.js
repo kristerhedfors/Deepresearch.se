@@ -65,6 +65,11 @@ export function isPublicAsset(url, method) {
     // backend config normalizer, and the deep-link path parsers, all imported
     // by /cure/drc.js — same public-graph rule, a 401 here takes /cure dark.
     url.pathname === "/js/drc-page-core.js" ||
+    // The shared research-time scale (pure): the Se/cure composer's slider is
+    // the Se/rver slider mirrored (2026-07-16), so /cure/drc.js AND
+    // /js/drc-research.js statically import it — same public-graph rule, a
+    // 401 here takes /cure dark.
+    url.pathname === "/js/timescale.js" ||
     // The secure-research-space bundle crypto — drc.js imports it to open the
     // encrypted proxy bundle from the URL (src/proxy.js). Must be public or the
     // /cure module graph fails to link.

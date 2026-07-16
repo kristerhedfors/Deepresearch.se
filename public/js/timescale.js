@@ -2,7 +2,9 @@
 // Research time-target scale (pure functions). The slider position (0-100)
 // maps quadratically to 15s–10min so the low end has fine granularity while
 // the top still reaches 10 minutes. Mirrored by the server's clamp in
-// src/budget.js.
+// src/budget.js. Shared by BOTH composers since 2026-07-16: the Se/rver app
+// (public/js/app.js → time_budget_s) and the Se/cure page (public/cure/drc.js
+// → runDrcResearch's budgetS), so the two sliders are the same control.
 
 export const BUDGET_MIN_S = 15;
 export const BUDGET_MAX_S = 600;
