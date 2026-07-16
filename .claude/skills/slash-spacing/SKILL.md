@@ -162,7 +162,7 @@ Fixed vs still running on the global constant (as of 2026-07-16):
 | `public/help/index.html` (Se/rver docs) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (the reported instance) |
 | `public/cure/help/index.html` (Se/cure docs, split 2026-07-16) | `-.12em` + `b .sl -.04em` | yes | FIXED 2026-07-16 (same fix at merge time) |
 | `public/css/app.css` (app + header brand) | `-.12em` | yes (header `<b>`) | on the global constant — owner-tuned, leave unless reported |
-| `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` | many | partial (hand-tuned before this skill) |
+| `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` + `#proxybanner/#notices -.04em` | many | partial (`#proxybanner`/`#notices` MEASURED + fixed 2026-07-16 — owner report: proxy banner + footer notices too tight) |
 | `public/welcome/index.html` | `-.12em` + `#mbubble +.02em` | yes | partial |
 | `public/build/index.html` | `-.12em` | yes | unmeasured on device |
 | `public/architecture/index.html` | `-.12em` | yes | unmeasured on device |

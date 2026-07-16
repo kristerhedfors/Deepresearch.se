@@ -157,6 +157,18 @@ function workStatus(msg) {
   const el = $("workstatus");
   el.hidden = !msg;
   el.innerHTML = msg ? wmHtml(msg) : "";
+  updateNoticesClose();
+}
+
+// The footer notices' shared dismiss × (owner request, 2026-07-16): shown only
+// while either notice is visible. Dismissing clears the workstatus line and
+// hides the provider disclosure for THIS text only — a model change (new text)
+// or a reload brings the disclosure back, so the invariant-4 "which APIs are
+// connected" posture is unchanged.
+let provNoteDismissed = "";
+function updateNoticesClose() {
+  const btn = $("noticesclose");
+  if (btn) btn.hidden = $("provnote").hidden && $("workstatus").hidden;
 }
 
 // ---- the research step list --------------------------------------------------------
@@ -1094,7 +1106,9 @@ function renderProviderNote() {
   const [pid] = ($("model").value || "").split("::");
   const text = providerVisibilityNote(pid, drcProvider(pid)?.label);
   note.textContent = text;
-  note.hidden = !text;
+  note.hidden = !text || text === provNoteDismissed;
+  if (text !== provNoteDismissed) provNoteDismissed = "";
+  updateNoticesClose();
 }
 
 // ---- conversations ------------------------------------------------------------------
@@ -1958,11 +1972,17 @@ function announceProxyConnected() {
   if (!parts.length) return;
   const banner = $("proxybanner");
   if (banner) {
-    $("proxybannertext").innerHTML = wmHtml(
-      "<b>Secure research space connected.</b> A Se/rver account lent this session: " +
-        parts.join(" + ") +
-        ". Bounded & temporary — the LLM API routes your messages through the server; manage it under ⚙ Settings.",
-    );
+    // wmHtml escapes <> (it renders prose, not markup) — the <b> wrapper must
+    // be added AROUND the escaped text, never inside the string it escapes.
+    $("proxybannertext").innerHTML =
+      "<b>" +
+      wmHtml("Secure research space connected.") +
+      "</b> " +
+      wmHtml(
+        "A Se/rver account lent this session: " +
+          parts.join(" + ") +
+          ". Bounded & temporary — the LLM API routes your messages through the server; manage it under ⚙ Settings.",
+      );
     banner.hidden = false;
   }
   workStatus(
@@ -2762,6 +2782,13 @@ $("stenabled").addEventListener("change", () => {
 });
 $("proxybannerclose")?.addEventListener("click", () => {
   $("proxybanner").hidden = true;
+});
+// The footer notices' × — clears the workstatus line and hides the provider
+// disclosure until its text changes (model switch) or the page reloads.
+$("noticesclose")?.addEventListener("click", () => {
+  provNoteDismissed = $("provnote").textContent || "";
+  $("provnote").hidden = true;
+  workStatus("");
 });
 // Borrowed-capability arrival chain, consolidated-first: (1) a Se/rver token
 // (?st= link, or the ghost intent — which the token path consumes on success
