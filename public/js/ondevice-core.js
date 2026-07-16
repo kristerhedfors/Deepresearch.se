@@ -296,11 +296,15 @@ export const ONDEVICE_MAX_TOKENS = 1280;
  * @param {{path?: string, loaded?: number}} [current]
  */
 export function downloadProgress(files, doneFiles, current = {}) {
+  // The worker passes an explicit null between files (a default parameter
+  // only covers undefined) — found live in the headless verify run: the
+  // first completed file crashed the whole download on `null.path`.
+  const cur = current || {};
   const total = downloadTotalBytes(files);
   let loaded = 0;
   for (const f of files) {
     if (doneFiles[f.path] !== undefined) loaded += f.size;
-    else if (current.path === f.path) loaded += Math.min(current.loaded || 0, f.size);
+    else if (cur.path === f.path) loaded += Math.min(cur.loaded || 0, f.size);
   }
   const pct = total > 0 ? Math.min(100, Math.floor((loaded / total) * 100)) : 0;
   return { loaded, total, pct };

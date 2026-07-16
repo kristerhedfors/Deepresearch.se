@@ -134,6 +134,9 @@ test("downloadProgress: verified files count whole, the in-flight file partially
   // an over-reported in-flight count clamps to the file's size
   assert.deepEqual(downloadProgress(files, { a: 100, b: 300 }, { path: "c", loaded: 9999 }), { loaded: 1000, total: 1000, pct: 100 });
   assert.deepEqual(downloadProgress([], {}), { loaded: 0, total: 0, pct: 0 });
+  // An explicit null current (the worker's between-files post) must not throw
+  // — the live regression that killed the first verify download after file 1.
+  assert.deepEqual(downloadProgress(files, { a: 100 }, null), { loaded: 100, total: 1000, pct: 10 });
 });
 
 // ---- streaming SHA-256 ---------------------------------------------------------------
