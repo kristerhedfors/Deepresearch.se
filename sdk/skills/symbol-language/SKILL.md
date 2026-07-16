@@ -168,7 +168,7 @@ with their own vocabulary:
 | Greeters (balloon guide; strolling ghost) | `public/js/balloon.js` (+ `.test.js`), `public/cure/ghostwalk.js`, gates in `public/js/app.js` / `public/cure/drc.js` |
 | Waiting symbols (boomerang + per-tier finale) | `public/js/balloon-spinner.js`, `public/js/umbrella-spinner.js` |
 | Privacy-notice text (pure) | `public/js/drc-page-core.js` (`privacyNoticeLines`, `providerVisibilityNote`) |
-| ℹ privacy notice UI | `public/cure/drc.js` (`privacyCtx`, `showPrivacyNotice`), `public/cure/index.html` (`#privacybtn`, `#privacypop`) |
+| Privacy-eye notice UI (the eye on the Se/cure wordmark) | `public/cure/drc.js` (`privacyCtx`, `showPrivacyNotice`), `public/cure/index.html` (`#privacybtn`, `#privacypop`) |
 | Secure marker per tier | ghost button glow in `public/css/app.css`; `ghost-contour` in `public/cure/drc.css` |
 | Slash ink meter + gap band + audit table | `scripts/slash-gap.mjs`, `.claude/skills/slash-spacing/SKILL.md` |
 | Wordmark renderer for JS-built prose | `public/js/drc-page-core.js` (`wmHtml`) |

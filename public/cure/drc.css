@@ -277,6 +277,18 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
+/* The privacy EYE (2026-07-16 owner directive, superseding the icon-row ℹ):
+   an eye-in-a-circle right after the Se/cure wordmark — the tier's privacy
+   marker sits ON the name. A bare glyph in the tail's flag blue, no glass
+   chrome: it belongs to the wordmark, not the button row. Tapping it opens
+   #privacypop (the brand's intro-replay click ignores it — drc.js). */
+#privacybtn {
+  background: none; border: 0; margin: 0 0 0 .3rem; padding: .15rem;
+  display: inline-flex; align-items: center; vertical-align: -.3em;
+  color: #1a56b0; line-height: 0; opacity: .85; cursor: pointer;
+  filter: drop-shadow(0 1px 4px rgba(255, 255, 255, .5));
+}
+#privacybtn:hover { opacity: 1; }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
 /* In the ghost speech bubble and the DRS explainer popup the wordmarks sit in
@@ -628,11 +640,12 @@ button:disabled { opacity: .5; cursor: default; }
 #drspop[hidden] { display: none; }
 #drspop a { color: var(--accent); font-weight: 600; }
 
-/* The PRIVACY NOTICE popover — the header ℹ's read-up on what this session
-   sends where (the #drspop glass shape, anchored under the header like
-   #ghostsay). Scrolls internally if the configuration has many lines. */
+/* The PRIVACY NOTICE popover — the wordmark eye's read-up on what this
+   session sends where (the #drspop glass shape). Anchored LEFT, under the
+   brand + eye that open it (the eye moved from the icon row to the wordmark,
+   2026-07-16). Scrolls internally if the configuration has many lines. */
 #privacypop {
-  position: fixed; top: calc(3.4rem + env(safe-area-inset-top, 0px)); right: .8rem; z-index: 25;
+  position: fixed; top: calc(3.4rem + env(safe-area-inset-top, 0px)); left: .8rem; z-index: 25;
   width: min(420px, calc(100vw - 1.6rem));
   max-height: 68vh; overflow-y: auto;
   background: var(--panel); color: var(--text);
@@ -643,6 +656,15 @@ button:disabled { opacity: .5; cursor: default; }
 }
 #privacypop[hidden] { display: none; }
 #privacypop p { margin: .45rem 0 0; }
+/* The follow-on documentation link (owner directive 2026-07-16: read the
+   notice, then go on to the full docs). */
+#privacypop .pp-docs { display: inline-block; margin-top: .6rem; color: var(--accent); font-weight: 600; text-decoration: none; }
+#privacypop .pp-docs:hover { text-decoration: underline; }
+/* Running body prose (.8rem) with a 600-weight wordmark in the docs link —
+   the global -.12em crowds the slash here like the other prose surfaces;
+   measured with scripts/slash-gap.mjs (400+600 weight, container fonts):
+   -.04em keeps every side above the .03em ink floor. */
+#privacypop .sl { margin: 0 -.04em; }
 
 /* The "little fella" first-visit greeter — a khaki glass speech bubble under
    the header, its arrow pointing up at the account button (the door to

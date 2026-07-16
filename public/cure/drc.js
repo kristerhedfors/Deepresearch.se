@@ -2561,7 +2561,8 @@ async function unlockWorkspace(ev) {
     );
     // A shared workspace pops the privacy notice open (owner directive,
     // 2026-07-16): the arriving user reads what THIS workspace's
-    // configuration sends where — and can reopen it any time from the ℹ.
+    // configuration sends where — and can reopen it any time from the eye
+    // on the header wordmark.
     sharedWorkspace = name || true;
     showPrivacyNotice();
   } finally {
@@ -2882,7 +2883,10 @@ handlePublicationLink().then((opened) => {
 });
 
 $("introstart").addEventListener("click", dismissIntro);
-$("brand").addEventListener("click", () => {
+$("brand").addEventListener("click", (e) => {
+  // The privacy eye lives INSIDE the brand (right after the wordmark) — its
+  // tap opens the privacy notice, not the intro replay.
+  if (e.target.closest("#privacybtn")) return;
   $("intro").hidden = false;
 });
 $("intro").addEventListener("click", (e) => {
@@ -3103,7 +3107,8 @@ document.addEventListener("click", (e) => {
     $("privacypop").hidden = true;
   }
 });
-// The header ℹ: the privacy notice, available for pop-up at any time.
+// The privacy eye on the header wordmark: the privacy notice, available for
+// pop-up at any time.
 $("privacybtn").addEventListener("click", () => {
   if ($("privacypop").hidden) showPrivacyNotice();
   else $("privacypop").hidden = true;

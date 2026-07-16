@@ -1,0 +1,15 @@
+{
+  "branch": "claude/secure-privacy-icon-header-fffw8c",
+  "pr": null,
+  "requested_at": "2026-07-16",
+  "points": [
+    {
+      "label": "Privacy eye on the Se/cure wordmark",
+      "summary": "The privacy notice's opener moved out of the header icon row onto the wordmark itself: on /cure an eye-in-a-circle now sits right after 'Se/cure' in the header (flag blue, small), and the old unstyled ℹ button between the ghost and share icons is gone. PASS: tapping the eye opens the privacy popover ('Privacy — what this session sends where') anchored under the left side of the header; the popover now ends with a 'Read on in the documentation — how Se/cure works →' link that opens /cure/help/ in a new tab; tapping anywhere outside closes the popover; and tapping the brand TEXT (not the eye) still opens the intro pane as before. FAIL: the eye opening the intro pane, the popover still appearing on the right edge, or any leftover ℹ button in the icon row.",
+      "target": "/cure",
+      "actions": [],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}
