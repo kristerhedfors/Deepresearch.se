@@ -163,12 +163,17 @@ step: Se/cure wears the **pink umbrella** (→ the pink ✓), Se/rver the
 about data exposure — no per-step channel badges, no per-step disclosure
 finales (the 2026-07-15 per-task grammar was reverted the next day: "keep it
 stringent and clean with the animations"). The privacy communication lives in
-a readable **ℹ PRIVACY NOTICE** on Se/cure instead:
+a readable **PRIVACY NOTICE** on Se/cure instead:
 
-- The header's ℹ button (`#privacybtn`) opens `#privacypop` at any time: what
-  THIS session's CURRENT configuration sends where — model route (own key /
-  local / borrowed proxy), web-search route (self / grant / off), recall
-  embeddings, and the borrowed-allowance governance line.
+- The **privacy eye** (`#privacybtn`) — an eye-in-a-circle right after the
+  Se/cure wordmark in the header (2026-07-16 owner directive, superseding the
+  icon-row ℹ) — opens `#privacypop` at any time: what THIS session's CURRENT
+  configuration sends where — model route (own key / local / borrowed proxy),
+  web-search route (self / grant / off), recall embeddings, and the
+  borrowed-allowance governance line — plus a follow-on link to the full
+  documentation (`/cure/help/`). The popover anchors LEFT, under the brand
+  that opens it; the eye's tap is excluded from the brand's intro-replay
+  click.
 - **Opening a shared secure workspace pops the notice automatically**, leading
   with what the workspace link carried — the privacy read-up for the specific
   workspace the user was handed, without them going looking.

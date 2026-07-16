@@ -192,13 +192,17 @@ exposure. The symbols are **tier identity**, full stop:
 **The privacy communication moved into an INFORMATION NOTICE instead** — the
 detail the per-step bubbles used to carry, in one readable place on Se/cure:
 
-- The header's **ℹ button** (`#privacybtn`) opens the **privacy notice**
-  popover (`#privacypop`) any time: paragraphs laying out what THIS session's
+- The **privacy eye** (`#privacybtn`) — an eye-in-a-circle sitting right
+  after the **Se/cure** wordmark in the header (2026-07-16 owner directive,
+  superseding its first placement as an ℹ in the icon row: the tier's privacy
+  marker belongs ON the name) — opens the **privacy notice** popover
+  (`#privacypop`) any time: paragraphs laying out what THIS session's
   CURRENT configuration sends where — the model route (own key browser-direct
   / local or on-device "nothing leaves" / the borrowed proxy "the one
   server-touching path"), the web-search route (self-hosted / grant-metered /
   off), recall's embedding call, and the governance line for borrowed
-  allowances (metered, time-limited, revocable, an off switch in Settings).
+  allowances (metered, time-limited, revocable, an off switch in Settings) —
+  closing with a follow-on link to the full documentation (`/cure/help/`).
 - **A shared secure workspace pops it up automatically** on unlock, leading
   with what the workspace link carried and that it was applied entirely in
   this browser — the arriving user reads up on the privacy of the specific
