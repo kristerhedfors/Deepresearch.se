@@ -102,6 +102,46 @@ export function normalizeSearchBackend(sb) {
   };
 }
 
+// ---- the research-depth slider ------------------------------------------------
+//
+// Se/cure's composer slider is a DEPTH control, not a time budget: the
+// client-side pipeline has no wall clock to spend (the server's src/budget.js
+// planner is a Se/rver feature), so the slider position maps onto the four
+// research-depth tiers drc-research.js's DRC_DEPTH_TIERS defines. The labels
+// reuse the Se/rver slider's report-tier vocabulary (public/js/timescale.js
+// budgetTier) so the two composers speak one product language; the desc names
+// what the tier steers HERE (angles, audit rounds, review, report shape).
+
+const DEPTH_TIERS = [
+  { id: "brief", label: "Brief", desc: "Quick: 2 angles, no coverage audit or review — a compact brief" },
+  { id: "standard", label: "Answer", desc: "Standard: up to 4 angles, one coverage audit, reviewed — a focused answer" },
+  { id: "extended", label: "Report", desc: "Extended: up to 5 angles, deeper follow-ups, reviewed — a structured report" },
+  { id: "full", label: "Full report", desc: "Maximum: up to 6 angles, two audit rounds, reviewed — a full research report" },
+];
+
+/**
+ * Maps a slider position (0-100) onto a research-depth tier — four even bands.
+ * @param {number} p
+ * @returns {{ id: "brief"|"standard"|"extended"|"full", label: string, desc: string }}
+ */
+export function depthTierForPos(p) {
+  const n = Number(p);
+  if (!(n >= 0)) return DEPTH_TIERS[1]; // NaN/negative garbage reads as standard
+  return DEPTH_TIERS[Math.min(3, Math.floor(n / 25))];
+}
+
+/**
+ * The slider position that represents a stored tier id (each band's center),
+ * for restoring the control from the sealed state. Unknown ids read as
+ * standard — the same fallback the pipeline applies.
+ * @param {string} id
+ * @returns {number}
+ */
+export function depthPosForTier(id) {
+  const i = DEPTH_TIERS.findIndex((t) => t.id === id);
+  return (i >= 0 ? i : 1) * 25 + 12;
+}
+
 // ---- deep-link path parsers -------------------------------------------------
 //
 // The /cure page recognizes three URL shapes on load. These pure parsers pull

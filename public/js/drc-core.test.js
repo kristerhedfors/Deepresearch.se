@@ -162,3 +162,18 @@ test("v5 onDevice: absent (older blobs) migrates to false, non-boolean rejects",
   assert.equal(validateDrcState({ ...emptyDrcState(), onDevice: true }), true);
   assert.equal(validateDrcState({ ...emptyDrcState(), onDevice: "yes" }), false);
 });
+
+test("depth (the research-depth slider): absent migrates to standard, non-string rejects", () => {
+  // Additive field, no version bump: absent-reads-as-standard keeps every
+  // older sealed blob opening AND behaving exactly as before the slider.
+  const older = { ...emptyDrcState() };
+  delete older.depth;
+  assert.equal(validateDrcState(older), true);
+  const migrated = migrateDrcState({ ...older });
+  assert.equal(migrated.depth, "standard");
+  assert.equal(emptyDrcState().depth, "standard");
+  assert.equal(validateDrcState({ ...emptyDrcState(), depth: "full" }), true);
+  // An unknown tier id stays valid — the pipeline reads it as standard.
+  assert.equal(validateDrcState({ ...emptyDrcState(), depth: "bogus" }), true);
+  assert.equal(validateDrcState({ ...emptyDrcState(), depth: 3 }), false);
+});

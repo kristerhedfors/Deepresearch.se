@@ -2,7 +2,9 @@ import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import {
+  DRC_DEPTH_TIERS,
   drcContext,
+  drcDepthConfig,
   drcDirectPrompt,
   drcDirectPromptWeb,
   drcGapPrompt,
@@ -102,6 +104,64 @@ test("the web-search prompt variants flip the honesty rules to citation rules", 
   // The web synth prompt drops the offline "no web sources / training cutoff"
   // framing (it now HAS sources) — a guard against reusing the offline text.
   assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
+});
+
+// ---- the research-depth tiers (the /cure slider) ------------------------------------
+
+test("depth tiers: standard IS today's behavior; the others scale around it", () => {
+  // The standard tier must pin the legacy constants exactly — the default
+  // depth stays byte-identical to the pre-slider pipeline.
+  assert.deepEqual(DRC_DEPTH_TIERS.standard, {
+    maxSubquestions: 4,
+    gapRounds: 1,
+    maxGapFollowups: 2,
+    validate: true,
+    synthMaxTokens: 4096,
+    validateMaxTokens: 4096,
+  });
+  // Brief trades the audit and review away; full buys a second audit round.
+  assert.equal(DRC_DEPTH_TIERS.brief.gapRounds, 0);
+  assert.equal(DRC_DEPTH_TIERS.brief.validate, false);
+  assert.equal(DRC_DEPTH_TIERS.full.gapRounds, 2);
+  assert.ok(DRC_DEPTH_TIERS.full.synthMaxTokens > DRC_DEPTH_TIERS.standard.synthMaxTokens);
+  // Unknown/absent ids read as standard — older sealed states are safe.
+  assert.equal(drcDepthConfig("bogus"), DRC_DEPTH_TIERS.standard);
+  assert.equal(drcDepthConfig(undefined), DRC_DEPTH_TIERS.standard);
+  assert.equal(drcDepthConfig("full"), DRC_DEPTH_TIERS.full);
+});
+
+test("depth-parametrized prompts: defaults unchanged, tiers reshape only their own line", () => {
+  // No-arg calls are the standard prompts (the pre-tier bytes).
+  assert.match(drcTriagePrompt(), /Provide 2-4 distinct sub-questions/);
+  assert.equal(drcTriagePrompt(), drcTriagePrompt({ maxSubquestions: 4 }));
+  assert.match(drcTriagePrompt({ maxSubquestions: 6 }), /Provide 2-6 distinct sub-questions/);
+  // A cap of 2 reads "Provide 2", not the degenerate "2-2".
+  assert.match(drcTriagePrompt({ maxSubquestions: 2 }), /Provide 2 distinct sub-questions/);
+  assert.match(drcGapPrompt(["q"]), /1-2 NEW sub-questions/);
+  assert.match(drcGapPrompt(["q"], { maxFollowups: 3 }), /1-3 NEW sub-questions/);
+  // Synth: standard has no REPORT DEPTH marker; the other tiers do, offline
+  // and web alike — and every tier keeps the shared honesty rules.
+  assert.equal(drcSynthPrompt(), drcSynthPrompt({ reportTier: "standard" }));
+  assert.doesNotMatch(drcSynthPrompt(), /REPORT DEPTH/);
+  for (const tier of ["brief", "extended", "full"]) {
+    assert.match(drcSynthPrompt({ reportTier: tier }), /REPORT DEPTH/);
+    assert.match(drcSynthPrompt({ reportTier: tier }), /never invent citations/i);
+    assert.match(drcSynthPromptWeb({ reportTier: tier }), /REPORT DEPTH/);
+    assert.match(drcSynthPromptWeb({ reportTier: tier }), /CITE claims with the bracketed Source numbers/);
+  }
+  // An unknown tier falls back to the standard structure.
+  assert.equal(drcSynthPrompt({ reportTier: "bogus" }), drcSynthPrompt());
+  // The offline full report still forbids invented sources; the web full
+  // report still ends with the source list.
+  assert.match(drcSynthPrompt({ reportTier: "full" }), /Limitations and open questions/);
+  assert.match(drcSynthPromptWeb({ reportTier: "full" }), /Limitations and open questions/);
+});
+
+test("normalizeDrcTriage honors a per-tier subquestion cap", () => {
+  const six = { action: "research", subquestions: ["1", "2", "3", "4", "5", "6"] };
+  assert.equal(normalizeDrcTriage(six).subquestions.length, 4); // default = standard
+  assert.equal(normalizeDrcTriage(six, 2).subquestions.length, 2);
+  assert.equal(normalizeDrcTriage(six, 6).subquestions.length, 6);
 });
 
 // ---- the full flow against a mock provider ------------------------------------------
@@ -341,6 +401,82 @@ describe("runDrcResearch end to end (mock provider)", () => {
     } finally {
       server3.close();
     }
+  });
+
+  test("depth 'brief' skips the coverage audit and the review, and asks for the brief shape", async () => {
+    requests.length = 0;
+    gapAlreadyAsked = false;
+    const phases = [];
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      depth: "brief",
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      baseUrl,
+    });
+    // No gap phase, no validate phase — triage, one harvest wave, synthesis.
+    assert.deepEqual(phases, ["triage", "harvest", "synth"]);
+    assert.equal(requests.filter((r) => r.phase === "gap").length, 0);
+    assert.equal(requests.filter((r) => r.phase === "validate").length, 0);
+    // The draft streams through unreviewed.
+    assert.equal(result.validated, false);
+    assert.equal(result.answer, "DRAFT answer.");
+    // Triage was asked for the brief tier's 2 angles; synthesis for the brief shape.
+    assert.match(requests.find((r) => r.phase === "triage").body.messages[0].content, /Provide 2 distinct sub-questions/);
+    assert.match(requests.find((r) => r.phase === "synth").body.messages[0].content, /REPORT DEPTH — BRIEF/);
+  });
+
+  test("depth 'full' runs a second coverage-audit round and raises the output caps", async () => {
+    requests.length = 0;
+    gapAlreadyAsked = false; // round 1 finds a gap, round 2 reports complete
+    const phases = [];
+    const result = await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      depth: "full",
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      baseUrl,
+    });
+    // The second gap round ran (and, complete, ordered no third harvest).
+    assert.deepEqual(phases, ["triage", "harvest", "gap", "harvest", "gap", "synth", "validate"]);
+    assert.equal(requests.filter((r) => r.phase === "gap").length, 2);
+    assert.equal(result.validated, true);
+    // Synthesis got the full-report structure and the raised token cap; the
+    // validator got the revise headroom a whole report needs.
+    const synth = requests.find((r) => r.phase === "synth");
+    assert.match(synth.body.messages[0].content, /REPORT DEPTH — FULL RESEARCH REPORT/);
+    assert.equal(synth.body.max_tokens, DRC_DEPTH_TIERS.full.synthMaxTokens);
+    assert.equal(requests.find((r) => r.phase === "validate").body.max_tokens, DRC_DEPTH_TIERS.full.validateMaxTokens);
+  });
+
+  test("depth 'standard' is the wire default: an omitted depth changes nothing", async () => {
+    requests.length = 0;
+    gapAlreadyAsked = false;
+    await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      depth: "standard",
+      baseUrl,
+    });
+    const explicit = requests.map((r) => ({ phase: r.phase, body: r.body }));
+    requests.length = 0;
+    gapAlreadyAsked = false;
+    await runDrcResearch({
+      providerId: "groq",
+      apiKey: "user-groq-key",
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: "Compare A and B in depth" }],
+      baseUrl,
+    });
+    const omitted = requests.map((r) => ({ phase: r.phase, body: r.body }));
+    // Byte-identical requests — the slider's default tier IS the old pipeline.
+    assert.deepEqual(explicit, omitted);
   });
 });
 

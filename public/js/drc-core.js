@@ -118,6 +118,11 @@ export function emptyDrcState() {
     providerId: null,
     model: null,
     research: true,
+    // The research-depth tier the composer slider sets ("brief" | "standard" |
+    // "extended" | "full" — drc-research.js DRC_DEPTH_TIERS). Absent (older
+    // blobs) or unknown reads as "standard", today's exact behavior, so no
+    // version bump is needed.
+    depth: "standard",
     // Experimental in-browser Linux execution sandbox (the DRC counterpart of
     // the server's bash_lite_mcp knob). Default OFF; an absent field (older
     // blobs) reads as off. Purely client-side here, like everything in DRC.
@@ -177,7 +182,8 @@ export function validateDrcState(s) {
     (s.keys === undefined || (s.keys && typeof s.keys === "object" && !Array.isArray(s.keys))) &&
     (s.rag === undefined || (s.rag && typeof s.rag === "object" && Array.isArray(s.rag.docs))) &&
     (s.localBaseUrl === undefined || typeof s.localBaseUrl === "string") &&
-    (s.onDevice === undefined || typeof s.onDevice === "boolean")
+    (s.onDevice === undefined || typeof s.onDevice === "boolean") &&
+    (s.depth === undefined || typeof s.depth === "string")
   );
 }
 
@@ -190,6 +196,7 @@ export function migrateDrcState(s) {
   if (!s.rag || typeof s.rag !== "object" || !Array.isArray(s.rag.docs)) s.rag = { docs: [] };
   if (typeof s.localBaseUrl !== "string") s.localBaseUrl = "";
   if (typeof s.onDevice !== "boolean") s.onDevice = false;
+  if (typeof s.depth !== "string") s.depth = "standard";
   return s;
 }
 
