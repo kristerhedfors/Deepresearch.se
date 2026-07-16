@@ -98,6 +98,8 @@ import {
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import {
+  depthPosForTier,
+  depthTierForPos,
   disclosureText,
   grantFlagEnabled,
   grantLive,
@@ -721,10 +723,6 @@ const DRS_FEATURES = {
     title: "Photos",
     text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a Se/rver feature of the hosted pipeline.",
   },
-  budget: {
-    title: "Research time target",
-    text: "The time slider steers how long the hosted pipeline researches — search rounds, coverage audits, validation depth. Se/cure's client-side phases run without a time budget; live web search itself is also a Se/rver feature.",
-  },
 };
 
 function showDrs(feature) {
@@ -821,10 +819,38 @@ function projectOpened() {
   history.replaceState(null, "", "/my/project-" + profile.refHash);
 }
 
+// ---- the research-depth slider ------------------------------------------------
+//
+// REAL on this tier, like the knob (2026-07-16): the slider steers how deep
+// the CLIENT-SIDE pipeline researches — angles, coverage-audit rounds, the
+// strict review, and the report's output shape (drc-research.js
+// DRC_DEPTH_TIERS). Position ⇄ tier mapping is pure (drc-page-core.js); the
+// tier id persists in the sealed state and rides into runDrcResearch as
+// `depth`. The server's TIME budget remains a Se/rver feature — this control
+// spends no wall clock, only calls on the user's own key.
+
+/** Repaints the label/tooltip from the slider's position; returns the tier. */
+function renderDepthLabel() {
+  const t = depthTierForPos(Number($("budget").value));
+  $("budgetval").textContent = t.label;
+  $("budgetwrap").title = "Research depth · " + t.desc;
+  return t;
+}
+
+/** Points the slider at the state's stored tier (absent reads as standard). */
+function reflectDepth() {
+  $("budget").value = String(depthPosForTier(state.depth));
+  // Depth only steers the research phases — with the knob off (direct
+  // answers) the slider dims, the same coupling the Se/rver twin has.
+  $("budget").disabled = !$("websearch").checked;
+  renderDepthLabel();
+}
+
 // Reflect a freshly opened/restored state everywhere the UI shows it — the
 // shared tail of unlock() and importBackup().
 async function reflectOpenedState() {
   $("websearch").checked = state.research !== false;
+  reflectDepth();
   $("bashlite").checked = state.bashLite === true;
   $("devmode").checked = state.developerMode === true;
   applyIntrospectionTheme(state.developerMode === true);
@@ -2486,6 +2512,7 @@ async function unlockWorkspace(ev) {
     renderProxyRow();
     renderStRow();
     $("websearch").checked = state.research !== false;
+    reflectDepth();
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
     $("ondevice").checked = state.onDevice === true;
@@ -2601,6 +2628,7 @@ async function send(ev) {
   state.providerId = providerId;
   state.model = model;
   state.research = $("websearch").checked;
+  state.depth = depthTierForPos(Number($("budget").value)).id;
 
   // Resolve the answer provider + credential: normally a user-key provider, but
   // when the pick is the secure-research-space proxy it's the proxy provider
@@ -2675,6 +2703,7 @@ async function send(ev) {
       model,
       messages: conv.messages.slice(-DRC_RECENT_TURNS),
       research: state.research,
+      depth: state.depth,
       retrieved,
       introspection: intro.block,
       snapshot: intro.snapshot,
@@ -2800,7 +2829,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d30 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d31 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -2812,6 +2841,7 @@ const workspaceLinked = handleWorkspaceLink();
 renderKeysPanel();
 renderConvPicker();
 renderMessages();
+reflectDepth(); // the depth slider's label/tooltip (standard until a state loads)
 // A replay deep link counts like a project link — no intro over it.
 // On a genuine first visit the umbrella intro plays first (over the bare
 // page); when it finishes, new users land straight in the chat input rather
@@ -3080,6 +3110,14 @@ $("model").addEventListener("change", () => {
 });
 $("websearch").addEventListener("change", () => {
   state.research = $("websearch").checked;
+  $("budget").disabled = !$("websearch").checked; // depth applies to research runs only
+  saveState();
+});
+// The research-depth slider: live label while dragging; persist the tier on
+// release (change), not per input tick — sealing the state is not free.
+$("budget").addEventListener("input", renderDepthLabel);
+$("budget").addEventListener("change", () => {
+  state.depth = renderDepthLabel().id;
   saveState();
 });
 // The server-proxied web-search toggle (only meaningful when a grant is live).

@@ -320,6 +320,13 @@ header {
 }
 .drs-wrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; cursor: pointer; }
 .drs-wrap input { pointer-events: none; }
+/* The research-depth slider (REAL here since 2026-07-16 — it steers the
+   client-side pipeline's depth): the .drs-wrap layout without the dimming,
+   the explainer cursor, or the input's pointer-events block. It dims only
+   while the research knob is off (depth applies to research runs only —
+   the same coupling as the Se/rver twin's slider). */
+#budgetwrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; }
+#budgetwrap input:disabled { opacity: .45; }
 
 #chat {
   flex: 1;

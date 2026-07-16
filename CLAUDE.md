@@ -719,10 +719,18 @@ a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
 palette (2026-07-10 directive) — the same floating glass chrome, waves,
 composer, spiderweb knob and slider shapes as `css/app.css`,
 self-contained since app.css is auth-served. DRS-only features (ghost,
-account, attach, camera, the time slider) appear as DIMMED buttons
+account, attach, camera) appear as DIMMED buttons
 (`.drs`) exactly where the app has them; tapping one opens the
 `#drspop` explainer pointing to `/rver`. The knob is REAL here — it
-flips the client-side research phases. A left drawer (the history
+flips the client-side research phases — and so is the SLIDER
+(2026-07-16): a research-DEPTH control (not a time budget — that stays
+Se/rver's) mapping four even bands onto `drc-research.js`'s
+`DRC_DEPTH_TIERS` (brief/standard/extended/full: triage angles,
+coverage-audit rounds, the strict review on/off, per-tier report
+structure + token caps — the client mirror of `reportTierFor`; standard
+= the pre-slider behavior, byte-identical), position⇄tier pure in
+`drc-page-core.js` (`depthTierForPos`/`depthPosForTier`), the tier id
+persisted in the sealed state (`depth`, absent-reads-as-standard). A left drawer (the history
 sidebar mirrored) holds the local chat list and the Project panel; the
 header's gear icon (between ghost and account, both tiers) opens the
 settings drawer — ALL configuration: the ONE-FIELD API-key form whose
