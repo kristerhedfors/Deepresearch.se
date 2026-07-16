@@ -43,7 +43,13 @@ the rule governs the PAIR's order. The capital tail-S makes the wordplay read as
 Where running copy needs a SHORT name, use the slashed tail alone —
 **Se/cure** and **Se/rver** — the included slash is the distinguishing
 marker. In the rendered UI the slash is pulled in with a `.sl` span
-(`margin: 0 -.12em`) so it reads even tighter. The CamelCase is a DISPLAY
+(`margin: 0 -.12em`) so it reads even tighter — but that constant is
+correct only for regular-weight text: the right tightening is
+FONT-DEPENDENT (bold ink is wider — at `-.12em` the slash touches the
+letters), so any new/changed `.sl` context gets its margin MEASURED, not
+eyeballed, with `scripts/slash-gap.mjs` per the **slash-spacing** skill
+(scoped override next to the surface's `.sl` rule; e.g. `b .sl
+{ margin: 0 -.04em }` on the help page). The CamelCase is a DISPLAY
 convention only: functional URLs, `href`s, `fetch`/route paths, publish
 slugs, and host strings stay lowercase (`/cure`, `/rver`,
 `deepresearch.se`) — the host is case-insensitive, the paths are not.
@@ -1312,6 +1318,14 @@ what docs claim); and update the skill list below plus the skill's
   report, document/image attachments + metadata extraction, floating glass
   chrome, the `/help/` `/build/` `/story/` `/architecture/` `/welcome/`
   pages, the message center, and the public (no-auth) surface.
+- **slash-spacing** — deciding the space around the wordmark slash (the
+  `.sl` span in Se/cure / Se/rver) PRECISELY at every point: the
+  `scripts/slash-gap.mjs` ink-gap meter (true per-row glyph-ink measurement
+  in headless Chromium — the margin is font/weight-dependent, never
+  eyeballed), the codified gap band (floor .03em / target .06em per side),
+  the scoped-override convention (`b .sl { margin: 0 -.04em }` — bold ink
+  is wider, the global `-.12em` touches), and the audit table of every
+  surface rendering the slash.
 - **ux-conventions** — the NUMBERED REGISTRY of codified UX interaction rules
   ("when X → then Y") that must feel the same everywhere and no unit test
   catches — the behavioral companion to ui-notes' UI facts. Load before wiring
