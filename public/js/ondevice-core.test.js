@@ -9,8 +9,10 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   ONDEVICE_MODELS,
   ONDEVICE_MAX_TOKENS,
+  ONDEVICE_TRACE_MAX,
   capabilityVerdict,
   completionEnvelope,
+  crashMessage,
   createSha256,
   createThinkFilter,
   debugFlagFrom,
@@ -18,6 +20,8 @@ import {
   downloadTotalBytes,
   errorEventDetail,
   fmtBytes,
+  formatTraceLine,
+  pushTrace,
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
@@ -318,6 +322,35 @@ test("rejectionDetail: Error, string, structured value (clamped), empty", () => 
   const circular = /** @type {any} */ ({});
   circular.self = circular;
   assert.equal(rejectionDetail(circular), "[object Object]"); // unserializable falls through to String()
+});
+
+test("crashMessage: a never-spoke worker names the load failure and its remedy", () => {
+  // Mid-run crash: the familiar message, detail appended when present.
+  assert.equal(crashMessage(true, ""), "The on-device engine crashed.");
+  assert.equal(crashMessage(true, "abort (ort.mjs:3:9)"), "The on-device engine crashed: abort (ort.mjs:3:9)");
+  // Never-ran crash: self-explaining (script load / stale cache) — the case
+  // a bare detail-free message left indistinguishable in the field.
+  const never = crashMessage(false, "");
+  assert.ok(never.includes("before it could start"));
+  assert.ok(never.includes("stale cached copy"));
+  assert.ok(never.endsWith("."));
+  assert.ok(crashMessage(false, "SyntaxError").endsWith(": SyntaxError"));
+});
+
+test("formatTraceLine: elapsed prefix, string and structured parts, empties dropped", () => {
+  assert.equal(formatTraceLine(12_340, ["←", "list", ""]), "+12.3s ← list");
+  assert.equal(formatTraceLine(0, ["worker spawned"]), "+0.0s worker spawned");
+  assert.equal(formatTraceLine(-5, ["x"]), "+0.0s x"); // clock skew can't produce a negative stamp
+  assert.equal(formatTraceLine(500, ["probe", { hasWebGpu: true }]), '+0.5s probe {"hasWebGpu":true}');
+});
+
+test("pushTrace: capped ring keeps the newest lines", () => {
+  const buf = [];
+  for (let i = 0; i < ONDEVICE_TRACE_MAX + 10; i++) pushTrace(buf, "line " + i);
+  assert.equal(buf.length, ONDEVICE_TRACE_MAX);
+  assert.equal(buf[0], "line 10"); // oldest dropped
+  assert.equal(buf[buf.length - 1], "line " + (ONDEVICE_TRACE_MAX + 9)); // the crash tail survives
+  assert.deepEqual(pushTrace(["a"], "b", 2), ["a", "b"]); // returns the buffer
 });
 
 test("debugFlagFrom: the stored flag or the ?oddebug=1 param, default off", () => {

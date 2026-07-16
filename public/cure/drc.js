@@ -1172,6 +1172,47 @@ async function renderOnDeviceRows() {
     wrap.firstElementChild.textContent =
       err?.message || "The on-device engine failed to load — try reloading the page.";
   }
+  renderOdTrace().catch(() => {});
+}
+
+// The visible, copyable engine trace (the on-device-trace method's overlay):
+// rendered under the on-device rows whenever the debug switch is on
+// (?oddebug=1 / dr_ondevice_debug) — phones have no console, so this pane IS
+// the console. Crash lines are recorded by the engine even with the switch
+// off, so turning it on after a failure still shows the tail that mattered.
+let odTraceWired = false;
+async function renderOdTrace() {
+  const wrap = $("odtracewrap");
+  if (state.onDevice !== true) {
+    wrap.hidden = true;
+    return;
+  }
+  const eng = await odEngine();
+  if (!eng.onDeviceDebug?.()) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const pre = $("odtrace");
+  pre.textContent = eng.onDeviceTrace().join("\n");
+  if (!odTraceWired) {
+    odTraceWired = true;
+    eng.onDeviceTraceHook((line) => {
+      pre.textContent += (pre.textContent ? "\n" : "") + line;
+      pre.scrollTop = pre.scrollHeight;
+    });
+    $("odtracecopy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText("Se/cure build " + BUILD + "\n" + pre.textContent);
+        $("odtracecopy").textContent = "Copied ✓";
+        setTimeout(() => ($("odtracecopy").textContent = "Copy trace"), 1500);
+      } catch {
+        // Clipboard denied (http, permissions) — select the text so a manual
+        // long-press copy still works.
+        getSelection()?.selectAllChildren(pre);
+      }
+    });
+  }
 }
 
 // The consent popup: states the EXACT one-time size (from the repo's live
@@ -2796,13 +2837,18 @@ function applyIntrospectionTheme(on) {
   document.documentElement.classList.toggle("dev-mode", !!on);
 }
 
-// Build marker (on-device-trace convention): kept OFF the visible header —
-// carried in the brand tooltip so a long-press still answers "which build,
-// PWA or Safari" without cluttering the wordmark. Bump on every DRC deploy.
+// Build marker (on-device-trace convention). Bump on every DRC deploy.
+// TWO placements from the ONE constant: the brand tooltip (hover, desktop)
+// AND a visible line at the settings drawer's foot — title-attribute
+// tooltips never display on touch devices (field-confirmed 2026-07-16: a
+// long-press shows nothing), so the stamp must be READABLE exactly where
+// remote debugging needs it, on a phone.
+const BUILD = "d34";
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d33 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · " + BUILD + " · " + (standalone ? "pwa" : "browser");
+  $("buildstamp").textContent = "Se/cure build " + BUILD + " · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }

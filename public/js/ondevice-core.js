@@ -151,6 +151,59 @@ export function debugFlagFrom(search, stored) {
   return stored === "1" || /[?&]oddebug=1(&|$)/.test(search || "");
 }
 
+/**
+ * The crash message the UI shows verbatim. WHEN the worker died matters as
+ * much as why (first live field report: a bare detail-free crash left
+ * stale-cache and device-failure indistinguishable): a worker that never
+ * posted a single message never RAN — its script failed to load or evaluate,
+ * which on a phone usually means a stale cached module graph — so that case
+ * names itself and carries its own remedy.
+ * @param {boolean} everSpoke did the worker deliver ANY message before dying?
+ * @param {string} [detail] errorEventDetail/workerdiag text, "" when none
+ */
+export function crashMessage(everSpoke, detail) {
+  const base = everSpoke
+    ? "The on-device engine crashed"
+    : "The on-device engine crashed before it could start — its script failed to load, " +
+      "which usually means a stale cached copy of the app: fully close and reopen it (or hard-reload), then try again";
+  return base + (detail ? ": " + detail : ".");
+}
+
+// ---- the on-screen trace ------------------------------------------------------------
+//
+// Phones have no console — the on-device-trace method's answer is a visible,
+// copyable event trace. The engine keeps a small ring of formatted lines
+// (crashes always; everything else when the debug switch is on) that the
+// /cure settings drawer renders next to the on-device rows. Pure here so the
+// cap and the line format are Node-tested.
+
+export const ONDEVICE_TRACE_MAX = 80;
+
+/**
+ * One trace line: "+12.3s part part …" — elapsed time since engine load, so
+ * a pasted trace shows pacing (where a boot stalled) without wall-clock noise.
+ * @param {number} elapsedMs @param {unknown[]} parts
+ */
+export function formatTraceLine(elapsedMs, parts) {
+  const s = (Math.max(0, elapsedMs) / 1000).toFixed(1);
+  const text = parts
+    .map((p) => (typeof p === "string" ? p : JSON.stringify(p) ?? String(p)))
+    .filter((p) => p !== "")
+    .join(" ");
+  return "+" + s + "s " + text;
+}
+
+/**
+ * Capped append — the ring drops the OLDEST line, the crash tail is what a
+ * debugger needs. Mutates and returns `buf`.
+ * @param {string[]} buf @param {string} line @param {number} [max]
+ */
+export function pushTrace(buf, line, max = ONDEVICE_TRACE_MAX) {
+  buf.push(line);
+  if (buf.length > max) buf.splice(0, buf.length - max);
+  return buf;
+}
+
 // ---- Hugging Face wire shapes ---------------------------------------------------
 
 // The tree API lists every file with its size and (for LFS files) the sha256

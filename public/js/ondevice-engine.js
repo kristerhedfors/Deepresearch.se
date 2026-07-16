@@ -27,8 +27,11 @@
 import {
   ONDEVICE_MAX_TOKENS,
   completionEnvelope,
+  crashMessage,
   debugFlagFrom,
   errorEventDetail,
+  formatTraceLine,
+  pushTrace,
   sseDeltaLine,
   sseDoneLine,
   withDeadline,
@@ -57,9 +60,42 @@ try {
   /* storage/location unavailable */
 }
 
+// The visible, copyable trace behind the debug switch (phones have no
+// console — the settings drawer renders this next to the on-device rows).
+// Crash lines are recorded even with debug OFF, so flipping the switch on
+// after a failure still shows the tail that mattered.
+const traceT0 = Date.now();
+/** @type {string[]} */
+const traceBuf = [];
+/** @type {?(line: string) => void} */
+let traceCb = null;
+
+/** @param {...unknown} parts */
+function trace(...parts) {
+  const line = formatTraceLine(Date.now() - traceT0, parts);
+  pushTrace(traceBuf, line);
+  try {
+    traceCb?.(line);
+  } catch {
+    /* a broken subscriber must not break the engine */
+  }
+}
+
+/** @returns {string[]} a copy of the recorded trace lines, oldest first */
+export function onDeviceTrace() {
+  return traceBuf.slice();
+}
+
+/** @param {?(line: string) => void} cb live-append hook for the trace pane */
+export function onDeviceTraceHook(cb) {
+  traceCb = cb;
+}
+
 /** @param {...unknown} args */
 function dbg(...args) {
-  if (_odDebug) console.info("[ondevice]", ...args);
+  if (!_odDebug) return;
+  console.info("[ondevice]", ...args);
+  trace(...args);
 }
 
 /**
@@ -105,6 +141,10 @@ let loadStatusCb = null;
 // which often arrives degraded ("Script error.", no location) — this is
 // onerror's fallback message when its own event carries nothing.
 let lastWorkerDiag = "";
+// Did the current worker deliver ANY message? A worker that dies without ever
+// speaking never ran — its script failed to load/evaluate (stale cached
+// module graph, blocked fetch) — and crashMessage() names that case.
+let workerSpoke = false;
 
 // EVERY pending call fails together — including the list/plan/delete waiters.
 // The first live device report was the settings drawer stuck on "Checking
@@ -130,8 +170,10 @@ function getWorker() {
   // The debug flag rides the spawn URL — a worker can't read localStorage
   // (onDeviceDebug() covers flips while it's already alive).
   worker = new Worker("/js/ondevice-worker.js" + (_odDebug ? "?oddebug=1" : ""), { type: "module" });
+  workerSpoke = false;
   dbg("worker spawned");
   worker.onmessage = (e) => {
+    workerSpoke = true;
     const m = e.data || {};
     if (m.t !== "token" && m.t !== "progress") dbg("←", m.t, m.modelId ?? m.id ?? "", m.status ?? m.message ?? "");
     if (m.t === "token") genHandlers.get(m.id)?.onToken(m.text);
@@ -162,13 +204,17 @@ function getWorker() {
       // own error replies; this covers list/plan/delete). The worker itself
       // is still alive — fail the waiting calls so no caller hangs; the next
       // call retries normally.
+      trace("worker failed:", m.message || "");
       failAllPending(m.message || "The on-device engine failed.");
     } else if (m.t === "workerdiag") {
       // Detail only — the paired crash surfaces through onerror below. Keep
       // it for onerror's message and put it on the page console either way
       // (the worker's own console context is easy to miss in devtools).
       lastWorkerDiag = m.message || "";
-      if (lastWorkerDiag) console.error("[ondevice] worker error:", lastWorkerDiag);
+      if (lastWorkerDiag) {
+        console.error("[ondevice] worker error:", lastWorkerDiag);
+        trace("worker error:", lastWorkerDiag);
+      }
     } else if (m.t === "loadstatus") loadStatusCb?.(m.status);
   };
   // A dead worker fails every pending call (fail-soft at the call sites)
@@ -180,7 +226,10 @@ function getWorker() {
     // previously discarded, and there is no server log to fall back on.
     console.error("[ondevice] worker crashed:", e);
     const detail = errorEventDetail(e) || lastWorkerDiag;
-    failAllPending("The on-device engine crashed" + (detail ? ": " + detail : "."));
+    // A never-spoke worker means the SCRIPT failed to load — crashMessage
+    // names that case (with the stale-cache remedy) instead of a bare crash.
+    trace("worker crashed", workerSpoke ? "(mid-run)" : "(never started)", detail);
+    failAllPending(crashMessage(workerSpoke, detail));
     lastWorkerDiag = "";
     worker = null;
   };
