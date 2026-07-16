@@ -179,7 +179,19 @@ export function isPublicAsset(url, method) {
     // sandbox runs on public /cure too, so these must serve unauthenticated.
     url.pathname === "/vendor/xterm/xterm.js" ||
     url.pathname === "/vendor/xterm/xterm.css" ||
-    url.pathname === "/vendor/xterm/addon-fit.js"
+    url.pathname === "/vendor/xterm/addon-fit.js" ||
+    // The ON-DEVICE inference tier (phone-local Bonsai —
+    // docs/BONSAI-27B-PHONE-INFERENCE.md): the pure core + engine glue +
+    // Web Worker /cure loads DYNAMICALLY behind the settings knob (so the
+    // static module-graph test won't derive these — they're listed by hand),
+    // and the vendored transformers.js runtime + its onnxruntime wasm pairs
+    // (invariant 7: pinned in ondevice-engine.js, never a runtime CDN
+    // fetch). All public for the same reason as the sandbox modules: the
+    // feature lives on the unauthenticated /cure tier.
+    url.pathname === "/js/ondevice-core.js" ||
+    url.pathname === "/js/ondevice-engine.js" ||
+    url.pathname === "/js/ondevice-worker.js" ||
+    url.pathname.startsWith("/vendor/transformers/")
   );
 }
 

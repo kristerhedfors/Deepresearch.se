@@ -306,8 +306,13 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
 /**
  * Streaming chat completion, straight from the browser to the provider.
  * Returns the raw fetch Response (an OpenAI-style SSE body on success).
+ * An ENGINE provider (the on-device tier — ondevice-engine.js) has no wire
+ * at all: its callable synthesizes the same OpenAI-SSE Response from the
+ * in-browser engine, so every consumer downstream is unchanged (the
+ * src/anthropic.js adapt-at-the-wire pattern, client-side).
  */
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
+  if (provider.engine) return provider.engine.chatStream(model, messages, { signal, maxTokens });
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
     headers: wireHeaders(apiKey),
@@ -365,9 +370,22 @@ export function extractJson(text) {
 /**
  * Non-streaming JSON completion for the planning phases. Returns the parsed
  * object or throws (callers are fail-soft, matching the server pipeline).
+ * The 45 s default deadline is tuned for hosted APIs; a provider can declare
+ * its own `jsonTimeoutMs` — the on-device engine does (phone-speed prompt
+ * processing alone can pass 45 s; plan §8, the most-likely-breakage row).
  */
 export async function drcCompleteJson(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 1500 } = {}) {
-  const timeout = signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(45_000) : undefined);
+  const deadlineMs = provider.jsonTimeoutMs || 45_000;
+  const timeout =
+    signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(deadlineMs) : undefined);
+  if (provider.engine) {
+    // The engine has no JSON wire mode; it applies a JSON-only reminder and
+    // the same lenient extraction below hardens the result.
+    const data = await provider.engine.complete(model, messages, { signal: timeout, maxTokens, json: true });
+    const value = extractJson(data?.choices?.[0]?.message?.content || "");
+    if (!value) throw new Error(provider.label + " returned no usable JSON.");
+    return value;
+  }
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
     headers: wireHeaders(apiKey),

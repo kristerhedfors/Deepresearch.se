@@ -262,6 +262,9 @@ export function providerVisibilityNote(providerId, label) {
   if (id === "local") {
     return "Local model — nothing leaves this device: replies come from the server running on your own machine.";
   }
+  if (id === "ondevice") {
+    return "On-device model — nothing leaves this device: the model runs inside this browser, offline once downloaded.";
+  }
   if (id === "proxy") {
     return (
       "Your messages route through this site's server to Berget on the borrowed, metered allowance — " +
