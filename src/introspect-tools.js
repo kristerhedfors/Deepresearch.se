@@ -21,6 +21,7 @@ export {
   MAX_LIST_ENTRIES,
   MAX_LINE_CHARS,
   MAX_PATTERN_CHARS,
+  MAX_READ_TOTAL_CHARS,
   grepSource,
   readFileTool,
   listFilesTool,

@@ -1443,14 +1443,35 @@ export function readFileTool(snapshot, input, budget) {
   if (!paths.length) return "read_file needs a non-empty 'paths' array of repo-relative file paths.";
   const reads = readSnapshotFiles(snapshot, paths, new Set(), budget);
   if (!reads.length) {
+    // A spent read budget must SAY so: reporting it as "No files resolved"
+    // sends the model hunting for different paths and retrying reads that can
+    // never succeed, and it reports the tool as broken (live finding
+    // 2026-07-16: valid .claude/skills/* paths "failed to load" once an
+    // earlier read_file batch had consumed the whole budget).
+    if (budget.used >= MAX_READ_TOTAL_CHARS) {
+      return (
+        `Read budget exhausted: ${MAX_READ_TOTAL_CHARS} chars of file content have already been returned in this investigation, so read_file cannot return anything more — retrying will not help. ` +
+        "Answer from what you have already read; grep_source still works for targeted line checks."
+      );
+    }
     return `No files resolved for ${JSON.stringify(paths)}. Use list_files or grep_source to find exact paths (e.g. src/auth.js).`;
   }
   const body = reads.map((r) => `# ${r.p}${r.truncated ? " (truncated)" : ""}\n${r.text}`).join("\n\n");
-  const missing = paths.filter(
-    (/** @type {string} */ p) => !reads.some((r) => r.p.toLowerCase() === String(p).toLowerCase().replace(/^\.?\//, "")),
-  );
-  const note = missing.length ? `\n\n(not found / already at budget: ${missing.join(", ")})` : "";
-  return body + note;
+  // Split the not-returned paths by CAUSE, so the model's next move is the
+  // right one: unresolved (a wrong path — list_files can fix it) vs
+  // resolved-but-dropped (the budget ran out mid-call — no retry can fix it).
+  const readSet = new Set(reads.map((r) => r.p));
+  const resolved = resolveReadPaths(snapshot, paths);
+  const notFound = resolved.filter((r) => !r.path).map((r) => r.requested);
+  const dropped = resolved.filter((r) => r.path && !readSet.has(r.path)).map((r) => r.requested);
+  const notes = [];
+  if (notFound.length) notes.push(`(not found: ${notFound.join(", ")})`);
+  if (dropped.length) {
+    notes.push(
+      `(read budget exhausted before: ${dropped.join(", ")} — do not retry read_file for these; use grep_source instead)`,
+    );
+  }
+  return body + (notes.length ? `\n\n${notes.join("\n")}` : "");
 }
 
 /**

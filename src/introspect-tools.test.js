@@ -8,6 +8,7 @@ import {
   listFilesTool,
   runIntrospectionTool,
   MAX_GREP_MATCHES,
+  MAX_READ_TOTAL_CHARS,
 } from "./introspect-tools.js";
 
 // A tiny fake snapshot in the real shape ({ files: [{ p, s, t }] }).
@@ -83,6 +84,32 @@ describe("readFileTool", () => {
   test("unknown paths return a helpful pointer, not an error", () => {
     assert.match(readFileTool(SNAP, { paths: ["nope.js"] }, { used: 0 }), /No files resolved/);
     assert.match(readFileTool(SNAP, {}, { used: 0 }), /needs a non-empty 'paths'/);
+  });
+
+  // Regression (2026-07-16): once an earlier batch had spent the shared read
+  // budget, a later read_file of perfectly VALID paths reported "No files
+  // resolved" — the model took that as intermittent tool failure, retried
+  // paths that could never load, and reported files "failed to load".
+  test("a spent read budget says so instead of 'No files resolved'", () => {
+    const out = readFileTool(SNAP, { paths: ["src/auth.js"] }, { used: MAX_READ_TOTAL_CHARS });
+    assert.match(out, /Read budget exhausted/);
+    assert.match(out, /retrying will not help/);
+    assert.doesNotMatch(out, /No files resolved/);
+  });
+
+  test("budget running out mid-call reports dropped paths as budget, not missing", () => {
+    const budget = { used: MAX_READ_TOTAL_CHARS - 10 }; // room for 10 chars
+    const out = readFileTool(SNAP, { paths: ["src/auth.js", "src/index.js"] }, budget);
+    assert.match(out, /# src\/auth\.js \(truncated\)/);
+    assert.match(out, /read budget exhausted before: src\/index\.js/);
+    assert.doesNotMatch(out, /not found/);
+  });
+
+  test("wrong paths in a mixed batch still report as not found", () => {
+    const out = readFileTool(SNAP, { paths: ["src/auth.js", "nope.js"] }, { used: 0 });
+    assert.match(out, /# src\/auth\.js/);
+    assert.match(out, /\(not found: nope\.js\)/);
+    assert.doesNotMatch(out, /budget exhausted/);
   });
 });
 
