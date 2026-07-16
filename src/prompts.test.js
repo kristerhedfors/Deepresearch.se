@@ -24,6 +24,7 @@ import {
   sourceAnswerPrompt,
   sourceToolAgentPrompt,
 } from "./prompts.js";
+import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
 
 describe("triagePrompt", () => {
   test("embeds the max query count in the research-action description", () => {
@@ -371,6 +372,18 @@ describe("sourceToolAgentPrompt (native tool-use investigation)", () => {
     assert.match(p, /list_files/);
     assert.match(p, /USE them — do not answer from memory/i);
     assert.match(p, /do NOT open with a meta-preamble/i); // no leaked planning preamble
+  });
+
+  // The model must know the shared read budget UP FRONT (2026-07-16 finding:
+  // discovering it on exhaustion made it report the tools as broken) and the
+  // cheap extraction routes that exist without bash: grep context and
+  // offset/limit ranged reads.
+  test("states the read budget and the targeted-extraction strategy", () => {
+    const p = sourceToolAgentPrompt();
+    assert.match(p, /TOOL ECONOMY/);
+    assert.match(p, new RegExp(String(MAX_READ_TOTAL_CHARS)));
+    assert.match(p, /offset\/limit/);
+    assert.match(p, /context parameter/);
   });
 
   test("carries the audit-breadth, distrust-docs, and concrete-findings guidance + anti-injection", () => {
