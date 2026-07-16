@@ -1,0 +1,19 @@
+{
+  "branch": "claude/mcp-tools-load-failures-xnvq2f",
+  "requested_at": "2026-07-16",
+  "points": [
+    {
+      "label": "Developer mode: broad source ask no longer reports tools 'failed to load'",
+      "summary": "A broad developer-mode question on a Claude model ('Give me a briefer for each skill, long list') exhausted the source tools' shared 60,000-char read budget mid-investigation; later read_file calls of valid paths returned 'No files resolved', so the answer claimed files 'intermittently failed to load'. The tools now report budget exhaustion truthfully, show a running budget readout, support grep -C context and offset/limit ranged reads, and the system prompt teaches the budget up front. PASS: with developer mode ON and a Claude answer model, ask the same broad skills question — the answer must NOT claim its file tools failed, were broken, or intermittently didn't return content (a coverage note like 'I read X in full and sampled Y' is fine); the research activity steps should show targeted reads (line ranges / grep context) rather than only whole-file reads.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Needs developer mode ON (Settings) and a claude-* answer model picked. Send: 'Give me a briefer for each skill, long list' — then expand the research activity steps and read the answer's coverage caveats."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}
