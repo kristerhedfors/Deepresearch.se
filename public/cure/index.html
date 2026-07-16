@@ -303,6 +303,13 @@
           experimental) and answers stream slower than hosted models.</div>
         <div id="odmodels" hidden></div>
         <span id="odstatus" class="muted setting-note"></span>
+        <!-- The visible, copyable engine trace (?oddebug=1 / dr_ondevice_debug):
+             phones have no console, so the debug switch renders here — the
+             on-device-trace method's copyable overlay, wired by drc.js. -->
+        <div id="odtracewrap" hidden>
+          <button type="button" id="odtracecopy" class="btnlike">Copy trace</button>
+          <pre id="odtrace" class="od-trace"></pre>
+        </div>
       </div>
 
       <!-- Server-proxied web search — visible ONLY when this session carries a
@@ -457,6 +464,12 @@
           tree is mounted at <code>/src</code> in the Linux VM for real shell exploration.</div>
         <span id="devmodestatus" class="muted setting-note"></span>
       </div>
+
+      <!-- The VISIBLE build stamp (on-device-trace rule): title-attribute
+           tooltips never show on touch devices, so the stamp the brand's
+           title carries is invisible exactly where remote debugging needs
+           it. Filled by drc.js from the ONE build constant. -->
+      <p id="buildstamp" class="muted setting-note"></p>
     </aside>
   </div>
 

@@ -1151,6 +1151,19 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 .od-model .od-label { font-size: .85rem; font-weight: 600; }
 .od-model .od-note { grid-column: 1 / -1; margin: 0; }
 .od-model .od-btn { font-size: .78rem; padding: .3rem .6rem; white-space: nowrap; }
+/* The visible engine trace (?oddebug=1): the phone's stand-in console. */
+#odtracewrap { margin: .3rem 0 .4rem; }
+#odtracewrap[hidden] { display: none; }
+#odtracecopy { font-size: .72rem; padding: .2rem .5rem; margin-bottom: .2rem; }
+.od-trace {
+  margin: 0; padding: .35rem .45rem;
+  max-height: 9rem; overflow: auto;
+  font-size: .68rem; line-height: 1.35;
+  white-space: pre-wrap; word-break: break-word;
+  -webkit-user-select: text; user-select: text;
+  background: rgba(40, 36, 18, .06);
+  border: 1px dashed var(--border); border-radius: 6px;
+}
 #odconsent {
   position: fixed; inset: 0; z-index: 60;
   display: flex; align-items: center; justify-content: center;
