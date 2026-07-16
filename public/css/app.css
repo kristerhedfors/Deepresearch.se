@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h43;
+  --css-version: h44;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -84,6 +84,10 @@ body::before {
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
+  /* Transparent while decoration; fades to the black terminal field when the
+     pane comes forward (body.term-fg below). */
+  background: transparent;
+  transition: background-color .26s ease;
 }
 /* The viewport: a fixed-height window bottom-anchored ABOVE the composer (the
    newest command line clears the input pane instead of hiding behind it). Its
@@ -144,16 +148,54 @@ body.term-fg #chat {
 }
 body.term-fg #dr-agent-backdrop {
   z-index: 4;
+  /* Terminal COLORING (2026-07-16 directive): the pane forward = a real
+     terminal — a near-black field. Slightly translucent so the receded
+     conversation still ghosts through, keeping the two-pane feel. */
+  background-color: rgba(10, 13, 18, .93);
 }
 body.term-fg .dr-agent-backdrop-pre {
-  /* Foreground now: darker, fully legible terminal text (the faint background
-     colour is for when it sits behind the conversation). The text carries no
-     sway in either state (see .dr-agent-backdrop-pre above). */
-  color: rgba(10, 46, 92, .82);
+  /* Foreground now: classic terminal ink — white/gray on the black field (the
+     faint blue is only for the background-decoration state). The text carries
+     no sway in either state (see .dr-agent-backdrop-pre above). */
+  color: rgba(214, 220, 227, .92);
+}
+/* The terminal's own cursor: a blinking block at the live prompt tail — the
+   visible "input goes HERE" marker for tap-to-type (agent-backdrop.js focuses
+   the hidden .dr-term-input; the shell's echo appears right at this cursor). */
+body.term-fg .dr-agent-backdrop-pre::after {
+  content: "▊";
+  color: rgba(214, 220, 227, .85);
+  animation: dr-term-blink 1.1s steps(1, end) infinite;
+}
+@keyframes dr-term-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+/* The hidden field that catches direct terminal typing (agent-backdrop.js):
+   focusable but visually absent; parked near the prompt tail so any mobile
+   scroll-into-view is harmless, 16px so iOS doesn't zoom on focus. */
+.dr-term-input {
+  position: fixed;
+  left: 50%;
+  bottom: 9.5rem;
+  width: 2px;
+  height: 2px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  resize: none;
+  pointer-events: none;
+  outline: none;
 }
 @media (prefers-reduced-motion: reduce) {
   #chat,
   .dr-agent-backdrop-text { transition: opacity .2s ease; }
+  /* a steady, non-blinking cursor */
+  body.term-fg .dr-agent-backdrop-pre::after { animation: none; }
 }
 /* The chrome floats: header and footer are fixed, click-transparent
    strips (pointer-events: none) whose glass ITEMS re-enable pointer

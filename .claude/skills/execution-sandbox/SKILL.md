@@ -272,6 +272,35 @@ changed their mind: the switch is now a **header ICON** (`#termbtn`, a terminal
   put in app.css) are now MIRRORED into `cure/drc.css` too, plus `#termbtn`
   styling — so the switch actually works + is styled on DRC. Handshake `h34`.
 
+### Terminal mode: real terminal coloring + tap-to-type (2026-07-16)
+
+Two owner directives on the terminal-forward state (`body.term-fg`):
+
+- **Terminal COLORING.** When the terminal pane is forward it reads as a real
+  terminal: white/gray text on a near-black field —
+  `body.term-fg #dr-agent-backdrop { background-color: rgba(10,13,18,.93) }` +
+  `.dr-agent-backdrop-pre { color: rgba(214,220,227,.92) }`, mirrored in BOTH
+  stylesheets (`css/app.css`, `cure/drc.css` — same colors on both tiers: a
+  terminal reads as a terminal; the blue/olive ink is only for the faint
+  background-decoration state). The base layer carries a `background-color`
+  transition so the field fades in with the pane switch, and a blinking block
+  cursor (`.dr-agent-backdrop-pre::after`, steady under reduced-motion) marks
+  the live prompt tail.
+- **TWO input points in terminal mode.** The regular chat composer (unchanged,
+  it floats above the black field at z:5) — AND the terminal itself: tapping
+  the terminal pane (not a control in `BLOCK_SEL`, not a paging drag — the
+  `touchMoved` guard) focuses a hidden `.dr-term-input` textarea whose
+  keystrokes go straight into the VM's console, landing at the live shell
+  prompt ("where the terminal pointer is"; the shell's echo shows the typing).
+  Wiring: `sandbox.js` registers `readData` via `setTerminalInputSink()` after
+  `setCustomConsole` (readData re-reads `cxReadFunc` each call, so it survives
+  exec's temporary console swaps); named keys / Ctrl-chords map through the
+  pure `termKeySequence` in `agent-backdrop-core.js` (Node-tested — Ctrl+C →
+  `\x03`, arrows → CSI, Cmd/Alt chords stay with the browser), printable text
+  rides the `input` event (IME/autocorrect-safe; bare `\n` → `\r`). Leaving
+  terminal mode blurs the field; focusing re-pins the log to its tail so the
+  echo is visible. All fail-soft: no sink (VM not booted) → keystrokes drop.
+
 ## Cross-origin isolation (the tricky part)
 
 CheerpX needs `SharedArrayBuffer` → cross-origin isolation → COOP + COEP on the

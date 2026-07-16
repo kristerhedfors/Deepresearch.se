@@ -37,6 +37,18 @@
 // was removed (2026-07-14 directive). Its only motion is north-south, and only
 // in the two scroll cases below.
 //
+// TERMINAL MODE has real terminal COLORING and DIRECT TYPING (2026-07-16
+// directive). While the terminal pane is forward the page reads as a terminal —
+// white/gray text on a black field (`body.term-fg` in the CSS; the faint blue/
+// olive ink is only for the background-decoration state) — and there are TWO
+// places to type: the regular chat composer (unchanged, it floats above the
+// black field), and the terminal itself — tapping the terminal pane focuses a
+// hidden input whose keystrokes are sent straight into the VM's console, so
+// input lands at the live shell prompt (the terminal's own cursor; the shell's
+// echo makes the typing visible). sandbox.js registers the console write path
+// via setTerminalInputSink; named keys/Ctrl-chords map through the pure
+// termKeySequence (core), printable text rides the input event (IME-safe).
+//
 // SCROLLING is per-mode, always vertical. In CONVERSATION mode the conversation
 // scrolls natively and the terminal (the background pane) KEEPS PACE with it: the
 // backdrop offset tracks the conversation's scroll position proportionally
@@ -70,6 +82,7 @@ import {
   pushResult,
   scrollStep,
   stripAnsi,
+  termKeySequence,
 } from "./agent-backdrop-core.js";
 
 // The single channel every sandbox surface shares: the VM's raw terminal stream
@@ -114,6 +127,14 @@ let termActive = false; // the VM has printed → the switcher icon is shown
 // forward (that was the old screen-covering behavior we removed); the user taps
 // the header terminal icon to bring it up.
 let layerMode = LAYER_CONVO;
+
+// Direct terminal typing (2026-07-16): the hidden input a tap on the terminal
+// pane focuses, and the sink its keystrokes flow through into the VM's console
+// (registered by sandbox.js — the same readData path the xterm panel uses, so
+// input lands at the live shell prompt).
+let termInput = null; // the hidden field that catches keystrokes
+let termInputSink = null; // fn(str) → bytes into the VM console
+let touchMoved = false; // a paging drag must never read as a focus tap
 
 // Composed transforms for the two panes. Each pane can carry BOTH a transient
 // slide (the switch flourish) and a small parallax lean (during scroll); they
@@ -168,6 +189,85 @@ function applyOpacity() {
   // Full strength when the terminal is the foreground pane; the faint ceiling
   // when it's the background (its normal, decorative state).
   layer.style.opacity = layerMode === LAYER_TERMINAL ? "1" : String(opacityCss(OPACITY_PCT));
+}
+
+// ---- direct terminal typing ---------------------------------------------------
+// The SECOND input point in terminal mode (the composer is the first): tapping
+// the terminal pane focuses a hidden input, and everything typed there is sent
+// into the VM's console — it lands at the live shell prompt, whose echo comes
+// straight back through the raw terminal stream (feedTerminal), so the typing
+// is visible at the terminal's own cursor. Named keys and Ctrl-chords map via
+// the pure termKeySequence; printable text rides the input event so mobile
+// IMEs/autocorrect work. Everything is fail-soft decoration-grade: no sink (VM
+// not booted) → keystrokes are simply dropped.
+
+/**
+ * Register the function that carries typed input into the VM's console.
+ * Called by sandbox.js once the CheerpX console is wired (and it stays valid
+ * across exec swaps — the sink reads the live console handle each call).
+ * @param {((s: string) => void) | null} fn
+ */
+export function setTerminalInputSink(fn) {
+  termInputSink = typeof fn === "function" ? fn : null;
+}
+
+function sendToTerminal(str) {
+  if (!termInputSink || !str) return;
+  try { termInputSink(String(str)); } catch { /* input is best-effort */ }
+}
+
+function onTermKeydown(e) {
+  try {
+    const seq = termKeySequence(e.key, { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey });
+    if (seq == null) return; // printable text arrives via the input event
+    e.preventDefault();
+    sendToTerminal(seq);
+  } catch { /* decoration — never break the page */ }
+}
+
+// Printable characters (incl. IME composition, autocorrect, paste) land in the
+// hidden field; forward them and clear it so it never accumulates state. A bare
+// newline (an IME "Enter" that never fired a keydown) becomes carriage return —
+// what a terminal expects.
+function onTermInput(e) {
+  try {
+    if (e && e.isComposing) return; // wait for compositionend
+    if (!termInput || !termInput.value) return;
+    sendToTerminal(termInput.value.replace(/\n/g, "\r"));
+    termInput.value = "";
+  } catch { /* decoration — never break the page */ }
+}
+
+function ensureTermInput() {
+  if (termInput || typeof document === "undefined" || !document.body) return termInput;
+  const el = document.createElement("textarea");
+  el.className = "dr-term-input";
+  el.setAttribute("aria-label", "Terminal input");
+  el.setAttribute("autocapitalize", "off");
+  el.setAttribute("autocomplete", "off");
+  el.setAttribute("autocorrect", "off");
+  el.setAttribute("spellcheck", "false");
+  el.addEventListener("keydown", onTermKeydown);
+  el.addEventListener("input", onTermInput);
+  el.addEventListener("compositionend", onTermInput);
+  document.body.appendChild(el);
+  termInput = el;
+  return el;
+}
+
+// Focus the hidden input (opens the keyboard on mobile). Typing belongs at the
+// live prompt, so re-pin the log to its tail first — the echo must be visible.
+function focusTerminalInput() {
+  const el = ensureTermInput();
+  if (!el) return;
+  bgOffset = 0;
+  bgPinned = true;
+  applyBgScroll();
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* ignore */ } }
+}
+
+function blurTerminalInput() {
+  try { if (termInput) termInput.blur(); } catch { /* ignore */ }
 }
 
 // ---- the two-layer view switch ----------------------------------------------
@@ -310,6 +410,9 @@ function setLayerMode(mode) {
   syncTermBtn();
   clearParallax();
   slideInForeground(terminal);
+  // Leaving terminal mode returns the keyboard to the page (the composer is
+  // the only input again); entering it waits for the user's tap to focus.
+  if (!terminal) blurTerminalInput();
 }
 
 // The BACKGROUND pane leans in the same direction as the foreground scroll, then
@@ -443,6 +546,7 @@ function wireScroll() {
     "touchstart",
     (e) => {
       touchActive = false;
+      touchMoved = false;
       if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
       if (!e.touches || e.touches.length !== 1) return;
       if (onBlocked(e.target)) return; // finger on a real control → leave it alone
@@ -459,6 +563,7 @@ function wireScroll() {
         const y = e.touches[0].clientY;
         const dy = touchY - y; // finger up → toward newest, matching wheel deltaY>0
         touchY = y;
+        if (dy) touchMoved = true; // a drag pages history — not a focus tap
         // touchActive is only set in terminal mode over non-control area, so
         // always capture here — the background conversation must not scroll.
         e.preventDefault();
@@ -468,6 +573,20 @@ function wireScroll() {
     { passive: false },
   );
   window.addEventListener("touchend", () => { touchActive = false; }, { passive: true });
+
+  // --- tap-to-type (TERMINAL mode): a tap on the terminal pane — not on a real
+  //     control, not a paging drag — focuses the hidden input, so what the user
+  //     types next lands at the live shell prompt. The composer (in BLOCK_SEL)
+  //     is untouched: tapping it focuses the chat field as ever — the two input
+  //     points of terminal mode. ---
+  window.addEventListener("click", (e) => {
+    try {
+      if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+      if (onBlocked(e.target)) return; // a real control keeps its own click
+      if (touchMoved) { touchMoved = false; return; } // drag remnant, not a tap
+      focusTerminalInput();
+    } catch { /* decoration — never break the page */ }
+  });
 
   // --- CONVO mode: the terminal (background pane) KEEPS PACE with the messages
   //     (2026-07-14 directive). As the conversation scrolls, the backdrop offset

@@ -38,7 +38,7 @@ import {
   sanitizeProjName,
   shellEscape,
 } from "./sandbox-files.js";
-import { feedCommand, feedResult, feedTerminal } from "./agent-backdrop.js";
+import { feedCommand, feedResult, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
   OUTBOX_PATH,
@@ -788,6 +788,12 @@ async function bootVM(fileProvider = null) {
   }
 
   cxReadFunc = cx.setCustomConsole(writeData, term.cols, term.rows);
+  // Direct terminal typing (2026-07-16): while the terminal pane is forward, a
+  // tap focuses the backdrop's hidden input and its keystrokes land HERE — the
+  // same readData path the xterm panel uses, so input reaches the live shell
+  // prompt. readData reads the current cxReadFunc on every call, so this stays
+  // valid across execInSandbox's temporary console swaps.
+  setTerminalInputSink(readData);
   stopBootQuips(); // booted — hand the notification bar back to the real steps
   setStatus("ready");
   vmState = "ready";

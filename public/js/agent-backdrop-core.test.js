@@ -38,6 +38,7 @@ import {
   pushLines,
   replaceLastLine,
   stripAnsi,
+  termKeySequence,
   pushResult,
   scrollStep,
 } from "./agent-backdrop-core.js";
@@ -258,4 +259,46 @@ test("parallaxFollow keeps the gesture's direction, clamped to ±cap, finite", (
   assert.equal(parallaxFollow("nope"), 0); // never NaN
   // weaker than the raw delta
   assert.ok(Math.abs(parallaxFollow(20)) < 20);
+});
+
+test("termKeySequence maps named keys to terminal byte sequences", () => {
+  assert.equal(termKeySequence("Enter"), "\r");
+  assert.equal(termKeySequence("Backspace"), "\x7f");
+  assert.equal(termKeySequence("Tab"), "\t");
+  assert.equal(termKeySequence("Escape"), "\x1b");
+  assert.equal(termKeySequence("ArrowUp"), "\x1b[A");
+  assert.equal(termKeySequence("ArrowDown"), "\x1b[B");
+  assert.equal(termKeySequence("ArrowRight"), "\x1b[C");
+  assert.equal(termKeySequence("ArrowLeft"), "\x1b[D");
+  assert.equal(termKeySequence("Home"), "\x1b[H");
+  assert.equal(termKeySequence("End"), "\x1b[F");
+  assert.equal(termKeySequence("Delete"), "\x1b[3~");
+});
+
+test("termKeySequence maps Ctrl+letter to the control byte (Ctrl+C interrupts)", () => {
+  assert.equal(termKeySequence("c", { ctrl: true }), "\x03");
+  assert.equal(termKeySequence("C", { ctrl: true }), "\x03"); // case-insensitive
+  assert.equal(termKeySequence("a", { ctrl: true }), "\x01");
+  assert.equal(termKeySequence("z", { ctrl: true }), "\x1a");
+  assert.equal(termKeySequence("d", { ctrl: true }), "\x04"); // EOF
+});
+
+test("termKeySequence leaves printables and foreign chords with the browser", () => {
+  // printable characters ride the input event (IME-safe), not keydown
+  assert.equal(termKeySequence("a"), null);
+  assert.equal(termKeySequence("Q"), null);
+  assert.equal(termKeySequence(" "), null);
+  // modifier chords that aren't Ctrl+letter stay browser shortcuts
+  assert.equal(termKeySequence("c", { meta: true }), null); // Cmd+C copy
+  assert.equal(termKeySequence("c", { ctrl: true, alt: true }), null);
+  assert.equal(termKeySequence("Enter", { ctrl: true }), null);
+  assert.equal(termKeySequence("ArrowUp", { alt: true }), null);
+  // unknown named keys and garbage degrade to null, never throw
+  assert.equal(termKeySequence("F5"), null);
+  assert.equal(termKeySequence("Shift"), null);
+  assert.equal(termKeySequence(null), null);
+  assert.equal(termKeySequence(undefined, null), null);
+  // proto-chain names must not leak through the lookup table
+  assert.equal(termKeySequence("toString"), null);
+  assert.equal(termKeySequence("hasOwnProperty"), null);
 });
