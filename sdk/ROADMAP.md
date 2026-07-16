@@ -190,9 +190,16 @@ order:
   loaded in its entirety by prefetch, the SDK mounted in-VM, and the in-app
   `sdk/<name>` skills catalog. Verified-gate before any image becomes fleet
   default.
+- `workspace-fs` layers on `exec-engine` + `mcp-surface` once the sandbox is a
+  place real coding happens: it makes the answer model's file work
+  (read/edit/grep/glob) fast by routing it host-side through MCP tools, and
+  keeps only shell in the VM via the sync-in→exec→harvest coherence protocol.
+  Server-tier only — it presumes an MCP-client model and a server host, both
+  of which Se/cure lacks. It is the file-plane the studio and the deploy
+  pipeline build on. Design: `docs/WORKSPACE-FS-DESIGN.md`.
 - `publish-replays` and `games-shelf` are small and land whenever wanted.
 
-## Phase 6 — Generation, adoption & the studio (modules: `pair-generator`, `pair-studio`)
+## Phase 6 — Generation, studio & deploy (modules: `pair-generator`, `pair-studio`, `deploy-pipeline`)
 
 `pair-generator` is not a build phase: the generator skill is *used* from
 day one (it is how phases 0–5 are executed) and is listed last only because
@@ -211,6 +218,14 @@ while server-tier builds are exports by rule (the pair's server never hosts
 generated server code). Exit criterion: prompt → generated client-tier app
 previewed in the same session → exported bundle runs from a plain static
 host.
+
+`deploy-pipeline` promotes the studio's in-tab preview to a real live
+deploy: a same-origin preview URL for a static build, or a push to the
+**user's own** edge account for a server-tier build (never the pair's
+origin). It lands after `workspace-fs` (the source tree it builds from) and
+`pair-studio` (the preview it promotes), and is server-tier only — a live
+deploy needs a real host. Exit criterion: a built workspace deploys to a
+live URL the user opens and tries in the same session.
 
 ---
 
@@ -239,6 +254,7 @@ host.
 | 19 | decision-boards | 4 | The human-decision mechanism |
 | 20 | feedback-loops | 4 | The boards' heaviest consumers |
 | 21 | agent-dev-workflow | 4‡ | ‡ configure hooks/ledgers in phase 0–1; full loop needs shipped features |
-| 22–29 | extensions (incl. exec-engine, vm-toolchain) | 5 | Leaves; product priority decides. exec-engine is the source-built substrate under the sandbox |
-| 30 | pair-generator | 6 | Meta — used throughout, listed last |
-| 31 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
+| 22–30 | extensions (incl. exec-engine, vm-toolchain, workspace-fs) | 5 | Leaves; product priority decides. exec-engine is the source-built substrate; workspace-fs is the fast-track file plane (server-tier) |
+| 31 | pair-generator | 6 | Meta — used throughout, listed last |
+| 32 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
+| 33 | deploy-pipeline | 6 | Deploy the workspace live (same-origin preview / user's own account); server-tier |

@@ -26,7 +26,7 @@ they are.
 | File | What it is |
 |---|---|
 | `DESIGN.md` | The agent-pair abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
-| `MANIFEST.json` | The machine-readable module registry: 31 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `MANIFEST.json` | The machine-readable module registry: 33 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
 | `pair-cli.mjs` | The dependency-free CLI over the manifest: `list`, `show <id>`, `plan <id …>` (dependency closure → build order), `validate` (integrity + class rules). Runs on any desktop Node and inside the sandbox VM (`node /src/sdk/pair-cli.mjs …`); unit-tested by `pair-cli.test.mjs` in the repo's `npm test` |
@@ -97,13 +97,15 @@ evidence-driven decisions).
 | `games-shelf` | S | The registry seam for whole product surfaces (worked example: a game) |
 | `exec-engine` | X | Engine CheerpX (decided); building our own SMALL, FAST image from scratch (Alpine-i386 recipe, self-hosted, full-prefetch so commands never stall); the thin `ExecEngine` seam + c2w/v86/qemu fallback ladder as future-proofing; the in-VM agent egress design |
 | `vm-toolchain` | X | The SDK inside the prepackaged Linux VM: our small fast Alpine image + full-prefetch, `/src/sdk` mount, the in-app `sdk/<name>` skills catalog, desktop parity |
+| `workspace-fs` | S | Fast-track file plane: read/write/edit/grep/glob via MCP hit a host-side store directly (no VM); only shell routes through the VM, kept coherent by sync-in→exec→harvest. Server-tier |
 
-**Layer 6 — Generation & studio**
+**Layer 6 — Generation, studio & deploy**
 
 | Module | Class | Provides |
 |---|---|---|
 | `pair-generator` | D | Selection → dependency closure → module-at-a-time generation; adoption mode |
 | `pair-studio` | X | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application; platform types (client-tier builds run instantly, server-tier builds export) |
+| `deploy-pipeline` | S | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the pair's origin). Server-tier |
 
 ## How to use it
 

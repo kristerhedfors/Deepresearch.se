@@ -1135,7 +1135,7 @@ deploy mid-battery, append-only ledgers.
 `sdk/` is the **Agent-Pair SDK** (2026-07-16): the constructive counterpart to
 the operational skills — a design (`sdk/DESIGN.md`: the Se/cure + Se/rver pair
 abstraction, zero-or-one server, capability classes C/S/B/X/D, contracts
-PA-1..PA-10), a 31-module registry (`sdk/MANIFEST.json`) with one buildable
+PA-1..PA-10), a 33-module registry (`sdk/MANIFEST.json`) with one buildable
 skill per module (`sdk/skills/<id>/SKILL.md`), the implementation-order
 rationale (`sdk/ROADMAP.md`), and a dependency-free CLI
 (`node sdk/pair-cli.mjs list|show|plan|validate`, unit-tested in `npm test`).

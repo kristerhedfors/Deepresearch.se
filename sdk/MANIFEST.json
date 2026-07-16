@@ -275,6 +275,24 @@
       "acceptance": "Small Alpine-i386 image builds reproducibly (all binaries Intel 80386), served same-origin with Range, boots on Chrome/Firefox/real iOS Safari; loads fast and after prefetch a second boot + commands issue ZERO network block reads (no stalls); adding a tool = edit recipe + rebuild + new id; bash-core loop still passes against a mock engine"
     },
     {
+      "id": "workspace-fs",
+      "name": "Fast-track workspace filesystem (host file ops, VM-routed shell)",
+      "layer": 5, "class": "S", "deps": ["execution-sandbox", "exec-engine", "mcp-surface"],
+      "skill": "sdk/skills/workspace-fs/SKILL.md",
+      "provides": "The answer model does read/write/edit/grep/glob/list through MCP tools hitting a host-side authoritative store DIRECTLY (no VM round-trip); only arbitrary shell routes through the CheerpX VM, kept coherent by a sync-in→exec→harvest protocol at each run_bash boundary (DataDevice.writeFile in, IDBDevice.readFileAsBlob out, hash-gated so only changed files cross); the store (Durable Object / R2) with a generation counter + exec-serialized writes. Server-tier first; Se/cure deferred/unsuitable (no MCP-client model, no server host)",
+      "reference": ["docs/WORKSPACE-FS-DESIGN.md", "docs/SANDBOX-HOST-COMMANDS.md", "src/mcp.js", "public/js/bash-core.js", "public/js/sandbox-files.js", "public/js/sandbox.js", "src/quota.js"],
+      "acceptance": "File tools work with NO VM boot; a host-side edit is exactly what run_bash sees (sync-in) and a bash write is what the next host read returns (harvest); only changed files cross; host writes serialize against an in-flight exec; VM-down degrades to host-only file ops; no store backing → unavailable not unmetered; coherence cycle live-verified on a real device"
+    },
+    {
+      "id": "deploy-pipeline",
+      "name": "Deploy the workspace and try it live",
+      "layer": 6, "class": "S", "deps": ["workspace-fs", "pair-studio", "grant-bridge"],
+      "skill": "sdk/skills/deploy-pipeline/SKILL.md",
+      "provides": "A deploy tool + build hook turning a workspace into a running thing the user can open: a live same-origin preview URL for a client-tier (static) build, or a push to the USER'S OWN edge account for a server-tier build (the pair never hosts generated server code on its own origin); the deploy credential ridden through the grant discipline (minimal, user-held, unlogged, revocable); content-addressed build ids with rollback; the live-URL return. Server-tier",
+      "reference": ["docs/WORKSPACE-FS-DESIGN.md", "src/mcp.js", "public/js/bash-core.js", "src/server-token.js", "src/server-grants.js"],
+      "acceptance": "A client-tier build deploys to a live same-origin URL openable in-session; a server-tier build publishes to the user's own account and the pair's origin serves no generated server code; the deploy token is never logged and is revocable; failed build/deploy is fail-soft; re-deploy rolls forward with the old id still openable; no target → unavailable; the live URL is verified by opening it"
+    },
+    {
       "id": "vm-toolchain",
       "name": "The SDK inside the prepackaged Linux VM",
       "layer": 5, "class": "X", "deps": ["exec-engine", "execution-sandbox", "introspection-help"],
