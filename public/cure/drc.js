@@ -2783,7 +2783,6 @@ $("stenabled").addEventListener("change", () => {
 $("proxybannerclose")?.addEventListener("click", () => {
   $("proxybanner").hidden = true;
 });
-<<<<<<< HEAD
 // The footer notices' × — clears the workstatus line and hides the provider
 // disclosure until its text changes (model switch) or the page reloads.
 $("noticesclose")?.addEventListener("click", () => {
@@ -2791,12 +2790,6 @@ $("noticesclose")?.addEventListener("click", () => {
   $("provnote").hidden = true;
   workStatus("");
 });
-// Open an account-connected proxy bundle (secure research space) if this page
-// was reached with one in its URL (ghost crossover or shared link); otherwise
-// fall back to the legacy web-search grant path. Both fire-and-forget.
-maybeOpenProxyBundle().then((opened) => {
-  if (!opened) maybeRequestWsGrant();
-=======
 // Borrowed-capability arrival chain, consolidated-first: (1) a Se/rver token
 // (?st= link, or the ghost intent — which the token path consumes on success
 // and leaves for the legacy path otherwise); (2) an encrypted proxy bundle
@@ -2805,7 +2798,6 @@ maybeRequestServerToken().then(() => {
   maybeOpenProxyBundle().then((opened) => {
     if (!opened) maybeRequestWsGrant();
   });
->>>>>>> origin/main
 });
 $("form").addEventListener("submit", send);
 
