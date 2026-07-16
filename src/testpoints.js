@@ -9,7 +9,16 @@
 // the composer, flip a knob) — and (b) a plain-language "what was fixed"
 // summary shown while trying it. The tester opens it (from the queue, or by
 // the shareable /try/<id> link), lands exactly there, reads what changed,
-// and records a verdict: 👍 works / 👎 doesn't, with an optional note.
+// and records a verdict: 👍 works / 👎 doesn't / ❓ untestable — the deep
+// link + actions never landed them somewhere the fix could actually be
+// tried, or it's unclear what to do — with an optional note.
+//
+// The ❓ verdict is a DIALOGUE, not a dead end: every verdict note is stored
+// as a message on the point's thread (author "tester"), the Claude Code loop
+// answers with its own message (author "agent", POST …/:id/messages or
+// scripts/testpoints --reply) and re-opens the point, and the banner shows
+// the whole thread — so an unclear point is clarified back and forth at the
+// point itself until a real 👍/👎 lands.
 //
 // The producer side is Claude Code (or the owner) declaring a point the
 // moment a fix is testable — POST /api/admin/testpoints, or scripts/testpoints
@@ -33,6 +42,8 @@
 //   PATCH  /api/admin/testpoints/:id        edit / lifecycle {label?, summary?,
 //                                           target?, actions?, ref?, status?}
 //   POST   /api/admin/testpoints/:id/result record a verdict {result, note?}
+//   POST   /api/admin/testpoints/:id/messages append to the clarification
+//                                           thread {body, author?}
 //   DELETE /api/admin/testpoints/:id
 //
 // And the deep-link resolver, routed in index.js:
@@ -66,18 +77,29 @@ export const TESTPOINT_CAPS = {
   model: 100,
   knob: 60,
   actions: 25, // most points need a handful; a wall of actions is a smell
+  message: 4_000, // one thread message (same budget as a verdict note)
+  thread: 100, // messages read back per point — a longer thread is a smell
 };
 
 // Lifecycle. `open` = still to test (the queue). A verdict moves it to
-// `passed` or `failed`; a `failed` point is work to redo and can be
-// re-opened after the next fix (PATCH status:"open"). `archived` retires it.
-export const TESTPOINT_STATUSES = ["open", "passed", "failed", "archived"];
+// `passed`, `failed`, or `untestable`; `failed` is work to redo and is
+// re-opened after the next fix (PATCH status:"open"); `untestable` sits with
+// the loop — the tester never reached a state where the fix could be tried
+// (or didn't understand what to do), so the loop answers on the point's
+// thread and re-opens it. `archived` retires a point.
+export const TESTPOINT_STATUSES = ["open", "passed", "failed", "untestable", "archived"];
 
-export const TESTPOINT_RESULTS = ["pass", "fail"];
+// The three verdicts: 👍 pass / 👎 fail / ❓ untestable (couldn't reach it or
+// needs clarification — starts/continues the thread instead of settling).
+export const TESTPOINT_RESULTS = ["pass", "fail", "untestable"];
 
 // The result verdict → the status it drives.
 /** @type {Record<string, string>} */
-const RESULT_STATUS = { pass: "passed", fail: "failed" };
+const RESULT_STATUS = { pass: "passed", fail: "failed", untestable: "untestable" };
+
+// Who wrote a thread message: the human tester (verdict notes, banner) or
+// the Claude Code loop answering (scripts/testpoints --reply).
+export const MESSAGE_AUTHORS = ["tester", "agent"];
 
 // ---- the deep-link ACTION grammar (THE reachability boundary) -------------
 // An action is one step the target page's client runs on arrival to set the
@@ -290,6 +312,25 @@ export function validateTestpointResult(body) {
   return { result: body.result, note: cleanStr(body.note, TESTPOINT_CAPS.note) };
 }
 
+// POST …/messages body → {author, body}, or {error}. The default author is
+// "agent" — the loop is the usual caller; the banner sends author:"tester"
+// explicitly (both sides sit behind the same admin gate, so the field is a
+// label, not a privilege).
+/**
+ * @param {any} body
+ * @returns {{ error: string } | { error?: undefined, author: string, body: string }}
+ */
+export function validateTestpointMessage(body) {
+  if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
+  const text = cleanStr(body.body, TESTPOINT_CAPS.message);
+  if (!text) return { error: "A thread message needs a non-empty body." };
+  const author = body.author === undefined ? "agent" : body.author;
+  if (!MESSAGE_AUTHORS.includes(author)) {
+    return { error: `author must be one of: ${MESSAGE_AUTHORS.join(", ")}.` };
+  }
+  return { author, body: text };
+}
+
 /** @param {number} id */
 export function tryUrl(id) {
   return `/try/${id}`;
@@ -323,6 +364,29 @@ function parseActions(json) {
 /** @param {string} status */
 export function isOpenStatus(status) {
   return status === "open";
+}
+
+// The verdict symbol vocabulary — one glyph per result, used everywhere a
+// verdict is shown (text render here, the banner buttons, PR comments).
+/** @type {Record<string, string>} */
+export const RESULT_SYMBOLS = { pass: "👍", fail: "👎", untestable: "❓" };
+
+/** @type {Record<string, string>} */
+const RESULT_WORDS = { pass: "👍 works", fail: "👎 broken", untestable: "❓ untestable — needs clarification" };
+
+// A D1 `test_point_messages` row → API object.
+/**
+ * @param {{ id: number, point_id: number, created_at: number, author: string, body: string }} row
+ * @returns {any}
+ */
+export function projectTestpointMessage(row) {
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    time: new Date(row.created_at).toISOString(),
+    author: row.author === "agent" ? "agent" : "tester",
+    body: row.body,
+  };
 }
 
 // Row → API object. `try_url` is the shareable deep link; `open` marks queue
@@ -374,10 +438,16 @@ export function formatTestpointsText(entries) {
         if (e.ref) lines.push(`REF: ${e.ref}`);
         if (e.result) {
           lines.push(
-            `VERDICT: ${e.result === "pass" ? "👍 works" : "👎 broken"}` +
+            `VERDICT: ${RESULT_WORDS[e.result] || e.result}` +
               (e.result_time ? ` (${e.result_time})` : "") +
               (e.result_note ? ` — ${e.result_note}` : ""),
           );
+        }
+        if (Array.isArray(e.messages) && e.messages.length) {
+          lines.push("THREAD:");
+          for (const m of e.messages) {
+            lines.push(`  ${m.author} (${m.time}): ${m.body}`);
+          }
         }
         return lines.join("\n");
       })
@@ -398,6 +468,47 @@ async function getPoint(db, id) {
   return /** @type {Promise<TestPointRow | null>} */ (
     db.prepare("SELECT * FROM test_points WHERE id = ?").bind(id).first()
   );
+}
+
+// Attach each point's clarification thread (oldest first, capped) to a list
+// of projected points — one query for the whole page, not one per point.
+// Fail-soft: a messages read that errors leaves the points without threads
+// rather than failing the request.
+/**
+ * @param {D1Database} db
+ * @param {any[]} entries projectTestpoint output (mutated in place)
+ * @returns {Promise<any[]>}
+ */
+async function attachMessages(db, entries) {
+  if (!entries.length) return entries;
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  for (const e of entries) e.messages = [];
+  const marks = entries.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM test_point_messages WHERE point_id IN (${marks}) ORDER BY id ASC`,
+    )
+    .bind(...entries.map((e) => e.id))
+    .all()
+    .catch(() => ({ results: [] }));
+  for (const row of /** @type {any[]} */ (results || [])) {
+    const e = byId.get(row.point_id);
+    if (e && e.messages.length < TESTPOINT_CAPS.thread) e.messages.push(projectTestpointMessage(row));
+  }
+  return entries;
+}
+
+/**
+ * @param {D1Database} db
+ * @param {number} pointId
+ * @param {string} author
+ * @param {string} body
+ */
+async function insertMessage(db, pointId, author, body) {
+  await db
+    .prepare("INSERT INTO test_point_messages (point_id, created_at, author, body) VALUES (?, ?, ?, ?)")
+    .bind(pointId, Date.now(), author, body)
+    .run();
 }
 
 // Count of open (still-to-test) points — feeds the client queue badge.
@@ -453,7 +564,10 @@ export async function handleAdminTestpoints(request, env, url, log) {
       (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
       " ORDER BY id DESC LIMIT ?";
     const { results } = await db.prepare(sql).bind(...binds, limit).all();
-    const entries = (/** @type {TestPointRow[]} */ (results || [])).map(projectTestpoint);
+    const entries = await attachMessages(
+      db,
+      (/** @type {TestPointRow[]} */ (results || [])).map(projectTestpoint),
+    );
     if (p.get("format") === "text") return textResponse(formatTestpointsText(entries));
     return jsonResponse({ testpoints: entries, count: entries.length });
   }
@@ -480,20 +594,21 @@ export async function handleAdminTestpoints(request, env, url, log) {
     );
   }
 
-  const idMatch = path.match(/^\/(\d+)(\/result)?$/);
+  const idMatch = path.match(/^\/(\d+)(\/result|\/messages)?$/);
   if (!idMatch) return jsonResponse({ error: "Not found." }, 404);
   const point = await getPoint(db, Number(idMatch[1]));
   if (!point) return jsonResponse({ error: "No such test point." }, 404);
+  const sub = idMatch[2] || "";
 
-  // GET /api/admin/testpoints/:id — the banner reads this.
-  if (!idMatch[2] && method === "GET") {
-    const projected = projectTestpoint(point);
+  // GET /api/admin/testpoints/:id — the banner reads this (thread included).
+  if (!sub && method === "GET") {
+    const [projected] = await attachMessages(db, [projectTestpoint(point)]);
     if (url.searchParams.get("format") === "text") return textResponse(formatTestpointsText([projected]));
     return jsonResponse({ testpoint: projected });
   }
 
   // PATCH /api/admin/testpoints/:id — edit / lifecycle.
-  if (!idMatch[2] && method === "PATCH") {
+  if (!sub && method === "PATCH") {
     const v = validateTestpointPatch(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
     const sets = ["updated_at = ?"];
@@ -508,8 +623,10 @@ export async function handleAdminTestpoints(request, env, url, log) {
     return jsonResponse({ testpoint: projectTestpoint(/** @type {TestPointRow} */ (row)), dropped_actions: v.dropped });
   }
 
-  // POST /api/admin/testpoints/:id/result — the 👍/👎 verdict.
-  if (idMatch[2] && method === "POST") {
+  // POST /api/admin/testpoints/:id/result — the 👍/👎/❓ verdict. A note
+  // also joins the point's thread as a tester message, so every verdict's
+  // context is part of the same dialogue the loop replies into.
+  if (sub === "/result" && method === "POST") {
     const v = validateTestpointResult(await request.json().catch(() => null));
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
     const now = Date.now();
@@ -519,13 +636,29 @@ export async function handleAdminTestpoints(request, env, url, log) {
       )
       .bind(v.result, v.note, now, RESULT_STATUS[v.result], now, point.id)
       .run();
+    if (v.note) await insertMessage(db, point.id, "tester", v.note).catch(() => {});
     log.info("testpoint.result", { id: point.id, result: v.result });
     const row = await getPoint(db, point.id);
-    return jsonResponse({ testpoint: projectTestpoint(/** @type {TestPointRow} */ (row)) }, 201);
+    const [projected] = await attachMessages(db, [projectTestpoint(/** @type {TestPointRow} */ (row))]);
+    return jsonResponse({ testpoint: projected }, 201);
   }
 
-  // DELETE /api/admin/testpoints/:id
-  if (!idMatch[2] && method === "DELETE") {
+  // POST /api/admin/testpoints/:id/messages — the clarification thread. The
+  // loop answers an ❓ untestable point here (author "agent"), then re-opens
+  // it (PATCH status:"open") so the answer reaches the tester's queue.
+  if (sub === "/messages" && method === "POST") {
+    const v = validateTestpointMessage(await request.json().catch(() => null));
+    if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
+    await insertMessage(db, point.id, v.author, v.body);
+    await db.prepare("UPDATE test_points SET updated_at = ? WHERE id = ?").bind(Date.now(), point.id).run();
+    log.info("testpoint.message", { id: point.id, author: v.author });
+    const [projected] = await attachMessages(db, [projectTestpoint(point)]);
+    return jsonResponse({ testpoint: projected }, 201);
+  }
+
+  // DELETE /api/admin/testpoints/:id — the thread goes with the point.
+  if (!sub && method === "DELETE") {
+    await db.prepare("DELETE FROM test_point_messages WHERE point_id = ?").bind(point.id).run().catch(() => {});
     await db.prepare("DELETE FROM test_points WHERE id = ?").bind(point.id).run();
     log.info("testpoint.deleted", { id: point.id });
     return jsonResponse({ ok: true });

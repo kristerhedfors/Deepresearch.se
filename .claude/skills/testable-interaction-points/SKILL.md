@@ -3,13 +3,15 @@ name: testable-interaction-points
 description: >-
   Load when declaring, running, or working on the "try-it queue" — testable
   interaction points: linkable places in the app to try a shipped fix, with
-  a 👍/👎 verdict. Load it the moment a fix or feature is ready to test
-  ("queue this for testing", "add a test point", "what's in the test
-  queue"), or when touching src/testpoints.js, public/js/testpoints.js,
-  public/js/testpoints-core.js, scripts/testpoints, the /try/:id route, the
-  test_points D1 table, or the #tryqueuebtn / #trybanner UI. Covers the deep-
-  link ACTION GRAMMAR (the exact boundary of what "reachable" means), the
-  producer→test→verdict loop, the API surface, and where the boundary ends.
+  a 👍/👎/❓ verdict (pass / fail / untestable–needs-clarification, the last
+  opening a tester↔loop dialogue thread on the point). Load it the moment a
+  fix or feature is ready to test ("queue this for testing", "add a test
+  point", "what's in the test queue"), or when touching src/testpoints.js,
+  public/js/testpoints.js, public/js/testpoints-core.js, scripts/testpoints,
+  the /try/:id route, the test_points / test_point_messages D1 tables, or
+  the #tryqueuebtn / #trybanner UI. Covers the deep-link ACTION GRAMMAR (the
+  exact boundary of what "reachable" means), the producer→test→verdict loop,
+  the clarification thread, the API surface, and where the boundary ends.
 ---
 
 # Testable interaction points — the try-it queue
@@ -26,9 +28,18 @@ labelled queue entry carrying
 2. **WHAT WAS FIXED** — a plain-language summary shown while trying it.
 
 The tester opens the point (from the queue, or the shareable `/try/<id>`
-link), lands exactly there, reads what changed, and records a verdict:
-**👍 works / 👎 doesn't**, with an optional note. Verdicts feed back to the
-producer (Claude Code / the owner) so a 👎 becomes the next fix round.
+link), lands exactly there, reads what changed, and records one of THREE
+verdicts: **👍 works / 👎 doesn't / ❓ can't test** (untestable — the deep
+link + actions never landed them somewhere the fix could actually be tried,
+or it's unclear what to do), with an optional note. Verdicts feed back to
+the producer (Claude Code / the owner) so a 👎 becomes the next fix round.
+
+An ❓ is a DIALOGUE, not a dead end: every verdict note is stored as a
+message on the point's **clarification thread** (author `tester`), the loop
+answers with its own message (author `agent`, `scripts/testpoints --reply`)
+and re-opens the point, and the banner renders the whole thread — so an
+unclear point is clarified back and forth *at the point itself* until a
+real 👍/👎 lands.
 
 The whole surface is **admin-only** — a deep link can prefill the composer or
 open settings, so it is a developer/owner tool, not an end-user one. The
@@ -38,7 +49,7 @@ client fails soft for everyone else: the launcher and banner never render.
 
 | Piece | Responsibility |
 |---|---|
-| `src/testpoints.js` | Pure core (validation, projection, `?format=text`, `deepLink`) + `handleAdminTestpoints` (CRUD + verdict) + `handleTryRedirect` (the `/try/:id` resolver). D1 `test_points`. |
+| `src/testpoints.js` | Pure core (validation, projection, `?format=text`, `deepLink`) + `handleAdminTestpoints` (CRUD + verdict + thread) + `handleTryRedirect` (the `/try/:id` resolver). D1 `test_points` + `test_point_messages` (the clarification thread). |
 | `public/js/testpoints-core.js` | Client pure core: `parseTryId`/`stripTryParam`/`deepLink`, `partitionActions` (known vs unknown for THIS build), `nextOpenPoint`. Node-tested. |
 | `public/js/testpoints.js` | The DRS client: the queue overlay, the try-it banner, and the ACTION EXECUTOR. Wired from `app.js` via `initTestpoints({ hooks })`. |
 | `scripts/testpoints` | The producer/reader CLI over `/api/admin/testpoints` (break-glass Basic Auth). |
@@ -53,18 +64,27 @@ client fails soft for everyone else: the launcher and banner never render.
    tester on the exact state. Add a `ref` (PR/commit/issue) so the verdict
    traces back.
 2. **Test.** The owner opens the queue (header launcher), taps a label — or
-   opens a shared `/try/<id>` link. The banner shows the summary; the actions
-   have already set the scene. They click 👍/👎 (+ optional note); the banner
-   advances to the next open point.
+   opens a shared `/try/<id>` link. The banner shows the summary (and the
+   clarification thread, if one has started); the actions have already set
+   the scene. They click 👍/👎/❓ (+ optional note); the banner advances to
+   the next open point.
 3. **Read verdicts.** `scripts/testpoints --all` (or `--status failed`). A 👎
    with a note is a bug report against your own fix. Fix it, then re-open the
    point for re-test: `scripts/testpoints --set <id> '{"status":"open"}'`.
+   An ❓ with a note is a QUESTION: answer it —
+   `scripts/testpoints --reply <id> "…"` — which posts an `agent` message on
+   the thread AND re-opens the point so the answer reaches the tester. If
+   the ❓ exposed a broken scene (bad target, missing action), fix the
+   point's `target`/`actions` in the same pass.
 4. **Retire** a point that has served its purpose:
    `scripts/testpoints --set <id> '{"status":"archived"}'` or `--delete`.
 
-Status lifecycle: `open` (on the queue) → `passed` | `failed` (a recorded
-verdict) → re-open a `failed` one after the next fix, or `archived` to retire.
-Only `open` points are on the queue; the launcher badge counts them.
+Status lifecycle: `open` (on the queue) → `passed` | `failed` | `untestable`
+(a recorded verdict) → re-open a `failed` one after the next fix, answer +
+re-open an `untestable` one (`--reply` does both), or `archived` to retire.
+Only `open` points are on the queue; the launcher badge counts them — an
+`untestable` point sits with the loop, invisible to the tester, until the
+loop's reply re-opens it.
 
 The STANDING loop around this — sweeping verdicts (`--verdicts`), mining
 notes (a 👍 note can carry a full bug report), archiving as the consumed-ack,
@@ -136,13 +156,15 @@ capped at `TESTPOINT_CAPS.actions` (25).
 ## API surface (all under the admin gate)
 
 ```
-GET    /api/admin/testpoints            queue (open), newest first;
+GET    /api/admin/testpoints            queue (open), newest first, threads included;
                                         ?status= ?open=1 ?q= ?limit= ?format=text
 POST   /api/admin/testpoints            {label, summary, target, actions?, ref?}
-GET    /api/admin/testpoints/:id        one point (the banner reads this)
+GET    /api/admin/testpoints/:id        one point incl. its thread (the banner reads this)
 PATCH  /api/admin/testpoints/:id        {label?,summary?,target?,actions?,ref?,status?}
-POST   /api/admin/testpoints/:id/result {result:"pass"|"fail", note?}
-DELETE /api/admin/testpoints/:id
+POST   /api/admin/testpoints/:id/result {result:"pass"|"fail"|"untestable", note?}
+                                        (a note also lands on the thread as a tester message)
+POST   /api/admin/testpoints/:id/messages {body, author?:"agent"|"tester"} — the thread
+DELETE /api/admin/testpoints/:id        (its thread goes with it)
 GET    /try/:id                         302 → <target>?try=<id>  (admin-gated)
 ```
 
@@ -172,5 +194,9 @@ live-verify convention, since D1 + the DOM executor are where real bugs hide:
 declare a point against `/rver` with an `openSettings` action, open the queue
 as admin, confirm the launcher badge counts it, tap it, confirm the banner
 shows the summary and the knob row pulses, submit 👍, and confirm
-`scripts/testpoints --status passed` shows the verdict. Confirm a non-admin
-session shows no launcher (the API 403s and the client stays quiet).
+`scripts/testpoints --status passed` shows the verdict. For the thread:
+submit ❓ with a note, confirm the point leaves the queue
+(`--status untestable` shows it, note on the THREAD lines), answer with
+`--reply`, and confirm the point is open again with the dialogue rendered in
+the banner. Confirm a non-admin session shows no launcher (the API 403s and
+the client stays quiet).

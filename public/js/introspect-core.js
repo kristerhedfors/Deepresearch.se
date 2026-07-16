@@ -1161,28 +1161,44 @@ export function resolveReadPaths(snapshot, requested) {
  * Read the requested files out of the snapshot, honoring the running char
  * budget and skipping ones already read. Each file's text is clamped to
  * MAX_READ_FILE_CHARS, the whole gathered set to MAX_READ_TOTAL_CHARS.
+ * An optional line RANGE (1-based `offset`, `limit` lines; limit 0 = to EOF)
+ * slices each file BEFORE the budget clamp, so a targeted read of a big file
+ * charges only the lines actually returned — ranged reads carry a `lines`
+ * field ({from, to, total}) for the caller's header.
  * @param {Snapshot} snapshot
  * @param {string[]} requested
  * @param {Set<string>} alreadyRead file paths gathered in earlier rounds
  * @param {{ used: number }} budget mutated: total chars gathered so far
- * @returns {Array<{ p: string, text: string, bytes: number, truncated: boolean }>}
+ * @param {{ offset: number, limit: number } | null} [range]
+ * @returns {Array<{ p: string, text: string, bytes: number, truncated: boolean, lines?: { from: number, to: number, total: number } }>}
  */
-export function readSnapshotFiles(snapshot, requested, alreadyRead, budget) {
+export function readSnapshotFiles(snapshot, requested, alreadyRead, budget, range = null) {
   const files = (snapshot && Array.isArray(snapshot.files)) ? snapshot.files : [];
   const resolved = resolveReadPaths(snapshot, requested);
+  /** @type {Array<{ p: string, text: string, bytes: number, truncated: boolean, lines?: { from: number, to: number, total: number } }>} */
   const out = [];
   for (const r of resolved) {
     if (!r.path || (alreadyRead && alreadyRead.has(r.path))) continue;
     const f = files.find((x) => x.p === r.path);
     if (!f) continue;
     if (budget.used >= MAX_READ_TOTAL_CHARS) break; // budget spent — stop this round
+    let src = String(f.t || "");
+    /** @type {{ from: number, to: number, total: number } | undefined} */
+    let lines;
+    if (range) {
+      const all = src.split("\n");
+      const from = Math.min(Math.max(1, Math.floor(range.offset) || 1), all.length);
+      const to = range.limit > 0 ? Math.min(all.length, from + Math.floor(range.limit) - 1) : all.length;
+      src = all.slice(from - 1, to).join("\n");
+      lines = { from, to, total: all.length };
+    }
     const cap = Math.min(MAX_READ_FILE_CHARS, MAX_READ_TOTAL_CHARS - budget.used);
-    const truncated = f.t.length > cap;
-    const text = truncated ? f.t.slice(0, cap) + "\n… [truncated]" : f.t;
+    const truncated = src.length > cap;
+    const text = truncated ? src.slice(0, cap) + "\n… [truncated]" : src;
     // Charge the budget by the SOURCE chars kept (the "\n… [truncated]" marker
     // is bookkeeping, not content), so the total cap is honored exactly.
-    budget.used += truncated ? cap : f.t.length;
-    out.push({ p: r.path, text, bytes: f.s, truncated });
+    budget.used += truncated ? cap : src.length;
+    out.push({ p: r.path, text, bytes: f.s, truncated, ...(lines ? { lines } : {}) });
   }
   return out;
 }
@@ -1303,6 +1319,7 @@ export const MAX_LIST_ENTRIES = 300; // paths returned from one list_files
 export const MAX_LIST_OUTPUT_CHARS = 6000;
 export const MAX_PATTERN_CHARS = 300; // a grep pattern is clamped to this
 export const MAX_LINE_CHARS = 240; // one matched line is clamped to this
+export const MAX_GREP_CONTEXT = 5; // context lines each side of a match (grep -C)
 
 // The provider-neutral tool definitions (name / description / JSON input
 // schema). The DRS loop maps these onto Anthropic's `tools` shape and DRC onto
@@ -1313,7 +1330,7 @@ export const INTROSPECTION_TOOLS = [
   {
     name: "grep_source",
     description:
-      "Search the site's own deployed source code with a regular expression, like `grep -rn`. Returns matching lines as `path:line: text`. Use this FIRST to locate where something is implemented before reading whole files.",
+      "Search the site's own deployed source code with a regular expression, like `grep -rn`. Returns matching lines as `path:line: text`; with `context`, surrounding lines too (like `grep -C`). Use this FIRST to locate where something is implemented — grep output is free (it does not draw on the read budget), so a targeted grep with context often answers without reading the file at all.",
     input_schema: {
       type: "object",
       properties: {
@@ -1326,6 +1343,10 @@ export const INTROSPECTION_TOOLS = [
           type: "string",
           description: "Optional substring to limit which files are searched, e.g. 'src/', '.js', or 'auth'.",
         },
+        context: {
+          type: "integer",
+          description: `Lines of context to show around each match, like grep -C (0-${MAX_GREP_CONTEXT}, default 0).`,
+        },
         max_matches: { type: "integer", description: `Max matching lines to return (default ${MAX_GREP_MATCHES}).` },
       },
       required: ["pattern"],
@@ -1334,11 +1355,19 @@ export const INTROSPECTION_TOOLS = [
   {
     name: "read_file",
     description:
-      "Read the full contents of one or more source files by exact repo path (like `cat`), e.g. 'src/auth.js'. Use paths from grep_source or list_files.",
+      `Read source files by exact repo path, e.g. 'src/auth.js' — whole (like \`cat\`) or a line range via offset/limit (like \`sed -n\`). IMPORTANT: all read_file output in one investigation shares a single budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used); whole reads of big files exhaust it fast. Prefer ranged reads of just the lines you need — grep_source reports line numbers to target, list_files reports sizes.`,
     input_schema: {
       type: "object",
       properties: {
         paths: { type: "array", items: { type: "string" }, description: "Repo-relative file paths to read." },
+        offset: {
+          type: "integer",
+          description: "1-based line number to start reading from (applies to every path in this call). Default 1.",
+        },
+        limit: {
+          type: "integer",
+          description: "Number of lines to read from offset. Default: to the end of the file.",
+        },
       },
       required: ["paths"],
     },
@@ -1346,7 +1375,7 @@ export const INTROSPECTION_TOOLS = [
   {
     name: "list_files",
     description:
-      "List repo file paths (optionally filtered by a substring) with byte sizes, so you know what exists before grepping or reading.",
+      "List repo file paths (optionally filtered by a substring) with byte sizes, so you know what exists — and how big it is — before grepping or reading.",
     input_schema: {
       type: "object",
       properties: {
@@ -1390,7 +1419,10 @@ function compileToolPattern(raw) {
 /**
  * grep_source: scan every snapshot file (optionally filtered by a path
  * substring) for the pattern, line by line, returning `path:line: text` up to
- * the match/char caps. Never throws.
+ * the match/char caps — plus, with `context`, the surrounding lines as
+ * `path-line- text` with `--` between hunks (the `grep -C` wire format), so
+ * the model can see how a line is used WITHOUT spending read_file budget on
+ * the whole file. Never throws.
  * @param {Snapshot} snapshot
  * @param {any} input
  * @returns {string}
@@ -1400,6 +1432,7 @@ export function grepSource(snapshot, input) {
   if (!re) return `Invalid or empty regular expression: ${JSON.stringify(input?.pattern ?? null)}`;
   const glob = String(input?.path_glob || "").toLowerCase();
   const cap = Math.max(1, Math.min(MAX_GREP_MATCHES, Number(input?.max_matches) || MAX_GREP_MATCHES));
+  const ctx = Math.max(0, Math.min(MAX_GREP_CONTEXT, Math.floor(Number(input?.context) || 0)));
   /** @type {string[]} */
   const out = [];
   let total = 0;
@@ -1407,14 +1440,34 @@ export function grepSource(snapshot, input) {
   for (const f of toolFilesOf(snapshot)) {
     if (glob && !f.p.toLowerCase().includes(glob)) continue;
     const lines = String(f.t || "").split("\n");
+    /** @type {number[]} */
+    const hits = [];
     for (let i = 0; i < lines.length; i++) {
       re.lastIndex = 0;
       if (!re.test(lines[i])) continue;
-      out.push(`${f.p}:${i + 1}: ${lines[i].trim().slice(0, MAX_LINE_CHARS)}`);
-      total++;
-      if (total >= cap) {
+      hits.push(i);
+      if (total + hits.length >= cap) {
         truncated = true;
         break;
+      }
+    }
+    if (!hits.length) continue;
+    total += hits.length;
+    const hitSet = new Set(hits);
+    const render = (/** @type {number} */ j) => {
+      const sep = hitSet.has(j) ? ":" : "-";
+      return `${f.p}${sep}${j + 1}${sep} ${lines[j].trim().slice(0, MAX_LINE_CHARS)}`;
+    };
+    if (!ctx) {
+      for (const i of hits) out.push(render(i));
+    } else {
+      let emitted = -1; // highest line index already emitted for this file
+      for (const i of hits) {
+        const start = Math.max(0, i - ctx);
+        const end = Math.min(lines.length - 1, i + ctx);
+        if (emitted >= 0 && start > emitted + 1) out.push("--"); // gap between hunks
+        for (let j = Math.max(start, emitted + 1); j <= end; j++) out.push(render(j));
+        emitted = Math.max(emitted, end);
       }
     }
     if (total >= cap) break;
@@ -1426,8 +1479,11 @@ export function grepSource(snapshot, input) {
 
 /**
  * read_file: resolve the requested paths against the snapshot and return their
- * full text (clamped by the shared read budget). Accepts {paths:[...]} or a
- * single {path:"..."}. Never throws.
+ * text (clamped by the shared read budget) — the whole file, or just a line
+ * range when the input carries `offset`/`limit` (the cheap way to extract from
+ * a big file). Accepts {paths:[...]} or a single {path:"..."}. Every result
+ * ends with a running budget readout so the model can PLAN around the shared
+ * cap instead of discovering it on exhaustion. Never throws.
  * @param {Snapshot} snapshot
  * @param {any} input
  * @param {{ used: number }} budget shared across the loop to bound total bytes
@@ -1441,16 +1497,46 @@ export function readFileTool(snapshot, input, budget) {
       : [];
   const paths = requested.filter((/** @type {any} */ p) => typeof p === "string" && p.trim()).slice(0, 8);
   if (!paths.length) return "read_file needs a non-empty 'paths' array of repo-relative file paths.";
-  const reads = readSnapshotFiles(snapshot, paths, new Set(), budget);
+  const offset = Math.floor(Number(input?.offset));
+  const limit = Math.floor(Number(input?.limit));
+  const range = offset >= 1 || limit >= 1 ? { offset: offset >= 1 ? offset : 1, limit: limit >= 1 ? limit : 0 } : null;
+  const reads = readSnapshotFiles(snapshot, paths, new Set(), budget, range);
   if (!reads.length) {
+    // A spent read budget must SAY so: reporting it as "No files resolved"
+    // sends the model hunting for different paths and retrying reads that can
+    // never succeed, and it reports the tool as broken (live finding
+    // 2026-07-16: valid .claude/skills/* paths "failed to load" once an
+    // earlier read_file batch had consumed the whole budget).
+    if (budget.used >= MAX_READ_TOTAL_CHARS) {
+      return (
+        `Read budget exhausted: ${MAX_READ_TOTAL_CHARS} chars of file content have already been returned in this investigation, so read_file cannot return anything more — retrying will not help. ` +
+        "Answer from what you have already read; grep_source (with its context parameter) still works for targeted extraction."
+      );
+    }
     return `No files resolved for ${JSON.stringify(paths)}. Use list_files or grep_source to find exact paths (e.g. src/auth.js).`;
   }
-  const body = reads.map((r) => `# ${r.p}${r.truncated ? " (truncated)" : ""}\n${r.text}`).join("\n\n");
-  const missing = paths.filter(
-    (/** @type {string} */ p) => !reads.some((r) => r.p.toLowerCase() === String(p).toLowerCase().replace(/^\.?\//, "")),
-  );
-  const note = missing.length ? `\n\n(not found / already at budget: ${missing.join(", ")})` : "";
-  return body + note;
+  const body = reads
+    .map(
+      (r) =>
+        `# ${r.p}${r.lines ? ` (lines ${r.lines.from}-${r.lines.to} of ${r.lines.total})` : ""}${r.truncated ? " (truncated)" : ""}\n${r.text}`,
+    )
+    .join("\n\n");
+  // Split the not-returned paths by CAUSE, so the model's next move is the
+  // right one: unresolved (a wrong path — list_files can fix it) vs
+  // resolved-but-dropped (the budget ran out mid-call — no retry can fix it).
+  const readSet = new Set(reads.map((r) => r.p));
+  const resolved = resolveReadPaths(snapshot, paths);
+  const notFound = resolved.filter((r) => !r.path).map((r) => r.requested);
+  const dropped = resolved.filter((r) => r.path && !readSet.has(r.path)).map((r) => r.requested);
+  const notes = [];
+  if (notFound.length) notes.push(`(not found: ${notFound.join(", ")})`);
+  if (dropped.length) {
+    notes.push(
+      `(read budget exhausted before: ${dropped.join(", ")} — do not retry read_file for these; use grep_source instead)`,
+    );
+  }
+  notes.push(`(read budget used: ${budget.used} of ${MAX_READ_TOTAL_CHARS} chars)`);
+  return body + `\n\n${notes.join("\n")}`;
 }
 
 /**
@@ -1510,7 +1596,10 @@ export function toolStepHeadline(name, input) {
   }
   if (name === "read_file") {
     const paths = Array.isArray(input?.paths) ? input.paths : input?.path ? [input.path] : [];
-    return `read_file  ${paths.slice(0, 4).join(", ")}${paths.length > 4 ? " …" : ""}`;
+    const off = Number(input?.offset);
+    const lim = Number(input?.limit);
+    const range = off >= 1 || lim >= 1 ? `  [${off >= 1 ? off : 1}${lim >= 1 ? `,+${lim}` : "→end"}]` : "";
+    return `read_file  ${paths.slice(0, 4).join(", ")}${paths.length > 4 ? " …" : ""}${range}`;
   }
   if (name === "list_files") return `list_files  ${input?.filter ? `'${input.filter}'` : "(all)"}`;
   if (name === "run_bash") return `run_bash  $ ${String(input?.command ?? "").slice(0, 120)}`;

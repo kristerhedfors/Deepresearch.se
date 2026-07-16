@@ -174,6 +174,14 @@ CREATE TABLE IF NOT EXISTS test_points (
   ref TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_test_points_status ON test_points(status, id DESC);
+CREATE TABLE IF NOT EXISTS test_point_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  point_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  body TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(point_id, id);
 CREATE TABLE IF NOT EXISTS websearch_grants (
   jti TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

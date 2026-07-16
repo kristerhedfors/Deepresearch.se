@@ -211,10 +211,17 @@ async function mint(files) {
   console.log(parts.length ? `${parts.join(", ")} — commit the stamped file(s)` : "(nothing to mint)");
 }
 
+// The verdict → PR-comment symbol vocabulary (mirror of RESULT_SYMBOLS in
+// src/testpoints.js): 👍 pass / 👎 fail / ❓ untestable.
+const COMMENT_SYMBOLS = { pass: "👍", fail: "👎", untestable: "❓" };
+
 // --sync: pull each minted, unfinished point; a verdict newer than the last
 // stamped one is appended to the file. A PASS that still owes runs re-opens
-// the point for the next confirmation; a FAIL is left for the loop to route
-// (the fix must land before a re-test makes sense). Prints one COMMENT line
+// the point for the next confirmation (only passes count toward runs); a
+// FAIL is left for the loop to route (the fix must land before a re-test
+// makes sense); an UNTESTABLE (❓ — the tester never reached the point, or
+// needs clarification) is left for the loop to ANSWER on the point's thread
+// (scripts/testpoints --reply, which re-opens it). Prints one COMMENT line
 // per new verdict — the loop turns those into PR comments.
 async function sync(files) {
   let news = 0;
@@ -234,16 +241,20 @@ async function sync(files) {
       changed = true;
       news++;
       const wanted = runsWanted(p);
-      const doneRuns = p.verdicts.length;
-      if (t.result === "pass" && doneRuns < wanted) {
+      const passes = p.verdicts.filter((x) => x.result === "pass").length;
+      if (t.result === "pass" && passes < wanted) {
         await api("PATCH", `/${p.minted_id}`, { status: "open" });
-        console.log(`reopened queue #${p.minted_id} "${p.label}" — ${doneRuns}/${wanted} confirmations`);
+        console.log(`reopened queue #${p.minted_id} "${p.label}" — ${passes}/${wanted} confirmations`);
       } else if (t.result === "pass") {
         p.done = true;
+      } else if (t.result === "untestable") {
+        console.log(
+          `needs answer: queue #${p.minted_id} "${p.label}" — reply on its thread (scripts/testpoints --reply ${p.minted_id} "…"), which re-opens it`,
+        );
       }
       const pr = f.data.pr ? `#${f.data.pr}` : `(resolve PR for branch ${f.data.branch})`;
       console.log(
-        `COMMENT ${pr} ${v.result === "pass" ? "👍" : "👎"} "${p.label}" (queue #${p.minted_id}, ${doneRuns}/${wanted})` +
+        `COMMENT ${pr} ${COMMENT_SYMBOLS[v.result] || v.result} "${p.label}" (queue #${p.minted_id}, ${passes}/${wanted})` +
           (v.note ? ` — note follows:\n${v.note}\n` : ""),
       );
     }

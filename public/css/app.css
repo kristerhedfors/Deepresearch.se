@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h41;
+  --css-version: h42;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1745,6 +1745,16 @@ body.feedback-mode .feedback-btn { display: inline-block; }
 }
 .trybanner-up.chosen { background: rgba(21, 122, 75, .16); border-color: var(--ok); color: var(--ok); }
 .trybanner-down.chosen { background: rgba(192, 57, 43, .14); border-color: #c0392b; color: #c0392b; }
+.trybanner-na.chosen { background: rgba(184, 134, 11, .14); border-color: #b8860b; color: #8a6508; }
+/* The ❓ clarification thread — the tester↔loop dialogue on a point. */
+.trybanner-thread {
+  margin: .3rem 0; padding: .35rem .55rem; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  max-height: 9rem; overflow-y: auto;
+}
+.trybanner-thread[hidden] { display: none; }
+.trybanner-msg { margin: .2rem 0; font-size: .8rem; overflow-wrap: anywhere; }
+.trybanner-msg.agent strong { color: var(--accent); }
 .trybanner-note {
   width: 100%; margin: .35rem 0 0; box-sizing: border-box;
   border: 1px solid var(--border); border-radius: 10px;

@@ -12,18 +12,24 @@
 # Reading the queue:
 #   scripts/testpoints                      open points (the queue), readable text
 #   scripts/testpoints --all                every point, any status
-#   scripts/testpoints --status passed      filter by status (open|passed|failed|archived)
-#   scripts/testpoints --id 7               one point
+#   scripts/testpoints --status passed      filter by status (open|passed|failed|untestable|archived)
+#   scripts/testpoints --id 7               one point (incl. its clarification thread)
 #   scripts/testpoints --q "maps"           substring match on label OR summary
 #   scripts/testpoints --json               JSON instead of text
-#   scripts/testpoints --verdicts           decided-but-unconsumed points (passed + failed,
-#                                           archived excluded) — the test-feedback loop's
-#                                           sweep input; archiving a point acks it as consumed
+#   scripts/testpoints --verdicts           decided-but-unconsumed points (passed + failed +
+#                                           untestable, archived excluded) — the test-feedback
+#                                           loop's sweep input; archiving a point acks it as
+#                                           consumed (an untestable point is instead ANSWERED
+#                                           with --reply and re-opened)
 #
 # Editing / lifecycle:
 #   scripts/testpoints --set 7 '{"status":"open"}'    re-open a fixed point for re-test
 #   scripts/testpoints --set 7 '{"summary":"…","actions":[…]}'
 #   scripts/testpoints --result 7 pass "looks good"   record a verdict yourself
+#                                           (pass | fail | untestable — ❓ couldn't reach it /
+#                                           needs clarification; the note starts the thread)
+#   scripts/testpoints --reply 7 "answer…"  answer on the point's thread (author "agent")
+#                                           AND re-open it so the tester sees the reply
 #   scripts/testpoints --delete 7
 #
 # BASE_URL overrides the target (default https://deepresearch.se).
@@ -53,6 +59,7 @@ while [ $# -gt 0 ]; do
     --add) action="add"; arg="$2"; shift ;;
     --set) action="set"; id="$2"; arg="$3"; shift 2 ;;
     --result) action="result"; id="$2"; arg="$3"; arg2="${4:-}"; shift 3 ;;
+    --reply) action="reply"; id="$2"; arg="$3"; shift 2 ;;
     --delete) action="delete"; id="$2"; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -77,20 +84,32 @@ case "$action" in
       -d "$(jq -n --arg r "$arg" --arg n "$arg2" '{result:$r} + (if $n=="" then {} else {note:$n} end)')" \
       "$BASE_URL/api/admin/testpoints/$id/result"
     exit 0 ;;
+  reply)
+    # Answer on the thread, then re-open the point so the reply reaches the
+    # tester's queue (an unanswered question parked in `untestable` is
+    # invisible to them — only open points surface).
+    curl_auth -X POST -H 'content-type: application/json' \
+      -d "$(jq -n --arg b "$arg" '{body:$b, author:"agent"}')" \
+      "$BASE_URL/api/admin/testpoints/$id/messages"
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d '{"status":"open"}' "$BASE_URL/api/admin/testpoints/$id"
+    exit 0 ;;
   delete)
     curl_auth -X DELETE "$BASE_URL/api/admin/testpoints/$id"
     exit 0 ;;
   verdicts)
-    # Decided but not yet consumed: passed + failed, in two server-rendered
-    # batches. The API filters one status per call, so the loop makes two —
-    # archived (= already consumed by the loop) never appears here.
+    # Decided but not yet consumed: failed + untestable + passed, in three
+    # server-rendered batches. The API filters one status per call, so the
+    # loop makes three — archived (= already consumed) never appears here.
     if [ "$format" = "json" ]; then
       p="$(curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=passed")"
       f="$(curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=failed")"
-      jq -n --argjson p "$p" --argjson f "$f" \
-        '{ count: (($f.testpoints + $p.testpoints) | length), testpoints: ($f.testpoints + $p.testpoints) }'
+      u="$(curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=untestable")"
+      jq -n --argjson p "$p" --argjson f "$f" --argjson u "$u" \
+        '{ count: (($f.testpoints + $u.testpoints + $p.testpoints) | length), testpoints: ($f.testpoints + $u.testpoints + $p.testpoints) }'
     else
       curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=failed&format=text"
+      curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=untestable&format=text"
       curl_auth "$BASE_URL/api/admin/testpoints?limit=100&status=passed&format=text"
     fi
     exit 0 ;;
