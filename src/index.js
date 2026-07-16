@@ -74,6 +74,13 @@ import {
   handleProxyStatus,
   handleProxyWeb,
 } from "./proxy.js";
+import {
+  handleServerTokenAdjust,
+  handleServerTokenGrant,
+  handleServerTokenLlm,
+  handleServerTokenStatus,
+  handleServerTokenWeb,
+} from "./server-grants.js";
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
@@ -291,6 +298,27 @@ async function route(request, env, url, log, ctx, requestId) {
   // by the DRC provider registry with the proxy token as the bearer.
   if (url.pathname.startsWith("/api/proxy/llm")) {
     return { response: await handleProxyLlm(request, env, log, url) };
+  }
+  // The CONSOLIDATED Se/rver TOKEN (src/server-grants.js) — one JWT bundling
+  // the grant families' properties: a permission set over the site's UPSTREAM
+  // APIs only. THE GUARANTEE (src/server-token.js): a call bearing a Se/rver
+  // token can reach web search (Exa) and LLM completions (Berget) on the
+  // server's keys — NEVER any of Se/rver's own data (no project contents, no
+  // chat contents, no history, no accounts). PUBLIC because a Se/cure session
+  // has no identity: the signed, quota-metered JWT is the authority; the
+  // grant is minted for a signed-in user at POST /api/server-token/grant
+  // (below the gate) or by an admin. The token is also NEVER a login: /admin
+  // and /api/admin/* stay behind the identity gate's proper sign-in — a
+  // Se/rver token cannot satisfy identify(), so the admin interface is out
+  // of reach with one by construction. Fail-safe: no D1 → 503.
+  if (request.method === "POST" && url.pathname === "/api/server-token/status") {
+    return { response: await handleServerTokenStatus(request, env) };
+  }
+  if (request.method === "POST" && url.pathname === "/api/server-token/web") {
+    return { response: await handleServerTokenWeb(request, env, log) };
+  }
+  if (url.pathname.startsWith("/api/server-token/llm")) {
+    return { response: await handleServerTokenLlm(request, env, log, url) };
   }
 
   // ---- unauthenticated: sign-in surface -----------------------------------
@@ -523,6 +551,17 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // minter control as /api/websearch/adjust, per service row).
   if (url.pathname === "/api/proxy/adjust" && request.method === "POST") {
     return handleProxyAdjust(request, env, log, identity);
+  }
+  // The consolidated Se/rver token — ghost-crossover mint/reuse of the ONE
+  // JWT bundling the caller's upstream-API grant (web + api permissions),
+  // and the minter's self-service per-permission quota control. The PUBLIC
+  // endpoints (/api/server-token/*, before the gate) spend it. Upstream
+  // access ONLY — a Se/rver token never reads Se/rver data (src/server-token.js).
+  if (url.pathname === "/api/server-token/grant" && request.method === "POST") {
+    return handleServerTokenGrant(request, env, log, identity);
+  }
+  if (url.pathname === "/api/server-token/adjust" && request.method === "POST") {
+    return handleServerTokenAdjust(request, env, log, identity);
   }
   // Feedback mode (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent.

@@ -119,6 +119,12 @@ export const PANEL_ITEMS = [
       "Mint shareable Se/cure links that lend a bundle of account-connected proxy grants (web search + LLM API on Berget, metered server-side); list and revoke live bundles. Defaults/budget live in Configuration.",
   },
   {
+    id: "server_tokens",
+    title: "Se/rver tokens",
+    summary:
+      "Mint shareable Se/cure links carrying ONE consolidated JWT (web search + LLM API permissions, metered per permission; upstream APIs only — never Se/rver data, never a login); list, per-permission adjust, revoke. Defaults/budget live in Configuration.",
+  },
+  {
     id: "config",
     title: "Configuration",
     summary:

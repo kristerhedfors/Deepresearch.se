@@ -345,6 +345,29 @@
         <span id="proxystatus" class="muted setting-note"></span>
       </div>
 
+      <!-- The consolidated Se/rver TOKEN (one ticket, one JWT) — visible ONLY
+           when this session holds one (a ?st= link, or the ghost crossover).
+           Revealed by renderStRow() in drc.js. -->
+      <div class="settings-item" id="strow" hidden>
+        <div class="settings-row">
+          <span class="settings-label">Se<span class="sl">/</span>rver token
+            <button type="button" class="setting-info" data-pop="stpop" aria-label="More about the Se/rver token">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="stenabled">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="stpop" hidden>One ticket, one JWT: a single temporary token bundling this
+          session's borrowed allowances — <b>web search</b> (only the query leaves this browser) and the
+          <b>LLM API</b> (routes your conversation through the server to Berget, metered). It is named a
+          <b>Se<span class="sl">/</span>rver token</b> so you never forget: using it sends data to a server. It opens
+          <b>upstream APIs only</b> — it can never read any Se<span class="sl">/</span>rver data (no projects, no
+          chats), and it is never a login. Quotas are metered server-side and can be adjusted or revoked by whoever
+          minted it. Turn it off to stay fully client-side.</div>
+        <span id="ststatus" class="muted setting-note"></span>
+      </div>
+
       <!-- Secure workspace — EVERY session has one: this browser's whole
            configuration (keys, settings, chats, any borrowed grants) can be
            sealed into a single offline link at /cure/workspace. Opens the

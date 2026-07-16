@@ -1,0 +1,43 @@
+{
+  "branch": "claude/server-token-jwt-consolidation-ad9kd4",
+  "pr": null,
+  "requested_at": "2026-07-16",
+  "points": [
+    {
+      "label": "Ghost crossover mints ONE Se/rver token",
+      "summary": "Signed in on /rver, tap the ghost button to cross to Se/cure. PASS: the banner says 'Se/rver token connected' listing BOTH 🔎 Web search AND 🤖 LLM API (Berget), and ⚙ Settings shows the new 'Se/rver token' row with per-permission counts (e.g. 25 web / 40 api). The legacy 'Web search (via Se/rver)' row appearing INSTEAD of the token row is a FAIL (it means the consolidated grant path failed and the legacy fallback fired).",
+      "target": "/rver",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Se/rver-token link: research on borrowed web + LLM",
+      "summary": "In /admin open the new 'Se/rver tokens' panel, mint a link, and open it in a PRIVATE window (no sign-in, no keys). PASS: the connected banner appears; the model dropdown offers a '🎫 Se/rver token — connected' group; sending a research question with search ON completes using granted searches, and afterwards the /admin token list shows both permissions' remaining decremented. FAIL: any 'add an API key first' wall, or remaining not moving.",
+      "target": "/admin",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Live pause: web permission set to 0",
+      "summary": "With the private-window session from the previous point still open, in /admin set the token's Web permission quota to 0 (Set… → 0). PASS: WITHOUT reloading the borrowed session, its next question falls back to the offline knowledge harvest (no granted search steps), and the Se/cure Settings row shows web as used up while the LLM API keeps answering. This proves token-fixed/rows-metered: the JWT in the visitor's hands never changed.",
+      "target": "/admin",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "A Se/rver token is never a login",
+      "summary": "Negative test (curl or devtools). Take a minted JWT and call GET /api/admin/server-token with it as 'Authorization: Bearer <jwt>', then again with it as the 'dr_session' cookie. PASS: both are rejected (401/redirect/403 — anything but admin data). Also confirm /admin in a browser holding ONLY the token still demands sign-in. FAIL: any admin content returned to a token bearer.",
+      "target": "/admin",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

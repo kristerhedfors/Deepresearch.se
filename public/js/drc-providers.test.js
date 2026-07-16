@@ -18,6 +18,8 @@ import {
   listDrcModels,
   providerErrorDetail,
   proxyLlmProvider,
+  SERVER_TOKEN_LLM_PROVIDER_ID,
+  serverTokenLlmProvider,
   toOpenAiTools,
 } from "./drc-providers.js";
 
@@ -203,6 +205,24 @@ test("the Berget catalog filter has ONE definition, shared by the proxy provider
   assert.equal(proxyLlmProvider("https://x").modelFilter, bergetCatalogFilter);
   assert.equal(bergetCatalogFilter("mistralai/Mistral-Small-3.2-24B-Instruct-2506"), true);
   assert.equal(bergetCatalogFilter("intfloat/multilingual-e5-large"), false);
+});
+
+test("the Se/rver-token LLM provider is a two-field respin of the proxy provider", () => {
+  const st = serverTokenLlmProvider("https://x");
+  const px = proxyLlmProvider("https://x");
+  // Its own identity + the token subsystem's endpoint, the JWT as the bearer.
+  assert.equal(st.id, SERVER_TOKEN_LLM_PROVIDER_ID);
+  assert.equal(st.id, "servertoken");
+  assert.equal(st.base, "https://x/api/server-token/llm");
+  assert.match(st.label, /Se\/rver token/);
+  // Everything wire-shaped is SHARED with the proxy provider (one definition):
+  // Berget catalog filter, JSON model, fallbacks, params, the proxied marker.
+  assert.equal(st.modelFilter, bergetCatalogFilter);
+  assert.equal(st.jsonModel, px.jsonModel);
+  assert.deepEqual(st.fallbackModels, px.fallbackModels);
+  assert.equal(st.proxied, true);
+  // Never in the static registry — it exists only while a token is live.
+  assert.equal(drcProvider("servertoken"), null);
 });
 
 test("filterAndSortModels curates by the predicate and orders newest-first", () => {
