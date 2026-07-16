@@ -1,0 +1,19 @@
+{
+  "branch": "claude/slush-spacing-precision-jqty1f",
+  "requested_at": "2026-07-16",
+  "points": [
+    {
+      "label": "Help page: bold Se/cure wordmark slash no longer touches",
+      "summary": "The bold DeepResearch.Se/cure wordmarks on the documentation page (e.g. in the 'Privacy in one line' box) rendered with the slash touching the e and c — the global .sl tightening (-.12em) is too much for bold ink. The page now scopes bold wordmarks to -.04em, measured with the new scripts/slash-gap.mjs ink-gap meter (slash-spacing skill). PASS: on your device, in the privacy box and the two other bold Se/cure wordmarks further down /help, the slash clearly clears the letters on both sides while still reading as one tight word; the plain (non-bold) 'Se/cure' near the end of the privacy section is unchanged.",
+      "target": "/help/",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Zoom in on 'DeepResearch.Se/cure' inside the blue 'Privacy in one line' box — before the fix the slash touched the neighbouring letters in bold."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}
