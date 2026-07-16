@@ -31,6 +31,7 @@
 // rendering; this module only emits onStatus/onDelta events.
 
 import { createSseParser } from "./sse.js";
+import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier } from "./timescale.js";
 import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun, providerErrorDetail } from "./drc-providers.js";
 import {
   buildShellTranscript,
@@ -56,17 +57,21 @@ const MAX_GAP_FOLLOWUPS = 2;
 const CONTEXT_CHARS = 12_000;
 const STREAM_IDLE_MS = 90_000;
 
-// ---- research depth tiers (the /cure slider) ------------------------------------
+// ---- the research time budget (the /cure slider — Se/rver's slider, mirrored) ----
 //
-// Se/cure's slider counterpart of the server's time-budget planner
-// (src/budget.js): there is no wall-clock budget client-side, so the slider
-// buys DEPTH directly — how many angles triage decomposes into, how many
-// coverage-audit rounds run, whether the strict-review pass runs, and (like
-// the server's reportTierFor, 2026-07-15 directive) the OUTPUT depth of the
-// synthesized report. The tier ids reuse the server's report-tier vocabulary
-// so the two tiers speak one product language. "standard" is TODAY'S
-// behavior, byte-identical (same prompts, same call count, same token caps) —
-// the default for older sealed states that carry no depth field.
+// Se/cure's slider IS the Se/rver time slider (owner directive, 2026-07-16 —
+// "mimic Se/rver slider and research behaviour as closely as possible"): the
+// same 15 s–10 min quadratic scale and time-over-tier readout
+// (public/js/timescale.js), and the same double meaning — the time is the
+// ROOF on research time AND buys the report's output depth (timescale.js's
+// budgetTier mirrors src/budget.js's reportTierFor boundaries). What differs
+// is only what CAN differ: there is no per-model EWMA planner here (no
+// server, no latency history), so the client plans the phase SHAPE from the
+// budget's tier up front and enforces the roof with wall-clock deadline
+// guards — an optional phase (a coverage-audit round, the strict review)
+// only starts while its share of the budget remains (phaseWithinBudget
+// below, the client counterpart of src/budget.js's deadline checks). The
+// 60 s default ("standard") keeps the pre-slider call pattern byte-identical.
 export const DRC_DEPTH_TIERS = {
   brief: { maxSubquestions: 2, gapRounds: 0, maxGapFollowups: 0, validate: false, synthMaxTokens: 4096, validateMaxTokens: 4096 },
   standard: { maxSubquestions: 4, gapRounds: 1, maxGapFollowups: 2, validate: true, synthMaxTokens: 4096, validateMaxTokens: 4096 },
@@ -74,9 +79,40 @@ export const DRC_DEPTH_TIERS = {
   full: { maxSubquestions: 6, gapRounds: 2, maxGapFollowups: 3, validate: true, synthMaxTokens: 8192, validateMaxTokens: 9000 },
 };
 
-/** Resolves a depth id to its tier config; anything unknown reads as standard. */
-export function drcDepthConfig(depth) {
-  return DRC_DEPTH_TIERS[depth] || DRC_DEPTH_TIERS.standard;
+// An optional phase starts only while the wall clock is inside its share of
+// the budget: a coverage-audit round still costs a JSON call + a harvest
+// wave + the synthesis to come, so it needs more remaining headroom than the
+// final review does.
+export const GAP_DEADLINE_FRACTION = 0.6;
+export const VALIDATE_DEADLINE_FRACTION = 0.85;
+
+/**
+ * The phase plan a time budget buys. Seconds clamp to the slider's own
+ * 15 s–10 min range (garbage reads as the 60 s default), and the tier
+ * boundaries are timescale.js's budgetTier — the exact readout the slider
+ * shows, so what the user sees IS what runs.
+ * @param {number} budgetS
+ * @returns {{ tier: "brief"|"standard"|"extended"|"full", budgetMs: number,
+ *   maxSubquestions: number, gapRounds: number, maxGapFollowups: number,
+ *   validate: boolean, synthMaxTokens: number, validateMaxTokens: number }}
+ */
+export function drcPlanForBudget(budgetS) {
+  const n = Number(budgetS);
+  const s = Number.isFinite(n) && n > 0 ? Math.min(BUDGET_MAX_S, Math.max(BUDGET_MIN_S, n)) : 60;
+  const tier = budgetTier(s).id;
+  return { tier, budgetMs: s * 1000, ...DRC_DEPTH_TIERS[tier] };
+}
+
+/**
+ * The deadline guard (pure, Node-tested): may an optional phase still start?
+ * @param {number} startedAt epoch ms the exchange began
+ * @param {number} budgetMs the whole budget in ms
+ * @param {number} fraction the share of the budget this phase may start within
+ * @param {number} now epoch ms
+ * @returns {boolean}
+ */
+export function phaseWithinBudget(startedAt, budgetMs, fraction, now) {
+  return now - startedAt < budgetMs * fraction;
 }
 
 // ---- prompts (the server builders' offline-mode counterparts) ------------------
@@ -496,10 +532,11 @@ export async function runDrcSourceTools({
 
 /**
  * Runs one exchange. `messages` are plain {role, content} turns ending with
- * the user's question. `depth` is the research-depth tier id the /cure
- * slider sets ("brief" | "standard" | "extended" | "full" — DRC_DEPTH_TIERS;
- * anything else reads as standard, so older sealed states and garbage are
- * safe). `retrieved` is drc-rag.js's recall block (excerpts
+ * the user's question. `budgetS` is the research time target in seconds the
+ * /cure slider sets (the Se/rver slider mirrored — 15 s–10 min; garbage
+ * reads as the 60 s default): it selects the phase plan via drcPlanForBudget
+ * AND acts as the wall-clock roof the deadline guards enforce.
+ * `retrieved` is drc-rag.js's recall block (excerpts
  * from the project's other indexed chats) — threaded through the phases as
  * CONTEXT, never persisted into the conversation itself. `introspection` is
  * the introspection-mode source-snapshot block (built by the page from
@@ -525,7 +562,7 @@ export async function runDrcResearch({
   model,
   messages,
   research = true,
-  depth = "standard",
+  budgetS = 60,
   retrieved = "",
   introspection = "",
   snapshot = null,
@@ -553,11 +590,14 @@ export async function runDrcResearch({
   // none (its catalog is whatever the user pulled), so both roles collapse
   // onto the user's chosen model.
   const jsonModel = provider.jsonModel || model;
-  // The research-depth tier (the /cure slider): how many angles triage may
-  // decompose into, how many coverage-audit rounds run, whether the strict
-  // review runs, and the report's output depth. Unknown ids read as standard.
-  const tier = drcDepthConfig(depth);
-  const depthTier = DRC_DEPTH_TIERS[depth] ? depth : "standard";
+  // The research time budget (the /cure slider, the Se/rver slider mirrored):
+  // the plan sets how many angles triage may decompose into, how many
+  // coverage-audit rounds may run, whether the strict review runs, and the
+  // report's output depth — and the wall clock enforces the roof: an optional
+  // phase only starts while its share of the budget remains.
+  const plan = drcPlanForBudget(budgetS);
+  const startedAt = Date.now();
+  const withinBudget = (fraction) => phaseWithinBudget(startedAt, plan.budgetMs, fraction, Date.now());
   const question = messages[messages.length - 1]?.content || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const intro = typeof introspection === "string" ? introspection.trim() : "";
@@ -713,12 +753,12 @@ export async function runDrcResearch({
         apiKey,
         jsonModel,
         [
-          { role: "system", content: drcTriagePrompt({ maxSubquestions: tier.maxSubquestions }) },
+          { role: "system", content: drcTriagePrompt({ maxSubquestions: plan.maxSubquestions }) },
           { role: "user", content: "Conversation so far:\n" + context },
         ],
         { signal, baseUrl },
       ),
-      tier.maxSubquestions,
+      plan.maxSubquestions,
     );
   } catch {
     // planning failure must never break the reply
@@ -829,7 +869,7 @@ export async function runDrcResearch({
   // follow-ups' own harvest). A round that finds nothing missing ends the
   // audit early; any failure keeps whatever harvest exists. Each round files
   // its outcome as a detail event (Se/rver's step_done counterpart).
-  for (let round = 0; round < tier.gapRounds; round++) {
+  for (let round = 0; round < plan.gapRounds; round++) {
     try {
       onStatus({ type: "phase", phase: "gap" });
       const gap = await drcCompleteJson(
@@ -837,14 +877,14 @@ export async function runDrcResearch({
         apiKey,
         jsonModel,
         [
-          { role: "system", content: drcGapPrompt(triage.subquestions, { maxFollowups: tier.maxGapFollowups }) },
+          { role: "system", content: drcGapPrompt(triage.subquestions, { maxFollowups: plan.maxGapFollowups }) },
           { role: "user", content: "Question: " + question + "\n\nNotes so far:\n" + renderDrcNotes(harvest) },
         ],
         { signal, baseUrl },
       );
       const missing = (Array.isArray(gap?.missing) && gap.complete === false ? gap.missing : [])
         .filter((s) => typeof s === "string" && s.trim())
-        .slice(0, tier.maxGapFollowups);
+        .slice(0, plan.maxGapFollowups);
       if (!missing.length) {
         // coverage is complete — no more rounds needed
         onStatus({ type: "detail", label: "Coverage sufficient" });
@@ -887,9 +927,9 @@ export async function runDrcResearch({
     // experimental sandbox ran for this request (empty otherwise).
     (shellBlock ? "\n\n" + shellBlock : "");
   let answer = await streamAnswer(
-    hasWeb ? drcSynthPromptWeb({ reportTier: depthTier }) : drcSynthPrompt({ reportTier: depthTier }),
+    hasWeb ? drcSynthPromptWeb({ reportTier: plan.tier }) : drcSynthPrompt({ reportTier: plan.tier }),
     notesBlock,
-    tier.synthMaxTokens,
+    plan.synthMaxTokens,
   );
 
   // ---- validation, depth-tiered (fail-soft: accept the draft) ---------------
@@ -898,7 +938,7 @@ export async function runDrcResearch({
   // "revise" can carry the WHOLE corrected report (the src/budget.js
   // validateMaxTokens lesson).
   let validated = false;
-  if (tier.validate) {
+  if (plan.validate) {
     try {
       onStatus({ type: "phase", phase: "validate" });
       const verdict = await drcCompleteJson(
@@ -912,7 +952,7 @@ export async function runDrcResearch({
             content: "Question: " + question + "\n\n" + notesBlock + "\n\nDraft answer:\n" + answer,
           },
         ],
-        { signal, baseUrl, maxTokens: tier.validateMaxTokens },
+        { signal, baseUrl, maxTokens: plan.validateMaxTokens },
       );
       validated = verdict?.verdict === "pass";
       if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {

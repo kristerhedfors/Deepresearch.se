@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  depthPosForTier,
-  depthTierForPos,
   disclosureText,
   phaseChannel,
   grantFlagEnabled,
@@ -64,36 +62,6 @@ test("normalizeSearchBackend: known backend, trimmed URL/key, clamped results", 
   assert.equal(normalizeSearchBackend({ results: 100 }).results, 20);
   assert.equal(normalizeSearchBackend({ results: "8" }).results, 8);
   assert.equal(normalizeSearchBackend({ results: 3.7 }).results, 4);
-});
-
-test("depthTierForPos: four even bands, garbage reads as standard", () => {
-  // Band edges: [0,25) brief, [25,50) standard, [50,75) extended, [75,100] full.
-  assert.equal(depthTierForPos(0).id, "brief");
-  assert.equal(depthTierForPos(24).id, "brief");
-  assert.equal(depthTierForPos(25).id, "standard");
-  assert.equal(depthTierForPos(37).id, "standard"); // the markup's default value
-  assert.equal(depthTierForPos(49).id, "standard");
-  assert.equal(depthTierForPos(50).id, "extended");
-  assert.equal(depthTierForPos(74).id, "extended");
-  assert.equal(depthTierForPos(75).id, "full");
-  assert.equal(depthTierForPos(100).id, "full");
-  // Every tier carries a label and a what-it-steers description.
-  for (const p of [0, 30, 60, 90]) {
-    assert.ok(depthTierForPos(p).label.length > 0);
-    assert.ok(depthTierForPos(p).desc.length > 0);
-  }
-  // Garbage/NaN/negative reads as standard — the pipeline's own fallback.
-  assert.equal(depthTierForPos(NaN).id, "standard");
-  assert.equal(depthTierForPos(-5).id, "standard");
-  assert.equal(depthTierForPos("x").id, "standard");
-});
-
-test("depthPosForTier: each band's center, round-tripping through depthTierForPos", () => {
-  for (const id of ["brief", "standard", "extended", "full"]) {
-    assert.equal(depthTierForPos(depthPosForTier(id)).id, id);
-  }
-  // Unknown ids restore to the standard band — same fallback as everywhere.
-  assert.equal(depthTierForPos(depthPosForTier("bogus")).id, "standard");
 });
 
 test("parseProjectPath: /my/ and /free/ project refs", () => {

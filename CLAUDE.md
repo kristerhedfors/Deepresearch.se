@@ -723,14 +723,19 @@ account, attach, camera) appear as DIMMED buttons
 (`.drs`) exactly where the app has them; tapping one opens the
 `#drspop` explainer pointing to `/rver`. The knob is REAL here — it
 flips the client-side research phases — and so is the SLIDER
-(2026-07-16): a research-DEPTH control (not a time budget — that stays
-Se/rver's) mapping four even bands onto `drc-research.js`'s
-`DRC_DEPTH_TIERS` (brief/standard/extended/full: triage angles,
-coverage-audit rounds, the strict review on/off, per-tier report
-structure + token caps — the client mirror of `reportTierFor`; standard
-= the pre-slider behavior, byte-identical), position⇄tier pure in
-`drc-page-core.js` (`depthTierForPos`/`depthPosForTier`), the tier id
-persisted in the sealed state (`depth`, absent-reads-as-standard). A left drawer (the history
+(2026-07-16): the Se/rver TIME slider MIRRORED (owner directive — same
+`timescale.js` 15 s–10 min quadratic scale, same time-stacked-over-tier
+readout naming what the setting buys): the seconds persist in the
+sealed state (`budgetS`, absent-reads-as-60 s) and are BOTH the roof on
+the client-side research — `drc-research.js`'s `drcPlanForBudget` plans
+the phase shape from the budget's tier (triage angles, coverage-audit
+rounds, the strict review, per-tier report structure + token caps —
+`DRC_DEPTH_TIERS`, boundaries = `budgetTier` = `reportTierFor`) and
+`phaseWithinBudget` wall-clock deadline guards skip an optional phase
+whose budget share is spent (the client counterpart of `src/budget.js`'s
+deadline checks; no EWMA here — no server, no latency history) — AND the
+report format it buys; the 60 s default = the pre-slider behavior,
+byte-identical. A left drawer (the history
 sidebar mirrored) holds the local chat list and the Project panel; the
 header's gear icon (between ghost and account, both tiers) opens the
 settings drawer — ALL configuration: the ONE-FIELD API-key form whose
