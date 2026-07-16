@@ -8,7 +8,9 @@
       "summary": "REVERTED (round 5): the per-task channel symbols are gone — /cure wears its own umbrella on every research step. Send any research question (needs a provider key). PASS: every step's waiting symbol is the pink UMBRELLA spinner — including the analyzing/harvesting/writing/reviewing steps that call your provider — and every completed step folds into the pink ✓. FAIL: any balloon spinner on /cure, any blue ℹ appearing on a completed step row, or a step settling with no ✓. (This deliberately supersedes queued point #22, which tested the old per-step ℹ behavior.)",
       "target": "/cure",
       "actions": [],
-      "runs": 1
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 46
     },
     {
       "label": "Se/rver steps: balloon + blue ✓ on EVERY step, sandbox included",
@@ -20,21 +22,27 @@
           "text": "Use the shell to count the lines in /etc/os-release and tell me the distro name."
         }
       ],
-      "runs": 1
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 47
     },
     {
       "label": "Se/cure privacy notice: header ℹ pops the what-goes-where read-up",
       "summary": "NEW: the privacy communication moved from per-step symbols into one information notice. On /cure, tap the new ℹ button in the header (between the ghost and the share icon). PASS: a glass popover opens under the header titled 'Privacy — what this session sends where', with readable paragraphs covering: where chats/keys rest (this browser), where model calls go (your picked provider on your own key / your own machine / the borrowed server path), the web-search route, and recall embeddings if configured; tapping anywhere outside closes it, tapping the ℹ again reopens it, and the text inside stays selectable. FAIL: no ℹ button, an empty popover, a line that misstates your actual configuration (e.g. claims web search is on when it's off), or a popover that won't dismiss. Please read it fully and judge whether it is accurate and understandable — the text is the feature.",
       "target": "/cure",
       "actions": [],
-      "runs": 2
+      "runs": 2,
+      "verdicts": [],
+      "minted_id": 48
     },
     {
       "label": "Shared workspace unlock pops the privacy notice automatically",
       "summary": "NEW: opening a shared secure workspace pops the privacy notice on its own. On /cure, create a workspace link (header share icon → set a password → create), open that link in a private/incognito window and unlock it with the password. PASS: after the unlock celebration, the privacy notice is OPEN without you touching anything, and its FIRST paragraph says the session was opened from a shared secure workspace link (naming the workspace if you named it) and that everything was applied in this browser only; the rest of the notice reflects what the workspace carried. The ℹ button reopens the same notice later. FAIL: no automatic notice after an unlock, or a notice that doesn't lead with the workspace line.",
       "target": "/cure/workspace",
       "actions": [],
-      "runs": 1
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 49
     }
   ]
 }
