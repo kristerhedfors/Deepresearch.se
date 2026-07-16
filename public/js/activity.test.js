@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   buildResearchDebugJson,
-  stepIsLocal,
   formatStatsLine,
   sanitizeResearchEvent,
   searchServiceName,
@@ -240,12 +239,4 @@ test("formatStatsLine builds the footer, omitting absent parts and pluralizing",
   );
   assert.equal(formatStatsLine({ searches: 1 }), "1 search");
   assert.equal(formatStatsLine({}), "");
-});
-
-// ---- the per-task ONLINE/OFFLINE step channel (SYMBOL-LANGUAGE.md §6) --------
-
-test("stepIsLocal: the in-browser sandbox is the local step; everything else is online", () => {
-  assert.equal(stepIsLocal("sandbox"), true);
-  for (const id of ["plan", "gap", "synthesis", "validation", "search-1", "recover", ""])
-    assert.equal(stepIsLocal(id), false, id);
 });

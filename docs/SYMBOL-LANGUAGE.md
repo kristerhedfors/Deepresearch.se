@@ -116,8 +116,8 @@ The language, as shipped:
 - **Per completed task while it is on screen** (the pipeline's `done`
   event): the burner flares gold, the balloon climbs a notch, a pennant
   unfurls — clouds streak DOWNWARD (the relative motion of the climb). A
-  no-op on every later visit; the per-task symbol duty lives in the
-  spinners (§5b/§6). Every move it makes goes through clouds.
+  no-op on every later visit; the everyday waiting/completion duty lives
+  in the spinners (§5b/§6). Every move it makes goes through clouds.
 
 Implementation (umbrella conventions): `public/js/balloon.js` — a PURE core
 (envelope profile, hover/climb/pennant/flare params, deterministic
@@ -171,36 +171,41 @@ especially — intro, spinner finale, and the first-visit greeter alike). The
 "speech bubble like the ghost's" duty landed with round 4: the greeter's
 pointer bubble (§5).
 
-## 6. The granular per-task grammar (owner, 2026-07-15, round 3)
+## 6. Per-tier symbols + the privacy notice (owner, 2026-07-16, round 5)
 
-The symbols are no longer only tier identities — they are **per-task channel
-badges**, in BOTH tiers:
+Round 3 (2026-07-15) briefly made the symbols **per-task channel badges** —
+umbrella = offline work, balloon = online work, in both tiers, with each
+online step on Se/cure completing into a per-step ℹ disclosure. **Round 5
+reverted that** (owner directive: "keep it stringent and clean with the
+animations"): the animation is no longer a communication channel about data
+exposure. The symbols are **tier identity**, full stop:
 
-- **The umbrella = OFFLINE.** A task that runs entirely on this device wears
-  the umbrella while it works — even on Se/rver ("the server can do secure
-  tasks and it's clear in the UI"): the in-browser sandbox step shows the
-  pink umbrella spinner on the blue tier. Classification is pure and
-  Node-tested (`stepIsLocal`, `activity-core.js`; `phaseChannel`,
-  `drc-page-core.js`), and **unknown defaults to ONLINE** — over-disclosing
-  is the safe failure.
-- **The balloon = ONLINE.** Any task that crosses the network wears the
-  balloon — on Se/cure too, where the browser-direct provider calls, the
-  grant/proxy web search, and recall's embedding call are all honest
-  exceptions to "nothing leaves".
-- **Completion splits by tier.** Se/rver folds everything into the plain
-  **blue ✓** — it already assumes cloud (local steps pass `check: "blue"` to
-  the umbrella spinner). Se/cure folds a LOCAL step into the **pink ✓** as
-  before, but an ONLINE step into a tappable **ℹ information notice**
-  (`finale: "info"` on the balloon spinner → the `.notice` button): its
-  bubble (`disclosureText`, computed from the send-time `sendCtx` — provider,
-  borrowed-proxy flag, search route, embeddings provider) states exactly what
-  that task sent, to whom, on whose credential — so the user can read up on
-  what every such instance is doing or leaking. Bubble dismissal follows
-  UX-1; the whole rule is codified as **UX-2** in the ux-conventions skill.
+- **Se/cure = the umbrella.** Every /cure research step wears the pink
+  umbrella spinner while it works and folds into the **pink ✓** when it
+  completes (`cure/drc.js` phaseStep/finishCurPhaseStep). The umbrella
+  spinner's `check` color option was removed (always pink again).
+- **Se/rver = the balloon.** Every /rver step — the typing indicator and all
+  research/sandbox steps — wears the balloon spinner and folds into the
+  **blue ✓** (`turns.js` / `activity.js`). The balloon spinner's
+  `finale: "info"` option was removed (always the ✓).
 
-Disclosure texts live in ONE pure place (`drc-page-core.js`) per phase:
-own-key provider calls ("directly from your browser on your own API key —
-the DeepResearch.Se server was not involved"), the borrowed proxy ("THROUGH
-the DeepResearch.Se server to Berget — the one call path where your text
-touches the server"), grant search ("only the search QUERY… the conversation
-never left your browser"), self-hosted search, and recall embeddings.
+**The privacy communication moved into an INFORMATION NOTICE instead** — the
+detail the per-step bubbles used to carry, in one readable place on Se/cure:
+
+- The header's **ℹ button** (`#privacybtn`) opens the **privacy notice**
+  popover (`#privacypop`) any time: paragraphs laying out what THIS session's
+  CURRENT configuration sends where — the model route (own key browser-direct
+  / local or on-device "nothing leaves" / the borrowed proxy "the one
+  server-touching path"), the web-search route (self-hosted / grant-metered /
+  off), recall's embedding call, and the governance line for borrowed
+  allowances (metered, time-limited, revocable, an off switch in Settings).
+- **A shared secure workspace pops it up automatically** on unlock, leading
+  with what the workspace link carried and that it was applied entirely in
+  this browser — the arriving user reads up on the privacy of the specific
+  workspace they were handed without going looking for it.
+- The text is pure and Node-tested (`privacyNoticeLines`,
+  `drc-page-core.js`); dismissal follows UX-1 (any outside interaction).
+  The rule is codified as **UX-2** in the ux-conventions skill.
+
+The standing per-provider line beside the model picker
+(`providerVisibilityNote`) is unchanged — the notice is its long form.

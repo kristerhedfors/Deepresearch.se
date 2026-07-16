@@ -139,14 +139,10 @@ export function isPublicAsset(url, method) {
     // public-graph rule as the modules around it: a 401 here would 401 the
     // static import and take the whole /cure tier dark.
     url.pathname === "/js/umbrella-spinner.js" ||
-    // The balloon spinner (the ONLINE-step waiting symbol under the per-task
-    // symbol grammar — docs/SYMBOL-LANGUAGE.md §6: /cure steps that go online
-    // wear the balloon and complete into the ℹ notice) and its two imports,
-    // balloon-intro.js (timeline/geometry/renderer) → balloon.js (envelope
-    // profile + cloud math). Same public-graph rule as umbrella-spinner.js.
-    url.pathname === "/js/balloon-spinner.js" ||
-    url.pathname === "/js/balloon-intro.js" ||
-    url.pathname === "/js/balloon.js" ||
+    // (The balloon modules — balloon-spinner/balloon-intro/balloon — left
+    // this allowlist 2026-07-16 when the per-task symbol grammar was
+    // reverted: the balloon is Se/rver's symbol only again, and no /cure
+    // module imports them anymore — docs/SYMBOL-LANGUAGE.md §6.)
     url.pathname === "/js/introspect-core.js" ||
     // The introspection mascot/picker component (imported by /cure/drc.js —
     // same public-graph rule; its own imports, introspect-core.js and

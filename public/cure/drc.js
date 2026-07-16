@@ -99,13 +99,12 @@ import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/j
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
-  disclosureText,
   grantFlagEnabled,
   grantLive,
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
-  phaseChannel,
+  privacyNoticeLines,
   providerVisibilityNote,
   serverTokenLive,
   serverTokenService,
@@ -115,7 +114,6 @@ import {
 import { matchCanned } from "/js/canned-faq.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
-import { mountBalloonSpinner } from "/js/balloon-spinner.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -199,58 +197,9 @@ function updateNoticesClose() {
 // tiers now match.) `beginPhaseSteps` builds a fresh host per send; the module
 // keeps a handle to it so phaseStep/finish/reset don't have to thread it.
 
-let curPhaseStep = null; // { key, channel, details, summary, label, spin, spinner, body } — running step, or null
+let curPhaseStep = null; // { key, details, summary, label, spin, spinner, body } — running step, or null
 let phaseHost = null; // the .phasesteps container for the current send, inside #chat
 let phaseStepSeq = 0; // rotates the spinner STYLE so adjacent steps differ
-
-// The send-time DISCLOSURE context (the per-task symbol grammar,
-// docs/SYMBOL-LANGUAGE.md §6): captured when the send resolves its provider
-// and web-search route, read when an ONLINE step completes into its ℹ notice
-// so the bubble can say exactly what that task sent and where. `search` is
-// "self" (own browser-direct service) | "grant" (server-metered) | null.
-let sendCtx = { provider: "", viaProxy: false, search: null, embedProvider: "" };
-
-// One ℹ bubble open at a time; any outside interaction dismisses it while the
-// text inside stays selectable (UX-1, the speaker-bubble dismissal rule).
-let openLeakNote = null;
-document.addEventListener("pointerdown", (e) => {
-  if (openLeakNote && !openLeakNote.contains(/** @type {Node} */ (e.target))) {
-    openLeakNote.remove();
-    openLeakNote = null;
-  }
-});
-
-// The tappable ℹ a completed ONLINE step carries instead of the pink ✓ —
-// Se/cure's honesty marker: this task went online; tap to read what it sent.
-function addLeakNotice(step) {
-  if (step.summary.querySelector(".notice")) return;
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "notice";
-  btn.textContent = "ℹ";
-  btn.title = "This step used an online API — tap to see what it sent";
-  const text = disclosureText(step.key, sendCtx);
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (openLeakNote && openLeakNote.parentElement === step.summary) {
-      openLeakNote.remove();
-      openLeakNote = null;
-      return;
-    }
-    openLeakNote?.remove();
-    const note = document.createElement("div");
-    note.className = "leak-note";
-    note.textContent =
-      text + "\n\nSymbols: umbrella = stayed on this device · balloon = went online.";
-    // Live content inside stays clickable/selectable (UX-1) — only outside
-    // interaction dismisses (the document handler above).
-    note.addEventListener("pointerdown", (e2) => e2.stopPropagation());
-    step.summary.appendChild(note);
-    openLeakNote = note;
-  });
-  step.summary.prepend(btn);
-}
 
 // Start a fresh step list inside the conversation flow. `beforeEl` is the live
 // answer element the steps should sit above (matching DRS, where activity
@@ -265,23 +214,18 @@ function beginPhaseSteps(beforeEl) {
   return host;
 }
 
-// Finish the running step with its spinner's COMPLETION FINALE — which one
-// depends on the step's CHANNEL (the per-task symbol grammar):
-//   LOCAL  — the umbrella speed-runs into the fully-bloomed PINK umbrella and
-//            folds into the pink ✓ (unchanged: sheltered work earns the ✓).
-//   ONLINE — the balloon speed-runs into the fully-colored balloon and folds
-//            into an ℹ, handed off to a tappable .notice whose bubble
-//            (disclosureText + sendCtx) says exactly what this task sent and
-//            where — the read-up on what each online instance does or leaks.
-// Fail-soft: a no-op mount fires the callback at once. Detached from
-// curPhaseStep immediately so a new step can start over the ~1 s finale.
+// Finish the running step with the umbrella spinner's COMPLETION FINALE: it
+// speed-runs into the fully-bloomed PINK umbrella and folds into the pink ✓
+// (the tier's own symbol on every step — what the session sends where lives
+// in the ℹ privacy notice, not in per-step badges). Fail-soft: a no-op mount
+// fires the callback at once. Detached from curPhaseStep immediately so a
+// new step can start over the ~1 s finale.
 function finishCurPhaseStep() {
   if (!curPhaseStep) return;
   const step = curPhaseStep;
   curPhaseStep = null;
   const settle = () => {
-    if (step.channel === "online") addLeakNotice(step);
-    else if (!step.summary.querySelector(".check")) {
+    if (!step.summary.querySelector(".check")) {
       const check = document.createElement("span");
       check.className = "check";
       check.textContent = "✓";
@@ -330,16 +274,11 @@ function phaseStep(key, label) {
     if (!details.classList.contains("expandable")) e.preventDefault();
   });
   host.appendChild(details);
-  // The step wears its CHANNEL's symbol (docs/SYMBOL-LANGUAGE.md §6): the
-  // UMBRELLA for work that stays on this device (→ the pink ✓), the BALLOON
-  // for work that goes online (→ the ℹ notice). Best-effort either way, and
-  // the spinner stops itself when finishCurPhaseStep removes the `.spin` host.
-  const channel = phaseChannel(key);
-  const spinner =
-    channel === "online"
-      ? mountBalloonSpinner(spin, { style: phaseStepSeq++, size: 30, finale: "info" })
-      : mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
-  curPhaseStep = { key, channel, details, summary, label: lab, spin, spinner, body: null };
+  // The step wears the tier's own symbol — the pink UMBRELLA (docs/
+  // SYMBOL-LANGUAGE.md §6, 2026-07-16). Best-effort, and the spinner stops
+  // itself when finishCurPhaseStep removes the `.spin` host.
+  const spinner = mountUmbrellaSpinner(spin, { style: (phaseStepSeq++ * 3) % 6, size: 30 });
+  curPhaseStep = { key, details, summary, label: lab, spin, spinner, body: null };
 }
 
 // Re-label the running step WITHOUT starting a new one — for the live tool
@@ -730,6 +669,47 @@ function showDrs(feature) {
   $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a Se/rver feature");
   $("drspop-text").innerHTML = wmHtml(f.text);
   $("drspop").hidden = false;
+}
+
+// ---- the privacy notice (ℹ) ----------------------------------------------------------
+//
+// The read-up on privacy in detail (owner directive, 2026-07-16): the
+// animations are tier identity — every /cure step wears the umbrella — and
+// WHAT this session sends WHERE lives here instead: an information notice
+// always one tap away on the header's ℹ button, and popped up automatically
+// the moment a shared secure workspace opens (the arriving user should not
+// have to go looking for the privacy story of what they were just handed).
+// The text itself is pure (privacyNoticeLines, drc-page-core.js), built from
+// the session's CURRENT configuration via the same accessors the send path
+// resolves — provider route, borrowed allowances, web-search route, recall.
+
+// Set when a shared workspace link opened this session: the workspace's name,
+// or true for an unnamed one (privacyNoticeLines renders both).
+let sharedWorkspace = false;
+
+function privacyCtx() {
+  const [pid] = ($("model").value || "").split("::");
+  // The Se/rver-token LLM path shares the proxy's semantics: the conversation
+  // routes through this site's server to Berget, borrowed and metered.
+  const viaProxy = pid === PROXY_LLM_PROVIDER_ID || pid === SERVER_TOKEN_LLM_PROVIDER_ID;
+  const grantSearch = stWebUsable() || webProxyUsable() || (wsGrantActive() && wsEnabled());
+  const embedP = drcEmbedProvider(state?.keys || {});
+  return {
+    provider: viaProxy ? "Berget (borrowed)" : pid === ONDEVICE_ID ? "On-device" : drcProvider(pid)?.label || pid,
+    viaProxy,
+    local: pid === "local" || pid === ONDEVICE_ID,
+    search: state?.research === false ? "off" : directSearchActive() ? "self" : grantSearch ? "grant" : "off",
+    embedProvider: embedP?.label || "",
+    grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
+    workspaceName: sharedWorkspace,
+  };
+}
+
+function showPrivacyNotice() {
+  $("privacypop-text").innerHTML = privacyNoticeLines(privacyCtx())
+    .map((p) => "<p>" + wmHtml(p) + "</p>")
+    .join("");
+  $("privacypop").hidden = false;
 }
 
 // ---- deep links ---------------------------------------------------------------------
@@ -1511,7 +1491,6 @@ async function recallContext(conv, query) {
   if (!hookup || !state.rag?.docs?.length) return "";
   try {
     phaseStep("recall", "Recalling project context…");
-    sendCtx.embedProvider = drcProvider(hookup.embedder?.provider)?.label || hookup.embedder?.provider || "";
     const rag = ensureDrcRag(state, hookup.embedder);
     const { block } = await retrieveDrcContext({
       rag,
@@ -2539,6 +2518,11 @@ async function unlockWorkspace(ev) {
         (note ? " Note from the sender: " + note : "") +
         " Save it as a project (drawer → Project) to keep it on this device.",
     );
+    // A shared workspace pops the privacy notice open (owner directive,
+    // 2026-07-16): the arriving user reads what THIS workspace's
+    // configuration sends where — and can reopen it any time from the ℹ.
+    sharedWorkspace = name || true;
+    showPrivacyNotice();
   } finally {
     $("wkunlock").disabled = false;
     if (!pendingWorkspaceBlob) $("wkpassword").value = "";
@@ -2653,21 +2637,6 @@ async function send(ev) {
         ? (await odEngine()).onDeviceProvider()
         : null;
   const answerKey = usingApiProxy ? proxyGrants.api?.token : usingStApi ? stGrant?.token : state.keys[providerId];
-
-  // The disclosure context for this send's ℹ notices (per-task grammar): who
-  // the provider is, whether calls ride the borrowed proxy or stay on the
-  // user's own machine, and which route a web search would take. Captured
-  // HERE — the same resolution the send uses.
-  sendCtx = {
-    // The Se/rver-token LLM path shares the proxy's disclosure semantics: the
-    // conversation routes through this site's server to Berget, borrowed and
-    // metered — so it wears the same viaProxy notice.
-    provider: usingApiProxy || usingStApi ? "Berget (borrowed)" : usingOnDevice ? "On-device" : drcProvider(providerId)?.label || providerId,
-    viaProxy: usingApiProxy || usingStApi,
-    local: usingLocal || usingOnDevice,
-    search: directSearchActive() ? "self" : "grant",
-    embedProvider: "",
-  };
 
   let conv = activeConv();
   if (!conv) {
@@ -2833,7 +2802,7 @@ function applyIntrospectionTheme(on) {
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
-  brand.title = "About Se/cure · d32 · " + (standalone ? "pwa" : "browser");
+  brand.title = "About Se/cure · d33 · " + (standalone ? "pwa" : "browser");
 } catch {
   // the marker is an instrument, never a breaker
 }
@@ -3082,6 +3051,16 @@ document.addEventListener("click", (e) => {
   if (!$("drspop").hidden && !$("drspop").contains(e.target) && !e.target.closest("[data-feature]")) {
     $("drspop").hidden = true;
   }
+  // The privacy notice dismisses the same way (UX-1): any outside interaction
+  // closes it, the text inside stays selectable.
+  if (!$("privacypop").hidden && !$("privacypop").contains(e.target) && !e.target.closest("#privacybtn")) {
+    $("privacypop").hidden = true;
+  }
+});
+// The header ℹ: the privacy notice, available for pop-up at any time.
+$("privacybtn").addEventListener("click", () => {
+  if ($("privacypop").hidden) showPrivacyNotice();
+  else $("privacypop").hidden = true;
 });
 $("unlockform").addEventListener("submit", unlock);
 $("newbtn").addEventListener("click", () => generateNew().catch((e) => gateStatus(e?.message || "Failed.")));

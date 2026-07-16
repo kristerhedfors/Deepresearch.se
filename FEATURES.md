@@ -213,19 +213,19 @@ than the umbrella intro, test-pinned) and the WAITING SYMBOL
 (`public/js/balloon-spinner.js` — the blue tier's typing/step spinners
 boomerang the balloon intro in miniature and fold, on completion, into a
 BLUE ✓ via the colored balloon, where Se/cure's umbrella folds to pink;
-`--check-blue` in app.css). Round 3 (same day) made the grammar GRANULAR
-per task, in both tiers: a step's waiting symbol is its CHANNEL — the
-umbrella for on-device work (Se/rver's in-browser sandbox step wears the
-pink umbrella, folding into the blue ✓: the tier just goes to checkmarks,
-already assuming cloud), the balloon for anything that crosses the network.
-On Se/cure an ONLINE step (own-key provider calls, grant/proxy search,
-recall embeddings) completes into a tappable ℹ INFORMATION NOTICE instead
-of the pink ✓, whose bubble discloses exactly what that task sent, to whom,
-on whose credential (pure `phaseChannel`/`disclosureText` in
-`drc-page-core.js`; `stepIsLocal` in `activity-core.js`; UX-2 in the
-ux-conventions registry). Design record: `docs/SYMBOL-LANGUAGE.md` §6.
-RESIDUAL: live verification on real devices (the speech-bubble duty landed
-with the round-4 greeter).
+`--check-blue` in app.css). Round 3 (2026-07-15) briefly made the grammar
+granular per task (umbrella = offline, balloon = online, in both tiers, with
+per-step ℹ disclosures on Se/cure) — **REVERTED by round 5 (owner directive,
+2026-07-16): the animations are TIER IDENTITY again** — Se/cure wears the
+umbrella on every step, Se/rver the balloon on every step, stringent and
+clean — and the privacy communication moved into Se/cure's **ℹ PRIVACY
+NOTICE**: a header popover laying out in detail what the session's current
+configuration sends where (model route, borrowed allowances, web-search
+route, recall embeddings), always available and popped up automatically when
+a shared secure workspace opens (pure `privacyNoticeLines` in
+`drc-page-core.js`; UX-2 in the ux-conventions registry). Design record:
+`docs/SYMBOL-LANGUAGE.md` §6. RESIDUAL: live verification on real devices
+(the speech-bubble duty landed with the round-4 greeter).
 
 ---
 
@@ -301,3 +301,20 @@ with the round-4 greeter).
   three minutes (same ~4 s event), the /cure ghost-contour breathe
   3.6 s → 7.2 s. Codified as UX-3 in the ux-conventions registry; CSS
   handshake h37→h38, /cure build stamp d27→d28.
+- **2026-07-16** — F-16 round 5: the round-3 per-task channel grammar was
+  REVERTED (owner directive: "keep it stringent and clean with the
+  animations") — the waiting symbols are TIER IDENTITY again. Se/cure wears
+  the pink umbrella on every research step (→ the pink ✓), Se/rver the
+  balloon on every step (→ the blue ✓); the umbrella spinner's `check`
+  option, the balloon spinner's `finale:"info"` option, `phaseChannel`/
+  `disclosureText` (drc-page-core.js), `stepIsLocal` (activity-core.js), and
+  the per-step ℹ/leak-note UI were all removed. The privacy communication
+  moved into Se/cure's ℹ PRIVACY NOTICE instead: a header ℹ button opens a
+  popover laying out in detail what the session's CURRENT configuration
+  sends where — model route (own key / local / borrowed proxy), web-search
+  route, recall embeddings, borrowed-allowance governance — and a shared
+  secure workspace unlock pops it up automatically, leading with what the
+  workspace link carried (pure `privacyNoticeLines` in drc-page-core.js,
+  Node-tested; `showPrivacyNotice` + `#privacypop` in cure/; UX-1
+  dismissal). UX-2 rewritten in the ux-conventions registry; /cure build
+  stamp d31→d32.

@@ -582,6 +582,22 @@ button:disabled { opacity: .5; cursor: default; }
 #drspop[hidden] { display: none; }
 #drspop a { color: var(--accent); font-weight: 600; }
 
+/* The PRIVACY NOTICE popover — the header ℹ's read-up on what this session
+   sends where (the #drspop glass shape, anchored under the header like
+   #ghostsay). Scrolls internally if the configuration has many lines. */
+#privacypop {
+  position: fixed; top: calc(3.4rem + env(safe-area-inset-top, 0px)); right: .8rem; z-index: 25;
+  width: min(420px, calc(100vw - 1.6rem));
+  max-height: 68vh; overflow-y: auto;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .7rem .85rem .8rem; font-size: .8rem; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(60, 50, 10, .25);
+  user-select: text;
+}
+#privacypop[hidden] { display: none; }
+#privacypop p { margin: .45rem 0 0; }
+
 /* The "little fella" first-visit greeter — a khaki glass speech bubble under
    the header, its arrow pointing up at the account button (the door to
    Se/rver). Sits clear of the button itself so it stays tappable. */
@@ -777,49 +793,10 @@ button:disabled { opacity: .5; cursor: default; }
   to   { opacity: .8; transform: scale(1); }
 }
 /* The completed-phase checkmark — pink, matching the umbrella fleet (the DRS
-   app tints this with its green --ok instead). Under the per-task symbol
-   grammar (docs/SYMBOL-LANGUAGE.md §6) only LOCAL steps earn it: work that
-   stayed on this device. */
+   app tints this with its green --ok instead). Every step earns it: the
+   umbrella is the tier's own symbol on every phase (docs/SYMBOL-LANGUAGE.md
+   §6, 2026-07-16 — what the session sends where lives in #privacypop). */
 .phase-step .check { color: var(--pink); flex: none; font-weight: 700; }
-
-/* The ℹ INFORMATION NOTICE an ONLINE step completes into instead of the pink
-   ✓ (its spinner was the balloon — Se/rver's symbol, meaning "went online").
-   Tappable: the bubble below says exactly what this task sent and where —
-   the read-up on what every online instance is doing or leaking. Accent
-   blue, matching the balloon spinner's canvas ℹ so the handoff is seamless. */
-.phase-step .notice {
-  flex: none;
-  width: 1.05rem; height: 1.05rem;
-  border-radius: 50%;
-  border: 1.5px solid #0d4fa0;
-  color: #0d4fa0;
-  background: none;
-  font: 700 .7rem/1 system-ui, sans-serif;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.phase-step .notice:hover { background: rgba(13,79,160,.12); }
-/* The disclosure bubble (UX-1 dismissal: any outside interaction closes it,
-   the text inside stays selectable). Anchored under the step row. */
-.phase-step > summary { position: relative; }
-.leak-note {
-  position: absolute;
-  left: 0; top: calc(100% + .45rem);
-  z-index: 8;
-  max-width: min(34ch, 78vw);
-  background: var(--panel);
-  border: 1px solid #0d4fa0;
-  border-radius: 10px;
-  padding: .55rem .7rem;
-  color: var(--text);
-  font-size: .78rem;
-  line-height: 1.45;
-  white-space: pre-line;
-  box-shadow: 0 6px 18px rgba(61,52,24,.25);
-  cursor: auto;
-  user-select: text;
-}
 
 /* The expandable body: the developer-mode tool calls and/or the bash-lite
    sandbox commands run during this step, each with its real output — so a

@@ -96,10 +96,8 @@ export function spinnerStyle(index) {
 
 const CHECK_BLUE = "#0d4fa0"; // the finale's ✓ — app.css --check-blue, so the
 // canvas ✓ hands off seamlessly to the real .check span the caller swaps in.
-// On Se/cure an ONLINE step ends as an INFORMATION NOTICE instead (the
-// per-task symbol grammar, docs/SYMBOL-LANGUAGE.md §6): opts.finale = "info"
-// folds the colored balloon into an ℹ, and the caller swaps in a tappable
-// .notice whose bubble discloses what the task sent and where.
+// The balloon is Se/rver's OWN symbol (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16:
+// each tier wears its own symbol; Se/cure's is the umbrella spinner).
 
 /** Is a canvas 2D context available at all? */
 function canCanvas() {
@@ -122,13 +120,10 @@ function reducedMotion() {
  * document.
  *
  * @param {HTMLElement} host  the `.spin` / `.typing-icon` element
- * @param {{ size?: number, style?: number, speed?: number, finale?: "check"|"info" }} [opts]
- *   finale — what the colored balloon folds into: "check" (default — the blue
- *            ✓, Se/rver's completion) or "info" (an ℹ — Se/cure's online-step
- *            completion, handed off to a tappable .notice disclosure).
+ * @param {{ size?: number, style?: number, speed?: number }} [opts]
  * @returns {{ stop: () => void, finish: (onDone?: () => void) => void }}
  *   stop   — tear down immediately (no finale), for cancel/settle paths.
- *   finish — speed-run into the colored balloon, fold into the blue ✓ (or ℹ),
+ *   finish — speed-run into the colored balloon, fold into the blue ✓,
  *            then call onDone ONCE; a no-op mount fires onDone immediately.
  */
 export function mountBalloonSpinner(host, opts = {}) {
@@ -146,7 +141,6 @@ export function mountBalloonSpinner(host, opts = {}) {
     const base = Math.max(hostBox.width, hostBox.height) || 32;
     const size = Math.round(opts.size || base * 2.4);
     const style = spinnerStyle(opts.style ?? 0);
-    const infoFinale = opts.finale === "info";
     const clockRate = BASE_SPEED * clampAnimMult(opts.speed);
 
     host.style.background = "none";
@@ -251,39 +245,6 @@ export function mountBalloonSpinner(host, opts = {}) {
       ctx.globalAlpha = 1;
     }
 
-    /** The ℹ the balloon folds into on Se/cure's online steps — a ring with
-     * the dot + stem, in the same accent so it hands off to the CSS .notice.
-     * @param {number} prog @param {number} a */
-    function drawInfo(prog, a) {
-      if (!ctx || a <= 0.001) return;
-      const p = smooth(clamp01(prog));
-      const r = R * 0.62 * (0.7 + 0.3 * p);
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = CHECK_BLUE;
-      ctx.fillStyle = CHECK_BLUE;
-      ctx.lineWidth = Math.max(1.6, R * 0.12);
-      ctx.lineCap = "round";
-      // the ring draws on around the circle…
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + p * 2 * Math.PI);
-      ctx.stroke();
-      // …then the i's dot and stem pop in
-      if (p > 0.6) {
-        const ia = clamp01((p - 0.6) / 0.4);
-        ctx.globalAlpha = a * ia;
-        ctx.beginPath();
-        ctx.arc(cx, cy - r * 0.42, Math.max(1.6, R * 0.085), 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - r * 0.12);
-        ctx.lineTo(cx, cy + r * 0.42);
-        ctx.stroke();
-      }
-      ctx.restore();
-      ctx.globalAlpha = 1;
-    }
-
     /** @param {number} now */
     function frame(now) {
       if (stopped || !ctx) return;
@@ -345,7 +306,7 @@ export function mountBalloonSpinner(host, opts = {}) {
         drawBalloonFigure(ctx, { cx, cy, R, style, P, spin, sway: flipA, alpha: a, t });
         ctx.restore();
       }
-      if (checkProg > 0) (infoFinale ? drawInfo : drawCheck)(checkProg, smooth(checkProg));
+      if (checkProg > 0) drawCheck(checkProg, smooth(checkProg));
 
       if (mode === "finale" && checkProg >= 1 && !doneCalled) {
         doneCalled = true;

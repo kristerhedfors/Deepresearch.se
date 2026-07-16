@@ -1,13 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  disclosureText,
-  phaseChannel,
   grantFlagEnabled,
   grantLive,
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
+  privacyNoticeLines,
   providerVisibilityNote,
   serverTokenLive,
   serverTokenService,
@@ -113,72 +112,82 @@ test("wmHtml escapes markup first, then tightens the wordmark slash", () => {
   assert.equal(wmHtml("a/b"), "a/b");
 });
 
-// ---- the per-task ONLINE/OFFLINE symbol grammar (SYMBOL-LANGUAGE.md §6) ----
+// ---- the privacy notice (owner directive, 2026-07-16) ----------------------
 
-test("phaseChannel: on-device phases are local, network phases online, unknown defaults ONLINE", () => {
-  for (const p of ["sandbox", "clarify", "introspect", "_note"])
-    assert.equal(phaseChannel(p), "local", p);
-  for (const p of ["triage", "search", "harvest", "gap", "synth", "validate", "answer", "source", "recall"])
-    assert.equal(phaseChannel(p), "online", p);
-  // Over-disclosing is the safe failure: a NEW phase wears the balloon until
-  // someone proves it never crosses the network.
-  assert.equal(phaseChannel("future-phase"), "online");
-  assert.equal(phaseChannel(undefined), "online");
+test("privacyNoticeLines: always leads with browser-local storage (after any workspace line)", () => {
+  const lines = privacyNoticeLines();
+  assert.ok(lines.length >= 3);
+  assert.match(lines[0], /rest sealed in THIS browser/i);
+  assert.match(lines[0], /server stores none/i);
 });
 
-test("disclosureText: local phases carry no notice", () => {
-  assert.equal(disclosureText("sandbox"), "");
-  assert.equal(disclosureText("clarify", { provider: "OpenAI" }), "");
+test("privacyNoticeLines: own-key provider calls name the provider and the direct path", () => {
+  const lines = privacyNoticeLines({ provider: "OpenAI" });
+  const model = lines.find((l) => l.startsWith("Model calls:"));
+  assert.match(model, /OpenAI/);
+  assert.match(model, /your own API key/);
+  assert.match(model, /server is not involved/i);
 });
 
-test("disclosureText: provider phases name the provider and the own-key path", () => {
-  for (const p of ["triage", "harvest", "synth", "validate", "answer", "source", "gap"]) {
-    const t = disclosureText(p, { provider: "OpenAI", viaProxy: false });
-    assert.match(t, /OpenAI/, p);
-    assert.match(t, /your own API key/, p);
-    assert.match(t, /server was not involved/i, p);
-  }
+test("privacyNoticeLines: the borrowed LLM allowance is disclosed as the one server-touching path", () => {
+  const lines = privacyNoticeLines({ provider: "Berget (borrowed)", viaProxy: true, grantsConnected: true });
+  const model = lines.find((l) => l.startsWith("Model calls:"));
+  assert.match(model, /THROUGH the DeepResearch\.Se server/);
+  assert.match(model, /Berget/);
+  assert.match(model, /metered/i);
+  // Borrowed allowances get their own governance line, with the off switch.
+  const grants = lines.find((l) => /Borrowed allowances/.test(l));
+  assert.match(grants, /pause or revoke/i);
+  assert.match(grants, /Settings/);
 });
 
-test("disclosureText: the borrowed proxy is disclosed as the one server-touching path", () => {
-  const t = disclosureText("synth", { provider: "Berget (borrowed)", viaProxy: true });
-  assert.match(t, /THROUGH the DeepResearch\.Se server/);
-  assert.match(t, /Berget/);
-  assert.match(t, /metered/i);
+test("privacyNoticeLines: a local/on-device model keeps the conversation on the user's machine", () => {
+  const lines = privacyNoticeLines({ provider: "Local", local: true });
+  const model = lines.find((l) => l.startsWith("Model calls:"));
+  assert.match(model, /YOUR OWN machine/i);
+  assert.match(model, /never leaves your device/i);
+  // the own-API-key wording would be a lie here
+  assert.doesNotMatch(model, /your own API key/);
 });
 
-test("disclosureText: search discloses query-only, per route", () => {
-  const grant = disclosureText("search", { search: "grant" });
-  assert.match(grant, /Only the search QUERY/);
+test("privacyNoticeLines: the web-search line follows the route", () => {
+  const grant = privacyNoticeLines({ search: "grant" }).find((l) => l.startsWith("Web search:"));
+  assert.match(grant, /only the search QUERY/i);
   assert.match(grant, /Exa/);
-  assert.match(grant, /grant/);
-  assert.match(grant, /conversation itself never left/i);
-  const self = disclosureText("search", { search: "self" });
-  assert.match(self, /Only the search QUERY/);
+  assert.match(grant, /conversation itself never leaves/i);
+  const self = privacyNoticeLines({ search: "self" }).find((l) => l.startsWith("Web search:"));
+  assert.match(self, /only the search QUERY/i);
   assert.match(self, /configured yourself/);
   assert.match(self, /No DeepResearch\.Se server/);
+  const off = privacyNoticeLines({ search: "off" }).find((l) => l.startsWith("Web search:"));
+  assert.match(off, /off/);
+  assert.match(off, /no search query leaves/i);
+  // unknown/absent route reads as off — never claims a send that may not happen
+  const absent = privacyNoticeLines({}).find((l) => l.startsWith("Web search:"));
+  assert.match(absent, /off/);
 });
 
-test("disclosureText: recall names the embeddings provider and the local index", () => {
-  const t = disclosureText("recall", { provider: "OpenAI", embedProvider: "Groq" });
-  assert.match(t, /Groq/);
-  assert.match(t, /embedding/i);
-  assert.match(t, /index never leaves/i);
+test("privacyNoticeLines: recall appears only with an embeddings provider, and names it", () => {
+  const withRecall = privacyNoticeLines({ embedProvider: "OpenAI" });
+  const recall = withRecall.find((l) => l.startsWith("Project recall:"));
+  assert.match(recall, /OpenAI/);
+  assert.match(recall, /index never leaves/i);
+  assert.equal(
+    privacyNoticeLines({}).find((l) => l.startsWith("Project recall:")),
+    undefined,
+  );
 });
 
-test("disclosureText: unknown online phases still disclose", () => {
-  const t = disclosureText("future-phase", { provider: "OpenAI" });
-  assert.match(t, /left your browser/);
-});
-
-test("disclosureText: a local model keeps the conversation on the user's machine", () => {
-  for (const p of ["triage", "synth", "answer"]) {
-    const t = disclosureText(p, { provider: "Local", local: true });
-    assert.match(t, /YOUR OWN machine/i, p);
-    assert.match(t, /never left your device/i, p);
-    // the own-API-key wording would be a lie here
-    assert.doesNotMatch(t, /your own API key/, p);
-  }
+test("privacyNoticeLines: a shared workspace leads the notice, named or not", () => {
+  const named = privacyNoticeLines({ workspaceName: "research kit" });
+  assert.match(named[0], /shared secure workspace link/);
+  assert.match(named[0], /research kit/);
+  assert.match(named[0], /never reach any server/i);
+  const unnamed = privacyNoticeLines({ workspaceName: true });
+  assert.match(unnamed[0], /shared secure workspace link/);
+  assert.doesNotMatch(unnamed[0], /“/);
+  // no workspace → no workspace line
+  assert.doesNotMatch(privacyNoticeLines({})[0], /workspace/i);
 });
 
 test("providerVisibilityNote: the standing model-picker disclosure per provider kind", () => {

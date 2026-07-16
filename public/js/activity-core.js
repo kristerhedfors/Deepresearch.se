@@ -151,19 +151,3 @@ export function buildResearchDebugJson(turn) {
   };
 }
 
-// The per-task ONLINE/OFFLINE symbol grammar (docs/SYMBOL-LANGUAGE.md §6,
-// owner directive 2026-07-15): a step that runs ENTIRELY on this device wears
-// the UMBRELLA (Se/cure's symbol — sheltered) even on the blue tier, so "the
-// server can do secure tasks and it's clear in the UI"; everything else wears
-// the BALLOON (online — carried). On Se/rver completion is always a plain
-// blue ✓ (the tier already assumes cloud); only Se/cure adds the ℹ notice.
-// Grow this set as more on-device steps appear (a step id is local only if
-// NOTHING in it crosses the network).
-const LOCAL_STEP_IDS = new Set([
-  "sandbox", // the CheerpX Linux VM boots and runs in the browser
-]);
-
-/** @param {string} id */
-export function stepIsLocal(id) {
-  return LOCAL_STEP_IDS.has(String(id));
-}

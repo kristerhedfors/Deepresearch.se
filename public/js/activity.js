@@ -18,11 +18,9 @@ import {
   sanitizeResearchEvent,
   searchServiceName,
   shellRunOutputText,
-  stepIsLocal,
   zoomToFov,
 } from "./activity-core.js";
 import { mountBalloonSpinner } from "./balloon-spinner.js";
-import { mountUmbrellaSpinner } from "./umbrella-spinner.js";
 
 // Re-exported so importers of activity.js (stream.js, the unit tests) keep
 // their existing import paths; the implementations live in activity-core.js.
@@ -547,7 +545,7 @@ export function renderStreetViewFrames(turn, s) {
 // per-step increment is all the "adjacent ones differ" guarantee needs.
 let stepSpinnerSeq = 0;
 
-function makeStepDom(labelText, toggleGateClass, stepId = "") {
+function makeStepDom(labelText, toggleGateClass) {
   const details = document.createElement("details");
   details.className = "step";
   const summary = document.createElement("summary");
@@ -559,15 +557,11 @@ function makeStepDom(labelText, toggleGateClass, stepId = "") {
   details.appendChild(summary);
   // Each in-progress step plays the intro in miniature, fixed in its slot;
   // best-effort, and stops itself when markFinished/settlePendingSteps removes
-  // the `.spin` element. The SYMBOL is the step's CHANNEL (the per-task
-  // grammar, docs/SYMBOL-LANGUAGE.md §6): an on-device step (stepIsLocal —
-  // the in-browser sandbox) wears Se/cure's UMBRELLA even here on the blue
-  // tier, folding into the tier's own BLUE ✓ (Se/rver goes to checkmarks
-  // either way — it already assumes cloud); everything else wears the
-  // BALLOON. The handle is kept so markFinished can play the finale.
-  const spinner = stepIsLocal(stepId)
-    ? mountUmbrellaSpinner(spin, { style: (stepSpinnerSeq++ * 3) % 6, size: 34, check: "blue" })
-    : mountBalloonSpinner(spin, { style: stepSpinnerSeq++, size: 34 });
+  // the `.spin` element. The BALLOON is the blue tier's own waiting symbol
+  // (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16: each tier wears ITS symbol on
+  // every step — privacy detail moved to Se/cure's ℹ privacy notice). The
+  // handle is kept so markFinished can play the blue-✓ finale.
+  const spinner = mountBalloonSpinner(spin, { style: stepSpinnerSeq++, size: 34 });
   details.addEventListener("click", (e) => {
     if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });
@@ -590,7 +584,7 @@ export function startGenericStep(turn, id, label) {
     existing.label.textContent = label;
     return;
   }
-  const step = makeStepDom(label, "expandable", id);
+  const step = makeStepDom(label, "expandable");
   turn.activity.appendChild(step.details);
   turn.steps[id] = step;
 }

@@ -155,50 +155,49 @@ Node-tested in `agent-backdrop-core.test.js`; the DOM glue is browser-verified
 
 ---
 
-## UX-2 — Every task wears its channel's symbol; on Se/cure an online task completes into a readable ℹ notice, never a bare ✓
+## UX-2 — Animations are tier identity; privacy detail lives in Se/cure's ℹ privacy notice (rewritten 2026-07-16)
 
-**Rule.** A research/task step's WAITING SYMBOL is its **channel**, not its
-tier: the **umbrella** (Se/cure's symbol — sheltered) for work that runs
-entirely on this device, the **balloon** (Se/rver's symbol — carried) for work
-that crosses the network — in BOTH tiers. Completion then splits by tier:
+**Rule.** A step's WAITING SYMBOL is its **tier's own symbol**, on every
+step: Se/cure wears the **pink umbrella** (→ the pink ✓), Se/rver the
+**balloon** (→ the blue ✓). The animations are NOT a communication channel
+about data exposure — no per-step channel badges, no per-step disclosure
+finales (the 2026-07-15 per-task grammar was reverted the next day: "keep it
+stringent and clean with the animations"). The privacy communication lives in
+a readable **ℹ PRIVACY NOTICE** on Se/cure instead:
 
-- **Se/rver** completes everything to a plain **blue ✓** (the tier already
-  assumes cloud) — including its local (umbrella-spinner) steps, which pass
-  `check: "blue"`. The pink-umbrella spinner appearing on the blue tier IS the
-  "this ran privately" signal; the checkmark stays the tier's.
-- **Se/cure** completes a LOCAL step to the **pink ✓**, but an ONLINE step to
-  a tappable **ℹ information notice** (the balloon spinner's `finale: "info"`),
-  whose bubble says exactly WHAT that task sent, TO WHOM, on WHOSE credential
-  (`disclosureText`, `drc-page-core.js`) — the user can read up on what every
-  online instance is doing or leaking. The bubble follows UX-1 dismissal.
+- The header's ℹ button (`#privacybtn`) opens `#privacypop` at any time: what
+  THIS session's CURRENT configuration sends where — model route (own key /
+  local / borrowed proxy), web-search route (self / grant / off), recall
+  embeddings, and the borrowed-allowance governance line.
+- **Opening a shared secure workspace pops the notice automatically**, leading
+  with what the workspace link carried — the privacy read-up for the specific
+  workspace the user was handed, without them going looking.
 
-**Why.** The symbols are the site's honesty channel (the privacy mission made
-visible): "did this leave my device?" must be answerable at a glance for every
-step, and on the privacy tier every network crossing must be one tap away from
-its full disclosure. A pink ✓ on an online step would be a small lie.
+**Why.** The owner's call: two tiers, two animations, each tied to its site —
+stringent and clean. Honesty about data paths stays a first-class feature,
+but as prose the user can actually read in one place, not as symbol grammar
+they must decode per step.
 
 **The mechanics:**
 
-1. Channel classification is PURE and Node-tested: `phaseChannel()` in
-   `public/js/drc-page-core.js` (Se/cure phases), `stepIsLocal()` in
-   `public/js/activity-core.js` (Se/rver step ids). **Unknown defaults to
-   ONLINE** — over-disclosing is the safe failure; a local badge on an online
-   task lies.
-2. The disclosure text is pure too (`disclosureText(phase, ctx)`), computed
-   from the SEND-TIME context (provider label, borrowed-proxy flag, search
-   route, embed provider) captured where the send resolves those —
-   `sendCtx` in `public/cure/drc.js`.
-3. The ℹ is a real `<button.notice>` in the step summary (accent blue ring,
-   matching the balloon spinner's canvas ℹ so the finale hands off
-   seamlessly); its click `preventDefault + stopPropagation` so it never
-   toggles the step's `<details>`.
+1. The notice text is PURE and Node-tested: `privacyNoticeLines(ctx)` in
+   `public/js/drc-page-core.js` — paragraphs built from the session context
+   (provider label, viaProxy, local, search route, embed provider,
+   grantsConnected, workspaceName). An unknown search route reads as OFF —
+   the notice never claims a send that may not happen.
+2. `ctx` is gathered at OPEN time (`privacyCtx()`, `public/cure/drc.js`) from
+   the same accessors the send path resolves (model pick, grant liveness,
+   `directSearchActive`, `drcEmbedProvider`), so the notice always reflects
+   the configuration as it stands.
+3. Dismissal follows UX-1: any outside interaction closes the popover, the
+   text inside stays selectable; the ℹ button itself toggles.
+4. The standing one-liner beside the model picker (`providerVisibilityNote`)
+   is unchanged — the notice is its long form.
 
-**Canonical implementations:** `public/cure/drc.js` (`addLeakNotice`,
-`finishCurPhaseStep`, `phaseStep`, `sendCtx`), `public/js/activity.js`
-(`makeStepDom`'s spinner pick), `public/js/balloon-spinner.js`
-(`finale: "info"`), `public/js/umbrella-spinner.js` (`check: "blue"`),
-`public/cure/drc.css` (`.notice` / `.leak-note`). Grammar record:
-`docs/SYMBOL-LANGUAGE.md` §6.
+**Canonical implementations:** `public/cure/drc.js` (`privacyCtx`,
+`showPrivacyNotice`, the `unlockWorkspace` auto-pop), `public/cure/index.html`
+(`#privacybtn` / `#privacypop`), `public/js/drc-page-core.js`
+(`privacyNoticeLines`). Record: `docs/SYMBOL-LANGUAGE.md` §6.
 
 ---
 

@@ -689,9 +689,11 @@ backend config normalizer, one definition for the sealed-state read and
 the settings-form persist), the deep-link path parsers
 `parseProjectPath`/`parsePublicationRef` (with "workspace" a RESERVED slug),
 `wmHtml` (the escape-first
-Se/cure–Se/rver wordmark-slash renderer), and the per-task symbol grammar's
-`phaseChannel`/`disclosureText` (umbrella = offline, balloon = online;
-the ℹ-notice disclosure text per online phase — UX-2, SYMBOL-LANGUAGE.md §6)
+Se/cure–Se/rver wordmark-slash renderer), and `privacyNoticeLines` (the ℹ
+PRIVACY NOTICE's text, 2026-07-16: what this session's current configuration
+sends where — model route, web-search route, recall, borrowed allowances,
+shared-workspace provenance; the animations are tier identity again — UX-2,
+SYMBOL-LANGUAGE.md §6)
 — Node-tested), and
 `workspace-core.js` (SECURE WORKSPACES' pure core, 2026-07-15: a fully
 configured Se/cure session — keys, settings, chats, borrowed grant tokens —
@@ -974,9 +976,7 @@ faster-than-the-umbrella-intro directive pinned against `umbrella.js`'s own
 constants), `balloon-spinner.js`'s pure side (the blue waiting symbol: the
 loop apex that never reaches the color, the finale plan's speed-run buckets
 into the blue apex, style cycling — plus the sibling contract of reusing
-`umbrella-spinner.js`'s boomerang clock; its `finale:"info"` ℹ and the
-umbrella spinner's `check:"blue"` are the per-task channel grammar's DOM
-knobs, with `stepIsLocal` in `activity-core.js` classifying Se/rver steps), `imagedeck.js`'s pure
+`umbrella-spinner.js`'s boomerang clock), `imagedeck.js`'s pure
 core (the deck registry: entry validation/order, the latest-within-radius
 waypoint lookup, reset scoping), `sse.js` (the SSE
 line-buffer parser: partial-line carry, keepalive/`[DONE]` filtering,
