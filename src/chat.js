@@ -97,6 +97,7 @@ import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled
  *   mapsIntent?: string,
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
+ *   sandboxEnabled?: boolean,
  * }} ChatRequestState
  */
 
@@ -258,6 +259,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       mapView: enrich.mapView,
       userLocation: enrich.userLocation,
       shellTranscript,
+      sandboxEnabled: bashLiteEnabled(env, identity),
     });
     disconnect.state = state;
 
@@ -614,7 +616,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -655,6 +657,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // as ground truth (pipeline.js ctx.shellBlock). Empty unless the
     // experimental knob is on AND the client attached one.
     shellTranscript: extras.shellTranscript || [],
+    // Whether the bash-lite sandbox knob is on for this account: with dev
+    // mode also on, the client mounts the source tree at /src in the VM, so
+    // the introspection block may point the model there (src/introspect.js).
+    sandboxEnabled: !!extras.sandboxEnabled,
     // This channel renders the interactive inline-quiz event (src/quiz.js;
     // pipeline.js runQuizGeneration). The MCP channel builds its own state
     // without this flag, so MCP callers keep getting plain text answers.

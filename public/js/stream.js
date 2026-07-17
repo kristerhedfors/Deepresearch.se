@@ -30,7 +30,7 @@ import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRout
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { deliverablesRun, wantsOutboxCollect } from "./bash-core.js";
-import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfBare, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
@@ -760,45 +760,56 @@ async function buildChatPayload(opts) {
 // call and never boots the VM. Returns the transcript for stream.js to attach
 // as `shell_transcript`; the pipeline folds it into the answer as ground truth.
 // Fully fail-soft: any problem returns [] and the answer proceeds normally.
-// Whether a send needs the sandbox to mount anything a BARE pre-warm can't
-// carry: session attachments, an active project, or the introspection /src
-// source (dev mode). Session ingest is technically always mounted, but its
-// files are seeded once at boot — so an attachment added after a bare pre-warm
-// still needs a re-boot. Conservative by design: a false positive only costs a
-// re-boot (today's behavior), never a wrong mount.
+// What a send needs the sandbox to have mounted, beyond a bare pre-warm:
+// session attachments / an active project (`files`), and the introspection
+// /src source (`source`). Session ingest is technically always mounted, but
+// its files are seeded once at boot — so an attachment added after a bare
+// pre-warm still needs a re-boot. Conservative by design: a false positive
+// only costs a re-boot (today's behavior), never a wrong mount.
+//
+// `source` follows developer mode ALONE — no introspection-intent gate. The
+// intent regexes are for prompt-shaping, not for deciding what the VM holds:
+// gating the mount on them made DRS disagree with both DRC (which mounts /src
+// whenever dev mode is on) and the server enrichment (which told the model the
+// tree was at /src while the mount had been skipped) — chat_logs #514, where
+// "Where is my source code" matched no pattern, so /src silently wasn't there.
+// In dev mode the source is simply part of what the sandbox IS.
 /** @param {SendOpts} opts */
-function sendWantsMounts(opts) {
-  // Dev mode only needs the /src source mount when the message is actually
-  // introspection-active — the same condition buildSandboxFileProvider uses to
-  // decide `source`. Checking the flag alone would discard the pre-warm on
-  // EVERY send for a dev-mode user (e.g. a bare "ls /"), forcing a needless
-  // re-boot; mirroring the real condition keeps the pre-warm for bare sends.
-  const texts = userTexts(history);
-  const wantsSource =
-    developerModeOn() && (introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t)));
-  return !!(
-    (opts?.docs && opts.docs.length) ||
-    (opts?.images && opts.images.length) ||
-    activeProject() ||
-    wantsSource
-  );
+function sendNeedsMounts(opts) {
+  return {
+    files: !!((opts?.docs && opts.docs.length) || (opts?.images && opts.images.length) || activeProject()),
+    source: developerModeOn(),
+  };
 }
 
-// PRE-WARM: boot a bare Linux VM as soon as the user focuses the composer, so
-// the unavoidable ~25s CheerpX cold start elapses while they type instead of
+// PRE-WARM: boot a Linux VM as soon as the user focuses the composer, so the
+// unavoidable ~25s CheerpX cold start elapses while they type instead of
 // after they hit send. Idempotent (gated on sandboxIdle) and strictly best-
-// effort. Only fires for the case a bare VM fully serves — no pending
-// attachments, no active project, dev mode off — so it can never mount the
-// wrong thing; any of those, or an attachment added later, is handled by
-// resetSandboxIfBare at send time. A bare send (e.g. "list files in /") then
-// finds the VM already warm and answers immediately.
+// effort. Skips only what a pre-warm can't know yet — pending attachments and
+// the active project (per-send mounts, handled by resetSandboxIfLacking at
+// send time). In dev mode the pre-warm carries the introspection SOURCE mount
+// (the /src tree), so the multi-MB snapshot fetch AND the seed both happen
+// while the user types — the heaviest boot this sandbox does, moved off the
+// send path (chat_logs #515: paying it at send time timed the boot out on an
+// iPhone). A bare send (e.g. "list files in /") then finds the VM warm.
 export function prewarmSandbox() {
   try {
     if (!bashLiteOn() || !sandboxSupported()) return;
     if (!sandboxIdle()) return; // already booting or booted — nothing to do
-    if (hasPending() || activeProject() || developerModeOn()) return; // would need real mounts
-    ensureSandboxBooted(async () => ({ session: [], project: null, source: null }), () => {});
-    sblog("info", "sandbox.prewarm", {});
+    if (hasPending() || activeProject()) return; // would need real per-send mounts
+    const withSource = developerModeOn();
+    const provider = async () => {
+      let source = null;
+      try {
+        if (withSource) {
+          const snap = await introspectSnapshot(); // page-lifetime cache
+          if (snap) source = { files: snap.files };
+        }
+      } catch { /* snapshot unavailable — pre-warm bare instead */ }
+      return { session: [], project: null, source };
+    };
+    ensureSandboxBooted(provider, () => {});
+    sblog("info", "sandbox.prewarm", { source: withSource });
   } catch { /* best-effort — never disturb the composer */ }
 }
 
@@ -821,13 +832,14 @@ async function maybeRunShellLoop(turn, opts) {
       return [];
     }
 
-    // A pre-warm (prewarmSandbox) boots a BARE VM on composer focus so the slow
-    // ~25s cold start elapses while the user types. But a bare VM can't carry
-    // mounts (they're fixed at Linux.create), so if THIS send needs files /
-    // project / source, discard the bare pre-warm and re-boot with the real
-    // provider below. Awaits any in-flight pre-warm to settle first; a no-op
-    // when nothing was pre-warmed or the live VM already mounted files.
-    if (sendWantsMounts(opts)) await resetSandboxIfBare();
+    // A pre-warm (prewarmSandbox) boots a VM on composer focus so the slow
+    // ~25s cold start elapses while the user types. But a VM can't gain
+    // mounts after boot (they're fixed at Linux.create), so if THIS send
+    // needs files / project / source the running VM doesn't carry, discard it
+    // and re-boot with the real provider below. Awaits any in-flight pre-warm
+    // to settle first; a no-op when the live VM already has what's needed
+    // (notably: a dev-mode pre-warm already carries /src and is kept).
+    await resetSandboxIfLacking(sendNeedsMounts(opts));
 
     let booted = false;
     let ran = 0;
@@ -1103,21 +1115,21 @@ function buildSandboxFileProvider(opts) {
       }
     } catch { /* no project / not available — session-only */ }
 
-    // Introspection (developer mode): when this conversation asks about the
-    // site's own implementation, fetch the pre-bundled source snapshot and
-    // hand it to the sandbox as the `source` scope — sandbox.js streams the
-    // files into a DataDevice and seeds the tree at /src (no unpacking in the
-    // guest). Deferred like everything in this provider: the (multi-MB) fetch
-    // only happens once the model actually proposes a command. Fail-soft.
+    // Introspection (developer mode): fetch the pre-bundled source snapshot
+    // and hand it to the sandbox as the `source` scope — sandbox.js streams
+    // the files into a DataDevice and seeds the tree at /src. UNCONDITIONAL
+    // in dev mode, matching DRC and the server enrichment (which tells the
+    // model the tree is at /src): gating it on introspection-intent phrasing
+    // left /src missing for asks the regexes don't cover (chat_logs #514,
+    // "Where is my source code"). Deferred like everything in this provider:
+    // the (multi-MB) fetch only happens once the model actually proposes a
+    // command — and the page-lifetime cache means a dev-mode pre-warm has
+    // usually paid it already. Fail-soft.
     let source = null;
     try {
       if (developerModeOn()) {
-        const texts = userTexts(history);
-        const cheap = introspectionActive(texts) || texts.some((t) => maybeRepoPathMention(t));
-        if (cheap) {
-          const snap = await introspectSnapshot(); // page-lifetime cache
-          if (snap && introspectionActive(texts, snap)) source = { files: snap.files };
-        }
+        const snap = await introspectSnapshot(); // page-lifetime cache
+        if (snap) source = { files: snap.files };
       }
     } catch { /* snapshot unavailable — mount without it */ }
 

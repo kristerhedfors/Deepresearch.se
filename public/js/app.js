@@ -163,9 +163,10 @@ loadSettings()
     // The knob is on and the page is isolated — boot the VM straight away so
     // "enabled" means the Linux system is already running (its terminal drifting
     // faintly behind the chat) the moment the app opens, not only once the user
-    // focuses the composer. Same bare, best-effort, idempotent boot as the
-    // composer-focus pre-warm (a later attachment/project is handled by
-    // resetSandboxIfBare at send time).
+    // focuses the composer. Same best-effort, idempotent boot as the
+    // composer-focus pre-warm — in dev mode it carries the /src source mount
+    // (a later attachment/project is handled by resetSandboxIfLacking at send
+    // time).
     // Reconcile the header terminal icon with the authoritative knob: show it
     // (a cross-device enable that had no local cache at first paint) or hide a
     // stale-cache icon when the server says the sandbox is off.

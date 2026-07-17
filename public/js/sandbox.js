@@ -118,12 +118,14 @@ let fitAddon = null;
 let cxReadFunc = null;
 /** @type {Promise<boolean> | null} */
 let bootPromise = null;
-// Whether the CURRENT boot mounted no user files (bare VM) — set in bootVM once
-// the plan is known. A bare boot is the only kind a pre-warm produces (it runs
-// before a message exists, so it can't know the files/project/source to mount);
-// resetSandboxIfBare() uses it to discard a pre-warm when a real send needs
-// mounts a bare VM can't carry (mounts are fixed at Linux.create).
-let _bootBare = false;
+// What the CURRENT boot actually mounted — set in bootVM once the plan is
+// known. Mounts are fixed at Linux.create, so a VM can never GAIN a scope
+// after boot; resetSandboxIfLacking() compares these against what a send
+// needs and discards the VM when it falls short (a bare pre-warm asked to
+// carry files, a file-less boot asked to carry the introspection /src source).
+let _bootBare = false; // no user files, no project, no source (a plain pre-warm)
+let _bootHadFiles = false; // session attachments and/or a project were mounted
+let _bootHadSource = false; // the introspection source tree was seeded at /src
 // Monotonic boot counter — bumped at the START of every bootVM. Rides on the
 // diagnostic events so a "sandbox not ready" exec can be tied to the boot that
 // (was supposed to) back it, and a stale-VM reuse becomes visible in the log.
@@ -539,22 +541,31 @@ export function resetSandbox(reason = "") {
   bootPromise = null;
   cx = null;
   _bootBare = false;
+  _bootHadFiles = false;
+  _bootHadSource = false;
   try { if (typeof window !== "undefined") /** @type {any} */ (window).__DR_SANDBOX = null; } catch { /* ignore */ }
   sblog("info", "sandbox.reset", { reason: String(reason || "").slice(0, 80), gen: _bootGen });
   flushSandboxLog();
 }
 
 /**
- * If the current (or in-flight) boot is a BARE pre-warm, discard it so the
- * caller can re-boot with a file-mounting provider. Awaits any in-flight boot
- * to settle FIRST — resetting mid-boot would race the running bootVM against a
- * fresh one. A no-op when idle, or when the live VM already mounted files (a
- * real boot, not a pre-warm). Never throws.
+ * If the current (or in-flight) boot lacks a mount scope the caller's send
+ * needs, discard it so the caller can re-boot with the right provider —
+ * mounts are fixed at Linux.create, so re-booting is the ONLY way a VM gains
+ * one. Awaits any in-flight boot to settle FIRST — resetting mid-boot would
+ * race the running bootVM against a fresh one. A no-op when idle, when
+ * nothing is needed, or when the live VM already carries what's needed (a
+ * dev-mode pre-warm that seeded /src serves a source-wanting send as-is).
+ * Never throws.
+ * @param {{ files?: boolean, source?: boolean }} [needs]
  */
-export async function resetSandboxIfBare() {
+export async function resetSandboxIfLacking(needs = {}) {
   if (vmState === "off") return;
+  if (!needs.files && !needs.source) return;
   try { if (bootPromise) await bootPromise; } catch { /* settle regardless */ }
-  if (_bootBare) resetSandbox();
+  if (_bootBare) { resetSandbox("needs_mounts"); return; }
+  if (needs.files && !_bootHadFiles) { resetSandbox("needs_files"); return; }
+  if (needs.source && !_bootHadSource) resetSandbox("needs_source");
 }
 
 /**
@@ -763,14 +774,11 @@ async function bootVM(fileProvider = null) {
     }
   }
 
-  // Record whether this boot is bare (no user files/project/source mounted) —
-  // a pre-warm always is. See _bootBare / resetSandboxIfBare.
-  _bootBare = !fileMount || !!(
-    fileMount.plan &&
-    fileMount.plan.session.length === 0 &&
-    !fileMount.plan.project &&
-    !fileMount.plan.source
-  );
+  // Record what this boot actually mounted — resetSandboxIfLacking compares
+  // these against a send's needs to decide whether the VM must be re-booted.
+  _bootHadFiles = !!(fileMount && fileMount.plan && (fileMount.plan.session.length > 0 || fileMount.plan.project));
+  _bootHadSource = !!(fileMount && fileMount.plan && fileMount.plan.source);
+  _bootBare = !_bootHadFiles && !_bootHadSource;
 
   setStatus("starting Linux…");
   cx = await CheerpX.Linux.create({ mounts });
