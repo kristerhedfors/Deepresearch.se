@@ -298,6 +298,40 @@ test("an LLM completion meters the api row, returns remaining; upstream failure 
   }
 });
 
+test("an embeddings batch meters the api row (RAG parity), refunds an empty result", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const g = await mintServerTokenGrant(env, log, { userId: "admin" });
+  const url = new URL("https://x/api/server-token/llm/embeddings");
+  const req = () =>
+    new Request(url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${g.token}` },
+      body: JSON.stringify({ model: "intfloat/multilingual-e5-large", input: ["query: hi"] }),
+    });
+
+  let restore = mockFetch(async () => new Response(JSON.stringify({ data: [{ index: 0, embedding: [1, 2, 3] }] }), { status: 200 }));
+  try {
+    const res = await handleServerTokenLlm(req(), env, log, url);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.data[0].embedding, [1, 2, 3]);
+    assert.equal(body.remaining, 39);
+    assert.equal(row(db, g.jti, "web").used, 0); // web permission untouched
+  } finally {
+    restore();
+  }
+
+  restore = mockFetch(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  try {
+    const res = await handleServerTokenLlm(req(), env, log, url);
+    assert.equal(res.status, 502);
+    assert.equal(row(db, g.jti, "api").used, 1); // empty result refunded
+  } finally {
+    restore();
+  }
+});
+
 test("LLM endpoint: models is non-metered; missing/api-less bearer is 403", async () => {
   const db = fakeDb();
   const env = envWith(db);

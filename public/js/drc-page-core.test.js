@@ -155,7 +155,6 @@ test("privacyNoticeLines: the web-search line follows the route", () => {
   const grant = privacyNoticeLines({ search: "grant" }).find((l) => l.startsWith("Web search:"));
   assert.match(grant, /only the search QUERY/i);
   assert.match(grant, /Exa/);
-  assert.match(grant, /conversation itself never leaves/i);
   const self = privacyNoticeLines({ search: "self" }).find((l) => l.startsWith("Web search:"));
   assert.match(self, /only the search QUERY/i);
   assert.match(self, /configured yourself/);
@@ -172,11 +171,22 @@ test("privacyNoticeLines: recall appears only with an embeddings provider, and n
   const withRecall = privacyNoticeLines({ embedProvider: "OpenAI" });
   const recall = withRecall.find((l) => l.startsWith("Project recall:"));
   assert.match(recall, /OpenAI/);
+  assert.match(recall, /your key/i); // own-key path
   assert.match(recall, /index never leaves/i);
   assert.equal(
     privacyNoticeLines({}).find((l) => l.startsWith("Project recall:")),
     undefined,
   );
+});
+
+test("privacyNoticeLines: a BORROWED embedding allowance discloses the server-touching recall path", () => {
+  const line = privacyNoticeLines({ embedProvider: "Berget (borrowed)", embedBorrowed: true }).find((l) =>
+    l.startsWith("Project recall:"),
+  );
+  assert.match(line, /through the DeepResearch\.Se server/i); // not "(your key)"
+  assert.doesNotMatch(line, /your key/i);
+  assert.match(line, /borrowed, metered allowance/i);
+  assert.match(line, /index never leaves/i);
 });
 
 test("privacyNoticeLines: a shared workspace leads the notice, named or not", () => {

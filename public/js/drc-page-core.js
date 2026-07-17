@@ -192,12 +192,14 @@ export function wmHtml(s) {
  *   search        — "self" (own browser-direct service) | "grant"
  *                   (server-metered borrowed allowance) | "off"
  *   embedProvider — the embeddings provider label (project recall), "" = none
+ *   embedBorrowed — true when project recall embeds through the server on a
+ *                   borrowed `api` allowance (not the user's own key)
  *   grantsConnected — true when any borrowed, account-connected allowance
  *                   (web search or LLM) is live in this session
  *   workspaceName — set when this session was opened from a shared secure
  *                   workspace link ("" / absent otherwise)
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
- *          search?: string|null, embedProvider?: string,
+ *          search?: string|null, embedProvider?: string, embedBorrowed?: boolean,
  *          grantsConnected?: boolean, workspaceName?: string}} [ctx]
  * @returns {string[]} paragraphs, most important first — never empty
  */
@@ -225,12 +227,14 @@ export function privacyNoticeLines(ctx = {}) {
     ctx.search === "self"
       ? "Web search: only the search QUERY is sent, directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
       : ctx.search === "grant"
-        ? "Web search: only the search QUERY is sent, through the DeepResearch.Se server to the Exa search service on a borrowed, metered allowance. The conversation itself never leaves your browser."
+        ? "Web search: only the search QUERY is sent, through the DeepResearch.Se server to the Exa search service on a borrowed, metered allowance."
         : "Web search: off — research runs from the model's own knowledge; no search query leaves this browser.",
   );
   if (ctx.embedProvider) {
     lines.push(
-      `Project recall: your question is embedded with ${ctx.embedProvider}'s embedding API (your key) to search the project index stored in this browser. Only the question text is sent; the index never leaves.`,
+      ctx.embedBorrowed
+        ? `Project recall: your question is embedded through the DeepResearch.Se server on ${ctx.embedProvider}'s embedding model, on a borrowed, metered allowance, to search the project index stored in this browser. Only the question text is sent; the index never leaves.`
+        : `Project recall: your question is embedded with ${ctx.embedProvider}'s embedding API (your key) to search the project index stored in this browser. Only the question text is sent; the index never leaves.`,
     );
   }
   if (ctx.grantsConnected) {
