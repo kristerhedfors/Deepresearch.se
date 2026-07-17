@@ -132,14 +132,12 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
-    ${workspaceShareSection(!!ctx.me?.email)}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
-  if (ctx.me?.email) wireWorkspaceShare();
 
   if (shodanUsable) {
     wireSimpleKnob("shodanknob", "shodanstatus", setShodanMcp, {
@@ -155,41 +153,162 @@ export async function loadSettingsView(ctx) {
   }
 }
 
-// ---- the secure-workspace share (Se/cure workspaces, minted from Se/rver) ----
+// ---- the secure-workspace share view (Se/cure workspaces, minted from Se/rver) ----
 //
-// Packages this account's TEMPORARY, QUOTA-BOUND grants (the ghost-crossover
-// web-search grant + secure-research-space bundle — the same allowances the
-// ghost button lends) into ONE OFFLINE Se/cure workspace link:
-// /cure/workspace#w=<ciphertext>. The sealing happens ENTIRELY in this
-// browser (public/js/workspace-core.js — the hacka.re-cloned mechanism): the
-// server mints the grant tokens through the two existing authed endpoints
-// and never sees the password or the assembled link. The minter keeps
-// control afterwards: each embedded token's quota can be raised, lowered,
-// paused, or revoked (POST /api/websearch/adjust, /api/proxy/adjust — or the
-// admin panel) while the link itself never changes.
+// A DEDICATED panel view (reached from the header's share icon, and the
+// summary's Share button), NOT part of the gear-icon Settings — that
+// separation is the point: Settings holds knobs that govern YOUR OWN
+// research on this account; this view holds only what can travel to someone
+// ELSE inside a shared Se/cure workspace link.
+//
+// A workspace link packages this account's TEMPORARY, QUOTA-BOUND grants
+// (the ghost-crossover web-search grant + secure-research-space bundle) into
+// ONE OFFLINE link: /cure/workspace#w=<ciphertext>. The sealing happens
+// ENTIRELY in this browser (public/js/workspace-core.js — the hacka.re-cloned
+// mechanism): the server mints the grant tokens through the two existing
+// authed endpoints and never sees the password or the assembled link. The
+// minter keeps control afterwards: each embedded token's quota can be raised,
+// lowered, paused, or revoked (POST /api/websearch/adjust, /api/proxy/adjust
+// — or the admin panel) while the link itself never changes.
+//
+// WHAT CAN AND CANNOT BE SHARED (the honest surface — owner directive,
+// 2026-07-17). A Se/cure session may borrow ONLY the site's UPSTREAM API
+// access, never Se/rver data, and only the two deliberate exceptions of
+// invariant 4 actually pass through: web search (Exa, query-only) and the LLM
+// model (Berget completions). The other server-side research integrations —
+// Shodan, Google Maps, and the automatic enrichments (OpenStreetMap place
+// lookups, Hugging Face Hub search) — each need a server-side secret key and
+// would put a server back in the data path, exactly what Se/cure forbids, so
+// they CANNOT be lent to a client-side session. This view shows them off and
+// disabled with that reason, rather than hiding them, so the boundary is
+// explainable. (Embeddings for retrieval are a third, subtler case: Se/cure
+// does them browser-direct on the recipient's OWN provider key — deliberately
+// NOT proxied, so their document text never returns to a server; see
+// public/js/drc-rag.js — so they are never something the LINK lends either.)
 
-const WORKSPACE_INFO = `<strong>Share a Se/cure workspace</strong><br>
-  Creates a <b>single offline link</b> to a ready-to-use
-  <b>Se/cure</b> session carrying a bounded allowance from YOUR account:
-  a few server web searches and LLM calls (the same temporary grants the
-  ghost button lends you). Everything is <b>encrypted into the link's
-  #anchor</b> — browsers never send that part to any server — and the
-  password travels separately, so the link alone reveals nothing. You stay
-  in control: the allowances are quota-metered per token, and you can add
-  or remove quota (or revoke) at any time without changing the link.`;
+const SHARE_INTRO = `A <b>Se<span class="sl">/</span>cure workspace</b> is one
+  offline link that hands someone a ready-to-use Se<span class="sl">/</span>cure
+  session — client-side, with nothing resting on a server — carrying a
+  <b>bounded, revocable</b> slice of your account's capacity. It's encrypted
+  into the link's <b>#anchor</b> (browsers never send that part to any server);
+  the 12-character password travels separately, so the link alone reveals
+  nothing.`;
 
-/** @param {boolean} signedIn */
-function workspaceShareSection(signedIn) {
-  if (!signedIn) return "";
+const SHARE_SIGNED_OUT = `Sharing a workspace needs a signed-in Google account —
+  the allowance is drawn from that account's quota. Break-glass admin sessions
+  have none.`;
+
+// Popovers for the two capabilities that ACTUALLY travel in a link.
+const WEB_SHARE_INFO = `<strong>Web search (Exa)</strong><br>
+  The recipient's Se/cure session runs live web searches on <b>your</b>
+  account's server key. Only the search query crosses the wire — never their
+  conversation. Quota-metered per link; you can top up, pause, or revoke it any
+  time without changing the link.`;
+
+const API_SHARE_INFO = `<strong>LLM &amp; embeddings (Berget)</strong><br>
+  The recipient can run the research and answer models — <b>and</b> the
+  embedding model that powers document retrieval (RAG) — on <b>your</b>
+  account's server key (Berget). Same provider, same grant: an embedding is the
+  same kind of upstream call as a completion. Their text goes upstream to the
+  model, by their choice; nothing is stored. Both draw on this one quota;
+  top up, pause, or revoke any time.`;
+
+// Popovers for the integrations that CANNOT travel — same explain-don't-hide
+// posture as the Settings knobs, but the reason here is structural.
+const SHODAN_SHARE_INFO = `<strong>Shodan host intelligence</strong><br>
+  Runs only on Se/rver: it needs the server's Shodan API key. There is no way to
+  lend that to a client-side Se/cure session without routing the lookup through a
+  server — which is exactly what Se/cure exists to avoid — so it can't be added
+  to a shared workspace.`;
+
+const GMAPS_SHARE_INFO = `<strong>Google Maps &amp; Street View</strong><br>
+  Runs only on Se/rver: it needs the server's Google Maps API key. As with
+  Shodan, lending it would put a server back in the data path, so it can't be
+  added to a shared workspace.`;
+
+/**
+ * The dedicated "Share a Se/cure workspace" view — the header share icon and
+ * the summary's Share button land here. Shows the two capabilities a link can
+ * actually carry as live switches, the server-only integrations off-and-
+ * disabled with the reason they can't cross, and the create-link widget.
+ * @param {PanelCtx} ctx
+ */
+export function loadShareView(ctx) {
+  const signedIn = !!ctx.me?.email;
+  ctx.body.innerHTML = `
+    <button id="sharebackbtn" type="button" class="back-link">← Back</button>
+    <p class="section-lbl">Share a Se<span class="sl">/</span>cure workspace</p>
+    <p class="muted setting-note">${SHARE_INTRO}</p>
+    ${signedIn ? shareBodyMarkup() : `<p class="muted setting-note">${SHARE_SIGNED_OUT}</p>`}`;
+  document.getElementById("sharebackbtn").addEventListener("click", () => ctx.show("summary"));
+  if (signedIn) {
+    wireSettingPopovers(ctx.body);
+    wireWorkspaceShare();
+  }
+}
+
+/** The signed-in body: the shareable switches, the can't-share rows, and the
+ * create widget. Element ids (wspweb / wspapi / wspcreate / …) are read by
+ * wireWorkspaceShare. */
+function shareBodyMarkup() {
   return `
+    <p class="section-lbl">Shared through the link</p>
+    <p class="muted setting-note">A Se<span class="sl">/</span>cure session can
+      borrow the site's upstream API access — never any of your data. Choose what
+      this link carries:</p>
+    ${settingRow({
+      id: "wspweb",
+      label: "Web search (Exa)",
+      checked: true,
+      disabled: false,
+      popId: "wspwebpop",
+      info: WEB_SHARE_INFO,
+    })}
+    ${settingRow({
+      id: "wspapi",
+      label: "LLM & embeddings (Berget)",
+      checked: true,
+      disabled: false,
+      popId: "wspapipop",
+      info: API_SHARE_INFO,
+    })}
+
+    <p class="section-lbl">Not available in Se<span class="sl">/</span>cure</p>
+    <p class="muted setting-note">These research integrations run only on
+      Se<span class="sl">/</span>rver. Each needs a server-side secret key that
+      can't be handed to a client-side session, and routing them through a server
+      would break Se/cure's promise that no server sits in the data path — so they
+      can't be added to a shared workspace.</p>
+    ${settingRow({
+      id: "wspshodan",
+      label: "Shodan host intelligence",
+      checked: false,
+      disabled: true,
+      popId: "wspshodanpop",
+      info: SHODAN_SHARE_INFO,
+    })}
+    ${settingRow({
+      id: "wspgmaps",
+      label: "Google Maps & Street View",
+      checked: false,
+      disabled: true,
+      popId: "wspgmapspop",
+      info: GMAPS_SHARE_INFO,
+    })}
+    <p class="muted setting-note">Place lookups (OpenStreetMap) and model-hub
+      search (Hugging Face) stay server-side the same way.</p>
+
+    <p class="muted setting-note">So a shared workspace lends <b>model, embedding,
+      and web-search access</b> — enough to run the full research pipeline,
+      document retrieval included, against your account's allowance. Share nothing
+      above and the link still works — the recipient just opens to an empty model
+      list and plugs in their own key.</p>
+
     <div class="settings-item" id="wsprow">
       <div class="settings-row">
-        <span class="settings-label">Share a Se<span class="sl">/</span>cure workspace
-          <button type="button" class="setting-info" data-pop="wsppop" aria-label="More about secure workspaces">ⓘ</button>
-        </span>
+        <span class="settings-label">Create the link</span>
         <button type="button" id="wspcreate">Create link</button>
       </div>
-      <div class="setting-pop" id="wsppop" hidden>${WORKSPACE_INFO}</div>
       <p id="wspstatus" class="muted setting-note" hidden></p>
       <div id="wspresult" hidden>
         <textarea id="wsplink" readonly rows="3" style="width:100%;font-size:.72rem;word-break:break-all"></textarea>
@@ -205,30 +324,51 @@ function workspaceShareSection(signedIn) {
 function wireWorkspaceShare() {
   const btn = document.getElementById("wspcreate");
   const status = document.getElementById("wspstatus");
+  const webChk = /** @type {HTMLInputElement | null} */ (document.getElementById("wspweb"));
+  const apiChk = /** @type {HTMLInputElement | null} */ (document.getElementById("wspapi"));
   if (!btn) return;
   let password = "";
   btn.addEventListener("click", async () => {
+    const includeWeb = !!webChk?.checked;
+    const includeApi = !!apiChk?.checked;
+    if (!includeWeb && !includeApi) {
+      status.hidden = false;
+      status.textContent = "Pick at least one capability to include in the link.";
+      return;
+    }
     btn.disabled = true;
     status.hidden = false;
     status.textContent = "Minting your temporary grants…";
     try {
       // 1. The two existing authed mints (both reuse-per-user; each fail-soft —
-      //    a workspace with only one allowance is still a workspace).
+      //    a workspace with only one allowance is still a workspace). Skip a
+      //    mint entirely when its checkbox is off rather than fetching then
+      //    discarding — an unchecked box should cost nothing server-side.
       const post = (path) =>
         fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);
-      const [ws, bundle] = await Promise.all([post("/api/websearch/grant"), post("/api/proxy/grant")]);
+      const [ws, bundle] = await Promise.all([
+        includeWeb ? post("/api/websearch/grant") : Promise.resolve(null),
+        includeWeb || includeApi ? post("/api/proxy/grant") : Promise.resolve(null),
+      ]);
       // The proxy bundle's GRANT tokens ride sealed in its blob — open it
       // locally with the key that came alongside (never sent anywhere).
+      // The bundle always mints both services server-side; the checkboxes
+      // are enforced here by filtering which grants make it into the link.
       let proxy = [];
       if (bundle?.blob && bundle?.key) {
         const opened = await openBundle(bundle.blob, bundle.key).catch(() => null);
         if (opened && Array.isArray(opened.grants)) {
-          proxy = opened.grants.filter((g) => g && (g.svc === "web" || g.svc === "api") && typeof g.token === "string");
+          proxy = opened.grants.filter(
+            (g) =>
+              g &&
+              typeof g.token === "string" &&
+              ((g.svc === "web" && includeWeb) || (g.svc === "api" && includeApi)),
+          );
         }
       }
-      const grants = { ws: ws?.token || null, proxy };
+      const grants = { ws: includeWeb ? ws?.token || null : null, proxy };
       if (!grants.ws && !proxy.length) {
         status.textContent = "No grants available right now (the feature may be disabled) — nothing to share.";
         return;

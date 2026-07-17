@@ -112,3 +112,60 @@ export async function forwardLlmCompletion(env, log, body, opts) {
   const data = await upstream.json().catch(() => ({}));
   return jsonResponse({ ...data, remaining }, 200);
 }
+
+/**
+ * Forward ONE OpenAI-wire embeddings request to Berget on the SERVER key —
+ * SHARED by the bundle's LLM proxy (src/proxy.js) and the Se/rver-token LLM
+ * endpoint (src/server-grants.js), so a borrowed Se/cure session can run the
+ * SAME retrieval/RAG the signed-in tier does (owner directive, 2026-07-17:
+ * embeddings are the same provider and the same exposure class as the LLM
+ * completion the `api` grant already lends — an inconsistent line to withhold
+ * them at). Berget serves `/embeddings` (intfloat/multilingual-e5-large,
+ * 1024-dim) OpenAI-compatibly — the same call src/berget.js `embedTexts` makes
+ * server-side, so the wire is proven. The e5 `passage:`/`query:` prefix
+ * convention is applied CLIENT-side before the text arrives here; this leaf
+ * just relays the body on the server key. The caller owns verification + the
+ * quota RESERVE; this owns the upstream call, refund-on-failure, and shaping.
+ * @param {Env} env @param {Logger} log
+ * @param {any} body the client's embeddings body (already validated: {model, input})
+ * @param {{ refund: () => Promise<void>, remainingAfter: () => Promise<number|null>, tagPrefix: string, ids: Record<string, unknown> }} opts
+ * @returns {Promise<Response>}
+ */
+export async function forwardLlmEmbeddings(env, log, body, opts) {
+  const upstreamBody = {
+    model: typeof body.model === "string" ? body.model : undefined,
+    input: body.input,
+    ...(body.dimensions != null ? { dimensions: body.dimensions } : {}),
+    ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}),
+  };
+
+  let upstream;
+  try {
+    upstream = await fetch(bergetBase(env) + "/embeddings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${env.BERGET_API_TOKEN}` },
+      body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(LLM_JSON_TIMEOUT_MS),
+    });
+  } catch (e) {
+    await opts.refund(); // never connected — don't burn quota
+    log.warn(`${opts.tagPrefix}_failed`, { ...opts.ids, error: String(/** @type {any} */ (e)?.message || e) });
+    return jsonResponse({ error: "The embeddings backend did not respond." }, 502);
+  }
+  if (!upstream.ok) {
+    await opts.refund();
+    const text = await upstream.text().catch(() => "");
+    log.warn(`${opts.tagPrefix}_upstream_error`, { ...opts.ids, status: upstream.status });
+    return jsonResponse({ error: "The embeddings backend rejected the request.", detail: text.slice(0, 500) }, 502);
+  }
+  const data = /** @type {any} */ (await upstream.json().catch(() => null));
+  // An empty/malformed result is a failed call — refund rather than burn quota.
+  if (!data || !Array.isArray(data.data) || !data.data.length) {
+    await opts.refund();
+    log.info(`${opts.tagPrefix}_empty`, { ...opts.ids });
+    return jsonResponse({ error: "The embeddings backend returned nothing." }, 502);
+  }
+  const remaining = await opts.remainingAfter();
+  log.info(`${opts.tagPrefix}_served`, { ...opts.ids, vectors: data.data.length, remaining });
+  return jsonResponse({ ...data, remaining }, 200);
+}
