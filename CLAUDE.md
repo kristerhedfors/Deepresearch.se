@@ -1189,7 +1189,12 @@ introspection snapshot, so both tiers surface its skills in-app (cataloged as
 in-app builder loop are the `vm-toolchain`/`pair-studio` modules). Editing an
 SDK skill or the manifest: run `node sdk/pair-cli.mjs validate` (the manifest
 integrity + class rules are also test-pinned) and regenerate the introspection
-artifacts like any other tracked-text change.
+artifacts like any other tracked-text change. The SDK's complete standalone
+documentation — abstraction, classes, contracts, the full 33-module catalog,
+CLI, roadmap, usage modes — is `docs/AGENT-PAIR-SDK.md` (it rides the docs
+corpus, so the in-app HELP layer answers SDK questions from it; it mirrors
+`sdk/MANIFEST.json`/`DESIGN.md` and is updated in the same commit as any
+`sdk/` change).
 
 ## Skills
 

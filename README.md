@@ -63,6 +63,26 @@ origin story of the first weekend, kept as the record of how it began —
 lives in `public/build/history.md` (rendered in-app at `/story/`; `/build/`
 holds the project purpose and EU AI Act use restrictions).
 
+## The Agent-Pair SDK
+
+The architecture is also distilled into a reusable form: the **Agent-Pair
+SDK** (`sdk/`) — a design, a 33-module skill library, a machine-readable
+module registry, and a dependency-free CLI for building **agent pairs** like
+this one: one AI-assistant product shipped as a wholly-in-browser client tier
+plus a one-edge-worker server tier, with at most one server component across
+the whole pair. Every module maps back to the files in this repo that already
+realize it, and carries the incident history that made those files what they
+are. It is currently design + skill library only — nothing in `src/` or
+`public/` imports it.
+
+- **`docs/AGENT-PAIR-SDK.md`** — the complete standalone documentation: the
+  pair abstraction, capability classes, contracts PA-1…PA-10, the full module
+  catalog, the CLI, and the implementation order.
+- `sdk/README.md` — the catalog front page; `sdk/DESIGN.md` the full design;
+  `sdk/ROADMAP.md` the build-order rationale.
+- `node sdk/pair-cli.mjs list|show|plan|validate` — explore the registry,
+  compute a build order for a module selection, check manifest integrity.
+
 ## Installing your own instance
 
 Everything below reproduces the production setup end-to-end. You need:

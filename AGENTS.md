@@ -29,7 +29,10 @@ assumptions.
    (`sdk/ROADMAP.md`), and a dependency-free CLI (`node sdk/pair-cli.mjs
    list|show|plan|validate`). Load an SDK skill when building a capability
    anew (or wiring this app to SDK modules); load an operational skill when
-   running or maintaining THIS deployment.
+   running or maintaining THIS deployment. The SDK's complete standalone
+   documentation is **`docs/AGENT-PAIR-SDK.md`** — the abstraction, the
+   capability classes, contracts PA-1..PA-10, the full module catalog, the
+   CLI, and the implementation order, in one document.
 
 ## How to use the skills, whatever agent you are
 
