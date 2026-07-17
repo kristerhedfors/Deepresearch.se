@@ -338,13 +338,22 @@ export function buildTar(files) {
  * ingest devices) with a per-file cp script (`seedCp`) as the fallback for a
  * guest without tar. The main `seed` script tries the tar extraction and
  * falls back to `sh /mnt/in-src/.seedcp`; both are written INTO the device,
- * so a hundreds-of-lines script never rides in argv. /src is refreshed on
- * every boot (it lives in the persistent overlay, so a stale copy would
- * otherwise survive reloads); a friendly /workspace/source symlink points at
- * it.
+ * so a hundreds-of-lines script never rides in argv.
+ *
+ * /src lives in the persistent overlay, and extraction is the single most
+ * expensive thing this sandbox does on a phone (the fs phase measured 62 s on
+ * iOS, chat_logs #522) — so the seed is STAMP-GUARDED, not refreshed blindly:
+ * a content stamp (FNV over every path+size) is written to /src/.dr-stamp
+ * ONLY after a successful extraction, and the next boot's seed compares it
+ * first — a matching stamp means /src is already this exact snapshot and the
+ * whole rm -rf + extraction is skipped (only the /workspace/source symlink is
+ * refreshed). A stale or missing stamp (older deploy, interrupted seed —
+ * the stamp is written LAST, so a partial extraction never stamps) still
+ * re-extracts from scratch. A friendly /workspace/source symlink points at
+ * /src either way.
  * @param {Array<{ p: string, s?: number, t: string }>} files
  * @param {{ totalMax?: number }} [opts]
- * @returns {{ entries: Array<{ flat: string, path: string, bytes: Uint8Array }>, seed: string, seedCp: string, tar: Uint8Array, count: number, bytes: number, dropped: number } | null}
+ * @returns {{ entries: Array<{ flat: string, path: string, bytes: Uint8Array }>, seed: string, seedCp: string, tar: Uint8Array, stamp: string, count: number, bytes: number, dropped: number } | null}
  */
 export function planSourceMount(files, opts = {}) {
   const list = Array.isArray(files) ? files : [];
@@ -378,12 +387,19 @@ export function planSourceMount(files, opts = {}) {
   for (const e of entries) {
     cpLines.push(`cp /mnt/in-src/${e.flat} ${shellEscape("/src/" + e.path)}`);
   }
-  // Main seed: one tar extraction (archive entry names are repo-relative, so
-  // -C /src lands them at /src/<path>), cp script only if tar fails/missing.
+  const stamp = sourceStamp(entries);
+  // Main seed: skip everything when the persisted /src already carries this
+  // exact snapshot (the stamp guard — see the function comment), else one tar
+  // extraction (archive entry names are repo-relative, so -C /src lands them
+  // at /src/<path>), cp script only if tar fails/missing. The stamp is written
+  // ONLY when an extraction path exited 0, and it is written LAST — an
+  // interrupted or failed seed leaves no stamp and re-extracts next boot.
   const lines = [];
+  lines.push(`if [ "$(cat /src/.dr-stamp 2>/dev/null)" != ${shellEscape(stamp)} ]; then`);
   lines.push("rm -rf /src");
   lines.push("mkdir -p /src");
-  lines.push("tar -xf /mnt/in-src/src.tar -C /src 2>/dev/null || sh /mnt/in-src/.seedcp 2>/dev/null || true");
+  lines.push(`( tar -xf /mnt/in-src/src.tar -C /src 2>/dev/null || sh /mnt/in-src/.seedcp 2>/dev/null ) && printf '%s' ${shellEscape(stamp)} > /src/.dr-stamp 2>/dev/null || true`);
+  lines.push("fi");
   lines.push("mkdir -p /workspace 2>/dev/null || true");
   lines.push("ln -sfn /src /workspace/source 2>/dev/null || true");
   const tar = buildTar(entries.map((e) => ({ path: e.path, bytes: e.bytes })));
@@ -392,8 +408,31 @@ export function planSourceMount(files, opts = {}) {
     seed: lines.join("\n") + "\n",
     seedCp: cpLines.join("\n") + "\n",
     tar,
+    stamp,
     count: entries.length,
     bytes,
     dropped,
   };
+}
+
+/**
+ * A short, stable content stamp for the source snapshot: FNV-1a over every
+ * kept entry's path and byte length, plus the entry count. Deterministic for
+ * the same deploy's snapshot, different the moment any file's path or size
+ * changes — exactly the granularity the seed's skip-if-current guard needs
+ * (the snapshot is a committed artifact, so size+path is an honest proxy for
+ * content without hashing megabytes on every boot).
+ * @param {Array<{ path: string, bytes: Uint8Array }>} entries
+ * @returns {string}
+ */
+export function sourceStamp(entries) {
+  let h = 0x811c9dc5;
+  const mix = (/** @type {string} */ s) => {
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+  };
+  for (const e of entries) mix(e.path + ":" + e.bytes.length + ";");
+  return (h >>> 0).toString(16).padStart(8, "0") + "-" + entries.length;
 }

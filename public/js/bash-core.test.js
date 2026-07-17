@@ -27,6 +27,9 @@ import {
   isExportablePath,
   mimeForName,
   normalizeExecResult,
+  DEFAULT_EXEC_TIMEOUT_MS,
+  MIN_EXEC_TIMEOUT_MS,
+  execTimeoutForBudget,
   outboxListCommand,
   parseExecEnvelope,
   parseOutboxListing,
@@ -509,6 +512,29 @@ describe("sandboxTornDown", () => {
     assert.equal(sandboxTornDown({ exitCode: 0, stdout: "ok", stderr: "" }), false);
     assert.equal(sandboxTornDown({ exitCode: 1, stdout: "", stderr: "grep: no match" }), false);
     assert.equal(sandboxTornDown(undefined), false);
+  });
+});
+
+describe("execTimeoutForBudget", () => {
+  test("no/invalid budget keeps the default ceiling", () => {
+    assert.equal(execTimeoutForBudget(null), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(undefined), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(0), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(-5), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(NaN), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(/** @type {any} */ ("abc")), DEFAULT_EXEC_TIMEOUT_MS);
+  });
+  test("a budget below the default scopes the ceiling down (chat_logs #522: 15 s)", () => {
+    assert.equal(execTimeoutForBudget(15), 15000);
+    assert.equal(execTimeoutForBudget(10), 10000);
+  });
+  test("floored so a tiny budget still lets a command finish", () => {
+    assert.equal(execTimeoutForBudget(1), MIN_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(4), MIN_EXEC_TIMEOUT_MS);
+  });
+  test("a budget above the default never RAISES the ceiling", () => {
+    assert.equal(execTimeoutForBudget(60), DEFAULT_EXEC_TIMEOUT_MS);
+    assert.equal(execTimeoutForBudget(270), DEFAULT_EXEC_TIMEOUT_MS);
   });
 });
 
