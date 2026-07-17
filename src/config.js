@@ -112,11 +112,19 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
 
 /** @type {SiteConfig} */
 export const DEFAULT_CONFIG = {
+  // Cost caps sized for the expensive answer models people actually reach
+  // for: Claude Opus ($5/$25 per 1M) and Sonnet ($3/$15) bill many times a
+  // Berget model's rate, so ONE opus deep-research synthesis is ~€0.15. The
+  // old h5 cap (€0.25) therefore blocked a heavy user after a single pair of
+  // opus queries in a morning — the point of these generous defaults is that
+  // a real sonnet/opus research session runs on rather than stalling at the
+  // second question. Admins can still lower them per-window (or per-user via
+  // users.quota_json). 0 = uncapped.
   quotas: {
-    h5: { budget_eur: 0.25, searches: 30 },
-    day: { budget_eur: 0.5, searches: 100 },
-    week: { budget_eur: 2, searches: 400 },
-    month: { budget_eur: 6, searches: 1200 },
+    h5: { budget_eur: 2, searches: 100 },
+    day: { budget_eur: 5, searches: 300 },
+    week: { budget_eur: 20, searches: 1200 },
+    month: { budget_eur: 60, searches: 3600 },
   },
   exa_cost_per_search_eur: 0.005,
   max_time_budget_s: 600, // cap for the UI slider value accepted server-side

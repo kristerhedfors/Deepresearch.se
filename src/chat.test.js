@@ -95,10 +95,20 @@ describe("quotaBlockedResponse", () => {
     assert.equal(res.quota, blocked);
   });
 
-  test("the rolling h5 window uses 'frees up around' phrasing instead of 'resets'", () => {
+  test("the rolling h5 window uses 'frees up' phrasing instead of 'resets'", () => {
     const blocked = { period: "h5", kind: "budget", reset_at: Date.now() };
     const res = quotaBlockedResponse(blocked);
-    assert.match(res.error, /frees up around/);
+    assert.match(res.error, /frees up/);
+    assert.doesNotMatch(res.error, /\bresets\b/);
+  });
+
+  test("the message leads with a relative 'in about …' time and keeps the exact UTC", () => {
+    const now = Date.UTC(2026, 6, 17, 12, 0, 0);
+    const res = quotaBlockedResponse(
+      { period: "day", kind: "budget", reset_at: now + 3 * 3600 * 1000 },
+      now,
+    );
+    assert.match(res.error, /resets in about 3h \(2026-07-17 15:00 UTC\)\./);
   });
 
   test("every other period uses 'resets' phrasing", () => {
