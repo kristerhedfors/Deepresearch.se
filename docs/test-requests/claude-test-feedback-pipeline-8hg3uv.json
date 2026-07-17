@@ -29,7 +29,13 @@
       ],
       "runs": 2,
       "minted_id": 15,
-      "verdicts": []
+      "verdicts": [
+        {
+          "result": "pass",
+          "note": null,
+          "at": "2026-07-17T07:07:17.900Z"
+        }
+      ]
     }
   ]
 }
