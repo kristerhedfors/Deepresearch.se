@@ -1212,6 +1212,9 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 }
 .od-model .od-label { font-size: .85rem; font-weight: 600; }
 .od-model .od-note { grid-column: 1 / -1; margin: 0; }
+/* A failed download's reason lives IN the row (the footer status line is
+   covered by this very drawer on a phone) — quiet brick red on the khaki. */
+.od-model .od-note.od-fail { color: #9c4530; }
 .od-model .od-btn { font-size: .78rem; padding: .3rem .6rem; white-space: nowrap; }
 /* The visible engine trace (?oddebug=1): the phone's stand-in console. */
 #odtracewrap { margin: .3rem 0 .4rem; }
