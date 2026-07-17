@@ -1102,6 +1102,11 @@ async function odEngine() {
   return odEngineModule;
 }
 const odDownloading = new Set(); // modelIds with a download in flight (UI state)
+// modelId → the last download failure, shown IN the model's row: the footer
+// workstatus line is covered by the settings drawer on a phone, so an error
+// that only landed there read as "confirmed, flickered, nothing happened"
+// (the 2026-07-17 iPhone report). Cleared on the next attempt.
+const odErrors = new Map();
 
 // The settings section: one row per catalog model with its true state —
 // on this device (Delete) / downloadable (Download → consent) / not yet
@@ -1155,10 +1160,16 @@ async function renderOnDeviceRows() {
         note.textContent = verdict.reason;
         btn.hidden = true;
       } else {
-        note.textContent =
-          "~" + eng.fmtBytes(m.approxBytes) + " one-time download" +
-          (verdict.verdict === "marginal" ? " — " + verdict.reason : "");
-        btn.textContent = "Download…";
+        const fail = odErrors.get(m.id);
+        if (fail) {
+          note.textContent = fail;
+          note.classList.add("od-fail");
+        } else {
+          note.textContent =
+            "~" + eng.fmtBytes(m.approxBytes) + " one-time download" +
+            (verdict.verdict === "marginal" ? " — " + verdict.reason : "");
+        }
+        btn.textContent = fail ? "Retry download…" : "Download…";
         btn.onclick = () => odOpenConsent(m).catch(() => {});
       }
       row.append(label, note, btn);
@@ -1273,18 +1284,28 @@ async function odOpenConsent(m) {
 // and the next Download continues where it stopped.
 async function odRunDownload(m) {
   const eng = await odEngine();
+  odErrors.delete(m.id);
   odDownloading.add(m.id);
   await renderOnDeviceRows();
+  let sawBytes = false;
   try {
     await eng.downloadModel(m.id, (p) => {
+      sawBytes = sawBytes || p.loaded > 0;
       const el = document.querySelector('[data-od="' + m.id + '"] .od-note');
       if (el) el.textContent = "Downloading… " + p.pct + "% · " + eng.fmtBytes(p.loaded) + " of " + eng.fmtBytes(p.total);
     });
     workStatus(m.label + " is on this device — pick it in the model dropdown. Nothing you ask it will leave this browser.");
   } catch (err) {
-    workStatus(
-      (err?.message || "The download failed.") + " Already-verified parts are kept — Download again to resume.",
-    );
+    const raw = err?.message || "The download failed.";
+    if (/cancel|abort/i.test(raw)) {
+      // A user-initiated stop is not a failure — say what the Cancel kept.
+      workStatus("Download stopped — verified parts are kept; Download again to resume.");
+    } else {
+      // The resume hint is true only once some bytes actually landed.
+      const msg = raw + (sawBytes ? " Already-verified parts are kept — Download again to resume." : "");
+      odErrors.set(m.id, msg);
+      workStatus(msg);
+    }
   } finally {
     odDownloading.delete(m.id);
     await renderOnDeviceRows();

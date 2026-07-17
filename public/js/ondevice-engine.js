@@ -192,6 +192,10 @@ function getWorker() {
       dlHandlers.get(m.modelId)?.resolve();
       dlHandlers.delete(m.modelId);
     } else if (m.t === "dlerror") {
+      // Recorded even with debug OFF (the crash-line convention): a failed
+      // download is the tier's #1 field report, and flipping the trace on
+      // after the fact must still show why.
+      trace("download failed:", m.modelId, m.message || "");
       dlHandlers.get(m.modelId)?.reject(new Error(m.message));
       dlHandlers.delete(m.modelId);
     } else if (m.t === "plan") {

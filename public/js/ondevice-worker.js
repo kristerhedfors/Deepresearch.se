@@ -27,6 +27,7 @@ import {
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
+  opfsUnavailableMessage,
   planModelFiles,
   rejectionDetail,
   wasmPathsFor,
@@ -108,9 +109,51 @@ async function readJson(dir, name) {
 
 async function writeJson(dir, name, value) {
   const fh = await fileHandle(dir, name, true);
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify(value));
+  const w = await openWrite(fh, false);
+  await w.write(0, new TextEncoder().encode(JSON.stringify(value)));
   await w.close();
+}
+
+// The OPFS write seam: Chromium writes through createWritable() (a swap-file
+// stream committed on close), but WebKit — iOS Safari included — has shipped
+// OPFS since 16.4 WITHOUT FileSystemWritableFileStream, so there the write
+// path is createSyncAccessHandle(), which is worker-only — and this IS the
+// worker. Sync-handle writes land in place (no swap file), which suits the
+// resume-from-partial design even better: verified bytes are on disk however
+// the write ends. Every handle call is awaited, so the older WebKit
+// generation (15.2–16.3) whose handle methods were async works too. Found
+// 2026-07-17: the iPhone "confirm → brief flicker, nothing downloads" report
+// — createWritable was assumed, and its absence failed the download in under
+// a second.
+async function openWrite(fh, keepExistingData) {
+  if (typeof fh.createWritable === "function") {
+    const w = await fh.createWritable({ keepExistingData });
+    return {
+      write: (position, data) => w.write({ type: "write", position, data }),
+      close: () => w.close(),
+    };
+  }
+  if (typeof fh.createSyncAccessHandle === "function") {
+    const h = await fh.createSyncAccessHandle();
+    if (!keepExistingData) await h.truncate(0);
+    return {
+      write: async (position, data) => {
+        // write() reports bytes written — loop the (rare) short write rather
+        // than silently corrupt the file and fail checksum later.
+        let off = 0;
+        while (off < data.byteLength) {
+          const n = await h.write(off ? data.subarray(off) : data, { at: position + off });
+          if (!(n > 0)) throw new Error("OPFS write made no progress at byte " + (position + off));
+          off += n;
+        }
+      },
+      close: async () => {
+        await h.flush();
+        await h.close();
+      },
+    };
+  }
+  throw new Error("This browser has no OPFS write API (neither createWritable nor createSyncAccessHandle) — model downloads can't be stored here.");
 }
 
 // The post-download manifest is the "this model is complete and verified"
@@ -205,21 +248,23 @@ async function downloadFile(dir, model, file, signal, onLoaded) {
       }
       throw new Error("HTTP " + res.status + " fetching " + file.path);
     }
-    const writable = await fh.createWritable({ keepExistingData: offset > 0 });
+    const writable = await openWrite(fh, offset > 0);
     try {
       const reader = res.body.getReader();
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         hasher.update(value);
-        await writable.write({ type: "write", position: offset, data: value });
+        await writable.write(offset, value);
         offset += value.length;
         onLoaded(offset);
       }
       await writable.close();
     } catch (err) {
       // Keep the partial bytes for resume; abort() would discard them.
-      await writable.close().catch(() => {});
+      await Promise.resolve()
+        .then(() => writable.close())
+        .catch(() => {});
       throw err;
     }
   }
@@ -236,6 +281,16 @@ async function downloadFile(dir, model, file, signal, onLoaded) {
 async function download(modelId) {
   const model = onDeviceModel(modelId);
   if (!model) throw new Error("Unknown model " + modelId);
+  // Storage FIRST, network second: WebKit Private Browsing rejects
+  // getDirectory() outright, and a browser without OPFS never gets it —
+  // both must fail with the named message instantly, not after a fetch.
+  let dir;
+  try {
+    if (typeof navigator.storage?.getDirectory !== "function") throw new Error("navigator.storage.getDirectory is missing");
+    dir = await modelDir(modelId, true);
+  } catch (err) {
+    throw new Error(opfsUnavailableMessage(err));
+  }
   const plan = await planFor(model);
   const files = plan.files;
   if (!files) {
@@ -248,7 +303,6 @@ async function download(modelId) {
   const ctrl = new AbortController();
   dlAborts.set(modelId, ctrl);
   try {
-    const dir = await modelDir(modelId, true);
     const done = {};
     let lastPost = 0;
     const post = (current) => {
