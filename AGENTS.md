@@ -8,12 +8,15 @@ assumptions.
 
 ## Read these first
 
-1. **`CLAUDE.md`** (repo root) — the always-load project brief: mission, the
-   load-bearing invariants (deterministic no-function-calling pipeline, split
-   model routing, the privacy split, EN+SV parity), the code layout table, the
-   git workflow, and the test/deploy commands. Treat it as authoritative for
-   *how this project is built and what must not be broken*. Everything in
-   `CLAUDE.md` applies to you regardless of which model you run on.
+1. **`CLAUDE.md`** (repo root) — the always-load project brief, kept
+   deliberately lean: mission, the load-bearing invariants (deterministic
+   no-function-calling pipeline, split model routing, the privacy split,
+   EN+SV parity), the git workflow, the test/deploy commands, and the skills
+   index. Treat it as authoritative for *how this project is built and what
+   must not be broken*. Its reference companions carry the detail:
+   `docs/CODE-LAYOUT.md` (the per-module map), `docs/TESTING.md`,
+   `docs/PRIVACY-MODEL.md`, `docs/BRANDING.md`. Everything in `CLAUDE.md`
+   applies to you regardless of which model you run on.
 2. **The skills catalog** — `.claude/skills/<name>/SKILL.md` — the repo's
    institutional **playbooks**: how each recurring kind of work is actually
    done here, written from empirically-observed practice (not docs). Each

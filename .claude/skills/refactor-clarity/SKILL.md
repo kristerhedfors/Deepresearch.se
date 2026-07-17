@@ -150,9 +150,10 @@ possible pure relocation and confirm the original file still *links* in Node.
    pass. If you can't re-embed in-session, at minimum surface that the index is
    stale rather than leaving `npm test` red silently.
 
-7. **Document.** Add each new module to the CLAUDE.md **Code layout** table (and
-   the client prose for client modules), and add this skill to the CLAUDE.md
-   skills list if not present. Then re-bundle (step 6 order).
+7. **Document.** Add each new module to the `docs/CODE-LAYOUT.md` **Code
+   layout** table (and the client prose for client modules), and add this
+   skill to the CLAUDE.md skills list if not present. Then re-bundle (step 6
+   order).
 
 ## Traps that cost time here
 

@@ -172,7 +172,8 @@ reference):
    (ids in order, valid statuses, real summaries), the two orderings, the
    façade-is-the-core identity check, and the `?format=text` rendering. The
    board core (`src/board.js`) itself is already covered.
-9. **Docs** — the CLAUDE.md `src/` table row + test-suite note; the doc's
+9. **Docs** — the `docs/CODE-LAYOUT.md` `src/` table row + the
+   `docs/TESTING.md` test-suite note; the doc's
    maintenance rules; a row in `docs/DECISION-BOARD-LOOPS.md` §1; and a loop
    skill (or a section here) that says **read the board before every round** —
    a board is pointless if the loop doesn't start there.

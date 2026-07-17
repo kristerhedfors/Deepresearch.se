@@ -137,8 +137,9 @@ offers. And **minimal dependencies** (invariant 5) — raw `fetch`, no SDK.
    thinking-off, the GPT models' reasoning_effort) live in the provider
    client, not in profiles. See the **tune-provider-models** skill for
    the full tuning pass.
-6. **Docs**: CLAUDE.md project paragraph + code-layout table + unit-test
-   list; the **integrations** skill's LLM-provider sections.
+6. **Docs**: CLAUDE.md project paragraph + the `docs/CODE-LAYOUT.md` table +
+   the `docs/TESTING.md` unit-test list; the **integrations** skill's
+   LLM-provider sections.
 
 ## Validation ladder (all four rungs, in order)
 
