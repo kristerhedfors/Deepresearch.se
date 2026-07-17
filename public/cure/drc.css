@@ -429,6 +429,10 @@ header {
   max-width: 100%;
 }
 .msg.assistant.streaming { white-space: pre-wrap; }
+/* The live answer bubble is appended at send time (the step list anchors
+   above it) but holds no text until synthesis streams — hide it while empty
+   so research shows only the steps, not a blank pill under them. */
+.msg.assistant.streaming:empty { display: none; }
 /* Documentation images quoted verbatim by HELP mode (markdown.js tags the
    allowlisted same-origin /introspect/docs-img/ images with .doc-img). */
 img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); margin: .35rem 0; display: block; }
