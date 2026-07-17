@@ -120,10 +120,26 @@ with `user_id`, `ua`):
   OFF**, and always flushes. Repeated lines = still stuck; the `stage` is where.
 - `sandbox.boot_failed` `{error, stage}` — boot threw; `stage` is where.
 - `sandbox.fs.seed_timeout` `{ms, source_files}` — the file-seed run inside
-  `mounting files…` hit `SEED_TIMEOUT_MS` (45 s); the boot **continued**
-  partially seeded (files may be missing until the next boot). Warn-level.
+  `mounting files…` hit `SEED_TIMEOUT_MS` (45 s); the boot **continued** while
+  the guest seed keeps extracting in the background (CheerpX can't kill it —
+  its completion stays TRACKED, see `seed_late_done`). Warn-level.
   Before 2026-07-17 a slow seed instead rode all the way to `boot_timeout`
   ("boot timed out at mounting files…", chat_logs #515).
+- `sandbox.fs.seed_late_done` `{ms, exit}` — the background seed a
+  `seed_timeout` abandoned finally finished; `ms` is its true total duration
+  (how slow the guest really was) and a 0 `exit` means the /src stamp got
+  written, so the NEXT boot's seed skips extraction entirely. Info-level.
+- `sandbox.exec_seed_busy` `{waited_ms, command}` — a command wanted to run
+  while the background seed was still extracting; execInSandbox waited its own
+  ceiling for it and gave up **without tearing the VM down** (the instance is
+  healthy, just busy). The command returns exit 124 with a "still preparing
+  mounted files" stderr; the loop ends fail-soft, and a later send hits the
+  now-stamped fast path. Before 2026-07-17 the command instead RACED the seed
+  on the single-threaded VM and wedged into `exec_timeout` + teardown
+  (chat_logs #522: `ls -l /src` at 30 s, fs.ms 61914). warn-level.
+- `sandbox.seed_wedged` `{ms, command}` — the background seed has been running
+  longer than `SEED_WEDGE_MS` (180 s): declared genuinely wedged, VM discarded
+  (`resetSandbox("seed_wedged")`), exit 124. warn-level.
 - `sandbox.boot_timeout` `{stage, ms}` — the boot exceeded `BOOT_TIMEOUT_MS`
   (90 s) without resolving — a genuine hang (a disk/CDN fetch that never
   returns, e.g. a privacy browser like **Firefox Focus** that blocks the CheerpX
@@ -136,7 +152,10 @@ with `user_id`, `ua`):
   execution-sandbox skill's COEP section).
 - `sandbox.boot_done` `{ms, files, bytes, project}` — success.
 - `sandbox.exec_timeout` `{ms, command}` — a boot SUCCEEDED but a single guest
-  command ran past `EXEC_TIMEOUT_MS` (30 s) and was treated as wedged. Distinct
+  command ran past its ceiling and was treated as wedged. The ceiling is
+  `DEFAULT_EXEC_TIMEOUT_MS` (30 s, bash-core.js) — or LESS when the user's
+  research time budget scopes it down (`execTimeoutForBudget`: a 15 s question
+  caps each command at 15 s, floored at 5 s; `ms` is the ceiling used). Distinct
   from a boot hang: the VM is up, the label sits on `Sandbox › $ <command>` (the
   command was fed to the backdrop but never returned its output). Cause is a
   guest read that blocks forever — a mount/device stall on some environments

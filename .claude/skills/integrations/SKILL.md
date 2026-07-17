@@ -858,10 +858,20 @@ call, alongside the Shodan enrichment).
 ## Hugging Face Hub search — a search-phase source (no knob)
 
 `src/hf.js` + `src/pipeline.js`'s `maybeHfSearch`: when the latest user
-message EXPLICITLY targets Hugging Face (`hfIntent` — "hugging face" /
-"huggingface" / hf.co / a bare "HF" word (requested 2026-07-08; the
-HF-radio false positive is an accepted tradeoff — free, fail-soft, junk
-goes uncited); an org/name path alone is NOT enough), each search wave also queries the HF Hub API and
+message targets Hugging Face (`hfIntent` — "hugging face" / "huggingface" /
+hf.co / a bare "HF" word (requested 2026-07-08; the HF-radio false positive
+is an accepted tradeoff — free, fail-soft, junk goes uncited); an org/name
+path alone is NOT enough. WIDENED 2026-07-17 after a live miss ("Tell me
+about the bonsai 1bit models" ran web-only though every primary source was
+an hf.co model card): hub-IMPLIED vocabulary now fires too — standalone
+ecosystem tokens (gguf/ggml/safetensors/llama.cpp/gptq/awq/exl2/mlx/bitnet)
+alone, and quantization/open-weight phrasing ("1bit", "4-bit", "1-bitars",
+quantized/kvantiserade, open weights/öppna vikter, (q)lora) only when
+co-occurring with a model-artifact word (model(s)/llm(s)/modell(er/erna)/
+språkmodell…/weights/vikter/checkpoint) so "climate models" and "64-bit
+Windows" stay out; LoRa-the-IoT-protocol + a model word is the accepted
+new false positive, same rationale as HF radio; EN+SV parity tested in
+hf.test.js), each search wave also queries the HF Hub API and
 the hits join the numbered source registry as ordinary citable sources.
 Unlike Shodan/Maps there is NO settings knob: like Exa, only the AI-derived
 search terms cross the wire (never the conversation or identity), the API is

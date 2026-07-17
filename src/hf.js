@@ -1,7 +1,8 @@
 // @ts-check
 // Hugging Face Hub search — a search-phase source for the research pipeline.
 //
-// When a research question explicitly targets Hugging Face (hfIntent), each
+// When a research question targets Hugging Face — explicitly, or implicitly
+// via open-model-ecosystem vocabulary (hfIntent, see its comment) — each
 // search wave ALSO queries the HF Hub API alongside Exa, and the hits (models,
 // datasets, papers — each with its live metadata) join the numbered source
 // registry as ordinary citable sources. Wired the same deterministic,
@@ -71,9 +72,39 @@ const MAX_PAPERS = 3;
 // synthesis's source-grounding absorb. A bare org/name path remains NOT
 // enough — no reliable way to distinguish it from a file path or package
 // name without a lookup.
+//
+// WIDENED 2026-07-17 (live miss, owner report): "Tell me about the bonsai
+// 1bit models" ran a 5-search web-only session although every primary
+// source was a huggingface.co model card (prism-ml/Bonsai-*) — the hub
+// itself never fired because the message doesn't name Hugging Face. Real
+// demand per the add-research-source widening rule, so hub-IMPLIED
+// vocabulary now fires too:
+// - Standalone hub-ecosystem tokens that essentially only mean "open
+//   model weights": gguf/ggml/safetensors/llama.cpp/gptq/awq/exl2/mlx/
+//   bitnet. These fire alone.
+// - Quantization / open-weight phrasing ("1bit", "4-bit", "1-bitars",
+//   "quantized", "kvantiserade", "open weights", "öppna vikter", lora/
+//   qlora) fires only WITH a model-artifact word (model(s)/llm(s)/
+//   modell(er/erna)/språkmodell…/weights/vikter/checkpoint) — the
+//   co-occurrence keeps "64-bit Windows" and "climate models" out.
+// Accepted tradeoffs, same rationale as HF radio: "LoRa" the IoT protocol
+// plus a "models" word, or "64-bit models of CPUs", fire a free fail-soft
+// hub search whose junk goes uncited. Swedish forms carry the same breadth
+// as English (invariant 6), parity-tested in hf.test.js.
+const HF_STRONG =
+  /\bgguf\b|\bggml\b|\bsafetensors\b|llama[.\s]?cpp\b|\bgptq\b|\bawq\b|\bexl2\b|\bmlx\b|\bbitnet\b/i;
+const HF_MODEL_WORD =
+  /\b(?:models?|llms?|språkmodell(?:er(?:na)?|en)?|modell(?:er(?:na)?|en)?|weights|vikter(?:na)?|checkpoints?)\b/i;
+const HF_HUB_WORD =
+  // NB: no \b before "öppna" — JS \b is ASCII-word-based and never matches
+  // before "ö", so a leading boundary there would make the branch dead.
+  /\b\d{1,2}[\s-]?bit(?:ars)?\b|\bquanti[sz](?:ed|ation)\b|\bkvantiser(?:ad|ade|at|ing(?:en)?)\b|\bopen[- ]weights?\b|öppna vikter(?:na)?\b|\bmodellvikter(?:na)?\b|\bq?lora\b/i;
 /** @param {unknown} text */
 export function hfIntent(text) {
-  return /hugging\s*face|huggingface|hf\.co\b|\bhf\b/i.test(String(text || ""));
+  const s = String(text || "");
+  if (/hugging\s*face|huggingface|hf\.co\b|\bhf\b/i.test(s)) return true;
+  if (HF_STRONG.test(s)) return true;
+  return HF_MODEL_WORD.test(s) && HF_HUB_WORD.test(s);
 }
 
 // Noise words stripped before the name-substring search: platform words
@@ -110,6 +141,21 @@ const NOISE = new Set([
   "trends", "trend", "discussions", "discussion", "debates", "debate",
   "breakthroughs", "breakthrough", "innovations", "innovation",
   "challenges", "challenge", "developments", "development",
+  // Tell-me-about phrasing (the 2026-07-17 hub-implied widening means such
+  // messages now reach the term extractor directly): "Tell me about the
+  // bonsai 1bit models" must reduce to the subject terms, and the triage
+  // round's survey angles ("… overview") must not rank "overview" as the
+  // distinctive single term (same junk vector as "variants"/"reviews").
+  // Swedish forms per invariant 6 — triage writes queries in the
+  // conversation's language ("Berätta om bonsai 1bit-modellerna").
+  "tell", "me", "about", "please", "overview", "introduction", "explain",
+  "explained", "describe", "details", "info", "information",
+  "berätta", "om", "mig", "vad", "vilka", "vilken", "vilket", "är", "de",
+  "den", "det", "och", "eller", "en", "ett", "på", "för", "med", "av",
+  "som", "hur", "mest", "bästa", "senaste", "nya", "nyaste", "populära",
+  "populäraste", "finns", "lista", "sök", "jämför", "jämförelse",
+  "recension", "recensioner", "översikt", "nyheter", "modell", "modeller",
+  "modellerna", "modellen",
 ]);
 
 /**

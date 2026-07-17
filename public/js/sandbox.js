@@ -41,6 +41,8 @@ import {
 import { feedCommand, feedResult, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
+  DEFAULT_EXEC_TIMEOUT_MS,
+  MIN_EXEC_TIMEOUT_MS,
   OUTBOX_PATH,
   base64ToBytes,
   concatChunks,
@@ -493,6 +495,22 @@ const BOOT_TIMEOUT_MS = 90000;
 // leaves the boot ceiling room for the earlier stages it already passed.
 const SEED_TIMEOUT_MS = 45000;
 
+// CheerpX cannot kill a guest process, so a seed that outlives SEED_TIMEOUT_MS
+// is only ABANDONED by the boot — it keeps extracting in the background. These
+// track that background run so execInSandbox can WAIT for it instead of racing
+// it on the single-threaded VM: chat_logs #522 (iOS, fs.ms 61914) was
+// `ls -l /src` running concurrently with the still-extracting, just-rm-rf'd
+// /src seed — the exec crawled into its 30 s ceiling, exit 124, teardown.
+// _seedSettled flips true when the guest seed process actually exits (however
+// late); _seedPromise is that completion; _seedStartedAt anchors the wedge cap.
+let _seedPromise = /** @type {Promise<any> | null} */ (null);
+let _seedSettled = true;
+let _seedStartedAt = 0;
+// A background seed older than this is declared wedged (not merely slow) the
+// next time a command needs the VM — the instance is discarded like any other
+// wedged exec. Generous: a phone's cold-binary tar over ~6 MB measured ~60 s.
+const SEED_WEDGE_MS = 180000;
+
 /**
  * Race a boot against BOOT_TIMEOUT_MS. On timeout, log it, tear down the wedged
  * boot, and resolve false (the fail-soft outcome). A real boot rejection still
@@ -549,6 +567,11 @@ export function resetSandbox(reason = "") {
   _bootBare = false;
   _bootHadFiles = false;
   _bootHadSource = false;
+  // The old VM's background seed (if any) dies with the instance — a fresh
+  // boot starts its own seed and must not wait on the abandoned one.
+  _seedPromise = null;
+  _seedSettled = true;
+  _seedStartedAt = 0;
   try { if (typeof window !== "undefined") /** @type {any} */ (window).__DR_SANDBOX = null; } catch { /* ignore */ }
   sblog("info", "sandbox.reset", { reason: String(reason || "").slice(0, 80), gen: _bootGen });
   flushSandboxLog();
@@ -1015,16 +1038,41 @@ async function seedFiles(fm) {
   // binaries on a phone) must degrade to a partially seeded — but LIVE —
   // sandbox, never eat the whole 90s boot ceiling and kill the boot
   // ("boot timed out at mounting files…", chat_logs #515). On timeout the
-  // run is abandoned (it may still finish in the background) and boot
-  // proceeds; worst case some files are missing until the next boot.
+  // BOOT proceeds, but the guest process cannot be killed and keeps running —
+  // so its completion is TRACKED (_seedPromise/_seedSettled) rather than
+  // dropped: execInSandbox waits for it before running the first command,
+  // because a command racing the extraction on the single-threaded VM is the
+  // chat_logs #522 wedge (`ls -l /src` at 30 s → exit 124 → teardown).
   let seedTimedOut = false;
-  const r = await Promise.race([
-    cx.run("/bin/sh", ["-c", full], {
+  _seedSettled = false;
+  _seedStartedAt = Date.now();
+  const seedRun = cx
+    .run("/bin/sh", ["-c", full], {
       env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
       cwd: "/root",
       uid: 0,
       gid: 0,
-    }),
+    })
+    .then(
+      (res) => res,
+      () => null,
+    )
+    .then((res) => {
+      _seedSettled = true;
+      if (seedTimedOut) {
+        // The abandoned seed finally finished — the log closes the loop on how
+        // late it really was (and whether the stamp got written for next boot).
+        sblog("info", "sandbox.fs.seed_late_done", {
+          ms: Date.now() - _seedStartedAt,
+          exit: res && Number.isFinite(res.status) ? res.status : null,
+        });
+        flushSandboxLog();
+      }
+      return res;
+    });
+  _seedPromise = seedRun;
+  const r = await Promise.race([
+    seedRun,
     new Promise((resolve) => setTimeout(() => { seedTimedOut = true; resolve(null); }, SEED_TIMEOUT_MS)),
   ]);
   if (seedTimedOut) {
@@ -1128,7 +1176,10 @@ export async function collectDeliverables() {
 // whole request hangs with no answer and nothing logged (the "stuck at
 // $ cat …" symptom). Kept well under a typical request budget so a hung command
 // fails soft with room left for synthesis. Mirrors the boot's withBootTimeout.
-const EXEC_TIMEOUT_MS = 30000;
+// The value lives in bash-core.js (DEFAULT_EXEC_TIMEOUT_MS) so the budget
+// clamp (execTimeoutForBudget) and this executor can never disagree; callers
+// with a user time scope pass a smaller ceiling via opts.timeoutMs.
+const EXEC_TIMEOUT_MS = DEFAULT_EXEC_TIMEOUT_MS;
 
 // Run one command and capture {exitCode, stdout, stderr}. Serialized through
 // execQueue so concurrent calls don't stomp the shared custom console. Uses a
@@ -1136,9 +1187,17 @@ const EXEC_TIMEOUT_MS = 30000;
 // interactive shell emits. Ported from the aisl terminal integration.
 /**
  * @param {string} command
+ * @param {{ timeoutMs?: number }} [opts] optional per-command ceiling override
+ *   (already in ms — stream.js/drc-research.js derive it from the user's
+ *   research time budget via bash-core's execTimeoutForBudget). Clamped to
+ *   [MIN_EXEC_TIMEOUT_MS, EXEC_TIMEOUT_MS]; absent/invalid keeps the default.
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string }>}
  */
-export function execInSandbox(command) {
+export function execInSandbox(command, opts = {}) {
+  const requested = Number(opts && opts.timeoutMs);
+  const timeoutMs = Number.isFinite(requested) && requested > 0
+    ? Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(EXEC_TIMEOUT_MS, Math.round(requested)))
+    : EXEC_TIMEOUT_MS;
   const run = async () => {
     if (vmState !== "ready" || !cx) {
       // The VM isn't live when a command tries to run. This should no longer
@@ -1162,6 +1221,39 @@ export function execInSandbox(command) {
     // throws — it's decoration). "shell" is the default single-agent channel;
     // multiple agents each pass their own id and the layer clips between them.
     feedCommand("shell", command);
+    // A boot's over-budget seed keeps extracting in the background (CheerpX
+    // can't kill it) — running this command NOW would race it on the single-
+    // threaded VM and wedge (chat_logs #522). Wait for the seed up to this
+    // command's own ceiling; if it settles, run normally with a fresh ceiling.
+    // If it doesn't, fail soft WITHOUT tearing the VM down — the instance is
+    // healthy and still seeding, and the stamp guard makes the next attempt
+    // cheap — unless the seed is old enough to be declared wedged outright.
+    if (!_seedSettled && _seedPromise) {
+      if (Date.now() - _seedStartedAt > SEED_WEDGE_MS) {
+        sblog("warn", "sandbox.seed_wedged", { ms: Date.now() - _seedStartedAt, command: String(command).slice(0, 120) });
+        flushSandboxLog();
+        try { resetSandbox("seed_wedged"); } catch { /* ignore */ }
+        const res = { exitCode: 124, stdout: "", stderr: "sandbox file seeding never finished" };
+        try { feedResult("shell", res); } catch { /* decoration */ }
+        return res;
+      }
+      let seedStillRunning = false;
+      await Promise.race([
+        _seedPromise,
+        new Promise((resolve) => setTimeout(() => { seedStillRunning = true; resolve(null); }, timeoutMs)),
+      ]);
+      if (seedStillRunning && !_seedSettled) {
+        sblog("warn", "sandbox.exec_seed_busy", { waited_ms: timeoutMs, command: String(command).slice(0, 120) });
+        flushSandboxLog();
+        const res = {
+          exitCode: 124,
+          stdout: "",
+          stderr: "sandbox is still preparing its mounted files (seeding) — try again in a moment",
+        };
+        try { feedResult("shell", res); } catch { /* decoration */ }
+        return res;
+      }
+    }
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     // The marker+base64 envelope (incl. the RC-before-any-pipe fix) is the
     // pure codec in bash-core.js — this side only owns the VM/console plumbing.
@@ -1174,10 +1266,11 @@ export function execInSandbox(command) {
     };
     const chunks = [];
     cx.setCustomConsole((buf) => chunks.push(new Uint8Array(buf)), 1024, 24);
-    // Race the command against EXEC_TIMEOUT_MS. On timeout tear the (wedged,
-    // single-threaded) VM down so the next exec can't run on a corrupt state,
-    // and return a fail-soft result so runShellLoop ends and synthesis still
-    // runs with the transcript gathered so far — never leave the request hung.
+    // Race the command against its ceiling (the default, or the caller's
+    // budget-scoped override). On timeout tear the (wedged, single-threaded)
+    // VM down so the next exec can't run on a corrupt state, and return a
+    // fail-soft result so runShellLoop ends and synthesis still runs with the
+    // transcript gathered so far — never leave the request hung.
     let timedOut = false;
     const running = (async () => {
       try {
@@ -1190,10 +1283,10 @@ export function execInSandbox(command) {
     })();
     const outcome = await Promise.race([
       running.then(() => "ok", () => "ok"),
-      new Promise((resolve) => setTimeout(() => { timedOut = true; resolve("timeout"); }, EXEC_TIMEOUT_MS)),
+      new Promise((resolve) => setTimeout(() => { timedOut = true; resolve("timeout"); }, timeoutMs)),
     ]);
     if (outcome === "timeout") {
-      sblog("warn", "sandbox.exec_timeout", { ms: EXEC_TIMEOUT_MS, command: String(command).slice(0, 120) });
+      sblog("warn", "sandbox.exec_timeout", { ms: timeoutMs, command: String(command).slice(0, 120) });
       flushSandboxLog();
       // A command that wedged reading /workspace is the corrupt-persistent-volume
       // signature (a stat over inconsistent ext2-in-IndexedDB metadata that never
@@ -1206,7 +1299,7 @@ export function execInSandbox(command) {
       }
       // CheerpX has no abort — discard the wedged instance so a later send re-boots.
       try { resetSandbox("exec_timeout"); } catch { /* ignore */ }
-      const timeoutRes = { exitCode: 124, stdout: "", stderr: `command timed out after ${Math.round(EXEC_TIMEOUT_MS / 1000)}s` };
+      const timeoutRes = { exitCode: 124, stdout: "", stderr: `command timed out after ${Math.round(timeoutMs / 1000)}s` };
       try { feedResult("shell", timeoutRes); } catch { /* decoration */ }
       return timeoutRes;
     }

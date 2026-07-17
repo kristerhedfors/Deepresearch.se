@@ -52,6 +52,28 @@ export const MAX_COMMAND_CHARS = 2000; // a single command line is clamped to th
 // gives the connection up for stalled (the 2026-07-13 iOS "stream stalled"
 // failure); a single wedged command is caught faster by the teardown check below.
 export const MAX_SHELL_WALL_MS = 120000;
+// The default per-command ceiling the executor races every guest command
+// against (public/js/sandbox.js execInSandbox), and its floor when scoped
+// down. Defined HERE (not in sandbox.js) so the budget clamp below and both
+// tiers' drivers agree on the numbers without importing browser glue.
+export const DEFAULT_EXEC_TIMEOUT_MS = 30000;
+export const MIN_EXEC_TIMEOUT_MS = 5000;
+
+/**
+ * Scope the per-command exec ceiling to the user's research time budget.
+ * A question scoped to 15 s must not sit 30 s on one wedged command
+ * (chat_logs #522: budget_s 15, `ls -l /src` timed out at the fixed 30 s) —
+ * the ceiling becomes min(budget, default), floored at MIN_EXEC_TIMEOUT_MS so
+ * a tiny budget still lets a real command finish. No/invalid budget keeps the
+ * default — behavior is byte-identical for callers that never had a budget.
+ * @param {number | null | undefined} budgetS research time budget in seconds
+ * @returns {number} the per-command timeout in ms
+ */
+export function execTimeoutForBudget(budgetS) {
+  const n = Number(budgetS);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_EXEC_TIMEOUT_MS;
+  return Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(DEFAULT_EXEC_TIMEOUT_MS, Math.round(n * 1000)));
+}
 
 // ---- intent gate ----------------------------------------------------------
 

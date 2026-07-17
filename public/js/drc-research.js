@@ -36,6 +36,7 @@ import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun, providerErrorD
 import {
   buildShellTranscript,
   buildStepUserMessage,
+  execTimeoutForBudget,
   formatShellResult,
   normalizeExecResult,
   parseShellRequest,
@@ -394,9 +395,13 @@ function emitChunked(text, onDelta) {
 // message the model judges not to need a shell pays one cheap model call and
 // never boots the VM. `sandbox` is injectable for tests; defaults to the real
 // public/js/sandbox.js bridge.
-async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider }) {
+async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider, budgetS }) {
   const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
   if (!sb.supported()) return [];
+  // The /cure slider's research budget scopes the per-command ceiling, same
+  // as DRS (stream.js): a 15 s question must not sit 30 s on one wedged
+  // command. Injected test sandboxes just ignore the extra options argument.
+  const execTimeoutMs = execTimeoutForBudget(budgetS);
   return runShellLoop({
     step: async (transcript) => {
       const userMsg = buildStepUserMessage({
@@ -416,7 +421,7 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
       if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };
       return parseShellRequest(await readStream(res, () => {}, provider.streamIdleMs));
     },
-    exec: (command) => sb.exec(command),
+    exec: (command) => sb.exec(command, { timeoutMs: execTimeoutMs }),
     ensureReady: async () => {
       onStatus({ type: "phase", phase: "sandbox" });
       // The optional provider mounts files into the VM at boot (introspection
@@ -687,7 +692,7 @@ export async function runDrcResearch({
   let shellBlock = "";
   if (bash) {
     try {
-      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider });
+      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider, budgetS });
       shellBlock = buildShellTranscript(transcript);
     } catch {
       shellBlock = "";
