@@ -8,7 +8,10 @@ description: >-
   the /pulse allowlist entry in src/assets.js. Covers regenerating the dataset
   from git, the curate-summaries-and-feature-counts pass, how the three series
   (commits / lines / features) are counted, the day/week/month rollup, and
-  committing + pushing so the deploy serves the fresh data.
+  committing + pushing so the deploy serves the fresh data. ALSO the sibling
+  Feature focus timeline (/pulse/timeline.html + scripts/pulse-themes.mjs +
+  build-pulse-timeline.mjs + timeline.json): the subject-taxonomy tagger and the
+  multi-line / streamgraph of where feature-focus went over time.
 ---
 
 # Updating Project pulse (the commit-analytics dashboard)
@@ -118,3 +121,29 @@ consistent at every resolution.
   too, never colour alone.
 - Keep `/pulse/` on the `isPublicAsset` allowlist in `src/assets.js` — without
   it the page and dataset 401 and neither tier can open them.
+
+## Sibling: the Feature focus timeline (`/pulse/timeline.html`)
+
+A second page under `/pulse` charts *which feature sets* the commits were about
+over time — subjects (Linux sandbox, Hugging Face, on-device inference, …)
+rising, competing, and fading — so you can see where focus (and, by churn,
+roughly where tokens) went. It is fed by its own committed dataset and is
+independent of `data.json` (nothing here needs re-curation):
+
+| File | Role |
+|---|---|
+| `scripts/pulse-themes.mjs` | The SUBJECT taxonomy (key/label/colour/blurb + a RegExp per subject) and `tagCommit(subject)` → **zero-to-many** subject keys. Pure; unit-tested. |
+| `scripts/pulse-themes.test.mjs` | Runs in `npm test` (the glob now includes `scripts/*.test.mjs`). Guards distinct colours + representative subject-line → tag cases. |
+| `scripts/build-pulse-timeline.mjs` | `npm run pulse:timeline`. Tags every commit, emits `timeline.json` (`subjects[]` registry + per-commit `{t,a,r,s}` + per-subject totals). `--audit` prints tag coverage, writes nothing. |
+| `public/pulse/timeline.json` | The committed dataset (like `data.json`, it rides in the introspection source-snapshot, so re-run `npm run bundle`/`bundle:rag` after regenerating). |
+| `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, legend toggles, tooltip, table fallback. Light + dark. |
+
+To refresh it: `npm run pulse:timeline`, eyeball `--audit` coverage (target
+untagged < ~15%; the tail is genuinely theme-less chore/meta commits), and if a
+whole class of commits is mis-tagged, fix the **patterns** in `pulse-themes.mjs`
+(add Swedish forms alongside English), never the emitted data. Colours are
+entity-stable per subject (never rank-coloured); identity is always carried by
+the legend + direct end-labels + the table view, so >8 simultaneously-visible
+series stays legible (the page defaults to the busiest six). The shallow session
+clone only sees recent days — `git fetch --unshallow origin` first for the full
+range. Same `/pulse/` allowlist covers it.

@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — feature focus timeline</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#6fc3fd">
+  <meta name="description" content="Which feature sets DeepResearch.se's commits were about, over time — competing subjects rising, overlapping and fading as focus moves. Zoomable, scrollable, in commits or lines-changed.">
+  <style>
+    /* Same blue docs surface as /pulse, /architecture, /build, /story, with a
+       selected dark mode. Series hues come from the dataset (entity-stable per
+       subject); identity is always carried by the legend + direct end-labels +
+       the table view, never colour alone. */
+    :root {
+      --bg: #6fc3fd; --panel: #f2f9ff; --panel-2: #e2f1ff; --border: #8ec4ec;
+      --text: #0a2e5c; --muted: #2f5d8e; --accent: #0d4fa0;
+      --surface: #fcfcfb; --grid: #e1e0d9; --axis: #c3c2b7; --ink-muted: #6b7a8d;
+      --untagged: #b9c0ca;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1f33; --panel: #10263d; --panel-2: #163049; --border: #24425f;
+        --text: #dce9f7; --muted: #9db9d6; --accent: #7fb4ee;
+        --surface: #12212f; --grid: #21374d; --axis: #35516d; --ink-muted: #9db0c4;
+        --untagged: #3a4b5e;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem; line-height: 1.5;
+    }
+    main { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    .sub { color: var(--muted); font-size: .82rem; margin: .2rem 0 0; max-width: 62ch; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    @media (prefers-color-scheme: dark) {
+      a.back { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+    }
+    section { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.15rem; }
+    h2 { font-size: 1.02rem; margin: .1rem 0 .6rem; }
+    p, li { font-size: .9rem; }
+    .muted { color: var(--muted); }
+
+    /* Control bar: the "dimensions" — metric, mode — plus zoom hints. */
+    .controls { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .6rem; }
+    .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+    .seg button {
+      border: 0; background: transparent; color: var(--muted); font: inherit;
+      font-size: .82rem; font-weight: 600; padding: .35rem .75rem; border-radius: 7px; cursor: pointer;
+    }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .seg .lbl { color: var(--ink-muted); font-size: .72rem; font-weight: 600; padding: .35rem .15rem .35rem .5rem; text-transform: uppercase; letter-spacing: .04em; align-self: center; }
+    .spacer { flex: 1 1 auto; }
+    .ghostbtn { border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font: inherit; font-size: .8rem; font-weight: 600; padding: .4rem .7rem; border-radius: 8px; cursor: pointer; }
+    .ghostbtn:disabled { opacity: .4; cursor: default; }
+
+    .plotwrap { position: relative; }
+    svg.chart { width: 100%; height: auto; display: block; overflow: visible; touch-action: none; cursor: grab; }
+    svg.chart.dragging { cursor: grabbing; }
+    svg.overview { width: 100%; height: auto; display: block; overflow: visible; touch-action: none; cursor: crosshair; margin-top: .3rem; }
+    .axis-line { stroke: var(--axis); stroke-width: 1; }
+    .grid-line { stroke: var(--grid); stroke-width: 1; }
+    .y-lbl { fill: var(--ink-muted); font-size: 11px; text-anchor: end; font-variant-numeric: tabular-nums; }
+    .x-lbl { fill: var(--ink-muted); font-size: 11px; text-anchor: middle; }
+    .series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .series-area { stroke: none; }
+    .end-lbl { font-size: 11px; font-weight: 700; dominant-baseline: middle; }
+    .crosshair { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: .0; }
+    .brush-win { fill: var(--accent); fill-opacity: .12; stroke: var(--accent); stroke-width: 1.2; cursor: move; }
+    .brush-h { fill: var(--accent); fill-opacity: .55; cursor: ew-resize; }
+    .ov-label { fill: var(--ink-muted); font-size: 10px; }
+
+    /* Legend — the identity channel; click a chip to show/hide its line. */
+    .legend { display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin: .7rem 0 .1rem; }
+    .legchip {
+      display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--border);
+      background: var(--panel-2); border-radius: 999px; padding: .28rem .6rem .28rem .5rem;
+      font-size: .78rem; font-weight: 600; cursor: pointer; user-select: none; color: var(--text);
+    }
+    .legchip .sw { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.12) inset; }
+    .legchip .ct { color: var(--ink-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .legchip[aria-pressed="false"] { opacity: .42; }
+    .legchip[aria-pressed="false"] .sw { background: var(--ink-muted) !important; }
+    .legtools { display: flex; gap: .35rem; margin: .55rem 0 0; flex-wrap: wrap; }
+    .legtools .ghostbtn { font-size: .74rem; padding: .28rem .55rem; }
+
+    /* Tooltip */
+    #tip {
+      position: fixed; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .1s;
+      background: var(--text); color: var(--panel); border-radius: 8px; padding: .45rem .6rem;
+      font-size: .76rem; line-height: 1.4; max-width: 260px; box-shadow: 0 6px 20px rgba(0,0,0,.28);
+    }
+    #tip .tt { font-weight: 700; margin-bottom: .2rem; }
+    #tip .row { display: flex; align-items: center; gap: .4rem; white-space: nowrap; }
+    #tip .row .sw { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+    #tip .row .v { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; }
+    #tip .more { color: var(--panel); opacity: .7; margin-top: .15rem; }
+
+    /* Table view */
+    table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    th, td { text-align: right; padding: .32rem .5rem; border-bottom: 1px solid var(--border); }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
+    td.name { display: flex; align-items: center; gap: .45rem; }
+    td .sw { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; }
+    td.num { font-variant-numeric: tabular-nums; }
+    .bar-cell { position: relative; }
+    .bar-cell .bar { position: absolute; left: .5rem; bottom: 3px; height: 3px; border-radius: 2px; opacity: .8; }
+
+    .loading, .error { color: var(--muted); font-size: .88rem; }
+    .error { color: #c0392b; }
+    footer { color: var(--muted); font-size: .78rem; text-align: center; }
+    footer a { color: var(--accent); }
+    .hint { color: var(--ink-muted); font-size: .76rem; margin: .45rem 0 0; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>Feature focus timeline</h1>
+      <p class="sub" id="range">Which feature sets the commits were about, over time — subjects rising, competing for attention, and fading as focus moves.</p>
+    </div>
+    <a class="back" href="/pulse/">← Pulse</a>
+  </div>
+
+  <section>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Metric">
+        <span class="lbl">Weigh by</span>
+        <button type="button" data-metric="commits" aria-pressed="true">Commits</button>
+        <button type="button" data-metric="lines" aria-pressed="false">Lines changed</button>
+      </div>
+      <div class="seg" role="group" aria-label="View mode">
+        <span class="lbl">Show as</span>
+        <button type="button" data-mode="lines" aria-pressed="true">Lines</button>
+        <button type="button" data-mode="stream" aria-pressed="false">Stream</button>
+      </div>
+      <div class="spacer"></div>
+      <button type="button" class="ghostbtn" id="resetZoom" disabled>Reset zoom</button>
+      <button type="button" class="ghostbtn" id="tableToggle" aria-pressed="false">Table</button>
+    </div>
+
+    <div class="plotwrap" id="plotwrap">
+      <div id="chart"><p class="loading">Loading timeline…</p></div>
+      <svg class="overview" id="overview" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+    <p class="hint" id="hint">Scroll / pinch to zoom · drag the plot to pan · drag the strip below to frame a window · click a subject to toggle its line.</p>
+
+    <div class="legtools">
+      <button type="button" class="ghostbtn" id="legTop">Top 6</button>
+      <button type="button" class="ghostbtn" id="legAll">All</button>
+      <button type="button" class="ghostbtn" id="legNone">None</button>
+    </div>
+    <div class="legend" id="legend"></div>
+
+    <div id="tableView" hidden style="margin-top:.8rem"></div>
+  </section>
+
+  <section>
+    <h2>How to read this</h2>
+    <p class="muted" style="margin:.1rem 0 .5rem">
+      Every commit is tagged with the feature sets its message mentions — <b>zero, one, or several</b>.
+      Each colored series is one subject; its height at a point in time is how much of that
+      period's work touched it. <b>Lines</b> compares subjects head-to-head; <b>Stream</b> shows the
+      share of total focus (a multi-subject commit is split across its tags). Weigh by raw
+      <b>commits</b>, or by <b>lines changed</b> as a rough proxy for how much work — and how many
+      tokens — a theme absorbed. It's a keyword heuristic over commit subjects, so read it as the
+      shape of attention, not an exact ledger.
+    </p>
+  </section>
+
+  <footer>
+    Derived from the git history of
+    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener">this repository</a>.
+    <span id="gen"></span>
+  </footer>
+</main>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script type="module">
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => Math.round(n).toLocaleString("en-US");
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const HOUR = 3600e3, DAY = 24 * HOUR;
+
+  // ---- theme-aware series colours ----------------------------------------
+  // The dataset carries a light-mode hex per subject; lift it onto the dark
+  // surface by mixing toward white so identity stays stable in both themes.
+  const isDark = () => {
+    const t = document.documentElement.getAttribute("data-theme");
+    if (t === "dark") return true; if (t === "light") return false;
+    return matchMedia("(prefers-color-scheme: dark)").matches;
+  };
+  const hexToRgb = (h) => [1,3,5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const rgbToHex = (r) => "#" + r.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  const mix = (hex, target, t) => rgbToHex(hexToRgb(hex).map((c, i) => c + (target[i] - c) * t));
+  const seriesColor = (hex) => isDark() ? mix(hex, [255,255,255], 0.24) : hex;
+
+  // ---- state -------------------------------------------------------------
+  let DATA = null;
+  let COMMITS = [];             // { ms, a, r, s:[keys] } wall-clock ms, oldest→newest
+  let SUBJ = new Map();         // key → { key,label,color,blurb }
+  let ORDER = [];               // subject keys in registry (stacking) order
+  let FULL = [0, 1];            // [minMs, maxMs] wall-clock
+  let view = [0, 1];            // visible [t0, t1]
+  let metric = "commits";
+  let mode = "lines";
+  let visible = new Set();      // subject keys currently drawn
+  let showTable = false;
+  let curBuckets = null;        // last-rendered buckets (for the tooltip)
+
+  // Wall-clock ms from an ISO that already carries the CET offset: read the
+  // local components straight off the string so bucketing matches /pulse.
+  const wallMs = (iso) => {
+    const y = +iso.slice(0,4), mo = +iso.slice(5,7)-1, d = +iso.slice(8,10);
+    const h = +iso.slice(11,13), mi = +iso.slice(14,16), s = +iso.slice(17,19);
+    return Date.UTC(y, mo, d, h, mi, s);
+  };
+  const metricOf = (c) => (metric === "commits" ? 1 : c.a + c.r);
+
+  // ---- bucketing ---------------------------------------------------------
+  const STEPS = [HOUR, 2*HOUR, 3*HOUR, 6*HOUR, 12*HOUR, DAY, 2*DAY, 7*DAY];
+  function pickStep(span) {
+    for (const st of STEPS) if (span / st <= 56) return st;
+    return STEPS[STEPS.length - 1];
+  }
+  // Bucket every commit in [t0,t1] into fixed-width bins aligned to FULL[0]'s day.
+  function buildBuckets(t0, t1) {
+    const step = pickStep(t1 - t0);
+    const anchor = Math.floor(FULL[0] / DAY) * DAY;
+    const i0 = Math.floor((t0 - anchor) / step);
+    const i1 = Math.floor((t1 - anchor) / step);
+    const buckets = [];
+    for (let i = i0; i <= i1; i++) {
+      const b0 = anchor + i * step;
+      buckets.push({ t0: b0, t1: b0 + step, mid: b0 + step / 2, step, per: Object.create(null), total: 0, untagged: 0, commits: 0 });
+    }
+    for (const c of COMMITS) {
+      if (c.ms < buckets[0].t0 || c.ms >= buckets[buckets.length - 1].t1) continue;
+      const bi = Math.floor((c.ms - anchor) / step) - i0;
+      const b = buckets[bi]; if (!b) continue;
+      b.commits += 1;
+      const v = metricOf(c);
+      b.total += v;
+      if (!c.s.length) { b.untagged += v; continue; }
+      // Lines mode: full weight to each tag (overlap is fine — it's attention,
+      // not a partition). Stream mode: split so the stack sums to the real total.
+      const share = mode === "stream" ? v / c.s.length : v;
+      for (const k of c.s) b.per[k] = (b.per[k] || 0) + share;
+    }
+    return buckets;
+  }
+
+  // ---- scales ------------------------------------------------------------
+  const VW = 1000, LP = 46, RP = 96, TP = 12, PLOT_H = 300;
+  const plotW = VW - LP - RP, plotBottom = TP + PLOT_H, plotTop = TP;
+  const xOf = (ms) => LP + ((ms - view[0]) / (view[1] - view[0])) * plotW;
+  const msOf = (px) => view[0] + ((px - LP) / plotW) * (view[1] - view[0]);
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const pow = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]) { const c = m * pow; if (c >= v) return c; }
+    return 10 * pow;
+  }
+  const svgTag = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+  function xTicks(buckets) {
+    const span = view[1] - view[0];
+    const showTime = buckets[0].step < DAY;
+    const targetN = 7, stepMs = span / targetN;
+    const ticks = [];
+    let unit = DAY;
+    if (showTime) unit = span <= 2 * DAY ? 6 * HOUR : DAY; else unit = span <= 16 * DAY ? DAY : 7 * DAY;
+    let start = Math.ceil(view[0] / unit) * unit;
+    for (let t = start; t <= view[1]; t += unit) {
+      const d = new Date(t);
+      const lbl = showTime && unit < DAY
+        ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2,"0")}h`
+        : `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+      ticks.push({ t, lbl });
+    }
+    return ticks;
+  }
+
+  // ---- render main chart -------------------------------------------------
+  function activeSeries() { return ORDER.filter((k) => visible.has(k)); }
+
+  function seriesTotalsInView() {
+    // full-weight per-subject metric over the visible window (for legend/table)
+    const out = new Map(ORDER.map((k) => [k, { commits: 0, val: 0 }]));
+    for (const c of COMMITS) {
+      if (c.ms < view[0] || c.ms > view[1]) continue;
+      const v = metricOf(c);
+      for (const k of c.s) { const o = out.get(k); if (o) { o.commits += 1; o.val += v; } }
+    }
+    return out;
+  }
+
+  function renderChart() {
+    const buckets = buildBuckets(view[0], view[1]);
+    curBuckets = buckets;
+    const keys = activeSeries();
+    let g = "";
+
+    // y-max
+    let ymax = 1;
+    if (mode === "lines") {
+      for (const b of buckets) for (const k of keys) ymax = Math.max(ymax, b.per[k] || 0);
+    } else {
+      for (const b of buckets) {
+        let sum = 0; for (const k of keys) sum += b.per[k] || 0;
+        ymax = Math.max(ymax, sum);
+      }
+    }
+    ymax = niceMax(ymax);
+    const yOf = (v) => plotBottom - (v / ymax) * PLOT_H;
+
+    // gridlines + y labels. In Lines mode the y-scale is a real magnitude
+    // (0 → ymax). In Stream mode the band is a centered silhouette where only
+    // THICKNESS is meaningful, so a 0-based y-axis would misread — show a faint
+    // centerline + a thickness caption instead of numbered gridlines.
+    const unitLbl = metric === "commits" ? "commits" : "lines";
+    if (mode === "lines") {
+      for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+        const yy = plotBottom - t * PLOT_H;
+        g += `<line class="grid-line" x1="${LP}" y1="${yy.toFixed(1)}" x2="${VW - RP}" y2="${yy.toFixed(1)}"/>`;
+        g += `<text class="y-lbl" x="${LP - 6}" y="${(yy + 3.5).toFixed(1)}">${fmt(t * ymax)}</text>`;
+      }
+      g += `<line class="axis-line" x1="${LP}" y1="${plotBottom}" x2="${VW - RP}" y2="${plotBottom}"/>`;
+    } else {
+      const midY = plotBottom - PLOT_H / 2;
+      g += `<line class="grid-line" x1="${LP}" y1="${midY.toFixed(1)}" x2="${VW - RP}" y2="${midY.toFixed(1)}" opacity="0.6"/>`;
+      g += `<text class="y-lbl" x="${LP - 6}" y="${(midY + 3.5).toFixed(1)}" style="font-style:italic">${unitLbl}</text>`;
+    }
+    // x ticks
+    for (const tk of xTicks(buckets)) {
+      const x = xOf(tk.t);
+      g += `<line class="grid-line" x1="${x.toFixed(1)}" y1="${plotTop}" x2="${x.toFixed(1)}" y2="${plotBottom}" opacity="0.5"/>`;
+      g += `<text class="x-lbl" x="${x.toFixed(1)}" y="${plotBottom + 16}">${svgTag(tk.lbl)}</text>`;
+    }
+
+    const endLabels = [];
+    if (mode === "lines") {
+      for (const k of keys) {
+        const col = seriesColor(SUBJ.get(k).color);
+        let d = "", started = false, lastPt = null;
+        const lastV = buckets.length ? (buckets[buckets.length - 1].per[k] || 0) : 0;
+        buckets.forEach((b) => {
+          const v = b.per[k] || 0;
+          const x = xOf(b.mid), y = yOf(v);
+          d += (started ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1) + " ";
+          started = true; lastPt = { x, y };
+        });
+        g += `<path class="series-line" d="${d}" stroke="${col}" data-k="${k}"/>`;
+        if (lastPt) endLabels.push({ y: lastPt.y, k, col, weight: lastV });
+      }
+    } else {
+      // streamgraph — centered baseline (silhouette), stacked in registry order
+      const lower = buckets.map(() => 0);
+      const stackTotals = buckets.map((b) => keys.reduce((s, k) => s + (b.per[k] || 0), 0));
+      // center each column: start at -total/2
+      const base = buckets.map((_, i) => -stackTotals[i] / 2);
+      const cum = base.slice();
+      const yc = (v) => plotBottom - PLOT_H / 2 - (v / ymax) * PLOT_H; // v is signed around 0
+      for (const k of keys) {
+        const col = seriesColor(SUBJ.get(k).color);
+        let top = "", bot = "";
+        buckets.forEach((b, i) => {
+          const v = b.per[k] || 0;
+          const y0 = cum[i], y1 = cum[i] + v;
+          top += (i ? "L" : "M") + xOf(b.mid).toFixed(1) + " " + yc(y1).toFixed(1) + " ";
+          bot = "L" + xOf(b.mid).toFixed(1) + " " + yc(y0).toFixed(1) + " " + bot;
+          cum[i] = y1;
+        });
+        g += `<path class="series-area" d="${top}${bot}Z" fill="${col}" fill-opacity="0.9" data-k="${k}"/>`;
+        // end label at the vertical middle of the last column's band
+        const i = buckets.length - 1;
+        const band = buckets[i].per[k] || 0;
+        endLabels.push({ y: yc(cum[i] - band / 2), k, col, weight: band });
+      }
+    }
+
+    // Direct end-labels carry identity beyond colour, but with many series
+    // bunched near zero they collide — so label only the few heaviest at the
+    // right edge (the legend names the rest), de-collide, and clamp in-plot.
+    const trunc = (s) => (s.length > 15 ? s.slice(0, 14) + "…" : s);
+    const labeled = endLabels.filter((l) => l.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 4);
+    labeled.sort((a, b) => a.y - b.y);
+    let prevY = -1e9;
+    for (const lab of labeled) {
+      let y = Math.min(Math.max(lab.y, prevY + 12, plotTop + 6), plotBottom);
+      prevY = y;
+      g += `<circle cx="${(VW - RP + 3).toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${lab.col}"/>`;
+      g += `<text class="end-lbl" x="${VW - RP + 9}" y="${y.toFixed(1)}" fill="${lab.col}">${svgTag(trunc(SUBJ.get(lab.k).label))}</text>`;
+    }
+
+    // crosshair + hit layer
+    g += `<line class="crosshair" id="xhair" x1="0" y1="${plotTop}" x2="0" y2="${plotBottom}"/>`;
+    g += `<rect id="hit" x="${LP}" y="${plotTop}" width="${plotW}" height="${PLOT_H}" fill="transparent"/>`;
+
+    const h = plotBottom + 24;
+    el("chart").innerHTML = `<svg class="chart" id="mainsvg" viewBox="0 0 ${VW} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Feature focus over time">${g}</svg>`;
+    wirePlot();
+  }
+
+  // ---- overview / brush --------------------------------------------------
+  const OVW = 1000, OVH = 60, OLP = 46, ORP = 10, OTP = 6, OBOT = 44;
+  const ovX = (ms) => OLP + ((ms - FULL[0]) / (FULL[1] - FULL[0])) * (OVW - OLP - ORP);
+  const ovMs = (px) => FULL[0] + ((px - OLP) / (OVW - OLP - ORP)) * (FULL[1] - FULL[0]);
+  function renderOverview() {
+    // total-activity area across the whole range (in the current metric)
+    const step = pickStep(FULL[1] - FULL[0]);
+    const anchor = Math.floor(FULL[0] / DAY) * DAY;
+    const n = Math.floor((FULL[1] - anchor) / step) + 1;
+    const tot = new Array(n).fill(0);
+    for (const c of COMMITS) { const i = Math.floor((c.ms - anchor) / step); if (i >= 0 && i < n) tot[i] += metricOf(c); }
+    const mx = Math.max(1, ...tot);
+    let area = "M" + OLP + " " + OBOT + " ";
+    for (let i = 0; i < n; i++) {
+      const x = ovX(anchor + (i + 0.5) * step);
+      const y = OBOT - (tot[i] / mx) * (OBOT - OTP);
+      area += "L" + x.toFixed(1) + " " + y.toFixed(1) + " ";
+    }
+    area += "L" + ovX(anchor + (n - 0.5) * step).toFixed(1) + " " + OBOT + " Z";
+    const x0 = ovX(view[0]), x1 = ovX(view[1]);
+    let g = `<path d="${area}" fill="var(--accent)" fill-opacity="0.18"/>`;
+    // date ticks
+    for (let t = Math.ceil(FULL[0] / DAY) * DAY; t <= FULL[1]; t += Math.max(DAY, Math.round((FULL[1]-FULL[0])/6/DAY)*DAY)) {
+      const d = new Date(t);
+      g += `<text class="ov-label" x="${ovX(t).toFixed(1)}" y="${OVH - 2}" text-anchor="middle">${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}</text>`;
+    }
+    g += `<rect class="brush-win" id="brush" x="${x0.toFixed(1)}" y="${OTP}" width="${Math.max(2,(x1-x0)).toFixed(1)}" height="${OBOT-OTP}"/>`;
+    g += `<rect class="brush-h" id="bh0" x="${(x0-3).toFixed(1)}" y="${OTP}" width="6" height="${OBOT-OTP}"/>`;
+    g += `<rect class="brush-h" id="bh1" x="${(x1-3).toFixed(1)}" y="${OTP}" width="6" height="${OBOT-OTP}"/>`;
+    el("overview").innerHTML = g;
+    wireBrush();
+  }
+
+  // ---- interaction: pan / zoom / tooltip on main plot --------------------
+  function clampView() {
+    const minSpan = HOUR; // don't zoom past 1h
+    let [a, b] = view;
+    if (b - a < minSpan) b = a + minSpan;
+    const fullSpan = FULL[1] - FULL[0];
+    if (b - a > fullSpan) { a = FULL[0]; b = FULL[1]; }
+    if (a < FULL[0]) { b += FULL[0] - a; a = FULL[0]; }
+    if (b > FULL[1]) { a -= b - FULL[1]; b = FULL[1]; }
+    if (a < FULL[0]) a = FULL[0];
+    view = [a, b];
+    el("resetZoom").disabled = (view[0] <= FULL[0] && view[1] >= FULL[1]);
+  }
+  function zoomAt(ms, factor) {
+    const [a, b] = view;
+    view = [ms - (ms - a) * factor, ms + (b - ms) * factor];
+    clampView(); redraw();
+  }
+  function wirePlot() {
+    const svg = el("mainsvg");
+    const pxFromEvent = (e) => {
+      const r = svg.getBoundingClientRect();
+      return ((e.clientX - r.left) / r.width) * VW;
+    };
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const px = pxFromEvent(e);
+      if (px < LP || px > VW - RP) return;
+      zoomAt(msOf(px), e.deltaY > 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+
+    let dragging = false, lastPx = 0, moved = false;
+    const down = (e) => { dragging = true; moved = false; lastPx = pxFromEvent(e.touches ? e.touches[0] : e); svg.classList.add("dragging"); };
+    const move = (e) => {
+      const src = e.touches ? e.touches[0] : e;
+      if (dragging) {
+        const px = pxFromEvent(src);
+        const dms = (px - lastPx) / plotW * (view[1] - view[0]);
+        if (Math.abs(px - lastPx) > 1) moved = true;
+        view = [view[0] - dms, view[1] - dms]; lastPx = px; clampView(); redraw();
+      } else {
+        showTip(src);
+      }
+    };
+    const up = () => { dragging = false; svg.classList.remove("dragging"); };
+    svg.addEventListener("mousedown", down);
+    addEventListener("mousemove", move);
+    addEventListener("mouseup", up);
+    svg.addEventListener("mouseleave", () => { hideTip(); });
+    svg.addEventListener("touchstart", (e) => { down(e); }, { passive: true });
+    svg.addEventListener("touchmove", (e) => { move(e); }, { passive: true });
+    svg.addEventListener("touchend", up);
+  }
+
+  function showTip(src) {
+    if (!curBuckets) return;
+    const svg = el("mainsvg"); if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    const px = ((src.clientX - r.left) / r.width) * VW;
+    if (px < LP || px > VW - RP) { hideTip(); return; }
+    const ms = msOf(px);
+    let b = curBuckets[0];
+    for (const cand of curBuckets) if (Math.abs(cand.mid - ms) < Math.abs(b.mid - ms)) b = cand;
+    const xhair = el("xhair");
+    if (xhair) { xhair.setAttribute("x1", xOf(b.mid).toFixed(1)); xhair.setAttribute("x2", xOf(b.mid).toFixed(1)); xhair.style.opacity = ".7"; }
+    const rows = activeSeries().map((k) => ({ k, v: b.per[k] || 0 })).filter((x) => x.v > 0).sort((a, c) => c.v - a.v);
+    const d0 = new Date(b.t0), d1 = new Date(b.t1);
+    const sameDay = b.step <= DAY;
+    const head = sameDay
+      ? `${MONTHS[d0.getUTCMonth()]} ${d0.getUTCDate()}, ${String(d0.getUTCHours()).padStart(2,"0")}:00–${String(d1.getUTCHours()).padStart(2,"0")}:00`
+      : `${MONTHS[d0.getUTCMonth()]} ${d0.getUTCDate()} – ${MONTHS[d1.getUTCMonth()]} ${d1.getUTCDate()}`;
+    const unit = metric === "commits" ? "" : " ln";
+    const tip = el("tip");
+    if (!rows.length) {
+      tip.innerHTML = `<div class="tt">${head}</div><div class="more">No tracked focus in this bin.</div>`;
+    } else {
+      const top = rows.slice(0, 8).map((x) =>
+        `<div class="row"><span class="sw" style="background:${seriesColor(SUBJ.get(x.k).color)}"></span>${svgTag(SUBJ.get(x.k).label)}<span class="v">${fmt(x.v)}${unit}</span></div>`).join("");
+      const more = rows.length > 8 ? `<div class="more">+${rows.length - 8} more</div>` : "";
+      tip.innerHTML = `<div class="tt">${head} · ${b.commits} commit${b.commits===1?"":"s"}</div>${top}${more}`;
+    }
+    tip.style.opacity = "1";
+    const tr = tip.getBoundingClientRect();
+    let x = src.clientX + 14, y = src.clientY - tr.height - 10;
+    if (x + tr.width > innerWidth - 8) x = src.clientX - tr.width - 14;
+    if (y < 8) y = src.clientY + 18;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  function hideTip() { el("tip").style.opacity = "0"; const x = el("xhair"); if (x) x.style.opacity = "0"; }
+
+  // ---- brush drag --------------------------------------------------------
+  function wireBrush() {
+    const svg = el("overview");
+    const pxOf = (e) => { const r = svg.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * OVW; };
+    let action = null, startPx = 0, startView = null;
+    const begin = (target, e) => {
+      const px = pxOf(e.touches ? e.touches[0] : e);
+      if (target === "bh0") action = "left"; else if (target === "bh1") action = "right";
+      else if (target === "brush") action = "move";
+      else { // click on empty track → center a window there
+        const half = (view[1] - view[0]) / 2, m = ovMs(px);
+        view = [m - half, m + half]; clampView(); action = "move";
+      }
+      startPx = px; startView = view.slice();
+    };
+    const drag = (e) => {
+      if (!action) return;
+      const px = pxOf(e.touches ? e.touches[0] : e);
+      const dms = (px - startPx) / (OVW - OLP - ORP) * (FULL[1] - FULL[0]);
+      if (action === "move") view = [startView[0] + dms, startView[1] + dms];
+      else if (action === "left") view = [Math.min(startView[0] + dms, startView[1] - HOUR), startView[1]];
+      else if (action === "right") view = [startView[0], Math.max(startView[1] + dms, startView[0] + HOUR)];
+      clampView(); redraw();
+    };
+    const end = () => { action = null; };
+    svg.addEventListener("mousedown", (e) => { const id = e.target.id; if (["bh0","bh1","brush"].includes(id) || e.target.tagName === "path" || e.target === svg) { e.preventDefault(); begin(id, e); } });
+    addEventListener("mousemove", drag);
+    addEventListener("mouseup", end);
+    svg.addEventListener("touchstart", (e) => { begin(e.target.id, e); }, { passive: true });
+    svg.addEventListener("touchmove", (e) => { drag(e); }, { passive: true });
+    svg.addEventListener("touchend", end);
+  }
+
+  // ---- legend + table ----------------------------------------------------
+  function renderLegend() {
+    const totals = seriesTotalsInView();
+    const active = ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0);
+    const box = el("legend");
+    box.innerHTML = active.map((k) => {
+      const s = SUBJ.get(k), on = visible.has(k), t = totals.get(k);
+      const ct = metric === "commits" ? (t?.commits || 0) : (t?.val || 0);
+      return `<span class="legchip" role="button" tabindex="0" data-k="${k}" aria-pressed="${on}" title="${svgTag(s.blurb)}">` +
+        `<span class="sw" style="background:${seriesColor(s.color)}"></span>${svgTag(s.label)} <span class="ct">${fmt(ct)}</span></span>`;
+    }).join("");
+    box.querySelectorAll(".legchip").forEach((chip) => {
+      const k = chip.dataset.k;
+      const toggle = () => { visible.has(k) ? visible.delete(k) : visible.add(k); redraw(); };
+      chip.addEventListener("click", toggle);
+      chip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+    });
+  }
+
+  function renderTable() {
+    const totals = seriesTotalsInView();
+    const active = ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0)
+      .map((k) => ({ k, ...totals.get(k) }))
+      .sort((a, b) => (metric === "commits" ? b.commits - a.commits : b.val - a.val));
+    const grand = active.reduce((s, r) => s + (metric === "commits" ? r.commits : r.val), 0) || 1;
+    const mx = Math.max(1, ...active.map((r) => (metric === "commits" ? r.commits : r.val)));
+    const unit = metric === "commits" ? "commits" : "lines";
+    el("tableView").innerHTML =
+      `<table><thead><tr><th>Subject</th><th>Commits</th><th>Lines</th><th>${unit} share</th></tr></thead><tbody>` +
+      active.map((r) => {
+        const primary = metric === "commits" ? r.commits : r.val;
+        const share = (100 * primary / grand);
+        return `<tr><td class="name"><span class="sw" style="background:${seriesColor(SUBJ.get(r.k).color)}"></span>${svgTag(SUBJ.get(r.k).label)}</td>` +
+          `<td class="num">${fmt(r.commits)}</td><td class="num">${fmt(r.val)}</td>` +
+          `<td class="num bar-cell">${share.toFixed(1)}%<span class="bar" style="width:${(primary/mx*60).toFixed(0)}px;background:${seriesColor(SUBJ.get(r.k).color)}"></span></td></tr>`;
+      }).join("") +
+      `</tbody></table><p class="hint">Totals within the framed window (${winLabel()}). A commit touching N subjects counts toward each.</p>`;
+  }
+
+  function winLabel() {
+    const d0 = new Date(view[0]), d1 = new Date(view[1]);
+    return `${MONTHS[d0.getUTCMonth()]} ${d0.getUTCDate()} – ${MONTHS[d1.getUTCMonth()]} ${d1.getUTCDate()}`;
+  }
+
+  // ---- orchestration -----------------------------------------------------
+  function redraw() {
+    if (showTable) { renderTable(); } else { renderChart(); }
+    renderOverview();
+    renderLegend();
+  }
+
+  function defaultVisibleTop(n) {
+    const totals = new Map(ORDER.map((k) => [k, DATA.totals.byKey[k] || { commits: 0, added: 0, removed: 0 }]));
+    const ranked = ORDER.filter((k) => totals.get(k).commits > 0)
+      .sort((a, b) => metric === "commits"
+        ? totals.get(b).commits - totals.get(a).commits
+        : (totals.get(b).added + totals.get(b).removed) - (totals.get(a).added + totals.get(a).removed));
+    visible = new Set(ranked.slice(0, n));
+  }
+
+  // toggles
+  el("plotwrap").parentElement.querySelectorAll("[data-metric]").forEach((b) =>
+    b.addEventListener("click", () => {
+      metric = b.dataset.metric;
+      for (const x of document.querySelectorAll("[data-metric]")) x.setAttribute("aria-pressed", String(x === b));
+      redraw();
+    }));
+  document.querySelectorAll("[data-mode]").forEach((b) =>
+    b.addEventListener("click", () => {
+      mode = b.dataset.mode;
+      for (const x of document.querySelectorAll("[data-mode]")) x.setAttribute("aria-pressed", String(x === b));
+      redraw();
+    }));
+  el("resetZoom").addEventListener("click", () => { view = FULL.slice(); clampView(); redraw(); });
+  el("tableToggle").addEventListener("click", () => {
+    showTable = !showTable;
+    el("tableToggle").setAttribute("aria-pressed", String(showTable));
+    el("chart").hidden = showTable; el("overview").hidden = showTable; el("hint").hidden = showTable;
+    el("tableView").hidden = !showTable;
+    redraw();
+  });
+  el("legTop").addEventListener("click", () => { defaultVisibleTop(6); redraw(); });
+  el("legAll").addEventListener("click", () => { visible = new Set(ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0)); redraw(); });
+  el("legNone").addEventListener("click", () => { visible = new Set(); redraw(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
+
+  // ---- boot --------------------------------------------------------------
+  fetch("/pulse/timeline.json", { cache: "no-cache" })
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((d) => {
+      DATA = d;
+      SUBJ = new Map(d.subjects.map((s) => [s.key, s]));
+      ORDER = d.subjects.map((s) => s.key);
+      COMMITS = (d.commits || []).map((c) => ({ ms: wallMs(c.t), a: c.a || 0, r: c.r || 0, s: c.s || [] }))
+        .sort((a, b) => a.ms - b.ms);
+      if (!COMMITS.length) { el("chart").innerHTML = '<p class="muted">No commit history yet.</p>'; return; }
+      FULL = [COMMITS[0].ms, COMMITS[COMMITS.length - 1].ms];
+      view = FULL.slice();
+      defaultVisibleTop(6);
+      const from = d.range?.from, to = d.range?.to;
+      if (from) {
+        const active = ORDER.filter((k) => (d.totals.byKey[k]?.commits || 0) > 0).length;
+        el("range").textContent = `${from} → ${to} · ${d.commits.length} commits across ${active} feature sets. Scroll to zoom, drag to pan.`;
+      }
+      if (d.generated) el("gen").textContent = `Last updated ${new Date(d.generated).toLocaleDateString("en-US", { year:"numeric", month:"short", day:"numeric" })}.`;
+      redraw();
+    })
+    .catch((err) => {
+      el("chart").innerHTML = `<p class="error">Couldn't load the timeline data (${svgTag(err.message)}).</p>`;
+    });
+</script>
+</body>
+</html>
