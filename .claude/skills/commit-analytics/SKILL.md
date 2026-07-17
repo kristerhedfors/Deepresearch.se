@@ -11,7 +11,11 @@ description: >-
   committing + pushing so the deploy serves the fresh data. ALSO the sibling
   Feature focus timeline (/pulse/timeline.html + scripts/pulse-themes.mjs +
   build-pulse-timeline.mjs + timeline.json): the subject-taxonomy tagger and the
-  multi-line / streamgraph of where feature-focus went over time.
+  multi-line / streamgraph of where feature-focus went over time. ALSO the
+  "Code size" snapshot on the main pulse page (scripts/build-pulse-size.mjs +
+  public/pulse/size.json): lines/chars per language, README size, and
+  dependency counts — "update the size metrics", "refresh lines of code /
+  language breakdown / dependency count".
 ---
 
 # Updating Project pulse (the commit-analytics dashboard)
@@ -147,3 +151,24 @@ the legend + direct end-labels + the table view, so >8 simultaneously-visible
 series stays legible (the page defaults to the busiest six). The shallow session
 clone only sees recent days — `git fetch --unshallow origin` first for the full
 range. Same `/pulse/` allowlist covers it.
+
+## Sibling: the Code size snapshot (`/pulse` → "Code size" section)
+
+A section on the main pulse page giving a point-in-time size snapshot of the
+tree — NOT a time series, so it needs no history and no shallow-clone caveat:
+
+| File | Role |
+|---|---|
+| `scripts/build-pulse-size.mjs` | `npm run pulse:size`. Runs `git ls-files`, counts lines/chars per language (merging extensions under one label — `.js`+`.mjs` → JavaScript), finds `README.md`'s own line/char/word count, and counts `dependencies`/`devDependencies` keys in `package.json` + `tests/package.json`. Writes `public/pulse/size.json`. |
+| `public/pulse/size.json` | The committed dataset: `totals` (files/lines/chars/dependency counts), `languages[]` (one row per label, sorted by lines desc), `readme`, `dependencies` (root + tests breakdown). Rides in the introspection source-snapshot like the other two datasets — re-run `npm run bundle` after regenerating. |
+| `public/pulse/index.html` | The "Code size" section (stat tiles + a plain horizontal proportion-bar list per language — no SVG axes needed for a snapshot). `renderSize()` in the inline script. |
+
+Same exclusion list as `data.json`'s `GENERATED` (the two introspection
+artifacts, vendored libs, minified/lock files, and the pulse datasets
+themselves) so a `npm run bundle` regeneration doesn't inflate the JSON
+language row. Binary/media extensions (images, `.wasm`, fonts, `.pdf`) count
+as files but not lines. To refresh: `npm run pulse:size`, no curation step —
+everything here is exact from the tree, nothing hand-written. Gotcha already
+noted above applies here too if you also touch `data.json`/`timeline.json` in
+the same session: `git fetch --unshallow origin` before `npm run pulse` (size
+doesn't need history, but the sibling regenerations in the same commit do).

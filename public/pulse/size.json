@@ -1,0 +1,102 @@
+{
+  "generated": "2026-07-17T19:59:25.976Z",
+  "totals": {
+    "files": 548,
+    "lines": 137475,
+    "chars": 7125946,
+    "languages": 10,
+    "dependencies": 0,
+    "devDependencies": 3
+  },
+  "dependencies": {
+    "root": {
+      "dependencies": 0,
+      "devDependencies": 2
+    },
+    "tests": {
+      "dependencies": 0,
+      "devDependencies": 1
+    }
+  },
+  "languages": [
+    {
+      "ext": "js, mjs",
+      "label": "JavaScript",
+      "files": 310,
+      "lines": 92549,
+      "chars": 4110407
+    },
+    {
+      "ext": "md",
+      "label": "Markdown",
+      "files": 118,
+      "lines": 31677,
+      "chars": 1960672
+    },
+    {
+      "ext": "html",
+      "label": "HTML",
+      "files": 13,
+      "lines": 5297,
+      "chars": 295570
+    },
+    {
+      "ext": "css",
+      "label": "CSS",
+      "files": 4,
+      "lines": 3599,
+      "chars": 158093
+    },
+    {
+      "ext": "json, webmanifest",
+      "label": "JSON",
+      "files": 37,
+      "lines": 1709,
+      "chars": 498482
+    },
+    {
+      "ext": "(none)",
+      "label": "Other",
+      "files": 16,
+      "lines": 1517,
+      "chars": 54187
+    },
+    {
+      "ext": "ts",
+      "label": "TypeScript",
+      "files": 1,
+      "lines": 442,
+      "chars": 16747
+    },
+    {
+      "ext": "py",
+      "label": "Python",
+      "files": 1,
+      "lines": 293,
+      "chars": 12156
+    },
+    {
+      "ext": "sh",
+      "label": "Shell",
+      "files": 4,
+      "lines": 280,
+      "chars": 13896
+    },
+    {
+      "ext": "toml",
+      "label": "TOML",
+      "files": 1,
+      "lines": 112,
+      "chars": 5736
+    }
+  ],
+  "readme": {
+    "file": "README.md",
+    "lines": 298,
+    "chars": 15193,
+    "words": 2165
+  },
+  "excluded": {
+    "generatedArtifacts": 21
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-17T17:07:38.580Z",
+  "generated": "2026-07-17T19:59:04.313Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
@@ -158,13 +158,13 @@
     }
   ],
   "totals": {
-    "commits": 704,
-    "tagged": 619,
+    "commits": 716,
+    "tagged": 629,
     "byKey": {
       "sandbox": {
-        "commits": 74,
-        "added": 16259,
-        "removed": 2233
+        "commits": 75,
+        "added": 16281,
+        "removed": 2236
       },
       "ondevice": {
         "commits": 21,
@@ -172,14 +172,14 @@
         "removed": 175
       },
       "introspection": {
-        "commits": 81,
-        "added": 14807,
-        "removed": 1423
+        "commits": 83,
+        "added": 14815,
+        "removed": 1430
       },
       "search": {
-        "commits": 14,
-        "added": 5325,
-        "removed": 497
+        "commits": 16,
+        "added": 5396,
+        "removed": 521
       },
       "pipeline": {
         "commits": 40,
@@ -192,9 +192,9 @@
         "removed": 128
       },
       "grants": {
-        "commits": 21,
-        "added": 12843,
-        "removed": 1348
+        "commits": 22,
+        "added": 12845,
+        "removed": 1351
       },
       "secure": {
         "commits": 81,
@@ -202,9 +202,9 @@
         "removed": 4353
       },
       "workspaces": {
-        "commits": 33,
-        "added": 7666,
-        "removed": 527
+        "commits": 36,
+        "added": 8248,
+        "removed": 681
       },
       "providers": {
         "commits": 23,
@@ -212,9 +212,9 @@
         "removed": 1578
       },
       "storage": {
-        "commits": 52,
-        "added": 11950,
-        "removed": 3061
+        "commits": 53,
+        "added": 12273,
+        "removed": 3113
       },
       "maps": {
         "commits": 59,
@@ -227,9 +227,9 @@
         "removed": 144
       },
       "help": {
-        "commits": 89,
-        "added": 27606,
-        "removed": 4989
+        "commits": 90,
+        "added": 27808,
+        "removed": 4993
       },
       "tests": {
         "commits": 62,
@@ -237,14 +237,14 @@
         "removed": 416
       },
       "admin": {
-        "commits": 81,
-        "added": 21682,
-        "removed": 3234
+        "commits": 83,
+        "added": 21755,
+        "removed": 3259
       },
       "access": {
-        "commits": 62,
-        "added": 22513,
-        "removed": 3866
+        "commits": 63,
+        "added": 22836,
+        "removed": 3918
       },
       "games": {
         "commits": 12,
@@ -277,14 +277,14 @@
         "removed": 14653
       },
       "pulse": {
-        "commits": 5,
-        "added": 1002,
-        "removed": 189
+        "commits": 6,
+        "added": 2177,
+        "removed": 193
       },
       "artifacts": {
-        "commits": 47,
-        "added": 2131,
-        "removed": 118
+        "commits": 49,
+        "added": 2139,
+        "removed": 125
       }
     }
   },
@@ -6160,12 +6160,111 @@
       ]
     },
     {
+      "t": "2026-07-17T17:04:21+02:00",
+      "a": 22,
+      "r": 3,
+      "s": [
+        "sandbox"
+      ]
+    },
+    {
+      "t": "2026-07-17T17:06:48+02:00",
+      "a": 2,
+      "r": 3,
+      "s": [
+        "search",
+        "grants"
+      ]
+    },
+    {
+      "t": "2026-07-17T17:45:45+02:00",
+      "a": 69,
+      "r": 21,
+      "s": [
+        "search",
+        "workspaces",
+        "admin"
+      ]
+    },
+    {
       "t": "2026-07-17T18:06:10+02:00",
       "a": 278,
       "r": 42,
       "s": [
         "sandbox",
         "pipeline"
+      ]
+    },
+    {
+      "t": "2026-07-17T18:44:18+02:00",
+      "a": 252,
+      "r": 17,
+      "s": []
+    },
+    {
+      "t": "2026-07-17T18:58:42+02:00",
+      "a": 190,
+      "r": 81,
+      "s": [
+        "workspaces"
+      ]
+    },
+    {
+      "t": "2026-07-17T19:14:38+02:00",
+      "a": 202,
+      "r": 4,
+      "s": [
+        "help"
+      ]
+    },
+    {
+      "t": "2026-07-17T19:17:14+02:00",
+      "a": 4,
+      "r": 4,
+      "s": [
+        "admin"
+      ]
+    },
+    {
+      "t": "2026-07-17T19:22:44+02:00",
+      "a": 1175,
+      "r": 4,
+      "s": [
+        "pulse"
+      ]
+    },
+    {
+      "t": "2026-07-17T19:43:44+02:00",
+      "a": 3,
+      "r": 3,
+      "s": [
+        "introspection",
+        "artifacts"
+      ]
+    },
+    {
+      "t": "2026-07-17T19:56:45+02:00",
+      "a": 323,
+      "r": 52,
+      "s": [
+        "workspaces",
+        "storage",
+        "access"
+      ]
+    },
+    {
+      "t": "2026-07-17T20:24:54+02:00",
+      "a": 116,
+      "r": 12,
+      "s": []
+    },
+    {
+      "t": "2026-07-17T21:00:38+02:00",
+      "a": 5,
+      "r": 4,
+      "s": [
+        "introspection",
+        "artifacts"
       ]
     }
   ]

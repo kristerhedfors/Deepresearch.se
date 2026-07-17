@@ -1,15 +1,15 @@
 {
-  "generated": "2026-07-13T18:29:57.364Z",
+  "generated": "2026-07-17T19:57:44.872Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-07-13"
+    "to": "2026-07-17"
   },
   "totals": {
-    "commits": 482,
-    "added": 118796,
-    "removed": 27144,
-    "features": 79
+    "commits": 716,
+    "added": 181546,
+    "removed": 34577,
+    "features": 93
   },
   "commits": [
     {
@@ -2737,6 +2737,12 @@
       "f": 0
     },
     {
+      "t": "2026-07-13T09:55:16+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
       "t": "2026-07-13T09:57:10+02:00",
       "a": 226,
       "r": 43,
@@ -2902,6 +2908,1404 @@
       "t": "2026-07-13T20:20:10+02:00",
       "a": 4,
       "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T20:24:10+02:00",
+      "a": 139,
+      "r": 16,
+      "f": 1
+    },
+    {
+      "t": "2026-07-13T20:31:43+02:00",
+      "a": 42,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T20:39:25+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T21:08:58+02:00",
+      "a": 498,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T21:12:27+02:00",
+      "a": 51,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T21:28:35+02:00",
+      "a": 27,
+      "r": 353,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T21:33:22+02:00",
+      "a": 135,
+      "r": 47,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T22:02:57+02:00",
+      "a": 108,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T22:23:22+02:00",
+      "a": 135,
+      "r": 83,
+      "f": 0
+    },
+    {
+      "t": "2026-07-13T22:44:10+02:00",
+      "a": 17,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T08:42:46+02:00",
+      "a": 250,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T08:45:05+02:00",
+      "a": 391,
+      "r": 40,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T08:57:20+02:00",
+      "a": 102,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T08:59:33+02:00",
+      "a": 12,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T09:00:49+02:00",
+      "a": 162,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T09:03:42+02:00",
+      "a": 277,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T09:08:36+02:00",
+      "a": 51,
+      "r": 3,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T09:20:17+02:00",
+      "a": 150,
+      "r": 55,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T09:41:12+02:00",
+      "a": 16,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T09:45:46+02:00",
+      "a": 66,
+      "r": 57,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T10:03:57+02:00",
+      "a": 63,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T10:17:02+02:00",
+      "a": 8,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T11:06:17+02:00",
+      "a": 140,
+      "r": 15,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T11:10:30+02:00",
+      "a": 21,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T11:24:39+02:00",
+      "a": 19,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T11:26:49+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T11:28:11+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T13:53:43+02:00",
+      "a": 31,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T15:52:49+02:00",
+      "a": 1097,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T15:53:58+02:00",
+      "a": 98,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T15:54:26+02:00",
+      "a": 166,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T16:19:33+02:00",
+      "a": 693,
+      "r": 140,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T16:19:34+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T16:50:51+02:00",
+      "a": 362,
+      "r": 58,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T16:56:03+02:00",
+      "a": 142,
+      "r": 43,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T17:08:00+02:00",
+      "a": 14,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T17:36:40+02:00",
+      "a": 51,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T17:43:59+02:00",
+      "a": 59,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T17:52:55+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T18:15:53+02:00",
+      "a": 80,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T18:28:42+02:00",
+      "a": 2070,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T18:53:40+02:00",
+      "a": 713,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T18:57:34+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T19:07:01+02:00",
+      "a": 1046,
+      "r": 12,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T19:08:56+02:00",
+      "a": 232,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:16:02+02:00",
+      "a": 70,
+      "r": 29,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:18:23+02:00",
+      "a": 585,
+      "r": 236,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:21:59+02:00",
+      "a": 214,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:31:15+02:00",
+      "a": 15,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:34:35+02:00",
+      "a": 37,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:40:15+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:43:09+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:43:16+02:00",
+      "a": 456,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:53:32+02:00",
+      "a": 170,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T19:57:55+02:00",
+      "a": 712,
+      "r": 8,
+      "f": 1
+    },
+    {
+      "t": "2026-07-14T20:06:33+02:00",
+      "a": 99,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T20:12:08+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T20:21:32+02:00",
+      "a": 31,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T20:33:24+02:00",
+      "a": 299,
+      "r": 43,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T22:27:42+02:00",
+      "a": 19,
+      "r": 55,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T22:38:43+02:00",
+      "a": 41,
+      "r": 37,
+      "f": 0
+    },
+    {
+      "t": "2026-07-14T23:21:23+02:00",
+      "a": 116,
+      "r": 42,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:24:11+02:00",
+      "a": 162,
+      "r": 130,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:24:49+02:00",
+      "a": 79,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:25:18+02:00",
+      "a": 17,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:26:18+02:00",
+      "a": 128,
+      "r": 67,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:26:43+02:00",
+      "a": 16,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:27:24+02:00",
+      "a": 24,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:29:56+02:00",
+      "a": 58,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:43:44+02:00",
+      "a": 12,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:46:45+02:00",
+      "a": 271,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:46:45+02:00",
+      "a": 271,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T08:56:00+02:00",
+      "a": 62,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T09:10:24+02:00",
+      "a": 446,
+      "r": 5,
+      "f": 1
+    },
+    {
+      "t": "2026-07-15T09:19:18+02:00",
+      "a": 10,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T09:26:49+02:00",
+      "a": 696,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-15T10:01:52+02:00",
+      "a": 883,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:03:29+02:00",
+      "a": 26,
+      "r": 56,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:06:18+02:00",
+      "a": 71,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:14:08+02:00",
+      "a": 1914,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:21:00+02:00",
+      "a": 712,
+      "r": 34,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:39:48+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:40:16+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:51:04+02:00",
+      "a": 50,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:51:42+02:00",
+      "a": 1340,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:52:44+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T10:53:27+02:00",
+      "a": 39,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T11:06:20+02:00",
+      "a": 15,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T11:23:39+02:00",
+      "a": 491,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T11:33:48+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:02:30+02:00",
+      "a": 387,
+      "r": 121,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:09:04+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:39:51+02:00",
+      "a": 714,
+      "r": 84,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:41:51+02:00",
+      "a": 716,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:44:20+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:50:38+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:50:42+02:00",
+      "a": 24,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:54:12+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T13:54:16+02:00",
+      "a": 388,
+      "r": 34,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T14:21:25+02:00",
+      "a": 314,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T14:31:08+02:00",
+      "a": 356,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T14:33:03+02:00",
+      "a": 15,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T14:53:54+02:00",
+      "a": 16,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T14:56:21+02:00",
+      "a": 655,
+      "r": 5,
+      "f": 1
+    },
+    {
+      "t": "2026-07-15T15:06:26+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T15:07:15+02:00",
+      "a": 10,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T15:07:23+02:00",
+      "a": 88,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T15:59:46+02:00",
+      "a": 90,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:00:52+02:00",
+      "a": 4,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:20:42+02:00",
+      "a": 668,
+      "r": 71,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:27:03+02:00",
+      "a": 249,
+      "r": 93,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:30:02+02:00",
+      "a": 181,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:31:57+02:00",
+      "a": 28,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T16:34:33+02:00",
+      "a": 47,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T18:13:21+02:00",
+      "a": 15,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:04:09+02:00",
+      "a": 103,
+      "r": 78,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:04:41+02:00",
+      "a": 79,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:11:32+02:00",
+      "a": 51,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:17:34+02:00",
+      "a": 105,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:27:07+02:00",
+      "a": 64,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T19:28:54+02:00",
+      "a": 650,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-07-15T21:48:19+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T21:48:39+02:00",
+      "a": 151,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T21:49:39+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T21:50:02+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-15T22:07:51+02:00",
+      "a": 126,
+      "r": 70,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:39:36+02:00",
+      "a": 360,
+      "r": 98,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:44:43+02:00",
+      "a": 466,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:47:12+02:00",
+      "a": 369,
+      "r": 45,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:47:49+02:00",
+      "a": 62,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:52:52+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:58:23+02:00",
+      "a": 7,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T07:58:43+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:00:09+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:01:29+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:06:24+02:00",
+      "a": 54,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:06:24+02:00",
+      "a": 54,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:18:14+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:23:37+02:00",
+      "a": 193,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:30:40+02:00",
+      "a": 1715,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:32:00+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:34:17+02:00",
+      "a": 1386,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:34:17+02:00",
+      "a": 1388,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:45:34+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:53:45+02:00",
+      "a": 19,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:55:19+02:00",
+      "a": 689,
+      "r": 32,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:57:43+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:58:45+02:00",
+      "a": 43,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T08:59:27+02:00",
+      "a": 62,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:03:33+02:00",
+      "a": 6,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:05:48+02:00",
+      "a": 0,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:07:16+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:17:12+02:00",
+      "a": 58,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:28:29+02:00",
+      "a": 52,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:43:38+02:00",
+      "a": 915,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:46:02+02:00",
+      "a": 729,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:49:28+02:00",
+      "a": 1024,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:50:22+02:00",
+      "a": 1150,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:50:38+02:00",
+      "a": 979,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:50:40+02:00",
+      "a": 1095,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T09:57:43+02:00",
+      "a": 1627,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T10:17:07+02:00",
+      "a": 927,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T10:38:00+02:00",
+      "a": 477,
+      "r": 52,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T10:40:30+02:00",
+      "a": 4,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T11:44:53+02:00",
+      "a": 558,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T11:53:17+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T12:03:47+02:00",
+      "a": 237,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T12:03:58+02:00",
+      "a": 53,
+      "r": 32,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T12:04:47+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T12:06:05+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T12:43:34+02:00",
+      "a": 550,
+      "r": 942,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T13:22:02+02:00",
+      "a": 1925,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T13:28:22+02:00",
+      "a": 43,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T13:29:21+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T13:45:14+02:00",
+      "a": 8,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T15:02:10+02:00",
+      "a": 175,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T15:16:08+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T17:01:38+02:00",
+      "a": 254,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T17:11:26+02:00",
+      "a": 444,
+      "r": 74,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T17:16:27+02:00",
+      "a": 227,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T17:52:55+02:00",
+      "a": 3,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T17:53:45+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T18:40:37+02:00",
+      "a": 464,
+      "r": 493,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T18:42:51+02:00",
+      "a": 246,
+      "r": 197,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T18:49:30+02:00",
+      "a": 342,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T18:59:21+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T19:06:10+02:00",
+      "a": 12,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T19:06:43+02:00",
+      "a": 216,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T22:31:10+02:00",
+      "a": 248,
+      "r": 60,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T22:32:07+02:00",
+      "a": 85,
+      "r": 34,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T22:41:02+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-16T22:45:51+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T08:08:18+02:00",
+      "a": 5,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T08:37:13+02:00",
+      "a": 119,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:01:27+02:00",
+      "a": 177,
+      "r": 91,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:01:37+02:00",
+      "a": 553,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:01:40+02:00",
+      "a": 175,
+      "r": 37,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:06:00+02:00",
+      "a": 257,
+      "r": 94,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:07:31+02:00",
+      "a": 26,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:10:26+02:00",
+      "a": 43,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:13:11+02:00",
+      "a": 29,
+      "r": 37,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:14:58+02:00",
+      "a": 28,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:19:36+02:00",
+      "a": 59,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:22:56+02:00",
+      "a": 94,
+      "r": 10,
+      "f": 1
+    },
+    {
+      "t": "2026-07-17T09:30:09+02:00",
+      "a": 84,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:35:31+02:00",
+      "a": 7,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T09:46:35+02:00",
+      "a": 5,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T10:04:51+02:00",
+      "a": 62,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T10:06:43+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T10:46:04+02:00",
+      "a": 1889,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T11:14:41+02:00",
+      "a": 6,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T12:27:48+02:00",
+      "a": 1290,
+      "r": 1541,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T12:59:29+02:00",
+      "a": 126,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T14:22:02+02:00",
+      "a": 27,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T14:24:22+02:00",
+      "a": 7,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T14:54:05+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T14:55:31+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T14:57:11+02:00",
+      "a": 27,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T15:00:06+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T15:57:49+02:00",
+      "a": 116,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T17:04:21+02:00",
+      "a": 22,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T17:06:48+02:00",
+      "a": 2,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T17:45:45+02:00",
+      "a": 69,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T18:06:10+02:00",
+      "a": 278,
+      "r": 42,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T18:44:18+02:00",
+      "a": 252,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T18:58:42+02:00",
+      "a": 190,
+      "r": 81,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T19:14:38+02:00",
+      "a": 202,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T19:17:14+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T19:22:44+02:00",
+      "a": 7347,
+      "r": 4,
+      "f": 1
+    },
+    {
+      "t": "2026-07-17T19:43:44+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T19:56:45+02:00",
+      "a": 323,
+      "r": 52,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T20:24:54+02:00",
+      "a": 116,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-17T21:00:38+02:00",
+      "a": 5,
+      "r": 4,
       "f": 0
     }
   ],
@@ -3431,11 +4835,21 @@
     },
     {
       "date": "2026-07-13",
-      "commits": 58,
-      "added": 10263,
-      "removed": 2462,
-      "features": 6,
+      "commits": 69,
+      "added": 11418,
+      "removed": 2969,
+      "features": 7,
       "subjects": [
+        "Fix iOS PWA 'stream stalled' abort during the pre-fetch bash-lite loop",
+        "Refactor: relocate shared pure helpers to their owning modules",
+        "Stop the bash-lite loop on a sandbox teardown (fix iOS 'sandbox not ready' cascade + stream stall)",
+        "Boomerang the loading spinners; reverse the /cure intro once every 40 plays",
+        "Hardcode agent-backdrop transparency to max; remove the slider",
+        "Sandbox: fail soft on a wedged guest command (per-exec timeout)",
+        "Replace the twirly-logo spinners with the intro umbrella animation",
+        "Regenerate introspection artifacts after merging main (drc.css slash spacing)",
+        "pulse: measure days in CET and refresh through today",
+        "Add terminal-backdrop transparency slider to Settings, grayed until sandbox is on",
         "Give slashes a touch more room in the /cure ghost bubble and DRS popup",
         "Loosen slash spacing in welcome bubble so Se/cure doesn't touch in the fat font",
         "drc: hide the sandbox terminal panel on Se/cure (was covering the bottom half)",
@@ -3464,6 +4878,7 @@
         "Introspection: stop leaking the model's planning preamble into the answer",
         "Introspection tag: plain legible titanium white (drop the muddy gradient clip)",
         "DRC intro: Victorian umbrellas that revive from wire into color",
+        "Ledger: confirm the selection-board system is already in main (superseded)",
         "Ledger: confirm the selection-board system is already in main (superseded)",
         "Introspection: white titanium cue (drop purple); Se/cure knob reuses the Se/rver switch pane",
         "Ledger: record OWASP's actual merged tip (bef0451, not f844788)",
@@ -3495,7 +4910,274 @@
         "Introspection: distinct amethyst (Se/rver) & ruby (Se/cure) skins; rename knob to \"Introspection\"",
         "Account menu: gather documentation links under a Documentation view"
       ],
-      "summary": "Introspection mode gained an OWASP Top 10 default with a security-assessment corpus and executive-summary reports, surfaced the skills catalog to every model, and settled its per-tier skins (amethyst Se/rver, ruby Se/cure). The git workflow was reconciled — the merge barrier, both PR and direct-merge styles, and the merge-branches and pr skills with their ledger — and the mission was reframed around LLM-privacy-capabilities research. Se/cure became the site's front door with a ghost greeter pointing to Se/rver, the sandbox gained composer-focus pre-warming plus a live boot-progress line and full boot-timeline debugging, the testable-interaction-points try-it queue shipped, and the DRC umbrella intro was reworked to revive from wireframe into color.",
+      "summary": "Se/cure's first-visit intro was overhauled — spinners replaced by an animated umbrella that cycled through Victorian, ghost-carried, and canopy-motif variants, settling on a purpur/ruby introspection color scheme — alongside sandbox boot reliability fixes (fail-soft per-exec timeouts, pre-warm on composer focus, live boot-progress reporting). Introspection gained OWASP Top 10 reference retrieval for security-assessment answers and a skills-catalog surface; the testable-interaction-points \"try-it queue\" launched; the merge-branches and pr skills were added; and the README/CLAUDE.md mission was reframed around LLM-privacy-capabilities research.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-14",
+      "commits": 52,
+      "added": 11447,
+      "removed": 1065,
+      "features": 7,
+      "subjects": [
+        "Backdrop terminal: kill left-right sway, sync it to conversation scroll",
+        "Tint the introspection composer pane rose-white (umbrella feel)",
+        "Se/cure: never hide the chat UI behind the first-visit intro",
+        "Refactor DRC seams for clarity ahead of Forever Agent work",
+        "Se/cure: re-show the umbrella intro that a broken first visit suppressed",
+        "maintenance: register #62 self-hosted sandbox image (inert; owes on-device boot)",
+        "Umbrella spinner: tumble 180° at the turnaround instead of a hard reversal",
+        "Implement admin-selectable self-hosted Linux sandbox image (inert by default)",
+        "Add update-docs skill; reconcile CLAUDE.md docs surface",
+        "Document plan for serving a small, self-hosted, admin-selectable Linux sandbox image",
+        "chore: rebuild introspection artifacts after merging origin/main",
+        "Rebuild introspection source snapshot + rag index for the umbrella-intro fix",
+        "Se/cure: never let the umbrella intro strand its canvas over the app",
+        "Se/cure: halve the strolling ghost's umbrella; give the greeter ghost one too",
+        "docs: add Forever Agent trajectory + foundational integration plan",
+        "Make web-search backend configurable in Se/cure too (per-user, browser-direct)",
+        "docs: refine gap analysis — CheerpX disk caching + document/fix priority tracks",
+        "docs: gap analysis of Se/cure against the Forever Agent spec",
+        "Add pluggable web-search backend + \"Web search service\" config page + skill",
+        "Rebundle introspection artifacts to include the new ghostwalk files",
+        "Se/cure: a strolling ghost that carries the intro's 3D umbrella",
+        "Secure research space: bundled account-connected proxy grants (web + LLM API)",
+        "Fix reply tail buried behind the fixed footer glass on Se/cure (and Se/rver)",
+        "Rebundle introspection artifacts for the Se/cure intro-timing change",
+        "Se/cure: drop straight into the umbrella intro with no chrome flash",
+        "Typing umbrella: the big waiting spinner now plays the pink finish finale too",
+        "maintenance: sandbox file-mount wedge ROOT-FIXED by #52; register #52 as file-mount owner",
+        "Fix sandbox file integrations: mount user files into the root overlay, not a bare IDBDevice",
+        "Loading umbrella: reserve the pink bloom for completion; speed-run finale into the ✓",
+        "Regenerate introspection artifacts for the sse-protocol doc update",
+        "Se/cure web-search grants: mint subsystem + admin control panel",
+        "Se/cure: make research info notices tap-to-expand like Se/rver",
+        "Street View journey maps: draw the along-roads walking route + walk-time",
+        "Se/cure: temporary web-search grant crossed over from Se/rver",
+        "Se/cure: render research steps inline in the conversation, not the composer footer",
+        "Regenerate introspection artifacts after merging main",
+        "chore: regenerate source snapshot after maintenance registry edit",
+        "maintenance: record /mnt read-wedge generalization (chat_logs #331), routed to #43",
+        "Terminal view: stop the east-west sway and pin the terminal in chat mode",
+        "Se/cure: umbrella spinner + pink ✓ per research phase (DRC feature parity)",
+        "Make completed research-step checkmarks pink to match the umbrella intro",
+        "Fix terminal-view scroll + show terminal icon and auto-boot on landing",
+        "Redesign the first-login terms page into a compact, inviting welcome",
+        "Maintenance registry: sandbox owner → #43; record the routed regression + fix",
+        "sandbox: switch the terminal view with a header icon, not a background tap",
+        "Add live Playwright guard for the sandbox fail-soft contract",
+        "Self-heal corrupt /workspace on a mid-loop exec timeout; document the incident",
+        "Codify the regression→author feedback loop + feature maintenance ownership",
+        "docs: always watch a PR after opening it (owner directive)",
+        "Fix iOS PWA sandbox \"sandbox not ready\" — boot-time /workspace verify wedge",
+        "Add two-layer view switch for the running sandbox",
+        "sandbox: auto-start when enabled + mirror raw terminal on the backdrop"
+      ],
+      "summary": "Se/cure UX continued to mature — a strolling ghost now carries the 3D umbrella intro, the terminal backdrop stopped swaying and syncs to conversation scroll, and research steps render inline instead of in the composer footer. Shipped: an admin-selectable self-hosted Linux sandbox image (inert by default), a pluggable web-search backend with a per-user config page for both tiers, the secure-research-space bundled proxy grants (web + LLM API), and Street View journey maps with walking routes. Also fixed the iOS \"sandbox not ready\" boot wedge and the sandbox file-mount regression, and codified the regression→author feedback loop as a standing maintenance discipline.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-15",
+      "commits": 64,
+      "added": 14095,
+      "removed": 1192,
+      "features": 4,
+      "subjects": [
+        "P-2 FIXED: secret scanning gates commits too, auto-activates per session; full-history scan clean",
+        "Regenerate introspection rag index for the workspace-share-icon change",
+        "Regenerate introspection artifacts for the skill-doc update",
+        "Persist the quota-grant assessment methodology as a skill",
+        "Regenerate introspection rag index for the account-menu change",
+        "Add cross-subsystem invariant suite for the secure-workspace grant tokens",
+        "Se/cure account button opens an account menu instead of redirecting to sign-in",
+        "Workspace unlock: embedded tier link + full-screen umbrella celebration",
+        "Workspace share as a header icon: ghost one step left, share in its place",
+        "Admin panel: collapse every section to a tappable header",
+        "Admin boards: one drag-to-reorder view, reset button, bigger drag grip",
+        "Style the test-queue check-mark launcher like its sibling header icons",
+        "Document the grant-http clarity pass + regenerate introspection artifacts",
+        "Relocate the workspace carries-anything check into workspace-core.js",
+        "Extract the exec bridge protocol codec from sandbox.js into bash-core.js",
+        "Extract grant-http.js: the grant subsystems' shared pure presentation layer",
+        "Forever Agent user-value picks: .drc backup, local inference, disclosures, vendored xterm",
+        "Stamp minted sandbox-download test points (queue #28-#29) + regenerate artifacts",
+        "Salvage PR #88's workspace-link live e2e (tests/e2e/workspace.live.spec.js)",
+        "Tier A/B seam-battery results + cap the report tier at standard for simple questions",
+        "Registry: #52 fully confirmed on-device (try-it #7 pass); stamp /try/26 retest point",
+        "introspection: regenerate source-rag index for admin.css change",
+        "Sandbox download flow: /workspace/outbox files become downloadable reply attachments with an add-to-project menu",
+        "admin: lock page to vertical scroll, compact the board cards",
+        "Maintenance registry: third-tick exec-timeout narrowing (per-binary cold, routed to #43) + #52 attachment-read confirmation",
+        "Fix borrowed-session 502: exclude down models from DRC dropdowns, surface upstream error detail",
+        "Tier A/B bench setup: reportStructure metric, quiz-gate regression fix, dev-mode request opt-out",
+        "Scale report comprehensiveness with the time slider (brief → full research report)",
+        "Fix source-rag.json: regenerate from a clean base after merge conflict",
+        "Stamp minted feedback-screenshot test points (queue #24-#25) + regenerate artifacts",
+        "Regenerate introspection artifacts for the encryption doc",
+        "introspection: refresh committed source artifacts for newly tracked files",
+        "Add encryption & key-management architecture reference (docs/ENCRYPTION.md)",
+        "feedback: screenshot image attachments on entries and thread replies",
+        "shodan test batch: decouple the 'stays quiet' point from the sandbox",
+        "F-16 round 4: no persistent figures — the balloon becomes a first-visit greeter; lower ambient animation level",
+        "Stamp minted channel-grammar test points (queue #21-#22) + regenerate artifacts",
+        "F-16 round 3: the granular per-task channel grammar — umbrella = offline, balloon = online, ℹ disclosure on Se/cure",
+        "Stamp minted balloon test points (queue #18-#20) + regenerate artifacts",
+        "Test requests for the balloon symbol language (intro / blue ✓ spinners / guide)",
+        "Regenerate introspection artifacts for the loop idempotency fix",
+        "F-16 round 2: the Se/rver landing intro + the blue waiting symbol",
+        "Test-request mint: adopt existing points (idempotent) + stamp PR #71's dogfood file",
+        "Regenerate introspection artifacts for the stamped test-request file",
+        "Stamp minted test-request points for the test-feedback pipeline (queue #16, #17)",
+        "F-16 decided: the balloon guide — Se/rver's symbol character, shipped client-side",
+        "Secure workspaces: offline Se/cure sessions in one link + per-token quota control",
+        "Docs: make the serving chain a first-class claim in Se/cure's security story",
+        "Terms gate: short, precise Se/rver intro linking to the regulations",
+        "F-16: Se/rver symbol language — design brief + four animated candidate concepts",
+        "Add a standard test-batch library — reusable test cases per pipeline case",
+        "Maintenance registry: iOS first-pipe exec timeout recurred, routed to #43",
+        "Add the worker-side test-request channel: test cases ship inside the PR, verdicts come back as PR comments",
+        "Stand up the test-feedback loop over the try-it queue",
+        "Se/cure: restore the first-visit umbrella intro (allowlist websearch-backends-core.js)",
+        "Stand up the test-feedback loop over the try-it queue",
+        "Maintenance registry: #52 read-path fix green on-device (chat_logs #345)",
+        "Document the 2026-07-15 clarity pass; regenerate introspection artifacts",
+        "Move wmHtml into drc-page-core.js, the /cure pure-fragment module",
+        "De-dup the client K/M count formatter into notifications.js",
+        "Relocate Tokemon client views + parseLatLng to src/tokemon.js",
+        "De-dup idOk: storage.js now imports rag.js's key-path id validator",
+        "Extract the canonical-origin redirect into src/canonical.js",
+        "Extract src/token-crypto.js: the shared HMAC-token crypto primitives"
+      ],
+      "summary": "A testing-infrastructure day: secret-scanning now gates every commit and push, a cross-subsystem invariant suite locked down the secure-workspace grant tokens, and the worker-side test-request channel plus a standing test-feedback loop shipped over the try-it queue. Feature work included secure workspaces (offline session links with per-token quota control), the sandbox download-to-reply-attachment flow, the F-16 balloon/umbrella symbol-language decision for Se/rver, and collapsible/drag-to-reorder admin board UX. Several shared pure-core modules were extracted for reuse (grant-http.js, workspace-core.js, bash-core.js's exec bridge codec).",
+      "curated": true
+    },
+    {
+      "date": "2026-07-16",
+      "commits": 66,
+      "added": 22023,
+      "removed": 2460,
+      "features": 0,
+      "subjects": [
+        "Stamp minted privacy-eye test point (queue #50) + regenerate artifacts",
+        "Refresh introspection artifacts for the try-it request file",
+        "Move the Se/cure privacy notice opener onto the wordmark as an eye-in-circle",
+        "Test queue: read the task before going — detail view replaces tap-to-navigate",
+        "On-device engine: visible build stamp, on-screen debug trace, load-vs-run crash message",
+        "Stamp minted per-tier-animation test points (queue #46-#49) + regenerate artifacts",
+        "Regenerate the introspection source-rag index for the terminal-mode change",
+        "Terminal mode: real terminal coloring + tap-to-type into the VM console",
+        "Se/cure: mirror the Se/rver time slider — same scale, readout, and budget-roof behavior",
+        "Revert per-task channel symbols to per-tier animations; add the Se/cure privacy notice",
+        "Stamp minted on-device test points (queue #44-#45) + regenerate artifacts",
+        "Merge barrier: re-point main_sha to a shallow-clone-reachable commit",
+        "Se/cure: expandable research notifications — Se/rver step-detail parity",
+        "Se/cure: the composer slider becomes a REAL research-depth control",
+        "On-device engine: crash diagnostics + dr_ondevice_debug verbose switch",
+        "Ledger: tag bonsai-27b-phone-inference + bonsai-ondevice-knob-bug branches Merged; regenerate introspection artifacts",
+        "On-device: the settings check can never hang on 'Checking this device…' again",
+        "On-device: fix download crash after the first file (null progress arg)",
+        "Regenerate docs corpus + rag (symbol lines shifted with the worker edit)",
+        "On-device: tell a network failure apart from an unpublished model",
+        "On-device inference: 1-bit Bonsai models in the browser (Se/cure)",
+        "Cloud storage is implicit on Se/rver: remove the server_history and per-project knobs",
+        "Regenerate source snapshot + rag (docs artifacts ride in the snapshot)",
+        "Regenerate docs corpus + rag for the Bonsai plan doc",
+        "Fix slash spacing in docs pages' regular-weight body prose",
+        "Plan: Bonsai 27B 1-bit phone-local inference for Se/cure",
+        "Regenerate introspection artifacts (snapshot + docs corpus freshness)",
+        "SDK: fast-track workspace-fs + deploy-pipeline modules (server-tier)",
+        "Remove stray incomplete docs/BROWSER-VM-LANDSCAPE.md (duplicate of JS-VM-RESEARCH.md)",
+        "JS-VM engine research + exec-engine module: CheerpX engine, our own small fast image",
+        "SDK tie-together: desktop CLI, VM toolchain + pair-studio modules, in-app SDK skills catalog, arch32 image variant",
+        "Agent-Pair SDK skills: layers 5-6 (extensions + pair-generator); regenerate introspection artifacts",
+        "Agent-Pair SDK skills: layer 4 (observability, decision-boards, feedback-loops, eval-harness, agent-dev-workflow)",
+        "Agent-Pair SDK skills: layer 2 (secure-tier, identity-access, quota-metering, sse-recovery)",
+        "Agent-Pair SDK skills: layer 3 (sealed-crypto, ciphertext-storage, client-rag, grant-bridge, offline-workspaces)",
+        "Agent-Pair SDK skills: layer 1 (provider-registry, research-pipeline, web-search, enrichments)",
+        "Agent-Pair SDK skills: layer 0 (pair-architecture, baseplate-worker, baseplate-client)",
+        "Agent-Pair SDK: core design docs (DESIGN, MANIFEST, ROADMAP, README)",
+        "Stamp minted help-mode test points (queue #39-#42) + regenerate artifacts",
+        "Help mode: rebase artifacts + owner test requests",
+        "Help mode: the documentation-first layer of introspection (one help interface)",
+        "Fix conflicted source-rag.json: restore from main and rebuild the delta",
+        "Resolve leftover merge conflict in drc.js boot chain (keep notices × + consolidated arrival chain)",
+        "Stamp minted test points for PR #99 fix and Se/rver tokens (queue #34-#38)",
+        "Fix the /cure proxy-connected notices: parse the bold tag, measured slash gap, dismissable footer",
+        "Test requests: 4 owner test points for the Se/rver-token feature",
+        "Rebuild introspection rag index from scratch (merge left conflict markers in the generated file)",
+        "Se/rver tokens: never-a-login admin boundary + full client/admin wiring",
+        "test-requests: try-it point for the introspection read-budget fix (PR #99)",
+        "Regenerate introspection artifacts after merging origin/main",
+        "Help mode: the documentation-first layer of introspection (one help interface)",
+        "Regenerate introspection artifacts after merging origin/main",
+        "Se/rver tokens: one ticket, one JWT — consolidated upstream-API grants",
+        "Introspection tools: budget-aware prompts + the standard targeted-extraction surface",
+        "test-requests: stamp minted_id for slash-spacing point (queue #33)",
+        "Introspection tools: report a spent read budget truthfully, not as \"No files resolved\"",
+        "Introspection tools: report a spent read budget truthfully, not as \"No files resolved\"",
+        "Ledger: tag header-display-issue-7ptcre Merged (/help screenshots + header docs)",
+        "help: recapture stale screenshots, fix header section to match the real UI",
+        "Ledger: record slush-spacing branch's frozen remote tip 50d88c1",
+        "Ledger: tag slush-spacing-precision-jqty1f Merged (slash-spacing skill + meter)",
+        "cure/help: same measured b .sl fix as /help; audit table row",
+        "slash-spacing skill: measure the wordmark slash gap, never eyeball it",
+        "Ledger: tag server-secure-docs-split-m4j48m Merged (per-tier docs split)",
+        "Split the documentation per tier: /cure/help/ for Se/cure, /help/ for Se/rver",
+        "Test-feedback verdicts: third ❓ 'untestable' outcome + clarification thread"
+      ],
+      "summary": "The two biggest tracks of the project so far landed the same day: on-device 1-bit Bonsai model inference running entirely in the Se/cure browser (with crash diagnostics and a visible build/debug trace), and the Agent-Pair SDK — a 33-module Se/cure+Se/rver design registry with a skills catalog spanning provider/pipeline/security/observability layers. Also shipped: Se/rver tokens (one consolidated HS256 JWT replacing the older per-feature grant families), cloud storage made implicit on Se/rver (removing the opt-out knobs), help mode as the documentation-first introspection layer, and real terminal coloring with tap-to-type in the sandbox terminal view.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-17",
+      "commits": 41,
+      "added": 14030,
+      "removed": 2209,
+      "features": 2,
+      "subjects": [
+        "Regenerate introspection artifacts after merging main",
+        "Quotas: much more generous defaults + relative reset time",
+        "Lend embeddings through the workspace token (RAG parity for borrowed sessions)",
+        "Regenerate introspection artifacts after merge",
+        "Pulse: a feature-focus timeline — which subjects competed for attention over time",
+        "Maintenance registry: PR #131 becomes the /src source-mount owner",
+        "Add docs-drift-validation skill: bottom-up docs⇄code validation with owner sign-off",
+        "Make the workspace-share menu a dedicated, honest capability picker",
+        "fix(ios): layered bar-tint nudge — status bar AND bottom toolbar stuck blue after the tier crossing",
+        "Fix the /src sandbox mount wedge + budget-scoped exec timeouts",
+        "Retitle the share-workspace panel and expose web search as a bundled capability",
+        "Drop misleading \"conversation never leaves browser\" claim from web-search grant notice",
+        "Silence 'mesg: ttyname failed' noise in the sandbox terminal",
+        "Widen hfIntent: hub-implied model vocabulary fires the HF Hub source",
+        "Stamp minted settings-pop slash test point (queue #51) + regenerate artifacts",
+        "Swap the Se/cure privacy marker glyph from an eye to an (i)",
+        "Regenerate the source-rag index for the on-device download fix",
+        "Regenerate source snapshot + rag index for the settings-pop slash fix",
+        "Shrink the Se/cure header privacy eye and raise it to a superscript marker",
+        "Measure + fix slash spacing in the Se/cure settings ⓘ pops",
+        "On-device downloads: WebKit write fallback + failures surface in the model row",
+        "Refactor CLAUDE.md: lean always-loaded guide, detail split into reference docs",
+        "Regenerate introspection artifacts over the now-tracked standards files",
+        "DRSW/1 + DRPL/1: the secure-workspace interchange standard, the pipeline language, and the stackless vision",
+        "Maintenance registry: on-device row → PR #124 (whole-graph COEP + runtime bundle)",
+        "On-device engine: COEP for the worker's whole module graph + self-contained runtime bundle",
+        "Maintenance registry: on-device inference engine row (owner PR #123)",
+        "Stamp /try/15 first pass (1/2 confirmations) + regenerate artifacts",
+        "Fix on-device engine crash on Se/cure: serve worker scripts with COEP",
+        "Enable branch preview URLs for isolated live testing",
+        "Document the 2026-07-17 refactor pass + regenerate introspection artifacts",
+        "Dedupe the borrowed-service status line into drc-page-core.js grantMeterLine",
+        "Dedupe client animation-sibling helpers via existing import edges",
+        "Absorb the boards' projectedItem duplicate into board.js",
+        "Dedupe the positive-int config clamp into grant-http.js posInt",
+        "Extract shared LLM forwarders into leaf src/llm-proxy.js",
+        "Sandbox boot: tar-based /src seeding + a fail-soft seed timeout",
+        "Add complete Agent-Pair SDK documentation as a standalone docs section",
+        "Introspection mode: mount /src whenever dev mode is on, and say so in the prompts",
+        "Terminal view: make the terminal contents copy/pasteable",
+        "Hide Se/cure's empty answer bubble while research phases run"
+      ],
+      "summary": "A consolidation day: the Pulse feature-focus timeline shipped (which subjects competed for development attention over time), quotas were made more generous with relative reset times, and the workspace-share menu was redesigned into an honest capability picker. The DRSW/1 and DRPL/1 interchange standards (secure-workspace bundle format and pipeline language) were published, an on-device-engine COEP fix unblocked worker-script loading on Se/cure, branch preview URLs went live for isolated testing, and CLAUDE.md was refactored into a lean always-loaded guide with detail split into reference docs. Rounded out by a batch of client-side dedup/extraction refactors.",
       "curated": true
     }
   ]
