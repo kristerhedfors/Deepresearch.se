@@ -192,10 +192,11 @@ exposure. The symbols are **tier identity**, full stop:
 **The privacy communication moved into an INFORMATION NOTICE instead** — the
 detail the per-step bubbles used to carry, in one readable place on Se/cure:
 
-- The **privacy eye** (`#privacybtn`) — an eye-in-a-circle sitting right
+- The **privacy (i)** (`#privacybtn`) — an i-in-a-circle sitting right
   after the **Se/cure** wordmark in the header (2026-07-16 owner directive,
   superseding its first placement as an ℹ in the icon row: the tier's privacy
-  marker belongs ON the name) — opens the **privacy notice** popover
+  marker belongs ON the name; the glyph was first an eye, swapped for the
+  (i) by owner request 2026-07-17) — opens the **privacy notice** popover
   (`#privacypop`) any time: paragraphs laying out what THIS session's
   CURRENT configuration sends where — the model route (own key browser-direct
   / local or on-device "nothing leaves" / the borrowed proxy "the one

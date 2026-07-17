@@ -165,14 +165,15 @@ finales (the 2026-07-15 per-task grammar was reverted the next day: "keep it
 stringent and clean with the animations"). The privacy communication lives in
 a readable **PRIVACY NOTICE** on Se/cure instead:
 
-- The **privacy eye** (`#privacybtn`) — an eye-in-a-circle right after the
+- The **privacy (i)** (`#privacybtn`) — an i-in-a-circle right after the
   Se/cure wordmark in the header (2026-07-16 owner directive, superseding the
-  icon-row ℹ) — opens `#privacypop` at any time: what THIS session's CURRENT
+  icon-row ℹ; the glyph was first an eye, swapped for the (i) by owner
+  request 2026-07-17) — opens `#privacypop` at any time: what THIS session's CURRENT
   configuration sends where — model route (own key / local / borrowed proxy),
   web-search route (self / grant / off), recall embeddings, and the
   borrowed-allowance governance line — plus a follow-on link to the full
   documentation (`/cure/help/`). The popover anchors LEFT, under the brand
-  that opens it; the eye's tap is excluded from the brand's intro-replay
+  that opens it; the (i)'s tap is excluded from the brand's intro-replay
   click.
 - **Opening a shared secure workspace pops the notice automatically**, leading
   with what the workspace link carried — the privacy read-up for the specific

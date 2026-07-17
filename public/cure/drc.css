@@ -290,8 +290,9 @@ header {
   color: #1a56b0; /* the logotype's flag-blue field */
 }
 .brand b { font-size: 1.05em; text-shadow: 0 1px 4px rgba(255, 255, 255, .5); }
-/* The privacy EYE (2026-07-16 owner directive, superseding the icon-row ℹ):
-   an eye-in-a-circle right after the Se/cure wordmark — the tier's privacy
+/* The privacy (i) (2026-07-16 owner directive, superseding the icon-row ℹ;
+   glyph swapped from an eye to an i-in-a-circle, owner request 2026-07-17):
+   right after the Se/cure wordmark — the tier's privacy
    marker sits ON the name. A bare glyph in the tail's flag blue, no glass
    chrome: it belongs to the wordmark, not the button row. Tapping it opens
    #privacypop (the brand's intro-replay click ignores it — drc.js). Sized
@@ -660,10 +661,11 @@ button:disabled { opacity: .5; cursor: default; }
 #drspop[hidden] { display: none; }
 #drspop a { color: var(--accent); font-weight: 600; }
 
-/* The PRIVACY NOTICE popover — the wordmark eye's read-up on what this
+/* The PRIVACY NOTICE popover — the wordmark (i)'s read-up on what this
    session sends where (the #drspop glass shape). Anchored LEFT, under the
-   brand + eye that open it (the eye moved from the icon row to the wordmark,
-   2026-07-16). Scrolls internally if the configuration has many lines. */
+   brand + (i) that open it (the marker moved from the icon row to the
+   wordmark, 2026-07-16). Scrolls internally if the configuration has many
+   lines. */
 #privacypop {
   position: fixed; top: calc(3.4rem + env(safe-area-inset-top, 0px)); left: .8rem; z-index: 25;
   width: min(420px, calc(100vw - 1.6rem));
