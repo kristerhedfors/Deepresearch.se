@@ -75,6 +75,7 @@ import {
   workspaceLink,
 } from "/js/workspace-core.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
+import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
@@ -695,12 +696,18 @@ function privacyCtx() {
   const viaProxy = pid === PROXY_LLM_PROVIDER_ID || pid === SERVER_TOKEN_LLM_PROVIDER_ID;
   const grantSearch = stWebUsable() || webProxyUsable() || (wsGrantActive() && wsEnabled());
   const embedP = drcEmbedProvider(state?.keys || {});
+  // Project recall (RAG) embeds either on the user's OWN key or — when a
+  // borrowed `api` grant is the active provider — through the server on Berget
+  // (see embedHookup). Disclose which, so the borrowed case (the question text
+  // touches the server) is never silent.
+  const embedBorrowed = !embedP && viaProxy && (apiProxyUsable() || stApiUsable());
   return {
     provider: viaProxy ? "Berget (borrowed)" : pid === ONDEVICE_ID ? "On-device" : drcProvider(pid)?.label || pid,
     viaProxy,
     local: pid === "local" || pid === ONDEVICE_ID,
     search: state?.research === false ? "off" : directSearchActive() ? "self" : grantSearch ? "grant" : "off",
-    embedProvider: embedP?.label || "",
+    embedProvider: embedP?.label || (embedBorrowed ? "Berget (borrowed)" : ""),
+    embedBorrowed,
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
   };
@@ -1533,15 +1540,41 @@ function newChat() {
 
 // ---- client-side RAG (drc-rag.js): recall before the pipeline, index after ------------
 
-// The embedding hookup, when a key that can serve embeddings is stored
-// (OpenAI today — Groq has no embeddings endpoint). Returns null otherwise:
-// every caller degrades to the plain recent-turns context, silently.
+// The embedding hookup for client-side RAG. Two ways to get one:
+//   1. A stored OWN key that serves embeddings (OpenAI today — Groq has none).
+//   2. A borrowed `api` grant on the proxy / Se/rver-token provider — the
+//      SAME grant that lends completions now proxies /embeddings to Berget's
+//      e5 model on the server key (owner directive, 2026-07-17), so a keyless
+//      borrowed workspace runs the same RAG the signed-in tier does. This
+//      engages only while that borrowed provider is the SELECTED model, so a
+//      borrowed grant isn't silently spent when the user is on their own key.
+// Returns null otherwise: every caller degrades to the plain recent-turns
+// context, silently (RAG is a helper, never a reason a send breaks).
 function embedHookup() {
-  const p = drcEmbedProvider(state.keys);
-  if (!p) return null;
+  const own = drcEmbedProvider(state.keys);
+  if (own) {
+    return {
+      embedder: { provider: own.id, model: own.embed.model, dims: own.embed.dimensions },
+      embed: async (texts, kind) => (await drcEmbed(own, state.keys[own.id], texts, { kind })).vectors,
+    };
+  }
+  const [pid] = ($("model").value || "").split("::");
+  if (pid === SERVER_TOKEN_LLM_PROVIDER_ID && stApiUsable() && stGrant?.token) {
+    return borrowedEmbedHookup(serverTokenLlmProvider(location.origin), stGrant.token);
+  }
+  if (pid === PROXY_LLM_PROVIDER_ID && apiProxyUsable() && proxyGrants.api?.token) {
+    return borrowedEmbedHookup(proxyLlmProvider(location.origin), proxyGrants.api.token);
+  }
+  return null;
+}
+
+// The borrowed-grant embedder: embed through the same-origin server proxy on
+// the `api` grant token (Berget e5, 1024-dim; the e5 passage:/query: prefix is
+// applied by drcEmbed via `kind`).
+function borrowedEmbedHookup(prov, token) {
   return {
-    embedder: { provider: p.id, model: p.embed.model, dims: p.embed.dimensions },
-    embed: async (texts) => (await drcEmbed(p, state.keys[p.id], texts)).vectors,
+    embedder: { provider: prov.id, model: prov.embed.model, dims: prov.embed.dimensions },
+    embed: async (texts, kind) => (await drcEmbed(prov, token, texts, { kind })).vectors,
   };
 }
 
@@ -2830,16 +2863,13 @@ async function send(ev) {
 
 // iOS bar tint: arriving here by same-window navigation (the app's ghost
 // button), WebKit can keep the PREVIOUS page's theme-color — the DRS blue
-// over a khaki page (reported live 2026-07-10). Re-asserting the meta with
-// a changed-then-target value after load forces a re-evaluation of the
-// bar tint; harmless everywhere else.
-const themeMeta = document.querySelector('meta[name="theme-color"]');
-if (themeMeta) {
-  requestAnimationFrame(() => {
-    themeMeta.setAttribute("content", "#c3b092");
-    requestAnimationFrame(() => themeMeta.setAttribute("content", "#c3b091"));
-  });
-}
+// over a khaki page (reported live 2026-07-10; RECURRED 2026-07-17 with the
+// bottom toolbar blue too — the one early flip fires inside Safari's own
+// navigation chrome transition and gets swallowed). The shared helper now
+// layers the changed-then-target nudge across first frame, load, pageshow
+// (bfcache restores), visibility, and two lagged timers; harmless everywhere
+// else. Se/rver boots the same helper for the reverse crossing.
+wireBarTint("#c3b091");
 
 // Introspection cue: toggle `dev-mode` on the root so the composer pane picks
 // up the WHITE TITANIUM glass tint (drc.css `:root.dev-mode #composer`) and the
@@ -2859,7 +2889,7 @@ function applyIntrospectionTheme(on) {
 // tooltips never display on touch devices (field-confirmed 2026-07-16: a
 // long-press shows nothing), so the stamp must be READABLE exactly where
 // remote debugging needs it, on a phone.
-const BUILD = "d35";
+const BUILD = "d36";
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");

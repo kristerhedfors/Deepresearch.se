@@ -394,6 +394,7 @@ export function renderSummary(me) {
       ${me.email ? `<button id="feedbackbtn" type="button">Feedback${fbCount ? ` (${fbCount})` : ""}</button>` : ""}
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
+      ${me.email ? '<button id="sharewsbtn" type="button">Share a workspace</button>' : ""}
       <button id="gamesbtn" type="button">Games</button>
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
@@ -446,6 +447,24 @@ export function renderDocs() {
     ${rows}`;
 }
 
+// "Time remaining" for a reset timestamp, so the label reads "frees up in
+// 2h 15m" — the user learns when they're free without subtracting a clock
+// time in their head. Mirrors src/quota.js formatResetRelative (that runs
+// server-side for the 429; this one runs in the browser off win.reset), sans
+// the "in about" prefix the label already supplies. Computed at render time.
+function relReset(ts) {
+  const ms = ts - Date.now();
+  if (ms <= 60_000) return "under a minute";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (hours < 24) return m ? `${hours}h ${m}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  return h ? `${days}d ${h}h` : `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // Users see: an OPAQUE research-budget bar (cost-backed server-side, but
 // only a percentage ever reaches the client — never amounts) and plain
 // search counts. Currency is the admin's concern.
@@ -462,7 +481,7 @@ function usageBlock(label, win, rolling) {
     `<div class="usage-row"><span>Web searches · ${fmtN(win.searches)}${win.searches_limit > 0 ? " of " + fmtN(win.searches_limit) : ""}</span>
       <span>${win.searches_limit > 0 ? Math.round(sPct) + "%" : ""}</span></div>${track(sPct)}`;
   const reset = win.reset
-    ? `${rolling ? "frees up" : "resets"} ${new Date(win.reset).toLocaleString()}`
+    ? `${rolling ? "frees up in" : "resets in"} ${relReset(win.reset)} · ${new Date(win.reset).toLocaleString()}`
     : "";
   return `<div class="usage-block"><div class="lbl">${label}${reset ? " · " + reset : ""}</div>
     ${budgetBar}

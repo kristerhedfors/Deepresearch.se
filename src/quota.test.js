@@ -8,6 +8,8 @@ import {
   windowReset,
   effectiveQuota,
   quotaExceeded,
+  quotaBlockedResponse,
+  formatResetRelative,
   bergetCost,
   overCap,
   inflightLimitResponse,
@@ -58,6 +60,49 @@ describe("windowStart / windowReset", () => {
     const lateAug = Date.UTC(2026, 7, 31, 10, 0, 0);
     assert.equal(windowStart("week", lateAug), Date.UTC(2026, 7, 31, 0, 0, 0));
     assert.equal(windowReset("week", lateAug), Date.UTC(2026, 8, 7, 0, 0, 0));
+  });
+});
+
+describe("formatResetRelative", () => {
+  const MIN = 60_000;
+  test("sub-minute distances read as 'any moment now'", () => {
+    assert.equal(formatResetRelative(0), "any moment now");
+    assert.equal(formatResetRelative(30_000), "any moment now");
+  });
+  test("minutes under an hour", () => {
+    assert.equal(formatResetRelative(45 * MIN), "in about 45 min");
+  });
+  test("hours and minutes", () => {
+    assert.equal(formatResetRelative(2 * 60 * MIN + 15 * MIN), "in about 2h 15m");
+  });
+  test("whole hours drop the minutes", () => {
+    assert.equal(formatResetRelative(3 * 60 * MIN), "in about 3h");
+  });
+  test("days and hours past 24h", () => {
+    assert.equal(formatResetRelative((26 * 60) * MIN), "in about 1d 2h");
+    assert.equal(formatResetRelative((48 * 60) * MIN), "in about 2 days");
+    assert.equal(formatResetRelative((24 * 60) * MIN), "in about 1 day");
+  });
+});
+
+describe("quotaBlockedResponse", () => {
+  const now = Date.UTC(2026, 6, 17, 12, 0, 0);
+  test("budget block leads with relative time, keeps exact UTC in parens", () => {
+    const { error, quota } = quotaBlockedResponse(
+      { period: "h5", kind: "budget", reset_at: now + 2 * 3600 * 1000 + 15 * 60 * 1000 },
+      now,
+    );
+    assert.match(error, /frees up in about 2h 15m \(2026-07-17 14:15 UTC\)\./);
+    // Budget amounts (EUR) must never reach the user.
+    assert.deepEqual(Object.keys(quota).sort(), ["kind", "period", "reset_at"]);
+  });
+  test("search block names the count and uses 'resets' for calendar windows", () => {
+    const { error } = quotaBlockedResponse(
+      { period: "day", kind: "searches", limit: 300, reset_at: now + 12 * 3600 * 1000 },
+      now,
+    );
+    assert.match(error, /300 searches/);
+    assert.match(error, /resets in about 12h \(2026-07-18 00:00 UTC\)\./);
   });
 });
 

@@ -184,8 +184,13 @@ export function proxyLlmProvider(origin) {
     ],
     modelFilter: bergetCatalogFilter, // wire-identical to Berget (see above)
     params: (maxTokens) => ({ max_tokens: maxTokens }),
-    // No embeddings over the proxy — RAG stays on the user's own OpenAI key when
-    // present; a proxy-only session runs without client-side RAG, like Groq.
+    // Embeddings ride the SAME borrowed `api` grant as completions (owner
+    // directive, 2026-07-17): the server proxies /embeddings to Berget's e5
+    // model on its key, so a borrowed Se/cure session runs the same client-side
+    // RAG the signed-in tier does — no user OpenAI key required. Reached at
+    // <base>/embeddings (same-origin, so no CORS). `prefix: "e5"` triggers the
+    // passage:/query: convention in drcEmbed; the vectors are fixed 1024-dim.
+    embed: { model: "intfloat/multilingual-e5-large", dimensions: 1024, prefix: "e5" },
   };
 }
 
@@ -258,21 +263,36 @@ function wireHeaders(apiKey) {
 }
 
 /**
- * Embed texts straight from the browser on the user's key. Returns
- * {vectors: number[][], dims, model}; throws on any failure (callers are
- * fail-soft — RAG is a helper, never a reason a send breaks).
+ * Embed texts straight from the browser on the user's key (or, for the
+ * proxy/Se/rver-token provider, through the same-origin server proxy on the
+ * borrowed `api` grant). Returns {vectors: number[][], dims, model}; throws on
+ * any failure (callers are fail-soft — RAG is a helper, never a reason a send
+ * breaks).
+ *
+ * `kind` selects the e5 input-prefix convention some models require
+ * (intfloat/multilingual-e5-large, Berget's embedding model): a document is
+ * "passage: …", a query is "query: …" (src/rag.js applies the same prefixes
+ * server-side). Applied only when the provider's embed config declares
+ * `prefix: "e5"`; OpenAI needs no prefix and ignores `kind`. e5 also returns a
+ * fixed 1024-dim vector, so the OpenAI-only `dimensions` reduction param is
+ * omitted for prefixed models.
+ * @param {"passage"|"query"} [opts.kind]
  */
-export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl } = {}) {
+export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind = "passage" } = {}) {
   if (!provider?.embed) throw new Error("This provider serves no embeddings.");
   const timeout =
     signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(30_000) : undefined);
+  const e5 = provider.embed.prefix === "e5";
+  const input = e5 ? texts.map((t) => (kind === "query" ? "query: " : "passage: ") + t) : texts;
   const res = await fetch((baseUrl || provider.base) + "/embeddings", {
     method: "POST",
     headers: wireHeaders(apiKey),
     body: JSON.stringify({
       model: provider.embed.model,
-      input: texts,
-      dimensions: provider.embed.dimensions,
+      input,
+      // The OpenAI dimensions-reduction param has no meaning for e5 (fixed
+      // 1024-dim) — send it only for providers that actually project.
+      ...(e5 ? {} : { dimensions: provider.embed.dimensions }),
       encoding_format: "float",
     }),
     signal: timeout,

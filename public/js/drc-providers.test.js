@@ -374,6 +374,24 @@ describe("provider calls over mock HTTP", () => {
     await assert.rejects(drcEmbed(drcProvider("groq"), "k", ["x"], { baseUrl }), /no embeddings/);
   });
 
+  test("drcEmbed: the proxy provider embeds on Berget e5 — passage:/query: prefix, no dimensions param", async () => {
+    const px = { ...proxyLlmProvider(""), base: baseUrl }; // point at the mock
+    // Indexing (passage) — the e5 prefix is prepended, dimensions is omitted.
+    await drcEmbed(px, "proxy-token", ["hello", "world"], { baseUrl, kind: "passage" });
+    let req = requests.at(-1);
+    assert.equal(req.url, "/v1/embeddings");
+    assert.equal(req.headers.authorization, "Bearer proxy-token"); // the borrowed api token
+    assert.equal(req.body.model, "intfloat/multilingual-e5-large");
+    assert.equal(req.body.dimensions, undefined); // e5 has fixed 1024-dim, no projection param
+    assert.deepEqual(req.body.input, ["passage: hello", "passage: world"]);
+    // Retrieval (query) — the query prefix instead.
+    await drcEmbed(px, "proxy-token", ["what is x"], { baseUrl, kind: "query" });
+    req = requests.at(-1);
+    assert.deepEqual(req.body.input, ["query: what is x"]);
+    // The Se/rver-token provider inherits the same embed entry.
+    assert.deepEqual(serverTokenLlmProvider("https://x").embed, proxyLlmProvider("https://x").embed);
+  });
+
   test("drcChatStream: returns the provider's SSE response as-is", async () => {
     const groq = drcProvider("groq");
     const res = await drcChatStream(groq, "good-key", "llama-3.3-70b-versatile", [{ role: "user", content: "x" }], { baseUrl });

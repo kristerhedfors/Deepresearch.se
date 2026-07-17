@@ -380,22 +380,45 @@ export async function releaseInflight(env, reqId) {
 const PERIOD_NAMES = { h5: "5-hour", day: "daily", week: "weekly", month: "monthly" };
 
 /**
+ * Human "time remaining" phrase for a reset that is `ms` milliseconds away, so
+ * a blocked user reads when they're free WITHOUT doing clock arithmetic on a
+ * UTC timestamp ("in about 2h 15m" beats "resets 2026-07-17 14:30 UTC" alone).
+ * Coarsens as the distance grows: minutes → h+m → d+h. Pure and unit-tested.
+ * @param {number} ms milliseconds until the reset (reset_at - now)
+ * @returns {string}
+ */
+export function formatResetRelative(ms) {
+  if (ms <= 60_000) return "any moment now";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `in about ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (hours < 24) return m ? `in about ${hours}h ${m}m` : `in about ${hours}h`;
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  return h ? `in about ${days}d ${h}h` : `in about ${days} day${days === 1 ? "" : "s"}`;
+}
+
+/**
  * Builds the 429 payload for a blocked quota window: a plain-language
  * message (period + reset time — budget amounts are EUR, admin-only
  * information, never sent to users) and the public quota object the
  * client renders.
  * @param {{ period: string, kind: string, limit?: number, reset_at: number }} blocked
+ * @param {number} [now]
  * @returns {{ error: string, quota: object }}
  */
-export function quotaBlockedResponse(blocked) {
+export function quotaBlockedResponse(blocked, now = Date.now()) {
   const periodName = PERIOD_NAMES[blocked.period];
-  const verb = blocked.period === "h5" ? "frees up around" : "resets";
+  const verb = blocked.period === "h5" ? "frees up" : "resets";
+  // Relative first (no clock math for the user), exact UTC in parens.
+  const rel = formatResetRelative(blocked.reset_at - now);
   const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
   const error =
     blocked.kind === "budget"
-      ? `You've used your ${periodName} research budget. It ${verb} ${when}.`
+      ? `You've used your ${periodName} research budget. It ${verb} ${rel} (${when}).`
       : `You've used your ${periodName} search budget ` +
-        `(${Number(blocked.limit).toLocaleString("en-US")} searches). It ${verb} ${when}.`;
+        `(${Number(blocked.limit).toLocaleString("en-US")} searches). It ${verb} ${rel} (${when}).`;
   const publicQuota =
     blocked.kind === "budget"
       ? { period: blocked.period, kind: blocked.kind, reset_at: blocked.reset_at }
