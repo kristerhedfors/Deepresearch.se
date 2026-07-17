@@ -21,6 +21,12 @@ they are.
 > application to SDK modules is a later, separate task (see
 > `DESIGN.md` §5 and the `pair-generator` skill's adoption mode).
 
+The SDK's complete standalone documentation — the abstraction, capability
+classes, contracts, full module catalog, CLI and implementation order in one
+document, integrated into the project's documentation corpus (so the in-app
+help layer answers from it) — is **`docs/AGENT-PAIR-SDK.md`**. This README is
+the catalog front page of the `sdk/` directory itself.
+
 ## What's in the box
 
 | File | What it is |
