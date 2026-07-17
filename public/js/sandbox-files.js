@@ -247,19 +247,104 @@ export const MAX_SOURCE_TOTAL_BYTES = 24 * 1024 * 1024;
 // traversal, a conservative alphabet (matches what the bundler emits).
 const SAFE_REPO_PATH_RE = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
 
+// ---- tar (ustar) builder for the source seed --------------------------------
+// The source tree lands in the guest as ONE ustar archive extracted with a
+// single `tar -xf` — one process spawn instead of one `cp` spawn per file.
+// The per-file cp seed (hundreds of spawns) was measured blowing the 90s boot
+// ceiling on a phone ("boot timed out at mounting files…", chat_logs #515):
+// process spawns are the expensive unit in the WASM x86 emulator, file bytes
+// are not. The cp script is kept as the fallback for a guest without tar.
+
+/**
+ * Write a POSIX-octal numeric field (value + NUL terminator) into a header.
+ * @param {Uint8Array} header @param {number} off @param {number} len @param {number} value
+ */
+function tarOctal(header, off, len, value) {
+  const s = value.toString(8).padStart(len - 1, "0");
+  for (let i = 0; i < len - 1; i++) header[off + i] = s.charCodeAt(i);
+  header[off + len - 1] = 0;
+}
+
+/**
+ * Split a path into ustar name (≤100 bytes) + prefix (≤155 bytes) fields.
+ * Snapshot paths are ASCII (SAFE_REPO_PATH_RE), so chars == bytes here.
+ * @param {string} path
+ * @returns {{ name: string, prefix: string } | null} null if unrepresentable
+ */
+function tarSplitPath(path) {
+  if (path.length <= 100) return { name: path, prefix: "" };
+  // Prefer the shortest prefix that makes the name fit.
+  for (let i = 1; i < path.length; i++) {
+    if (path[i] !== "/") continue;
+    const prefix = path.slice(0, i);
+    const name = path.slice(i + 1);
+    if (prefix.length <= 155 && name.length > 0 && name.length <= 100) return { name, prefix };
+  }
+  return null;
+}
+
+/**
+ * Build a ustar archive of regular files (mode 0644, root, mtime 0 — the
+ * content is a committed snapshot, so a stable timestamp is a feature).
+ * Pure and deterministic; unit-tested against a real header parse.
+ * @param {Array<{ path: string, bytes: Uint8Array }>} files
+ * @returns {Uint8Array}
+ */
+export function buildTar(files) {
+  const enc = new TextEncoder();
+  /** @type {Uint8Array[]} */
+  const blocks = [];
+  let total = 0;
+  const push = (/** @type {Uint8Array} */ b) => { blocks.push(b); total += b.length; };
+  for (const f of Array.isArray(files) ? files : []) {
+    const split = tarSplitPath(f.path);
+    if (!split) continue; // unrepresentable path — the cp fallback still carries it
+    const h = new Uint8Array(512);
+    h.set(enc.encode(split.name), 0); // name[100]
+    tarOctal(h, 100, 8, 0o644); // mode
+    tarOctal(h, 108, 8, 0); // uid
+    tarOctal(h, 116, 8, 0); // gid
+    tarOctal(h, 124, 12, f.bytes.length); // size
+    tarOctal(h, 136, 12, 0); // mtime
+    for (let i = 148; i < 156; i++) h[i] = 0x20; // checksum = spaces while summing
+    h[156] = 0x30; // typeflag '0' (regular file)
+    h.set(enc.encode("ustar"), 257); // magic "ustar\0"
+    h.set(enc.encode("00"), 263); // version
+    if (split.prefix) h.set(enc.encode(split.prefix), 345); // prefix[155]
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += h[i];
+    const cs = sum.toString(8).padStart(6, "0");
+    h.set(enc.encode(cs), 148);
+    h[154] = 0;
+    h[155] = 0x20;
+    push(h);
+    push(f.bytes);
+    const rem = f.bytes.length % 512;
+    if (rem) push(new Uint8Array(512 - rem));
+  }
+  push(new Uint8Array(1024)); // end-of-archive: two zero blocks
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const b of blocks) { out.set(b, off); off += b.length; }
+  return out;
+}
+
 /**
  * Plan the introspection source mount: the snapshot's files (repo-relative
- * paths + full text, introspect-core.js's Snapshot shape) become FLAT entries
- * for one ingest DataDevice at /mnt/in-src (f0, f1, … — files at the device
- * root, the same no-nested-dirs discipline as the other ingest devices) plus
- * a seed script that recreates the real tree at /src. The script is written
- * INTO the device (as .seed) and run with `sh /mnt/in-src/.seed`, so a
- * hundreds-of-lines script never rides in argv. /src is refreshed on every
- * boot (it lives in the persistent overlay, so a stale copy would otherwise
- * survive reloads); a friendly /workspace/source symlink points at it.
+ * paths + full text, introspect-core.js's Snapshot shape) become ONE ustar
+ * archive (`tar`, extracted in a single spawn — the fast path) PLUS the same
+ * files as FLAT entries for the ingest DataDevice at /mnt/in-src (f0, f1, …
+ * — files at the device root, the same no-nested-dirs discipline as the other
+ * ingest devices) with a per-file cp script (`seedCp`) as the fallback for a
+ * guest without tar. The main `seed` script tries the tar extraction and
+ * falls back to `sh /mnt/in-src/.seedcp`; both are written INTO the device,
+ * so a hundreds-of-lines script never rides in argv. /src is refreshed on
+ * every boot (it lives in the persistent overlay, so a stale copy would
+ * otherwise survive reloads); a friendly /workspace/source symlink points at
+ * it.
  * @param {Array<{ p: string, s?: number, t: string }>} files
  * @param {{ totalMax?: number }} [opts]
- * @returns {{ entries: Array<{ flat: string, path: string, bytes: Uint8Array }>, seed: string, count: number, bytes: number, dropped: number } | null}
+ * @returns {{ entries: Array<{ flat: string, path: string, bytes: Uint8Array }>, seed: string, seedCp: string, tar: Uint8Array, count: number, bytes: number, dropped: number } | null}
  */
 export function planSourceMount(files, opts = {}) {
   const list = Array.isArray(files) ? files : [];
@@ -287,13 +372,28 @@ export function planSourceMount(files, opts = {}) {
     entries.push({ flat: "f" + entries.length, path, bytes: b });
   }
   if (!entries.length) return null;
+  // Fallback (no tar in the guest): recreate the tree with one cp per file.
+  const cpLines = [];
+  cpLines.push("mkdir -p /src " + [...dirs].sort().map(shellEscape).join(" "));
+  for (const e of entries) {
+    cpLines.push(`cp /mnt/in-src/${e.flat} ${shellEscape("/src/" + e.path)}`);
+  }
+  // Main seed: one tar extraction (archive entry names are repo-relative, so
+  // -C /src lands them at /src/<path>), cp script only if tar fails/missing.
   const lines = [];
   lines.push("rm -rf /src");
-  lines.push("mkdir -p /src " + [...dirs].sort().map(shellEscape).join(" "));
-  for (const e of entries) {
-    lines.push(`cp /mnt/in-src/${e.flat} ${shellEscape("/src/" + e.path)}`);
-  }
+  lines.push("mkdir -p /src");
+  lines.push("tar -xf /mnt/in-src/src.tar -C /src 2>/dev/null || sh /mnt/in-src/.seedcp 2>/dev/null || true");
   lines.push("mkdir -p /workspace 2>/dev/null || true");
   lines.push("ln -sfn /src /workspace/source 2>/dev/null || true");
-  return { entries, seed: lines.join("\n") + "\n", count: entries.length, bytes, dropped };
+  const tar = buildTar(entries.map((e) => ({ path: e.path, bytes: e.bytes })));
+  return {
+    entries,
+    seed: lines.join("\n") + "\n",
+    seedCp: cpLines.join("\n") + "\n",
+    tar,
+    count: entries.length,
+    bytes,
+    dropped,
+  };
 }

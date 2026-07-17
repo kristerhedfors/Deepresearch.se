@@ -487,6 +487,12 @@ export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
 // answers normally, and discard the wedged VM so a later send can retry fresh.
 const BOOT_TIMEOUT_MS = 90000;
 
+// Ceiling for the file-seed run inside a boot ("mounting files…"): the seed
+// must never consume the whole boot budget — past this the boot proceeds with
+// whatever was seeded (see seedFiles). Sized so even a seed racing this limit
+// leaves the boot ceiling room for the earlier stages it already passed.
+const SEED_TIMEOUT_MS = 45000;
+
 /**
  * Race a boot against BOOT_TIMEOUT_MS. On timeout, log it, tear down the wedged
  * boot, and resolve false (the fail-soft outcome). A real boot rejection still
@@ -970,13 +976,19 @@ async function seedFiles(fm) {
       sblog("debug", "sandbox.fs.write", { scope: "project", name: f.name, size: f.size });
     }
   }
-  // The introspection source snapshot: flat pre-bundled files (f0, f1, …)
-  // plus its own tree-building seed script, written INTO the device so the
-  // (hundreds-of-lines) script never rides in argv.
+  // The introspection source snapshot: ONE ustar archive (src.tar, extracted
+  // with a single spawn — the fast path) plus the flat pre-bundled files
+  // (f0, f1, …) with their cp fallback script for a guest without tar. Both
+  // scripts are written INTO the device so a hundreds-of-lines script never
+  // rides in argv (see sandbox-files.js planSourceMount).
   if (plan.source && inSource) {
+    if (plan.source.tar && plan.source.tar.length) {
+      await inSource.writeFile("/src.tar", plan.source.tar);
+    }
     for (const e of plan.source.entries) {
       await inSource.writeFile("/" + e.flat, e.bytes);
     }
+    if (plan.source.seedCp) await inSource.writeFile("/.seedcp", enc.encode(plan.source.seedCp));
     await inSource.writeFile("/.seed", enc.encode(plan.source.seed));
     sblog("debug", "sandbox.fs.write", { scope: "source", name: "/src tree", size: plan.source.bytes });
   }
@@ -987,14 +999,28 @@ async function seedFiles(fm) {
     hash: plan.project?.hash,
   });
   const full = plan.source && inSource ? script + "\nsh /mnt/in-src/.seed 2>/dev/null || true" : script;
-  const r = await cx.run("/bin/sh", ["-c", full], {
-    env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
-    cwd: "/root",
-    uid: 0,
-    gid: 0,
-  });
+  // The seed run is time-bounded like execInSandbox: a slow guest (cold
+  // binaries on a phone) must degrade to a partially seeded — but LIVE —
+  // sandbox, never eat the whole 90s boot ceiling and kill the boot
+  // ("boot timed out at mounting files…", chat_logs #515). On timeout the
+  // run is abandoned (it may still finish in the background) and boot
+  // proceeds; worst case some files are missing until the next boot.
+  let seedTimedOut = false;
+  const r = await Promise.race([
+    cx.run("/bin/sh", ["-c", full], {
+      env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+      cwd: "/root",
+      uid: 0,
+      gid: 0,
+    }),
+    new Promise((resolve) => setTimeout(() => { seedTimedOut = true; resolve(null); }, SEED_TIMEOUT_MS)),
+  ]);
+  if (seedTimedOut) {
+    sblog("warn", "sandbox.fs.seed_timeout", { ms: SEED_TIMEOUT_MS, source_files: plan.source ? plan.source.count : 0 });
+  }
   sblog("info", "sandbox.fs.seed", {
     exit: r && Number.isFinite(r.status) ? r.status : null,
+    timed_out: seedTimedOut,
     project_mount: plan.project ? `/mnt/${plan.project.name}-${plan.project.hash}` : null,
     source_files: plan.source ? plan.source.count : 0,
   });

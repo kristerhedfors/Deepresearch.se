@@ -119,6 +119,11 @@ with `user_id`, `ua`):
   the last stage entered. **warn-level → always surfaces, even with verbose
   OFF**, and always flushes. Repeated lines = still stuck; the `stage` is where.
 - `sandbox.boot_failed` `{error, stage}` — boot threw; `stage` is where.
+- `sandbox.fs.seed_timeout` `{ms, source_files}` — the file-seed run inside
+  `mounting files…` hit `SEED_TIMEOUT_MS` (45 s); the boot **continued**
+  partially seeded (files may be missing until the next boot). Warn-level.
+  Before 2026-07-17 a slow seed instead rode all the way to `boot_timeout`
+  ("boot timed out at mounting files…", chat_logs #515).
 - `sandbox.boot_timeout` `{stage, ms}` — the boot exceeded `BOOT_TIMEOUT_MS`
   (90 s) without resolving — a genuine hang (a disk/CDN fetch that never
   returns, e.g. a privacy browser like **Firefox Focus** that blocks the CheerpX
