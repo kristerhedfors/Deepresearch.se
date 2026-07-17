@@ -16,7 +16,10 @@ description: >-
   exact drift-detection commands, the regenerate-don't-hand-edit rule for
   generated artifacts, and the survey → detect → update → verify → commit
   workflow. Companion to introspection (the source snapshot), feature-board /
-  security-posture (the two mirrored catalogs), and commit-analytics (pulse).
+  security-posture (the two mirrored catalogs), commit-analytics (pulse), and
+  docs-drift-validation (the TEMPORAL half — `npm run docs:drift`, code that
+  moved after a doc's last commit, and the owner-escalation rule for
+  architecture/posture drift).
 ---
 
 # Update all documentation
@@ -118,6 +121,8 @@ done
 
 npm test          # the test-enforced mirrors + the two freshness checks
 npm run typecheck # keeps @ts-check'd docs-as-code honest
+npm run docs:drift # the TEMPORAL check — source that moved AFTER each doc's
+                   # last commit (see the docs-drift-validation skill)
 ```
 
 The client/test grep is intentionally loose — not every helper earns its own

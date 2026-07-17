@@ -13,7 +13,8 @@
     "fetch:owasp": "node scripts/fetch-owasp.mjs",
     "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
-    "pulse": "node scripts/build-pulse.mjs"
+    "pulse": "node scripts/build-pulse.mjs",
+    "docs:drift": "node scripts/docs-drift.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
