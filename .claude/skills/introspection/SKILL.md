@@ -178,10 +178,16 @@ Three consumers, one artifact:
    Tier-1 **DataDevice** ingest (`/mnt/in-src/f0…`, files at the device root
    — the no-nested-dirs discipline) with a per-file `cp` script (`.seedcp`)
    as the fallback for a guest without tar. Both scripts are written INTO
-   the device (never argv); `/src` is refreshed every boot, with a
-   `/workspace/source` symlink and an INDEX.txt note. The seed run itself is
-   time-bounded (`SEED_TIMEOUT_MS`, sandbox.js): past it the boot proceeds
-   with whatever was seeded instead of dying at the boot ceiling.
+   the device (never argv); the extraction is STAMP-GUARDED (`sourceStamp` →
+   `/src/.dr-stamp`, written only after a successful extraction): a boot
+   whose persistent overlay already carries this exact snapshot skips the
+   `rm -rf` + tar entirely (only the `/workspace/source` symlink refreshes),
+   so re-boots after the first are cheap — the fix for the chat_logs #522
+   wedge, where re-extracting every boot overran the seed ceiling on a phone
+   and the model's `ls -l /src` then raced the still-running extraction. The
+   seed run itself is time-bounded (`SEED_TIMEOUT_MS`, sandbox.js): past it
+   the boot proceeds and execInSandbox WAITS for the tracked background seed
+   instead of racing it (sandbox-debug skill has the event vocabulary).
 3. **DRC context block** — built client-side (`introspectionContext` in
    drc.js) and threaded through the client pipeline exactly like the RAG
    recall block (`runDrcResearch({introspection, fileProvider})`). The
@@ -480,8 +486,9 @@ served on BOTH tiers, so it's in `isPublicAsset`.
 Verified 2026-07-12 in a local Chromium harness: TIN renders, the picker
 groups private-first/remote-badged with the recommended private option
 auto-selected, zero console errors. Still owed on the DEPLOYED site: the /src
-mount readable in-guest on a real browser (the seed script's `rm -rf /src` +
-per-file `cp` path), the DRS enrichment step + the private browser-direct
+mount readable in-guest on a real browser (`ls -l /src` fast on a SECOND
+dev-mode boot — the stamp-guarded skip — and the seed-busy fail-soft on the
+first), the DRS enrichment step + the private browser-direct
 route end to end with a real provider key (confirm the cross-origin provider
 fetch is unaffected by COEP `require-corp` when the sandbox knob is also on —
 the skill says CORS fetch is fine, verify it), and DRC introspection on a real
