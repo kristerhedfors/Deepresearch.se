@@ -49,6 +49,16 @@
 // via setTerminalInputSink; named keys/Ctrl-chords map through the pure
 // termKeySequence (core), printable text rides the input event (IME-safe).
 //
+// COPY/PASTE (2026-07-17 directive): while the terminal pane is forward its
+// contents are real, selectable text — the CSS re-enables pointer events +
+// user-select on the pane in term-fg mode — and the handlers here stand back
+// from an active selection: a click that ends a select drag doesn't steal
+// focus, a touch drag on selection handles isn't hijacked into paging, and
+// Ctrl/Cmd+C with a selection is the browser's copy (without one it stays the
+// ^C interrupt; Ctrl/Cmd+V always passes through, which IS the terminal paste
+// since the pasted text rides the hidden input's input event into the VM) —
+// the pure decision is clipboardPassthrough (core).
+//
 // SCROLLING is per-mode, always vertical. In CONVERSATION mode the conversation
 // scrolls natively and the terminal (the background pane) KEEPS PACE with it: the
 // backdrop offset tracks the conversation's scroll position proportionally
@@ -70,6 +80,7 @@ import {
   backdropEnabled,
   channelCount,
   clampLine,
+  clipboardPassthrough,
   clipToNextChannel,
   convoSyncOffset,
   createBackdropModel,
@@ -216,8 +227,28 @@ function sendToTerminal(str) {
   try { termInputSink(String(str)); } catch { /* input is best-effort */ }
 }
 
+// A non-collapsed selection anywhere on the page — the signal the user is
+// COPYING terminal contents (2026-07-17 directive), so the gesture/keyboard
+// handlers must stand back: no focus steal, no paging hijack, and Ctrl+C is
+// the browser's copy, not the VM's interrupt.
+function hasLiveSelection() {
+  try {
+    const sel = typeof window !== "undefined" && window.getSelection ? window.getSelection() : null;
+    return !!sel && !sel.isCollapsed && String(sel).length > 0;
+  } catch { return false; }
+}
+
 function onTermKeydown(e) {
   try {
+    // Copy/paste chords belong to the browser: Ctrl/Cmd+C with a selection
+    // copies it (without one it stays the ^C interrupt), Ctrl/Cmd+V pastes —
+    // the pasted text lands in this hidden field and the input event below
+    // forwards it into the VM, so the passthrough IS the terminal paste.
+    if (clipboardPassthrough(
+      e.key,
+      { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, shift: e.shiftKey },
+      hasLiveSelection(),
+    )) return;
     const seq = termKeySequence(e.key, { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey });
     if (seq == null) return; // printable text arrives via the input event
     e.preventDefault();
@@ -550,6 +581,7 @@ function wireScroll() {
       if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
       if (!e.touches || e.touches.length !== 1) return;
       if (onBlocked(e.target)) return; // finger on a real control → leave it alone
+      if (hasLiveSelection()) return; // adjusting a text selection — don't page
       touchY = e.touches[0].clientY;
       touchActive = true;
     },
@@ -560,6 +592,9 @@ function wireScroll() {
     (e) => {
       try {
         if (!touchActive || !e.touches || e.touches.length !== 1) return;
+        // A selection appeared mid-gesture (long-press) — hand the rest of the
+        // drag to the browser so the selection handles stay draggable.
+        if (hasLiveSelection()) { touchActive = false; return; }
         const y = e.touches[0].clientY;
         const dy = touchY - y; // finger up → toward newest, matching wheel deltaY>0
         touchY = y;
@@ -584,6 +619,9 @@ function wireScroll() {
       if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
       if (onBlocked(e.target)) return; // a real control keeps its own click
       if (touchMoved) { touchMoved = false; return; } // drag remnant, not a tap
+      // The click that ENDS a select-to-copy drag must not steal the selection
+      // by moving focus (and re-pinning the log) — leave it for Ctrl/Cmd+C.
+      if (hasLiveSelection()) return;
       focusTerminalInput();
     } catch { /* decoration — never break the page */ }
   });

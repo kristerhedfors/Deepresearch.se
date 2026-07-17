@@ -2844,7 +2844,7 @@ function applyIntrospectionTheme(on) {
 // tooltips never display on touch devices (field-confirmed 2026-07-16: a
 // long-press shows nothing), so the stamp must be READABLE exactly where
 // remote debugging needs it, on a phone.
-const BUILD = "d34";
+const BUILD = "d35";
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");

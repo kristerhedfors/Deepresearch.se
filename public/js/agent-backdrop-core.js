@@ -474,6 +474,29 @@ export function termKeySequence(key, mods = {}) {
     : null;
 }
 
+/**
+ * Whether a keydown chord belongs to the BROWSER's clipboard rather than the
+ * VM (2026-07-17 directive: terminal-view contents must be copy/pasteable).
+ * Copy: Ctrl/Cmd+C counts as copy only while a selection exists — with nothing
+ * selected it stays the terminal interrupt (^C); Ctrl+Shift+C (the classic
+ * terminal-emulator copy chord) always passes. Paste: Ctrl/Cmd(+Shift)+V is
+ * always the browser's — the pasted text lands in the hidden input and rides
+ * its input event into the VM console, so passing it through IS the terminal
+ * paste. Total — never throws.
+ * @param {unknown} key KeyboardEvent.key
+ * @param {{ ctrl?: boolean, alt?: boolean, meta?: boolean, shift?: boolean }} [mods]
+ * @param {boolean} [hasSelection] a non-collapsed document selection exists
+ * @returns {boolean}
+ */
+export function clipboardPassthrough(key, mods = {}, hasSelection = false) {
+  const k = String(key == null ? "" : key).toLowerCase();
+  const primary = !!(mods && (mods.ctrl || mods.meta));
+  if (!primary || (mods && mods.alt)) return false;
+  if (k === "v") return true;
+  if (k === "c") return !!hasSelection || !!(mods && mods.shift);
+  return false;
+}
+
 // The BACKGROUND pane leans in the SAME direction as the foreground scroll, but
 // weaker and shorter — the parallax the request describes as "in synchronization
 // … weaker". Same clamped shape as parallaxNudge but NOT inverted (the caller
