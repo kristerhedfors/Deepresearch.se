@@ -294,10 +294,13 @@ header {
    an eye-in-a-circle right after the Se/cure wordmark — the tier's privacy
    marker sits ON the name. A bare glyph in the tail's flag blue, no glass
    chrome: it belongs to the wordmark, not the button row. Tapping it opens
-   #privacypop (the brand's intro-replay click ignores it — drc.js). */
+   #privacypop (the brand's intro-replay click ignores it — drc.js). Sized
+   smaller than the tail's glyphs and raised toward its cap height so it
+   reads as a superscript marker on the wordmark, not an inline letter
+   (owner request 2026-07-17: smaller, higher). */
 #privacybtn {
-  background: none; border: 0; margin: 0 0 0 .3rem; padding: .15rem;
-  display: inline-flex; align-items: center; vertical-align: -.3em;
+  background: none; border: 0; margin: 0 0 0 .25rem; padding: .1rem;
+  display: inline-flex; align-items: center; vertical-align: .25em;
   color: #1a56b0; line-height: 0; opacity: .85; cursor: pointer;
   filter: drop-shadow(0 1px 4px rgba(255, 255, 255, .5));
 }
