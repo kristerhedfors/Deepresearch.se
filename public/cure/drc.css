@@ -313,6 +313,13 @@ header {
    2026-07-16; measured with scripts/slash-gap.mjs: at 400 weight -.04em keeps
    every container font's ink gap above the .03em floor). */
 #proxybanner .sl, #notices .sl { margin: 0 -.04em; }
+/* The settings drawer's ⓘ explainer pops (#proxypop, #wspop, #localpop, …) —
+   .8rem running prose mixing bold AND regular wordmarks (owner report
+   2026-07-17: the secure-research-space pop's slashes too tight; measured with
+   scripts/slash-gap.mjs at 400+700 weight: -.04em keeps every container font's
+   ink gap above the .03em floor, worst side +0.043em). One rule for the whole
+   pop class so sibling pops don't regress one id at a time. */
+#settingsview .setting-pop .sl { margin: 0 -.04em; }
 /* The small "introspection" marker under the wordmark — only present while the
    introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
    (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
