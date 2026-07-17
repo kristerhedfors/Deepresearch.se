@@ -26,7 +26,7 @@
 // every frame wrapped, nothing downstream awaits it.
 
 import { GORES, PALETTE, clamp01, cloudPos, prof, smooth, swishClouds } from "./balloon.js";
-import { clampAnimMult, twistOffset } from "../cure/umbrella.js";
+import { clampAnimMult, hex, twistOffset } from "../cure/umbrella.js";
 
 export { clampAnimMult }; // re-exported for the caller (same admin multiplier)
 
@@ -184,11 +184,6 @@ export const FLEET = [
 const INK = "#0a2e5c"; // app.css --text: the wire drawing's ink
 const BASKET = "#a97b46";
 
-/** "#rrggbb" → [r,g,b]. @param {string} c */
-function hex(c) {
-  const n = parseInt(c.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
 /** Linear blend c1→c2 by t. @param {string} c1 @param {string} c2 @param {number} t */
 function lerpCol(c1, c2, t) {
   const a = hex(c1);
