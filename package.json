@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Deep-research Cloudflare Worker. No build step — deployed via `npx wrangler deploy`, reading src/ as plain JS. This package.json exists only to run the unit test suite and the type-checker (both dev-only; neither is part of the deploy).",
   "scripts": {
-    "test": "node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs",
+    "test": "node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.public.json --noEmit",
     "bundle": "node scripts/bundle-source.mjs",
     "bundle:rag": "node scripts/bundle-source-rag.mjs",
@@ -13,7 +13,8 @@
     "fetch:owasp": "node scripts/fetch-owasp.mjs",
     "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
-    "pulse": "node scripts/build-pulse.mjs"
+    "pulse": "node scripts/build-pulse.mjs",
+    "pulse:timeline": "node scripts/build-pulse-timeline.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

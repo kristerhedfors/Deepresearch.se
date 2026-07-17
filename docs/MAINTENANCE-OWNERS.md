@@ -27,6 +27,7 @@ feature maintenance*, and the **feature-maintenance** skill):
 |---|---|---|---|---|
 | **Execution sandbox — boot + reliability** (standing maintenance owner; MUST stay subscribed) | **#43** (`claude/sandbox-pwa-failure-ijgemh`, session `01LQuhduTgD8g92dTMtSEPgS`) — the Playwright worker; supersedes the earlier `sandbox-terminal-visibility-ujgu88` owner | in each PR's `Claude-Session:` trailer | `public/js/sandbox.js`, `public/js/bash-core.js`, `src/bash-agent.js`, `src/bash-api.js`, `public/js/boot-messages.js`, `public/js/agent-backdrop*.js`, `tests/e2e/sandbox.spec.js` | `sandbox not ready`, `stream stalled`, `sandbox.boot_stalled`, `sandbox.exec_timeout`, `sandbox.exec_not_ready`, `sandbox.boot_torn_down`, high `client_diag.fs.ms` (11–27 s = iOS `/workspace` mount stall), never reaching `boot_done` |
 | **Sandbox FILE MOUNTING** (attached/project files read from inside the VM) | **#52** (`claude/file-integrations-workspace-read-ndhwt5`, session `01GE154SMjg759eTivTkpV8d`, merged `9e341c0`) — root-caused + fixed the `/workspace`/`/mnt` read wedge | `public/js/sandbox.js` (device mounts), `public/js/sandbox-files.js`, `docs/SANDBOX-HOST-COMMANDS.md` | file read wedges to `sandbox not ready` / `cat` exit 124; corrupt `dr-sandbox-workspace` IDB. **ROOT-FIXED by #52**: bare `IDBDevice {type:"dir"}` hangs on first read in CheerpX 1.2.6 → now `/workspace` + project dirs are plain dirs in the root `OverlayDevice`. Retires the whole corrupt-volume class. **On-device: FULLY CONFIRMED 2026-07-15** — `/workspace` write+read (chat_logs #345, iOS 18.7, fs.ms 968), attached-file read (chat_logs #352, `file` on an attached PDF exit 0), and overlay persistence across reload (try-it #7 PASSED). No items owed; watch the signatures. |
+| **Sandbox /src SOURCE MOUNT** (introspection source tree seeded into the VM) | **#131** (`claude/sandbox-source-mount-timeout-gre7zf`, merged `d5b32f8`, deployed; supersedes **#119** `claude/introspection-sandbox-source-mount-9704xa`, whose tar+seed-timeout fix regressed same-day) — owes on-device confirmation: first dev-mode boot fails soft ("still preparing mounted files") instead of wedging, SECOND boot answers `ls -l /src` fast via the stamp skip | in the PR's `Claude-Session:` trailer | `public/js/sandbox-files.js` (`planSourceMount`, `sourceStamp`), `public/js/sandbox.js` (seed tracking + exec seed-wait), `public/js/bash-core.js` (`execTimeoutForBudget`) | `ls`/`cat` on `/src` → exit 124; `sandbox.exec_seed_busy` repeating across sends; `sandbox.seed_wedged`; `sandbox.fs.seed_timeout` with no later `seed_late_done`; `client_diag.fs.ms` ≫ 45 s on a SECOND dev-mode boot (stamp skip not firing) |
 | **Sandbox SELF-HOSTED IMAGE** (admin-selectable R2 ext2 boot disk; INERT by default) | **#62** (`claude/local-linux-image-serving-3dsu2g`, session `01BuSBKyRzjn1fyqXWohdstS`, merged `01d9c14`) | `src/sandbox-image.js`, `src/config.js` (`sandbox` block), `public/js/sandbox.js` (`HttpBytesDevice` branch), `public/js/admin.js` (image panel), `scripts/build-sandbox-image.sh`, `docs/SANDBOX-LOCAL-IMAGE.md` | boot regresses with NO image selected (must stay byte-identical to `CloudDevice`); a selected image fails to boot (206/Range/`require-corp` CORP); non-`i386` image picked (CheerpX is i386-only — won't boot). **Inert until an operator uploads an image to R2 AND selects it. Owes:** build+upload a real i386 image and boot it end-to-end on a real device (iOS Safari under `require-corp`) before flipping its `verified` flag / selecting it as default. |
 | Sandbox agentic shell loop | #37 (`claude/last-chats-failure-logs-87jlxp`) | PR #37 trailer | `public/js/bash-core.js` (`runShellLoop`, `sandboxTornDown`) | `Ran N commands, all sandbox not ready`; loop not stopping on teardown |
 | DRC umbrella intro / loading spinners | #36 (`claude/intro-animation-loading-states-djis82`) | PR #36 trailer | `public/cure/umbrella.js`, `public/js/umbrella-spinner.js` | intro/spinner not rendering, canvas errors |
@@ -115,3 +116,21 @@ feature maintenance*, and the **feature-maintenance** skill):
 > (the /try/10 502 was a DIFFERENT subsystem — fixed by PR #83: Berget's
 > down-for-maintenance GLM-5.2 was the DRC dropdown default for borrowed
 > sessions; down models are now excluded and upstream error detail surfaces).
+>
+> **2026-07-17 — /src source-mount regression (chat_logs #522, iOS 18.7, css
+> h46) → owner-routed to a fresh worker (`claude/sandbox-source-mount-timeout-
+> gre7zf`).** #119's tar seeding + fail-soft seed timeout was NOT enough on the
+> phone: the seed re-extracted the whole 6.6 MB snapshot every boot (`rm -rf
+> /src` first), blew the 45 s abandon point (fs.ms 61914), and — since CheerpX
+> cannot kill the guest process — kept extracting while the model's
+> `ls -l /src` ran against it on the single-threaded VM → 30 s exec timeout,
+> exit 124, teardown. The same exchange had `budget_s: 15`, which the fixed
+> 30 s exec ceiling ignored. Fix: (1) stamp-guarded seeding — `/src/.dr-stamp`
+> written only after a successful extraction, matching stamp skips rm-rf+tar
+> entirely on re-boots; (2) the background seed is tracked and execInSandbox
+> WAITS for it (bounded) instead of racing it, failing soft without teardown
+> when still busy (`sandbox.exec_seed_busy`) and discarding only a truly
+> wedged seed (`sandbox.seed_wedged`, 180 s); (3) the per-command ceiling is
+> scoped to the user's research budget (`execTimeoutForBudget`, both tiers).
+> Owed: on-device confirmation (first dev-mode boot seed-busy fail-soft, and
+> a fast stamped SECOND boot where `ls -l /src` answers).

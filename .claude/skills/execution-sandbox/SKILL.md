@@ -396,7 +396,7 @@ round-trip OUT (guest-written files back to the user).
 | Concern | Where |
 |---|---|
 | Pure core (sanitize/dedupe/cap/manifest/`projHash`/`buildSeedScript`/`shellEscape`/`buildTar`) | `public/js/sandbox-files.js` (+ `.test.js`); in `isPublicAsset` |
-| Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM). The seed run is time-bounded (`SEED_TIMEOUT_MS` 45 s, `sandbox.fs.seed_timeout`): past it the boot proceeds partially seeded instead of eating the 90 s boot ceiling (chat_logs #515) |
+| Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM). The seed run is time-bounded (`SEED_TIMEOUT_MS` 45 s, `sandbox.fs.seed_timeout`): past it the boot proceeds instead of eating the 90 s boot ceiling (chat_logs #515) — but the guest seed process CANNOT be killed and keeps extracting, so its completion is tracked (`_seedPromise`) and `execInSandbox` WAITS for it (bounded by the command's own ceiling) rather than racing it on the single-threaded VM (the chat_logs #522 wedge: `ls -l /src` vs the still-extracting seed → 30 s timeout → teardown). A seed-busy command fails soft (exit 124, "still preparing mounted files") WITHOUT teardown; only a seed older than `SEED_WEDGE_MS` (180 s) discards the VM. The /src seed itself is STAMP-GUARDED (`sourceStamp` in sandbox-files.js → `/src/.dr-stamp`, written only after a successful extraction): a re-boot whose persisted overlay already carries the exact snapshot skips the rm -rf + tar entirely, so only the FIRST boot after a deploy pays the extraction |
 | Boot signature | `ensureSandboxBooted(fileProvider?)` — provider is `async () => ({session:[{name,type,bytes}], project:{name,id,files:[…]}|null, source:{files}|null})` |
 | DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `activeProject().files`→project; bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed. `source` = the introspection snapshot whenever dev mode is on (no intent gate — 2026-07-17); the dev-mode pre-warm carries it too, and `resetSandboxIfLacking({files,source})` discards a live VM that lacks what a send needs |
 | Prompt awareness | `bashAgentPrompt` (points the model at `/workspace/INDEX.txt`; `{sourceMounted:true}` in dev mode adds the `/src` source-tree pointer — DRC twin: `drcBashAgentPrompt`) |
@@ -495,7 +495,9 @@ path runs client-side, so it's shipped to Workers Logs two ways:
    `sandbox.fs.mount`, `sandbox.fs.write` (per file, **debug**),
    `sandbox.fs.dropped` (**debug**), `sandbox.fs.seed` (seed script exit),
    `sandbox.fs.seed_timeout` (**warn** — the seed run hit `SEED_TIMEOUT_MS`;
-   boot continued partially seeded),
+   boot continued while the unkillable guest seed keeps extracting — tracked,
+   see `sandbox.fs.seed_late_done` / `sandbox.exec_seed_busy` /
+   `sandbox.seed_wedged` in the sandbox-debug skill),
    `sandbox.fs.verify` (a real `ls -la /workspace` listing, **debug**),
    `sandbox.fs.export`. Levels are honored end to end: **debug events only
    surface when `LOG_LEVEL=debug`** (`wrangler.toml`) — flip it to debug for
