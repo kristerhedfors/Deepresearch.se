@@ -40,7 +40,7 @@ Everything below is "documentation" for the purposes of this pass:
 | Public readme | `README.md`, `AGENTS.md` (vendor-neutral pointer) | hand-maintained |
 | Backlog catalogs | `FEATURES.md`, `SECURITY-RISKS.md`, `SECURITY-ASSESSMENT.md` | mirrored (test-enforced §3) |
 | Design docs | `docs/*.md` (ARCHITECTURE, ARCHITECTURE-ROADMAP, DECISION-BOARD-LOOPS, SANDBOX-HOST-COMMANDS, GOOGLE-AUTH, SECRET-SCANNING, FOREVERAGENT-*) | hand-maintained |
-| Registries | `docs/MAINTENANCE-OWNERS.md`, `docs/MERGED-BRANCHES.md`, `docs/MERGE-STATUS.json` | hand-maintained, update-in-place per their own rules |
+| Registries | `docs/MAINTENANCE-OWNERS.md`, `docs/MERGED-BRANCHES.md`, `docs/MERGE-STATUS.json`, `docs/DOC-DRIFT-LOG.md` (append-only, owner-verdicts only — see **docs-drift-validation**) | hand-maintained, update-in-place per their own rules |
 | Skills | `.claude/skills/*/SKILL.md` — body **and** `description` frontmatter | hand-maintained |
 | Static pages | `public/{help,build,story,architecture,welcome}/index.html` + `public/build/history.md` | hand-maintained |
 | Generated artifacts | `public/introspect/source-snapshot.json`, `public/introspect/source-rag.json`, `public/pulse/data.json` | **regenerate, never hand-edit** |
@@ -159,3 +159,7 @@ are exact and any hit is real drift.
   adds the code (the mirror discipline the whole repo runs on).
 - Scope: reconcile docs with code. Do **not** refactor code, "improve" wording
   for its own sake, or touch a doc the code doesn't contradict.
+- **Mechanical drift only.** If a fix would change a CAPABILITY or
+  privacy/security POSTURE claim (an invariant, a data-path promise, "what
+  the app can do"), stop — that is Class C drift and needs the owner's
+  checkmark first: load **docs-drift-validation**.

@@ -257,6 +257,7 @@ Workflow & docs:
 - **deploy** — how code reaches production; branch preview URLs; the commit-signing / Verified-badge remediation.
 - **refactor-clarity** — refactoring for clarity here without breaking anything: the pure-core convention, what to preserve.
 - **update-docs** — reconciling the whole documentation surface with the code: the inventory, drift greps, regenerate rules.
+- **docs-drift-validation** — bottom-up docs⇄code validation: the doc-age drift scan, layer walk, and the OWNER-checkmark loop for capability/posture drift (ledger `docs/DOC-DRIFT-LOG.md`).
 
 Pipeline & models:
 
