@@ -293,6 +293,46 @@ test("handleProxyLlm forwards /models and meters a completion, refunding on upst
   assert.equal([...db._rows.values()].find((r) => r.service === "api").used, 1); // refunded
 });
 
+test("handleProxyLlm meters an embeddings batch on the api grant and refunds a bad one", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const b = await mintBundle(env, log, { userId: "42" });
+  const bundle = await openBundle(b.blob, b.key);
+  const api = await exchangeGrant(env, bundle.grants.find((g) => g.svc === "api").token);
+  const bearer = "Bearer " + api.proxyToken;
+  const url = new URL("https://x/api/proxy/llm/embeddings");
+  const req = () =>
+    new Request("https://x/api/proxy/llm/embeddings", {
+      method: "POST",
+      headers: { authorization: bearer, "content-type": "application/json" },
+      body: JSON.stringify({ model: "intfloat/multilingual-e5-large", input: ["passage: hello"] }),
+    });
+
+  // Successful embeddings → one api unit spent, remaining echoed, vectors passed through.
+  const okFetch = async () => new Response(JSON.stringify({ data: [{ index: 0, embedding: [0.1, 0.2] }] }), { status: 200 });
+  const ok = await withFetch(okFetch, () => handleProxyLlm(req(), env, log, url));
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.deepEqual(body.data[0].embedding, [0.1, 0.2]);
+  assert.equal(body.remaining, 39);
+
+  // Empty result → refunded (used back to 1, not 2).
+  const emptyFetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+  const empty = await withFetch(emptyFetch, () => handleProxyLlm(req(), env, log, url));
+  assert.equal(empty.status, 502);
+  assert.equal([...db._rows.values()].find((r) => r.service === "api").used, 1); // refunded
+
+  // A web token can't reach the api-metered embeddings route.
+  const web = await exchangeGrant(env, bundle.grants.find((g) => g.svc === "web").token);
+  const webReq = new Request("https://x/api/proxy/llm/embeddings", {
+    method: "POST",
+    headers: { authorization: "Bearer " + web.proxyToken, "content-type": "application/json" },
+    body: JSON.stringify({ input: ["x"] }),
+  });
+  const rejected = await handleProxyLlm(webReq, env, log, url);
+  assert.equal(rejected.status, 403);
+});
+
 test("handleProxyLlm rejects a web token and a missing bearer", async () => {
   const db = fakeDb();
   const env = envWith(db);

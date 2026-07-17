@@ -28,8 +28,9 @@
 //        web → POST /api/proxy/web        (Exa on the server key; query only)
 //        api → POST /api/proxy/llm/*      (Berget on the server key; OpenAI-wire
 //                                          reverse proxy — /chat/completions,
-//                                          /models — so the DRC provider registry
-//                                          drives it unchanged)
+//                                          /embeddings (RAG parity), /models —
+//                                          so the DRC provider registry drives
+//                                          it unchanged)
 //
 // Governance (config.js `proxy` block, PUT /api/admin/config): per-service
 // default quota/TTL, the master `enabled` switch, and a shared global `budget`
@@ -55,7 +56,7 @@ import {
   webResultResponse,
 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
-import { forwardLlmCompletion, forwardLlmModels } from "./llm-proxy.js";
+import { forwardLlmCompletion, forwardLlmEmbeddings, forwardLlmModels } from "./llm-proxy.js";
 import { mintGrantToken, mintProxyToken, verifyGrantToken, verifyProxyToken } from "./proxy-grant.js";
 import { sealBundle } from "../public/js/proxy-bundle.js";
 
@@ -511,6 +512,7 @@ export async function handleProxyWeb(request, env, log) {
  * with the proxy token as the bearer.
  *   GET  /api/proxy/llm/models            → the Berget catalog (non-metered)
  *   POST /api/proxy/llm/chat/completions  → one metered completion (stream or JSON)
+ *   POST /api/proxy/llm/embeddings        → one metered embeddings batch (RAG)
  * The client's Authorization header carries the PROXY token; it is verified and
  * REPLACED with the server's Berget key upstream — the user key never exists.
  * @param {Request} request @param {Env} env @param {Logger} log @param {URL} url
@@ -529,6 +531,26 @@ export async function handleProxyLlm(request, env, log, url) {
   // Model catalog — a thin forward of Berget's /models (non-metered).
   if (suffix === "/models" && request.method === "GET") {
     return forwardLlmModels(env);
+  }
+
+  // Embeddings (metered like a completion) — lets a borrowed Se/cure session
+  // run the SAME client-side RAG the signed-in tier does, on Berget's e5 model.
+  if (suffix === "/embeddings" && request.method === "POST") {
+    const body = /** @type {any} */ (await request.json().catch(() => null));
+    if (!body || typeof body !== "object" || (typeof body.input !== "string" && !Array.isArray(body.input))) {
+      return jsonResponse({ error: "An embeddings body with input is required." }, 400);
+    }
+    const db = await getDb(env);
+    if (!db) return jsonResponse({ error: "LLM proxy is unavailable." }, 503);
+    const reserved = await reserveUnit(db, claims.jti, "api");
+    if (reserved === "error") return jsonResponse({ error: "Grant not found." }, 403);
+    if (reserved === "exhausted") return jsonResponse({ error: "LLM API quota is used up.", remaining: 0 }, 429);
+    return forwardLlmEmbeddings(env, log, body, {
+      refund: () => refundUnit(db, claims.jti),
+      remainingAfter: () => remainingOf(db, claims.jti),
+      tagPrefix: "proxy.embed",
+      ids: { uid: claims.uid, jti: claims.jti },
+    });
   }
 
   if (suffix !== "/chat/completions" || request.method !== "POST") {

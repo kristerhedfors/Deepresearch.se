@@ -205,10 +205,13 @@ const WEB_SHARE_INFO = `<strong>Web search (Exa)</strong><br>
   conversation. Quota-metered per link; you can top up, pause, or revoke it any
   time without changing the link.`;
 
-const API_SHARE_INFO = `<strong>LLM model (Berget)</strong><br>
-  The recipient can run the research and answer models on <b>your</b> account's
-  server key (Berget). Their prompt goes upstream to the model, by their choice;
-  nothing is stored. Quota-metered per link; top up, pause, or revoke any time.`;
+const API_SHARE_INFO = `<strong>LLM &amp; embeddings (Berget)</strong><br>
+  The recipient can run the research and answer models — <b>and</b> the
+  embedding model that powers document retrieval (RAG) — on <b>your</b>
+  account's server key (Berget). Same provider, same grant: an embedding is the
+  same kind of upstream call as a completion. Their text goes upstream to the
+  model, by their choice; nothing is stored. Both draw on this one quota;
+  top up, pause, or revoke any time.`;
 
 // Popovers for the integrations that CANNOT travel — same explain-don't-hide
 // posture as the Settings knobs, but the reason here is structural.
@@ -263,7 +266,7 @@ function shareBodyMarkup() {
     })}
     ${settingRow({
       id: "wspapi",
-      label: "LLM model (Berget)",
+      label: "LLM & embeddings (Berget)",
       checked: true,
       disabled: false,
       popId: "wspapipop",
@@ -295,13 +298,11 @@ function shareBodyMarkup() {
     <p class="muted setting-note">Place lookups (OpenStreetMap) and model-hub
       search (Hugging Face) stay server-side the same way.</p>
 
-    <p class="muted setting-note">So a shared workspace lends <b>AI-model and
-      web-search access</b> — enough to run the full research pipeline against
-      your account's allowance. Document retrieval (embeddings) in the shared
-      session runs on the recipient's <b>own</b> provider key, by design: their
-      documents never return to a server. Share nothing above and the link still
-      works — the recipient just opens to an empty model list and plugs in their
-      own key.</p>
+    <p class="muted setting-note">So a shared workspace lends <b>model, embedding,
+      and web-search access</b> — enough to run the full research pipeline,
+      document retrieval included, against your account's allowance. Share nothing
+      above and the link still works — the recipient just opens to an empty model
+      list and plugs in their own key.</p>
 
     <div class="settings-item" id="wsprow">
       <div class="settings-row">

@@ -84,10 +84,16 @@ research space" a signed-in Se/rver user (ghost crossover) or an admin
 (shareable link) LENDS a Se/cure session: a bundle of temporary,
 account-connected proxy grants, **one per SERVICE** — `web` (proxied Exa,
 query-only, exactly like the first exception) and `api` (proxied LLM
-completions on the server's Berget key). **The `api` grant DOES route the
-conversation through the server** (an LLM call carries the prompt) — this is
-the one place a Se/cure session's *content* touches the server — so it is
-OPT-IN, quota-metered, time-limited, Berget-ONLY (bounded account exposure),
+completions **and embeddings** on the server's Berget key —
+`/api/proxy/llm/chat/completions` and `/api/proxy/llm/embeddings`, both
+metered on the one `api` grant; the embeddings route (2026-07-17) lets a
+borrowed Se/cure session run the same client-side RAG the signed-in tier
+does, on Berget's e5 model, an embedding being the same exposure class of
+upstream call as the completion the grant already lends). **The `api` grant
+DOES route the conversation through the server** (an LLM call carries the
+prompt; an embedding carries the document text) — this is the one place a
+Se/cure session's *content* touches the server — so it is OPT-IN,
+quota-metered, time-limited, Berget-ONLY (bounded account exposure),
 and **clearly DISCLOSED in the Se/cure UI** ("which APIs are connected"): a
 connected-APIs banner + a Settings row + a master toggle that turns the whole
 borrowed space off. **TWO-TIER tokens** (the owner's directive): the bundle
