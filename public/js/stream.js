@@ -29,7 +29,7 @@ import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNA
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { deliverablesRun, wantsOutboxCollect } from "./bash-core.js";
+import { deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
 import {
@@ -855,9 +855,13 @@ async function maybeRunShellLoop(turn, opts) {
       if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
       return booted;
     };
+    // The user's research time budget scopes the per-command ceiling: a
+    // question scoped to 15 s must not sit the full default 30 s on one
+    // wedged command (chat_logs #522). No budget keeps the default.
+    const execTimeoutMs = execTimeoutForBudget(opts?.budgetS);
     const transcript = await runShellLoop({
       messages: stripOldImages(history),
-      exec: execInSandbox,
+      exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs }),
       ensureReady: bootOnce,
       // Surface WHICH command is running, live — the user asked to see the
       // actual command, not just "executing command". onExec fires just before
