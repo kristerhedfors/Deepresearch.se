@@ -287,7 +287,15 @@ const stoppers = new Map(); // generate id → InterruptableStoppingCriteria
 
 async function importRuntime() {
   if (tf) return tf;
-  tf = await import("/vendor/transformers/transformers.web.min.js");
+  // The SELF-CONTAINED dist bundle (transformers.min.js), NOT the
+  // bundler-oriented transformers.web.min.js: the web build externalizes
+  // onnxruntime as BARE import specifiers ("onnxruntime-web/webgpu"), which
+  // cannot resolve inside a worker — import maps apply to documents only —
+  // so importing it threw "Failed to resolve module specifier" on every
+  // engine (found 2026-07-17, the first time generate was driven end to
+  // end). The full bundle inlines the ort JS API and fetches the SAME four
+  // vendored wasm-loader files via wasmPaths below.
+  tf = await import("/vendor/transformers/transformers.min.js");
   const env = tf.env;
   env.allowLocalModels = false;
   env.useBrowserCache = false; // ONE disclosed storage location: our OPFS cache below

@@ -217,23 +217,40 @@ export function isPublicAsset(url, method) {
 // the revalidation a cheap 304.
 const ASSET_REVALIDATE = /\.(js|css|html|md|json|webmanifest)$/i;
 
-// Scripts that are spawned AS dedicated workers by a cross-origin-isolated
-// page (the /cure shell always; the DRS shell with the sandbox knob on). The
-// spec checks the WORKER SCRIPT RESPONSE's own embedder policy against the
-// owner's — same-origin is NOT sufficient — so without a COEP header on
+// The MODULE GRAPH of the dedicated workers a cross-origin-isolated page
+// spawns (the /cure shell always; the DRS shell with the sandbox knob on).
+// The spec checks the WORKER SCRIPT RESPONSE's own embedder policy against
+// the owner's — same-origin is NOT sufficient — so without a COEP header on
 // these responses the browser refuses to create the worker: an immediate
 // error event with no detail, before a single line runs. Found live
 // 2026-07-17: `new Worker("/js/ondevice-worker.js")` died instantly on /cure
 // for EVERY visitor (the on-device engine's "crashed before it could start"),
-// because serveAsset served the script without COEP. The two onnxruntime
-// .mjs files are here because the pthread runtime spawns NESTED workers from
-// its own module URL (`new Worker(new URL(import.meta.url))`), and a nested
-// worker's owner is the (now-isolated) on-device worker. The .wasm blobs and
-// transformers.web.min.js are plain same-origin subresources — no COEP
-// needed. These are served like the COEP shell (full 200, no-store) for the
-// same reason serveAsset documents: a 304 revalidation makes the browser
-// reuse its stored pre-fix response WITHOUT the header, and all three files
-// are small (15–47 KB), so forgoing the cache is cheap.
+// because serveAsset served the script without COEP.
+//
+// This must cover the worker's WHOLE same-origin module graph, not just the
+// top-level script: WebKit (Safari — iOS above all, the tier this feature
+// targets) applies the COEP check to every module a worker imports, static
+// or dynamic, where Chromium only checks the top-level script. Found live
+// 2026-07-17, same day, second round: with only the top-level script fixed,
+// Chromium spawned the worker fine while Safari still refused it —
+// "Refused to load '…/js/ondevice-core.js' worker because of
+// Cross-Origin-Embedder-Policy" — the SAME never-started crash, one import
+// deeper. So: the worker script, its one static import (ondevice-core.js —
+// itself import-free, the graph ends there), the transformers runtime the
+// worker imports dynamically at generate time, and the two onnxruntime .mjs
+// files (dynamically imported by the runtime AND spawned as NESTED pthread
+// workers via `new Worker(new URL(import.meta.url))`). The .wasm blobs stay
+// out: they are fetch()ed, not imported, and same-origin fetches pass the
+// CORP check without any header (verified on WebKit).
+//
+// These are served like the COEP shell (full 200, no-store) for the same
+// reason serveAsset documents: a 304 revalidation makes the browser reuse
+// its stored pre-fix response WITHOUT the header. ondevice-core.js is also
+// in the PAGE's graph (drc.js → ondevice-engine.js) — a COEP header on a
+// plain script subresource is ignored, so serving it isolated is harmless
+// there; the no-store costs a ~30 KB refetch per load and the 558 KB
+// transformers runtime one refetch per worker lifetime — cheap next to the
+// gigabyte weight downloads the feature exists for.
 /**
  * @param {string} pathname
  * @returns {boolean}
@@ -241,6 +258,8 @@ const ASSET_REVALIDATE = /\.(js|css|html|md|json|webmanifest)$/i;
 export function isWorkerScriptAsset(pathname) {
   return (
     pathname === "/js/ondevice-worker.js" ||
+    pathname === "/js/ondevice-core.js" ||
+    pathname === "/vendor/transformers/transformers.min.js" ||
     pathname === "/vendor/transformers/ort-wasm-simd-threaded.mjs" ||
     pathname === "/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs"
   );

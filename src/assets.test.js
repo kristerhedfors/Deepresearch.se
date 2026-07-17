@@ -173,11 +173,18 @@ describe("serveAsset caching policy", () => {
   // SCRIPT RESPONSE carries a compatible COEP header — without it the worker
   // dies with a detail-less error event before a single line runs (the
   // on-device engine's "crashed before it could start", found live
-  // 2026-07-17 on /cure). These responses must also never be revived from a
-  // stale stored copy via a 304, so they get the shell's no-store treatment.
-  test("worker scripts are served isolated (COEP) and never cached", async () => {
+  // 2026-07-17 on /cure). WebKit (iOS Safari) extends that check to EVERY
+  // module the worker imports, static or dynamic — so the worker's whole
+  // same-origin module graph must serve the header (found live the same day,
+  // second round: Chromium spawned the worker, Safari refused its
+  // ondevice-core.js import with the same never-started crash). These
+  // responses must also never be revived from a stale stored copy via a 304,
+  // so they get the shell's no-store treatment.
+  test("the worker module graph is served isolated (COEP) and never cached", async () => {
     for (const p of [
       "/js/ondevice-worker.js",
+      "/js/ondevice-core.js",
+      "/vendor/transformers/transformers.min.js",
       "/vendor/transformers/ort-wasm-simd-threaded.mjs",
       "/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs",
     ]) {
@@ -200,14 +207,12 @@ describe("serveAsset caching policy", () => {
     assert.equal(seen.headers.get("if-modified-since"), null);
   });
 
-  test("plain vendored subresources (wasm, the runtime module) are NOT isolated", async () => {
-    // Only worker SCRIPTS need COEP; the multi-MB wasm blobs must keep their
-    // cacheable TTL, and transformers.web.min.js its no-cache revalidation.
+  test("plain vendored subresources (the wasm blobs) are NOT isolated", async () => {
+    // The wasm blobs are fetch()ed, never imported as modules, and
+    // same-origin fetches pass the CORP check without a header (verified on
+    // WebKit) — the multi-MB files must keep their cacheable TTL.
     const wasm = await serveAsset(new Request("https://deepresearch.se/vendor/transformers/ort-wasm-simd-threaded.wasm"), env);
     assert.equal(wasm.headers.get("cross-origin-embedder-policy"), null);
     assert.equal(wasm.headers.get("cache-control"), "public, max-age=3600");
-    const runtime = await serveAsset(new Request("https://deepresearch.se/vendor/transformers/transformers.web.min.js"), env);
-    assert.equal(runtime.headers.get("cross-origin-embedder-policy"), null);
-    assert.equal(runtime.headers.get("cache-control"), "no-cache");
   });
 });
