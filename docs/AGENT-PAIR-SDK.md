@@ -60,6 +60,7 @@ The SDK has three parts:
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
 | `sdk/pair-cli.mjs` | The dependency-free CLI over the manifest (`list` / `show` / `plan` / `validate`), unit-tested in `npm test` |
+| `sdk/drpl.mjs` | The DRPL/1 pipeline-language reference tooling (`validate` / `show` / `fingerprint` / `diff` over `*.drpl.json` documents) — the formal language declaring a pipeline's structure incl. privacy placement, so pairs and nodes can be compared structurally (spec: `docs/PIPELINE-LANGUAGE.md`; part of the DRSW workspace-interchange standard, `docs/WORKSPACE-PROTOCOL.md`); unit-tested in `npm test` (`sdk/drpl.test.mjs`) |
 
 **Why skills, not a framework.** The reference codebase's entire bug history
 is integration behavior — hung fetches, silent stream truncation, CPU

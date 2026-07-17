@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepresearch.se/schemas/drsw-payload-1.schema.json",
+  "title": "DRSW/1 workspace payload (kind drc-workspace, v 1)",
+  "description": "The plaintext JSON a Deep Research Secure Workspace envelope seals — the interchange bundle a conforming node opens and applies. Normative prose: docs/WORKSPACE-PROTOCOL.md. Readers MUST ignore members not described here (forward compatibility); writers MUST omit empty sections rather than emitting them empty.",
+  "type": "object",
+  "required": ["v", "kind"],
+  "properties": {
+    "v": { "const": 1, "description": "Payload schema version." },
+    "kind": { "const": "drc-workspace", "description": "Payload type discriminator (the registered baseline kind)." },
+    "name": { "type": "string", "maxLength": 80, "description": "Display name for the opened workspace." },
+    "note": { "type": "string", "maxLength": 2000, "description": "Welcome note shown on open, before anything is applied." },
+    "keys": {
+      "type": "object",
+      "description": "Provider API credentials, keyed by provider id (e.g. openai, groq, berget). The most sensitive section — writers MUST warn before including it; readers SHOULD stage its application behind explicit consent.",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "providerId": { "type": "string", "description": "The active provider choice accompanying keys." },
+    "model": { "type": "string", "description": "The active model choice accompanying keys." },
+    "settings": {
+      "type": "object",
+      "description": "Behavior knobs. All optional; unknown members ignored.",
+      "properties": {
+        "research": { "type": "boolean", "description": "Deep-research pipeline on/off." },
+        "bashLite": { "type": "boolean", "description": "Execution-sandbox agent on/off." },
+        "developerMode": { "type": "boolean", "description": "Introspection/help mode on/off." },
+        "searchBackend": { "type": "object", "description": "Self-hosted web-search backend config (may carry a service key)." },
+        "localBaseUrl": { "type": "string", "description": "The user's own OpenAI-compatible server base URL (the keyless local provider)." }
+      }
+    },
+    "conversations": {
+      "type": "array",
+      "description": "Portable chat state. Readers MUST append these as new conversations (fresh ids) — never clobber local data.",
+      "items": {
+        "type": "object",
+        "required": ["messages"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "maxLength": 80 },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["role", "content"],
+              "properties": { "role": { "type": "string" }, "content": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "grants": {
+      "type": "object",
+      "description": "Borrowed metered capabilities — signed tokens whose allowance lives in the ISSUING node's meter, administered live by the minter. Only URL-safe token tiers may travel (never post-exchange working tokens). Hydration is opportunistic and fail-soft: the workspace opens fully offline regardless.",
+      "properties": {
+        "ws": { "type": "string", "description": "deepresearch.se shorthand: a wsk1.… web-search grant token." },
+        "proxy": {
+          "type": "array",
+          "description": "deepresearch.se shorthand: prg1.… proxy GRANT tokens (the token-granting tier), one per service.",
+          "items": {
+            "type": "object",
+            "required": ["svc", "token"],
+            "properties": {
+              "svc": { "enum": ["web", "api"] },
+              "token": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "tokens": {
+          "type": "array",
+          "description": "Interop extension: issuer-qualified grant entries, so one workspace can carry allowances from several nodes.",
+          "items": {
+            "type": "object",
+            "required": ["issuer", "token"],
+            "properties": {
+              "issuer": { "type": "string", "format": "uri", "description": "Origin of the node whose meter backs this token." },
+              "type": { "type": "string", "description": "Grant family/type at the issuer (e.g. web, api, server-token)." },
+              "token": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "origin": {
+      "type": "object",
+      "description": "Interop extension: provenance of the exporting node (private — inside the ciphertext).",
+      "properties": {
+        "node": { "type": "string", "format": "uri" },
+        "software": { "type": "string", "description": "Implementation identifier, e.g. a repository URL." },
+        "exportedAt": { "type": "integer", "description": "Unix ms timestamp of export." }
+      }
+    },
+    "pipelines": {
+      "type": "array",
+      "description": "Interop extension: DRPL/1 pipeline declarations relevant to this workspace's research (see docs/schemas/drpl-1.schema.json) — carried so any node can show, compare, or re-run the declared structure.",
+      "items": { "type": "object" }
+    },
+    "provenance": {
+      "type": "array",
+      "description": "Interop extension: the processing/enrichment trail — one entry per node hop that transformed this workspace. Append-only by convention; entirely user-controlled and private (inside the ciphertext).",
+      "items": {
+        "type": "object",
+        "required": ["node"],
+        "properties": {
+          "node": { "type": "string", "format": "uri" },
+          "at": { "type": "integer", "description": "Unix ms timestamp of the hop." },
+          "pipeline": { "type": "string", "description": "The DRPL document id that ran." },
+          "fp": { "type": "string", "pattern": "^drpl1:", "description": "The DRPL structural fingerprint that ran (drpl1:<level>:<hex>)." }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "description": "Interop extension: a planned itinerary across nodes — the navigation/routing primitive. The user's client advances the cursor and re-seals per hop; no server ever sees it.",
+      "required": ["hops"],
+      "properties": {
+        "cursor": { "type": "integer", "minimum": 0, "description": "Index of the next hop to take." },
+        "hops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["node"],
+            "properties": {
+              "node": { "type": "string", "format": "uri" },
+              "portal": { "type": "string", "description": "Portal path at that node if it differs from its discovery manifest." },
+              "pipeline": { "type": "string", "description": "The DRPL document id intended to run there." },
+              "intent": { "type": "string", "maxLength": 500, "description": "Human-readable purpose of the hop." }
+            }
+          }
+        }
+      }
+    }
+  }
+}
