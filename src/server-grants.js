@@ -41,8 +41,9 @@
 //      hands out the JWT itself.
 // Spending is PUBLIC (a Se/cure session has no identity — the token is the
 // authority): POST /api/server-token/web (query-only Exa),
-// /api/server-token/llm/* (OpenAI-wire Berget reverse proxy — the JWT as
-// bearer), POST /api/server-token/status (non-consuming read).
+// /api/server-token/llm/* (OpenAI-wire Berget reverse proxy — /chat/completions
+// and /embeddings, both `api`-metered so a borrowed session gets RAG parity —
+// the JWT as bearer), POST /api/server-token/status (non-consuming read).
 //
 // Governance (config.js `server_token` block, PUT /api/admin/config):
 // per-permission default quota, one default TTL, the master `enabled`
@@ -68,7 +69,7 @@ import {
   webResultResponse,
 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
-import { forwardLlmCompletion, forwardLlmModels } from "./llm-proxy.js";
+import { forwardLlmCompletion, forwardLlmEmbeddings, forwardLlmModels } from "./llm-proxy.js";
 import { SERVER_TOKEN_SERVICES, mintServerToken, verifyServerToken } from "./server-token.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -527,6 +528,29 @@ export async function handleServerTokenLlm(request, env, log, url) {
   if (suffix === "/models" && request.method === "GET") {
     return forwardLlmModels(env);
   }
+
+  // Embeddings (metered like a completion) — a borrowed Se/cure session runs
+  // the SAME client-side RAG the signed-in tier does, on Berget's e5 model.
+  // Same guarantee as the completion below: the caller's OWN text goes upstream
+  // by their choice; the token never unlocks any content Se/rver stores.
+  if (suffix === "/embeddings" && request.method === "POST") {
+    const eb = /** @type {any} */ (await request.json().catch(() => null));
+    if (!eb || typeof eb !== "object" || (typeof eb.input !== "string" && !Array.isArray(eb.input))) {
+      return jsonResponse({ error: "An embeddings body with input is required." }, 400);
+    }
+    const edb = await getDb(env);
+    if (!edb) return jsonResponse({ error: "LLM proxy is unavailable." }, 503);
+    const er = await reserveUnit(edb, claims.jti, "api");
+    if (er === "error") return jsonResponse({ error: "Grant not found." }, 403);
+    if (er === "exhausted") return jsonResponse({ error: "LLM API quota is used up.", remaining: 0 }, 429);
+    return forwardLlmEmbeddings(env, log, eb, {
+      refund: () => refundUnit(edb, claims.jti, "api"),
+      remainingAfter: () => remainingOf(edb, claims.jti, "api"),
+      tagPrefix: "servertoken.embed",
+      ids: { sub: claims.sub, jti: claims.jti },
+    });
+  }
+
   if (suffix !== "/chat/completions" || request.method !== "POST") {
     return jsonResponse({ error: "Not found." }, 404);
   }

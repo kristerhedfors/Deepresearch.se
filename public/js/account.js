@@ -10,8 +10,9 @@
 //   blocks (settingRow, the info popovers, the notification badge, the
 //   summary's Feedback-mode knob): account-views.js.
 // - "messages" (the message center): account-messages.js.
-// - "settings" (the cloud-storage / Shodan / Google Maps knobs):
-//   account-settings.js.
+// - "settings" (the cloud-storage / Shodan / Google Maps knobs that govern
+//   YOUR OWN research) and "share" (the DEDICATED Se/cure-workspace share
+//   view — only what a link can lend to someone else): account-settings.js.
 // - "feedback" (the user's feedback dialogue threads): account-feedback.js.
 //
 // Each view is a top-level load*/render* function taking the shared panel
@@ -21,7 +22,7 @@
 
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadMessagesView } from "./account-messages.js";
-import { loadSettingsView } from "./account-settings.js";
+import { loadSettingsView, loadShareView } from "./account-settings.js";
 import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
 
 /**
@@ -49,6 +50,7 @@ export function initAccountPanel() {
   const ctx = {
     overlay: document.getElementById("account"),
     body: document.getElementById("account-body"),
+    title: document.getElementById("accounttitle"),
     badge: document.getElementById("notif-badge"),
     me: null,
     show: null,
@@ -88,15 +90,12 @@ export function initAccountPanel() {
   document.getElementById("accountbtn").addEventListener("click", () => openPanel("summary"));
   document.getElementById("gearbtn")?.addEventListener("click", () => openPanel("settings"));
   // The header's workspace-share icon (right of the ghost, 2026-07-15 owner
-  // directive): a first-class door to "Share a Se/cure workspace" — opens the
-  // Settings view and lands on the share section, whose widget (create link,
-  // copy link/password) lives there (account-settings.js).
-  document.getElementById("sharebtn")?.addEventListener("click", async () => {
-    await openPanel("settings");
-    const create = document.getElementById("wspcreate");
-    create?.scrollIntoView({ block: "center" });
-    create?.focus();
-  });
+  // directive): a first-class door to the DEDICATED "Share a Se/cure workspace"
+  // view — its own screen showing only what can travel inside a shared link
+  // (account-settings.js loadShareView), retitled so it never reads as the
+  // unrelated "Account & usage" screen. Kept separate from the gear icon's
+  // Settings, which holds the knobs that govern your OWN research.
+  document.getElementById("sharebtn")?.addEventListener("click", () => openPanel("share"));
   document.getElementById("accountclose").addEventListener("click", () => {
     ctx.overlay.hidden = true;
   });
@@ -107,22 +106,32 @@ export function initAccountPanel() {
   return { open: openPanel };
 }
 
+// The panel header's title per view — so a door that means something specific
+// doesn't read as the generic "Account & usage" screen (the share icon lands
+// on its own "Share a Se/cure workspace" view; the gear icon on "Settings").
+// Anything unlisted falls back to "Account & usage".
+const VIEW_TITLES = { settings: "Settings", share: "Share a Se/cure workspace" };
+
 /**
  * View dispatcher: renders the named view into the panel body and wires
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
- * @param {"summary"|"full"|"messages"|"settings"|"feedback"|"games"|"docs"} view
+ * @param {"summary"|"full"|"messages"|"settings"|"share"|"feedback"|"games"|"docs"} view
  */
 function showView(ctx, view) {
+  if (ctx.title) ctx.title.textContent = VIEW_TITLES[view] || "Account & usage";
   if (view === "messages") {
     loadMessagesView(ctx);
     return;
   }
   if (view === "settings") {
-    // Returned so a caller can act once the (async) view is in the DOM —
-    // the header's share icon scrolls to the workspace section on it.
-    return loadSettingsView(ctx);
+    loadSettingsView(ctx);
+    return;
+  }
+  if (view === "share") {
+    loadShareView(ctx);
+    return;
   }
   if (view === "feedback") {
     loadFeedbackView(ctx);
@@ -144,6 +153,7 @@ function showView(ctx, view) {
     document.getElementById("fullusagebtn")?.addEventListener("click", () => ctx.show("full"));
     document.getElementById("messagesbtn")?.addEventListener("click", () => ctx.show("messages"));
     document.getElementById("settingsbtn")?.addEventListener("click", () => ctx.show("settings"));
+    document.getElementById("sharewsbtn")?.addEventListener("click", () => ctx.show("share"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
     document.getElementById("docsbtn")?.addEventListener("click", () => ctx.show("docs"));

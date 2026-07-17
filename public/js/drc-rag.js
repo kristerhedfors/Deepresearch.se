@@ -61,7 +61,7 @@ const MIN_SCORE = 0.2;
  *   updatedAt: number, chunks: DrcChunk[], vectors: string[]}} DrcRagDoc
  *   vectors are base64 float32 (rag.js codec), parallel to chunks
  * @typedef {{embedder?: DrcEmbedder, docs: DrcRagDoc[]}} DrcRag
- * @typedef {(texts: string[]) => Promise<ArrayLike<number>[]>} EmbedFn
+ * @typedef {(texts: string[], kind?: "passage"|"query") => Promise<ArrayLike<number>[]>} EmbedFn
  */
 
 // ---- the state.rag section -----------------------------------------------------
@@ -142,7 +142,7 @@ export async function indexDrcChatTurns({ rag, conv, embed }) {
   const pieces = chunkText(text);
   if (!pieces.length) return null;
 
-  const vectors = await embed(pieces.map((c) => c.text));
+  const vectors = await embed(pieces.map((c) => c.text), "passage");
   if (!Array.isArray(vectors) || vectors.length !== pieces.length) {
     throw new Error("Embedding returned a mismatched vector count.");
   }
@@ -227,7 +227,7 @@ export async function retrieveDrcContext({
     });
   }
   if (!pool.length) return none;
-  const [queryVector] = await embed([String(query).slice(0, 2000)]);
+  const [queryVector] = await embed([String(query).slice(0, 2000)], "query");
   const matches = topKChunks(pool, queryVector, topK).filter((m) => m.score >= MIN_SCORE);
   return { block: renderDrcRecall(matches, namesById, maxChars), matches };
 }

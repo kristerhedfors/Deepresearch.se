@@ -111,7 +111,17 @@ highlights after the JS was already gated.
   browsing context when running standalone (window.open) since a
   standalone webview's bar tint is pinned at launch. If a bar tint is
   ever wrong again, suspect the navigation ORIGIN page's meta and the
-  standalone pinning, not the destination's meta.
+  standalone pinning, not the destination's meta. RECURRENCE 3
+  (2026-07-17, iPhone Safari tab, d35): server → /cure via the ghost's
+  plain `location.assign` left BOTH the status bar and the bottom
+  toolbar blue — the single first-frame flip fires inside Safari's own
+  post-navigation chrome transition and gets swallowed. Fix: the nudge
+  became LAYERED in a shared pure module (`public/js/bar-tint.js`,
+  Node-tested; wired at boot on BOTH tiers): first frame + `load` +
+  every `pageshow` (bfcache restores rerun no module code!) +
+  visibility-restore + 600/1600 ms lagged timers, each the same
+  changed-then-target two-step. Verify on-device against build stamp
+  d36+.
 
 ## Status of the instruments (post-incident)
 

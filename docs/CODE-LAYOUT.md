@@ -209,7 +209,14 @@ the cache — closing the 2026-07-13 boot-race where a send before `/api/setting
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested), `balloon.js` (the Se/rver BALLOON GREETER —
+all route through; Node-tested), `bar-tint.js` (the iOS bar-tint re-assert
+helper, an import-free PUBLIC-graph leaf both tiers boot with: iOS Safari can
+keep the PREVIOUS page's `theme-color` chrome tint across the tier crossing —
+2026-07-10, recurred 2026-07-17 with the bottom toolbar too — so `wireBarTint`
+layers the changed-then-target meta nudge across first frame, `load`, every
+`pageshow` (bfcache restores rerun no module code), visibility-restore, and
+two lagged timers; wired in `app.js` (blue) and `cure/drc.js` (khaki),
+allowlisted in `src/assets.js`, Node-tested), `balloon.js` (the Se/rver BALLOON GREETER —
 the blue tier's symbol character, F-16, owner's pick 2026-07-15: the ghost's
 counterpart, a little gold-and-blue balloon among clouds above the composer.
 FIRST-VISIT ONLY since the round-4 directive (2026-07-15: NO persistent
