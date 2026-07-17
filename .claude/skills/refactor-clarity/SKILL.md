@@ -312,3 +312,44 @@ across separate module graphs — churn, not drift risk) and unifying the two
 FNV-1a hashes (`sandbox-files.js` `projHash` vs `sandbox.js` `cacheIdFor` —
 the latter feeds the VM disk-cache identity, where even an
 equivalent-looking rewrite risks invalidating every user's cached VM image).
+
+## Sixth worked example (2026-07-17) — the grant-consolidation pass
+
+Whole-repo survey (four `Explore` fan-outs: drc.js, the new Se/rver-token
+subsystem, the introspection/on-device stack, and an everything-else duplicate
+sweep). Two scopes came back "nothing left" — drc.js's pure fragments had all
+already moved to drc-page-core.js, and the introspection stack was authored
+fully factored. Five moves survived:
+- **`src/llm-proxy.js`** (flagship, a NEW kind of seam: *helper-in-orchestrator*,
+  not a duplicate): `forwardLlmModels`/`forwardLlmCompletion` (+ `bergetBase`,
+  the `LLM_*` bounds) were single-copy in proxy.js but consumed by
+  server-grants.js THROUGH the bundle orchestrator — dragging proxy-grant.js
+  and the bundle crypto into a module graph that THE SERVER-TOKEN GUARANTEE
+  test pins upstream-only. Moved verbatim to a leaf (imports only
+  `jsonResponse`); the guarantee test's allowlist tightened `./proxy.js` →
+  `./llm-proxy.js` AND gained a leaf pin on the new module; new direct tests
+  (key swap, field filter, clamp, refund ladder). Couldn't fold into
+  grant-http.js — that leaf's charter forbids provider code.
+- **`posInt` → grant-http.js**: the byte-identical positive-int config clamp in
+  both defaults resolvers (websearch.js open-codes the same clamp inline — left
+  alone: rewriting expressions isn't a verbatim move).
+- **`projectedBoardItem` → board.js**: the boards' triple-copied single-item
+  re-projection (table/catalog/projector = the three things that identify a
+  board — the `adjustResultResponse` free-variable precedent). Response
+  wrapping stayed in each board so board.js keeps importing nothing.
+- **Client sibling dedups over EXISTING edges only**: `hex()` ×3 → exported
+  from `public/cure/umbrella.js`; `canCanvas`/`reducedMotion` + the three
+  byte-identical `FINALE_*` pacing constants → exported from
+  umbrella-spinner.js into balloon-spinner.js (the boomerang-clock edge). The
+  parameterization-needing trio (`planFinale`/`finalePhaseBucket`/
+  `spinnerStyle` — read module-local MARKS/FLEET/apex) stayed declined per the
+  `normalizeStatus` precedent.
+- **`grantMeterLine` → drc-page-core.js**: the two borrowed-capability Settings
+  rows' status-line wording (Se/rver token + proxy bundle), the client
+  counterpart of grant-http.js's stay-in-lockstep rationale.
+Declined: the DRS/DRC source-tool loop drivers (same shape, different WIRE
+protocols — Anthropic content-blocks vs OpenAI tool_calls — the exact opposite
+of bash-core's one-protocol premise), `buildSourceToolUserContent` (~2 shared
+prompt lines), the dev-mode theme-toggle dedup (deliberate tier divergence +
+/cure allowlist), `sumRemaining` (tiny, inline in one endpoint each), and the
+table-parameterized meter cluster (standing decline, third pass running).
