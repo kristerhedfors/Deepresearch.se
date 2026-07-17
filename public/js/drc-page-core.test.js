@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   grantFlagEnabled,
   grantLive,
+  grantMeterLine,
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
@@ -249,4 +250,11 @@ test("serverTokenLive: per-permission liveness — one permission dry never kill
   assert.equal(serverTokenLive({ ...g, token: "" }, "api", now), false);
   assert.equal(serverTokenLive(g, "nope", now), false);
   assert.equal(serverTokenLive(null, "web", now), false);
+});
+
+test("grantMeterLine: the one status-line wording both borrowed-capability rows share", () => {
+  assert.equal(grantMeterLine("🔎 Web search", { quota: 25, remaining: 3 }, true), "🔎 Web search: 3 of 25 left");
+  // Absent remaining = not yet spent → the full quota shows.
+  assert.equal(grantMeterLine("🤖 LLM API (Berget)", { quota: 40 }, true), "🤖 LLM API (Berget): 40 of 40 left");
+  assert.equal(grantMeterLine("🔎 Web search", { quota: 25, remaining: 0 }, false), "🔎 Web search: used up / expired");
 });

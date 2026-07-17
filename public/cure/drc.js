@@ -101,6 +101,7 @@ import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, second
 import {
   grantFlagEnabled,
   grantLive,
+  grantMeterLine,
   normalizeSearchBackend,
   parseProjectPath,
   parsePublicationRef,
@@ -2086,9 +2087,7 @@ function renderStRow() {
   toggle.disabled = !anyLive;
   const line = (label, svc) => {
     const s = serverTokenService(stGrant, svc);
-    if (!s) return null;
-    const rem = s.remaining == null ? s.quota : s.remaining;
-    return label + ": " + (serverTokenLive(stGrant, svc) ? rem + " of " + s.quota + " left" : "used up / expired");
+    return s ? grantMeterLine(label, s, serverTokenLive(stGrant, svc)) : null;
   };
   const bits = [line("🔎 Web search", "web"), line("🤖 LLM API (Berget)", "api")].filter(Boolean);
   $("ststatus").textContent = !anyLive
@@ -2351,12 +2350,7 @@ function renderProxyRow() {
   const toggle = /** @type {HTMLInputElement} */ ($("proxyenabled"));
   const on = proxyEnabled();
   toggle.checked = on;
-  const line = (label, p) => {
-    if (!p || !p.token) return null;
-    const live = proxyLive(p);
-    const rem = p.remaining == null ? p.quota : p.remaining;
-    return label + ": " + (live ? rem + " of " + p.quota + " left" : "used up / expired");
-  };
+  const line = (label, p) => (p && p.token ? grantMeterLine(label, p, proxyLive(p)) : null);
   const bits = [line("🔎 Web search", proxyGrants.web), line("🤖 LLM API (Berget)", proxyGrants.api)].filter(Boolean);
   $("proxystatus").textContent =
     (on ? "Connected — " : "Off (fully client-side) — ") + bits.join(" · ");

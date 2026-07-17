@@ -30,10 +30,10 @@
 
 import {
   BOARD_CAPS,
-  getBoardReview,
   loadBoardReviews,
   orderBoardItems,
   patchBoardRow,
+  projectedBoardItem,
   reviewState,
   validateBoardPatch,
   validateBoardVote,
@@ -339,7 +339,5 @@ export async function handleAdminFeatures(request, env, url, log) {
  * @param {FeatureItem} item
  */
 async function projectedItem(db, item) {
-  const row = await getBoardReview(db, "features_reviews", item.id);
-  const idx = FEATURE_ITEMS.findIndex((i) => i.id === item.id);
-  return jsonResponse({ item: projectFeatureItem(item, row || undefined, idx) });
+  return jsonResponse({ item: await projectedBoardItem(db, "features_reviews", FEATURE_ITEMS, projectFeatureItem, item) });
 }

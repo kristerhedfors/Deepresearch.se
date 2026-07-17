@@ -37,6 +37,7 @@ import {
   PANELS,
   DOME_FRAC,
   SCALLOP_DEPTH,
+  hex,
 } from "../cure/umbrella.js";
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
@@ -132,9 +133,11 @@ export function spinnerStyle(index) {
 const FINALE_MARKS = [T.swirlEnd, T.untwistEnd, T.wireEnd, T.tiltStart];
 // Real-ms runway per bucket (index = bucket): further out → longer runway, so
 // the bigger design-distance still reads as a deliberate speed-run, not a snap.
-const FINALE_RUN_MS = [900, 760, 640, 520, 400];
-const FINALE_HOLD_MS = 240; // living a beat as the pink umbrella
-const FINALE_CHECK_MS = 420; // the pink umbrella folding into the ✓
+// Exported: the two tiers' spinners share ONE felt pace (the sibling contract —
+// balloon-spinner.js imports these), each keeping its own MARKS/apex.
+export const FINALE_RUN_MS = [900, 760, 640, 520, 400];
+export const FINALE_HOLD_MS = 240; // living a beat as the revived figure (pink umbrella / colored balloon)
+export const FINALE_CHECK_MS = 420; // the revived figure folding into the ✓
 
 /** Which of the five speed-run versions a completion caught at design-time t0
  * uses (0 = deep vortex … 4 = tilted & wobbling).
@@ -180,11 +183,6 @@ const CHECK_PINK = "#e06c8c"; // the finale's ✓ — the fleet rose, matching t
 // The umbrella is Se/cure's OWN symbol (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16:
 // each tier wears its own symbol; the blue tier's is the balloon spinner).
 
-/** "#rrggbb" → [r,g,b]. @param {string} c */
-function hex(c) {
-  const n = parseInt(c.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
 /** @param {number[]} a */
 const rgb = (a) => `rgb(${a[0] | 0},${a[1] | 0},${a[2] | 0})`;
 /** Linear blend c1→c2 by t. @param {string} c1 @param {string} c2 @param {number} t */
@@ -194,13 +192,15 @@ function lerpCol(c1, c2, t) {
   return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
 }
 
-/** Is a canvas 2D context available at all? Node/SSR/old browsers → no. */
-function canCanvas() {
+/** Is a canvas 2D context available at all? Node/SSR/old browsers → no.
+ * Exported for the balloon sibling (balloon-spinner.js). */
+export function canCanvas() {
   return typeof document !== "undefined" && !!document.createElement("canvas").getContext;
 }
 
-/** prefers-reduced-motion: honor it — decoration must never override that. */
-function reducedMotion() {
+/** prefers-reduced-motion: honor it — decoration must never override that.
+ * Exported for the balloon sibling (balloon-spinner.js). */
+export function reducedMotion() {
   return (
     typeof matchMedia === "function" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches

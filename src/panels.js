@@ -31,10 +31,10 @@
 
 import {
   BOARD_CAPS,
-  getBoardReview,
   loadBoardReviews,
   orderBoardItems,
   patchBoardRow,
+  projectedBoardItem,
   reviewState,
   validateBoardPatch,
   validateBoardVote,
@@ -280,7 +280,5 @@ export async function handleAdminPanels(request, env, url, log) {
  * @param {PanelItem} item
  */
 async function projectedItem(db, item) {
-  const row = await getBoardReview(db, "panels_reviews", item.id);
-  const idx = PANEL_ITEMS.findIndex((i) => i.id === item.id);
-  return jsonResponse({ item: projectPanelItem(item, row || undefined, idx) });
+  return jsonResponse({ item: await projectedBoardItem(db, "panels_reviews", PANEL_ITEMS, projectPanelItem, item) });
 }

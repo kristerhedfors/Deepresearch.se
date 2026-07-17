@@ -13,6 +13,7 @@ import {
   adjustResultResponse,
   budgetExceeded409,
   emptyWebResultResponse,
+  posInt,
   readTokenBody,
   resolveQuotaPatch,
   webResultResponse,
@@ -102,4 +103,15 @@ test("readTokenBody: string token in, empty string for missing/malformed", async
   assert.equal(await readTokenBody(mk(JSON.stringify({ token: 42 }))), "");
   assert.equal(await readTokenBody(mk(JSON.stringify({}))), "");
   assert.equal(await readTokenBody(mk("not json")), "");
+});
+
+test("posInt: finite positive numbers floor to an int, everything else takes the default", () => {
+  assert.equal(posInt(25, 10), 25);
+  assert.equal(posInt(7.9, 10), 7);
+  assert.equal(posInt(0, 10), 10);
+  assert.equal(posInt(-3, 10), 10);
+  assert.equal(posInt(NaN, 10), 10);
+  assert.equal(posInt(Infinity, 10), 10);
+  assert.equal(posInt(/** @type {any} */ (undefined), 10), 10);
+  assert.equal(posInt(/** @type {any} */ ("25"), 10), 10); // config strings never coerce
 });

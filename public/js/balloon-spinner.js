@@ -29,7 +29,15 @@ import {
   paramsAt,
   smooth,
 } from "./balloon-intro.js";
-import { boomerangDesignTime, boomerangFlip } from "./umbrella-spinner.js";
+import {
+  FINALE_CHECK_MS,
+  FINALE_HOLD_MS,
+  FINALE_RUN_MS,
+  boomerangDesignTime,
+  boomerangFlip,
+  canCanvas,
+  reducedMotion,
+} from "./umbrella-spinner.js";
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
 
@@ -45,11 +53,9 @@ export const BLUE_APEX = T.rigEnd;
 // Phase boundaries within the loop (design ms): which of the five speed-run
 // versions a completion caught at t0 uses (0 = deep vortex … 4 = descending).
 const FINALE_MARKS = [T.swirlEnd, T.untwistEnd, T.wireEnd, T.dropStart];
-// Real-ms runway per bucket: further from the color → longer runway, so a
-// catch deep in the vortex still reads as a deliberate speed-run, not a snap.
-const FINALE_RUN_MS = [900, 760, 640, 520, 400];
-const FINALE_HOLD_MS = 240; // living a beat as the colored balloon
-const FINALE_CHECK_MS = 420; // the balloon folding into the blue ✓
+// The runway/hold/check pacing is SHARED with the umbrella sibling (imported
+// above): one felt pace across the two tiers' spinners, each with its own
+// MARKS and apex.
 
 /** Which speed-run bucket a completion caught at design-time t0 uses.
  * @param {number} t0 @returns {number} */
@@ -99,17 +105,7 @@ const CHECK_BLUE = "#0d4fa0"; // the finale's ✓ — app.css --check-blue, so t
 // The balloon is Se/rver's OWN symbol (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16:
 // each tier wears its own symbol; Se/cure's is the umbrella spinner).
 
-/** Is a canvas 2D context available at all? */
-function canCanvas() {
-  return typeof document !== "undefined" && !!document.createElement("canvas").getContext;
-}
-
-/** prefers-reduced-motion: decoration must never override it. */
-function reducedMotion() {
-  return (
-    typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
+// canCanvas / reducedMotion come from the umbrella sibling (imported above).
 
 /**
  * Replace a small loading slot with the looping single-balloon animation —

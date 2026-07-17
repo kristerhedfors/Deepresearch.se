@@ -221,8 +221,9 @@ const KHAKI = "#c3b091"; // drc.css --bg
 const CREAM = "#fff4f8"; // the picot beads & fringe tassels of the revived rim
 const HANDLE = "#9c6472"; // the handle's dusty-rose shaft, once alive (on-palette)
 
-/** "#rrggbb" → [r,g,b]. @param {string} c */
-function hex(c) {
+/** "#rrggbb" → [r,g,b]. Exported: the one copy the sibling animation modules
+ * (umbrella-spinner.js, balloon-intro.js) share. @param {string} c */
+export function hex(c) {
   const n = parseInt(c.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }

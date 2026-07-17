@@ -418,7 +418,7 @@ test("server-grants.js imports stay inside the upstream-only allowlist (no data-
     "./exa.js",
     "./grant-http.js",
     "./http.js",
-    "./proxy.js",
+    "./llm-proxy.js",
     "./server-token.js",
   ]);
   for (const spec of imports) {
@@ -432,4 +432,9 @@ test("server-grants.js imports stay inside the upstream-only allowlist (no data-
   const tok = readFileSync(new URL("./server-token.js", import.meta.url), "utf8");
   const tokImports = [...tok.matchAll(/^import[^"']+["']([^"']+)["'];?$/gm)].map((m) => m[1]);
   assert.deepEqual(tokImports, ["./token-crypto.js"]);
+  // And the shared LLM forwarder is a LEAF (response helper only) — importing
+  // it can never drag bundle/token/D1 machinery into this graph.
+  const fwd = readFileSync(new URL("./llm-proxy.js", import.meta.url), "utf8");
+  const fwdImports = [...fwd.matchAll(/^import[^"']+["']([^"']+)["'];?$/gm)].map((m) => m[1]);
+  assert.deepEqual(fwdImports, ["./http.js"]);
 });

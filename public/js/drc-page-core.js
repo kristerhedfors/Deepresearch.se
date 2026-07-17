@@ -80,6 +80,23 @@ export function serverTokenLive(g, svc, now = Date.now()) {
   return !!(s && (s.remaining == null || Number(s.remaining) > 0));
 }
 
+/**
+ * One borrowed-service status line for the Settings rows — "🔎 Web search:
+ * 3 of 25 left" / "… used up / expired". The Se/rver-token row and the
+ * legacy proxy-bundle row must keep this wording in lockstep (the same
+ * reason grant-http.js exists server-side), so both render through this
+ * one builder. Absent `remaining` = not yet spent (the grantLive
+ * convention). The caller resolves the meter object and liveness.
+ * @param {string} label
+ * @param {{quota?: number, remaining?: number|null}} meter
+ * @param {boolean} live
+ * @returns {string}
+ */
+export function grantMeterLine(label, meter, live) {
+  const rem = meter.remaining == null ? meter.quota : meter.remaining;
+  return label + ": " + (live ? rem + " of " + meter.quota + " left" : "used up / expired");
+}
+
 // ---- web-search backend config ----------------------------------------------
 
 /**
