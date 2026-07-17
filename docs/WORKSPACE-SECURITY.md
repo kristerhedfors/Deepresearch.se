@@ -35,10 +35,17 @@ fragment it opens the unlock flow. Both tiers can mint:
 
 - **Se/cure** (`/cure` → Settings → Secure workspace): seals the local
   session — keys, settings, chats, and any borrowed allowances it holds.
-- **Se/rver** (account panel → Settings → *Share a Se/cure workspace*): mints
-  the signed-in account's temporary grants (the same ghost-crossover
-  allowances) and seals them into a workspace link **client-side** — the
-  server mints tokens but never sees the password or the assembled link.
+- **Se/rver** (the header's share icon, or account panel → *Share a Se/cure
+  workspace* — a DEDICATED view, kept separate from the gear-icon Settings so
+  it shows only what a link can lend): mints the signed-in account's temporary
+  grants (the same ghost-crossover allowances) and seals them into a workspace
+  link **client-side** — the server mints tokens but never sees the password or
+  the assembled link. The view surfaces which capabilities can travel — web
+  search (Exa) and the LLM model (Berget), each a per-link switch — and shows
+  the server-only integrations (Shodan, Google Maps, and the automatic
+  OpenStreetMap / Hugging Face enrichments) off-and-disabled with the reason
+  they can't cross to a client-side session (server-side keys; no server may
+  sit in a Se/cure data path).
 
 ## 2. The mechanism, cloned from hacka.re
 

@@ -132,14 +132,12 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
-    ${workspaceShareSection(!!ctx.me?.email)}
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
-  if (ctx.me?.email) wireWorkspaceShare();
 
   if (shodanUsable) {
     wireSimpleKnob("shodanknob", "shodanstatus", setShodanMcp, {
@@ -155,53 +153,159 @@ export async function loadSettingsView(ctx) {
   }
 }
 
-// ---- the secure-workspace share (Se/cure workspaces, minted from Se/rver) ----
+// ---- the secure-workspace share view (Se/cure workspaces, minted from Se/rver) ----
 //
-// Packages this account's TEMPORARY, QUOTA-BOUND grants (the ghost-crossover
-// web-search grant + secure-research-space bundle — the same allowances the
-// ghost button lends) into ONE OFFLINE Se/cure workspace link:
-// /cure/workspace#w=<ciphertext>. The sealing happens ENTIRELY in this
-// browser (public/js/workspace-core.js — the hacka.re-cloned mechanism): the
-// server mints the grant tokens through the two existing authed endpoints
-// and never sees the password or the assembled link. The minter keeps
-// control afterwards: each embedded token's quota can be raised, lowered,
-// paused, or revoked (POST /api/websearch/adjust, /api/proxy/adjust — or the
-// admin panel) while the link itself never changes.
+// A DEDICATED panel view (reached from the header's share icon, and the
+// summary's Share button), NOT part of the gear-icon Settings — that
+// separation is the point: Settings holds knobs that govern YOUR OWN
+// research on this account; this view holds only what can travel to someone
+// ELSE inside a shared Se/cure workspace link.
+//
+// A workspace link packages this account's TEMPORARY, QUOTA-BOUND grants
+// (the ghost-crossover web-search grant + secure-research-space bundle) into
+// ONE OFFLINE link: /cure/workspace#w=<ciphertext>. The sealing happens
+// ENTIRELY in this browser (public/js/workspace-core.js — the hacka.re-cloned
+// mechanism): the server mints the grant tokens through the two existing
+// authed endpoints and never sees the password or the assembled link. The
+// minter keeps control afterwards: each embedded token's quota can be raised,
+// lowered, paused, or revoked (POST /api/websearch/adjust, /api/proxy/adjust
+// — or the admin panel) while the link itself never changes.
+//
+// WHAT CAN AND CANNOT BE SHARED (the honest surface — owner directive,
+// 2026-07-17). A Se/cure session may borrow ONLY the site's UPSTREAM API
+// access, never Se/rver data, and only the two deliberate exceptions of
+// invariant 4 actually pass through: web search (Exa, query-only) and the LLM
+// model (Berget completions). The other server-side research integrations —
+// Shodan, Google Maps, and the automatic enrichments (OpenStreetMap place
+// lookups, Hugging Face Hub search) — each need a server-side secret key and
+// would put a server back in the data path, exactly what Se/cure forbids, so
+// they CANNOT be lent to a client-side session. This view shows them off and
+// disabled with that reason, rather than hiding them, so the boundary is
+// explainable. (Embeddings for retrieval are a third, subtler case: Se/cure
+// does them browser-direct on the recipient's OWN provider key — deliberately
+// NOT proxied, so their document text never returns to a server; see
+// public/js/drc-rag.js — so they are never something the LINK lends either.)
 
-const WORKSPACE_INFO = `<strong>Share a Se/cure workspace</strong><br>
-  Creates a <b>single offline link</b> to a ready-to-use
-  <b>Se/cure</b> session carrying a bounded allowance from YOUR account —
-  the same temporary grants the ghost button lends you. Everything is
-  <b>encrypted into the link's #anchor</b> — browsers never send that part
-  to any server — and the password travels separately, so the link alone
-  reveals nothing. You stay in control: the allowances are quota-metered
-  per token, and you can add or remove quota (or revoke) at any time
-  without changing the link.<br>
-  This is separate from the Shodan / Google Maps / Feedback / sandbox
-  switches above — those govern <b>your own</b> research on this account.
-  The two checks below decide what capacity actually travels <b>inside the
-  link</b> for whoever opens it.`;
+const SHARE_INTRO = `A <b>Se<span class="sl">/</span>cure workspace</b> is one
+  offline link that hands someone a ready-to-use Se<span class="sl">/</span>cure
+  session — client-side, with nothing resting on a server — carrying a
+  <b>bounded, revocable</b> slice of your account's capacity. It's encrypted
+  into the link's <b>#anchor</b> (browsers never send that part to any server);
+  the 12-character password travels separately, so the link alone reveals
+  nothing.`;
 
-/** @param {boolean} signedIn */
-function workspaceShareSection(signedIn) {
-  if (!signedIn) return "";
+const SHARE_SIGNED_OUT = `Sharing a workspace needs a signed-in Google account —
+  the allowance is drawn from that account's quota. Break-glass admin sessions
+  have none.`;
+
+// Popovers for the two capabilities that ACTUALLY travel in a link.
+const WEB_SHARE_INFO = `<strong>Web search (Exa)</strong><br>
+  The recipient's Se/cure session runs live web searches on <b>your</b>
+  account's server key. Only the search query crosses the wire — never their
+  conversation. Quota-metered per link; you can top up, pause, or revoke it any
+  time without changing the link.`;
+
+const API_SHARE_INFO = `<strong>LLM model (Berget)</strong><br>
+  The recipient can run the research and answer models on <b>your</b> account's
+  server key (Berget). Their prompt goes upstream to the model, by their choice;
+  nothing is stored. Quota-metered per link; top up, pause, or revoke any time.`;
+
+// Popovers for the integrations that CANNOT travel — same explain-don't-hide
+// posture as the Settings knobs, but the reason here is structural.
+const SHODAN_SHARE_INFO = `<strong>Shodan host intelligence</strong><br>
+  Runs only on Se/rver: it needs the server's Shodan API key. There is no way to
+  lend that to a client-side Se/cure session without routing the lookup through a
+  server — which is exactly what Se/cure exists to avoid — so it can't be added
+  to a shared workspace.`;
+
+const GMAPS_SHARE_INFO = `<strong>Google Maps &amp; Street View</strong><br>
+  Runs only on Se/rver: it needs the server's Google Maps API key. As with
+  Shodan, lending it would put a server back in the data path, so it can't be
+  added to a shared workspace.`;
+
+/**
+ * The dedicated "Share a Se/cure workspace" view — the header share icon and
+ * the summary's Share button land here. Shows the two capabilities a link can
+ * actually carry as live switches, the server-only integrations off-and-
+ * disabled with the reason they can't cross, and the create-link widget.
+ * @param {PanelCtx} ctx
+ */
+export function loadShareView(ctx) {
+  const signedIn = !!ctx.me?.email;
+  ctx.body.innerHTML = `
+    <button id="sharebackbtn" type="button" class="back-link">← Back</button>
+    <p class="section-lbl">Share a Se<span class="sl">/</span>cure workspace</p>
+    <p class="muted setting-note">${SHARE_INTRO}</p>
+    ${signedIn ? shareBodyMarkup() : `<p class="muted setting-note">${SHARE_SIGNED_OUT}</p>`}`;
+  document.getElementById("sharebackbtn").addEventListener("click", () => ctx.show("summary"));
+  if (signedIn) {
+    wireSettingPopovers(ctx.body);
+    wireWorkspaceShare();
+  }
+}
+
+/** The signed-in body: the shareable switches, the can't-share rows, and the
+ * create widget. Element ids (wspweb / wspapi / wspcreate / …) are read by
+ * wireWorkspaceShare. */
+function shareBodyMarkup() {
   return `
+    <p class="section-lbl">Shared through the link</p>
+    <p class="muted setting-note">A Se<span class="sl">/</span>cure session can
+      borrow the site's upstream API access — never any of your data. Choose what
+      this link carries:</p>
+    ${settingRow({
+      id: "wspweb",
+      label: "Web search (Exa)",
+      checked: true,
+      disabled: false,
+      popId: "wspwebpop",
+      info: WEB_SHARE_INFO,
+    })}
+    ${settingRow({
+      id: "wspapi",
+      label: "LLM model (Berget)",
+      checked: true,
+      disabled: false,
+      popId: "wspapipop",
+      info: API_SHARE_INFO,
+    })}
+
+    <p class="section-lbl">Not available in Se<span class="sl">/</span>cure</p>
+    <p class="muted setting-note">These research integrations run only on
+      Se<span class="sl">/</span>rver. Each needs a server-side secret key that
+      can't be handed to a client-side session, and routing them through a server
+      would break Se/cure's promise that no server sits in the data path — so they
+      can't be added to a shared workspace.</p>
+    ${settingRow({
+      id: "wspshodan",
+      label: "Shodan host intelligence",
+      checked: false,
+      disabled: true,
+      popId: "wspshodanpop",
+      info: SHODAN_SHARE_INFO,
+    })}
+    ${settingRow({
+      id: "wspgmaps",
+      label: "Google Maps & Street View",
+      checked: false,
+      disabled: true,
+      popId: "wspgmapspop",
+      info: GMAPS_SHARE_INFO,
+    })}
+    <p class="muted setting-note">Place lookups (OpenStreetMap) and model-hub
+      search (Hugging Face) stay server-side the same way.</p>
+
+    <p class="muted setting-note">So a shared workspace lends <b>AI-model and
+      web-search access</b> — enough to run the full research pipeline against
+      your account's allowance. Document retrieval (embeddings) in the shared
+      session runs on the recipient's <b>own</b> provider key, by design: their
+      documents never return to a server. Share nothing above and the link still
+      works — the recipient just opens to an empty model list and plugs in their
+      own key.</p>
+
     <div class="settings-item" id="wsprow">
       <div class="settings-row">
-        <span class="settings-label">Share a Se<span class="sl">/</span>cure workspace
-          <button type="button" class="setting-info" data-pop="wsppop" aria-label="More about secure workspaces">ⓘ</button>
-        </span>
-      </div>
-      <div class="setting-pop" id="wsppop" hidden>${WORKSPACE_INFO}</div>
-      <p class="muted setting-note">Capacity included in the link:</p>
-      <label style="display:flex;align-items:center;gap:.5rem;margin:.3rem 0">
-        <input type="checkbox" id="wspweb" checked> Web search access (Exa)
-      </label>
-      <label style="display:flex;align-items:center;gap:.5rem;margin:.3rem 0">
-        <input type="checkbox" id="wspapi" checked> LLM API access (Berget)
-      </label>
-      <div class="settings-row">
-        <span></span>
+        <span class="settings-label">Create the link</span>
         <button type="button" id="wspcreate">Create link</button>
       </div>
       <p id="wspstatus" class="muted setting-note" hidden></p>
