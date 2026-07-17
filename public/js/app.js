@@ -24,6 +24,7 @@ import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
 import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
+import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 import { setSandboxImage } from "./sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "./agent-backdrop.js";
@@ -63,6 +64,15 @@ const send = document.getElementById("send");
 // reconciles this below once loadSettings() resolves. { persist: false }: this
 // is reading the cache, not making a new decision.
 applyDeveloperTheme(cachedDeveloperMode(), { persist: false });
+
+// iOS bar tint — the reverse of /cure's crossing: coming BACK from the khaki
+// tier (or any khaki-tinted page) by same-window navigation or a bfcache
+// restore, WebKit can keep the previous page's theme-color over this blue
+// page (the mirror of the 2026-07-10 / 2026-07-17 reports on /cure). Same
+// shared layered nudge; a no-op when the tint is already right. Note this is
+// the STATIC blue on purpose: the titanium introspection theme deliberately
+// leaves the theme-color meta untouched (dev-mode.test.js pins that).
+wireBarTint("#6fc3fd");
 
 // Execution-sandbox isolation self-heal — fired SYNCHRONOUSLY at first paint
 // from the cached knob (sandbox-mode.js), BEFORE loadSettings() resolves. The

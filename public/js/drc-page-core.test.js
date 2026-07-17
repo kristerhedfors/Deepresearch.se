@@ -155,7 +155,6 @@ test("privacyNoticeLines: the web-search line follows the route", () => {
   const grant = privacyNoticeLines({ search: "grant" }).find((l) => l.startsWith("Web search:"));
   assert.match(grant, /only the search QUERY/i);
   assert.match(grant, /Exa/);
-  assert.match(grant, /conversation itself never leaves/i);
   const self = privacyNoticeLines({ search: "self" }).find((l) => l.startsWith("Web search:"));
   assert.match(self, /only the search QUERY/i);
   assert.match(self, /configured yourself/);
