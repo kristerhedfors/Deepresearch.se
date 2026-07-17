@@ -67,7 +67,7 @@ import {
   webResultResponse,
 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
-import { forwardLlmCompletion, forwardLlmModels } from "./proxy.js";
+import { forwardLlmCompletion, forwardLlmModels } from "./llm-proxy.js";
 import { SERVER_TOKEN_SERVICES, mintServerToken, verifyServerToken } from "./server-token.js";
 
 /** @typedef {import('./types.js').Env} Env */
