@@ -23,6 +23,7 @@ import {
   clampLine,
   clampOpacityPct,
   clampScrollOffset,
+  clipboardPassthrough,
   clipToNextChannel,
   convoSyncOffset,
   createBackdropModel,
@@ -281,6 +282,35 @@ test("termKeySequence maps Ctrl+letter to the control byte (Ctrl+C interrupts)",
   assert.equal(termKeySequence("a", { ctrl: true }), "\x01");
   assert.equal(termKeySequence("z", { ctrl: true }), "\x1a");
   assert.equal(termKeySequence("d", { ctrl: true }), "\x04"); // EOF
+});
+
+test("clipboardPassthrough: Ctrl/Cmd+C copies only while a selection exists", () => {
+  // with a selection the chord is the browser's copy, not the ^C interrupt
+  assert.equal(clipboardPassthrough("c", { ctrl: true }, true), true);
+  assert.equal(clipboardPassthrough("C", { ctrl: true }, true), true);
+  assert.equal(clipboardPassthrough("c", { meta: true }, true), true);
+  // without a selection Ctrl+C stays the terminal interrupt
+  assert.equal(clipboardPassthrough("c", { ctrl: true }, false), false);
+  assert.equal(clipboardPassthrough("c", { ctrl: true }), false);
+  // the classic terminal-emulator copy chord passes regardless
+  assert.equal(clipboardPassthrough("C", { ctrl: true, shift: true }, false), true);
+});
+
+test("clipboardPassthrough: Ctrl/Cmd+V is always the browser's paste", () => {
+  assert.equal(clipboardPassthrough("v", { ctrl: true }, false), true);
+  assert.equal(clipboardPassthrough("V", { ctrl: true, shift: true }, false), true);
+  assert.equal(clipboardPassthrough("v", { meta: true }, false), true);
+});
+
+test("clipboardPassthrough: everything else stays with the terminal mapping", () => {
+  assert.equal(clipboardPassthrough("v", {}, true), false); // bare printable
+  assert.equal(clipboardPassthrough("c", {}, true), false);
+  assert.equal(clipboardPassthrough("x", { ctrl: true }, true), false); // Ctrl+X → ^X
+  assert.equal(clipboardPassthrough("c", { ctrl: true, alt: true }, true), false);
+  assert.equal(clipboardPassthrough("v", { alt: true }, true), false);
+  // garbage degrades to false, never throws
+  assert.equal(clipboardPassthrough(null, null, false), false);
+  assert.equal(clipboardPassthrough(undefined, undefined, undefined), false);
 });
 
 test("termKeySequence leaves printables and foreign chords with the browser", () => {

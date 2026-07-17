@@ -140,10 +140,23 @@ body.term-fg #dr-agent-backdrop {
      ghosting through. Same on both tiers (a terminal reads as a terminal —
      the khaki palette is for the decoration state only). */
   background-color: rgba(10, 13, 18, .93);
+  /* Select-to-copy (2026-07-17 directive) — mirror of app.css: the pane
+     forward must have real, selectable contents; click-through is for the
+     decoration state only. Still below the fixed chrome (z:5). */
+  pointer-events: auto;
 }
 body.term-fg .dr-agent-backdrop-pre {
   /* classic terminal ink — white/gray on the black field */
   color: rgba(214, 220, 227, .92);
+  /* Select-to-copy (2026-07-17) — mirror of app.css. */
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+/* A selection highlight that reads on the near-black field (mirror). */
+body.term-fg .dr-agent-backdrop-pre::selection {
+  background: rgba(120, 170, 255, .45);
+  color: #fff;
 }
 /* The blinking block cursor at the live prompt tail — the "input goes HERE"
    marker for tap-to-type (mirror of app.css; agent-backdrop.js focuses the
