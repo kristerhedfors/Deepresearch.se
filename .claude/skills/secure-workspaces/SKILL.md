@@ -1,12 +1,22 @@
 ---
 name: secure-workspaces
-description: Load when working on SECURE WORKSPACES — the shareable, completely offline Se/cure workspaces contained only in a link (/cure/workspace#w=<ciphertext>) — or anything touching public/js/workspace-core.js (the hacka.re-cloned link crypto), the /cure/workspace pane in public/cure/drc.js, the Se/rver share row in public/js/account-settings.js, the per-token quota-adjust endpoints (POST /api/websearch/adjust, POST /api/proxy/adjust, PATCH /api/admin/websearch/:jti, PATCH /api/admin/proxy/:jti), or the reserved "workspace" publication slug. Also load for "share a workspace", "offline link", "workspace link", or hacka.re-mechanism questions.
+description: Load when working on SECURE WORKSPACES — the shareable, completely offline Se/cure workspaces contained only in a link (/cure/workspace#w=<ciphertext>) — or anything touching public/js/workspace-core.js (the hacka.re-cloned link crypto), the /cure/workspace pane in public/cure/drc.js, the Se/rver share row in public/js/account-settings.js, the per-token quota-adjust endpoints (POST /api/websearch/adjust, POST /api/proxy/adjust, PATCH /api/admin/websearch/:jti, PATCH /api/admin/proxy/:jti), or the reserved "workspace" publication slug. Also load for "share a workspace", "offline link", "workspace link", or hacka.re-mechanism questions — AND for the interchange standards the bundle is specified under: DRSW/1 (docs/WORKSPACE-PROTOCOL.md — moving workspaces between data-compatible research nodes, /.well-known/drsw.json discovery, migration paths), DRPL/1 (docs/PIPELINE-LANGUAGE.md — the pipeline-structure language + sdk/drpl.mjs tooling), "workspace protocol", "research node", or "stackless" questions (docs/STACKLESS-RESEARCH.md).
 ---
 
 # Secure workspaces
 
 The full security architecture lives in **`docs/WORKSPACE-SECURITY.md`** —
 read it first for anything non-mechanical. This skill is the working map.
+Since 2026-07-17 the bundle is ALSO specified as an open interchange
+standard — **DRSW/1, `docs/WORKSPACE-PROTOCOL.md`** (envelope test vectors,
+payload section registry, node discovery/handoff/migration, the interchange
+extensions `origin`/`pipelines`/`provenance`/`route`) — with the pipeline-
+structure language **DRPL/1, `docs/PIPELINE-LANGUAGE.md`** (`sdk/drpl.mjs`
+reference tooling, both deployed pipelines encoded in
+`docs/examples/*.drpl.json`) and the vision doc `docs/STACKLESS-RESEARCH.md`.
+The specs deliberately LEAD the code on the interchange extensions; when
+changing the payload or envelope, update the protocol doc in the same commit
+(and never break its published test vectors — they pin the deployed crypto).
 
 ## What it is
 

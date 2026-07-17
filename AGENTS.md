@@ -33,6 +33,14 @@ assumptions.
    documentation is **`docs/AGENT-PAIR-SDK.md`** — the abstraction, the
    capability classes, contracts PA-1..PA-10, the full module catalog, the
    CLI, and the implementation order, in one document.
+4. **The interchange standards** — `docs/WORKSPACE-PROTOCOL.md` (**DRSW/1**,
+   the secure-workspace bundle + the node-to-node interchange protocol),
+   `docs/PIPELINE-LANGUAGE.md` (**DRPL/1**, the formal pipeline-structure
+   language; reference tooling `node sdk/drpl.mjs`), and
+   `docs/STACKLESS-RESEARCH.md` (the vision both serve). Load these when
+   working on workspace portability, node federation, or pipeline
+   declarations — they are the normative specs the deployed workspace
+   feature (`docs/WORKSPACE-SECURITY.md`) implements the reference half of.
 
 ## How to use the skills, whatever agent you are
 

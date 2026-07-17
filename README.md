@@ -83,6 +83,39 @@ are. It is currently design + skill library only — nothing in `src/` or
 - `node sdk/pair-cli.mjs list|show|plan|validate` — explore the registry,
   compute a build order for a module selection, check manifest integrity.
 
+## The interchange standards: DRSW/1 + DRPL/1
+
+The privacy architecture is also specified as **open standards**, so other
+sites — built on this source code or on completely separate foundations —
+can become **data-compatible research nodes** and move sealed workspaces
+between each other:
+
+- **`docs/WORKSPACE-PROTOCOL.md`** — **DRSW/1**, the Deep Research Secure
+  Workspace interchange protocol: the exact bundle (required and optional
+  sections) that constitutes a workspace, the sealed URL-fragment envelope
+  with test vectors, node discovery (`/.well-known/drsw.json`), the
+  re-seal-per-hop handoff between nodes, migration paths (link, file, QR,
+  lent capability grants), and the zero-server workflows where the data
+  never touches any server.
+- **`docs/PIPELINE-LANGUAGE.md`** — **DRPL/1**, a formal language declaring
+  the *structure* of a deep-research pipeline — phases, dataflow, failure
+  contracts, model routing, and privacy placement (who runs each phase, and
+  which parties receive which data) — with canonical structural
+  fingerprints for comparing pipelines across nodes. Reference tooling:
+  `node sdk/drpl.mjs validate|show|fingerprint|diff`; both of this site's
+  deployed pipelines are encoded in `docs/examples/*.drpl.json` (they
+  fingerprint identically at the research-spine level and differ exactly in
+  placement — the privacy split, machine-checkable).
+- **`docs/STACKLESS-RESEARCH.md`** — the vision the standards serve:
+  *stackless deep research*, one user-held workspace routed across
+  purpose-built research nodes, with no server-side stack holding the
+  state anywhere.
+
+JSON Schemas for both formats live in `docs/schemas/`. The standards are
+experimental drafts and deliberately lead the code on the interchange
+extensions; the deployed workspace feature (`docs/WORKSPACE-SECURITY.md`)
+is their reference implementation.
+
 ## Installing your own instance
 
 Everything below reproduces the production setup end-to-end. You need:

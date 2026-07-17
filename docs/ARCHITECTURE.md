@@ -1012,3 +1012,41 @@ the server enrichment and both tiers' clients (`public/js/introspect-ui.js`
 is the DRS titanium mascot + the private-vs-remote model picker). With the
 sandbox knob also on, the source tree additionally mounts at `/src`. See
 the **introspection** skill.
+
+## 15. The interchange standards: DRSW/1 and DRPL/1
+
+The Se/cure tier's sealed workspace (the `/cure/workspace#w=<blob>` link,
+`public/js/workspace-core.js`, security architecture in
+`docs/WORKSPACE-SECURITY.md`) is also specified as an OPEN STANDARD, so
+that other sites — running this source code or entirely different
+implementations — can become **data-compatible research nodes** and move
+workspaces between each other:
+
+- **DRSW/1** (`docs/WORKSPACE-PROTOCOL.md`) — the Deep Research Secure
+  Workspace interchange protocol: the payload section registry (required
+  `v`/`kind`; optional `keys`/`settings`/`conversations`/`grants` and the
+  interchange extensions `origin`/`pipelines`/`provenance`/`route`), the
+  envelope crypto with test vectors generated from the deployed
+  implementation, reader/writer/node conformance classes, node discovery
+  (`/.well-known/drsw.json`), the re-seal-per-hop handoff, migration paths
+  (link / `.drsw` file / QR / grant crossover), and "scenario Z" — the
+  zero-server workflow composition. JSON Schema:
+  `docs/schemas/drsw-payload-1.schema.json`.
+- **DRPL/1** (`docs/PIPELINE-LANGUAGE.md`) — the Deep Research Pipeline
+  Language: a declarative, implementation-neutral format for a pipeline's
+  STRUCTURE — phases, dataflow, fail-soft contracts, split model routing,
+  and privacy placement (per-phase `exec.at` + `calls`/`carries`) — with
+  canonical structural fingerprints at three comparison levels plus a
+  spine projection. Reference tooling `sdk/drpl.mjs`
+  (validate/show/fingerprint/diff, unit-tested); both deployed pipelines
+  (§4 server-side and its browser port in `public/js/drc-research.js`) are
+  encoded in `docs/examples/*.drpl.json` and are test-pinned
+  spine-shape-identical while differing exactly in placement. JSON Schema:
+  `docs/schemas/drpl-1.schema.json`.
+
+The vision the two standards serve — stackless deep research: one
+user-held workspace routed across purpose-built nodes, pipelines whose
+steps are sites — is `docs/STACKLESS-RESEARCH.md`. The specs deliberately
+lead the code on the interchange extensions; the deployed workspace
+feature is their reference implementation. See the **secure-workspaces**
+skill.

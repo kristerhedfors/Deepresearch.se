@@ -469,6 +469,30 @@
   </section>
 
   <section>
+    <h2>Beyond one site: workspaces as an open standard</h2>
+    <p>The sealed workspace — a whole
+    <span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> session carried in one
+    link's fragment, which no server ever receives — is also specified as an
+    open interchange standard, <b>DRSW/1</b>, so that other sites (running
+    this source code or something entirely different) can become
+    data-compatible <em>research nodes</em>: the same sealed bundle opens at
+    any of them, and moving between nodes is just a link — the receiving
+    server learns nothing at the handoff. A companion standard,
+    <b>DRPL/1</b>, declares a research pipeline's <em>structure</em> —
+    including exactly which parties receive which data at every phase — so
+    "this node runs the same research, placed in your browser" becomes a
+    machine-checkable claim instead of a promise. The two specs, the vision
+    behind them (stackless deep research: your workspace routed across
+    purpose-built nodes, held only by you), the schemas, and the tooling are
+    all in the repository:
+    <a href="https://github.com/kristerhedfors/Deepresearch.se/blob/main/docs/WORKSPACE-PROTOCOL.md">WORKSPACE&#8209;PROTOCOL.md</a>,
+    <a href="https://github.com/kristerhedfors/Deepresearch.se/blob/main/docs/PIPELINE-LANGUAGE.md">PIPELINE&#8209;LANGUAGE.md</a>,
+    <a href="https://github.com/kristerhedfors/Deepresearch.se/blob/main/docs/STACKLESS-RESEARCH.md">STACKLESS&#8209;RESEARCH.md</a>.
+    Experimental drafts, like everything here — and deliberately written
+    spec-first, with this site as the reference node.</p>
+  </section>
+
+  <section>
     <h2>Why a pair, and not a setting</h2>
     <p>The two tiers share their UI, their pipeline shape, their crypto core
     (<code>vault-core.js</code>), and their sandbox — but they are separate

@@ -388,6 +388,23 @@ The same CLI runs **inside the pair's own sandbox VM**: the SDK is mounted at
 `/src/sdk` (the `vm-toolchain` module), so with a nodejs-equipped image,
 `node /src/sdk/pair-cli.mjs …` works from within the browser's own Linux.
 
+The SDK's second CLI is `sdk/drpl.mjs` — the **DRPL/1** pipeline-language
+reference tooling (spec: `docs/PIPELINE-LANGUAGE.md`; unit-tested by
+`sdk/drpl.test.mjs`), which makes a pair's pipeline structure a comparable
+artifact:
+
+```bash
+node sdk/drpl.mjs validate <f.drpl.json>       # structural validation
+node sdk/drpl.mjs show <f>                     # the phase table (dataflow, placement, calls)
+node sdk/drpl.mjs fingerprint <f> [--level shape|placement|full] [--spine]
+node sdk/drpl.mjs diff <a> <b> [--level …] [--spine]
+```
+
+The two committed examples (`docs/examples/*.drpl.json`) encode the
+reference pair's deployed pipelines; their test-pinned property — identical
+at spine-shape, different at placement — is the pair abstraction (§2)
+stated as two hashes.
+
 ---
 
 ## 8. Implementation order (the roadmap, condensed)
