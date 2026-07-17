@@ -49,11 +49,12 @@ export function initAccountPanel() {
   const ctx = {
     overlay: document.getElementById("account"),
     body: document.getElementById("account-body"),
+    title: document.getElementById("accounttitle"),
     badge: document.getElementById("notif-badge"),
     me: null,
     show: null,
   };
-  ctx.show = (view) => showView(ctx, view);
+  ctx.show = (view, opts) => showView(ctx, view, opts);
 
   // Fetched eagerly (not just on account-button click) so the notification
   // badge — personal messages, and for admins also pending approvals + open
@@ -72,7 +73,7 @@ export function initAccountPanel() {
   // Two doors into the same panel: the account button opens the summary,
   // the header's gear opens the Settings view directly (all configuration
   // lives there — 2026-07-11 directive).
-  const openPanel = async (view) => {
+  const openPanel = async (view, opts) => {
     ctx.overlay.hidden = false;
     ctx.body.innerHTML = '<p class="muted">Loading…</p>';
     try {
@@ -80,7 +81,7 @@ export function initAccountPanel() {
       if (!res.ok) throw new Error("HTTP " + res.status);
       ctx.me = await res.json();
       renderNotifBadge(ctx);
-      await ctx.show(view);
+      await ctx.show(view, opts);
     } catch {
       ctx.body.innerHTML = '<p class="muted">Could not load account info.</p>';
     }
@@ -90,10 +91,13 @@ export function initAccountPanel() {
   // The header's workspace-share icon (right of the ghost, 2026-07-15 owner
   // directive): a first-class door to "Share a Se/cure workspace" — opens the
   // Settings view and lands on the share section, whose widget (create link,
-  // copy link/password) lives there (account-settings.js).
+  // copy link/password) lives there (account-settings.js). Reached this way,
+  // the panel's header is retitled so it reads as what it's for — landing
+  // here through the gear icon still shows the general "Settings" title
+  // (reported: it looked like an unrelated "Account & usage" screen).
   document.getElementById("sharebtn")?.addEventListener("click", async () => {
-    await openPanel("settings");
-    const create = document.getElementById("wspcreate");
+    await openPanel("settings", { title: "Share a Se/cure workspace" });
+    const create = document.getElementById("wspweb") || document.getElementById("wspcreate");
     create?.scrollIntoView({ block: "center" });
     create?.focus();
   });
@@ -107,14 +111,23 @@ export function initAccountPanel() {
   return { open: openPanel };
 }
 
+// Default header title per view — overridden per-call via ctx.show(view,
+// {title}) for a door that means something more specific (the header's
+// share icon retitles "settings" to "Share a Se/cure workspace" so the
+// panel doesn't read as an unrelated account screen when that's what
+// brought you here).
+const VIEW_TITLES = { settings: "Settings" };
+
 /**
  * View dispatcher: renders the named view into the panel body and wires
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
  * @param {"summary"|"full"|"messages"|"settings"|"feedback"|"games"|"docs"} view
+ * @param {{title?: string}} [opts]
  */
-function showView(ctx, view) {
+function showView(ctx, view, opts = {}) {
+  if (ctx.title) ctx.title.textContent = opts.title || VIEW_TITLES[view] || "Account & usage";
   if (view === "messages") {
     loadMessagesView(ctx);
     return;

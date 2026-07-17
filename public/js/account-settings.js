@@ -170,13 +170,17 @@ export async function loadSettingsView(ctx) {
 
 const WORKSPACE_INFO = `<strong>Share a Se/cure workspace</strong><br>
   Creates a <b>single offline link</b> to a ready-to-use
-  <b>Se/cure</b> session carrying a bounded allowance from YOUR account:
-  a few server web searches and LLM calls (the same temporary grants the
-  ghost button lends you). Everything is <b>encrypted into the link's
-  #anchor</b> — browsers never send that part to any server — and the
-  password travels separately, so the link alone reveals nothing. You stay
-  in control: the allowances are quota-metered per token, and you can add
-  or remove quota (or revoke) at any time without changing the link.`;
+  <b>Se/cure</b> session carrying a bounded allowance from YOUR account —
+  the same temporary grants the ghost button lends you. Everything is
+  <b>encrypted into the link's #anchor</b> — browsers never send that part
+  to any server — and the password travels separately, so the link alone
+  reveals nothing. You stay in control: the allowances are quota-metered
+  per token, and you can add or remove quota (or revoke) at any time
+  without changing the link.<br>
+  This is separate from the Shodan / Google Maps / Feedback / sandbox
+  switches above — those govern <b>your own</b> research on this account.
+  The two checks below decide what capacity actually travels <b>inside the
+  link</b> for whoever opens it.`;
 
 /** @param {boolean} signedIn */
 function workspaceShareSection(signedIn) {
@@ -187,9 +191,19 @@ function workspaceShareSection(signedIn) {
         <span class="settings-label">Share a Se<span class="sl">/</span>cure workspace
           <button type="button" class="setting-info" data-pop="wsppop" aria-label="More about secure workspaces">ⓘ</button>
         </span>
-        <button type="button" id="wspcreate">Create link</button>
       </div>
       <div class="setting-pop" id="wsppop" hidden>${WORKSPACE_INFO}</div>
+      <p class="muted setting-note">Capacity included in the link:</p>
+      <label style="display:flex;align-items:center;gap:.5rem;margin:.3rem 0">
+        <input type="checkbox" id="wspweb" checked> Web search access (Exa)
+      </label>
+      <label style="display:flex;align-items:center;gap:.5rem;margin:.3rem 0">
+        <input type="checkbox" id="wspapi" checked> LLM API access (Berget)
+      </label>
+      <div class="settings-row">
+        <span></span>
+        <button type="button" id="wspcreate">Create link</button>
+      </div>
       <p id="wspstatus" class="muted setting-note" hidden></p>
       <div id="wspresult" hidden>
         <textarea id="wsplink" readonly rows="3" style="width:100%;font-size:.72rem;word-break:break-all"></textarea>
@@ -205,30 +219,51 @@ function workspaceShareSection(signedIn) {
 function wireWorkspaceShare() {
   const btn = document.getElementById("wspcreate");
   const status = document.getElementById("wspstatus");
+  const webChk = /** @type {HTMLInputElement | null} */ (document.getElementById("wspweb"));
+  const apiChk = /** @type {HTMLInputElement | null} */ (document.getElementById("wspapi"));
   if (!btn) return;
   let password = "";
   btn.addEventListener("click", async () => {
+    const includeWeb = !!webChk?.checked;
+    const includeApi = !!apiChk?.checked;
+    if (!includeWeb && !includeApi) {
+      status.hidden = false;
+      status.textContent = "Pick at least one capability to include in the link.";
+      return;
+    }
     btn.disabled = true;
     status.hidden = false;
     status.textContent = "Minting your temporary grants…";
     try {
       // 1. The two existing authed mints (both reuse-per-user; each fail-soft —
-      //    a workspace with only one allowance is still a workspace).
+      //    a workspace with only one allowance is still a workspace). Skip a
+      //    mint entirely when its checkbox is off rather than fetching then
+      //    discarding — an unchecked box should cost nothing server-side.
       const post = (path) =>
         fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);
-      const [ws, bundle] = await Promise.all([post("/api/websearch/grant"), post("/api/proxy/grant")]);
+      const [ws, bundle] = await Promise.all([
+        includeWeb ? post("/api/websearch/grant") : Promise.resolve(null),
+        includeWeb || includeApi ? post("/api/proxy/grant") : Promise.resolve(null),
+      ]);
       // The proxy bundle's GRANT tokens ride sealed in its blob — open it
       // locally with the key that came alongside (never sent anywhere).
+      // The bundle always mints both services server-side; the checkboxes
+      // are enforced here by filtering which grants make it into the link.
       let proxy = [];
       if (bundle?.blob && bundle?.key) {
         const opened = await openBundle(bundle.blob, bundle.key).catch(() => null);
         if (opened && Array.isArray(opened.grants)) {
-          proxy = opened.grants.filter((g) => g && (g.svc === "web" || g.svc === "api") && typeof g.token === "string");
+          proxy = opened.grants.filter(
+            (g) =>
+              g &&
+              typeof g.token === "string" &&
+              ((g.svc === "web" && includeWeb) || (g.svc === "api" && includeApi)),
+          );
         }
       }
-      const grants = { ws: ws?.token || null, proxy };
+      const grants = { ws: includeWeb ? ws?.token || null : null, proxy };
       if (!grants.ws && !proxy.length) {
         status.textContent = "No grants available right now (the feature may be disabled) — nothing to share.";
         return;
