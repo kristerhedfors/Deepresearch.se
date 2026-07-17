@@ -34,7 +34,7 @@ import {
   releaseInflight,
   reserveInflight,
 } from "./quota.js";
-import { bashLiteEnabled } from "./settings.js";
+import { bashLiteEnabled, developerModeEnabled } from "./settings.js";
 import {
   MAX_SHELL_ROUNDS,
   buildShellTranscript,
@@ -111,7 +111,9 @@ export async function handleBashStep(request, env, log, identity) {
     const resp = await chatCompletion(
       env,
       [
-        { role: "system", content: bashAgentPrompt() },
+        // Developer mode mounts the site's own source at /src in the VM
+        // (stream.js provider) — tell the step model so it explores it there.
+        { role: "system", content: bashAgentPrompt({ sourceMounted: developerModeEnabled(env, identity) }) },
         { role: "user", content: userContent },
       ],
       { model: DEFAULT_MODEL },

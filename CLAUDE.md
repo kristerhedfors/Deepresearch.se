@@ -1062,9 +1062,11 @@ DOM glue `agent-backdrop.js` is browser-only, fed from `execInSandbox`) plus
 `sandbox-files.js` (the file-mounting pure
 core: `sanitizeName`/`sanitizeProjName`/`projHash`, `dedupeNames`,
 `applySizeCap` byte budgets, `buildManifest`, `buildSeedScript`,
-`shellEscape`, and `planSourceMount` — the introspection source-mount plan:
-flat ingest entries + the /src tree-building seed script — see the
-**execution-sandbox** skill and `docs/SANDBOX-HOST-COMMANDS.md`) plus
+`shellEscape`, `buildTar` (a pure ustar writer), and `planSourceMount` — the
+introspection source-mount plan: one tar archive extracted in a single spawn
+(the per-file cp script kept as the no-tar fallback) rebuilding /src each
+boot — see the **execution-sandbox** skill and
+`docs/SANDBOX-HOST-COMMANDS.md`) plus
 `introspect-core.js` (introspection mode's SHARED pure core — the one
 implementation behind the server enrichment `src/introspect.js` and both
 tiers' clients: the `introspectionIntent` EN+SV gate incl. the
@@ -1187,7 +1189,12 @@ introspection snapshot, so both tiers surface its skills in-app (cataloged as
 in-app builder loop are the `vm-toolchain`/`pair-studio` modules). Editing an
 SDK skill or the manifest: run `node sdk/pair-cli.mjs validate` (the manifest
 integrity + class rules are also test-pinned) and regenerate the introspection
-artifacts like any other tracked-text change.
+artifacts like any other tracked-text change. The SDK's complete standalone
+documentation — abstraction, classes, contracts, the full 33-module catalog,
+CLI, roadmap, usage modes — is `docs/AGENT-PAIR-SDK.md` (it rides the docs
+corpus, so the in-app HELP layer answers SDK questions from it; it mirrors
+`sdk/MANIFEST.json`/`DESIGN.md` and is updated in the same commit as any
+`sdk/` change).
 
 ## Skills
 
@@ -1228,7 +1235,12 @@ what docs claim); and update the skill list below plus the skill's
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
-  don't-deploy-mid-battery interaction with the eval harnesses. Also the
+  don't-deploy-mid-battery interaction with the eval harnesses. Also BRANCH
+  PREVIEW URLs (Workers Builds non-production branch builds +
+  `preview_urls = true` in wrangler.toml): each feature branch reachable on
+  its own per-version `…workers.dev` URL for isolated live testing before
+  merge — no production traffic shifted — with the dashboard branch-control
+  setup and the OAuth/shared-bindings caveats. Also the
   commit-signing / GitHub Verified-badge remediation (the container's
   managed signing wrapper, `.claude/hooks/setup-signing.sh`, the
   `GIT_SIGNING_KEY`/`GIT_SIGNING_EMAIL` environment secrets).

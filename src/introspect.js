@@ -405,9 +405,14 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     latestText,
     retrieved,
     includeIndex: strongIntent,
-    // A shell transcript means the client ran the sandbox loop this message —
-    // with dev mode on its provider mounts the tree at /src (stream.js).
-    sandboxMounted: (/** @type {any} */ (state).shellTranscript || []).length > 0,
+    // The sandbox knob being on is the mount signal: with dev mode on, EVERY
+    // sandbox boot mounts the tree at /src (stream.js pre-warm + provider), so
+    // the pointer is truthful whether or not a shell ran this message. The
+    // shell-transcript fallback covers a client that attached a transcript
+    // without the server seeing the knob (defensive; costs one true line).
+    sandboxMounted:
+      /** @type {any} */ (state).sandboxEnabled === true ||
+      (/** @type {any} */ (state).shellTranscript || []).length > 0,
   });
   state.introspectionCount = 1;
   const inlined = mentionedSnapshotPaths(latestText, snapshot).slice(0, 6);

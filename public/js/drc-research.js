@@ -254,9 +254,12 @@ export const drcDirectPromptWeb = () =>
 // the client-side counterpart of src/prompts.js bashAgentPrompt). Mirrors the
 // fenced-block convention: propose the next commands in a ```bash block, or
 // SHELL_DONE when finished. NO function calling.
-export const drcBashAgentPrompt = () =>
+export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n" +
+  (opts.sourceMounted
+    ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
+    : "") +
   "Run commands step by step to accomplish the user's request, then stop so the answer can be written from what you found. Each turn respond in ONE of two ways:\n" +
   "1. A short one-sentence plan, then a single fenced ```bash block with the commands to run this turn (one per line, no prose inside). Keep turns small (1-3 commands).\n" +
   "2. When you have what the answer needs (or it cannot be done offline): reply with the single line SHELL_DONE and no code block.\n" +
@@ -405,7 +408,9 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
         provider,
         apiKey,
         jsonModel,
-        [{ role: "system", content: drcBashAgentPrompt() }, { role: "user", content: userMsg }],
+        // In DRC the fileProvider exists ONLY for introspection (drc.js) —
+        // its presence means the boot mounts the source tree at /src.
+        [{ role: "system", content: drcBashAgentPrompt({ sourceMounted: !!fileProvider }) }, { role: "user", content: userMsg }],
         { signal, baseUrl },
       );
       if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };
