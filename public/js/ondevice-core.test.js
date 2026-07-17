@@ -25,6 +25,7 @@ import {
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
+  opfsUnavailableMessage,
   planModelFiles,
   rejectionDetail,
   sseDeltaLine,
@@ -361,4 +362,16 @@ test("debugFlagFrom: the stored flag or the ?oddebug=1 param, default off", () =
   assert.equal(debugFlagFrom("?x=2&oddebug=1&y=3", null), true);
   assert.equal(debugFlagFrom("?oddebug=10", null), false); // exact value, not a prefix
   assert.equal(debugFlagFrom(undefined, undefined), false);
+});
+
+test("opfsUnavailableMessage: names OPFS, carries the underlying detail, points at Private tabs", () => {
+  const bare = opfsUnavailableMessage(null);
+  assert.ok(bare.includes("OPFS"));
+  assert.ok(bare.includes("Private tab"));
+  assert.ok(!bare.includes("()")); // no empty detail parens
+  const detailed = opfsUnavailableMessage(new Error("The operation is not supported."));
+  assert.ok(detailed.includes("(The operation is not supported.)"));
+  assert.ok(detailed.includes("Private tab"));
+  // A detail-less throw (e.g. a bare string rejection) degrades to the bare form.
+  assert.equal(opfsUnavailableMessage({}), bare);
 });

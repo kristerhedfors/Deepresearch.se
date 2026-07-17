@@ -283,6 +283,23 @@ export function downloadTotalBytes(files) {
   return (Array.isArray(files) ? files : []).reduce((n, f) => n + (f?.size || 0), 0);
 }
 
+// The named "can't store weights here" download error. OPFS is this
+// feature's ONE storage location (the consent popup promises exactly that),
+// and the two real-world ways it goes missing — WebKit Private Browsing
+// rejecting getDirectory() outright, and a browser/port without the API at
+// all — used to surface as an opaque throw the settings drawer rendered as
+// a silent flicker (the 2026-07-17 iPhone report). Pure so the wording is
+// test-pinned; the underlying error rides along for the trace pane.
+/** @param {unknown} err @returns {string} */
+export function opfsUnavailableMessage(err) {
+  const detail = /** @type {{message?: string}} */ (err)?.message ? " (" + /** @type {{message: string}} */ (err).message + ")" : "";
+  return (
+    "This browser can't store the model — private file storage (OPFS) is unavailable here" +
+    detail +
+    ". If this is a Private tab, model downloads need a regular tab."
+  );
+}
+
 // Decimal units, one decimal — the user-facing "3.9 GB" convention the
 // announcement itself uses (and matching what a phone's storage UI shows).
 /** @param {number} n */

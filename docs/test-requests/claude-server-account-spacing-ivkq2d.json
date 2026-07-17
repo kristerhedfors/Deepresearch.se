@@ -1,0 +1,20 @@
+{
+  "branch": "claude/server-account-spacing-ivkq2d",
+  "requested_at": "2026-07-17",
+  "points": [
+    {
+      "label": "Se/cure settings pops: wordmark slash no longer touches",
+      "summary": "The secure-research-space ⓘ pop in the Se/cure settings drawer ('A signed-in Se/rver account LENT this browser…') rendered its wordmark slashes too tight — the global .sl tightening (-.12em) overlaps at the pops' .8rem prose size in both bold and regular weight (measured with scripts/slash-gap.mjs). All settings-drawer ⓘ pops now use -.04em. PASS: on your device, open /cure settings and tap the ⓘ beside 'Secure research space' (needs a connected space; otherwise any pop with a wordmark, e.g. the local-model ⓘ's 'Se/cure') — the slash in the bold 'Se/rver' and the plain 'Se/cure' clearly clears the letters on both sides while still reading as one tight word.",
+      "target": "/cure",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Zoom in on the bold 'Se/rver' at the start of the secure-research-space pop and the plain 'Se/cure' near its end — before the fix the slash touched the neighbouring letters."
+        }
+      ],
+      "runs": 1,
+      "verdicts": [],
+      "minted_id": 51
+    }
+  ]
+}

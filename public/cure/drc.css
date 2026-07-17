@@ -317,6 +317,13 @@ header {
    2026-07-16; measured with scripts/slash-gap.mjs: at 400 weight -.04em keeps
    every container font's ink gap above the .03em floor). */
 #proxybanner .sl, #notices .sl { margin: 0 -.04em; }
+/* The settings drawer's ⓘ explainer pops (#proxypop, #wspop, #localpop, …) —
+   .8rem running prose mixing bold AND regular wordmarks (owner report
+   2026-07-17: the secure-research-space pop's slashes too tight; measured with
+   scripts/slash-gap.mjs at 400+700 weight: -.04em keeps every container font's
+   ink gap above the .03em floor, worst side +0.043em). One rule for the whole
+   pop class so sibling pops don't regress one id at a time. */
+#settingsview .setting-pop .sl { margin: 0 -.04em; }
 /* The small "introspection" marker under the wordmark — only present while the
    introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
    (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
@@ -1217,6 +1224,9 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 }
 .od-model .od-label { font-size: .85rem; font-weight: 600; }
 .od-model .od-note { grid-column: 1 / -1; margin: 0; }
+/* A failed download's reason lives IN the row (the footer status line is
+   covered by this very drawer on a phone) — quiet brick red on the khaki. */
+.od-model .od-note.od-fail { color: #9c4530; }
 .od-model .od-btn { font-size: .78rem; padding: .3rem .6rem; white-space: nowrap; }
 /* The visible engine trace (?oddebug=1): the phone's stand-in console. */
 #odtracewrap { margin: .3rem 0 .4rem; }
