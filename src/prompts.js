@@ -258,11 +258,17 @@ export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = 
 // This runs on the reliable JSON model like the other planning phases (command
 // choice must be dependable regardless of the user's answer-model pick), but it
 // is a normal text completion, not JSON mode — the convention IS the structure.
-/** @returns {string} */
-export const bashAgentPrompt = () =>
+// `sourceMounted` (developer mode): the client mounts the site's own source
+// tree at /src in the VM, so the step model must know to explore it there —
+// without this line it denies having the code (chat_logs #514).
+/** @param {{ sourceMounted?: boolean }} [opts] @returns {string} */
+export const bashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for Deepresearch.se. Today's date: ${today()}.\n` +
   "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n" +
   "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
+  (opts.sourceMounted
+    ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
+    : "") +
   "DELIVERING FILES TO THE USER: when the user asks FOR a file (a generated document, dataset, CSV, script, plot, archive, …), create it and copy the finished file into /workspace/outbox/ (run `mkdir -p /workspace/outbox` first). Every file in /workspace/outbox when you finish is attached to the reply as a download the user can save or add to a project. Put only the finished artifacts there (a handful of files, a few MB at most) — intermediates stay in /workspace/.\n" +
   "Your job: take the user's request and, step by step, run shell commands to accomplish it, then stop so the assistant can write the final answer using what you found.\n" +
   "Each turn, respond in ONE of these two ways:\n" +

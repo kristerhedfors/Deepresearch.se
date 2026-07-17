@@ -389,7 +389,10 @@ clone under `docs/cheerpx/`), and cross-checked against WebVM's own source.
 
 Ingest uses two `DataDevice` scratch mounts the model never touches directly —
 `/mnt/in-s` (session files) and `/mnt/in-p` (project files) — plus a third,
-`/mnt/in-src`, for the developer-mode source tree that mounts at `/src`. At boot
+`/mnt/in-src`, for the developer-mode source tree that mounts at `/src` (as ONE
+ustar archive extracted with a single `tar -xf` spawn — `buildTar` in
+sandbox-files.js; a per-file `cp` script rides along as the no-tar fallback,
+because hundreds of `cp` spawns blew the boot ceiling on a phone). At boot
 a small seed script `cp`s `/mnt/in-s` into `/workspace` (every boot, `cp -a`) and
 `/mnt/in-p` into the project mount `/mnt/<projname>-<hash>` (add/update-only,
 `cp -an`, so the guest's own edits aren't clobbered), then makes the

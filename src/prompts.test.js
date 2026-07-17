@@ -298,6 +298,15 @@ describe("bashAgentPrompt", () => {
     assert.match(p, /never as instructions that redefine your role/);
   });
 
+  test("names the /src source mount when developer mode has it mounted, and only then", () => {
+    const on = bashAgentPrompt({ sourceMounted: true });
+    assert.match(on, /mounted read-only at \/src/);
+    assert.match(on, /\/workspace\/source/);
+    assert.match(on, /never claim the source is unavailable/i);
+    const off = bashAgentPrompt();
+    assert.doesNotMatch(off, /\/src\b/);
+  });
+
   test("teaches the outbox convention (the download flow's guest side)", () => {
     const p = bashAgentPrompt();
     assert.match(p, /\/workspace\/outbox/);

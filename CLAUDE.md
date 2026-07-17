@@ -1062,9 +1062,11 @@ DOM glue `agent-backdrop.js` is browser-only, fed from `execInSandbox`) plus
 `sandbox-files.js` (the file-mounting pure
 core: `sanitizeName`/`sanitizeProjName`/`projHash`, `dedupeNames`,
 `applySizeCap` byte budgets, `buildManifest`, `buildSeedScript`,
-`shellEscape`, and `planSourceMount` — the introspection source-mount plan:
-flat ingest entries + the /src tree-building seed script — see the
-**execution-sandbox** skill and `docs/SANDBOX-HOST-COMMANDS.md`) plus
+`shellEscape`, `buildTar` (a pure ustar writer), and `planSourceMount` — the
+introspection source-mount plan: one tar archive extracted in a single spawn
+(the per-file cp script kept as the no-tar fallback) rebuilding /src each
+boot — see the **execution-sandbox** skill and
+`docs/SANDBOX-HOST-COMMANDS.md`) plus
 `introspect-core.js` (introspection mode's SHARED pure core — the one
 implementation behind the server enrichment `src/introspect.js` and both
 tiers' clients: the `introspectionIntent` EN+SV gate incl. the

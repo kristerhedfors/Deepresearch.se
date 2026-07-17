@@ -164,12 +164,24 @@ Three consumers, one artifact:
    everywhere.
 2. **The sandbox mount (both tiers)** — the browser fetches the snapshot and
    hands it to the VM boot as the `source` scope of the fileProvider
-   (`stream.js` for DRS, `drc.js` for DRC). `planSourceMount`
-   (sandbox-files.js) turns it into a flat Tier-1 **DataDevice** ingest
-   (`/mnt/in-src/f0…`, files at the device root — the no-nested-dirs
-   discipline) plus a tree-building seed script written INTO the device as
-   `.seed` (never argv) that recreates the real paths at `/src`, refreshed
-   every boot, with a `/workspace/source` symlink and an INDEX.txt note.
+   (`stream.js` for DRS, `drc.js` for DRC). **Dev mode alone is the gate on
+   BOTH tiers (2026-07-17):** DRS used to require the introspection-intent
+   regexes on top, which left `/src` missing for phrasings they don't cover
+   while the server enrichment claimed it was there (chat_logs #514, "Where
+   is my source code") — now every dev-mode sandbox boot carries the source,
+   the dev-mode pre-warm included (`prewarmSandbox`), and a live VM booted
+   without it is discarded at send time (`resetSandboxIfLacking`).
+   `planSourceMount` (sandbox-files.js) turns the snapshot into ONE ustar
+   archive (`buildTar`, pure JS) extracted with a single `tar -xf` spawn —
+   the per-file `cp` storm (463 spawns) blew the 90 s boot ceiling on a phone
+   ("boot timed out at mounting files…", chat_logs #515) — plus the flat
+   Tier-1 **DataDevice** ingest (`/mnt/in-src/f0…`, files at the device root
+   — the no-nested-dirs discipline) with a per-file `cp` script (`.seedcp`)
+   as the fallback for a guest without tar. Both scripts are written INTO
+   the device (never argv); `/src` is refreshed every boot, with a
+   `/workspace/source` symlink and an INDEX.txt note. The seed run itself is
+   time-bounded (`SEED_TIMEOUT_MS`, sandbox.js): past it the boot proceeds
+   with whatever was seeded instead of dying at the boot ceiling.
 3. **DRC context block** — built client-side (`introspectionContext` in
    drc.js) and threaded through the client pipeline exactly like the RAG
    recall block (`runDrcResearch({introspection, fileProvider})`). The

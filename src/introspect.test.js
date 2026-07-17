@@ -109,6 +109,26 @@ test("runIntrospectionEnrichment: ALWAYS injects the source in dev mode — the 
   }
 });
 
+test("runIntrospectionEnrichment: the /src pointer follows the sandbox knob (and the transcript fallback)", async () => {
+  // Knob on → the block tells the model the tree is mounted at /src, whether
+  // or not a shell ran this message (with dev mode on, every sandbox boot
+  // mounts the source — stream.js pre-warm + provider). Knob off and no
+  // transcript → no /src claim (the mount really isn't there).
+  const cases = [
+    { state: { sandboxEnabled: true, shellTranscript: [] }, want: true },
+    { state: { sandboxEnabled: false, shellTranscript: [{ command: "ls", exitCode: 0, stdout: "", stderr: "" }] }, want: true },
+    { state: { sandboxEnabled: false, shellTranscript: [] }, want: false },
+  ];
+  for (const c of cases) {
+    const s = steps();
+    const state = /** @type {any} */ ({ introspection: true, introspectionCount: 0, ...c.state });
+    const out = await runIntrospectionEnrichment(makeEnv(), noopLog, s.step, s.stepDone, /** @type {any} */ (convo("how are you implemented?")), state);
+    const text = /** @type {any} */ (out[out.length - 1]).content;
+    if (c.want) assert.match(text, /mounted at \/src inside the Linux sandbox/, JSON.stringify(c.state));
+    else assert.doesNotMatch(text, /mounted at \/src inside the Linux sandbox/, JSON.stringify(c.state));
+  }
+});
+
 test("runIntrospectionEnrichment: strong intent adds the full file index; a plain ask doesn't", async () => {
   const s1 = steps();
   const strong = /** @type {any} */ ({ introspection: true, introspectionCount: 0 });

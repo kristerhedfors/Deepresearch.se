@@ -118,12 +118,14 @@ let fitAddon = null;
 let cxReadFunc = null;
 /** @type {Promise<boolean> | null} */
 let bootPromise = null;
-// Whether the CURRENT boot mounted no user files (bare VM) — set in bootVM once
-// the plan is known. A bare boot is the only kind a pre-warm produces (it runs
-// before a message exists, so it can't know the files/project/source to mount);
-// resetSandboxIfBare() uses it to discard a pre-warm when a real send needs
-// mounts a bare VM can't carry (mounts are fixed at Linux.create).
-let _bootBare = false;
+// What the CURRENT boot actually mounted — set in bootVM once the plan is
+// known. Mounts are fixed at Linux.create, so a VM can never GAIN a scope
+// after boot; resetSandboxIfLacking() compares these against what a send
+// needs and discards the VM when it falls short (a bare pre-warm asked to
+// carry files, a file-less boot asked to carry the introspection /src source).
+let _bootBare = false; // no user files, no project, no source (a plain pre-warm)
+let _bootHadFiles = false; // session attachments and/or a project were mounted
+let _bootHadSource = false; // the introspection source tree was seeded at /src
 // Monotonic boot counter — bumped at the START of every bootVM. Rides on the
 // diagnostic events so a "sandbox not ready" exec can be tied to the boot that
 // (was supposed to) back it, and a stale-VM reuse becomes visible in the log.
@@ -485,6 +487,12 @@ export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
 // answers normally, and discard the wedged VM so a later send can retry fresh.
 const BOOT_TIMEOUT_MS = 90000;
 
+// Ceiling for the file-seed run inside a boot ("mounting files…"): the seed
+// must never consume the whole boot budget — past this the boot proceeds with
+// whatever was seeded (see seedFiles). Sized so even a seed racing this limit
+// leaves the boot ceiling room for the earlier stages it already passed.
+const SEED_TIMEOUT_MS = 45000;
+
 /**
  * Race a boot against BOOT_TIMEOUT_MS. On timeout, log it, tear down the wedged
  * boot, and resolve false (the fail-soft outcome). A real boot rejection still
@@ -539,22 +547,31 @@ export function resetSandbox(reason = "") {
   bootPromise = null;
   cx = null;
   _bootBare = false;
+  _bootHadFiles = false;
+  _bootHadSource = false;
   try { if (typeof window !== "undefined") /** @type {any} */ (window).__DR_SANDBOX = null; } catch { /* ignore */ }
   sblog("info", "sandbox.reset", { reason: String(reason || "").slice(0, 80), gen: _bootGen });
   flushSandboxLog();
 }
 
 /**
- * If the current (or in-flight) boot is a BARE pre-warm, discard it so the
- * caller can re-boot with a file-mounting provider. Awaits any in-flight boot
- * to settle FIRST — resetting mid-boot would race the running bootVM against a
- * fresh one. A no-op when idle, or when the live VM already mounted files (a
- * real boot, not a pre-warm). Never throws.
+ * If the current (or in-flight) boot lacks a mount scope the caller's send
+ * needs, discard it so the caller can re-boot with the right provider —
+ * mounts are fixed at Linux.create, so re-booting is the ONLY way a VM gains
+ * one. Awaits any in-flight boot to settle FIRST — resetting mid-boot would
+ * race the running bootVM against a fresh one. A no-op when idle, when
+ * nothing is needed, or when the live VM already carries what's needed (a
+ * dev-mode pre-warm that seeded /src serves a source-wanting send as-is).
+ * Never throws.
+ * @param {{ files?: boolean, source?: boolean }} [needs]
  */
-export async function resetSandboxIfBare() {
+export async function resetSandboxIfLacking(needs = {}) {
   if (vmState === "off") return;
+  if (!needs.files && !needs.source) return;
   try { if (bootPromise) await bootPromise; } catch { /* settle regardless */ }
-  if (_bootBare) resetSandbox();
+  if (_bootBare) { resetSandbox("needs_mounts"); return; }
+  if (needs.files && !_bootHadFiles) { resetSandbox("needs_files"); return; }
+  if (needs.source && !_bootHadSource) resetSandbox("needs_source");
 }
 
 /**
@@ -763,14 +780,11 @@ async function bootVM(fileProvider = null) {
     }
   }
 
-  // Record whether this boot is bare (no user files/project/source mounted) —
-  // a pre-warm always is. See _bootBare / resetSandboxIfBare.
-  _bootBare = !fileMount || !!(
-    fileMount.plan &&
-    fileMount.plan.session.length === 0 &&
-    !fileMount.plan.project &&
-    !fileMount.plan.source
-  );
+  // Record what this boot actually mounted — resetSandboxIfLacking compares
+  // these against a send's needs to decide whether the VM must be re-booted.
+  _bootHadFiles = !!(fileMount && fileMount.plan && (fileMount.plan.session.length > 0 || fileMount.plan.project));
+  _bootHadSource = !!(fileMount && fileMount.plan && fileMount.plan.source);
+  _bootBare = !_bootHadFiles && !_bootHadSource;
 
   setStatus("starting Linux…");
   cx = await CheerpX.Linux.create({ mounts });
@@ -962,13 +976,19 @@ async function seedFiles(fm) {
       sblog("debug", "sandbox.fs.write", { scope: "project", name: f.name, size: f.size });
     }
   }
-  // The introspection source snapshot: flat pre-bundled files (f0, f1, …)
-  // plus its own tree-building seed script, written INTO the device so the
-  // (hundreds-of-lines) script never rides in argv.
+  // The introspection source snapshot: ONE ustar archive (src.tar, extracted
+  // with a single spawn — the fast path) plus the flat pre-bundled files
+  // (f0, f1, …) with their cp fallback script for a guest without tar. Both
+  // scripts are written INTO the device so a hundreds-of-lines script never
+  // rides in argv (see sandbox-files.js planSourceMount).
   if (plan.source && inSource) {
+    if (plan.source.tar && plan.source.tar.length) {
+      await inSource.writeFile("/src.tar", plan.source.tar);
+    }
     for (const e of plan.source.entries) {
       await inSource.writeFile("/" + e.flat, e.bytes);
     }
+    if (plan.source.seedCp) await inSource.writeFile("/.seedcp", enc.encode(plan.source.seedCp));
     await inSource.writeFile("/.seed", enc.encode(plan.source.seed));
     sblog("debug", "sandbox.fs.write", { scope: "source", name: "/src tree", size: plan.source.bytes });
   }
@@ -979,14 +999,28 @@ async function seedFiles(fm) {
     hash: plan.project?.hash,
   });
   const full = plan.source && inSource ? script + "\nsh /mnt/in-src/.seed 2>/dev/null || true" : script;
-  const r = await cx.run("/bin/sh", ["-c", full], {
-    env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
-    cwd: "/root",
-    uid: 0,
-    gid: 0,
-  });
+  // The seed run is time-bounded like execInSandbox: a slow guest (cold
+  // binaries on a phone) must degrade to a partially seeded — but LIVE —
+  // sandbox, never eat the whole 90s boot ceiling and kill the boot
+  // ("boot timed out at mounting files…", chat_logs #515). On timeout the
+  // run is abandoned (it may still finish in the background) and boot
+  // proceeds; worst case some files are missing until the next boot.
+  let seedTimedOut = false;
+  const r = await Promise.race([
+    cx.run("/bin/sh", ["-c", full], {
+      env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+      cwd: "/root",
+      uid: 0,
+      gid: 0,
+    }),
+    new Promise((resolve) => setTimeout(() => { seedTimedOut = true; resolve(null); }, SEED_TIMEOUT_MS)),
+  ]);
+  if (seedTimedOut) {
+    sblog("warn", "sandbox.fs.seed_timeout", { ms: SEED_TIMEOUT_MS, source_files: plan.source ? plan.source.count : 0 });
+  }
   sblog("info", "sandbox.fs.seed", {
     exit: r && Number.isFinite(r.status) ? r.status : null,
+    timed_out: seedTimedOut,
     project_mount: plan.project ? `/mnt/${plan.project.name}-${plan.project.hash}` : null,
     source_files: plan.source ? plan.source.count : 0,
   });

@@ -395,11 +395,11 @@ round-trip OUT (guest-written files back to the user).
 **Implementation map:**
 | Concern | Where |
 |---|---|
-| Pure core (sanitize/dedupe/cap/manifest/`projHash`/`buildSeedScript`/`shellEscape`) | `public/js/sandbox-files.js` (+ `.test.js`); in `isPublicAsset` |
-| Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM) |
-| Boot signature | `ensureSandboxBooted(fileProvider?)` — provider is `async () => ({session:[{name,type,bytes}], project:{name,id,files:[…]}|null})` |
-| DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `activeProject().files`→project; bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed |
-| Prompt awareness | `bashAgentPrompt` (points the model at `/workspace/INDEX.txt`) |
+| Pure core (sanitize/dedupe/cap/manifest/`projHash`/`buildSeedScript`/`shellEscape`/`buildTar`) | `public/js/sandbox-files.js` (+ `.test.js`); in `isPublicAsset` |
+| Device mounts + seed + `exportFile` | `public/js/sandbox.js` `bootVM` (extra mounts STAGED locally, committed only on full success; all fail-soft → bare VM). The seed run is time-bounded (`SEED_TIMEOUT_MS` 45 s, `sandbox.fs.seed_timeout`): past it the boot proceeds partially seeded instead of eating the 90 s boot ceiling (chat_logs #515) |
+| Boot signature | `ensureSandboxBooted(fileProvider?)` — provider is `async () => ({session:[{name,type,bytes}], project:{name,id,files:[…]}|null, source:{files}|null})` |
+| DRS provider | `public/js/stream.js` `buildSandboxFileProvider(opts)` — attachments→session, `activeProject().files`→project; bytes from OPFS (`loadOriginal`) decrypted with the in-memory history key (`decryptBytes`) when the meta row's `enc` is set; inline `att.text` preferred. Deferred into the lazy boot so bytes load only if the VM is needed. `source` = the introspection snapshot whenever dev mode is on (no intent gate — 2026-07-17); the dev-mode pre-warm carries it too, and `resetSandboxIfLacking({files,source})` discards a live VM that lacks what a send needs |
+| Prompt awareness | `bashAgentPrompt` (points the model at `/workspace/INDEX.txt`; `{sourceMounted:true}` in dev mode adds the `/src` source-tree pointer — DRC twin: `drcBashAgentPrompt`) |
 
 **Gotchas / rules:**
 - The provider is called ONCE inside `ensureSandboxBooted` (which `runShellLoop`
@@ -494,6 +494,8 @@ path runs client-side, so it's shipped to Workers Logs two ways:
    (bytes assembled, decrypt/source failures — `stream.js`), `sandbox.fs.plan`,
    `sandbox.fs.mount`, `sandbox.fs.write` (per file, **debug**),
    `sandbox.fs.dropped` (**debug**), `sandbox.fs.seed` (seed script exit),
+   `sandbox.fs.seed_timeout` (**warn** — the seed run hit `SEED_TIMEOUT_MS`;
+   boot continued partially seeded),
    `sandbox.fs.verify` (a real `ls -la /workspace` listing, **debug**),
    `sandbox.fs.export`. Levels are honored end to end: **debug events only
    surface when `LOG_LEVEL=debug`** (`wrangler.toml`) — flip it to debug for
