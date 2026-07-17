@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h45;
+  --css-version: h46;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -152,12 +152,27 @@ body.term-fg #dr-agent-backdrop {
      terminal — a near-black field. Slightly translucent so the receded
      conversation still ghosts through, keeping the two-pane feel. */
   background-color: rgba(10, 13, 18, .93);
+  /* The pane forward is a REAL terminal, so its contents must be selectable
+     for copy/paste (2026-07-17 directive) — the click-through default above
+     is for the decoration state only. Still below the fixed chrome (z:5), so
+     header/composer stay clickable; agent-backdrop.js keeps its gesture
+     handlers clear of an active selection. */
+  pointer-events: auto;
 }
 body.term-fg .dr-agent-backdrop-pre {
   /* Foreground now: classic terminal ink — white/gray on the black field (the
      faint blue is only for the background-decoration state). The text carries
      no sway in either state (see .dr-agent-backdrop-pre above). */
   color: rgba(214, 220, 227, .92);
+  /* Select-to-copy (2026-07-17): real terminal text under the cursor. */
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+/* A selection highlight that reads on the near-black field. */
+body.term-fg .dr-agent-backdrop-pre::selection {
+  background: rgba(120, 170, 255, .45);
+  color: #fff;
 }
 /* The terminal's own cursor: a blinking block at the live prompt tail — the
    visible "input goes HERE" marker for tap-to-type (agent-backdrop.js focuses
