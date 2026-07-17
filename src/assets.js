@@ -217,6 +217,35 @@ export function isPublicAsset(url, method) {
 // the revalidation a cheap 304.
 const ASSET_REVALIDATE = /\.(js|css|html|md|json|webmanifest)$/i;
 
+// Scripts that are spawned AS dedicated workers by a cross-origin-isolated
+// page (the /cure shell always; the DRS shell with the sandbox knob on). The
+// spec checks the WORKER SCRIPT RESPONSE's own embedder policy against the
+// owner's — same-origin is NOT sufficient — so without a COEP header on
+// these responses the browser refuses to create the worker: an immediate
+// error event with no detail, before a single line runs. Found live
+// 2026-07-17: `new Worker("/js/ondevice-worker.js")` died instantly on /cure
+// for EVERY visitor (the on-device engine's "crashed before it could start"),
+// because serveAsset served the script without COEP. The two onnxruntime
+// .mjs files are here because the pthread runtime spawns NESTED workers from
+// its own module URL (`new Worker(new URL(import.meta.url))`), and a nested
+// worker's owner is the (now-isolated) on-device worker. The .wasm blobs and
+// transformers.web.min.js are plain same-origin subresources — no COEP
+// needed. These are served like the COEP shell (full 200, no-store) for the
+// same reason serveAsset documents: a 304 revalidation makes the browser
+// reuse its stored pre-fix response WITHOUT the header, and all three files
+// are small (15–47 KB), so forgoing the cache is cheap.
+/**
+ * @param {string} pathname
+ * @returns {boolean}
+ */
+export function isWorkerScriptAsset(pathname) {
+  return (
+    pathname === "/js/ondevice-worker.js" ||
+    pathname === "/vendor/transformers/ort-wasm-simd-threaded.mjs" ||
+    pathname === "/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs"
+  );
+}
+
 /**
  * Serves a static asset with an explicit browser-caching policy.
  * @param {Request} request
@@ -249,11 +278,15 @@ export async function serveAsset(request, env, overrideUrl = null, opts = {}) {
   // never turns on and the sandbox silently can't boot (the production defect
   // this fixes). So for the isolated shell we strip the request's conditional
   // headers (forcing a full 200, not a 304) and mark it `no-store`.
-  const upstream = buildAssetRequest(request, overrideUrl, opts.coep);
-  const res = await env.ASSETS.fetch(upstream);
   const pathname = new URL(overrideUrl || request.url).pathname;
+  // Worker scripts need the same isolated-response treatment as the shell:
+  // COEP on the response, and a forced full 200 so a stale stored copy
+  // without the header can never be revived by a 304 (see isWorkerScriptAsset).
+  const isolate = opts.coep || isWorkerScriptAsset(pathname);
+  const upstream = buildAssetRequest(request, overrideUrl, isolate);
+  const res = await env.ASSETS.fetch(upstream);
   const headers = new Headers(res.headers);
-  if (opts.coep) {
+  if (isolate) {
     headers.set("cross-origin-embedder-policy", "require-corp");
     headers.set("cache-control", "no-store");
   } else if (ASSET_REVALIDATE.test(pathname) || !/\.[a-z0-9]+$/i.test(pathname)) {
@@ -267,9 +300,10 @@ export async function serveAsset(request, env, overrideUrl = null, opts = {}) {
 
 /**
  * Builds the request handed to env.ASSETS. Normally the original request (or an
- * override URL). For the isolated (coep) shell, conditional headers are
- * stripped so ASSETS returns a full 200 (never a 304 that would drop the
- * dynamic COEP header — see serveAsset).
+ * override URL). For isolated responses (the coep shell and the worker
+ * scripts — see isWorkerScriptAsset), conditional headers are stripped so
+ * ASSETS returns a full 200 (never a 304 that would drop or fail to restore
+ * the COEP header — see serveAsset).
  * @param {Request} request
  * @param {string | null} overrideUrl
  * @param {boolean | undefined} coep
