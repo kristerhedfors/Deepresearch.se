@@ -65,6 +65,10 @@ export function isPublicAsset(url, method) {
     // backend config normalizer, and the deep-link path parsers, all imported
     // by /cure/drc.js — same public-graph rule, a 401 here takes /cure dark.
     url.pathname === "/js/drc-page-core.js" ||
+    // The iOS bar-tint re-assert helper (the layered theme-color nudge both
+    // tiers boot with) — /cure/drc.js statically imports it, so the same
+    // public-graph rule applies: a 401 here takes /cure dark.
+    url.pathname === "/js/bar-tint.js" ||
     // The shared research-time scale (pure): the Se/cure composer's slider is
     // the Se/rver slider mirrored (2026-07-16), so /cure/drc.js AND
     // /js/drc-research.js statically import it — same public-graph rule, a

@@ -75,6 +75,7 @@ import {
   workspaceLink,
 } from "/js/workspace-core.js";
 import { flagForProvider, labelWithFlag } from "/js/provider-region.js";
+import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
@@ -2830,16 +2831,13 @@ async function send(ev) {
 
 // iOS bar tint: arriving here by same-window navigation (the app's ghost
 // button), WebKit can keep the PREVIOUS page's theme-color — the DRS blue
-// over a khaki page (reported live 2026-07-10). Re-asserting the meta with
-// a changed-then-target value after load forces a re-evaluation of the
-// bar tint; harmless everywhere else.
-const themeMeta = document.querySelector('meta[name="theme-color"]');
-if (themeMeta) {
-  requestAnimationFrame(() => {
-    themeMeta.setAttribute("content", "#c3b092");
-    requestAnimationFrame(() => themeMeta.setAttribute("content", "#c3b091"));
-  });
-}
+// over a khaki page (reported live 2026-07-10; RECURRED 2026-07-17 with the
+// bottom toolbar blue too — the one early flip fires inside Safari's own
+// navigation chrome transition and gets swallowed). The shared helper now
+// layers the changed-then-target nudge across first frame, load, pageshow
+// (bfcache restores), visibility, and two lagged timers; harmless everywhere
+// else. Se/rver boots the same helper for the reverse crossing.
+wireBarTint("#c3b091");
 
 // Introspection cue: toggle `dev-mode` on the root so the composer pane picks
 // up the WHITE TITANIUM glass tint (drc.css `:root.dev-mode #composer`) and the
@@ -2859,7 +2857,7 @@ function applyIntrospectionTheme(on) {
 // tooltips never display on touch devices (field-confirmed 2026-07-16: a
 // long-press shows nothing), so the stamp must be READABLE exactly where
 // remote debugging needs it, on a phone.
-const BUILD = "d35";
+const BUILD = "d36";
 try {
   const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
   const brand = $("brand");
