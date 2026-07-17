@@ -6,7 +6,9 @@ description: >-
   drifted", a docs-update pass after a batch of code changes — or when adding a
   new module/skill/feature and you need to know which docs must be touched in
   the same change. The single playbook for the repo's whole documentation
-  surface: the inventory (CLAUDE.md, README, AGENTS.md, FEATURES.md,
+  surface: the inventory (CLAUDE.md — lean by design — plus its reference docs
+  docs/CODE-LAYOUT.md, docs/TESTING.md, docs/PRIVACY-MODEL.md,
+  docs/BRANDING.md, README, AGENTS.md, FEATURES.md,
   SECURITY-RISKS.md, docs/, the skills, the static /help /build /story
   /architecture /welcome pages, the committed introspection/pulse artifacts),
   the split between TEST-ENFORCED mirrors (run `npm test` — a failure names the
@@ -33,7 +35,8 @@ Everything below is "documentation" for the purposes of this pass:
 
 | Surface | Files | Kind |
 |---|---|---|
-| Repo guide | `CLAUDE.md` | hand-maintained (the big one) |
+| Repo guide | `CLAUDE.md` | hand-maintained — kept deliberately LEAN (2026-07-17 refactor): invariants, rules, pointers, the skills index; detail lives in the reference docs below |
+| Reference docs | `docs/CODE-LAYOUT.md` (the per-module map), `docs/TESTING.md` (the per-suite detail), `docs/PRIVACY-MODEL.md` (invariant 4 in full), `docs/BRANDING.md` (the naming rule in full) | hand-maintained mirrors of the code (moved out of CLAUDE.md 2026-07-17) |
 | Public readme | `README.md`, `AGENTS.md` (vendor-neutral pointer) | hand-maintained |
 | Backlog catalogs | `FEATURES.md`, `SECURITY-RISKS.md`, `SECURITY-ASSESSMENT.md` | mirrored (test-enforced §3) |
 | Design docs | `docs/*.md` (ARCHITECTURE, ARCHITECTURE-ROADMAP, DECISION-BOARD-LOOPS, SANDBOX-HOST-COMMANDS, GOOGLE-AUTH, SECRET-SCANNING, FOREVERAGENT-*) | hand-maintained |
@@ -70,13 +73,15 @@ prose left to review.
 
 Nothing fails when these drift. Detect them with the greps below.
 
-- **CLAUDE.md "Code layout" file table ⇄ `src/*.js`** — one row per non-test
-  module.
-- **CLAUDE.md client-module prose ⇄ `public/js/*.js`** — the long paragraph
-  describing every client module.
-- **CLAUDE.md "Unit tests" / "Additional server suites" prose ⇄ `*.test.js`.**
+- **`docs/CODE-LAYOUT.md` file table ⇄ `src/*.js`** — one row per non-test
+  module (the table lived in CLAUDE.md until 2026-07-17).
+- **`docs/CODE-LAYOUT.md` client-module prose ⇄ `public/js/*.js`** — the long
+  paragraph describing every client module.
+- **`docs/TESTING.md` "Unit tests" / "Additional server suites" prose ⇄
+  `*.test.js`.**
 - **CLAUDE.md "Skills" bullet list ⇄ `.claude/skills/` dirs** — one `- **name**`
-  bullet per skill.
+  bullet per skill (the one-line index; the long trigger text is each skill's
+  own `description` frontmatter).
 - **Each skill's `description` frontmatter** — the trigger text that decides
   when it loads; keep it matching what the skill now covers.
 - **README / AGENTS.md ⇄ current architecture** — the intro, the ASCII map, the
@@ -89,9 +94,9 @@ Nothing fails when these drift. Detect them with the greps below.
 Run these from the repo root; each prints only the drift.
 
 ```bash
-# src modules missing from the CLAUDE.md file table
+# src modules missing from the docs/CODE-LAYOUT.md file table
 for f in $(ls src/*.js | grep -v '\.test\.js' | xargs -n1 basename); do
-  grep -q "\`$f\`" CLAUDE.md || echo "src not in CLAUDE.md table: $f"
+  grep -q "\`$f\`" docs/CODE-LAYOUT.md || echo "src not in CODE-LAYOUT table: $f"
 done
 
 # skills on disk missing a bullet in CLAUDE.md's Skills list
@@ -103,9 +108,12 @@ done
 grep -oE '^- \*\*[a-z0-9-]+\*\*' CLAUDE.md | sed -E 's/^- \*\*(.*)\*\*/\1/' \
   | while read s; do [ -d ".claude/skills/$s" ] || echo "CLAUDE.md lists missing skill: $s"; done
 
-# client modules / test files not named anywhere in CLAUDE.md (noisier — triage by hand)
-for f in $(ls public/js/*.js src/*.test.js public/js/*.test.js | xargs -n1 basename); do
-  grep -q "\`$f\`" CLAUDE.md || echo "not named in CLAUDE.md: $f"
+# client modules / test files not named in the layout/testing docs (noisier — triage by hand)
+for f in $(ls public/js/*.js | xargs -n1 basename); do
+  grep -q "\`$f\`" docs/CODE-LAYOUT.md || echo "not named in CODE-LAYOUT: $f"
+done
+for f in $(ls src/*.test.js public/js/*.test.js | xargs -n1 basename); do
+  grep -q "\`${f%.test.js}.js\`" docs/TESTING.md || echo "suite not named in TESTING: $f"
 done
 
 npm test          # the test-enforced mirrors + the two freshness checks

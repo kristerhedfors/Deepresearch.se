@@ -674,7 +674,7 @@ quota accounting.
 `index.html` is pure markup; all styling in `css/app.css`, all behavior in
 ES modules under `js/`, vendored libraries in `vendor/` (`marked`,
 `DOMPurify`, `jsPDF`, `pdf.js` — **no CDN**, everything stays behind
-auth). CLAUDE.md's code-layout table is the authoritative per-module list;
+auth). `docs/CODE-LAYOUT.md`'s table is the authoritative per-module list;
 the architectural highlights:
 
 | Area | Modules | Notes |

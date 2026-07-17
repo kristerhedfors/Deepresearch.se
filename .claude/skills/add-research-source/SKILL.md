@@ -262,7 +262,7 @@ keeps that safe:
    **Never deploy/push mid-battery** (a push to `main` auto-deploys and
    truncates in-flight streams).
 6. **Docs**: extend the **integrations** skill (dated, evidence-based),
-   the CLAUDE.md code-layout table, and this skill if the procedure
+   the `docs/CODE-LAYOUT.md` table, and this skill if the procedure
    itself grew a step.
 
 ## 9. Post-integration watch list
