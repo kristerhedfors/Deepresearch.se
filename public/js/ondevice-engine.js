@@ -17,7 +17,11 @@
 // The VENDORED runtime (invariant 7 — never a runtime CDN fetch), pinned by
 // SHA-256 like public/vendor/xterm/ (see sandbox.js):
 //   @huggingface/transformers 4.2.0 → public/vendor/transformers/
-//     transformers.web.min.js  0a96dcf4c48981b7d05f53827e6975ec239132606ad0d526bbc2db0fcdbc4ded
+//     transformers.min.js      e74bd32ed4453369ebb0edcaa27f6bc6204004a949a0233cdb87b62dda8d6978
+//       (the SELF-CONTAINED dist bundle — ort JS API inlined. Its sibling
+//       transformers.web.min.js was vendored first and is GONE: that build
+//       externalizes onnxruntime as bare import specifiers, which cannot
+//       resolve inside a worker — import maps apply to documents only.)
 //   onnxruntime-web 1.26.0-dev.20260416-b7804b056c (the exact version 4.2.0 pins):
 //     ort-wasm-simd-threaded.mjs            5f2cd914554830762579c372d0211614c1e3f40ab3f6c0cfcf0900343229071d
 //     ort-wasm-simd-threaded.wasm           f4f290847a4df02d0b93cdbf39b4b0e71acefbe80573e7e6b9342a7abd7b290a
