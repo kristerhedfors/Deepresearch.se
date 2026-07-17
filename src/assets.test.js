@@ -168,4 +168,46 @@ describe("serveAsset caching policy", () => {
     assert.equal(res.headers.get("cross-origin-embedder-policy"), "require-corp");
     assert.equal(res.headers.get("cache-control"), "no-store");
   });
+
+  // A cross-origin-isolated page can only spawn a dedicated worker whose
+  // SCRIPT RESPONSE carries a compatible COEP header — without it the worker
+  // dies with a detail-less error event before a single line runs (the
+  // on-device engine's "crashed before it could start", found live
+  // 2026-07-17 on /cure). These responses must also never be revived from a
+  // stale stored copy via a 304, so they get the shell's no-store treatment.
+  test("worker scripts are served isolated (COEP) and never cached", async () => {
+    for (const p of [
+      "/js/ondevice-worker.js",
+      "/vendor/transformers/ort-wasm-simd-threaded.mjs",
+      "/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs",
+    ]) {
+      const res = await serveAsset(new Request("https://deepresearch.se" + p), env);
+      assert.equal(res.headers.get("cross-origin-embedder-policy"), "require-corp", p);
+      assert.equal(res.headers.get("cache-control"), "no-store", p);
+    }
+  });
+
+  test("worker-script requests strip conditional headers so ASSETS returns a full 200", async () => {
+    let seen = null;
+    const capture = { ASSETS: { fetch: async (req) => ((seen = req), new Response("body", { status: 200 })) } };
+    await serveAsset(
+      new Request("https://deepresearch.se/js/ondevice-worker.js", {
+        headers: { "if-none-match": '"abc"', "if-modified-since": "yesterday" },
+      }),
+      capture,
+    );
+    assert.equal(seen.headers.get("if-none-match"), null);
+    assert.equal(seen.headers.get("if-modified-since"), null);
+  });
+
+  test("plain vendored subresources (wasm, the runtime module) are NOT isolated", async () => {
+    // Only worker SCRIPTS need COEP; the multi-MB wasm blobs must keep their
+    // cacheable TTL, and transformers.web.min.js its no-cache revalidation.
+    const wasm = await serveAsset(new Request("https://deepresearch.se/vendor/transformers/ort-wasm-simd-threaded.wasm"), env);
+    assert.equal(wasm.headers.get("cross-origin-embedder-policy"), null);
+    assert.equal(wasm.headers.get("cache-control"), "public, max-age=3600");
+    const runtime = await serveAsset(new Request("https://deepresearch.se/vendor/transformers/transformers.web.min.js"), env);
+    assert.equal(runtime.headers.get("cross-origin-embedder-policy"), null);
+    assert.equal(runtime.headers.get("cache-control"), "no-cache");
+  });
 });
