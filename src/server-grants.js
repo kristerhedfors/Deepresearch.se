@@ -62,6 +62,7 @@ import {
   adjustResultResponse,
   budgetExceeded409,
   emptyWebResultResponse,
+  posInt,
   readTokenBody,
   resolveQuotaPatch,
   webResultResponse,
@@ -87,11 +88,10 @@ import { SERVER_TOKEN_SERVICES, mintServerToken, verifyServerToken } from "./ser
 /** @param {Env} env @returns {Promise<ServerTokenDefaults>} */
 async function serverTokenDefaults(env) {
   const c = (await getConfig(env)).server_token || {};
-  const pos = (/** @type {number} */ v, /** @type {number} */ d) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : d);
   return {
     enabled: c.enabled !== false,
-    quotas: { web: pos(c.web_quota, 25), api: pos(c.api_quota, 40) },
-    ttlHours: pos(c.ttl_hours, 24),
+    quotas: { web: posInt(c.web_quota, 25), api: posInt(c.api_quota, 40) },
+    ttlHours: posInt(c.ttl_hours, 24),
     budget: Number.isFinite(c.budget) && c.budget > 0 ? Math.floor(c.budget) : 0,
   };
 }

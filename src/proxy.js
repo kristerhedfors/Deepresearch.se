@@ -49,6 +49,7 @@ import {
   adjustResultResponse,
   budgetExceeded409,
   emptyWebResultResponse,
+  posInt,
   readTokenBody,
   resolveQuotaPatch,
   webResultResponse,
@@ -77,11 +78,10 @@ const SERVICES = ["web", "api"];
 /** @param {Env} env @returns {Promise<ProxyDefaults>} */
 async function proxyDefaults(env) {
   const p = (await getConfig(env)).proxy || {};
-  const pos = (/** @type {number} */ v, /** @type {number} */ d) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : d);
   return {
     enabled: p.enabled !== false,
-    web: { quota: pos(p.web_quota, 25), ttlHours: pos(p.web_ttl_hours, 24) },
-    api: { quota: pos(p.api_quota, 40), ttlHours: pos(p.api_ttl_hours, 24) },
+    web: { quota: posInt(p.web_quota, 25), ttlHours: posInt(p.web_ttl_hours, 24) },
+    api: { quota: posInt(p.api_quota, 40), ttlHours: posInt(p.api_ttl_hours, 24) },
     budget: Number.isFinite(p.budget) && p.budget > 0 ? Math.floor(p.budget) : 0,
   };
 }

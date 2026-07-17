@@ -19,6 +19,14 @@ export const GRANTS_LIST_MAX = 200; // admin list cap
 export const GRANT_DEPTH = { numResults: 6, type: "auto" };
 
 /**
+ * Positive-integer clamp for config-sourced quota/TTL values — the defaults
+ * resolvers of the grant subsystems all read admin config the same way: a
+ * finite positive number floors to an int, anything else takes the default.
+ * @param {number} v @param {number} d @returns {number}
+ */
+export const posInt = (v, d) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : d);
+
+/**
  * The 409 a mint or quota increase gets when it would push the global
  * outstanding-remaining total past the admin-configured budget ceiling.
  * @param {Record<string, any> & { outstanding?: number, budget?: number }} result the budget_exceeded error result
