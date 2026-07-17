@@ -167,6 +167,24 @@ export async function getBoardReview(db, table, itemId) {
   );
 }
 
+// The single-item re-projection every board's vote/patch endpoint answers
+// with: fresh review row + the item's stable catalog position, through the
+// board's own projector. Response wrapping stays in the board module (the
+// charter above) — this owns just the shared mechanism.
+/**
+ * @template T
+ * @param {D1Database} db
+ * @param {string} table
+ * @param {ReadonlyArray<{ id: string }>} items the board's catalog, in register order
+ * @param {(item: T, row: BoardReviewRow | undefined, idx: number) => any} project the board's projector
+ * @param {T & { id: string }} item
+ */
+export async function projectedBoardItem(db, table, items, project, item) {
+  const row = await getBoardReview(db, table, item.id);
+  const idx = items.findIndex((i) => i.id === item.id);
+  return project(item, row || undefined, idx);
+}
+
 // Upsert-friendly vote: the review row is created on first vote.
 /**
  * @param {D1Database} db

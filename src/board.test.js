@@ -15,6 +15,7 @@ import {
   reviewState,
   loadBoardReviews,
   getBoardReview,
+  projectedBoardItem,
   voteBoardRow,
   patchBoardRow,
 } from "./board.js";
@@ -143,4 +144,22 @@ test("patchBoardRow: only present fields in the UPDATE arm; absent fields NULL o
   assert.equal(binds[2], "hello");
   assert.equal(binds[3], null); // priority -> NULL on fresh insert
   assert.equal(binds[5 + 1], "hello"); // the SET arm's note bind
+});
+
+test("projectedBoardItem: fresh row + stable catalog index through the board's projector", async () => {
+  const items = [{ id: "a" }, { id: "b" }];
+  // Row exists: the projector sees it plus the catalog position.
+  const rowDb = {
+    prepare: (sql) => ({
+      bind: (...binds) => ({ first: async () => ({ item_id: "b", votes: 3, updated_at: 1 }) }),
+    }),
+  };
+  const seen = [];
+  const project = (item, row, idx) => (seen.push({ item, row, idx }), { id: item.id, votes: row ? row.votes : 0, idx });
+  assert.deepEqual(await projectedBoardItem(rowDb, "t_reviews", items, project, items[1]), { id: "b", votes: 3, idx: 1 });
+  assert.equal(seen[0].idx, 1);
+  // No row yet: the projector gets undefined (its defaults path), never null.
+  const { db } = stubDb();
+  assert.deepEqual(await projectedBoardItem(db, "t_reviews", items, project, items[0]), { id: "a", votes: 0, idx: 0 });
+  assert.equal(seen[1].row, undefined);
 });

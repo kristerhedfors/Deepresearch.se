@@ -27,10 +27,10 @@
 
 import {
   BOARD_CAPS,
-  getBoardReview,
   loadBoardReviews,
   orderBoardItems,
   patchBoardRow,
+  projectedBoardItem,
   reviewState,
   validateBoardPatch,
   validateBoardVote,
@@ -290,7 +290,5 @@ export async function handleAdminSecurity(request, env, url, log) {
  * @param {RiskItem} item
  */
 async function projectedItem(db, item) {
-  const row = await getBoardReview(db, "security_reviews", item.id);
-  const idx = SECURITY_RISK_ITEMS.findIndex((i) => i.id === item.id);
-  return jsonResponse({ item: projectRiskItem(item, row || undefined, idx) });
+  return jsonResponse({ item: await projectedBoardItem(db, "security_reviews", SECURITY_RISK_ITEMS, projectRiskItem, item) });
 }
