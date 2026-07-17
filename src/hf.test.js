@@ -37,6 +37,45 @@ describe("hfIntent — explicit-mention detection", () => {
   });
 });
 
+describe("hfIntent — hub-implied vocabulary (2026-07-17 widening)", () => {
+  test("the verbatim live miss fires: quantization word + model word", () => {
+    // Owner report 2026-07-17: this exact question ran web-only although
+    // every primary source was a huggingface.co model card.
+    assert.ok(hfIntent("Tell me about the bonsai 1bit models"));
+  });
+
+  test("quantization / open-weight phrasing fires WITH a model word", () => {
+    assert.ok(hfIntent("what are the best 4-bit quantized models for a laptop?"));
+    assert.ok(hfIntent("open weights models from Mistral"));
+    assert.ok(hfIntent("qlora fine-tuning of llama models"));
+    assert.ok(hfIntent("which LLMs run 1-bit?"));
+  });
+
+  test("standalone hub-ecosystem tokens fire alone", () => {
+    assert.ok(hfIntent("best gguf for coding on 16 GB RAM"));
+    assert.ok(hfIntent("how do I convert weights to safetensors?"));
+    assert.ok(hfIntent("run it with llama.cpp"));
+    assert.ok(hfIntent("is there an MLX port?"));
+    assert.ok(hfIntent("what happened to BitNet?"));
+  });
+
+  test("Swedish parity (invariant 6): same breadth as English", () => {
+    assert.ok(hfIntent("Berätta om bonsai 1bit-modellerna"));
+    assert.ok(hfIntent("vilka är de bästa kvantiserade modellerna?"));
+    assert.ok(hfIntent("språkmodeller med öppna vikter"));
+    assert.ok(hfIntent("finns modellen i 1-bitars version?"));
+  });
+
+  test("co-occurrence guard: neither half alone fires", () => {
+    assert.equal(hfIntent("climate models for 2050"), false);
+    assert.equal(hfIntent("business models in fashion"), false);
+    assert.equal(hfIntent("64-bit Windows installation guide"), false);
+    assert.equal(hfIntent("quantization of energy levels in physics"), false);
+    assert.equal(hfIntent("LoRa sensor networks for IoT"), false);
+    assert.equal(hfIntent("Flora of the Alps"), false);
+  });
+});
+
 describe("hfTerms — noise stripping for the name-substring endpoints", () => {
   test("keeps domain terms, drops platform/question/stop words", () => {
     assert.deepEqual(
@@ -54,6 +93,19 @@ describe("hfTerms — noise stripping for the name-substring endpoints", () => {
   test("empty/noise-only input gives no terms", () => {
     assert.deepEqual(hfTerms("what are the most popular models on the hub"), []);
     assert.deepEqual(hfTerms(""), []);
+  });
+
+  test("tell-me-about phrasing reduces to the subject terms (2026-07-17)", () => {
+    assert.deepEqual(hfTerms("Tell me about the bonsai 1bit models"), ["bonsai", "1bit"]);
+    assert.deepEqual(hfTerms("bonsai 1bit models overview"), ["bonsai", "1bit"]);
+  });
+
+  test("Swedish question/stop words strip like the English ones (invariant 6)", () => {
+    assert.deepEqual(
+      hfTerms("Vilka är de mest populära svenska modellerna på Hugging Face?"),
+      ["svenska"],
+    );
+    assert.deepEqual(hfTerms("Berätta om de senaste modellerna"), []);
   });
 });
 
