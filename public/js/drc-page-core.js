@@ -225,7 +225,7 @@ export function privacyNoticeLines(ctx = {}) {
     ctx.search === "self"
       ? "Web search: only the search QUERY is sent, directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
       : ctx.search === "grant"
-        ? "Web search: only the search QUERY is sent, through the DeepResearch.Se server to the Exa search service on a borrowed, metered allowance. The conversation itself never leaves your browser."
+        ? "Web search: only the search QUERY is sent, through the DeepResearch.Se server to the Exa search service on a borrowed, metered allowance."
         : "Web search: off — research runs from the model's own knowledge; no search query leaves this browser.",
   );
   if (ctx.embedProvider) {
