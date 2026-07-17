@@ -1204,6 +1204,27 @@ corpus, so the in-app HELP layer answers SDK questions from it; it mirrors
 `sdk/MANIFEST.json`/`DESIGN.md` and is updated in the same commit as any
 `sdk/` change).
 
+**The interchange standards (2026-07-17):** the secure-workspace bundle is
+also specified as an OPEN STANDARD so OTHER sites — on this source code or
+completely separate foundations — can become data-compatible **research
+nodes** and move workspaces between each other: **DRSW/1**
+(`docs/WORKSPACE-PROTOCOL.md` — the required/optional payload registry,
+envelope test vectors, node discovery via `/.well-known/drsw.json`,
+re-seal-per-hop handoff, migration paths incl. zero-server "scenario Z",
+and the interchange extensions `origin`/`pipelines`/`provenance`/`route` +
+issuer-scoped grants), and **DRPL/1** (`docs/PIPELINE-LANGUAGE.md` — the
+formal language declaring a deep-research pipeline's STRUCTURE incl.
+privacy placement, with canonical structural fingerprints; reference
+tooling `sdk/drpl.mjs` + `sdk/drpl.test.mjs` in `npm test`, JSON Schemas in
+`docs/schemas/`, the two deployed pipelines encoded in
+`docs/examples/*.drpl.json` — spine-shape-identical, placement-different,
+test-pinned). The vision the two serve — stackless deep research, routing
+one user-held workspace across purpose-built nodes — is
+`docs/STACKLESS-RESEARCH.md`. The standards deliberately LEAD the code on
+the interchange extensions (spec-first); the deployed workspace feature
+(`docs/WORKSPACE-SECURITY.md`, the secure-workspaces skill) is their
+reference implementation.
+
 ## Skills
 
 Detailed guidance is split into on-demand skills under `.claude/skills/` — load

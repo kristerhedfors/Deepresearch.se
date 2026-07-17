@@ -1,0 +1,83 @@
+{
+  "drpl": 1,
+  "id": "deepresearch.se/deep-research/server",
+  "title": "DeepResearch.Se/rver — the signed-in tier's deep-research pipeline (src/pipeline.js)",
+  "meta": {
+    "spec": "docs/PIPELINE-LANGUAGE.md",
+    "node": "https://deepresearch.se",
+    "notes": "The Worker-orchestrated pipeline: every phase a direct JSON-mode or streamed call, no function calling (invariant 1); helper phases fail soft (invariant 2); planning phases pinned to the reliable JSON model (invariant 3)."
+  },
+  "phases": [
+    {
+      "id": "enrichment",
+      "kind": "enrichment",
+      "title": "Opt-in pre-pipeline context (geocode / Shodan / Google Maps)",
+      "needs": [],
+      "optional": true,
+      "exec": { "at": "server" },
+      "calls": [{ "party": "enrichment-provider", "carries": ["coordinates", "host", "place-query"] }],
+      "failure": { "policy": "soft", "degradesTo": "conversation unchanged — no enrichment blocks" }
+    },
+    {
+      "id": "triage",
+      "kind": "triage",
+      "title": "Question analysis into a research plan",
+      "needs": ["enrichment"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "conversation-context"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "normalizeTriage default plan (search on, no clarify)" }
+    },
+    {
+      "id": "search",
+      "kind": "search",
+      "title": "Web search waves (Exa + registry sources)",
+      "needs": ["triage"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "search-provider", "carries": ["search-queries"] }],
+      "failure": { "policy": "soft", "degradesTo": "fewer or zero sources; the answer still streams" }
+    },
+    {
+      "id": "notes",
+      "kind": "notes",
+      "title": "Budget-gated structured research-notes digest",
+      "needs": ["search"],
+      "optional": true,
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["source-highlights"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "synthesis reads raw source digest instead of notes" }
+    },
+    {
+      "id": "gap-check",
+      "kind": "gap-check",
+      "title": "Coverage audit driving follow-up search rounds",
+      "needs": ["search", "notes"],
+      "repeats": { "max": 3 },
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "source-digest"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "current coverage accepted, no follow-up round" }
+    },
+    {
+      "id": "synthesis",
+      "kind": "synthesis",
+      "title": "Streamed answer on the user's chosen model",
+      "needs": ["gap-check"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["conversation", "source-digest"] }],
+      "model": { "route": "answer", "mode": "stream", "tools": false },
+      "failure": { "policy": "hard", "retry": { "failover": true }, "degradesTo": "reliable-model failover before erroring" }
+    },
+    {
+      "id": "validation",
+      "kind": "validation",
+      "title": "Draft review with a revise-or-accept verdict",
+      "needs": ["synthesis"],
+      "exec": { "at": "server" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "draft-answer", "source-digest"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "draft accepted as-is" }
+    }
+  ]
+}

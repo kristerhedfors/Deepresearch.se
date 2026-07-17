@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepresearch.se/schemas/drpl-1.schema.json",
+  "title": "DRPL/1 — Deep Research Pipeline Language document",
+  "description": "A declarative description of a deep-research pipeline's STRUCTURE: phases, dataflow, failure contracts, model routing, and privacy placement (which party executes each phase and which parties receive which data). Normative prose: docs/PIPELINE-LANGUAGE.md; reference tooling: sdk/drpl.mjs (validate / fingerprint / diff). This schema mirrors validateDrpl — the tooling is authoritative where they disagree.",
+  "type": "object",
+  "required": ["drpl", "id", "phases"],
+  "properties": {
+    "drpl": { "const": 1, "description": "Language version." },
+    "id": { "type": "string", "minLength": 1, "description": "Stable document identifier, conventionally <node-or-org>/<pipeline-name>[/<variant>]." },
+    "title": { "type": "string", "description": "Prose — never part of any structural level." },
+    "meta": { "type": "object", "description": "Free annotation container — never part of any structural level." },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/phase" }
+    }
+  },
+  "$defs": {
+    "vocabTerm": {
+      "type": "string",
+      "description": "A registered term, or an x-… extension term.",
+      "pattern": "^([a-z0-9-]+|x-[a-z0-9-]+)$"
+    },
+    "phase": {
+      "type": "object",
+      "required": ["id", "kind", "exec", "failure"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Unique within the document. Structurally IGNORED (canonicalization replaces ids with topological positions); used only for diff alignment and display." },
+        "kind": {
+          "$ref": "#/$defs/vocabTerm",
+          "description": "Registered kinds: triage, enrichment, recall, search, notes, gap-check, synthesis, validation, tool-loop, transform, grade, human-gate. Anything else must be x-…."
+        },
+        "title": { "type": "string", "description": "Prose — structurally ignored." },
+        "notes": { "type": "string", "description": "Prose — structurally ignored." },
+        "needs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Phase ids this phase consumes — the dataflow DAG (cycles are invalid)."
+        },
+        "optional": { "type": "boolean", "description": "True for phases the pipeline runs only when configured/available; the --spine projection drops them (rewiring needs transitively) to expose the required research spine." },
+        "repeats": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "object", "required": ["max"], "properties": { "max": { "type": "integer", "minimum": 1 }, "until": { "type": "string", "description": "Prose stop condition — structurally ignored." } } }
+          ],
+          "description": "Whether this phase (and its needs subgraph) may re-run in a bounded loop. Repeatability is shape-level; the bound is full-level."
+        },
+        "exec": {
+          "type": "object",
+          "required": ["at"],
+          "properties": { "at": { "enum": ["client", "server"], "description": "Which tier executes the phase's orchestration." } }
+        },
+        "calls": {
+          "type": "array",
+          "description": "Which parties RECEIVE DATA during this phase, and exactly what crosses the wire — the minimal-outbound rule made declarable. An empty/absent list asserts no data leaves the executing tier.",
+          "items": {
+            "type": "object",
+            "required": ["party", "carries"],
+            "properties": {
+              "party": {
+                "$ref": "#/$defs/vocabTerm",
+                "description": "Registered parties: origin-server, model-provider, search-provider, embedding-provider, enrichment-provider, self-hosted. Anything else must be x-…."
+              },
+              "carries": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "What data crosses to this party (open vocabulary: question, conversation, search-queries, coordinates, host, source-digest, …)."
+              }
+            }
+          }
+        },
+        "model": {
+          "type": "object",
+          "required": ["route", "mode"],
+          "description": "Present when the phase calls an LLM.",
+          "properties": {
+            "route": { "enum": ["planning", "answer"], "description": "Split model routing: planning phases pin to the fixed reliable model; only answer phases run on the user's chosen model." },
+            "mode": { "enum": ["json", "stream"] },
+            "tools": {
+              "oneOf": [{ "const": false }, { "type": "array", "items": { "type": "string", "minLength": 1 } }],
+              "description": "false = deterministic, no function calling (the default posture). A tool list declares an agentic tool loop explicitly."
+            }
+          }
+        },
+        "failure": {
+          "type": "object",
+          "required": ["policy"],
+          "properties": {
+            "policy": { "enum": ["soft", "hard"], "description": "soft: the phase degrades to a lesser result and the pipeline continues; hard: the phase failing fails the request." },
+            "retry": { "type": "object", "description": "Structural retry/failover declaration (full-level)." },
+            "degradesTo": { "type": "string", "description": "Prose description of the degraded result — structurally ignored." }
+          }
+        },
+        "emits": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional labels for what the phase produces (full-level)."
+        }
+      }
+    }
+  }
+}

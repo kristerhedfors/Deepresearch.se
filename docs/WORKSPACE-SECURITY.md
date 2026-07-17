@@ -141,7 +141,22 @@ row**, not bearer amounts: the signed token authenticates, the row meters
 | Wrong-shape payload after successful decrypt | `validateWorkspacePayload` structural check; conversations are APPENDED with fresh ids, never clobbering local data |
 | XSS in the /cure origin | out of scope of this feature (as in hacka.re's spec: a rogue script in the origin can read everything the page can) — mitigated site-wide by the CSP work tracked in SECURITY-RISKS.md |
 
-## 6. Relationship to invariant 4 (the privacy split)
+## 6. The interchange standard (DRSW/1)
+
+Since 2026-07-17 the workspace bundle is also specified as an OPEN STANDARD —
+**DRSW/1, `docs/WORKSPACE-PROTOCOL.md`** — so other sites (on this source
+code or entirely separate foundations) can implement the same envelope and
+payload and MOVE workspaces between nodes: the required/optional section
+registry, reader/writer conformance rules, test vectors generated from this
+implementation, node discovery (`/.well-known/drsw.json`), the re-seal-per-hop
+handoff, and the interchange extensions (`origin`, `pipelines`, `provenance`,
+`route`, issuer-scoped `grants.tokens`). The pipeline-structure language
+workspaces carry is `docs/PIPELINE-LANGUAGE.md` (DRPL); the vision both serve
+is `docs/STACKLESS-RESEARCH.md`. This document remains the security
+architecture of the DEPLOYED implementation; the protocol document
+deliberately leads the code on the interchange extensions.
+
+## 7. Relationship to invariant 4 (the privacy split)
 
 Secure workspaces add **no new server data path**. The transport is
 fragment-only (server-blind), and the only server-touching contents — the

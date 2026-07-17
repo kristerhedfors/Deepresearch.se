@@ -1,0 +1,86 @@
+{
+  "drpl": 1,
+  "id": "deepresearch.se/deep-research/secure",
+  "title": "DeepResearch.Se/cure — the client tier's deep-research pipeline (public/js/drc-research.js)",
+  "meta": {
+    "spec": "docs/PIPELINE-LANGUAGE.md",
+    "node": "https://deepresearch.se/cure",
+    "notes": "The same research pipeline ported to the browser: the pipeline invariants hold client-side, every wire call goes browser-direct on the user's own key (or to their local server), and the origin server appears ONLY in the optional granted web-search phase — the declared, bounded exception."
+  },
+  "phases": [
+    {
+      "id": "recall",
+      "kind": "recall",
+      "title": "Project-memory retrieval (client-side RAG over the sealed state)",
+      "needs": [],
+      "optional": true,
+      "exec": { "at": "client" },
+      "calls": [{ "party": "embedding-provider", "carries": ["query"] }],
+      "failure": { "policy": "soft", "degradesTo": "no recall block; the pipeline runs without project memory" }
+    },
+    {
+      "id": "triage",
+      "kind": "triage",
+      "title": "Question analysis into a research plan",
+      "needs": ["recall"],
+      "exec": { "at": "client" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "conversation-context"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "default plan (harvest on, no clarify)" }
+    },
+    {
+      "id": "search",
+      "kind": "search",
+      "title": "Parallel knowledge harvest — the search wave's offline counterpart",
+      "needs": ["triage"],
+      "exec": { "at": "client" },
+      "calls": [{ "party": "model-provider", "carries": ["subquestions"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "fewer harvest angles; the answer still streams" }
+    },
+    {
+      "id": "web-search",
+      "kind": "search",
+      "title": "Granted live web search (the bounded borrowed-capability exception)",
+      "needs": ["triage"],
+      "optional": true,
+      "exec": { "at": "client" },
+      "calls": [
+        { "party": "origin-server", "carries": ["search-queries"] },
+        { "party": "search-provider", "carries": ["search-queries"] }
+      ],
+      "failure": { "policy": "soft", "degradesTo": "harvest-only sources (no live web results)" }
+    },
+    {
+      "id": "gap-check",
+      "kind": "gap-check",
+      "title": "Coverage audit driving one follow-up harvest round",
+      "needs": ["search"],
+      "repeats": { "max": 2 },
+      "exec": { "at": "client" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "source-digest"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "current coverage accepted, no follow-up round" }
+    },
+    {
+      "id": "synthesis",
+      "kind": "synthesis",
+      "title": "Streamed answer on the user's chosen model",
+      "needs": ["gap-check"],
+      "exec": { "at": "client" },
+      "calls": [{ "party": "model-provider", "carries": ["conversation", "source-digest"] }],
+      "model": { "route": "answer", "mode": "stream", "tools": false },
+      "failure": { "policy": "hard", "degradesTo": "an error message in the chat — the one phase that may fail the request" }
+    },
+    {
+      "id": "validation",
+      "kind": "validation",
+      "title": "Draft review with a discard-and-replace revision verdict",
+      "needs": ["synthesis"],
+      "exec": { "at": "client" },
+      "calls": [{ "party": "model-provider", "carries": ["question", "draft-answer", "source-digest"] }],
+      "model": { "route": "planning", "mode": "json", "tools": false },
+      "failure": { "policy": "soft", "degradesTo": "draft accepted as-is" }
+    }
+  ]
+}

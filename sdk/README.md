@@ -36,6 +36,7 @@ the catalog front page of the `sdk/` directory itself.
 | `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
 | `pair-cli.mjs` | The dependency-free CLI over the manifest: `list`, `show <id>`, `plan <id …>` (dependency closure → build order), `validate` (integrity + class rules). Runs on any desktop Node and inside the sandbox VM (`node /src/sdk/pair-cli.mjs …`); unit-tested by `pair-cli.test.mjs` in the repo's `npm test` |
+| `drpl.mjs` | The DRPL/1 pipeline-language reference tooling: `validate`, `show`, `fingerprint`, `diff` over `*.drpl.json` documents — the formal, implementation-neutral language declaring a deep-research pipeline's structure (phases, dataflow, failure contracts, model routing, and privacy PLACEMENT), with canonical structural fingerprints for comparing pipelines across nodes. Spec: `docs/PIPELINE-LANGUAGE.md`; examples: `docs/examples/*.drpl.json`; unit-tested by `drpl.test.mjs` in the repo's `npm test` |
 
 Each skill follows one shape: **capability class & tier story** → the
 **PA contracts** it carries → a from-scratch **build plan** → the
