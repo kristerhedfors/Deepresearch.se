@@ -881,11 +881,23 @@ async function bootVM(fileProvider = null) {
   }
 
   // Interactive login shell in a loop (re-spawns if the user types exit).
+  // The image's stock profile runs `mesg n` unconditionally, and under the
+  // custom console there is no controlling tty — so every login shell printed
+  // "mesg: ttyname failed: No such file or directory" into the terminal (and
+  // the mirrored backdrop), once per boot AND per respawn. Guard the mesg
+  // line behind a real tty before exec'ing bash. sed is idempotent (the
+  // patched line no longer starts with `mesg`) and the root overlay persists,
+  // so after the first boot this is a no-op; `;` (not `&&`) so a sed failure
+  // can never block the shell itself.
+  const loginShell =
+    `for f in /root/.profile /etc/profile; do ` +
+    `[ -f "$f" ] && sed -i 's/^mesg /tty -s \\&\\& mesg /' "$f" 2>/dev/null; ` +
+    `done; exec /bin/bash --login`;
   (async () => {
     while (vmState === "ready") {
       try {
-        await cx.run("/bin/bash", ["--login"], {
-          env: ["HOME=/root", "TERM=xterm-256color", "USER=root", "SHELL=/bin/bash", "LANG=en_US.UTF-8"],
+        await cx.run("/bin/sh", ["-c", loginShell], {
+          env: ["HOME=/root", "TERM=xterm-256color", "USER=root", "SHELL=/bin/bash", "LANG=en_US.UTF-8", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
           cwd: "/root",
           uid: 0,
           gid: 0,

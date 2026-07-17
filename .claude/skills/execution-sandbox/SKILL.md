@@ -340,6 +340,13 @@ reloads the page so the shell comes back isolated.
 - Exec marker protocol in `sandbox.js` (base64 between unique markers, a
   serialized queue) is ported verbatim from aisecurityliteracy.dev — it
   survives the shared xterm console; don't "simplify" it.
+- The interactive shell is spawned via `/bin/sh -c` (`loginShell` in
+  `bootVM`) that first tty-guards the profile's `mesg n` line, THEN
+  `exec /bin/bash --login`. Without it every login shell (boot + each
+  respawn) printed `mesg: ttyname failed: No such file or directory` into
+  the terminal and the mirrored backdrop — there is no controlling tty under
+  the custom console (2026-07-17). Don't "simplify" it back to a bare
+  `cx.run("/bin/bash", ["--login"])`.
 
 ## Mounting user files into the VM (part B — Tier 1 shipped 2026-07-11)
 
