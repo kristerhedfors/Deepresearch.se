@@ -15,6 +15,18 @@ routes = [
   { pattern = "www.deepresearch.se", custom_domain = true },
 ]
 
+# Per-version PREVIEW URLs (branch previews — see the **deploy** skill):
+# every uploaded version (a Workers Builds non-production branch build, or a
+# manual `npx wrangler versions upload`) gets its own
+# https://<version-prefix>-deepresearch-se.<subdomain>.workers.dev URL,
+# WITHOUT shifting any production traffic. This is how an isolated feature
+# branch is tried live before merge. Production stays on the custom domains
+# above; the preview host passes src/canonical.js untouched (it only rewrites
+# http/www). Caveats (Google OAuth won't work on the preview host — use
+# break-glass Basic Auth or the public /cure tier; previews share production
+# bindings) are documented in the deploy skill.
+preview_urls = true
+
 # Non-secret configuration. Secrets (BERGET_API_TOKEN, EXA_API_KEY,
 # BASIC_AUTH_USER, BASIC_AUTH_PASS, HISTORY_KEY_SECRET, the optional
 # SHODAN_API_KEY that enables the per-user Shodan host-intelligence knob, and

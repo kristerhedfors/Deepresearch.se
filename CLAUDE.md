@@ -1235,7 +1235,12 @@ what docs claim); and update the skill list below plus the skill's
 - **deploy** — how code reaches production: push-to-`main` git-connected
   auto-deploy, direct `npx wrangler deploy` (and the token's route-update
   limitation), verifying a deploy is actually live, and the
-  don't-deploy-mid-battery interaction with the eval harnesses. Also the
+  don't-deploy-mid-battery interaction with the eval harnesses. Also BRANCH
+  PREVIEW URLs (Workers Builds non-production branch builds +
+  `preview_urls = true` in wrangler.toml): each feature branch reachable on
+  its own per-version `…workers.dev` URL for isolated live testing before
+  merge — no production traffic shifted — with the dashboard branch-control
+  setup and the OAuth/shared-bindings caveats. Also the
   commit-signing / GitHub Verified-badge remediation (the container's
   managed signing wrapper, `.claude/hooks/setup-signing.sh`, the
   `GIT_SIGNING_KEY`/`GIT_SIGNING_EMAIL` environment secrets).

@@ -6,10 +6,14 @@ description: >-
   timing a deploy around an eval battery. Covers the push-to-main
   git-connected auto-deploy, direct wrangler deploy and the API token's
   route-update limitation, live verification probes, and the
-  don't-deploy-mid-battery rule. ALSO the commit-signing / GitHub
-  Verified-badge remediation (the managed /tmp/code-sign wrapper, the
-  setup-signing.sh SessionStart hook, GIT_SIGNING_KEY/GIT_SIGNING_EMAIL
-  environment secrets, why %G? is always N in these containers).
+  don't-deploy-mid-battery rule. ALSO branch PREVIEW URLs (Workers Builds
+  non-production branch builds + `preview_urls` in wrangler.toml — trying an
+  isolated feature branch live on its own URL before merge, the dashboard
+  build-config steps, and the OAuth/shared-bindings caveats). ALSO the
+  commit-signing / GitHub Verified-badge remediation (the managed
+  /tmp/code-sign wrapper, the setup-signing.sh SessionStart hook,
+  GIT_SIGNING_KEY/GIT_SIGNING_EMAIL environment secrets, why %G? is always N
+  in these containers).
 ---
 
 # Deployment
@@ -76,8 +80,71 @@ concurrent Claude sessions, each on its own `claude/*` branch):
 
 Fix at the source (needs the dashboard — the env's API token can't edit
 build config): in the Cloudflare Workers Builds settings for this
-project, set the production branch to `main` and disable builds (or make
-them non-production previews) for other branches.
+project, set the production branch to `main` and make other branches
+non-production PREVIEW builds. That fix is also a feature — it is exactly
+the branch-preview system described in the next section. Until the owner
+has flipped that dashboard setting, assume any branch push may still own
+production.
+
+## Branch preview URLs (Workers Builds previews, 2026-07-17)
+
+The owner works phone-only with many agents in parallel, so testing on
+production always meant testing the COMBINATION of everything merged since
+last time. Branch previews give each feature branch its own live URL so an
+isolated improvement can be tried before merge.
+
+How it works once configured:
+
+- A push to any non-`main` branch triggers a Workers Builds **preview
+  build**: `wrangler versions upload` — the branch's code becomes a new
+  *non-deployed version* of the `deepresearch-se` Worker. NO production
+  traffic shifts (traffic only moves on `versions deploy`, i.e. a `main`
+  production build).
+- Because `wrangler.toml` sets `preview_urls = true`, that version gets its
+  own URL: `https://<version-prefix>-deepresearch-se.<subdomain>.workers.dev`
+  (requires the account's workers.dev subdomain to be registered).
+- Cloudflare's GitHub app posts the preview link on the PR / commit status —
+  the phone workflow is: open the PR in the GitHub mobile app → tap the
+  preview link → try the one isolated change.
+- Manual alternative from a session (no dashboard involved):
+  `npx wrangler versions upload` from the branch checkout prints the
+  version's preview URL. The env token CAN do this (versions upload never
+  touches zone routes, the one thing the token lacks).
+
+**One-time dashboard setup (owner, phone browser works):** Cloudflare
+dashboard → Workers & Pages → `deepresearch-se` → Settings → Build →
+Branch control: set **Production branch = `main`**, and enable
+**non-production branch builds** (preview). The env's API token cannot do
+this — it must be done in the dashboard.
+
+**Caveats (established when this was designed, 2026-07-17):**
+
+- **Previews share PRODUCTION bindings** — the same D1, R2, Vectorize, and
+  secrets. That's what makes them useful (real sign-in data, quotas, chat
+  logs, the full pipeline), but a branch that migrates the D1 schema or
+  writes data is touching production data from its preview. Fine for
+  UI/pipeline/copy branches; schema-touching branches should say so in the
+  PR and be tested with care.
+- **Google sign-in does NOT work on a preview hostname** — the OAuth
+  redirect_uri is registered only for the https apex. `src/canonical.js`
+  passes the preview host through untouched (it only rewrites http/www), so
+  the site loads fine; but for signed-in (Se/rver) testing use the
+  **break-glass Basic Auth** (works on any hostname — the phone's password
+  manager can hold it), or test the public **Se/cure** tier / public pages,
+  which need no sign-in.
+- **The don't-deploy-mid-battery rule is unaffected**: preview builds shift
+  no production traffic, so pushing a branch during an eval battery is safe
+  (once the dashboard fix is in). Pushing `main` mid-battery remains
+  forbidden.
+- The preview host serves the SAME Worker code including the identity gate,
+  security headers, and asset policy — nothing is "more open" on a preview
+  URL.
+
+**Verify the setup took** (after the dashboard change): push a trivial
+commit to a feature branch, then confirm (a) the PR shows the Cloudflare
+preview-link comment/status, (b) production did NOT flip —
+`npx wrangler deployments list` shows no new production deployment from
+that push, only `npx wrangler versions list` shows the new version.
 
 ## Verify a deploy is actually live (don't trust the upload message)
 
