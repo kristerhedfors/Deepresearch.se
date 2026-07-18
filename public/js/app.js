@@ -229,20 +229,19 @@ budgetSlider.addEventListener("input", () => {
 updateBudgetVal();
 
 // ---- Web-search knob ------------------------------------------------------
-// Default on. Off = the answer comes from the model only; the time slider
-// is moot then, so it dims.
+// Default on. The knob gates WEB SEARCH (Exa) ONLY — it does NOT gate the
+// slider (owner directive 2026-07-18). Depth is how deep the research goes
+// over whatever sources are available, and the other sources (developer
+// mode's own-source investigation, the Hugging Face Hub search, the
+// pre-pipeline enrichments) run regardless of the knob — so the time slider
+// stays active either way, and with the knob off it still scales the answer's
+// output depth. It therefore no longer disables/dims when search is off.
 
 const webSearchBox = document.getElementById("websearch");
 webSearchBox.checked = localStorage.getItem("web_search") !== "off";
-const syncSearchToggle = () => {
-  budgetSlider.disabled = !webSearchBox.checked;
-  document.getElementById("composer").classList.toggle("nosearch", !webSearchBox.checked);
-};
 webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
-  syncSearchToggle();
 });
-syncSearchToggle();
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
 // itself (the separate 🔍 button was dropped to give the slider its space).
@@ -416,7 +415,6 @@ function applyRecordSettings(record) {
   }
   webSearchBox.checked = record.webSearch !== false;
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
-  syncSearchToggle();
   syncCopyState(); // …and the loaded conversation is copyable
 }
 
@@ -707,7 +705,6 @@ initTestpoints({
     setSearch: (on) => {
       webSearchBox.checked = !!on;
       localStorage.setItem("web_search", on ? "on" : "off");
-      syncSearchToggle();
     },
     setBudget: (sec) => {
       if (!Number.isFinite(sec)) return;

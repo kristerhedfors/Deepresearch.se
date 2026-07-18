@@ -831,10 +831,11 @@ function renderBudgetReadout() {
 function reflectBudget() {
   const s = Number(state.budgetS);
   $("budget").value = String(secondsToPos(s >= BUDGET_MIN_S && s <= BUDGET_MAX_S ? s : 60));
-  // The budget only governs the research phases — with the knob off (direct
-  // answers) the slider is moot and dims, the Se/rver twin's coupling.
-  $("budget").disabled = !$("websearch").checked;
-  $("composer").classList.toggle("nosearch", !$("websearch").checked);
+  // The web-search knob gates web search ONLY; the slider stays active either
+  // way (owner directive 2026-07-18, the Se/rver twin's coupling dropped).
+  // Depth still buys OUTPUT depth with the knob off: drc-research.js's offline
+  // path already scales the answer by the report tier (drcSynthPrompt). So the
+  // slider no longer disables/dims when search is off.
   renderBudgetReadout();
 }
 
@@ -3189,9 +3190,9 @@ $("model").addEventListener("change", () => {
 });
 $("websearch").addEventListener("change", () => {
   state.research = $("websearch").checked;
-  // The time budget governs research runs only — knob off dims it (DRS twin).
-  $("budget").disabled = !$("websearch").checked;
-  $("composer").classList.toggle("nosearch", !$("websearch").checked);
+  // The knob gates web search ONLY; the slider stays active either way — depth
+  // still buys the answer's output depth offline (DRS twin, owner directive
+  // 2026-07-18).
   saveState();
 });
 // The time slider: live readout while dragging; persist the seconds on
