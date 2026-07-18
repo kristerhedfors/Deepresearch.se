@@ -152,7 +152,7 @@ keep the on-device check for anything user-visible (the
 3. Scope the override NEXT TO the surface's existing `.sl` rule — never
    change the global `-.12em` (it is the owner-approved default for the
    app's own regular-weight UI chrome, not for every page that inherits
-   the rule). Two shapes, pick by what step 2 found:
+   the rule). Three shapes, pick by what step 2 found:
 
    ```css
    /* Only bold touches; regular measures ok at -.12em on this surface. */
@@ -163,6 +163,15 @@ keep the on-device check for anything user-visible (the
       .92rem body prose plus <b> wordmarks both needed tightening) — one
       rule, no bold-only carve-out to forget. */
    .sl { margin: 0 -.04em; }
+
+   /* A page mixes a SPECIAL wordmark font (rounded/light/letter-spaced —
+      happy at -.12em) with bare-prose + .verdict slashes that touch, and
+      the bare-prose .sl has NO class to hang a positive selector on
+      (architecture page, 2026-07-18). Flip the base loose, re-tighten
+      only the wordmark wrapper back — the bare prose can't be reached any
+      other way. Verify the wordmark font really tolerates -.12em first. */
+   .sl { margin: 0 -.04em; }
+   .wm .sl { margin: 0 -.12em; }
    ```
 
 4. If the page is served pre-auth, remember the snapshot freshness gate:
@@ -184,7 +193,7 @@ Fixed vs still running on the global constant (as of 2026-07-16):
 | `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` + `#proxybanner/#notices -.04em` + `#settingsview .setting-pop -.04em` + `#accountview -.04em` | many | partial (`#proxybanner`/`#notices` MEASURED + fixed 2026-07-16; the settings-drawer ⓘ pops MEASURED + fixed 2026-07-17 — owner report: the secure-research-space pop (`#proxypop`) too tight; scoped to the whole `.setting-pop` class since `#wspop`/`#localpop` share the same `.8rem` mixed-weight prose context; the account drawer MEASURED + fixed 2026-07-18 — owner report: ~5-6 wordmarks in the account panel's `.82rem`/`.9rem`/`.74rem` prose touching, one page-scoped `#accountview .sl` rule covers the whole drawer) |
 | `public/welcome/index.html` | `-.12em` + `#mbubble +.02em` | yes | partial |
 | `public/build/index.html` | `-.12em` | yes | unmeasured on device |
-| `public/architecture/index.html` | `-.12em` | yes | unmeasured on device |
+| `public/architecture/index.html` | `.sl -.04em` base + `.wm .sl -.12em` | yes (rounded `.wm`) + regular body prose + bold `.verdict` | FIXED 2026-07-18 (owner report: the intro paragraph's `Se/cure in khaki` body prose + the bold `.verdict` spans `Se/cure buys privacy` / `Se/rver buys capability` touching — MEASURED `-.12em` TOUCHES/OVERLAPS on system-ui 400 AND 700; base loosened to `-.04em` and the rounded-font `.wm` wordmarks re-tightened to `-.12em`, which they carry fine via their `+.02em` letter-spacing, so the reported "not the preceding text" wordmarks stayed put — base flip is the only way to reach the un-classed bare-prose `.sl`; unmeasured on device) |
 | `src/login.js` (login/terms pages) | `-.12em` | yes | unmeasured on device |
 | `docs/symbol-language/proposals.html` | `-.12em` | yes | internal doc, low stakes |
 
