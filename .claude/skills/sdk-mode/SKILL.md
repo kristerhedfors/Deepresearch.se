@@ -45,18 +45,22 @@ mode, prefer editing the shared runner/flavor over forking a third path.
   applies the class at PARSE time from the cache. **Editing that script
   requires recomputing THEME_BOOT_HASH in `src/security-headers.js`** (the
   command is in its comment).
-- `#modesel` (index.html, wired in app.js): picking Introspection/SDK flips
-  the `developer_mode` knob via PUT /api/settings when it's off (fail-soft —
-  break-glass has it implicitly and its PUT refuses; theme applies anyway).
-  `loadSettings().then` reconciles: knob off elsewhere → stored pick
-  downgrades to normal (`reconcileChatMode`). The settings-view developer
-  knob (account-views.js `wireDeveloperKnob`) routes through
-  `applyChatModeTheme` too, so knob, dropdown, theme, and caches stay
-  consistent.
+- TWO surfaces pick the mode, sharing chat-mode.js state: the composer
+  `#modesel` (index.html, wired in app.js) AND the **Settings-panel Chat mode
+  dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
+  REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
+  Both pick from Normal / Introspection / SDK / SWE; picking a non-Normal mode
+  flips the `developer_mode` knob on via PUT /api/settings (Normal flips it
+  off), fail-soft — break-glass has it implicitly and its PUT refuses; theme
+  applies anyway. `loadSettings().then` reconciles: knob off elsewhere →
+  stored pick downgrades to normal (`reconcileChatMode`). `wireModeKnob`
+  syncs `#modesel` and routes through `applyChatModeTheme`, so both dropdowns,
+  the theme class, and the caches stay consistent.
 - Per-send fields (`stream.js buildChatPayload`): normal →
   `developer_mode:false` (the existing off-only override — a knob-on account
   still gets plain web research); sdk → `sdk_mode:true` (+ `build_slug` when
-  the conversation already published); introspection → nothing extra.
+  the conversation already published); swe → `swe_mode:true` (+ `build_slug`);
+  introspection → nothing extra.
 
 ## The server flow
 

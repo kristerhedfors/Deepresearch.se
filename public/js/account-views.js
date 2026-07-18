@@ -8,8 +8,8 @@
 // Plus the pieces every view shares: the settings switch row (settingRow),
 // its press-and-hold info popovers (wireSettingPopovers), the header's
 // notification badge (renderNotifBadge), and the Settings view's
-// execution-sandbox / introspection rows (renderConfigKnobs +
-// wireSandboxKnob / wireDeveloperKnob — rendered by account-settings.js).
+// execution-sandbox row + Chat mode dropdown (renderConfigKnobs +
+// wireSandboxKnob / wireModeKnob — rendered by account-settings.js).
 
 import { escapeHtml, formatCount as fmtN } from "./notifications.js";
 import {
@@ -21,7 +21,7 @@ import {
   setDeveloperMode,
 } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
-import { applyChatModeTheme } from "./chat-mode.js";
+import { applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
 import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -58,6 +58,37 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
     </div>`;
 }
 
+// A settings row whose control is a DROPDOWN rather than a switch — the Chat
+// mode picker. Same layout/label/info-popover chrome as settingRow, so the two
+// row types line up in the panel. `options` is [{value,label}]; `value` is the
+// selected one. Disabled rows render greyed and un-interactive (break-glass or
+// a missing capability), matching settingRow's disabled treatment.
+export function settingSelectRow({ id, label, options, value, disabled, popId, info }) {
+  const plainLabel = escapeHtml(String(label).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
+  const opts = options
+    .map((o) => `<option value="${escapeHtml(o.value)}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+    .join("");
+  return `
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">${label}
+          <button type="button" class="setting-info" data-pop="${popId}" aria-label="More about “${plainLabel}”">ⓘ</button>
+        </span>
+        <select class="settings-select" id="${id}" aria-label="${plainLabel}"${disabled ? " disabled" : ""}>${opts}</select>
+      </div>
+      <div class="setting-pop" id="${popId}" hidden>${info}</div>
+    </div>`;
+}
+
+// The Chat mode picker's dropdown options (account-views + the composer #modesel
+// share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
+const CHAT_MODE_OPTIONS = [
+  { value: "normal", label: "Normal" },
+  { value: "introspection", label: "Introspection" },
+  { value: "sdk", label: "SDK" },
+  { value: "swe", label: "SWE" },
+];
+
 // The execution-sandbox knob sits in Settings (short note; the
 // full story is in the /help pages). Enabling it reloads the page so the
 // app comes back cross-origin isolated and the in-browser Linux VM can boot.
@@ -67,26 +98,32 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
   nothing leaves the browser. The first use downloads a Linux image, so it's
   slow to start; enabling it reloads the page.`;
 
-// The developer-mode knob unlocks introspection: ask the assistant about the
-// site's own implementation and it answers from the deployed source snapshot
-// (and can explore the tree at /src when the sandbox is also enabled).
-const DEVELOPER_INFO = `<strong>Introspection</strong><br>
-  <b>On:</b> ask about this site's own implementation (“how are you built?”,
-  “show me src/pipeline.js”) and the assistant answers from a snapshot of the
-  exact source code this deployment runs — and the composer pane turns
-  white titanium so you know you're in it. With the execution sandbox also on, the
-  whole source tree is mounted at <code>/src</code> inside the in-browser Linux
-  VM so the assistant can explore it with real shell commands.<br>
-  <b>Off (default):</b> implementation questions are answered like any other
-  research question.<br>
-  The source is public on GitHub; this knob is about keeping the source
-  tooling out of the way, not secrecy.`;
+// The Chat mode picker (the dropdown that replaced the Introspection on/off
+// switch): one of four modes. The non-Normal modes all need the developer_mode
+// capability, so picking one turns that on (and Normal turns it off) — see
+// wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
+const MODE_INFO = `<strong>Chat mode</strong><br>
+  Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
+  <b>Normal (default):</b> ordinary web research.<br>
+  <b>Introspection:</b> ask about this site's own implementation (“how are you
+  built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
+  source this deployment runs — the composer pane turns white titanium. With the
+  execution sandbox also on, the whole source tree mounts at <code>/src</code> in
+  the in-browser Linux VM.<br>
+  <b>SDK:</b> the green “lovable” builder — describe an app and get a live,
+  self-contained web app at its own link.<br>
+  <b>SWE:</b> the khaki builder — prompt a new instance of DeepResearch.Se/cure
+  (the client-side, never-cloud tier) in a different shape or form, published at
+  a live link.<br>
+  The non-Normal modes turn on introspection access for this account.`;
 
 /**
- * The execution-sandbox and introspection rows the Settings view renders
- * under the server-backed knobs (account-settings.js) — knob state from
- * the cached /api/settings copy, both gated on a signed-in account.
- * Wire with wireSandboxKnob + wireDeveloperKnob after insertion.
+ * The execution-sandbox row + the Chat mode dropdown the Settings view renders
+ * under the server-backed knobs (account-settings.js) — state from the cached
+ * /api/settings copy, both gated on a signed-in account. The mode dropdown
+ * REPLACED the old Introspection on/off switch (owner directive: the modes —
+ * Normal / Introspection / SDK / SWE — should be CHOSEN from a dropdown here,
+ * not just introspection on/off). Wire with wireSandboxKnob + wireModeKnob.
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */
@@ -94,11 +131,10 @@ export function renderConfigKnobs(me) {
   // Break-glass admin (no email): can't persist per-account settings — the
   // /api/settings PUT needs a D1 user row — but the two BROWSER-ONLY features
   // are ON for it by default (settings.js bashLiteEnabled/developerModeEnabled
-  // force them true for isSecretAdmin). Previously this returned "" and the
-  // developer/introspection AND sandbox knobs were simply ABSENT from the
-  // admin's Settings panel — reported as "the introspection knob doesn't
-  // move": there was no knob to move. Show them as read-only ON instead, so
-  // the admin sees the state honestly.
+  // force them true for isSecretAdmin). Show the sandbox as read-only ON and
+  // the mode dropdown as ACTIVE (the mode is a browser-local choice; the
+  // capability is implicit for the admin, so all four modes work) — the pick
+  // persists locally and drives the theme, it just isn't saved server-side.
   if (!me?.email) {
     return (
       settingRow({
@@ -109,17 +145,23 @@ export function renderConfigKnobs(me) {
         popId: "sbpop",
         info: SANDBOX_INFO,
       }) +
-      settingRow({
-        id: "devknob",
-        label: "Introspection",
-        checked: true,
-        disabled: true,
-        popId: "devpop",
-        info: DEVELOPER_INFO,
+      settingSelectRow({
+        id: "modesetting",
+        label: "Chat mode",
+        options: CHAT_MODE_OPTIONS,
+        value: cachedChatMode(),
+        disabled: false,
+        popId: "modepop",
+        info: MODE_INFO,
       }) +
-      `<p class="muted setting-note">Admin session: the execution sandbox and introspection mode are on by default. Sign in with a Google account to switch these per account.</p>`
+      '<p id="modestatus" class="muted setting-note" hidden></p>' +
+      `<p class="muted setting-note">Admin session: the execution sandbox is on by default and the chat mode is a browser-local choice (not saved to an account). Sign in with a Google account to persist these per account.</p>`
     );
   }
+  // The displayed mode reflects the authoritative capability: with developer
+  // access off, the effective mode is Normal regardless of a stale stored pick
+  // (reconcileChatMode does the same downgrade for the composer dropdown).
+  const mode = developerModeAvailable() && developerModeOn() ? cachedChatMode() : "normal";
   return (
     settingRow({
       id: "sbknob",
@@ -130,15 +172,16 @@ export function renderConfigKnobs(me) {
       info: SANDBOX_INFO,
     }) +
     '<p id="sbstatus" class="muted setting-note" hidden></p>' +
-    settingRow({
-      id: "devknob",
-      label: "Introspection",
-      checked: developerModeAvailable() && developerModeOn(),
+    settingSelectRow({
+      id: "modesetting",
+      label: "Chat mode",
+      options: CHAT_MODE_OPTIONS,
+      value: mode,
       disabled: !developerModeAvailable(),
-      popId: "devpop",
-      info: DEVELOPER_INFO,
+      popId: "modepop",
+      info: MODE_INFO,
     }) +
-    '<p id="devstatus" class="muted setting-note" hidden></p>'
+    '<p id="modestatus" class="muted setting-note" hidden></p>'
   );
 }
 
@@ -281,38 +324,52 @@ export function wireSandboxKnob(ctx) {
   });
 }
 
-// The developer-mode knob (Settings view): persists via /api/settings
-// (developer_mode). Nothing about page serving changes (unlike the sandbox
-// knob) — introspection engages per conversation from the next send.
+// The Chat mode dropdown (Settings view): the modes Normal / Introspection /
+// SDK / SWE. Replaces the old Introspection on/off switch. The non-Normal modes
+// need the developer_mode capability, so this drives that server knob too:
+// picking any non-Normal mode turns developer_mode ON, Normal turns it OFF —
+// exactly the capability the old switch controlled, now folded into the pick.
+// The composer's own dropdown (#modesel) shares the underlying chat-mode.js
+// state, so both stay in sync. Fail-soft: a rejected server write (break-glass
+// admin) still applies the theme + local mode pick, which is all the admin
+// needs since its capability is implicit.
 /** @param {PanelCtx} ctx */
-export function wireDeveloperKnob(ctx) {
-  const knob = /** @type {HTMLInputElement | null} */ (document.getElementById("devknob"));
-  if (!knob || knob.disabled) return;
-  const status = document.getElementById("devstatus");
-  knob.addEventListener("change", async () => {
-    const on = knob.checked;
-    knob.disabled = true;
-    status.hidden = false;
+export function wireModeKnob(ctx) {
+  const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesetting"));
+  if (!sel || sel.disabled) return;
+  const status = document.getElementById("modestatus");
+  const STATUS = {
+    normal: "Normal — ordinary web research.",
+    introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
+    sdk: "SDK — describe an app and get a live, self-contained web app at its own link.",
+    swe: "SWE — prompt a new instance of Se/cure in a different shape or form, published at a live link.",
+  };
+  sel.addEventListener("change", async () => {
+    const mode = sel.value;
+    const needsCapability = mode !== "normal";
+    // Apply the theme + persist the pick immediately (browser-local; the
+    // composer dropdown reads the same cache). Sync the composer control too.
+    applyChatModeTheme(mode);
+    const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
+    if (modeSel) modeSel.value = mode;
+    sel.disabled = true;
+    if (status) status.hidden = false;
     try {
-      await setDeveloperMode(on);
-      // Flip the mode the instant the knob commits (and cache both the knob and
-      // the mode pick for the next load): the knob IS the introspection
-      // capability, so turning it on selects Introspection mode (titanium pane)
-      // and turning it off returns to Normal — keeping the mode dropdown, the
-      // theme class, and the caches consistent (chat-mode.js). Only after the
-      // server accepts the write, so a rejected save leaves everything untouched.
-      storeDeveloperMode(on);
-      const mode = applyChatModeTheme(on ? "introspection" : "normal");
-      const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
-      if (modeSel) modeSel.value = mode;
-      status.textContent = on
-        ? "Introspection is on — the composer pane turns white titanium, and asking about this site's own source code answers from the deployed source."
-        : "Introspection is off.";
+      // Drive the developer_mode capability to match: on for any non-Normal
+      // mode, off for Normal. Only persist the cache after the server accepts.
+      await setDeveloperMode(needsCapability);
+      storeDeveloperMode(needsCapability);
+      if (status) status.textContent = STATUS[mode] || STATUS.normal;
     } catch (err) {
-      knob.checked = !on;
-      status.textContent = err?.message || "Could not update the setting.";
+      // Break-glass (no D1 row) refuses the write — but its capability is
+      // implicit, so the mode still works; keep the applied pick, just note it.
+      if (status) {
+        status.textContent = ctx?.me && !ctx.me.email
+          ? STATUS[mode] || STATUS.normal
+          : /** @type {any} */ (err)?.message || "Could not save the setting (the mode still applies for this session).";
+      }
     } finally {
-      knob.disabled = false;
+      sel.disabled = false;
     }
   });
 }

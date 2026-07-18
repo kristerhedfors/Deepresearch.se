@@ -30,9 +30,9 @@
 //   2. When loadSettings() resolves, reconcile with the server's AUTHORITATIVE
 //      developer_mode (a flip on another device, or an account that never had
 //      the local cache) → applyDeveloperTheme rewrites the class and cache.
-// The knob (public/js/account-views.js wireDeveloperKnob) also calls
-// applyDeveloperTheme on toggle, so the pane tint flips the moment it's
-// switched.
+// The Chat mode dropdown (public/js/account-views.js wireModeKnob) drives the
+// developer_mode capability and the theme together, so the pane tint flips the
+// moment the mode is picked.
 //
 // Import-safe in Node (the unit test runs without a DOM): every document /
 // localStorage access is guarded and fails soft to "off".

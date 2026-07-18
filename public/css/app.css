@@ -1467,6 +1467,18 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .settings-item { margin: .3rem 0 .5rem; position: relative; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .3rem 0; }
 .settings-label { font-size: .95em; display: inline-flex; align-items: center; gap: .35rem; }
+/* The dropdown variant of a settings row (the Chat mode picker): a native
+   <select> in the same right-aligned slot the .switch occupies, styled to sit
+   in with the panel rather than the OS default. */
+.settings-select {
+  font: inherit; font-size: .9em; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .3rem 1.6rem .3rem .6rem;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23789' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right .5rem center;
+}
+.settings-select:disabled { opacity: .6; cursor: default; }
 /* The ⓘ affordance: a single-line row's "more info" trigger — click, or
    press-and-hold, opens the row's detail popover (the same gesture the
    composer's web-search knob uses). */
