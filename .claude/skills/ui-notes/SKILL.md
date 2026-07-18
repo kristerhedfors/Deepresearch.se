@@ -178,7 +178,6 @@ description: >-
   Same launch quirks as `tests/playwright.config.js` (pre-installed
   Chromium path, HTTPS_PROXY + `--ssl-version-max=tls1.2`,
   ignoreHTTPSErrors).
->>>>>>> 64065c7 (help: recapture stale screenshots, fix header section to match the real UI)
 - **"About this project"** at `/build/` (auth-gated static page, linked
   from the account panel): states the site's actual purpose — a
   demonstration of building a SaaS-style app over a weekend, **entirely
