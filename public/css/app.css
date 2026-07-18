@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h46;
+  --css-version: h47;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -286,6 +286,22 @@ header {
   pointer-events: none;
 }
 :root.dev-mode .introspection-tag { display: block; }
+/* The SDK-mode sibling marker — the quiet label naming the green "lovable
+   experience" build mode (chat-mode.js toggles `sdk-mode` on the root). Same
+   treatment as the introspection tag, in a light spring green. */
+.sdk-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #d9f6e3;
+  text-shadow: 0 1px 2px rgba(20, 60, 40, .55), 0 0 1px rgba(20, 60, 40, .4);
+  pointer-events: none;
+}
+:root.sdk-mode .sdk-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -724,6 +740,24 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
     inset 0 14px 26px rgba(255, 250, 252, .4),
     inset 0 -10px 20px rgba(200, 150, 170, .14);
 }
+/* SDK mode: the composer becomes a brushed SPRING-GREEN glass pane — the
+   "lovable experience" build-mode cue (root carries `sdk-mode`, chat-mode.js).
+   Same metal construction as the introspection pane above (light top→bottom
+   sheen, bright specular top edge, soft tinted drop shadow), in green: a
+   near-white mint crown, a leafy waist, a lighter foot. Light and translucent
+   so the ordinary dark text needs no override; background only — the
+   sky-blue field is unchanged. */
+:root.sdk-mode #composer {
+  background:
+    linear-gradient(180deg, rgba(246, 253, 248, .9) 0%, rgba(203, 236, 214, .92) 55%, rgba(230, 247, 236, .9) 100%),
+    rgba(226, 243, 232, .72);
+  border: 1px solid rgba(248, 255, 250, .9);
+  box-shadow:
+    0 7px 26px rgba(50, 110, 75, .24),
+    inset 0 1px 0 rgba(250, 255, 252, .95),
+    inset 0 14px 26px rgba(248, 255, 250, .4),
+    inset 0 -10px 20px rgba(120, 185, 145, .16);
+}
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
   /* Textareas won't shrink below their cols-based intrinsic width unless
@@ -774,6 +808,22 @@ button:disabled { opacity: .5; cursor: default; }
   min-width: 0;
 }
 #model[hidden] { display: none; }
+/* Chat-mode dropdown (Normal / Introspection / SDK) — the same glass styling
+   as the model select, but compact: the mode name is short and the model
+   select keeps the flexible width. */
+#modesel {
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .35rem .5rem;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 400;
+  flex: none;
+  max-width: 9.5rem;
+  min-width: 0;
+}
 #attach, #camera {
   background: rgba(255, 255, 255, .35);
   border: 1px solid rgba(255, 255, 255, .6);

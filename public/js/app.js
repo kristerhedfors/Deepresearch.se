@@ -22,8 +22,9 @@ import { initAccountPanel } from "./account.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { bashLiteOn, developerModeOn, loadSettings } from "./settings.js";
-import { applyDeveloperTheme, cachedDeveloperMode } from "./dev-mode.js";
+import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
+import { storeDeveloperMode } from "./dev-mode.js";
+import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
 import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 import { setSandboxImage } from "./sandbox.js";
@@ -57,13 +58,14 @@ const form = document.getElementById("form");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
 
-// Developer-mode titanium theme — applied FIRST, synchronously, from the local
-// cache (dev-mode.js) so a returning developer-mode user (a PWA relaunch reads
-// the device-cached shell before /api/settings answers) paints the titanium
-// palette with no blue flash. The server's authoritative developer_mode
-// reconciles this below once loadSettings() resolves. { persist: false }: this
-// is reading the cache, not making a new decision.
-applyDeveloperTheme(cachedDeveloperMode(), { persist: false });
+// Chat-mode theme (Normal / Introspection titanium / SDK green) — applied
+// FIRST, synchronously, from the local cache (chat-mode.js) so a returning
+// introspection- or SDK-mode user (a PWA relaunch reads the device-cached
+// shell before /api/settings answers) paints the right pane tint with no
+// flash. The server's authoritative developer_mode reconciles this below once
+// loadSettings() resolves. { persist: false }: this is reading the cache, not
+// making a new decision.
+applyChatModeTheme(cachedChatMode(), { persist: false });
 
 // iOS bar tint — the reverse of /cure's crossing: coming BACK from the khaki
 // tier (or any khaki-tinted page) by same-window navigation or a bfcache
@@ -153,11 +155,13 @@ loadSettings()
     // Feedback mode (account panel knob): reveal the per-reply Feedback
     // buttons — turns.js keeps them in the DOM, the body class shows them.
     applyFeedbackMode(s?.feedback_mode === true);
-    // Reconcile the titanium theme with the server's authoritative
-    // developer_mode: repaints (and re-caches) if this device flipped the knob
-    // elsewhere, or if the account had developer mode on but no local cache
-    // yet (first load on a new device). A no-op when the cache already agreed.
-    applyDeveloperTheme(s?.developer_mode === true);
+    // Reconcile the mode theme with the server's authoritative developer_mode
+    // capability: cache the knob (dev-mode.js), then let chat-mode.js decide
+    // the effective mode — a knob turned off elsewhere downgrades a stored
+    // Introspection/SDK pick to Normal; a knob-on account with no stored pick
+    // keeps the legacy introspection default. The dropdown mirrors the result.
+    storeDeveloperMode(s?.developer_mode === true);
+    syncModeSelect(reconcileChatMode(s?.developer_mode === true));
     // Reconcile the local sandbox-knob cache with the server's authoritative
     // value (sandbox-mode.js), so the NEXT load's synchronous boot self-heal
     // above reflects a flip made on another device — and so a first-ever enable
@@ -243,6 +247,31 @@ webSearchBox.addEventListener("change", () => {
   syncSearchToggle();
 });
 syncSearchToggle();
+
+// ---- Chat-mode dropdown (Normal / Introspection / SDK) ----------------------
+// The mode picker (owner directive, 2026-07-18): Normal is the ordinary
+// research pipeline; Introspection (white-titanium pane) answers from the
+// site's own source; SDK (green pane — the "lovable experience") designs and
+// builds with the Agent-Pair SDK and publishes a live /app/<slug>/ link.
+// The theme + per-send request fields follow the pick (chat-mode.js /
+// stream.js); Introspection and SDK need the developer_mode capability, so
+// picking them flips the knob for the user (fail-soft — the break-glass
+// admin holds it implicitly and its PUT refuses; the theme applies anyway).
+
+const modeSel = document.getElementById("modesel");
+function syncModeSelect(mode) {
+  if (modeSel) modeSel.value = mode;
+}
+syncModeSelect(cachedChatMode());
+modeSel.addEventListener("change", () => {
+  const mode = applyChatModeTheme(modeSel.value);
+  modeSel.value = mode;
+  if (mode !== "normal" && !developerModeOn()) {
+    setDeveloperMode(true)
+      .then(() => storeDeveloperMode(true))
+      .catch(() => {});
+  }
+});
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
 // itself (the separate 🔍 button was dropped to give the slider its space).
@@ -546,7 +575,9 @@ let introspectTypeTimer = 0;
 input.addEventListener("input", () => {
   clearTimeout(introspectTypeTimer);
   introspectTypeTimer = setTimeout(() => {
-    if (developerModeOn()) noteIntrospectionText(input.value);
+    // TIN is the INTROSPECTION mascot: only that mode summons it — Normal
+    // declines the enrichment per-request and SDK mode has its own flow.
+    if (developerModeOn() && cachedChatMode() === "introspection") noteIntrospectionText(input.value);
   }, 350);
 });
 
@@ -604,7 +635,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h46";
+const CSS_VERSION = "h47";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
