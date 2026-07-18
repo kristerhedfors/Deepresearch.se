@@ -50,6 +50,7 @@ import {
   validateStreetViewPov,
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
+import { buildSlugOk } from "./build-pub.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -67,6 +68,13 @@ import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled
  * @property {number} [time_budget_s] UI slider value (clamped server-side)
  * @property {boolean} [web_search] knob, default on (only `false` disables)
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
+ * @property {boolean} [sdk_mode] SDK ("lovable") mode: route this request to the
+ *   Agent-Pair-SDK build flow (pipeline.js runSdkBuild). Honored only when the
+ *   caller's developer_mode knob grants introspection — the same capability
+ *   gate; a client can't acquire the mode with the knob off
+ * @property {string} [build_slug] the conversation's already-published build
+ *   slug (from a previous reply's build event), so an SDK-mode iteration
+ *   republishes the SAME /app/<slug>/ URL. Validated; ignored outside sdk_mode
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -98,6 +106,10 @@ import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  *   sandboxEnabled?: boolean,
+ *   sdkMode?: boolean,
+ *   buildSlug?: string | null,
+ *   userId?: string,
+ *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  * }} ChatRequestState
  */
 
@@ -182,6 +194,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
+  // SDK ("lovable") mode: the request asks for the Agent-Pair-SDK build flow.
+  // Gated on the SAME capability the introspection enrichment uses — the
+  // developer_mode knob (enrich.developerOn) — so a client can't acquire the
+  // mode the knob doesn't grant; the mode dropdown flips the knob first.
+  const sdkOn = body.sdk_mode === true && enrich.developerOn;
+  const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -260,6 +278,9 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       userLocation: enrich.userLocation,
       shellTranscript,
       sandboxEnabled: bashLiteEnabled(env, identity),
+      sdkMode: sdkOn,
+      buildSlug,
+      userId: String(identity.id),
     });
     disconnect.state = state;
 
@@ -359,6 +380,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         shodan_hosts: state.shodanCount,
         google_maps: state.mapsCount,
         introspection: state.introspectionCount,
+        sdk: sdkOn,
         duration_ms,
         client_gone: disconnect.gone,
         incognito,
@@ -410,6 +432,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // 1 when developer mode's introspection enrichment folded the
             // source snapshot into this exchange (src/introspect.js).
             introspection: state.introspectionCount,
+            // SDK ("lovable") mode: 1 when this request ran the build flow;
+            // `build` is the published result ({slug, url, files, bytes} —
+            // pipeline.js runSdkBuild), dropped when nothing was published.
+            sdk: sdkOn ? 1 : 0,
+            build: /** @type {any} */ (state).buildResult,
             // Which maps intent matcher decided (or "none") — the routing
             // trace scripts/chatlogs surfaces (undefined when the knob is
             // off and the enrichment never ran).
@@ -616,7 +643,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -661,6 +688,13 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // mode also on, the client mounts the source tree at /src in the VM, so
     // the introspection block may point the model there (src/introspect.js).
     sandboxEnabled: !!extras.sandboxEnabled,
+    // SDK ("lovable") mode — pipeline.js runSdkBuild: the Agent-Pair-SDK
+    // build flow. buildSlug is the conversation's already-published build (an
+    // iteration keeps the /app/<slug>/ URL stable); userId is the publisher
+    // recorded as the build's owner (slug-reuse authorization).
+    sdkMode: !!extras.sdkMode,
+    buildSlug: extras.buildSlug || null,
+    userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;
     // pipeline.js runQuizGeneration). The MCP channel builds its own state
     // without this flag, so MCP callers keep getting plain text answers.

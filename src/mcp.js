@@ -23,6 +23,12 @@ import { jsonResponse } from "./http.js";
 // pipeline graph in — the file-layout rule above (heavy deps stay dynamic) is
 // preserved. Shares the split-model-routing decision with src/chat.js.
 import { resolveJsonModel } from "./model-routing.js";
+// The Agent-Pair SDK's pure core (via the src/sdk-tools.js façade): manifest
+// operations + the provider-neutral sdk_* tool definitions. Pure and
+// dependency-light (no pipeline/berget imports), so a static import keeps the
+// file-layout rule intact; only the SNAPSHOT loading (tools/call time) is a
+// dynamic import of ./introspect.js below.
+import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFileCheck } from "./sdk-tools.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -111,9 +117,20 @@ export function initializeResult() {
   };
 }
 
-// The `tools/list` result: our one tool.
+// The Agent-Pair SDK's manifest tools, exposed over MCP too (2026-07-18) so
+// an external agent can plan against the SDK — list/show/plan/validate —
+// WITHOUT shelling into the in-browser execution sandbox to run
+// `node sdk/pair-cli.mjs`: the same pure core answers directly. The shared
+// definitions carry Anthropic's `input_schema` key; MCP wants `inputSchema`.
+export const SDK_MCP_TOOLS = SDK_TOOLS.map(({ name, description, input_schema }) => ({
+  name,
+  description,
+  inputSchema: input_schema,
+}));
+
+// The `tools/list` result: the research pipeline plus the SDK manifest tools.
 export function toolsListResult() {
-  return { tools: [DEEP_RESEARCH_TOOL] };
+  return { tools: [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS] };
 }
 
 // Build an MCP tools/call result envelope (text content + isError flag).
@@ -240,6 +257,24 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
   const { id, params } = parsed;
   const name = params?.name;
   const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
+
+  // The SDK manifest tools: pure reads over the deployed source snapshot's
+  // sdk/MANIFEST.json (the same artifact introspection mode runs on). They
+  // fail soft — a missing snapshot/manifest comes back as an isError result.
+  if (typeof name === "string" && SDK_TOOL_NAMES.has(name)) {
+    try {
+      const { loadSourceSnapshot } = await import("./introspect.js");
+      const snapshot = await loadSourceSnapshot(env, log);
+      const manifest = manifestFromSnapshot(snapshot);
+      const text = runSdkTool(manifest, name, args, { fileCheck: snapshotFileCheck(snapshot) });
+      log.info("mcp.sdk_tool", { tool: name, user_id: identity?.id });
+      return jsonResponse(jsonRpcResult(id, toolResult(text, !manifest)));
+    } catch (err) {
+      const message = (/** @type {any} */ (err))?.message || String(err);
+      log.error("mcp.sdk_tool_failed", { tool: name, error: message });
+      return jsonResponse(jsonRpcResult(id, toolResult(`SDK tool failed: ${message}`, true)));
+    }
+  }
 
   if (name !== TOOL_NAME) {
     return jsonResponse(jsonRpcError(id, RPC_INVALID_PARAMS, `Unknown tool: ${name ?? "(none)"}`));

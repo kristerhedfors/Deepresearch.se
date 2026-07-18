@@ -186,6 +186,17 @@ test("depth-parametrized prompts: defaults unchanged, tiers reshape only their o
   }
   // An unknown tier falls back to the standard structure.
   assert.equal(drcSynthPrompt({ reportTier: "bogus" }), drcSynthPrompt());
+  // The knob-off DIRECT answer scales output depth too (the slider stays live
+  // with web search off — the Se/rver searchOffPrompt mirror). "standard" is
+  // byte-identical; a bogus tier degrades to it; brief/full add depth guidance.
+  assert.equal(drcDirectPrompt(), drcDirectPrompt({ reportTier: "standard" }));
+  assert.equal(drcDirectPromptWeb(), drcDirectPromptWeb({ reportTier: "standard" }));
+  assert.equal(drcDirectPrompt({ reportTier: "bogus" }), drcDirectPrompt());
+  assert.match(drcDirectPrompt({ reportTier: "brief" }), /Keep it short/);
+  assert.match(drcDirectPrompt({ reportTier: "full" }), /comprehensive/);
+  assert.notEqual(drcDirectPrompt({ reportTier: "brief" }), drcDirectPrompt({ reportTier: "full" }));
+  // Offline direct stays sourceless — the depth ladder never demands [n] cites.
+  assert.doesNotMatch(drcDirectPrompt({ reportTier: "full" }), /\[1\]/);
   // The offline full report still forbids invented sources; the web full
   // report still ends with the source list.
   assert.match(drcSynthPrompt({ reportTier: "full" }), /Limitations and open questions/);

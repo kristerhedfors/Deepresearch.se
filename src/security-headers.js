@@ -38,13 +38,14 @@ const CSP_ENABLED = false;
 // uploads, server data-URL frames, and Maps imagery.
 const BOOT_GUARD_HASH = "'sha256-w5cPLY1sDxZyXuQvRq2aJ4i2L1jyBf4ulNgTL0pzf10='";
 const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
-// The parse-time introspection-mode cue bootstrap in index.html (the
+// The parse-time MODE-theme cue bootstrap in index.html (the
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
 // regex above stays unique to the attribute-less boot guard). Adds the
-// `dev-mode` class before first paint from the local cache so the composer
-// pane is tinted white titanium from the first frame. Recompute on edit:
+// `dev-mode` (introspection, white titanium) or `sdk-mode` (SDK, green) class
+// before first paint from the chat-mode cache (public/js/chat-mode.js).
+// Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-EnIV1mWXeC0nWQ0jP//FG3dfm31deaBJ9R1JZPvqfRE='";
+const THEME_BOOT_HASH = "'sha256-Sn4SYd8KfrL9JIjwFG1ywwC8kCHw1c96BVmpd6d3WO8='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

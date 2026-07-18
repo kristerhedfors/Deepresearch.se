@@ -8,12 +8,31 @@ dependency-free CLI for building **agent pairs** — one AI-assistant product
 shipped as two tiers of the same capability set, the way this site ships
 DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 
-> **Status (2026-07-16): design + skill library only.** Nothing under `sdk/`
-> is imported by `src/` or `public/`. The SDK is distilled *from* this
-> repository — every module points back at the files that already realize it —
-> and wiring the running application to SDK modules is a later, separate task
-> (§10, adoption mode). The reference itself is experimental; the SDK does not
-> make a generated pair production-ready.
+> **Status (2026-07-18): design + skill library, now WIRED into the running
+> application.** The pure manifest logic and the SDK-mode tool surface live in
+> the shared core `public/js/sdk-core.js` (server façade `src/sdk-tools.js`;
+> `sdk/pair-cli.mjs` re-exports it, so the CLI's import surface is unchanged),
+> and three application surfaces consume the SDK:
+>
+> - **SDK mode** — the green "lovable experience" entry in the chat-mode
+>   dropdown (Normal / Introspection / SDK): the model plans with `sdk_plan`,
+>   reads the module skills out of the deployed source snapshot, builds a
+>   self-contained web app, and the pipeline publishes it live at
+>   `/app/<slug>/` (`src/pipeline.js` `runSdkBuild`, `src/build-pub.js` —
+>   opaque-origin CSP sandbox). Tool-capable answer models drive native tools
+>   (invariant 1's authorized exception, extended 2026-07-18); every other
+>   model uses the deterministic `FILE:` fenced-block convention.
+> - **MCP** — `POST /mcp` exposes `sdk_list_modules` / `sdk_show_module` /
+>   `sdk_plan` / `sdk_validate`, so external agents operate on the manifest
+>   directly instead of shelling into the execution sandbox.
+> - **The sandbox** — in developer/SDK mode the source tree (this `sdk/`
+>   included) mounts at `/src` in the in-browser VM, so
+>   `node /src/sdk/pair-cli.mjs …` runs in-guest too.
+>
+> The SDK remains distilled *from* this repository — every module points back
+> at the files that already realize it. The reference itself is experimental;
+> the SDK does not make a generated pair production-ready. Operational detail:
+> the **sdk-mode** skill.
 
 This document is self-contained: it covers the abstraction, the capability
 classes, the contracts, the full module catalog, the CLI, the implementation

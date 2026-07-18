@@ -281,7 +281,10 @@
         the default a focused answer, the middle a structured report with
         sections, and the top a full research report (executive summary,
         thematic sections, tables, limitations). The readout right of the
-        slider shows the time and what it delivers.</li>
+        slider shows the time and what it delivers. The slider stays active
+        <b>regardless of the web-search knob</b> — depth is how deep the
+        assistant goes over whatever sources are available, so it still shapes
+        the answer with web search off (see the next section).</li>
       <li><b>Arrow</b> — sends the question. This is the only way to send.</li>
     </ul>
     <h3>On each answer</h3>
@@ -320,19 +323,29 @@
 
   <section>
     <h2>Web search on / off — and what it means for privacy</h2>
-    <img src="/help/img/composer-off.png" alt="Composer with web search off — controls dimmed" width="390">
+    <img src="/help/img/composer-off.png" alt="Composer with web search off — the slider stays active" width="390">
     <p><b>On</b> (knob blue): the AI plans a few search queries derived from
     your question, runs them against Exa, and answers from the sources it
     finds, with citations.</p>
-    <p><b>Off</b> (spiderweb grey, slider dimmed): the model answers
-    purely from its own training knowledge. No web requests are made at all.</p>
+    <p><b>Off</b> (spiderweb grey): no query is sent to Exa. The knob gates
+    <i>web search only</i> — the time slider <b>stays active</b>, because depth
+    is how deep the assistant goes over whatever sources <i>are</i> available.
+    With Exa off it still researches within your time target using the other
+    sources that apply — the Hugging Face Hub for a model/dataset question, or
+    this site's own source in developer mode — and otherwise answers from the
+    model's own training knowledge, in both cases with the comprehensiveness the
+    slider buys. Only when no such source applies are no web requests made at
+    all.</p>
     <div class="privacy-flag"><b>Privacy:</b> with web search ON, short
     search queries <i>derived from</i> your question are sent to Exa (never
     your full conversation) — and <b>Exa retains those queries by
-    default</b> (see the next section). With web search OFF, nothing leaves
-    except the conversation itself going to your chosen model's provider
-    (Berget in the EU, or Anthropic/OpenAI in the US) to generate the
-    answer. Either way, our server stores no message content.</div>
+    default</b> (see the next section). With web search OFF, <b>nothing is sent
+    to Exa</b>; any other source the assistant uses receives only a short
+    derived query (a Hugging Face Hub lookup, say — never your conversation),
+    and if none applies, nothing leaves except the conversation itself going to
+    your chosen model's provider (Berget in the EU, or Anthropic/OpenAI in the
+    US) to generate the answer. Either way, our server stores no message
+    content.</div>
   </section>
 
   <section>
@@ -353,9 +366,11 @@
         details, and anything personal out of this step: it is what Exa
         sees.</li>
       <li><b>Ask specifically.</b> Turn web search <b>off</b> and ask your
-        real questions. The model answers from the sources already fetched
-        into the conversation (plus its own knowledge) — nothing further is
-        sent to Exa.</li>
+        real questions. Nothing further is sent to Exa; the model answers from
+        the sources already fetched into the conversation (plus its own
+        knowledge). The other sources are topic-gated — a Hugging Face Hub
+        lookup only fires on a model/dataset question — so an ordinary sensitive
+        question sends nothing further out.</li>
     </ol>
     <p>If the step-2 answer lacks source material, flip search back on for
     another <i>generic</i> round on the missing angle, then switch it off

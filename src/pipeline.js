@@ -53,6 +53,7 @@ import {
   lastUserMessage,
   previousUserText,
   textOf,
+  withAppendedText,
   withImageNudge,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
@@ -88,6 +89,8 @@ import {
   notesPrompt,
   quizPrompt,
   revisePrompt,
+  sdkBuildPrompt,
+  sdkBuildToolPrompt,
   searchOffPrompt,
   sourceAgentPrompt,
   sourceAnswerPrompt,
@@ -98,6 +101,22 @@ import {
 } from "./prompts.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { INTROSPECTION_TOOLS, runIntrospectionTool } from "./introspect-tools.js";
+import {
+  BUILD_TOOLS,
+  BUILD_TOOL_NAMES,
+  SDK_TOOLS,
+  SDK_TOOL_NAMES,
+  buildFilesSummary,
+  buildSdkContextBlock,
+  manifestFromSnapshot,
+  parseFileBlocks,
+  runSdkTool,
+  sdkToolStepHeadline,
+  snapshotFileCheck,
+  stageBuildFile,
+} from "./sdk-tools.js";
+import { publishBuild } from "./build-pub.js";
+import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
   MAX_FILES_PER_ROUND,
@@ -275,10 +294,27 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // same bug class as externalSourceIntent's cleanLastUser fix below).
   let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
-  // Web search off: answer purely from Berget — no triage, no Exa.
+  // SDK ("lovable") mode — the green mode in the mode dropdown: the request
+  // asks for the Agent-Pair-SDK build flow, so it takes the whole answer
+  // phase (no web search, no triage — the deliverable is a published app).
+  // Gated in chat.js on the developer_mode capability; fully fail-soft inside.
+  if (/** @type {any} */ (state).sdkMode) {
+    return runSdkBuild(ctx);
+  }
+
+  // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
+  // still governs how deep we go over whatever sources ARE available (owner
+  // directive 2026-07-18): developer mode's own-source investigation and the
+  // auxiliary search sources (HF Hub, …) run regardless of the knob, and
+  // runSearches skips only the Exa leg. Fall through to the normal research
+  // path whenever one of those applies. Only when NONE does is there nothing
+  // external to consult — then answer from the model, with the slider's report
+  // tier still scaling that answer (runWithoutSearch).
   if (!state.webSearch) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    return runWithoutSearch(ctx);
+    if (!ctx.hasSource && !SEARCH_SOURCES.some((s) => s.intent(ctx.lastUser))) {
+      return runWithoutSearch(ctx);
+    }
   }
 
   // Developer mode, introspection-first: the site's OWN source is already in
@@ -344,8 +380,12 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
+  // No external source applied, so this answers from the model — but the depth
+  // slider still scales the answer's comprehensiveness via the report tier
+  // (searchOffPrompt's sourceless depth ladder; default "standard" is the
+  // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -554,6 +594,230 @@ async function runSourceResearchTools(ctx, snapshot) {
   ctx.step("synth", "Writing report…");
   emitChunked(ctx, text);
   ctx.stepDone("synth", "Report drafted");
+}
+
+// ---- SDK ("lovable") mode: design + build + publish -------------------------
+//
+// The green mode's answer phase (routed at the top of runPipeline): the model
+// builds a small self-contained web app and the pipeline publishes it at a
+// live /app/<slug>/ URL (src/build-pub.js). Two paths, mirroring the
+// introspection source research exactly:
+//
+//   1. NATIVE TOOLS (the same owner-authorized invariant-1 exception, extended
+//      to SDK mode 2026-07-18): a tool-capable answer model drives sdk_*
+//      planning tools + the snapshot readers + write_file/publish_app itself.
+//   2. DETERMINISTIC (every other catalog model): one streamed completion
+//      that emits FILE blocks (bash-core's fenced-block philosophy — a text
+//      convention, no function calling), parsed and published server-side.
+//
+// Both fully fail-soft: a missing manifest/snapshot degrades the context (the
+// model still builds), a publish failure degrades to the answer text with an
+// honest note, and a tool-path failure falls through to the deterministic one.
+
+const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than reading
+
+/** @param {PipelineCtx} ctx @returns {Promise<any>} */
+async function sdkSnapshot(ctx) {
+  // The introspection enrichment (dev mode is on — SDK mode is gated on it)
+  // normally stashed the snapshot already; load it directly when it didn't
+  // (e.g. a developer_mode:false override combined with sdk_mode).
+  const stashed = /** @type {any} */ (ctx.state).sourceSnapshot;
+  if (stashed && Array.isArray(stashed.files)) return stashed;
+  return loadSourceSnapshot(ctx.env, ctx.log);
+}
+
+/** @param {PipelineCtx} ctx */
+async function runSdkBuild(ctx) {
+  const { state } = ctx;
+  ctx.step("plan", "SDK mode…");
+  ctx.stepDone("plan", "SDK mode — designing and building with the Agent-Pair SDK");
+  const snapshot = await sdkSnapshot(ctx);
+  const manifest = manifestFromSnapshot(snapshot);
+  if (!manifest) ctx.log.warn("sdk.manifest_missing", {});
+
+  const toolsOn = introspectionToolsAvailable(ctx);
+  ctx.log.info("sdk.build_gate", {
+    tools: toolsOn,
+    model: ctx.model,
+    manifest: !!manifest,
+    snapshot_files: snapshot?.files?.length || 0,
+    build_slug: /** @type {any} */ (state).buildSlug || null,
+  });
+  if (toolsOn) {
+    try {
+      return await runSdkBuildTools(ctx, snapshot, manifest);
+    } catch (/** @type {any} */ err) {
+      ctx.log.warn("sdk.tools_failed", { model: ctx.model, error: err?.message || String(err) });
+      // fall through to the deterministic FILE-block path
+    }
+  }
+  return runSdkBuildDeterministic(ctx, manifest);
+}
+
+/**
+ * Publish the staged files (fail-soft): stashes the result on the state (the
+ * chat log's meta.build), emits the `build` status event the client uses to
+ * remember the slug, and returns the result or null.
+ * @param {PipelineCtx} ctx
+ * @param {Array<{ path: string, content: string }>} files
+ * @param {string} title
+ * @returns {Promise<{ slug: string, url: string, files: number, bytes: number } | null>}
+ */
+async function publishSdkFiles(ctx, files, title) {
+  try {
+    const result = await publishBuild(ctx.env, ctx.log, {
+      slug: /** @type {any} */ (ctx.state).buildSlug || null,
+      title,
+      files,
+      userId: /** @type {any} */ (ctx.state).userId || "",
+    });
+    if ("error" in result) {
+      ctx.log.warn("sdk.publish_rejected", { error: result.error });
+      return null;
+    }
+    /** @type {any} */ (ctx.state).buildResult = result;
+    /** @type {any} */ (ctx.state).buildSlug = result.slug;
+    ctx.emit({ status: { type: "build", slug: result.slug, url: result.url, files: result.files, title } });
+    return result;
+  } catch (/** @type {any} */ err) {
+    ctx.log.warn("sdk.publish_failed", { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/** A short build title from the user's ask (the slug fragment source). */
+/** @param {PipelineCtx} ctx @returns {string} */
+const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().slice(0, 80) || "App";
+
+/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest */
+async function runSdkBuildTools(ctx, snapshot, manifest) {
+  const readBudget = { used: 0 };
+  /** @type {Map<string, string>} */
+  const staged = new Map();
+  /** @type {{ slug: string, url: string, files: number, bytes: number } | null} */
+  let published = null;
+  let calls = 0;
+  const fileCheck = snapshotFileCheck(snapshot);
+  const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
+  ctx.step("source", "Building with the Agent-Pair SDK…");
+
+  // The snapshot readers only make sense with a snapshot to read; the SDK and
+  // build tools always ride.
+  const tools = [...(snapshot ? INTROSPECTION_TOOLS : []), ...SDK_TOOLS, ...BUILD_TOOLS];
+  /** @param {string} name @param {any} input @returns {Promise<string> | string} */
+  const execTool = (name, input) => {
+    if (SDK_TOOL_NAMES.has(name)) return runSdkTool(manifest, name, input, { fileCheck });
+    if (name === "write_file") {
+      const res = stageBuildFile(staged, input?.path, input?.content);
+      return res.ok ? `Staged ${res.path} (${res.bytes} bytes). ${staged.size} file${staged.size === 1 ? "" : "s"} staged.` : res.error;
+    }
+    if (name === "publish_app") {
+      const files = [...staged].map(([path, content]) => ({ path, content }));
+      const title = String(input?.title || "").trim() || sdkBuildTitle(ctx);
+      return publishSdkFiles(ctx, files, title).then((result) =>
+        result
+          ? `Published ${result.files} file${result.files === 1 ? "" : "s"} — the live URL is ${result.url} (include it in your reply as a link).`
+          : "Publishing failed on the server — finish the reply and tell the user honestly that no live URL is available this turn.",
+      );
+    }
+    return runIntrospectionTool(snapshot, name, input, readBudget);
+  };
+
+  const userText =
+    `Request (latest user message):\n${ctx.cleanLastUser}\n\n` +
+    `Conversation context:\n${ctx.cleanConvText}\n\n` +
+    (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
+    buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null }) +
+    "\n\nBuild it now: plan with the sdk_* tools, read the relevant skills, stage every file with write_file, publish_app once, then write the short reply.";
+
+  const startedAt = Date.now();
+  const result = await anthropicToolRun(ctx.env, {
+    model: ctx.model,
+    system: sdkBuildToolPrompt(),
+    userContent: userText,
+    tools,
+    maxRounds: MAX_SDK_TOOL_ROUNDS,
+    execTool,
+    onToolUse: ({ name, input, result: out }) => {
+      calls++;
+      const id = `sdktool_${calls}`;
+      const head = SDK_TOOL_NAMES.has(name) || BUILD_TOOL_NAMES.has(name)
+        ? sdkToolStepHeadline(name, input)
+        : toolStepHeadline(name, input);
+      ctx.step(id, head);
+      ctx.stepDone(id, head, name === "write_file" ? [] : toolResultLines(out));
+      ctx.step("source", `Building — ${calls} tool call${calls === 1 ? "" : "s"}, ${staged.size} file${staged.size === 1 ? "" : "s"} staged…`);
+    },
+  });
+  addUsage(ctx.state.totals, result.usage);
+  recordPhase(ctx.model, "synth", Date.now() - startedAt);
+
+  // The model staged files but never published (round cap, or it forgot):
+  // publish for it, fail-soft — the "describe it, get a link" promise should
+  // not hinge on the model remembering the last call.
+  if (staged.size && !published) published = /** @type {any} */ (ctx.state).buildResult || null;
+  if (staged.size && !published) {
+    published = await publishSdkFiles(
+      ctx,
+      [...staged].map(([path, content]) => ({ path, content })),
+      sdkBuildTitle(ctx),
+    );
+  }
+
+  ctx.stepDone(
+    "source",
+    published
+      ? `Built and published ${published.files} file${published.files === 1 ? "" : "s"} → ${published.url}`
+      : staged.size
+        ? "Build staged but publishing was unavailable"
+        : "Answered without building files",
+    staged.size ? buildFilesSummary(staged) : [],
+  );
+
+  const text = (result.text || "").trim();
+  if (!text) throw new Error("SDK tool run produced no answer");
+  ctx.step("synth", "Writing report…");
+  emitChunked(ctx, text);
+  // Guarantee the link lands in the reply even if the model forgot it.
+  if (published && !text.includes(published.url)) {
+    emitChunked(ctx, `\n\n**Try it live:** [${published.url}](${published.url})`);
+  }
+  ctx.stepDone("synth", "Report drafted");
+}
+
+/** @param {PipelineCtx} ctx @param {any} manifest */
+async function runSdkBuildDeterministic(ctx, manifest) {
+  const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
+  // The FILE-block convention + catalog ride the conversation (the
+  // introspection-enrichment append pattern) so the streamed completion sees
+  // them on any catalog model.
+  const block = buildSdkContextBlock(manifest, {
+    toolMode: false,
+    buildUrl: buildSlug ? `/app/${buildSlug}/` : null,
+  });
+  const convo = /** @type {Conversation} */ (withAppendedText(ctx.conversation, block));
+  ctx.step("synth", "Building the app…");
+  const draft = await streamCompletion(ctx, [
+    { role: "system", content: sdkBuildPrompt() },
+    ...shellReplyMessages(ctx.shellBlock),
+    ...withImageNudge(convo),
+  ]);
+  const files = parseFileBlocks(draft || "");
+  if (!files.length) {
+    ctx.stepDone("synth", "Replied without building files");
+    return;
+  }
+  const published = await publishSdkFiles(ctx, files, sdkBuildTitle(ctx));
+  ctx.stepDone(
+    "synth",
+    published ? `Built and published ${published.files} file${published.files === 1 ? "" : "s"} → ${published.url}` : "Build produced files but publishing was unavailable",
+    buildFilesSummary(files),
+  );
+  if (published) {
+    emitChunked(ctx, `\n\n**Try it live:** [${published.url}](${published.url})`);
+  } else {
+    emitChunked(ctx, "\n\n_(Publishing was unavailable this turn — no live URL yet.)_");
+  }
 }
 
 /** @param {PipelineCtx} ctx */
@@ -1165,37 +1429,45 @@ async function runSearches(ctx, queries, round) {
   const { env, log, emit, state } = ctx;
   const batch = takeSearchBatch(state, queries);
   if (!batch.length) return;
-  state.searchCount += batch.length;
 
-  // Every search event names its provider (`source` slug + `service` display
-  // name): the client's cards must always make clear WHICH provider ran a
-  // search — a user report showed hub and web searches rendering identically.
-  for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
-  const results = await Promise.all(batch.map((query) => webSearch(env, log, query, state.plan.searchDepth)));
-  for (let i = 0; i < batch.length; i++) {
-    const query = batch[i];
-    const result = results[i];
-    recordPhase(ctx.model, "search", result.durationMs);
-    // A cache hit (result.cached) cost nothing at Exa; count it so the user
-    // isn't billed/quota-charged for a repeated search (chat.js subtracts
-    // these when recording Exa cost and search usage). It still counts as a
-    // logical search for the maxSearches cap and the activity UI — the angle
-    // was still covered.
-    if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
-    emit({
-      status: {
-        type: "search_done",
-        round,
-        query,
-        source: "web",
-        service: "Web search",
-        results: result.resultCount,
-        duration_ms: result.durationMs,
-        sources: result.sources,
-        cached: !!result.cached,
-      },
-    });
-    addSources(state, result.items);
+  // The web-search knob gates EXA ONLY (owner directive 2026-07-18). The
+  // auxiliary sources (HF Hub & co, runAuxSearches below) and the depth
+  // budget that plans this wave are independent of it: with the knob off the
+  // wave still runs the aux sources over the planned angles — depth governs
+  // how deep the research goes over whatever sources ARE available. Only the
+  // Exa leg (the query-to-a-third-party leg the knob is about) is skipped.
+  if (state.webSearch) {
+    state.searchCount += batch.length;
+    // Every search event names its provider (`source` slug + `service` display
+    // name): the client's cards must always make clear WHICH provider ran a
+    // search — a user report showed hub and web searches rendering identically.
+    for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
+    const results = await Promise.all(batch.map((query) => webSearch(env, log, query, state.plan.searchDepth)));
+    for (let i = 0; i < batch.length; i++) {
+      const query = batch[i];
+      const result = results[i];
+      recordPhase(ctx.model, "search", result.durationMs);
+      // A cache hit (result.cached) cost nothing at Exa; count it so the user
+      // isn't billed/quota-charged for a repeated search (chat.js subtracts
+      // these when recording Exa cost and search usage). It still counts as a
+      // logical search for the maxSearches cap and the activity UI — the angle
+      // was still covered.
+      if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
+      emit({
+        status: {
+          type: "search_done",
+          round,
+          query,
+          source: "web",
+          service: "Web search",
+          results: result.resultCount,
+          duration_ms: result.durationMs,
+          sources: result.sources,
+          cached: !!result.cached,
+        },
+      });
+      addSources(state, result.items);
+    }
   }
   await runAuxSearches(ctx, batch, round);
 }
