@@ -122,14 +122,17 @@ loop: the **feature-maintenance** skill.
    phase is a direct JSON-mode or streamed call, so the whole thing works
    across Berget's entire catalog, including models with unreliable
    tool-calling. Don't introduce function/tool-calling into the pipeline.
-   ONE authorized exception (owner directive, 2026-07-12): DEVELOPER MODE's
-   source investigation — when developer mode is on AND the answer model
-   supports real tool use, the ANSWER model drives `grep_source` /
-   `read_file` / `list_files` over the site's own source (Se/cure adds a
-   real `run_bash` over the sandbox). This is DELIBERATE and must not be
-   "fixed" back; models without tool use fall back to the deterministic
-   source read loop, and the JSON planning phases (invariant 3) never use
-   tools. See the **introspection** skill.
+   ONE authorized exception (owner directive, 2026-07-12; extended to SDK
+   mode 2026-07-18): DEVELOPER MODE's source investigation and SDK MODE's
+   build flow — when the mode is on AND the answer model supports real tool
+   use, the ANSWER model drives `grep_source` / `read_file` / `list_files`
+   over the site's own source (Se/cure adds a real `run_bash` over the
+   sandbox), and in SDK mode additionally the `sdk_*` planning tools +
+   `write_file`/`publish_app`. This is DELIBERATE and must not be "fixed"
+   back; models without tool use fall back to the deterministic source read
+   loop (introspection) / the fenced `FILE:`-block convention (SDK mode),
+   and the JSON planning phases (invariant 3) never use tools. See the
+   **introspection** and **sdk-mode** skills.
 2. **Helper phases fail soft, never break the request.** Search, gap check,
    validation, and every enrichment (geocode/Shodan/Maps) degrade to a lesser
    result (fewer searches, accepted draft, conversation unchanged) rather
@@ -226,8 +229,17 @@ deploy mid-battery): **`docs/TESTING.md`**.
 abstraction as a design (`sdk/DESIGN.md`), a 33-module registry
 (`sdk/MANIFEST.json`) with one buildable skill per module, and a
 dependency-free CLI (`node sdk/pair-cli.mjs list|show|plan|validate`,
-unit-tested in `npm test`). Design-only — nothing in `src/`/`public/`
-imports it. Its complete standalone documentation is
+unit-tested in `npm test`). Since 2026-07-18 the SDK is WIRED into the app:
+the pure core `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI
+re-exports it) powers **SDK mode** — the green "lovable experience" entry in
+the chat-mode dropdown (Normal / Introspection / SDK) that designs + builds a
+self-contained web app from the SDK's modules/skills and publishes it live at
+`/app/<slug>/` (`src/build-pub.js`, opaque-origin CSP sandbox) — and the
+`/mcp` `sdk_*` tools, so agents plan against the manifest without shelling
+into the sandbox (where `/src/sdk/pair-cli.mjs` also works in dev mode). SDK
+mode's native tool loop rides invariant 1's SAME authorized exception as
+introspection (deterministic `FILE:`-block fallback on non-tool models); see
+the **sdk-mode** skill. Its complete standalone documentation is
 `docs/AGENT-PAIR-SDK.md`, updated in the same commit as any `sdk/` change.
 The **interchange standards** (2026-07-17) specify the workspace bundle and
 pipeline structure as open standards — **DRSW/1**
@@ -303,6 +315,7 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
+- **sdk-mode** — the green SDK "lovable experience" mode: the chat-mode dropdown, the Agent-Pair-SDK build flow, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.
 - **ui-notes** — client UI/UX conventions: rendering, attachments, static pages, the public (no-auth) surface.

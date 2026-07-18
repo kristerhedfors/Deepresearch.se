@@ -65,6 +65,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
+import { handleBuildDelete, handleBuildGet } from "./build-pub.js";
 import { handleWebSearch, handleWebSearchAdjust, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
 import {
   handleProxyAdjust,
@@ -233,6 +234,22 @@ async function route(request, env, url, log, ctx, requestId) {
     // the khaki page is self-contained — no cross-origin iframe to break — so
     // isolation is safe to apply unconditionally.
     return { response: await serveAsset(request, env, url.origin + "/cure/", { coep: true }) };
+  }
+  // SDK-mode build publications (src/build-pub.js): the live "try it" URLs
+  // the green SDK mode publishes generated apps under — /app/<slug>/ (NOT
+  // /build/, which is the About page). PUBLIC — a build link is meant to be
+  // shared — and every response carries the sandboxing CSP (opaque origin:
+  // no cookies, no credentialed same-origin fetch), so a generated page can
+  // never act as the signed-in visitor.
+  {
+    const buildMatch =
+      (request.method === "GET" || request.method === "HEAD") &&
+      url.pathname.match(/^\/app\/([^/]+)(\/(.*))?$/);
+    if (buildMatch) {
+      const slug = decodeURIComponent(buildMatch[1]);
+      const sub = buildMatch[2] === undefined ? null : decodeURIComponent(buildMatch[3] || "");
+      return { response: await handleBuildGet(env, slug, sub) };
+    }
   }
   if (request.method === "GET" && (url.pathname === "/api/pub" || url.pathname.startsWith("/api/pub/"))) {
     const slug = url.pathname === "/api/pub" ? null : decodeURIComponent(url.pathname.slice("/api/pub/".length));
@@ -412,6 +429,14 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname.startsWith("/api/pub/")) {
     if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
     return handlePubWrite(request, env, log, decodeURIComponent(url.pathname.slice("/api/pub/".length)));
+  }
+
+  // SDK-mode builds are PUBLISHED by the pipeline itself (src/build-pub.js
+  // publishBuild — the identity is already resolved there); the only HTTP
+  // write surface is this admin-gated unpublish.
+  if (url.pathname.startsWith("/api/build/")) {
+    if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
+    return handleBuildDelete(request, env, log, decodeURIComponent(url.pathname.slice("/api/build/".length)));
   }
 
   // /try/:id — the shareable deep link to a testable interaction point
