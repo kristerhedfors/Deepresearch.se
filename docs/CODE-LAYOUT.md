@@ -208,8 +208,9 @@ class on the ROOT element re-pointing the nine palette variables, `:root.dev-mod
 in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
 relaunch paints the titanium palette at first paint before `/api/settings`
 answers; `app.js` applies the cache synchronously at boot then reconciles with
-the server's authoritative `developer_mode`, and the developer knob flips it on
-toggle — Node-tested), `chat-mode.js` (the chat MODE dropdown's state —
+the server's authoritative `developer_mode`, and the Settings-panel Chat mode
+dropdown flips it on pick — Node-tested), `chat-mode.js` (the chat MODE
+dropdown's state —
 Normal / Introspection / SDK / SWE, 2026-07-18: the `dr_chat_mode` localStorage
 pick layered over the developer_mode capability; decides which theme class the
 root carries — `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the

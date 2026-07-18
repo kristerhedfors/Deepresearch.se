@@ -50,7 +50,9 @@ const KNOB_SELECTORS = {
   shodan_mcp: "#shodanknob",
   google_maps: "#gmapsknob",
   bash_lite_mcp: "#sbknob",
-  developer_mode: "#devknob",
+  // The developer_mode capability is now driven by the Chat mode dropdown
+  // (account-views.js) rather than a standalone switch — pulse that control.
+  developer_mode: "#modesetting",
 };
 
 /** @type {Record<string, Function>} */

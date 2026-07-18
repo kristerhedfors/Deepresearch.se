@@ -10,7 +10,7 @@
 // account-views.js's shared settingRow / wireSettingPopovers building blocks;
 // the panel shell (showView) lives in account.js.
 
-import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
+import { renderConfigKnobs, settingRow, wireModeKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
 import { openBundle } from "./proxy-bundle.js";
 import { buildWorkspacePayload, generateWorkspacePassword, sealWorkspace, workspaceLink } from "./workspace-core.js";
@@ -141,7 +141,7 @@ export async function loadSettingsView(ctx) {
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);
-  wireDeveloperKnob(ctx);
+  wireModeKnob(ctx);
 
   if (shodanUsable) {
     wireSimpleKnob("shodanknob", "shodanstatus", setShodanMcp, {
