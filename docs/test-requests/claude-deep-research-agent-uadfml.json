@@ -1,0 +1,21 @@
+{
+  "branch": "claude/deep-research-agent-uadfml",
+  "pr": null,
+  "requested_at": "2026-07-18",
+  "points": [
+    {
+      "label": "Admin article collection under the account panel",
+      "summary": "New admin-only 'Article collection' button in the account panel's summary (right above 'Admin interface'). PASS: signed in as the admin account, tap the header's account button — the button row shows 'Article collection'; tapping it opens a view titled 'Article collection' with an intro paragraph (the 716-commits/93-features numbers, a working /pulse link) and TEN collapsible abstracts numbered 1–10 in Swedish; tapping an abstract expands its full multi-paragraph text and tapping again collapses it; '← Back' returns to the summary. FAIL: the button missing for the admin, fewer than ten items, an abstract that won't expand, or garbled/escaped HTML in the texts.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Also worth a glance if convenient: any signed-in NON-admin account must NOT see the 'Article collection' button in its account panel."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
