@@ -23,7 +23,7 @@ import { jsonResponse } from "./http.js";
 // pipeline graph in — the file-layout rule above (heavy deps stay dynamic) is
 // preserved. Shares the split-model-routing decision with src/chat.js.
 import { resolveJsonModel } from "./model-routing.js";
-// The Agent-Pair SDK's pure core (via the src/sdk-tools.js façade): manifest
+// DistillSDK's pure core (via the src/sdk-tools.js façade): manifest
 // operations + the provider-neutral sdk_* tool definitions. Pure and
 // dependency-light (no pipeline/berget imports), so a static import keeps the
 // file-layout rule intact; only the SNAPSHOT loading (tools/call time) is a
@@ -117,7 +117,7 @@ export function initializeResult() {
   };
 }
 
-// The Agent-Pair SDK's manifest tools, exposed over MCP too (2026-07-18) so
+// DistillSDK's manifest tools, exposed over MCP too (2026-07-18) so
 // an external agent can plan against the SDK — list/show/plan/validate —
 // WITHOUT shelling into the in-browser execution sandbox to run
 // `node sdk/pair-cli.mjs`: the same pure core answers directly. The shared

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The Agent-Pair SDK's command-line interface — dependency-free, runs anywhere
+// DistillSDK's command-line interface — dependency-free, runs anywhere
 // Node runs: a desktop checkout (VS Code terminal, any editor, any agent
 // harness) or INSIDE the pair's in-browser Linux VM (the source snapshot mounts
 // this repo at /src, so `node /src/sdk/pair-cli.mjs …` works in the sandbox

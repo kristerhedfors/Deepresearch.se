@@ -223,9 +223,9 @@ hand. What each suite covers, the e2e fixtures/quirks, and the three eval
 harnesses (model-matrix, rubric bench, HF bench — append-only ledgers, don't
 deploy mid-battery): **`docs/TESTING.md`**.
 
-## The Agent-Pair SDK and interchange standards
+## DistillSDK and interchange standards
 
-`sdk/` is the **Agent-Pair SDK** (2026-07-16): the Se/cure + Se/rver pair
+`sdk/` is **DistillSDK** (2026-07-16): the Se/cure + Se/rver pair
 abstraction as a design (`sdk/DESIGN.md`), a 33-module registry
 (`sdk/MANIFEST.json`) with one buildable skill per module, and a
 dependency-free CLI (`node sdk/pair-cli.mjs list|show|plan|validate`,
@@ -244,7 +244,7 @@ user prompts *a new instance of Se/cure in a different shape or form*. Both
 build modes' native tool loop rides invariant 1's SAME authorized exception as
 introspection (deterministic `FILE:`-block fallback on non-tool models); see
 the **sdk-mode** skill. Its complete standalone documentation is
-`docs/AGENT-PAIR-SDK.md`, updated in the same commit as any `sdk/` change.
+`docs/DISTILLSDK.md`, updated in the same commit as any `sdk/` change.
 The **interchange standards** (2026-07-17) specify the workspace bundle and
 pipeline structure as open standards — **DRSW/1**
 (`docs/WORKSPACE-PROTOCOL.md`) and **DRPL/1** (`docs/PIPELINE-LANGUAGE.md`,
@@ -319,7 +319,7 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
-- **sdk-mode** — the green SDK "lovable experience" mode: the chat-mode dropdown, the Agent-Pair-SDK build flow, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **sdk-mode** — the green SDK "lovable experience" mode: the chat-mode dropdown, the DistillSDK build flow, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.

@@ -444,7 +444,7 @@ const skillSnap = () =>
           s: 1,
           t: '---\nname: feedback-loop\ndescription: "Process user feedback from the live site."\n---\n\n# Feedback',
         },
-        // Agent-Pair SDK module skills: one whose id collides with an
+        // DistillSDK module skills: one whose id collides with an
         // operational skill (deploy) and one that is SDK-only.
         {
           p: "sdk/skills/deploy/SKILL.md",

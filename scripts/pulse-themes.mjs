@@ -121,10 +121,10 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
   },
   {
     key: "sdk",
-    label: "Agent-Pair SDK & standards",
+    label: "DistillSDK & standards",
     color: "#845ec2", // extended · indigo
     blurb: "The sdk/ pair abstraction, DRPL/DRSW interchange standards, the stackless vision.",
-    test: /\b(agent-pair|\bsdk\b|drpl|pair-(cli|studio|generator|architecture)|manifest|interchange|stackless|baseplate|exec-engine module|vm toolchain)\b/,
+    test: /\b(agent-pair|distillsdk|\bsdk\b|drpl|pair-(cli|studio|generator|architecture)|manifest|interchange|stackless|baseplate|exec-engine module|vm toolchain)\b/,
   },
   {
     key: "help",

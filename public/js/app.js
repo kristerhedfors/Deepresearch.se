@@ -248,7 +248,7 @@ webSearchBox.addEventListener("change", () => {
 // The mode picker (owner directive, 2026-07-18): Normal is the ordinary
 // research pipeline; Introspection (white-titanium pane) answers from the
 // site's own source; SDK (green pane — the "lovable experience") designs and
-// builds with the Agent-Pair SDK and publishes a live /app/<slug>/ link.
+// builds with DistillSDK and publishes a live /app/<slug>/ link.
 // The theme + per-send request fields follow the pick (chat-mode.js /
 // stream.js); Introspection and SDK need the developer_mode capability, so
 // picking them flips the knob for the user (fail-soft — the break-glass

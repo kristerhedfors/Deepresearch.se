@@ -1,5 +1,5 @@
 // @ts-check
-// The Agent-Pair SDK's shared PURE core — the one implementation both tiers
+// DistillSDK's shared PURE core — the one implementation both tiers
 // (and the sdk/pair-cli.mjs CLI) use for manifest operations, SDK-mode native
 // tools, and generated-app ("build") file handling. The bash-core.js /
 // introspect-core.js pattern: it lives under public/ because the browser can
@@ -340,7 +340,7 @@ export const SDK_TOOLS = [
   {
     name: "sdk_list_modules",
     description:
-      "List the Agent-Pair SDK's module catalog (sdk/MANIFEST.json) grouped by layer — every buildable module with its id, capability class (C/S/B/X/D), and name. The same output as `node sdk/pair-cli.mjs list`, no shell needed.",
+      "List DistillSDK's module catalog (sdk/MANIFEST.json) grouped by layer — every buildable module with its id, capability class (C/S/B/X/D), and name. The same output as `node sdk/pair-cli.mjs list`, no shell needed.",
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -495,9 +495,9 @@ export function buildFilesSummary(files) {
  */
 export function buildSdkContextBlock(manifest, opts = {}) {
   const parts = [
-    "SDK mode: the Agent-Pair SDK (this site's buildable module catalog)",
+    "SDK mode: DistillSDK (this site's buildable module catalog)",
     "=".repeat(66),
-    "The Agent-Pair SDK (sdk/ in this repo) describes the Se/cure + Se/rver pair as 33 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The user is in SDK mode: they want things DESIGNED AND BUILT — a runnable collection of files published at a live URL — using the SDK's modules and skills as the method.",
+    "DistillSDK (sdk/ in this repo) describes the Se/cure + Se/rver pair as 33 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The user is in SDK mode: they want things DESIGNED AND BUILT — a runnable collection of files published at a live URL — using the SDK's modules and skills as the method.",
   ];
   if (manifest) {
     parts.push("", "Module catalog (sdk/MANIFEST.json):", renderList(manifest));

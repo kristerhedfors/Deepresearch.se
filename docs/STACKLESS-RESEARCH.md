@@ -4,8 +4,8 @@
 two standards this repo now defines — DRSW, the secure-workspace interchange
 protocol (`docs/WORKSPACE-PROTOCOL.md`), and DRPL, the pipeline structure
 language (`docs/PIPELINE-LANGUAGE.md`) — into what they are actually for.
-Companion reading: the mission statement in CLAUDE.md, the Agent-Pair SDK
-(`docs/AGENT-PAIR-SDK.md`), and the deployed feature the standards generalize
+Companion reading: the mission statement in CLAUDE.md, DistillSDK
+(`docs/DISTILLSDK.md`), and the deployed feature the standards generalize
 (`docs/WORKSPACE-SECURITY.md`). This is a vision document: deepresearch.se
 implements the seed of it, not the whole of it, and says so.)*
 

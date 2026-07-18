@@ -24,7 +24,7 @@ assumptions.
    to load it*. **Before working in an area, open the matching skill.** These
    were originally a Claude Code (CLI) convention, but the knowledge is
    model-agnostic — read them the same way whatever agent you are.
-3. **The Agent-Pair SDK** — `sdk/` (start at `sdk/README.md`) — the
+3. **DistillSDK** — `sdk/` (start at `sdk/README.md`) — the
    *constructive* counterpart to the operational skills: 33 module skills
    (`sdk/skills/<name>/SKILL.md`) covering how each of this product's
    capabilities is built from scratch, a machine-readable module registry
@@ -33,7 +33,7 @@ assumptions.
    list|show|plan|validate`). Load an SDK skill when building a capability
    anew (or wiring this app to SDK modules); load an operational skill when
    running or maintaining THIS deployment. The SDK's complete standalone
-   documentation is **`docs/AGENT-PAIR-SDK.md`** — the abstraction, the
+   documentation is **`docs/DISTILLSDK.md`** — the abstraction, the
    capability classes, contracts PA-1..PA-10, the full module catalog, the
    CLI, and the implementation order, in one document.
 

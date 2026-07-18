@@ -414,7 +414,7 @@ export function snapshotIndex(snapshot) {
 export const SKILL_PATH_RE = /^\.claude\/skills\/([a-z0-9][a-z0-9-]*)\/SKILL\.md$/;
 
 /**
- * The Agent-Pair SDK's constructive module skills (sdk/skills/<name>/SKILL.md)
+ * DistillSDK's constructive module skills (sdk/skills/<name>/SKILL.md)
  * — cataloged alongside the operational playbooks so both tiers can browse the
  * SDK from the app itself, but NAMESPACED as `sdk/<name>`: two module ids
  * deliberately reuse operational skill names (execution-sandbox,
@@ -823,7 +823,7 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
   if (skills.length) {
     lines.push("");
     lines.push(
-      `# Skills — the project's ${skills.length} institutional playbooks: operational (.claude/skills/<name>/SKILL.md — how this deployment is run) and the Agent-Pair SDK's constructive modules (sdk/skills/<name>/SKILL.md, listed as sdk/<name> — how each capability is built from scratch; see sdk/README.md). The same catalogs guide any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill", /deploy, or "the sdk/pair-generator skill") for its full text, or just ask — the relevant one is retrieved into context:`,
+      `# Skills — the project's ${skills.length} institutional playbooks: operational (.claude/skills/<name>/SKILL.md — how this deployment is run) and DistillSDK's constructive modules (sdk/skills/<name>/SKILL.md, listed as sdk/<name> — how each capability is built from scratch; see sdk/README.md). The same catalogs guide any coding agent via the repo's AGENTS.md. Name any (e.g. "the deploy skill", /deploy, or "the sdk/pair-generator skill") for its full text, or just ask — the relevant one is retrieved into context:`,
     );
     lines.push(skillsIndex(snapshot));
   }

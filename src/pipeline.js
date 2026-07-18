@@ -664,7 +664,7 @@ async function runSourceResearchTools(ctx, snapshot) {
 // The build modes' answer phase (routed at the top of runPipeline): the model
 // builds a small self-contained web app and the pipeline publishes it at a
 // live /app/<slug>/ URL (src/build-pub.js). ONE runner, keyed by BUILD_FLAVORS
-// — the green SDK mode builds a generic app from the Agent-Pair SDK catalog;
+// — the green SDK mode builds a generic app from the DistillSDK catalog;
 // the khaki SWE mode builds a NEW INSTANCE of Se/cure from the deployed Se/cure
 // source. Two execution paths, mirroring the introspection source research:
 //
@@ -684,7 +684,7 @@ const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than rea
 /**
  * The two build flavors share the publish machinery and the tool/deterministic
  * split; they differ only in the prompts, the context block, the offered tool
- * set, and the step labels. SDK builds a generic app from the Agent-Pair SDK
+ * set, and the step labels. SDK builds a generic app from the DistillSDK
  * catalog; SWE builds a new instance of Se/cure from the deployed Se/cure
  * source.
  * @typedef {object} BuildFlavor
@@ -702,8 +702,8 @@ const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than rea
 const BUILD_FLAVORS = {
   sdk: {
     planStep: "SDK mode…",
-    planDone: "SDK mode — designing and building with the Agent-Pair SDK",
-    building: "Building with the Agent-Pair SDK…",
+    planDone: "SDK mode — designing and building with DistillSDK",
+    building: "Building with DistillSDK…",
     toolPrompt: sdkBuildToolPrompt,
     detPrompt: sdkBuildPrompt,
     context: (manifest, opts) => buildSdkContextBlock(manifest, opts),

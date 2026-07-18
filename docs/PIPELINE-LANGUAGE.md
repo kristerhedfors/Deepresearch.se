@@ -145,7 +145,7 @@ One object per phase:
   times* is detail (§4's levels).
 - **`exec.at`** — `client` (the user's browser/device) or `server` (the
   node's server component). The zero-or-one-server pair model
-  (`docs/AGENT-PAIR-SDK.md`) needs no finer grain.
+  (`docs/DISTILLSDK.md`) needs no finer grain.
 - **`calls`** — the privacy placement: which parties **receive data**
   during the phase, each with `carries`, the explicit list of what crosses
   the wire. Registered parties: `origin-server`, `model-provider`,

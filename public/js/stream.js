@@ -737,7 +737,7 @@ async function buildChatPayload(opts) {
   // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection
   // enrichment per request (the server's existing off-only developer_mode
   // override — a knob-on account still gets plain web research); SDK asks for
-  // the Agent-Pair-SDK build flow and SWE for the Se/cure-variant build flow,
+  // the DistillSDK build flow and SWE for the Se/cure-variant build flow,
   // each carrying the conversation's published build slug so an iteration keeps
   // its /app/<slug>/ URL. Introspection sends nothing extra — the knob-on
   // default IS introspection.

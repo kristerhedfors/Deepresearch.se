@@ -1,12 +1,12 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK / SWE) that designs and BUILDS a self-contained web app with the Agent-Pair SDK and publishes it live at /app/<slug>/ — or on its khaki sibling SWE MODE (prompt a new instance of Se/cure), or when touching public/js/sdk-core.js (buildSdkContextBlock / buildSweContextBlock), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild + BUILD_FLAVORS, the sdk_mode/swe_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode / khaki swe-mode themes. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK / SWE) that designs and BUILDS a self-contained web app with DistillSDK and publishes it live at /app/<slug>/ — or on its khaki sibling SWE MODE (prompt a new instance of Se/cure), or when touching public/js/sdk-core.js (buildSdkContextBlock / buildSweContextBlock), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild + BUILD_FLAVORS, the sdk_mode/swe_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode / khaki swe-mode themes. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable experience" (2026-07-18)
 
 The third entry in the chat-mode dropdown: the user DESCRIBES an app, the
-model DESIGNS + BUILDS it with the Agent-Pair SDK (`sdk/` — manifest +
+model DESIGNS + BUILDS it with DistillSDK (`sdk/` — manifest +
 skills), and the pipeline PUBLISHES the files at a live, shareable
 `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 `sdk studio` header tag), as titanium white is introspection's.
@@ -15,7 +15,7 @@ skills), and the pipeline PUBLISHES the files at a live, shareable
 
 The FOURTH dropdown entry, `swe` — "prompt a new instance of Se/cure in a
 different shape or form". It is SDK mode's build/publish machinery with a
-different *flavor*: instead of the Agent-Pair SDK catalog, it seeds the build
+different *flavor*: instead of the DistillSDK catalog, it seeds the build
 with the deployed **Se/cure** source (`public/cure/*`, `public/js/drc-*.js`,
 `sdk/skills/secure-tier/SKILL.md`) and instructs the model to build a
 client-side, never-cloud research app that upholds Se/cure's privacy

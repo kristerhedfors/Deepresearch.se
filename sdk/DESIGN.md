@@ -1,4 +1,4 @@
-# The Agent-Pair SDK — design
+# DistillSDK — design
 
 **Status: design + skill library only (2026-07-16). Nothing in `sdk/` is wired
 into the running application yet — that is a later task.** This directory is a
