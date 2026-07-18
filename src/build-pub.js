@@ -68,6 +68,29 @@ export function newBuildSlug(title) {
   return `${frag.slice(0, 40)}-${suffix}`;
 }
 
+/**
+ * True when `reply` already links to `url` with markdown link syntax — the URL
+ * sits inside a `](…)` target, so `marked` renders it as a clickable anchor.
+ *
+ * A bare or bold path (`Live: /app/slug/`, or the same wrapped in asterisks)
+ * does NOT count: `marked`'s GFM autolinker only makes full `http(s)://` URLs
+ * clickable and never a relative `/app/…` path, so a build reply that mentions
+ * the URL in prose still needs the explicit "Try it live" link appended or the
+ * user is left with unclickable text. The build tool path hit exactly this —
+ * the model called publish_app, got the URL, and wrote it bold instead of as a
+ * link, while the old guard (a plain substring check) saw the path in prose and
+ * suppressed the append ("no link to the generated app", 2026-07-18). The
+ * appended link also rides the answer text, so it survives a dropped-stream
+ * recovery, where only the text (never the `build` status event) is replayed.
+ * @param {string} reply
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function replyLinksTo(reply, url) {
+  if (!reply || !url) return false;
+  return reply.includes(`](${url})`) || reply.includes(`](${url} `);
+}
+
 /** Content types for the served build files (text formats only — the staging
  * rules in sdk-core.js allowlist the extensions). */
 const CONTENT_TYPES = {

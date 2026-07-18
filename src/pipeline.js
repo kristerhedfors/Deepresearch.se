@@ -119,7 +119,7 @@ import {
   snapshotFileCheck,
   stageBuildFile,
 } from "./sdk-tools.js";
-import { publishBuild } from "./build-pub.js";
+import { publishBuild, replyLinksTo } from "./build-pub.js";
 import { feedbackIntent } from "./feedback.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -885,8 +885,14 @@ async function runSdkBuildTools(ctx, snapshot, manifest, flavor) {
   if (!text) throw new Error("SDK tool run produced no answer");
   ctx.step("synth", "Writing report…");
   emitChunked(ctx, text);
-  // Guarantee the link lands in the reply even if the model forgot it.
-  if (published && !text.includes(published.url)) {
+  // Guarantee a CLICKABLE link lands in the reply. The model often writes the
+  // URL as bold/bare prose (`**/app/slug/**`) rather than a markdown link, and
+  // `marked` never autolinks a relative /app/ path — so append unless the reply
+  // already carries a real markdown link to it (replyLinksTo, not a substring
+  // check). This append rides the answer text, so it also survives a
+  // dropped-stream recovery, where only the text is replayed (the `build`
+  // status event is not).
+  if (published && !replyLinksTo(text, published.url)) {
     emitChunked(ctx, `\n\n**Try it live:** [${published.url}](${published.url})`);
   }
   ctx.stepDone("synth", "Report drafted");

@@ -7,6 +7,7 @@ import {
   handleBuildManualPublish,
   newBuildSlug,
   publishBuild,
+  replyLinksTo,
 } from "./build-pub.js";
 
 function mockBucket() {
@@ -222,4 +223,22 @@ test("handleBuildManualPublish: validation errors", async () => {
     ).status,
     503,
   );
+});
+
+test("replyLinksTo: only a real markdown link to the url counts as clickable", () => {
+  const url = "/app/simplest-llm-chat-r3vb/";
+  // Bare / bold / prose mentions are NOT clickable — marked never autolinks a
+  // relative /app/ path, so these must still get the "Try it live" append.
+  assert.equal(replyLinksTo(`Live: **${url}**`, url), false);
+  assert.equal(replyLinksTo(`Your app is at ${url} — enjoy.`, url), false);
+  assert.equal(replyLinksTo(`See \`${url}\` for the build.`, url), false);
+  // A genuine markdown link (any label) is clickable — don't double-append.
+  assert.equal(replyLinksTo(`[Try it live](${url})`, url), true);
+  assert.equal(replyLinksTo(`Open [the app](${url}) now`, url), true);
+  assert.equal(replyLinksTo(`[x](${url} "title")`, url), true);
+  // A link to a DIFFERENT url doesn't satisfy it.
+  assert.equal(replyLinksTo(`[x](/app/other-slug/)`, url), false);
+  // Empty inputs are safe.
+  assert.equal(replyLinksTo("", url), false);
+  assert.equal(replyLinksTo("text", ""), false);
 });
