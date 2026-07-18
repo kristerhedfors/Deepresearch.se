@@ -14,12 +14,15 @@
 //   YOUR OWN research) and "share" (the DEDICATED Se/cure-workspace share
 //   view — only what a link can lend to someone else): account-settings.js.
 // - "feedback" (the user's feedback dialogue threads): account-feedback.js.
+// - "articles" (the admin-only article collection — the planned article
+//   series about this project): account-articles.js.
 //
 // Each view is a top-level load*/render* function taking the shared panel
 // context (created once by initAccountPanel) so the sections stay
 // independently readable; the context carries the DOM refs plus the cached
 // /api/me payload the badge and views render from.
 
+import { loadArticlesView } from "./account-articles.js";
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadSettingsView, loadShareView } from "./account-settings.js";
@@ -110,17 +113,21 @@ export function initAccountPanel() {
 // doesn't read as the generic "Account & usage" screen (the share icon lands
 // on its own "Share a Se/cure workspace" view; the gear icon on "Settings").
 // Anything unlisted falls back to "Account & usage".
-const VIEW_TITLES = { settings: "Settings", share: "Share a Se/cure workspace" };
+const VIEW_TITLES = { settings: "Settings", share: "Share a Se/cure workspace", articles: "Article collection" };
 
 /**
  * View dispatcher: renders the named view into the panel body and wires
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
- * @param {"summary"|"full"|"messages"|"settings"|"share"|"feedback"|"games"|"docs"} view
+ * @param {"summary"|"full"|"messages"|"settings"|"share"|"feedback"|"games"|"docs"|"articles"} view
  */
 function showView(ctx, view) {
   if (ctx.title) ctx.title.textContent = VIEW_TITLES[view] || "Account & usage";
+  if (view === "articles") {
+    loadArticlesView(ctx);
+    return;
+  }
   if (view === "messages") {
     loadMessagesView(ctx);
     return;
@@ -156,6 +163,7 @@ function showView(ctx, view) {
     document.getElementById("sharewsbtn")?.addEventListener("click", () => ctx.show("share"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
+    document.getElementById("articlesbtn")?.addEventListener("click", () => ctx.show("articles"));
     document.getElementById("docsbtn")?.addEventListener("click", () => ctx.show("docs"));
     document.getElementById("logoutbtn").addEventListener("click", async () => {
       await fetch("/logout", { method: "POST" });
