@@ -238,6 +238,98 @@ bucket/index makes every deploy fail outright. What lands where (and what
 is/isn't encrypted) is documented in `docs/ARCHITECTURE.md` §9 and the
 **storage-privacy** skill (`.claude/skills/storage-privacy/`).
 
+## Running outside Cloudflare (untested)
+
+We deploy **exclusively to Cloudflare**, so nothing below is exercised in
+CI or in production — treat it as a design checklist, not a supported path.
+The good news is that the porting surface is small and well-isolated: the
+Worker's request-handling code (`src/`) is written against **web-standard
+globals** — `Request`/`Response` (Fetch), Web Streams, WebCrypto
+(`crypto.subtle` / `crypto.randomUUID` / `crypto.getRandomValues`),
+`TextEncoder`/`TextDecoder`, `URL` — with **no `node:` imports** anywhere in
+the runtime path (only the test files import `node:*`). The entrypoint is a
+plain module-worker export:
+
+```js
+export default { async fetch(request, env, ctx) { … } }
+```
+
+Everything Cloudflare-specific is reached through exactly two objects the
+platform injects: **`env`** (bindings + secrets) and **`ctx`** (background
+work). Port those and the rest runs unchanged.
+
+### What actually has to be replaced
+
+`env` carries two very different kinds of values:
+
+- **Secrets and variables** (`BERGET_API_TOKEN`, `SESSION_SECRET`,
+  `GOOGLE_CLIENT_ID`, `ADMIN_EMAIL`, `LOG_LEVEL`, …) are just strings. On any
+  other host, populate `env` from process environment variables / a `.env`
+  file. No code changes.
+- **Resource bindings** are live objects with Cloudflare method shapes.
+  There are only **four**, and each needs a substitute exposing the same
+  methods the code calls:
+
+| Binding | Cloudflare service | Methods the code uses | Substitute with |
+|---|---|---|---|
+| `env.ASSETS` | Static assets (`./public`) | `ASSETS.fetch(request)` → `Response` | Any static file server; only `src/assets.js` calls it. Serve `./public` and return a `Response`. **Load-bearing** (it serves the whole UI). |
+| `env.DB` | D1 (SQLite) | `.prepare(sql).bind(…).first()/.run()/.all()`, `.batch([…])` | Any SQLite-compatible driver wrapped to the D1 statement shape — better-sqlite3, libSQL/Turso, Postgres with a shim. Schema self-applies (`CREATE TABLE IF NOT EXISTS` in `src/db.js`); no migration step. **Load-bearing** for accounts/quotas — without it the app runs degraded (break-glass Basic Auth only, no Google sign-in). |
+| `env.STORAGE` | R2 (object store) | `.get/.put/.delete/.list/.head` | Any S3-compatible store (MinIO, AWS S3, Backblaze) or a filesystem shim, wrapped in the R2 method shape. **Optional** — absent, cloud storage/RAG index copies just switch off (`/api/settings` reports unavailable). |
+| `env.RAG_INDEX` | Vectorize (vector DB) | `.query/.upsert/.insert/.deleteByIds` | Any vector store (pgvector, Qdrant, Milvus, …), 1024-dim / cosine to match the embedding model, wrapped in the Vectorize shape. **Optional** — absent, large-document RAG falls back to browser-local OPFS/IndexedDB. |
+
+Beyond `env`, two more platform seams need attention:
+
+- **`ctx.waitUntil(promise)`** — the pipeline registers post-response work
+  with it (usage/billing accounting in `src/chat.js`, the answer-recovery
+  cache in `src/answers.js`). Your adapter must **keep the request context
+  alive until that promise settles** rather than tearing down as soon as the
+  `Response` body ends, or accounting rows and recoverable answers get
+  dropped. A minimal shim can just collect the promises and `await` them
+  after the response is fully flushed.
+- **`caches.default`** (the Workers Cache API) — used for edge-caching Exa,
+  geocode, and Maps lookups (`src/edge-cache.js`, `src/exa.js`,
+  `src/googlemaps.js`). Every call is already **fail-soft**, so a no-op
+  `caches.default` (get→miss, put→ignore) is a correct, if slower,
+  substitute; a real cache (in-memory LRU, Redis) restores the speedup.
+
+### Two shapes this can take
+
+1. **Self-host Cloudflare's runtime (`workerd`).** `workerd` is open source
+   and runs standalone, so the request code executes verbatim. The catch:
+   bare `workerd` does **not** provide D1 / R2 / Vectorize / the ASSETS
+   binding — those are Cloudflare's managed services, and Miniflare's local
+   emulations of them are dev-grade, not production stores. You would still
+   wire the four bindings above to real backends yourself. Closest to
+   production for the *runtime*, no help for the *bindings*.
+2. **Run under Node 20+ / Deno / Bun via a thin HTTP adapter** (the honest
+   "any server" path). Write a small server that, per request, builds an
+   `env` object (secrets from the environment + your four binding
+   implementations) and a `ctx` (`waitUntil` collector + a `caches.default`
+   shim), then calls the exported `fetch(request, env, ctx)` and streams the
+   returned `Response`. Node needs the request/response bridged to
+   Web-standard `Request`/`Response` (Deno and Bun serve those natively). The
+   bulk of the work is the four binding adapters; the handler code is
+   untouched.
+
+### Everything else is config, not code
+
+Drop the Cloudflare-only blocks from `wrangler.toml` (they mean nothing off
+Cloudflare) and bring the equivalent yourself:
+
+- `[limits] cpu_ms`, `[observability]`, `[assets]`, `routes` /
+  `custom_domain`, `preview_urls` — all Cloudflare platform config. Remove
+  them. Provide your own **TLS + reverse proxy** (nginx / Caddy), a
+  **process manager** (systemd, PM2, a container), and **log shipping** (the
+  logger already emits one JSON object per line to stdout — point your
+  collector at it).
+- **Google OAuth redirect URI** must match your real host
+  (`https://<your-host>/auth/google/callback`), and `src/canonical.js` only
+  rewrites the `deepresearch.se` / `www` hosts — review it if you enforce a
+  canonical host elsewhere.
+
+None of this is wired up in the repo today; it is the list of what a port
+would have to cover, so you can scope it before committing.
+
 ## Develop locally
 
 ```bash
