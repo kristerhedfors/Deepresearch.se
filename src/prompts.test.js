@@ -481,6 +481,29 @@ describe("directPrompt / searchOffPrompt", () => {
     assert.match(p, /Web search is currently disabled/);
   });
 
+  test("searchOffPrompt scales OUTPUT depth by the report tier (the slider stays live with web off)", () => {
+    // "standard" (the default 60 s budget) is byte-identical to the arg-less
+    // prompt the eval ledgers were measured on.
+    assert.equal(searchOffPrompt(), searchOffPrompt({ reportTier: "standard" }));
+    // A bogus tier degrades to the byte-identical default, never throws.
+    assert.equal(searchOffPrompt({ reportTier: "nope" }), searchOffPrompt());
+    // The non-default tiers add depth guidance and still keep the whole
+    // directPrompt + disabled-note prefix intact.
+    const brief = searchOffPrompt({ reportTier: "brief" });
+    const full = searchOffPrompt({ reportTier: "full" });
+    for (const p of [brief, full]) {
+      assert.ok(p.startsWith(directPrompt()));
+      assert.match(p, /Web search is currently disabled/);
+    }
+    assert.match(brief, /Keep it short/);
+    assert.match(full, /comprehensive/);
+    assert.notEqual(brief, full);
+    // SOURCELESS: a pure-knowledge answer has no numbered sources, so the depth
+    // ladder must never demand inline [n] citations or a "Sources:" list.
+    assert.doesNotMatch(full, /\[1\], \[2\]/);
+    assert.doesNotMatch(full, /"Sources:" section/);
+  });
+
   test("hasShell flips the capabilities tail so the model does not deny running code", () => {
     // Default: still says it can't run code (byte-identical to before).
     assert.match(directPrompt(), /does NOT run code/);

@@ -409,7 +409,6 @@ header {
    off (the budget is moot for one-pass answers — app.css's coupling). */
 #budgetwrap { display: inline-flex; align-items: center; gap: .55rem; flex: 1 1 60px; min-width: 40px; }
 #budgetwrap input:disabled { opacity: .35; }
-#composer.nosearch #budgetval { opacity: .35; }
 
 #chat {
   flex: 1;

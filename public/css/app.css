@@ -973,7 +973,6 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   cursor: pointer;
 }
 #composer input[type="range"]:disabled { opacity: .35; }
-#composer.nosearch #budgetval { opacity: .35; }
 
 .header-right { display: flex; align-items: center; gap: .5rem; }
 /* With the model selector moved into the composer, the account button

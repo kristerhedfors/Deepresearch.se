@@ -556,10 +556,28 @@ export const directPrompt = ({ hasShell = false, hasSource = false } = {}) =>
   capabilitiesTail(hasShell, hasSource) +
   ANTI_INJECTION_NOTE;
 
+// The SOURCELESS depth ladder for the search-off answer: the slider still buys
+// OUTPUT depth when no external source applies (the knob gates web search only,
+// so depth stays meaningful — owner directive 2026-07-18). This is a lighter
+// twin of REPORT_TIER_STRUCTURE with NO citation/Sources machinery, since a
+// pure-knowledge answer has no numbered sources to cite. "standard" (the
+// default 60s budget) is the empty string, so searchOffPrompt() stays
+// byte-identical to the pre-ladder prompt the eval ledgers were measured on.
+/** @type {Record<import('./types.js').ReportTier, string>} */
+const SEARCH_OFF_DEPTH = {
+  brief: " Keep it short: a direct answer in a few sentences, no headings.",
+  standard: "",
+  extended:
+    " The user set a longer research time, so give a fuller, structured answer: cover the main aspects under short \"##\" headings and be explicit about where live web sources would strengthen it.",
+  full:
+    " The user set the maximum research time, so give a comprehensive, well-structured answer from your general knowledge — an executive summary in bold, thematic \"##\" sections, and tables where useful — while stating plainly that this is drawn from your training knowledge, not live web sources, and flagging where current data would matter.",
+};
+
 /**
- * @param {{ hasShell?: boolean, hasSource?: boolean }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier }} [opts]
  * @returns {string}
  */
-export const searchOffPrompt = ({ hasShell = false, hasSource = false } = {}) =>
+export const searchOffPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard" } = {}) =>
   directPrompt({ hasShell, hasSource }) +
-  " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed.";
+  " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed." +
+  (SEARCH_OFF_DEPTH[reportTier] || "");

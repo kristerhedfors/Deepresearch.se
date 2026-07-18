@@ -208,3 +208,39 @@ describe("quiz gate reads the clean (pre-enrichment) user message", () => {
     assert.doesNotMatch(src, /quizQuestionCount\(ctx\.lastUser\)/);
   });
 });
+
+describe("the web-search knob gates Exa only — depth still runs over other sources", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("runSearches gates the Exa call on state.webSearch", () => {
+    // The Exa leg (webSearch(env,…) + its billing counter) lives behind the
+    // knob; without the gate the knob would still hit Exa when off.
+    assert.match(src, /if \(state\.webSearch\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth\)/);
+    assert.match(src, /if \(state\.webSearch\) \{[\s\S]*state\.searchCount \+= batch\.length/);
+  });
+
+  test("runAuxSearches runs regardless of the knob (outside the Exa gate)", () => {
+    // The aux wave (HF Hub & co) must NOT be inside `if (state.webSearch)`, so
+    // it still fires with web search off — depth over available sources.
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runAuxSearches"));
+    assert.match(runSearches, /await runAuxSearches\(ctx, batch, round\);/);
+    // The aux call sits after the closing brace of the webSearch block, not within it.
+    const auxIdx = runSearches.indexOf("await runAuxSearches");
+    const gateIdx = runSearches.indexOf("if (state.webSearch)");
+    assert.ok(gateIdx >= 0 && auxIdx > gateIdx, "aux call comes after the Exa gate");
+  });
+
+  test("web-off short-circuits to the model answer ONLY when no other source applies", () => {
+    // Developer-mode source research and any applicable aux source (SEARCH_SOURCES
+    // intent) keep the research path alive with the knob off; runWithoutSearch is
+    // the fallback for when none applies.
+    assert.match(
+      src,
+      /if \(!state\.webSearch\) \{[\s\S]*if \(!ctx\.hasSource && !SEARCH_SOURCES\.some\(\(s\) => s\.intent\(ctx\.lastUser\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+    );
+  });
+
+  test("runWithoutSearch scales the model answer by the slider's report tier", () => {
+    assert.match(src, /searchOffPrompt\(\{[^}]*reportTier: ctx\.state\.plan\.reportTier/);
+  });
+});
