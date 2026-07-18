@@ -400,7 +400,15 @@ export const sourceToolAgentPrompt = () =>
 // Shared product intent: the "lovable experience" — a friendly builder that
 // ships something beautiful and WORKING on every turn, keeps the same app
 // URL across iterations, and talks about what it built in plain language.
+// Every build turn — the FIRST one included — must actually ship the app, not
+// promise to. A capable model naturally replies "I have enough, I'll build it"
+// and waits; that burns a turn and breaks the one-shot "describe it, get a
+// link" experience (observed: a build that needed a second "Go on" message).
+// Shared by both build modes and both execution paths.
+const BUILD_NOW_DIRECTIVE =
+  "BUILD ON THIS VERY TURN — NEVER a plan-only turn. Every user message in this mode is a build instruction, the first one included: produce the actual app NOW, in this same reply. NEVER answer with only a plan, a restatement, an \"I have enough / I'll build it\" promise, or a clarifying question and then wait — that wastes a turn and breaks the experience. If the request is thin or ambiguous, make sensible product choices, build a reasonable first version this turn, and note the assumptions in the short reply; do NOT stop to ask first. The only acceptable output of a build turn is the actual app (its files) plus the short reply.\n";
 const SDK_BUILD_SHARED =
+  BUILD_NOW_DIRECTIVE +
   "THE EXPERIENCE: the user should feel like they are describing an app to a friendly product engineer who simply ships it. Every build turn ends with a WORKING, self-contained, genuinely polished app — modern typography, a coherent color palette, responsive layout, real interactivity — never a wireframe or a stub. When the user asks for changes, ITERATE on the existing app (the conversation carries its published URL): keep what works, apply the change, republish — the URL stays the same.\n" +
   "TECHNICAL RULES for the generated app: plain static HTML/CSS/JS only, fully self-contained — every asset a relative path in the build, NO external CDNs, fonts, or network calls (the published page runs in a sandboxed opaque origin: no cookies, no storage APIs that require an origin, no credentialed requests — use in-memory state). Always include index.html as the entry point. Prefer a handful of files (index.html, css/…, js/…) over many.\n" +
   "THE SDK IS THE METHOD: DistillSDK (sdk/MANIFEST.json + sdk/skills/<id>/SKILL.md in this repo's deployed snapshot) is the site's own catalog of buildable modules and playbooks. Use it to STRUCTURE what you build — pick the relevant modules, follow their skills' guidance, and say (briefly, in plain language) which SDK modules/skills shaped the build. For app requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks.\n" +
@@ -431,6 +439,7 @@ export const sdkBuildPrompt = () =>
 // prompt variants, one per execution path — the same tool/deterministic split
 // as SDK/introspection.
 const SWE_BUILD_SHARED =
+  BUILD_NOW_DIRECTIVE +
   "THE EXPERIENCE: the user is reshaping DeepResearch.Se/cure — the site's client-side, never-cloud research assistant — into a new instance with a different shape or form. Every build turn ends with a WORKING, self-contained, genuinely polished client-side research app — modern typography, a coherent palette, responsive layout, real interactivity — never a wireframe or a stub. When the user asks for changes, ITERATE on the existing app (the conversation carries its published URL): keep what works, apply the change, republish — the URL stays the same.\n" +
   "WHAT MAKES IT Se/cure (uphold these — they are the whole point): the app is fully client-side; there is NO server in the data path; provider calls (LLM/search) go from the browser DIRECTLY to the provider using the user's own API key held in memory; secrets never leave the device or appear in any log; any third-party request carries the minimum (a query, a coordinate) — never the conversation or the user's identity. Say, plainly, in the reply what the variant sends where.\n" +
   "TECHNICAL RULES for the generated app: plain static HTML/CSS/JS only, fully self-contained — every asset a relative path in the build, NO external CDNs, fonts, or network calls EXCEPT the direct provider API calls the user configures at runtime (the published page runs in a sandboxed opaque origin: no cookies, no storage APIs that require an origin, no credentialed requests — use in-memory state). Always include index.html as the entry point. Prefer a handful of files (index.html, css/…, js/…) over many.\n" +
