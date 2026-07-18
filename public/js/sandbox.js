@@ -43,6 +43,7 @@ import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js
 import {
   DEFAULT_EXEC_TIMEOUT_MS,
   MIN_EXEC_TIMEOUT_MS,
+  SEED_WAIT_MS,
   OUTBOX_PATH,
   base64ToBytes,
   concatChunks,
@@ -1223,27 +1224,39 @@ export function execInSandbox(command, opts = {}) {
     feedCommand("shell", command);
     // A boot's over-budget seed keeps extracting in the background (CheerpX
     // can't kill it) — running this command NOW would race it on the single-
-    // threaded VM and wedge (chat_logs #522). Wait for the seed up to this
-    // command's own ceiling; if it settles, run normally with a fresh ceiling.
-    // If it doesn't, fail soft WITHOUT tearing the VM down — the instance is
-    // healthy and still seeding, and the stamp guard makes the next attempt
-    // cheap — unless the seed is old enough to be declared wedged outright.
+    // threaded VM and wedge (chat_logs #522). Wait for the seed to finish; if
+    // it settles, run normally with a fresh ceiling. If it doesn't, fail soft
+    // WITHOUT tearing the VM down — the instance is healthy and still seeding,
+    // and the stamp guard makes the next attempt cheap — unless the seed is old
+    // enough to be declared wedged outright.
+    //
+    // The wait uses the SEED's own ceiling (SEED_WAIT_MS), NOT this command's
+    // exec ceiling. A cold /src extraction is one-time boot/setup latency (~80 s
+    // on iOS: chat_logs #526, fs.ms 80401), not command runtime — judging it by
+    // the 30 s command ceiling soft-failed `ls -l /src` ("still preparing") on
+    // every FIRST boot after a deploy (stamp changed → full re-seed) even though
+    // the seed was seconds from finishing. Bounded so we never wait past the
+    // wedge cap: once the seed's age would cross SEED_WEDGE_MS it is wedged, so
+    // there is no point waiting beyond that.
     if (!_seedSettled && _seedPromise) {
-      if (Date.now() - _seedStartedAt > SEED_WEDGE_MS) {
-        sblog("warn", "sandbox.seed_wedged", { ms: Date.now() - _seedStartedAt, command: String(command).slice(0, 120) });
+      const seedAge = Date.now() - _seedStartedAt;
+      if (seedAge > SEED_WEDGE_MS) {
+        sblog("warn", "sandbox.seed_wedged", { ms: seedAge, command: String(command).slice(0, 120) });
         flushSandboxLog();
         try { resetSandbox("seed_wedged"); } catch { /* ignore */ }
         const res = { exitCode: 124, stdout: "", stderr: "sandbox file seeding never finished" };
         try { feedResult("shell", res); } catch { /* decoration */ }
         return res;
       }
+      const seedWaitMs = Math.max(0, Math.min(SEED_WAIT_MS, SEED_WEDGE_MS - seedAge));
+      const waitStartedAt = Date.now();
       let seedStillRunning = false;
       await Promise.race([
         _seedPromise,
-        new Promise((resolve) => setTimeout(() => { seedStillRunning = true; resolve(null); }, timeoutMs)),
+        new Promise((resolve) => setTimeout(() => { seedStillRunning = true; resolve(null); }, seedWaitMs)),
       ]);
       if (seedStillRunning && !_seedSettled) {
-        sblog("warn", "sandbox.exec_seed_busy", { waited_ms: timeoutMs, command: String(command).slice(0, 120) });
+        sblog("warn", "sandbox.exec_seed_busy", { waited_ms: seedWaitMs, seed_age_ms: Date.now() - _seedStartedAt, command: String(command).slice(0, 120) });
         flushSandboxLog();
         const res = {
           exitCode: 124,
@@ -1252,6 +1265,13 @@ export function execInSandbox(command, opts = {}) {
         };
         try { feedResult("shell", res); } catch { /* decoration */ }
         return res;
+      }
+      // The seed settled while we waited — the command below now runs against a
+      // fully-seeded tree. Log the win (waited_ms > 0) so an on-device trace
+      // shows the first `ls -l /src` after a deploy landing instead of 124-ing.
+      const waited = Date.now() - waitStartedAt;
+      if (waited > 250) {
+        sblog("info", "sandbox.exec_seed_ready", { waited_ms: waited, seed_age_ms: Date.now() - _seedStartedAt });
       }
     }
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);

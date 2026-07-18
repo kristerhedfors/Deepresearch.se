@@ -129,17 +129,30 @@ with `user_id`, `ua`):
   `seed_timeout` abandoned finally finished; `ms` is its true total duration
   (how slow the guest really was) and a 0 `exit` means the /src stamp got
   written, so the NEXT boot's seed skips extraction entirely. Info-level.
-- `sandbox.exec_seed_busy` `{waited_ms, command}` — a command wanted to run
-  while the background seed was still extracting; execInSandbox waited its own
-  ceiling for it and gave up **without tearing the VM down** (the instance is
-  healthy, just busy). The command returns exit 124 with a "still preparing
-  mounted files" stderr; the loop ends fail-soft, and a later send hits the
-  now-stamped fast path. Before 2026-07-17 the command instead RACED the seed
-  on the single-threaded VM and wedged into `exec_timeout` + teardown
-  (chat_logs #522: `ls -l /src` at 30 s, fs.ms 61914). warn-level.
+- `sandbox.exec_seed_busy` `{waited_ms, seed_age_ms, command}` — a command
+  wanted to run while the background seed was still extracting; execInSandbox
+  waited the SEED's own ceiling (`SEED_WAIT_MS`, `waited_ms`) for it and gave up
+  **without tearing the VM down** (the instance is healthy, just busy).
+  `seed_age_ms` is how long the seed had been running in total (boot head start
+  + this wait). The command returns exit 124 with a "still preparing mounted
+  files" stderr; the loop ends fail-soft, and a later send hits the now-stamped
+  fast path. Before 2026-07-17 the command instead RACED the seed on the
+  single-threaded VM and wedged into `exec_timeout` + teardown (chat_logs #522:
+  `ls -l /src` at 30 s, fs.ms 61914). **2026-07-18:** the wait was decoupled
+  from the per-command exec ceiling — a cold /src seed is one-time setup latency
+  (~80 s on iOS, chat_logs #526 fs.ms 80401), so waiting only the 30 s command
+  ceiling soft-failed the first `ls -l /src` after every deploy though the seed
+  was seconds from done; `SEED_WAIT_MS` (bash-core.js, 60 s) now covers the tail.
+- `sandbox.exec_seed_ready` `{waited_ms, seed_age_ms}` — the counterpart to the
+  above: a command waited on a still-running seed and it **settled during the
+  wait**, so the command then ran against a fully-seeded tree (the fix landing).
+  Only logged when the wait exceeded ~250 ms. info-level → confirms on-device
+  that the first post-deploy `ls -l /src` lands instead of 124-ing.
 - `sandbox.seed_wedged` `{ms, command}` — the background seed has been running
   longer than `SEED_WEDGE_MS` (180 s): declared genuinely wedged, VM discarded
-  (`resetSandbox("seed_wedged")`), exit 124. warn-level.
+  (`resetSandbox("seed_wedged")`), exit 124. warn-level. The `SEED_WAIT_MS`
+  wait above is always bounded by this cap (`min(SEED_WAIT_MS, SEED_WEDGE_MS −
+  seed_age)`), so no command waits past the point the seed is declared wedged.
 - `sandbox.boot_timeout` `{stage, ms}` — the boot exceeded `BOOT_TIMEOUT_MS`
   (90 s) without resolving — a genuine hang (a disk/CDN fetch that never
   returns, e.g. a privacy browser like **Firefox Focus** that blocks the CheerpX

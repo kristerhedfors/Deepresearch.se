@@ -59,6 +59,21 @@ export const MAX_SHELL_WALL_MS = 120000;
 export const DEFAULT_EXEC_TIMEOUT_MS = 30000;
 export const MIN_EXEC_TIMEOUT_MS = 5000;
 
+// How long the FIRST command after a cold boot waits for the one-time file
+// seed (the /src source tree above all — a ~6.8 MB extraction that legitimately
+// takes ~80 s on iOS: chat_logs #526, fs.ms 80401) to finish before giving up.
+// This is deliberately DECOUPLED from the per-command exec ceiling: the seed is
+// BOOT/setup latency, not command runtime, so judging it by the 30 s command
+// ceiling (which exists to catch a wedged RUNNING command) is what made
+// `ls -l /src` soft-fail ("still preparing") on every FIRST boot after a deploy
+// — the stamp changes, forcing a full re-seed — even though the seed was a few
+// seconds from finishing (it already had a ~45 s head start inside the boot's
+// "mounting files" stage). Larger than DEFAULT_EXEC_TIMEOUT_MS so the tail is
+// covered, but well under MAX_SHELL_WALL_MS so a slow first boot still leaves
+// budget for real commands; a seed older than sandbox.js SEED_WEDGE_MS (180 s)
+// is declared wedged and fast-failed regardless, never waited on this long.
+export const SEED_WAIT_MS = 60000;
+
 /**
  * Scope the per-command exec ceiling to the user's research time budget.
  * A question scoped to 15 s must not sit 30 s on one wedged command

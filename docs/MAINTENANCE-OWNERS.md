@@ -136,20 +136,25 @@ feature maintenance*, and the **feature-maintenance** skill):
 > a fast stamped SECOND boot where `ls -l /src` answers).
 >
 > **2026-07-18 — #131's owed on-device confirmation ARRIVED (both items) +
-> residual finding → routed to #131 (comment 5012187482).** Owner hit
-> "ls in sandbox timed out" during a SWE-mode session; live logs confirm
-> #131 is working as designed: **#526** (css **h47**, iOS 18.7, FIRST boot
-> after the deploy) → `ls -l /src` exit 124 with the graceful
-> `sandbox.exec_seed_busy` message ("still preparing … try again in a
-> moment") — the fail-soft, NOT #522's 30 s wedge+teardown; and **#523**
-> (css h46, a warm/stamped SECOND boot) → `ls -l /src` exit 0, six clean
-> listings, fast (stamp skip). Residual: #526's `client_diag.fs.ms` was
+> residual first-boot-after-deploy timeout → reported to #131 (comment
+> 5012187482) AND fixed directly per owner directive
+> (`claude/swe-sandbox-timeouts-tjd7y0`).** Owner hit "ls in sandbox timed
+> out" during a SWE-mode session; live logs confirm #131's fail-soft is
+> working: **#526** (css **h47**, iOS 18.7, FIRST boot after the deploy) →
+> `ls -l /src` exit 124 with the graceful `sandbox.exec_seed_busy` message
+> ("still preparing …") — NOT #522's 30 s wedge+teardown; and **#523** (css
+> h46, warm/stamped SECOND boot) → `ls -l /src` exit 0, six fast listings
+> (stamp skip). **Residual root cause:** #526's `client_diag.fs.ms` was
 > **80401** (a ~6.8 MB full re-extraction because the h47 deploy changed the
-> stamp), and the `budget_s:45 → 30 s` command ceiling waited out and
-> soft-failed while the seed still ran, so the FIRST dev/SWE boot after every
-> deploy still costs one failed command + a retry. Options offered to the
-> owner-worker on the PR: pre-warm the /src seed on mode entry; wait-and-retry
-> once on `exec_seed_busy` within `MAX_SHELL_WALL_MS`; or shrink the
-> first-boot payload. (The same #526 session's SWE "no clickable link" was a
-> SEPARATE pipeline bug — fixed on `claude/swe-sandbox-timeouts-tjd7y0`,
-> `build-pub.js` `replyLinksTo` + recovered-answer slug re-derivation.)
+> stamp), and the seed-wait used the *per-command* exec ceiling
+> (`budget_s:45 → 30 s`) — so the first `ls -l /src` after every deploy
+> soft-failed at 30 s though the seed (with a ~45 s boot head start) was
+> seconds from done. **Fix:** the seed-wait is decoupled from the command
+> ceiling — `SEED_WAIT_MS` (bash-core.js, 60 s, `min`-bounded by
+> `SEED_WEDGE_MS`) now covers the cold-seed tail so the first command lands;
+> new `sandbox.exec_seed_ready` info event confirms it on-device;
+> `exec_seed_busy` gains `seed_age_ms`. Owner-directed direct edit to #131/#43
+> files — owner-worker need not duplicate; @-mention on the PR comment.
+> (The same #526 session's SWE "no clickable link" was a SEPARATE pipeline bug,
+> also fixed on this branch — `build-pub.js` `replyLinksTo` + recovered-answer
+> slug re-derivation.)

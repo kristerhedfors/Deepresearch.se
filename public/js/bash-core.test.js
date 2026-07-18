@@ -29,6 +29,8 @@ import {
   normalizeExecResult,
   DEFAULT_EXEC_TIMEOUT_MS,
   MIN_EXEC_TIMEOUT_MS,
+  MAX_SHELL_WALL_MS,
+  SEED_WAIT_MS,
   execTimeoutForBudget,
   outboxListCommand,
   parseExecEnvelope,
@@ -535,6 +537,19 @@ describe("execTimeoutForBudget", () => {
   test("a budget above the default never RAISES the ceiling", () => {
     assert.equal(execTimeoutForBudget(60), DEFAULT_EXEC_TIMEOUT_MS);
     assert.equal(execTimeoutForBudget(270), DEFAULT_EXEC_TIMEOUT_MS);
+  });
+});
+
+describe("SEED_WAIT_MS (the cold-seed wait, decoupled from the exec ceiling)", () => {
+  test("larger than the per-command ceiling so a healthy first-boot /src seed is waited out, not soft-failed at 30 s (chat_logs #526)", () => {
+    // The whole point of the decoupling: the seed's ceiling must exceed the
+    // command ceiling (incl. a budget-scoped one), or `ls -l /src` keeps
+    // failing at 30 s on the first boot after every deploy.
+    assert.ok(SEED_WAIT_MS > DEFAULT_EXEC_TIMEOUT_MS);
+    assert.ok(SEED_WAIT_MS > execTimeoutForBudget(15));
+  });
+  test("stays under the whole-loop wall budget so a slow first boot still leaves room for real commands", () => {
+    assert.ok(SEED_WAIT_MS < MAX_SHELL_WALL_MS);
   });
 });
 
