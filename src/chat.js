@@ -71,7 +71,7 @@ import { getDb } from "./db.js";
  * @property {boolean} [web_search] knob, default on (only `false` disables)
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
  * @property {boolean} [sdk_mode] SDK ("lovable") mode: route this request to the
- *   Agent-Pair-SDK build flow (pipeline.js runSdkBuild). Honored only when the
+ *   DistillSDK build flow (pipeline.js runSdkBuild). Honored only when the
  *   caller's developer_mode knob grants introspection — the same capability
  *   gate; a client can't acquire the mode with the knob off
  * @property {boolean} [swe_mode] SWE ("software engineering") mode: route this
@@ -203,7 +203,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
-  // SDK ("lovable") mode: the request asks for the Agent-Pair-SDK build flow.
+  // SDK ("lovable") mode: the request asks for the DistillSDK build flow.
   // Gated on the SAME capability the introspection enrichment uses — the
   // developer_mode knob (enrich.developerOn) — so a client can't acquire the
   // mode the knob doesn't grant; the mode dropdown flips the knob first.
@@ -741,7 +741,7 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // mode also on, the client mounts the source tree at /src in the VM, so
     // the introspection block may point the model there (src/introspect.js).
     sandboxEnabled: !!extras.sandboxEnabled,
-    // SDK ("lovable") mode — pipeline.js runSdkBuild: the Agent-Pair-SDK
+    // SDK ("lovable") mode — pipeline.js runSdkBuild: the DistillSDK
     // build flow. buildSlug is the conversation's already-published build (an
     // iteration keeps the /app/<slug>/ URL stable); userId is the publisher
     // recorded as the build's owner (slug-reuse authorization).

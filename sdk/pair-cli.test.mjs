@@ -1,4 +1,4 @@
-// Unit suite for the Agent-Pair SDK CLI (sdk/pair-cli.mjs) — pure helpers over
+// Unit suite for DistillSDK's CLI (sdk/pair-cli.mjs) — pure helpers over
 // a small fixture manifest plus an integrity run against the REAL manifest, so
 // `npm test` catches a manifest edit that breaks deps/classes or forgets a
 // skill file (the same mirror-discipline the repo's other catalogs get).

@@ -1,4 +1,4 @@
-# Agent-Pair SDK — implementation order and rationale
+# DistillSDK — implementation order and rationale
 
 This document is the human rationale over `sdk/MANIFEST.json`'s dependency
 graph: the order in which a new pair's modules should be implemented, why

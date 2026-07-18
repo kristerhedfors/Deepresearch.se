@@ -53,7 +53,7 @@ const CASES = [
   ["refactor(client): split embeds registry and recovery transport from stream.js", ["refactor"]],
   ["security: mechanical secret-leak prevention — scanner + pre-push hook (P-2)", ["security"]],
   ["auth: canonicalize www -> apex so Google OAuth redirect_uri matches", ["access"]],
-  ["Agent-Pair SDK: core design docs (DESIGN, MANIFEST, ROADMAP, README)", ["sdk"]],
+  ["DistillSDK: core design docs (DESIGN, MANIFEST, ROADMAP, README)", ["sdk"]],
 ];
 
 for (const [line, mustHave] of CASES) {

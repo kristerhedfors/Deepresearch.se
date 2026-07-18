@@ -1,4 +1,4 @@
-# The Agent-Pair SDK
+# DistillSDK
 
 A software development kit for building **agent pairs** — one AI-assistant
 product shipped as two tiers of the same capability set:
@@ -24,7 +24,7 @@ they are.
 The SDK's complete standalone documentation — the abstraction, capability
 classes, contracts, full module catalog, CLI and implementation order in one
 document, integrated into the project's documentation corpus (so the in-app
-help layer answers from it) — is **`docs/AGENT-PAIR-SDK.md`**. This README is
+help layer answers from it) — is **`docs/DISTILLSDK.md`**. This README is
 the catalog front page of the `sdk/` directory itself.
 
 ## What's in the box

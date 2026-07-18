@@ -63,10 +63,10 @@ origin story of the first weekend, kept as the record of how it began —
 lives in `public/build/history.md` (rendered in-app at `/story/`; `/build/`
 holds the project purpose and EU AI Act use restrictions).
 
-## The Agent-Pair SDK
+## DistillSDK
 
-The architecture is also distilled into a reusable form: the **Agent-Pair
-SDK** (`sdk/`) — a design, a 33-module skill library, a machine-readable
+The architecture is also distilled into a reusable form: **DistillSDK**
+(`sdk/`) — a design, a 33-module skill library, a machine-readable
 module registry, and a dependency-free CLI for building **agent pairs** like
 this one: one AI-assistant product shipped as a wholly-in-browser client tier
 plus a one-edge-worker server tier, with at most one server component across
@@ -75,7 +75,7 @@ realize it, and carries the incident history that made those files what they
 are. It is currently design + skill library only — nothing in `src/` or
 `public/` imports it.
 
-- **`docs/AGENT-PAIR-SDK.md`** — the complete standalone documentation: the
+- **`docs/DISTILLSDK.md`** — the complete standalone documentation: the
   pair abstraction, capability classes, contracts PA-1…PA-10, the full module
   catalog, the CLI, and the implementation order.
 - `sdk/README.md` — the catalog front page; `sdk/DESIGN.md` the full design;

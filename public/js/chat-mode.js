@@ -17,7 +17,7 @@
 //                   picking the mode flips it via PUT /api/settings). Theme:
 //                   the `dev-mode` root class (dev-mode.js's titanium pane).
 //   sdk           → the request carries `sdk_mode: true` (chat.js), routing to
-//                   the Agent-Pair-SDK build flow. Same knob gate. Theme: the
+//                   the DistillSDK build flow. Same knob gate. Theme: the
 //                   `sdk-mode` root class (the green pane).
 //   swe           → the request carries `swe_mode: true` (chat.js), routing to
 //                   the Se/cure-variant build flow — "prompt a new instance of

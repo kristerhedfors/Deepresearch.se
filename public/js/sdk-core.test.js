@@ -1,4 +1,4 @@
-// Unit suite for the Agent-Pair SDK's shared pure core (sdk-core.js): the
+// Unit suite for DistillSDK's shared pure core (sdk-core.js): the
 // snapshot-backed manifest loading, the build-file staging rules, the
 // deterministic FILE-block convention, and the native SDK tool executors.
 // The manifest-operation helpers themselves (validate/close/order/render) are

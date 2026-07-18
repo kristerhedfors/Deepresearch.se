@@ -44,7 +44,7 @@ approval back before the canon changes.)
 |---|---|---|
 | **L0 — ground truth** | `src/`, `public/`, `sdk/`, `wrangler.toml`, `package.json` scripts | The code is what the application *does*. Never edited by this skill. |
 | **L1 — technical mirrors** | `docs/CODE-LAYOUT.md`, `docs/TESTING.md`, the test-enforced catalogs (`FEATURES.md` §3, `SECURITY-RISKS.md` §3), the generated artifacts (`public/introspect/*.json`, `public/pulse/data.json`) | Docs follow code, mechanically. Fix directly via **update-docs** (its greps, its regenerate rules). |
-| **L2 — subsystem / design docs** | `docs/PRIVACY-MODEL.md`, `docs/ARCHITECTURE.md`, `docs/SERVER-TOKENS.md`, `docs/ENCRYPTION.md`, `docs/AGENT-PAIR-SDK.md`, `docs/WORKSPACE-*.md`, `docs/PIPELINE-LANGUAGE.md`, the rest of `docs/*.md` | Mixed: they *describe* the code AND *state intent*. Mechanical parts fix directly; claim-level parts classify below. |
+| **L2 — subsystem / design docs** | `docs/PRIVACY-MODEL.md`, `docs/ARCHITECTURE.md`, `docs/SERVER-TOKENS.md`, `docs/ENCRYPTION.md`, `docs/DISTILLSDK.md`, `docs/WORKSPACE-*.md`, `docs/PIPELINE-LANGUAGE.md`, the rest of `docs/*.md` | Mixed: they *describe* the code AND *state intent*. Mechanical parts fix directly; claim-level parts classify below. |
 | **L3 — narrative & posture** | `CLAUDE.md` (mission, load-bearing invariants), `README.md`, the static pages `public/{architecture,build,story,help,welcome}/`, each skill's `description` | Stated intent and posture. Code contradicting these is a **finding**, not a doc edit. |
 
 Walk upward in order. Do not touch L2/L3 prose before L1 is reconciled —
@@ -64,7 +64,7 @@ first attention:
 ```bash
 for doc in docs/CODE-LAYOUT.md docs/TESTING.md docs/PRIVACY-MODEL.md \
            docs/ARCHITECTURE.md docs/SERVER-TOKENS.md docs/ENCRYPTION.md \
-           docs/AGENT-PAIR-SDK.md README.md CLAUDE.md; do
+           docs/DISTILLSDK.md README.md CLAUDE.md; do
   last=$(git log -1 --format=%H -- "$doc")
   echo "== $doc (last touched $(git log -1 --format=%cs -- "$doc"), \
 $(git rev-list --count "$last"..HEAD -- src/ public/ sdk/) source commits since)"

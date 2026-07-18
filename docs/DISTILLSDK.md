@@ -1,6 +1,6 @@
-# The Agent-Pair SDK
+# DistillSDK
 
-**The complete documentation of `sdk/` — the Agent-Pair SDK — as a standalone
+**The complete documentation of `sdk/` — DistillSDK — as a standalone
 section of the project's documentation.** The SDK is the *constructive*
 counterpart to the repo's operational skills: a design, a 33-module skill
 library, a machine-readable manifest, an implementation-order rationale, and a

@@ -1,5 +1,5 @@
 {
-  "sdk": "agent-pair-sdk",
+  "sdk": "distillsdk",
   "version": "0.1.0",
   "status": "wired (2026-07-18): manifest ops + SDK tools live in the shared core public/js/sdk-core.js (this CLI re-exports them); SDK mode (pipeline runSdkBuild) and the /mcp sdk_* tools consume this manifest from the deployed snapshot; generated builds publish at /app/<slug>/",
   "reference_product": "deepresearch.se (DeepResearch.Se/cure + DeepResearch.Se/rver)",

@@ -1,5 +1,5 @@
 // @ts-check
-// The Agent-Pair SDK's SERVER FAÇADE. The implementation — the manifest
+// DistillSDK's SERVER FAÇADE. The implementation — the manifest
 // operations, the SDK/build tool schemas and executors, and the generated-app
 // file staging rules — lives in ONE shared module, public/js/sdk-core.js (the
 // bash-core.js / introspect-core.js pattern), so the CLI (sdk/pair-cli.mjs),

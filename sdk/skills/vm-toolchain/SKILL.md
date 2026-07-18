@@ -13,7 +13,7 @@ description: >-
 
 # VM toolchain — the SDK inside the prepackaged Linux
 
-Make the pair its own development environment: the complete Agent-Pair SDK —
+Make the pair its own development environment: the complete DistillSDK —
 manifest, all skills, the CLI — available (1) from a **desktop checkout** (VS
 Code or any editor/agent harness), (2) **inside the in-browser Linux VM** the
 pair already ships, and (3) **from the application interface itself** (the
