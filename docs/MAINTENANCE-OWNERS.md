@@ -134,3 +134,22 @@ feature maintenance*, and the **feature-maintenance** skill):
 > scoped to the user's research budget (`execTimeoutForBudget`, both tiers).
 > Owed: on-device confirmation (first dev-mode boot seed-busy fail-soft, and
 > a fast stamped SECOND boot where `ls -l /src` answers).
+>
+> **2026-07-18 — #131's owed on-device confirmation ARRIVED (both items) +
+> residual finding → routed to #131 (comment 5012187482).** Owner hit
+> "ls in sandbox timed out" during a SWE-mode session; live logs confirm
+> #131 is working as designed: **#526** (css **h47**, iOS 18.7, FIRST boot
+> after the deploy) → `ls -l /src` exit 124 with the graceful
+> `sandbox.exec_seed_busy` message ("still preparing … try again in a
+> moment") — the fail-soft, NOT #522's 30 s wedge+teardown; and **#523**
+> (css h46, a warm/stamped SECOND boot) → `ls -l /src` exit 0, six clean
+> listings, fast (stamp skip). Residual: #526's `client_diag.fs.ms` was
+> **80401** (a ~6.8 MB full re-extraction because the h47 deploy changed the
+> stamp), and the `budget_s:45 → 30 s` command ceiling waited out and
+> soft-failed while the seed still ran, so the FIRST dev/SWE boot after every
+> deploy still costs one failed command + a retry. Options offered to the
+> owner-worker on the PR: pre-warm the /src seed on mode entry; wait-and-retry
+> once on `exec_seed_busy` within `MAX_SHELL_WALL_MS`; or shrink the
+> first-boot payload. (The same #526 session's SWE "no clickable link" was a
+> SEPARATE pipeline bug — fixed on `claude/swe-sandbox-timeouts-tjd7y0`,
+> `build-pub.js` `replyLinksTo` + recovered-answer slug re-derivation.)
