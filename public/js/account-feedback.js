@@ -1,6 +1,9 @@
 // The account panel's "feedback" view — the user's feedback dialogue
-// threads. The panel shell (showView) lives in account.js; the summary's
-// Feedback-mode knob lives with the summary in account-views.js.
+// threads. Feedback is filed straight from the chat now (a message that opens
+// with the word "feedback" is routed to the feedback pipeline — src/feedback.js
+// feedbackIntent, src/pipeline.js runFeedbackCapture), so this view is where the
+// resulting threads live and where the developers' replies come back. The panel
+// shell (showView) lives in account.js.
 
 import { renderNotifBadge } from "./account-views.js";
 import { createFeedbackAttach } from "./feedback-attach.js";
@@ -36,8 +39,10 @@ export async function loadFeedbackView(ctx) {
       ? '<p class="muted">Could not load feedback — try again in a moment.</p>'
       : entries.length
         ? entries.map(renderFeedbackEntry).join("")
-        : `<p class="muted">No feedback yet. Switch on Feedback mode, then press
-           <b>Feedback</b> under any reply to start a dialogue with the developers.</p>`;
+        : `<p class="muted">No feedback yet. To start a dialogue with the developers,
+           just begin a chat message with the word <b>“feedback”</b> — for example
+           “feedback: the map view was cut off”. It's sent to the developers, and
+           their replies show up here.</p>`;
   ctx.body.innerHTML = `
     <button id="fbbackbtn" type="button" class="back-link">← Back</button>
     <p class="section-lbl">Feedback</p>

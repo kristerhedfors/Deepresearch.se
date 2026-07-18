@@ -49,7 +49,6 @@ const API = "/api/admin/testpoints";
 const KNOB_SELECTORS = {
   shodan_mcp: "#shodanknob",
   google_maps: "#gmapsknob",
-  feedback_mode: "#fbknob",
   bash_lite_mcp: "#sbknob",
   developer_mode: "#devknob",
 };

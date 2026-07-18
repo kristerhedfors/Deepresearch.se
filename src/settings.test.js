@@ -8,14 +8,13 @@ import {
   cloudStorageEnabled,
   developerModeEnabled,
   featureAvailability,
-  feedbackEnabled,
   googleMapsEnabled,
   parseSettings,
   shodanEnabled,
   storageAvailability,
 } from "./settings.js";
 
-const DEFAULTS = { shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
+const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, developer_mode: false };
 
 test("parseSettings defaults: every knob off", () => {
   assert.deepEqual(parseSettings(null), DEFAULTS);
@@ -66,15 +65,15 @@ test("cloudStorageEnabled is availability, nothing else: binding AND user row", 
 
 test("parseSettings drops unknown keys", () => {
   const s = parseSettings('{"shodan_mcp":true,"evil":"x"}');
-  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "developer_mode", "feedback_mode", "google_maps", "shodan_mcp"]);
+  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "developer_mode", "google_maps", "shodan_mcp"]);
 });
 
-test("parseSettings: only an explicit stored true enables feedback_mode", () => {
-  assert.equal(parseSettings('{"feedback_mode":true}').feedback_mode, true);
-  assert.equal(parseSettings('{"feedback_mode":false}').feedback_mode, false);
-  // Non-boolean junk means the default (off), not on.
-  assert.equal(parseSettings('{"feedback_mode":1}').feedback_mode, false);
-  assert.equal(parseSettings('{"feedback_mode":"true"}').feedback_mode, false);
+test("parseSettings: a legacy stored feedback_mode flag is dropped like any unknown key", () => {
+  // Feedback is no longer a knob (given from the chat) — accounts that stored
+  // the old flag simply lose the key on the next parse.
+  const s = parseSettings('{"feedback_mode":true,"shodan_mcp":true}');
+  assert.equal("feedback_mode" in s, false);
+  assert.equal(s.shodan_mcp, true);
 });
 
 test("parseSettings: only an explicit stored true enables bash_lite_mcp", () => {
@@ -124,7 +123,7 @@ test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
   assert.equal(shodanEnabled(env, {}), false); // break-glass: no user row
 });
 
-test("featureAvailability reports storage, rag, shodan, google_maps, and feedback independently", () => {
+test("featureAvailability reports storage, rag, shodan, and google_maps independently", () => {
   const user = { id: 1 };
   // bash_lite is a pure browser capability: available whenever there's a user
   // row, regardless of any server secret.
@@ -133,7 +132,6 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     rag: false,
     shodan: false,
     google_maps: false,
-    feedback: false,
     bash_lite: true,
     developer: true,
   });
@@ -142,17 +140,6 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     rag: false,
     shodan: true,
     google_maps: false,
-    feedback: false,
-    bash_lite: true,
-    developer: true,
-  });
-  // Feedback needs only D1 (+ a user row) — no external secret.
-  assert.deepEqual(featureAvailability({ DB: {} }, { user }), {
-    storage: false,
-    rag: false,
-    shodan: false,
-    google_maps: false,
-    feedback: true,
     bash_lite: true,
     developer: true,
   });
@@ -161,7 +148,6 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     rag: false,
     shodan: false,
     google_maps: true,
-    feedback: false,
     bash_lite: true,
     developer: true,
   });
@@ -171,7 +157,6 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     rag: false,
     shodan: false,
     google_maps: false,
-    feedback: false,
     bash_lite: false,
     developer: false,
   });
@@ -183,20 +168,9 @@ test("featureAvailability reports storage, rag, shodan, google_maps, and feedbac
     rag: false,
     shodan: false,
     google_maps: false,
-    feedback: false,
     bash_lite: true,
     developer: true,
   });
-});
-
-test("feedbackEnabled: needs D1, a user row, AND the knob on", () => {
-  const env = { DB: {} };
-  const on = { user: { id: 1, settings_json: '{"feedback_mode":true}' } };
-  const off = { user: { id: 2, settings_json: null } }; // default off
-  assert.equal(feedbackEnabled(env, on), true);
-  assert.equal(feedbackEnabled(env, off), false); // default off
-  assert.equal(feedbackEnabled({}, on), false); // no D1
-  assert.equal(feedbackEnabled(env, {}), false); // break-glass: no user row
 });
 
 test("googleMapsEnabled: needs the key, a user row, AND the knob on", () => {

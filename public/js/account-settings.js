@@ -1,15 +1,16 @@
 // The account panel's "settings" view — ALL configuration in one place
 // (2026-07-11 directive; also opened straight from the header's gear
 // icon): the Shodan / Google Maps knobs, each disabled (with a note) when
-// the server can't back it, plus the Feedback-mode and execution-sandbox
-// knobs (rows + wiring from account-views.js), and — first — the
+// the server can't back it, plus the execution-sandbox and introspection
+// knobs (rows + wiring from account-views.js), a note on how to give
+// feedback (now done from the chat, not a knob), and — first — the
 // cloud-storage DISCLOSURE row: cloud storage is implicit on Se/rver
 // (2026-07-16 owner directive, no per-account opt-out), so the row informs
 // instead of switching; the tier without cloud storage is Se/cure. Built from
 // account-views.js's shared settingRow / wireSettingPopovers building blocks;
 // the panel shell (showView) lives in account.js.
 
-import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireFeedbackKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
+import { renderConfigKnobs, settingRow, wireDeveloperKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
 import { openBundle } from "./proxy-bundle.js";
 import { buildWorkspacePayload, generateWorkspacePassword, sealWorkspace, workspaceLink } from "./workspace-core.js";
@@ -132,10 +133,13 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    <p class="muted setting-note">To send the developers feedback, start a chat
+      message with the word <b>“feedback”</b> (for example “feedback: the map view
+      was cut off”). It's routed straight to the developers — there's no switch to
+      flip — and any reply shows up under <b>Feedback</b> in this panel.</p>
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   wireSettingPopovers(ctx.body);
-  wireFeedbackKnob(ctx);
   wireSandboxKnob(ctx);
   wireDeveloperKnob(ctx);
 

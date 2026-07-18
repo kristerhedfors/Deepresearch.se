@@ -2,7 +2,6 @@
 // streamed content + Raw/Copy/PDF tools + stats footer). Initialize once
 // with the chat container and a scroll callback.
 
-import { createFeedbackAttach } from "./feedback-attach.js";
 import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
@@ -12,7 +11,7 @@ import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
 
 export const EMPTY_TEXT =
-  "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources.";
+  "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. To send the developers feedback, just start your message with the word “feedback” — for example: “feedback: the map view was cut off on my phone”.";
 
 let chat;
 let scrollDown;
@@ -209,7 +208,7 @@ export function addAssistantTurn(question = "", images = []) {
     researchLog: [],
     doneStats: null,
   };
-  tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn), makeFeedbackButton(turn));
+  tools.append(makeRawButton(turn), makeCopyButton(turn), makePdfButton(turn));
   return turn;
 }
 
@@ -365,144 +364,12 @@ async function toggleDeliverableMenu(chip, f, mainBtn) {
   }
 }
 
-// Feedback mode (the account panel's knob): while the body carries the
-// `feedback-mode` class, every assistant turn's tools row shows a Feedback
-// button — the button is ALWAYS in the DOM (live turns and reloaded ones
-// alike), CSS shows/hides it, so flipping the knob applies to existing
-// replies instantly with no re-render.
-export function applyFeedbackMode(on) {
-  document.body.classList.toggle("feedback-mode", on);
-}
-
-// The Feedback button opens a MODAL dialog (same overlay pattern as the
-// account panel) — deliberately NOT an inline form: an inline textarea in
-// the chat column competes with the ever-present composer, and on a phone
-// the typing predictably lands in the composer and goes to the LLM instead
-// of the feedback pipeline (observed live 2026-07-09: two feedback attempts
-// arrived as chat questions #170/#171 while the feedback table stayed
-// empty). A dimmed full-screen dialog is the unambiguous answer: while it's
-// open, the composer isn't reachable at all.
-function makeFeedbackButton(turn) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "tool-btn feedback-btn";
-  btn.textContent = "Feedback";
-  btn.title = "Tell the developers about this reply";
-  btn.addEventListener("click", () => openFeedbackDialog(turn));
-  return btn;
-}
-
-function openFeedbackDialog(turn) {
-  document.querySelector(".fb-overlay")?.remove(); // one dialog at a time
-  const overlay = document.createElement("div");
-  overlay.className = "fb-overlay";
-  const card = document.createElement("div");
-  card.className = "fb-card";
-
-  const head = document.createElement("div");
-  head.className = "fb-card-head";
-  const title = document.createElement("strong");
-  title.textContent = "Feedback to the developers";
-  const close = document.createElement("button");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close");
-  close.textContent = "✕";
-  close.addEventListener("click", () => overlay.remove());
-  head.append(title, close);
-
-  const about = document.createElement("p");
-  about.className = "muted fb-about";
-  const q = (turn.question || "").trim();
-  about.textContent = q
-    ? `About the reply to: “${q.length > 110 ? q.slice(0, 110) + "…" : q}”`
-    : "About this reply";
-
-  const ta = document.createElement("textarea");
-  ta.rows = 4;
-  ta.placeholder = "What was good or bad about this reply? What should change?";
-
-  // Screenshots ride along with the comment — a picture of a broken layout
-  // or a wrong map frame beats describing it.
-  const attach = createFeedbackAttach();
-
-  const note = document.createElement("p");
-  note.className = "muted fb-note";
-  note.textContent =
-    "This goes to the site's developers — not to the AI. It's sent together with the question and reply above, plus any screenshots you attach; answers show up under Feedback in your account panel.";
-
-  const actions = document.createElement("div");
-  actions.className = "fb-actions";
-  const send = document.createElement("button");
-  send.type = "button";
-  send.className = "fb-send";
-  send.textContent = "Send feedback";
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => overlay.remove());
-  const status = document.createElement("span");
-  status.className = "muted fb-note";
-  actions.append(send, cancel, status);
-
-  send.addEventListener("click", async () => {
-    const comment = ta.value.trim();
-    if (!comment) {
-      ta.focus();
-      return;
-    }
-    if (attach.busy()) {
-      status.textContent = "Still compressing an image — one moment.";
-      return;
-    }
-    const images = attach.getImages();
-    send.disabled = true;
-    send.textContent = "Sending…";
-    try {
-      const res = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          comment,
-          question: turn.question || undefined,
-          answer_excerpt: turn.text ? turn.text.slice(0, 8000) : undefined,
-          model: turn.model || undefined,
-          page: location.pathname,
-          images: images.length ? images : undefined,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "HTTP " + res.status);
-      }
-      card.replaceChildren();
-      const done = document.createElement("p");
-      done.className = "fb-done";
-      done.textContent = "Feedback sent ✓";
-      const hint = document.createElement("p");
-      hint.className = "muted";
-      hint.textContent =
-        "The developers read every submission — replies show up under Feedback in your account panel.";
-      card.append(done, hint);
-      setTimeout(() => overlay.remove(), 2500);
-    } catch (err) {
-      send.disabled = false;
-      send.textContent = "Send feedback";
-      status.textContent = (err?.message || "Could not send feedback.") + " Try again.";
-    }
-  });
-
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-  overlay.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") overlay.remove();
-  });
-
-  card.append(head, about, ta, attach.el, note, actions);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-  ta.focus();
-}
+// Feedback is given straight from the chat now (a message that opens with the
+// word "feedback" is routed to the feedback pipeline server-side — src/
+// feedback.js feedbackIntent, src/pipeline.js runFeedbackCapture), so there is
+// no per-reply Feedback button or modal here any more. The developers' replies
+// still surface as threads under Feedback in the account panel
+// (account-feedback.js).
 
 function makeRawButton(turn) {
   const rawBtn = document.createElement("button");

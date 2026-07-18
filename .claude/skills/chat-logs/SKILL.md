@@ -87,6 +87,13 @@ chain.
   (n/title/url as numbered in the answer), `complexity`, `subquestions`,
   `conflicts`, cache counts, and `berget_cost`/`exa_cost` — enough to
   replay the research decisions without the SSE trace.
+- **Feedback tag — `meta.feedback`.** `1` when the message was FEEDBACK for
+  the developers (it opened with the word "feedback" — `feedbackIntent` →
+  `src/pipeline.js` `runFeedbackCapture`), so a `scripts/chatlogs --q feedback`
+  scan finds feedback even when the structured entry write failed. It's the
+  chat-log half of the DOUBLE discovery path — the structured queue is the
+  other half (`scripts/feedback` + the **feedback-loop** skill), the queue
+  being the place to actually work them.
 - **Tool-call visibility — `meta.shell`.** When the bash-lite sandbox
   ran (the one tool-calling-shaped capability; invariant 1 keeps it a
   fenced-block convention, not a function call), `meta.shell` is the FULL

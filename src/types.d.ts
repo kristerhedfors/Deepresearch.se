@@ -326,8 +326,6 @@ export interface Settings {
   shodan_mcp: boolean;
   /** Google Maps / Street View enrichment (default OFF — opt-in). */
   google_maps: boolean;
-  /** Per-reply feedback buttons + the account panel's Feedback view (default OFF — opt-in). */
-  feedback_mode: boolean;
   /** The in-browser Linux execution sandbox + bash-lite agent (default OFF — opt-in). */
   bash_lite_mcp: boolean;
   /** Developer mode: unlocks introspection mode (default OFF — opt-in). */

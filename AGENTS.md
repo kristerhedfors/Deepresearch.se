@@ -101,7 +101,7 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   agent; the COEP headers, fail-soft contract, file mounting.
 - **feature-board** — running the FEATURE-BUILD loop (`src/features.js`,
   `FEATURES.md`), and the general playbook for a new priority board.
-- **feedback-loop** — Claude Code as the back end of Feedback mode
+- **feedback-loop** — Claude Code as the back end of the feedback pipeline
   (`src/feedback.js`); the gather → decide → act → message-back loop.
 - **help-docs** — HELP MODE, the documentation-first layer of introspection:
   the docs corpus + index (symbol references, served doc images), the

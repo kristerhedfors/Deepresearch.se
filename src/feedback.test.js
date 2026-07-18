@@ -10,6 +10,7 @@ import {
   FEEDBACK_CAPS,
   FEEDBACK_IMAGE_CAPS,
   FEEDBACK_STATUSES,
+  feedbackIntent,
   formatFeedbackText,
   isOpenStatus,
   normalizeStatus,
@@ -18,6 +19,48 @@ import {
   validateFeedbackImages,
   validateFeedbackReply,
 } from "./feedback.js";
+
+// ---------------------------------------------------------------------------
+// feedbackIntent — the chat-side gate (EN + SV parity, invariant 6)
+// ---------------------------------------------------------------------------
+
+test("feedbackIntent: a message opening with 'feedback' (any case) triggers", () => {
+  assert.equal(feedbackIntent("feedback: the map view was cut off"), true);
+  assert.equal(feedbackIntent("Feedback - please add a dark theme"), true);
+  assert.equal(feedbackIntent("FEEDBACK the PDF export is broken"), true);
+  assert.equal(feedbackIntent("  feedback"), true); // leading whitespace, bare word
+  assert.equal(feedbackIntent("feedback."), true);
+});
+
+test("feedbackIntent: Swedish forms trigger with the same breadth (parity)", () => {
+  // "feedback" is used in Swedish too; the native terms are återkoppling /
+  // synpunkt(er), definite forms included.
+  assert.equal(feedbackIntent("Feedback: kartan var avklippt"), true);
+  assert.equal(feedbackIntent("återkoppling: sökningen är långsam"), true);
+  assert.equal(feedbackIntent("Återkopplingen: knappen fungerar inte"), true);
+  assert.equal(feedbackIntent("synpunkt: lägg till mörkt tema"), true);
+  assert.equal(feedbackIntent("Synpunkter på gränssnittet"), true);
+});
+
+test("feedbackIntent: an ordinary question is NOT feedback", () => {
+  assert.equal(feedbackIntent("What is the capital of France?"), false);
+  assert.equal(feedbackIntent("Explain how transformers work"), false);
+  assert.equal(feedbackIntent("Ge mig en sammanfattning av rapporten"), false);
+  // The word must OPEN the message — a mention mid-sentence doesn't route.
+  assert.equal(feedbackIntent("How do I read my feedback threads?"), false);
+});
+
+test("feedbackIntent: 'feedback loop(s)' research questions are NOT swallowed", () => {
+  // The one excluded collision: a ubiquitous fixed phrase must still research.
+  assert.equal(feedbackIntent("feedback loops in machine learning, explain"), false);
+  assert.equal(feedbackIntent("Feedback loop design in control theory"), false);
+});
+
+test("feedbackIntent: non-string input is safe", () => {
+  assert.equal(feedbackIntent(null), false);
+  assert.equal(feedbackIntent(undefined), false);
+  assert.equal(feedbackIntent(42), false);
+});
 
 // ---------------------------------------------------------------------------
 // Status lifecycle

@@ -142,11 +142,11 @@ export const FEATURE_ITEMS = [
   },
   {
     id: "F-11",
-    title: "Feedback mode — per-reply dialogue with the dev agent",
+    title: "Feedback pipeline — chat-triggered dialogue with the dev agent",
     impact: "medium",
     status: "shipped",
     summary:
-      "Per-reply user feedback as dialogue threads the development agent gathers, decides on, acts on, and replies into — the third loop-feeding queue (src/feedback.js). See the feedback-loop skill.",
+      "User feedback given straight from the chat — a message opening with the word \"feedback\" (feedbackIntent, EN+SV) routes to the feedback case (src/pipeline.js runFeedbackCapture), which answers warmly and records a dialogue-thread entry (src/feedback.js) the development agent gathers, decides on, acts on, and replies into. Discovery is double: the structured queue plus a chat_logs meta.feedback tag. Superseded the earlier per-reply Feedback button + settings knob (2026-07-18). See the feedback-loop skill.",
   },
   {
     id: "F-12",

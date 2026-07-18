@@ -1,7 +1,9 @@
 // @ts-check
 // Per-account settings (GET/PUT /api/settings — src/settings.js): the
-// shodan_mcp (Shodan host-intel), google_maps, feedback_mode,
-// bash_lite_mcp, and developer_mode knobs. Cloud storage is NOT a knob
+// shodan_mcp (Shodan host-intel), google_maps, bash_lite_mcp, and
+// developer_mode knobs. Feedback is NOT a knob (given from the chat — a
+// message opening with "feedback" is routed to the feedback pipeline).
+// Cloud storage is NOT a knob
 // (2026-07-16 owner directive): on this signed-in tier history is always
 // cloud-stored whenever the server can store it — the cached
 // `available.storage` answers the hot-path question every storage-touching
@@ -17,11 +19,10 @@
  * @typedef {object} Settings
  * @property {boolean} [shodan_mcp]
  * @property {boolean} [google_maps]
- * @property {boolean} [feedback_mode]
  * @property {boolean} [bash_lite_mcp]
  * @property {boolean} [developer_mode]
  * @property {string} [maps_embed_key]
- * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, feedback?: boolean, bash_lite?: boolean, developer?: boolean}} [available]
+ * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, bash_lite?: boolean, developer?: boolean}} [available]
  */
 
 /** @type {Settings | null} */
@@ -128,23 +129,6 @@ export function setShodanMcp(on) {
 /** @param {boolean} on */
 export function setGoogleMaps(on) {
   return updateSetting({ google_maps: on });
-}
-
-// Feedback mode knob (default off; needs the server's D1 database and a
-// signed-in account). While on, every assistant reply — existing ones
-// included — shows a Feedback button (turns.js; visibility toggled via the
-// body's `feedback-mode` class, see applyFeedbackMode in account.js/app.js).
-export function feedbackModeOn() {
-  return settings?.feedback_mode === true;
-}
-
-export function feedbackAvailable() {
-  return settings?.available?.feedback === true;
-}
-
-/** @param {boolean} on */
-export function setFeedbackMode(on) {
-  return updateSetting({ feedback_mode: on });
 }
 
 // The experimental bash-lite execution sandbox knob (default off; needs only
