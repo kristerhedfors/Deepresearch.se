@@ -302,6 +302,23 @@ header {
   pointer-events: none;
 }
 :root.sdk-mode .sdk-tag { display: block; }
+/* The SWE-mode sibling marker — the quiet label naming the khaki "new instance
+   of Se/cure" build mode (chat-mode.js toggles `swe-mode` on the root). Same
+   treatment as the introspection/SDK tags, in a light khaki that echoes the
+   Se/cure tier this mode forges. */
+.swe-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #f0e8d6;
+  text-shadow: 0 1px 2px rgba(70, 58, 30, .55), 0 0 1px rgba(70, 58, 30, .4);
+  pointer-events: none;
+}
+:root.swe-mode .swe-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -757,6 +774,24 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
     inset 0 1px 0 rgba(250, 255, 252, .95),
     inset 0 14px 26px rgba(248, 255, 250, .4),
     inset 0 -10px 20px rgba(120, 185, 145, .16);
+}
+/* SWE mode: the composer becomes a brushed KHAKI glass pane — the "prompt a new
+   instance of Se/cure" build-mode cue (root carries `swe-mode`, chat-mode.js).
+   Same metal construction as the introspection/SDK panes (light top→bottom
+   sheen, bright specular top edge, soft tinted drop shadow), in the Se/cure
+   khaki (#c3b091 family): a near-white sand crown, a khaki waist, a lighter
+   foot. Light and translucent so the ordinary dark text needs no override;
+   background only — the sky-blue field is unchanged. */
+:root.swe-mode #composer {
+  background:
+    linear-gradient(180deg, rgba(252, 249, 241, .9) 0%, rgba(220, 204, 168, .92) 55%, rgba(240, 231, 210, .9) 100%),
+    rgba(233, 223, 199, .72);
+  border: 1px solid rgba(252, 248, 238, .9);
+  box-shadow:
+    0 7px 26px rgba(110, 92, 50, .24),
+    inset 0 1px 0 rgba(255, 252, 245, .95),
+    inset 0 14px 26px rgba(252, 248, 238, .4),
+    inset 0 -10px 20px rgba(180, 158, 110, .16);
 }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {

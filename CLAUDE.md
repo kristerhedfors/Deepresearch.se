@@ -232,12 +232,16 @@ dependency-free CLI (`node sdk/pair-cli.mjs list|show|plan|validate`,
 unit-tested in `npm test`). Since 2026-07-18 the SDK is WIRED into the app:
 the pure core `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI
 re-exports it) powers **SDK mode** — the green "lovable experience" entry in
-the chat-mode dropdown (Normal / Introspection / SDK) that designs + builds a
-self-contained web app from the SDK's modules/skills and publishes it live at
-`/app/<slug>/` (`src/build-pub.js`, opaque-origin CSP sandbox) — and the
+the chat-mode dropdown (Normal / Introspection / SDK / SWE) that designs +
+builds a self-contained web app from the SDK's modules/skills and publishes it
+live at `/app/<slug>/` (`src/build-pub.js`, opaque-origin CSP sandbox) — and the
 `/mcp` `sdk_*` tools, so agents plan against the manifest without shelling
-into the sandbox (where `/src/sdk/pair-cli.mjs` also works in dev mode). SDK
-mode's native tool loop rides invariant 1's SAME authorized exception as
+into the sandbox (where `/src/sdk/pair-cli.mjs` also works in dev mode). **SWE
+mode** (2026-07-18) is the khaki sibling entry: the SAME build/publish
+machinery (`runSdkBuild` keyed by `BUILD_FLAVORS`, `swe_mode` chat field)
+seeded with the deployed **Se/cure** source instead of the SDK catalog, so the
+user prompts *a new instance of Se/cure in a different shape or form*. Both
+build modes' native tool loop rides invariant 1's SAME authorized exception as
 introspection (deterministic `FILE:`-block fallback on non-tool models); see
 the **sdk-mode** skill. Its complete standalone documentation is
 `docs/AGENT-PAIR-SDK.md`, updated in the same commit as any `sdk/` change.

@@ -92,6 +92,8 @@ import {
   revisePrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
+  sweBuildPrompt,
+  sweBuildToolPrompt,
   searchOffPrompt,
   sourceAgentPrompt,
   sourceAnswerPrompt,
@@ -109,6 +111,7 @@ import {
   SDK_TOOL_NAMES,
   buildFilesSummary,
   buildSdkContextBlock,
+  buildSweContextBlock,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
@@ -315,12 +318,17 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
   let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
-  // SDK ("lovable") mode — the green mode in the mode dropdown: the request
-  // asks for the Agent-Pair-SDK build flow, so it takes the whole answer
-  // phase (no web search, no triage — the deliverable is a published app).
-  // Gated in chat.js on the developer_mode capability; fully fail-soft inside.
+  // Build modes — the green SDK ("lovable") mode and the khaki SWE ("prompt a
+  // new instance of Se/cure") mode in the mode dropdown: the request asks for a
+  // build flow, so it takes the whole answer phase (no web search, no triage —
+  // the deliverable is a published app). Both are gated in chat.js on the
+  // developer_mode capability and share the publish machinery; they differ only
+  // in the flavor (prompts / context / tool set). Fully fail-soft inside.
   if (/** @type {any} */ (state).sdkMode) {
-    return runSdkBuild(ctx);
+    return runSdkBuild(ctx, BUILD_FLAVORS.sdk);
+  }
+  if (/** @type {any} */ (state).sweMode) {
+    return runSdkBuild(ctx, BUILD_FLAVORS.swe);
   }
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
@@ -651,15 +659,17 @@ async function runSourceResearchTools(ctx, snapshot) {
   ctx.stepDone("synth", "Report drafted");
 }
 
-// ---- SDK ("lovable") mode: design + build + publish -------------------------
+// ---- Build modes (SDK "lovable" + SWE "new Se/cure"): design + build + publish
 //
-// The green mode's answer phase (routed at the top of runPipeline): the model
+// The build modes' answer phase (routed at the top of runPipeline): the model
 // builds a small self-contained web app and the pipeline publishes it at a
-// live /app/<slug>/ URL (src/build-pub.js). Two paths, mirroring the
-// introspection source research exactly:
+// live /app/<slug>/ URL (src/build-pub.js). ONE runner, keyed by BUILD_FLAVORS
+// — the green SDK mode builds a generic app from the Agent-Pair SDK catalog;
+// the khaki SWE mode builds a NEW INSTANCE of Se/cure from the deployed Se/cure
+// source. Two execution paths, mirroring the introspection source research:
 //
 //   1. NATIVE TOOLS (the same owner-authorized invariant-1 exception, extended
-//      to SDK mode 2026-07-18): a tool-capable answer model drives sdk_*
+//      to SDK mode 2026-07-18): a tool-capable answer model drives the flavor's
 //      planning tools + the snapshot readers + write_file/publish_app itself.
 //   2. DETERMINISTIC (every other catalog model): one streamed completion
 //      that emits FILE blocks (bash-core's fenced-block philosophy — a text
@@ -671,6 +681,47 @@ async function runSourceResearchTools(ctx, snapshot) {
 
 const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than reading
 
+/**
+ * The two build flavors share the publish machinery and the tool/deterministic
+ * split; they differ only in the prompts, the context block, the offered tool
+ * set, and the step labels. SDK builds a generic app from the Agent-Pair SDK
+ * catalog; SWE builds a new instance of Se/cure from the deployed Se/cure
+ * source.
+ * @typedef {object} BuildFlavor
+ * @property {string} planStep     the "plan" step's in-progress label
+ * @property {string} planDone     the "plan" step's done label
+ * @property {string} building     the "source" step's in-progress label (tool path)
+ * @property {() => string} toolPrompt   system prompt for the native-tool path
+ * @property {() => string} detPrompt    system prompt for the deterministic path
+ * @property {(manifest: any, opts: any) => string} context  the injected context block
+ * @property {(snapshot: any) => any[]} tools  the tool set for the tool path
+ * @property {string} toolClosing  the closing instruction on the tool-path user turn
+ */
+
+/** @type {Record<string, BuildFlavor>} */
+const BUILD_FLAVORS = {
+  sdk: {
+    planStep: "SDK mode…",
+    planDone: "SDK mode — designing and building with the Agent-Pair SDK",
+    building: "Building with the Agent-Pair SDK…",
+    toolPrompt: sdkBuildToolPrompt,
+    detPrompt: sdkBuildPrompt,
+    context: (manifest, opts) => buildSdkContextBlock(manifest, opts),
+    tools: (snapshot) => [...(snapshot ? INTROSPECTION_TOOLS : []), ...SDK_TOOLS, ...BUILD_TOOLS],
+    toolClosing: "Build it now: plan with the sdk_* tools, read the relevant skills, stage every file with write_file, publish_app once, then write the short reply.",
+  },
+  swe: {
+    planStep: "SWE mode…",
+    planDone: "SWE mode — building a new instance of Se/cure",
+    building: "Building a Se/cure variant…",
+    toolPrompt: sweBuildToolPrompt,
+    detPrompt: sweBuildPrompt,
+    context: (_manifest, opts) => buildSweContextBlock(opts),
+    tools: (snapshot) => [...(snapshot ? INTROSPECTION_TOOLS : []), ...BUILD_TOOLS],
+    toolClosing: "Build it now: read the relevant Se/cure reference files, stage every file with write_file, publish_app once, then write the short reply.",
+  },
+};
+
 /** @param {PipelineCtx} ctx @returns {Promise<any>} */
 async function sdkSnapshot(ctx) {
   // The introspection enrichment (dev mode is on — SDK mode is gated on it)
@@ -681,11 +732,11 @@ async function sdkSnapshot(ctx) {
   return loadSourceSnapshot(ctx.env, ctx.log);
 }
 
-/** @param {PipelineCtx} ctx */
-async function runSdkBuild(ctx) {
+/** @param {PipelineCtx} ctx @param {BuildFlavor} flavor */
+async function runSdkBuild(ctx, flavor = BUILD_FLAVORS.sdk) {
   const { state } = ctx;
-  ctx.step("plan", "SDK mode…");
-  ctx.stepDone("plan", "SDK mode — designing and building with the Agent-Pair SDK");
+  ctx.step("plan", flavor.planStep);
+  ctx.stepDone("plan", flavor.planDone);
   const snapshot = await sdkSnapshot(ctx);
   const manifest = manifestFromSnapshot(snapshot);
   if (!manifest) ctx.log.warn("sdk.manifest_missing", {});
@@ -700,13 +751,13 @@ async function runSdkBuild(ctx) {
   });
   if (toolsOn) {
     try {
-      return await runSdkBuildTools(ctx, snapshot, manifest);
+      return await runSdkBuildTools(ctx, snapshot, manifest, flavor);
     } catch (/** @type {any} */ err) {
       ctx.log.warn("sdk.tools_failed", { model: ctx.model, error: err?.message || String(err) });
       // fall through to the deterministic FILE-block path
     }
   }
-  return runSdkBuildDeterministic(ctx, manifest);
+  return runSdkBuildDeterministic(ctx, manifest, flavor);
 }
 
 /**
@@ -744,8 +795,8 @@ async function publishSdkFiles(ctx, files, title) {
 /** @param {PipelineCtx} ctx @returns {string} */
 const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().slice(0, 80) || "App";
 
-/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest */
-async function runSdkBuildTools(ctx, snapshot, manifest) {
+/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {BuildFlavor} flavor */
+async function runSdkBuildTools(ctx, snapshot, manifest, flavor) {
   const readBudget = { used: 0 };
   /** @type {Map<string, string>} */
   const staged = new Map();
@@ -754,11 +805,12 @@ async function runSdkBuildTools(ctx, snapshot, manifest) {
   let calls = 0;
   const fileCheck = snapshotFileCheck(snapshot);
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
-  ctx.step("source", "Building with the Agent-Pair SDK…");
+  ctx.step("source", flavor.building);
 
-  // The snapshot readers only make sense with a snapshot to read; the SDK and
-  // build tools always ride.
-  const tools = [...(snapshot ? INTROSPECTION_TOOLS : []), ...SDK_TOOLS, ...BUILD_TOOLS];
+  // The snapshot readers only make sense with a snapshot to read; the build
+  // tools always ride. SDK adds the SDK planning tools; SWE reads the Se/cure
+  // source directly. (flavor.tools decides.)
+  const tools = flavor.tools(snapshot);
   /** @param {string} name @param {any} input @returns {Promise<string> | string} */
   const execTool = (name, input) => {
     if (SDK_TOOL_NAMES.has(name)) return runSdkTool(manifest, name, input, { fileCheck });
@@ -782,13 +834,13 @@ async function runSdkBuildTools(ctx, snapshot, manifest) {
     `Request (latest user message):\n${ctx.cleanLastUser}\n\n` +
     `Conversation context:\n${ctx.cleanConvText}\n\n` +
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
-    buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null }) +
-    "\n\nBuild it now: plan with the sdk_* tools, read the relevant skills, stage every file with write_file, publish_app once, then write the short reply.";
+    flavor.context(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null }) +
+    `\n\n${flavor.toolClosing}`;
 
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: sdkBuildToolPrompt(),
+    system: flavor.toolPrompt(),
     userContent: userText,
     tools,
     maxRounds: MAX_SDK_TOOL_ROUNDS,
@@ -840,20 +892,20 @@ async function runSdkBuildTools(ctx, snapshot, manifest) {
   ctx.stepDone("synth", "Report drafted");
 }
 
-/** @param {PipelineCtx} ctx @param {any} manifest */
-async function runSdkBuildDeterministic(ctx, manifest) {
+/** @param {PipelineCtx} ctx @param {any} manifest @param {BuildFlavor} flavor */
+async function runSdkBuildDeterministic(ctx, manifest, flavor) {
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
-  // The FILE-block convention + catalog ride the conversation (the
+  // The FILE-block convention + catalog/reference ride the conversation (the
   // introspection-enrichment append pattern) so the streamed completion sees
   // them on any catalog model.
-  const block = buildSdkContextBlock(manifest, {
+  const block = flavor.context(manifest, {
     toolMode: false,
     buildUrl: buildSlug ? `/app/${buildSlug}/` : null,
   });
   const convo = /** @type {Conversation} */ (withAppendedText(ctx.conversation, block));
   ctx.step("synth", "Building the app…");
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: sdkBuildPrompt() },
+    { role: "system", content: flavor.detPrompt() },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(convo),
   ]);
