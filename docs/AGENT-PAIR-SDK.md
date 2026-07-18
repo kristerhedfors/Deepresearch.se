@@ -15,7 +15,9 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 > and three application surfaces consume the SDK:
 >
 > - **SDK mode** — the green "lovable experience" entry in the chat-mode
->   dropdown (Normal / Introspection / SDK): the model plans with `sdk_plan`,
+>   dropdown (Normal / Introspection / SDK / SWE; the khaki SWE sibling reuses
+>   this same build/publish machinery to build a new instance of Se/cure —
+>   see the sdk-mode skill): the model plans with `sdk_plan`,
 >   reads the module skills out of the deployed source snapshot, builds a
 >   self-contained web app, and the pipeline publishes it live at
 >   `/app/<slug>/` (`src/pipeline.js` `runSdkBuild`, `src/build-pub.js` —

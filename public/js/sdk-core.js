@@ -520,3 +520,58 @@ export function buildSdkContextBlock(manifest, opts = {}) {
   }
   return parts.join("\n");
 }
+
+/** The Se/cure source files SWE mode points a build at as its reference. */
+export const SWE_SECURE_SOURCES = [
+  "public/cure/index.html",
+  "public/cure/drc.js",
+  "public/cure/drc.css",
+  "public/js/drc-core.js",
+  "public/js/drc-providers.js",
+  "public/js/drc-research.js",
+  "public/js/drc-store.js",
+  "public/js/drc-rag.js",
+  "sdk/skills/secure-tier/SKILL.md",
+];
+
+/**
+ * The SWE-mode context block appended to the conversation (the same pattern as
+ * buildSdkContextBlock): orients any answer model about building a NEW INSTANCE
+ * of Se/cure — the client-side, never-cloud research tier — in a different
+ * shape or form, points a tool-capable model at the real Se/cure source to
+ * study, spells out the privacy invariants a variant must uphold, and (for the
+ * deterministic path) teaches the FILE-block emission convention.
+ * @param {{ toolMode?: boolean, buildUrl?: string | null }} [opts]
+ * @returns {string}
+ */
+export function buildSweContextBlock(opts = {}) {
+  const parts = [
+    "SWE mode: build a new instance of Se/cure",
+    "=".repeat(66),
+    "The user is in SWE (software-engineering) mode: they want you to DESIGN AND BUILD a new instance of DeepResearch.Se/cure — the site's client-side, never-cloud research tier — in a different SHAPE OR FORM, published as a runnable collection of files at a live URL.",
+    "",
+    "What Se/cure IS (the tier you are reshaping): a fully client-side research assistant. The server is in NO data path — the browser talks to LLM/search providers DIRECTLY using the user's own API keys, the research pipeline runs in the page, and any state stays browser-local. Its reference implementation is the deployed source:",
+    SWE_SECURE_SOURCES.map((p) => `  - ${p}`).join("\n"),
+    "",
+    "PRIVACY INVARIANTS every variant MUST uphold (this is the point of Se/cure — do not weaken them): no server round-trip for conversation content; provider calls go browser→provider directly; secrets (API keys) live only in memory/this device and never appear in any log or third-party request; outbound requests to third parties carry the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.",
+    "",
+    "SHAPE: reshape freely — a minimal single-purpose assistant, a themed or domain-specific variant, a stripped-down single-file client, a different UI entirely. Study the reference files for HOW Se/cure does browser-direct calls and its pipeline, then build YOUR variant; you need not copy its code verbatim.",
+  ];
+  if (opts.buildUrl) {
+    parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
+  }
+  if (opts.toolMode) {
+    parts.push("", "Read the reference files above with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.");
+  } else {
+    parts.push(
+      "",
+      "To ship files WITHOUT native tools, emit each file in your reply exactly as:",
+      "FILE: index.html",
+      "```html",
+      "…the complete file content…",
+      "```",
+      "One FILE line + one fenced block per file; relative paths; always include index.html. The build runs in a sandboxed opaque origin (no cookies/storage-with-origin/credentialed requests) — use in-memory state. The server collects the blocks, publishes them, and shares the live URL.",
+    );
+  }
+  return parts.join("\n");
+}

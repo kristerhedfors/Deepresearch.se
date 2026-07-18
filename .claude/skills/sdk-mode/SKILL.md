@@ -1,6 +1,6 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK) that designs and BUILDS a self-contained web app with the Agent-Pair SDK and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js, src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK / SWE) that designs and BUILDS a self-contained web app with the Agent-Pair SDK and publishes it live at /app/<slug>/ — or on its khaki sibling SWE MODE (prompt a new instance of Se/cure), or when touching public/js/sdk-core.js (buildSdkContextBlock / buildSweContextBlock), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild + BUILD_FLAVORS, the sdk_mode/swe_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode / khaki swe-mode themes. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable experience" (2026-07-18)
@@ -10,6 +10,29 @@ model DESIGNS + BUILDS it with the Agent-Pair SDK (`sdk/` — manifest +
 skills), and the pipeline PUBLISHES the files at a live, shareable
 `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 `sdk studio` header tag), as titanium white is introspection's.
+
+## SWE mode — the khaki sibling (2026-07-18)
+
+The FOURTH dropdown entry, `swe` — "prompt a new instance of Se/cure in a
+different shape or form". It is SDK mode's build/publish machinery with a
+different *flavor*: instead of the Agent-Pair SDK catalog, it seeds the build
+with the deployed **Se/cure** source (`public/cure/*`, `public/js/drc-*.js`,
+`sdk/skills/secure-tier/SKILL.md`) and instructs the model to build a
+client-side, never-cloud research app that upholds Se/cure's privacy
+invariants. Khaki is its color (the composer pane echoes Se/cure's `#c3b091`;
+the `swe studio` header tag). It shares EVERYTHING structural with SDK mode —
+same `/app/<slug>/` publish, same `build_slug` iteration, same
+capability gate (`developer_mode`), same tool/deterministic split — so the two
+run through ONE `runSdkBuild(ctx, flavor)` keyed by `BUILD_FLAVORS.{sdk,swe}`
+(src/pipeline.js). The only per-flavor differences: the system prompts
+(`sweBuildPrompt` / `sweBuildToolPrompt` in src/prompts.js), the context block
+(`buildSweContextBlock` in sdk-core.js — no manifest; points at the Se/cure
+source), the tool set (SWE drops SDK_TOOLS, keeps the snapshot readers +
+BUILD_TOOLS so the model reads the real Se/cure source), and the step labels.
+Client wiring mirrors SDK exactly: `swe` in `CHAT_MODES`, the `swe-mode` root
+class, `payload.swe_mode`, chat.js `sweOn` gating (SDK wins if both flags
+arrive) + `sweMode` state + `swe` chat_logs meta. When extending either build
+mode, prefer editing the shared runner/flavor over forking a third path.
 
 ## The mode dropdown (client)
 

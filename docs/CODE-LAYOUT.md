@@ -209,12 +209,14 @@ relaunch paints the titanium palette at first paint before `/api/settings`
 answers; `app.js` applies the cache synchronously at boot then reconciles with
 the server's authoritative `developer_mode`, and the developer knob flips it on
 toggle — Node-tested), `chat-mode.js` (the chat MODE dropdown's state —
-Normal / Introspection / SDK, 2026-07-18: the `dr_chat_mode` localStorage pick
-layered over the developer_mode capability; decides which theme class the root
-carries — `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the SDK
-"lovable experience" — and which per-send fields `stream.js` declares
-(`developer_mode:false` for Normal, `sdk_mode:true` + `build_slug` for SDK);
-`reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
+Normal / Introspection / SDK / SWE, 2026-07-18: the `dr_chat_mode` localStorage
+pick layered over the developer_mode capability; decides which theme class the
+root carries — `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the
+SDK "lovable experience", `swe-mode` KHAKI for the SWE "new instance of Se/cure"
+build mode — and which per-send fields `stream.js` declares
+(`developer_mode:false` for Normal, `sdk_mode:true` + `build_slug` for SDK,
+`swe_mode:true` + `build_slug` for SWE); `reconcileChatMode` downgrades a stored
+pick when the knob is off; Node-tested),
 `sdk-core.js` (the Agent-Pair SDK's shared PURE core — see the `src/sdk-tools.js`
 row above; lives under `public/` per the pure-core convention, imported by the
 Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested), `sandbox-mode.js` (the SANDBOX counterpart of
