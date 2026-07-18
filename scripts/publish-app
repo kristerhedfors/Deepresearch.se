@@ -1,0 +1,126 @@
+#!/usr/bin/env node
+// @ts-check
+// Publish a local directory of already-built static files (typically the
+// execution sandbox's outbox — see the execution-sandbox skill — or a
+// hand-assembled bundle) as a live SDK-mode build at
+// DeepResearch.se/app/<slug>/, WITHOUT going through the chat/tool loop.
+// Thin wrapper over the admin-gated PUT /api/build/:slug
+// (handleBuildManualPublish, src/build-pub.js) using the break-glass Basic
+// Auth credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars
+// scripts/chatlogs and friends use. See the publish-app skill and the
+// sdk-mode skill (the feature this bridges into — the SAME storage,
+// validation, caps, and opaque-origin CSP-sandboxed serving as a build the
+// model produced through the chat mode dropdown).
+//
+// Usage:
+//   scripts/publish-app <dir> <slug> [--title "..."]
+//   scripts/publish-app --delete <slug>
+//
+// BASE_URL overrides the target (default https://deepresearch.se).
+//
+// Only files with an extension build-pub.js accepts are read: html, css,
+// js/mjs, json, svg, md, txt, csv, tsv, xml, webmanifest (BUILD_FILE_EXTS in
+// public/js/sdk-core.js) — text only, no binary upload path; inline images
+// as data: URIs. Subdirectories are walked and their relative paths become
+// the published file paths. An index.html is required (build-pub.js's own
+// rule) — the CLI checks for one up front so a bad publish fails locally
+// with a clear message instead of a round trip.
+
+import { readFileSync, statSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+
+const BASE_URL = process.env.BASE_URL || "https://deepresearch.se";
+// Mirrors BUILD_FILE_EXTS (public/js/sdk-core.js) — keep in sync; the server
+// re-validates every path anyway (defense in depth), this just avoids
+// uploading files the server would silently drop.
+const ALLOWED_EXT = new Set(["html", "css", "js", "mjs", "json", "svg", "md", "txt", "csv", "tsv", "xml", "webmanifest"]);
+
+function flag(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : null;
+}
+
+function authHeader() {
+  const user = process.env.BASIC_AUTH_USER;
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (!user || !pass) {
+    console.error("Set BASIC_AUTH_USER and BASIC_AUTH_PASS (break-glass credentials).");
+    process.exit(2);
+  }
+  return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+}
+
+function walk(dir, base = dir) {
+  /** @type {string[]} */
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    const st = statSync(full);
+    if (st.isDirectory()) out.push(...walk(full, base));
+    else out.push(relative(base, full).split(sep).join("/"));
+  }
+  return out;
+}
+
+function buildFiles(dir) {
+  const paths = walk(dir);
+  if (!paths.length) {
+    console.error(`No files found under ${dir}`);
+    process.exit(2);
+  }
+  /** @type {Array<{path:string, content:string}>} */
+  const files = [];
+  const skipped = [];
+  for (const p of paths) {
+    const ext = (p.split(".").pop() || "").toLowerCase();
+    if (!ALLOWED_EXT.has(ext)) {
+      skipped.push(p);
+      continue;
+    }
+    files.push({ path: p, content: readFileSync(join(dir, p), "utf8") });
+  }
+  if (skipped.length) console.error(`Skipped (unsupported extension): ${skipped.join(", ")}`);
+  if (!files.some((f) => f.path === "index.html")) {
+    console.error("No index.html at the bundle root — build-pub.js requires one as the entry point.");
+    process.exit(2);
+  }
+  return files;
+}
+
+async function main() {
+  const delSlug = flag("--delete");
+
+  if (delSlug) {
+    const res = await fetch(`${BASE_URL}/api/build/${encodeURIComponent(delSlug)}`, {
+      method: "DELETE",
+      headers: { authorization: authHeader() },
+    });
+    console.log(res.status === 204 ? `Unpublished ${delSlug}.` : await res.text());
+    return;
+  }
+
+  const [dir, slug] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  if (!dir || !slug) {
+    console.error("Usage: scripts/publish-app <dir> <slug> [--title \"...\"]");
+    process.exit(2);
+  }
+  const files = buildFiles(dir);
+  const body = { title: flag("--title") || slug, files };
+
+  const res = await fetch(`${BASE_URL}/api/build/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", authorization: authHeader() },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json();
+  if (!res.ok) {
+    console.error(`Publish failed (${res.status}): ${out.error || JSON.stringify(out)}`);
+    process.exit(1);
+  }
+  console.log(`Published: ${BASE_URL}${out.url}`);
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

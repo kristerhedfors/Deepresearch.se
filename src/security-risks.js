@@ -138,6 +138,14 @@ export const SECURITY_RISK_ITEMS = [
     summary:
       "wrangler.toml sets LOG_LEVEL=debug in prod (2026-07-12, time-boxed for sandbox-filesystem testing). Debug paths log more request detail into Workers Logs — a server-side data pool. Revert when that testing round completes.",
   },
+  {
+    id: "P-11",
+    title: "New write surface: manual SDK-build publish (PUT /api/build/:slug)",
+    severity: "low",
+    status: "open",
+    summary:
+      "A second admin-gated write path (F-17, 2026-07-18) alongside the pre-existing DELETE on SDK mode's /app/<slug>/ build surface (src/build-pub.js), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn. Reuses the UNCHANGED publishBuild (same caps, traversal/extension validation, opaque-origin sandbox CSP serving) and the same admin gate as the existing DELETE — the isolation boundary is untouched. PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity; owed the same live-verify pass SDK mode's own build-publish flow still owes.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
