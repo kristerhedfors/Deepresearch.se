@@ -145,7 +145,11 @@ summary's Settings button OR directly via the header's gear icon,
 2026-07-11 directive),
 `account-feedback.js` (the Feedback dialogue-threads view — thread
 screenshots render as thumbnails off the per-image endpoint, and each
-reply box carries the `feedback-attach.js` widget)),
+reply box carries the `feedback-attach.js` widget),
+`account-articles.js` (the admin-only "Article collection" view — the
+planned article series about the project as pure data + a pure HTML
+builder, Node-tested; the summary button renders only for
+`role === "admin"`)),
 `notifications.js` (the small rendering fragments — alert severity
 badges, pending-user rows, the K/M `formatCount` abbreviator — genuinely
 shared between `account.js`'s

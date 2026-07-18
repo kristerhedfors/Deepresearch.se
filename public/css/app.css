@@ -1402,6 +1402,21 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .setting-pop[hidden] { display: none; }
 .setting-pop a { color: var(--accent); }
 .setting-note { font-size: .8em; margin: .1rem 0 .4rem; }
+
+/* Article collection (public/js/account-articles.js) — the admin-only view
+   of the planned article series. Each abstract is a collapsible <details>
+   so ten long Swedish texts stay scannable on a phone. */
+.article-item {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-2);
+  margin: .5rem 0; padding: .1rem .75rem;
+}
+.article-item summary {
+  cursor: pointer; font-size: .85rem; font-weight: 600;
+  padding: .45rem 0; line-height: 1.4;
+}
+.article-body { font-size: .82rem; line-height: 1.55; padding-bottom: .5rem; }
+.article-body p { margin: .4rem 0; }
 .switch { cursor: pointer; display: inline-flex; flex: none; -webkit-user-select: none; user-select: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch-track {
