@@ -417,6 +417,38 @@ Time-boxed exception (2026-07-12, sandbox-filesystem testing). Revert in
 `wrangler.toml` when that testing round completes; this register entry exists
 so the exception terminates.
 
+### P-11 · New write surface: manual SDK-build publish (`PUT /api/build/:slug`) — 🟡 PARTIAL (2026-07-18)
+
+**What it is.** `src/build-pub.js`'s `/app/<slug>/` build-publishing surface
+(SDK mode — no register entry of its own; see the sdk-mode skill) previously
+had exactly one HTTP write path: admin-gated `DELETE`. This adds a second:
+admin-gated `PUT /api/build/:slug` (`handleBuildManualPublish`), so a bundle
+already built outside the chat/tool loop (the execution sandbox, a
+hand-assembled directory) can be published without a live model turn.
+
+**Mitigation.** The new handler is a thin body-shape check in front of the
+UNCHANGED `publishBuild` — same size/file-count caps
+(`MAX_BUILD_FILES`/`MAX_BUILD_FILE_BYTES`/`MAX_BUILD_TOTAL_BYTES`), same
+`sanitizeBuildPath` traversal/extension validation, same required
+`index.html`, same slug-ownership check, and critically the SAME serving
+path (`handleBuildGet`) with its `Content-Security-Policy: sandbox
+allow-scripts …` opaque-origin isolation on every response — nothing about
+the isolation boundary changes. Gated identically to the pre-existing
+DELETE (`identity.role === "admin"` in `index.js`), so this does not expand
+WHO can write, only which HTTP verb an already-trusted caller can use.
+
+**Residual (why PARTIAL, not FIXED).** (a) Ownership on a manual publish is
+the ADMIN identity (`identity.id`, `"admin"` for break-glass) — this is a
+SHARED identity across every operator using the break-glass credentials, so
+"per-admin ownership" collapses to "any admin can republish any
+manually-published slug" (a materially smaller blast radius than a normal
+user's builds, but worth naming). (b) No live-verify pass yet — unit-tested
+only (`src/build-pub.test.js`), same residual class as sdk-mode's own
+still-owed live round trip. (c) If this bridge is ever extended to a
+non-admin caller (e.g. a settings toggle letting a Se/rver user publish
+sandbox output themselves), that is a NEW risk needing its own review —
+do not fold it into this item silently.
+
 ---
 
 ## 4. History log (append-only)
@@ -434,3 +466,4 @@ so the exception terminates.
 | 2026-07-14 | **New surface: temporary web-search grant for Se/cure** (`src/websearch-key.js` + `src/websearch.js`; client glue in `public/cure/drc.js` + `public/js/drc-research.js`). A signed-in Se/rver user crossing to Se/cure via the ghost mints a short-lived, quota-metered token that authorizes the PUBLIC `POST /api/websearch` to run a bounded number of Exa searches on the server key — a deliberate, bounded relaxation of invariant 4 (see CLAUDE.md). **Threat model.** (1) *Capability transport:* the token is HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace (can't be forged or cross-used as a session/state HMAC); tampering the payload to raise quota fails the signature — covered by `websearch-key.test.js`. (2) *Abuse ceiling:* the D1 `websearch_grants` row is the meter; a leaked token can burn only the grant's remaining quota (default 25, `WEBSEARCH_GRANT_QUOTA`-tunable), tied to one user, expiring ~24h; `grantWebSearch` reuses the active per-user grant so a user can't stack grants to exceed the per-window ceiling. The reserve is an atomic `UPDATE … WHERE used < quota`, so a concurrent burst can't overrun it. This is the endpoint's built-in rate limit (relates to P-3); it is NOT behind `reserveInflight`. (3) *Fail-safe:* no D1 → grants can't be minted and searches can't be metered (503), so no unmetered server-paid search is reachable. (4) *Data minimization:* only the search QUERY reaches the server/Exa (never the conversation); the query is logged at debug level only (matching `exa.js`), the info log carries counts + `jti` + `uid`. **Residual / owed:** a live-verify pass (grant issuance on the real ghost crossing, the 429 path, the refund-on-empty path) per the live-verify skill; consider whether the public endpoint also warrants an IP/global rate limit beyond the per-grant quota. |
 | 2026-07-14 | **Web-search grant → full MINT subsystem + admin control panel.** Extended the above from the ghost-only path to a mintable-link subsystem: an admin mints `…/cure?ws=<token>` links (`POST /api/admin/websearch`, admin-gated) that ANY follower can open to receive the quota; the follower's browser reads it via public non-consuming `POST /api/websearch/status` and spends it via `POST /api/websearch`. Defaults (quota/TTL), a master `enabled` switch, and a GLOBAL BUDGET ceiling (cap on total outstanding remaining across all live grants) live in `config.js`'s `websearch` block, edited in `/admin` → Web search grants (also where links are minted + revoked). **Added threat considerations.** (a) *Token-in-URL:* a shareable link carries the capability in the query string — deliberately (that's the feature); mitigated by short TTL + quota + instant revoke (deleting the row 403s the token), and DRC strips `?ws=` from the URL via `history.replaceState` after reading it so it isn't retained in history/referrer for onward navigation. The token is shown ONLY at mint time — the admin list never re-exposes a live token. (b) *Blast radius of a broad mint:* an admin can mint a large-quota key; the global `budget` ceiling (0=uncapped by default) is the governance knob, enforced at mint time (`outstanding + quota > budget → 409`). (c) *No new unauth surface:* status/search still require a valid signed token; mint/revoke/list are admin-gated. Quota clamps in `config.js` bound a hostile config patch (quota 1..10000, ttl 1..720h). **Residual:** the live-verify pass now also covers the link flow (mint → open link → status → search → revoke) and the budget-exceeded 409. |
 | 2026-07-15 | **P-2 → FIXED.** Secret-leak prevention completed across all three residuals. (1) NEW `.githooks/pre-commit` runs `scripts/scan-secrets --staged` so a credential is blocked BEFORE it enters history (pre-push stays as the second line); verified end-to-end — a planted fake `sk-…` token blocks `git commit` with redacted output, a clean tree commits normally. (2) Hooks now AUTO-ACTIVATE: `.claude/settings.json`'s SessionStart runs `scripts/install-git-hooks`, so every remote-session clone (where nearly all commits are authored) has both hooks live without manual setup — closing the inert-in-fresh-clones gap. (3) Residual (c) done: full-history scan from an unshallowed clone (`git fetch --unshallow`, 791 commits, `git log --all -p` over the §1 pattern set) — **CLEAN**, no credential-shaped token has ever been committed. (4) Residual (a) resolved as default-on: GitHub secret scanning + push protection are enabled by default on public repos (GitHub default since 2024); the Settings toggle is unreachable from a session — owner to eyeball Settings → Code security once to confirm nothing was manually disabled. Catalog mirror flipped in the same commit; `docs/SECRET-SCANNING.md` updated. |
+| 2026-07-18 | **New write surface + P-11 opened: manual SDK-build publish (`handleBuildManualPublish`, `PUT /api/build/:slug`, F-17).** A second admin-gated write path alongside the pre-existing `DELETE` on SDK mode's `/app/<slug>/` build-publishing surface (`src/build-pub.js`), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn — via `scripts/publish-app`. Reuses the UNCHANGED `publishBuild` (same caps, same traversal/extension validation, same opaque-origin `Content-Security-Policy: sandbox allow-scripts …` serving) and the same admin gate as the existing DELETE, so the isolation boundary is untouched. Marked 🟡 PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity (any admin can republish any manually-published slug), and it's owed the same live-verify pass SDK mode's own build-publish flow still owes. Full model: §3 P-11. |

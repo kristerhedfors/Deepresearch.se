@@ -316,6 +316,7 @@ Features & surfaces:
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
 - **sdk-mode** — the green SDK "lovable experience" mode: the chat-mode dropdown, the Agent-Pair-SDK build flow, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.
 - **ui-notes** — client UI/UX conventions: rendering, attachments, static pages, the public (no-auth) surface.

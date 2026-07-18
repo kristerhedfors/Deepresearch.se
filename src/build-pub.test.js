@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSlugOk, handleBuildDelete, handleBuildGet, newBuildSlug, publishBuild } from "./build-pub.js";
+import {
+  buildSlugOk,
+  handleBuildDelete,
+  handleBuildGet,
+  handleBuildManualPublish,
+  newBuildSlug,
+  publishBuild,
+} from "./build-pub.js";
 
 function mockBucket() {
   const store = new Map();
@@ -125,5 +132,94 @@ test("admin delete removes every object under the slug", async () => {
   assert.equal(
     (await handleBuildDelete(new Request("https://x", { method: "DELETE" }), env, log, "No.Slug")).status,
     400,
+  );
+});
+
+const adminIdentity = { id: "admin", role: "admin", email: null, name: "Admin", isSecretAdmin: true };
+
+test("handleBuildManualPublish: admin bypass of the chat/tool loop, same caps + CSP as a pipeline build", async () => {
+  const env = { STORAGE: mockBucket() };
+  const put = new Request("https://x/api/build/sandbox-app", {
+    method: "PUT",
+    body: JSON.stringify({ title: "Sandbox App", files: appFiles() }),
+  });
+  const res = await handleBuildManualPublish(put, env, log, adminIdentity, "sandbox-app");
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.slug, "sandbox-app");
+  assert.equal(body.url, "/app/sandbox-app/");
+
+  const root = await handleBuildGet(env, "sandbox-app", "");
+  assert.equal(root.status, 200);
+  assert.match(root.headers.get("content-security-policy"), /^sandbox /);
+  assert.doesNotMatch(root.headers.get("content-security-policy"), /allow-same-origin/);
+
+  // Re-PUT to the SAME slug (same admin identity) republishes in place.
+  const put2 = new Request("https://x/api/build/sandbox-app", {
+    method: "PUT",
+    body: JSON.stringify({ title: "Sandbox App v2", files: [{ path: "index.html", content: "<h1>v2</h1>" }] }),
+  });
+  const res2 = await handleBuildManualPublish(put2, env, log, adminIdentity, "sandbox-app");
+  assert.equal((await res2.json()).slug, "sandbox-app");
+  assert.match(await (await handleBuildGet(env, "sandbox-app", "")).text(), /v2/);
+});
+
+test("handleBuildManualPublish: validation errors", async () => {
+  const env = { STORAGE: mockBucket() };
+  assert.equal(
+    (
+      await handleBuildManualPublish(
+        new Request("https://x", { method: "PUT", body: "{}" }),
+        env,
+        log,
+        adminIdentity,
+        "Bad.Slug",
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await handleBuildManualPublish(
+        new Request("https://x", { method: "PUT", body: "not json" }),
+        env,
+        log,
+        adminIdentity,
+        "sandbox-app",
+      )
+    ).status,
+    400,
+  );
+  const noFiles = await handleBuildManualPublish(
+    new Request("https://x", { method: "PUT", body: JSON.stringify({ title: "x", files: [] }) }),
+    env,
+    log,
+    adminIdentity,
+    "sandbox-app",
+  );
+  assert.equal(noFiles.status, 400);
+  assert.match((await noFiles.json()).error, /files must be/);
+  // publishBuild's own rules still apply (defense in depth) — no index.html.
+  const noIndex = await handleBuildManualPublish(
+    new Request("https://x", { method: "PUT", body: JSON.stringify({ title: "x", files: [{ path: "a.js", content: "1" }] }) }),
+    env,
+    log,
+    adminIdentity,
+    "sandbox-app",
+  );
+  assert.equal(noIndex.status, 400);
+  assert.match((await noIndex.json()).error, /index\.html/);
+  assert.equal(
+    (
+      await handleBuildManualPublish(
+        new Request("https://x", { method: "PUT", body: JSON.stringify({ title: "x", files: appFiles() }) }),
+        {},
+        log,
+        adminIdentity,
+        "sandbox-app",
+      )
+    ).status,
+    503,
   );
 });
