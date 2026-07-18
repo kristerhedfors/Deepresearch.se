@@ -14,6 +14,7 @@ import {
   SDK_TOOLS,
   buildFilesSummary,
   buildSdkContextBlock,
+  buildSweContextBlock,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
@@ -153,4 +154,16 @@ test("buildSdkContextBlock: catalog + convention for the no-tools path only", ()
   assert.doesNotMatch(toolBlock, /FILE: index\.html/);
   assert.match(toolBlock, /\/build\/x-1234\//);
   assert.match(buildSdkContextBlock(null, {}), /could not be loaded/);
+});
+
+test("buildSweContextBlock: Se/cure reference + privacy invariants; convention for the no-tools path only", () => {
+  const detBlock = buildSweContextBlock({ toolMode: false });
+  assert.match(detBlock, /instance of Se\/cure/);
+  assert.match(detBlock, /public\/cure\/drc\.js/); // points at the real Se/cure source
+  assert.match(detBlock, /PRIVACY INVARIANTS/);
+  assert.match(detBlock, /FILE: index\.html/); // deterministic path teaches the convention
+  const toolBlock = buildSweContextBlock({ toolMode: true, buildUrl: "/app/x-1234/" });
+  assert.doesNotMatch(toolBlock, /FILE: index\.html/);
+  assert.match(toolBlock, /grep_source/); // tool path names the readers
+  assert.match(toolBlock, /\/app\/x-1234\//);
 });

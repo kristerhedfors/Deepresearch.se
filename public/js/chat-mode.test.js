@@ -1,7 +1,7 @@
 // Unit suite for the chat-mode dropdown state (public/js/chat-mode.js) — the
-// Normal / Introspection / SDK mode cache, theming classes, and the settings
-// reconcile. Runs without a DOM (module is import-safe); localStorage is
-// stubbed the dev-mode.test.js way.
+// Normal / Introspection / SDK / SWE mode cache, theming classes, and the
+// settings reconcile. Runs without a DOM (module is import-safe); localStorage
+// is stubbed the dev-mode.test.js way.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEV_MODE_CLASS, DEV_MODE_KEY } from "./dev-mode.js";
@@ -9,6 +9,7 @@ import {
   CHAT_MODES,
   CHAT_MODE_KEY,
   SDK_MODE_CLASS,
+  SWE_MODE_CLASS,
   applyChatModeTheme,
   cachedChatMode,
   normalizeChatMode,
@@ -27,8 +28,9 @@ function stubStorage() {
 }
 
 test("normalizeChatMode clamps junk to the fallback", () => {
-  assert.deepEqual(CHAT_MODES, ["normal", "introspection", "sdk"]);
+  assert.deepEqual(CHAT_MODES, ["normal", "introspection", "sdk", "swe"]);
   assert.equal(normalizeChatMode("sdk"), "sdk");
+  assert.equal(normalizeChatMode("swe"), "swe");
   assert.equal(normalizeChatMode("hax"), "normal");
   assert.equal(normalizeChatMode(undefined, "introspection"), "introspection");
 });
@@ -56,6 +58,8 @@ test("applyChatModeTheme: exactly one theme class per mode; persist opt-out hono
     assert.equal(store.get(CHAT_MODE_KEY), "introspection");
     applyChatModeTheme("sdk");
     assert.deepEqual([...classes], [SDK_MODE_CLASS]);
+    applyChatModeTheme("swe");
+    assert.deepEqual([...classes], [SWE_MODE_CLASS]); // swe replaces sdk — one class only
     applyChatModeTheme("normal");
     assert.deepEqual([...classes], []);
     applyChatModeTheme("sdk", { persist: false });
