@@ -324,6 +324,12 @@ header {
    ink gap above the .03em floor, worst side +0.043em). One rule for the whole
    pop class so sibling pops don't regress one id at a time. */
 #settingsview .setting-pop .sl { margin: 0 -.04em; }
+/* The account drawer's prose (.acct-lead .82rem, .acct-link descriptions
+   .74rem, the .9rem pub-item link text) — owner report 2026-07-18: slashes
+   touching across ~5-6 wordmarks in the account panel; measured with
+   scripts/slash-gap.mjs at 400+600 weight: -.04em keeps every container
+   font's ink gap above the .03em floor, worst side +0.043em. */
+#accountview .sl { margin: 0 -.04em; }
 /* The small "introspection" marker under the wordmark — only present while the
    introspection cue is active (root carries `dev-mode`). Plain TITANIUM WHITE
    (solid near-white + soft dark shadow, no gradient clip), matching the Se/rver
