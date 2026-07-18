@@ -20,8 +20,15 @@
 // session or call its APIs as the visitor, even though it is served from the
 // site's own hostname. Do not weaken that header without a design review.
 //
-// Writes happen INSIDE the pipeline (publishBuild — the caller has already
-// resolved identity); the only HTTP write surface is the admin-gated DELETE.
+// Writes normally happen INSIDE the pipeline (publishBuild — the caller has
+// already resolved identity). The ONE other write surface is
+// `handleBuildManualPublish` (PUT /api/build/:slug, admin-gated, alongside
+// the DELETE below): a bypass of the chat/tool loop for output that was
+// ALREADY built elsewhere — the execution sandbox's outbox convention, or a
+// hand-assembled directory — and just needs a live `/app/<slug>/` URL. See
+// `scripts/publish-app` and the publish-app skill. It calls the exact same
+// `publishBuild` the pipeline uses, so a manually published app gets the
+// same validation, caps, and CSP-sandboxed serving as one the model built.
 
 import { jsonResponse } from "./http.js";
 import {
@@ -225,6 +232,46 @@ export async function handleBuildDelete(request, env, log, slug) {
   } while (cursor);
   log.info("build.deleted", { slug, objects: removed });
   return new Response(null, { status: 204 });
+}
+
+/**
+ * PUT /api/build/:slug — ADMIN-ONLY manual publish (the caller has verified
+ * identity.role === "admin"). The bypass of the chat/tool loop for a bundle
+ * that's already built (the execution sandbox's outbox, a hand-assembled
+ * directory — see the publish-app skill / `scripts/publish-app`): thin
+ * validation of the request body, then the SAME `publishBuild` the pipeline
+ * calls, so a manual publish gets identical caps + CSP-sandboxed serving.
+ * Ownership is the ADMIN identity (`identity.id`) — re-PUTting the same URL
+ * slug republishes in place (files not resent are pruned, like the pipeline
+ * path). The URL slug must itself be well-formed; `publishBuild` still mints
+ * a fresh one if this admin doesn't already own it (e.g. it collides with
+ * someone else's build).
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {import('./auth.js').Identity} identity
+ * @param {string} slug
+ * @returns {Promise<Response>}
+ */
+export async function handleBuildManualPublish(request, env, log, identity, slug) {
+  if (!env.STORAGE) return jsonResponse({ error: "Builds are not configured on this server." }, 503);
+  if (!buildSlugOk(slug)) return jsonResponse({ error: "Invalid slug (lowercase letters, digits, hyphens)." }, 400);
+  /** @type {any} */
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
+  }
+  const title = typeof body?.title === "string" ? body.title : "";
+  const files = Array.isArray(body?.files) ? body.files : null;
+  if (!files || !files.length) {
+    return jsonResponse({ error: "files must be a non-empty array of {path, content}." }, 400);
+  }
+  const result = await publishBuild(env, log, { slug, title, files, userId: identity.id });
+  if ("error" in result) return jsonResponse({ error: result.error }, 400);
+  log.info("build.manual_publish", { slug: result.slug, admin: identity.id });
+  return jsonResponse({ ok: true, ...result });
 }
 
 const notFound = () =>

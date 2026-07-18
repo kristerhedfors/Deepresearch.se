@@ -188,6 +188,14 @@ export const FEATURE_ITEMS = [
     summary:
       "DECIDED (owner, 2026-07-15) and shipped client-side: the BALLOON — the tier's symbol, the ghost's Se/rver counterpart. Three pieces: the first-visit GREETER (public/js/balloon.js — round 4 re-scope: NO persistent figure follows the user on either tier; the balloon appears once, chained onto the landing intro, speaks a couple of pointer lines — what the tier does + the ghost button as the door to Se/cure — then climbs away and unmounts; burner flare + climb + pennant per completed task only while on screen, cloud swishes in ALL transitions), the first-visit LANDING intro (public/js/balloon-intro.js — vortex → wire balloons → a 180° camera drop with a sideways roll and swishing clouds → five same-shape/different-size colored balloons from below; faster than the umbrella intro, test-pinned), and the WAITING SYMBOL (public/js/balloon-spinner.js — the typing/step spinners boomerang the intro in miniature and fold, on completion, into a BLUE check via the colored balloon, where Se/cure's umbrella folds to pink). Round 5 (owner, 2026-07-16) REVERTED round 3's per-task channel grammar — the waiting symbols are TIER IDENTITY again (Se/cure = umbrella on every step, Se/rver = balloon on every step, stringent and clean) and the privacy communication moved into Se/cure's PRIVACY NOTICE: a header info button pops a detailed what-this-session-sends-where read-up, shown automatically when a shared secure workspace opens (privacyNoticeLines in drc-page-core.js; UX-2 rewritten). Round 4 also LOWERED the ambient UX animation level (wave drift 26s→52s, ghost shimmer 60s→180s cycle, ghost-contour breathe 3.6s→7.2s; UX-3). Record: docs/SYMBOL-LANGUAGE.md. RESIDUAL: live device verification.",
   },
+  {
+    id: "F-17",
+    title: "Manual publish bridge for SDK-mode builds",
+    impact: "low",
+    status: "shipped",
+    summary:
+      "A small bridge into SDK mode's existing /app/<slug>/ build+publish flow (src/build-pub.js), for output the execution sandbox or introspection-mode source work already produced without a live model conversation. handleBuildManualPublish (PUT /api/build/:slug, admin-only) calls the SAME publishBuild the pipeline uses — identical caps and opaque-origin CSP-sandboxed serving, no second publish system. scripts/publish-app bundles a local directory and publishes it via the break-glass admin auth. See the publish-app skill (built on the sdk-mode skill).",
+  },
 ];
 
 // ---------------------------------------------------------------------------

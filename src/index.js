@@ -65,7 +65,7 @@ import { handleEmbed, handleRag } from "./rag.js";
 import { handleQuizGrade } from "./quiz-api.js";
 import { handleGames } from "./games.js";
 import { handlePubGet, handlePubWrite } from "./pub.js";
-import { handleBuildDelete, handleBuildGet } from "./build-pub.js";
+import { handleBuildDelete, handleBuildGet, handleBuildManualPublish } from "./build-pub.js";
 import { handleWebSearch, handleWebSearchAdjust, handleWebSearchGrant, handleWebSearchStatus } from "./websearch.js";
 import {
   handleProxyAdjust,
@@ -431,12 +431,17 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     return handlePubWrite(request, env, log, decodeURIComponent(url.pathname.slice("/api/pub/".length)));
   }
 
-  // SDK-mode builds are PUBLISHED by the pipeline itself (src/build-pub.js
-  // publishBuild — the identity is already resolved there); the only HTTP
-  // write surface is this admin-gated unpublish.
+  // SDK-mode builds are normally PUBLISHED by the pipeline itself
+  // (src/build-pub.js publishBuild — the identity is already resolved
+  // there). Two admin-gated HTTP write surfaces sit alongside that: DELETE
+  // unpublishes, and PUT manually publishes a bundle that was built OUTSIDE
+  // the chat/tool loop (the execution sandbox's outbox, a hand-assembled
+  // directory) — see scripts/publish-app + the publish-app skill.
   if (url.pathname.startsWith("/api/build/")) {
     if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
-    return handleBuildDelete(request, env, log, decodeURIComponent(url.pathname.slice("/api/build/".length)));
+    const buildSlug = decodeURIComponent(url.pathname.slice("/api/build/".length));
+    if (request.method === "PUT") return handleBuildManualPublish(request, env, log, identity, buildSlug);
+    return handleBuildDelete(request, env, log, buildSlug);
   }
 
   // /try/:id — the shareable deep link to a testable interaction point

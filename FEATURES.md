@@ -232,6 +232,21 @@ a shared secure workspace opens (pure `privacyNoticeLines` in
 `docs/SYMBOL-LANGUAGE.md` §6. RESIDUAL: live verification on real devices
 (the speech-bubble duty landed with the round-4 greeter).
 
+### F-17 · Manual publish bridge for SDK-mode builds — ✅ SHIPPED (2026-07-18) (low)
+
+A small bridge into SDK mode (the green chat-mode-dropdown build+publish
+flow at `/app/<slug>/`, `src/build-pub.js` — shipped 2026-07-18, no register
+entry of its own yet), answering "can output from the execution sandbox or
+introspection-mode
+source work reach a live served URL without a chat/tool loop": admin-gated
+`PUT /api/build/:slug` (`handleBuildManualPublish`) calls the exact same
+`publishBuild` the pipeline uses, so a manually published bundle gets
+identical caps and opaque-origin CSP-sandboxed serving as a model-built one
+— no new storage shape, no new isolation model. `scripts/publish-app`
+bundles a local directory and publishes it via the break-glass admin auth.
+See the **publish-app** skill (built on top of **sdk-mode** — load that
+skill first for the feature this extends).
+
 ---
 
 ## 4. History log (append-only)
@@ -323,3 +338,9 @@ a shared secure workspace opens (pure `privacyNoticeLines` in
   Node-tested; `showPrivacyNotice` + `#privacypop` in cure/; UX-1
   dismissal). UX-2 rewritten in the ux-conventions registry; /cure build
   stamp d31→d32.
+- **2026-07-18** — F-17 shipped: manual publish bridge into SDK mode
+  (`handleBuildManualPublish`, `PUT /api/build/:slug`, admin-only) +
+  `scripts/publish-app`. Answers whether the execution-sandbox/introspection
+  workflow can put its output on a real served URL without a live model
+  conversation — reuses SDK mode's existing `publishBuild`/caps/opaque-origin
+  CSP unchanged rather than building a second publish system.
