@@ -79,13 +79,24 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
   assert.ok(r.capabilities && r.capabilities.tools, "advertises tools capability");
 });
 
-test("tools/list returns exactly the deep_research tool with its schema", () => {
+test("tools/list returns deep_research first plus the four SDK manifest tools", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 1);
+  assert.equal(r.tools.length, 5);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
   assert.equal(tool, DEEP_RESEARCH_TOOL);
+  // The SDK manifest tools ride along in MCP's schema shape (inputSchema, not
+  // Anthropic's input_schema) so external agents can plan against the SDK
+  // without shelling into the execution sandbox.
+  assert.deepEqual(
+    r.tools.slice(1).map((t) => t.name),
+    ["sdk_list_modules", "sdk_show_module", "sdk_plan", "sdk_validate"],
+  );
+  for (const t of r.tools.slice(1)) {
+    assert.equal(t.inputSchema.type, "object");
+    assert.equal(t.input_schema, undefined);
+  }
   // Input schema shape.
   assert.equal(tool.inputSchema.type, "object");
   assert.ok(tool.inputSchema.properties.question, "question property");
