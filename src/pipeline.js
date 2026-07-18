@@ -302,10 +302,19 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     return runSdkBuild(ctx);
   }
 
-  // Web search off: answer purely from Berget — no triage, no Exa.
+  // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
+  // still governs how deep we go over whatever sources ARE available (owner
+  // directive 2026-07-18): developer mode's own-source investigation and the
+  // auxiliary search sources (HF Hub, …) run regardless of the knob, and
+  // runSearches skips only the Exa leg. Fall through to the normal research
+  // path whenever one of those applies. Only when NONE does is there nothing
+  // external to consult — then answer from the model, with the slider's report
+  // tier still scaling that answer (runWithoutSearch).
   if (!state.webSearch) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    return runWithoutSearch(ctx);
+    if (!ctx.hasSource && !SEARCH_SOURCES.some((s) => s.intent(ctx.lastUser))) {
+      return runWithoutSearch(ctx);
+    }
   }
 
   // Developer mode, introspection-first: the site's OWN source is already in
@@ -371,8 +380,12 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
   ctx.stepDone("plan", "Web search off — answering from model knowledge");
+  // No external source applied, so this answers from the model — but the depth
+  // slider still scales the answer's comprehensiveness via the report tier
+  // (searchOffPrompt's sourceless depth ladder; default "standard" is the
+  // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1416,37 +1429,45 @@ async function runSearches(ctx, queries, round) {
   const { env, log, emit, state } = ctx;
   const batch = takeSearchBatch(state, queries);
   if (!batch.length) return;
-  state.searchCount += batch.length;
 
-  // Every search event names its provider (`source` slug + `service` display
-  // name): the client's cards must always make clear WHICH provider ran a
-  // search — a user report showed hub and web searches rendering identically.
-  for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
-  const results = await Promise.all(batch.map((query) => webSearch(env, log, query, state.plan.searchDepth)));
-  for (let i = 0; i < batch.length; i++) {
-    const query = batch[i];
-    const result = results[i];
-    recordPhase(ctx.model, "search", result.durationMs);
-    // A cache hit (result.cached) cost nothing at Exa; count it so the user
-    // isn't billed/quota-charged for a repeated search (chat.js subtracts
-    // these when recording Exa cost and search usage). It still counts as a
-    // logical search for the maxSearches cap and the activity UI — the angle
-    // was still covered.
-    if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
-    emit({
-      status: {
-        type: "search_done",
-        round,
-        query,
-        source: "web",
-        service: "Web search",
-        results: result.resultCount,
-        duration_ms: result.durationMs,
-        sources: result.sources,
-        cached: !!result.cached,
-      },
-    });
-    addSources(state, result.items);
+  // The web-search knob gates EXA ONLY (owner directive 2026-07-18). The
+  // auxiliary sources (HF Hub & co, runAuxSearches below) and the depth
+  // budget that plans this wave are independent of it: with the knob off the
+  // wave still runs the aux sources over the planned angles — depth governs
+  // how deep the research goes over whatever sources ARE available. Only the
+  // Exa leg (the query-to-a-third-party leg the knob is about) is skipped.
+  if (state.webSearch) {
+    state.searchCount += batch.length;
+    // Every search event names its provider (`source` slug + `service` display
+    // name): the client's cards must always make clear WHICH provider ran a
+    // search — a user report showed hub and web searches rendering identically.
+    for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
+    const results = await Promise.all(batch.map((query) => webSearch(env, log, query, state.plan.searchDepth)));
+    for (let i = 0; i < batch.length; i++) {
+      const query = batch[i];
+      const result = results[i];
+      recordPhase(ctx.model, "search", result.durationMs);
+      // A cache hit (result.cached) cost nothing at Exa; count it so the user
+      // isn't billed/quota-charged for a repeated search (chat.js subtracts
+      // these when recording Exa cost and search usage). It still counts as a
+      // logical search for the maxSearches cap and the activity UI — the angle
+      // was still covered.
+      if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
+      emit({
+        status: {
+          type: "search_done",
+          round,
+          query,
+          source: "web",
+          service: "Web search",
+          results: result.resultCount,
+          duration_ms: result.durationMs,
+          sources: result.sources,
+          cached: !!result.cached,
+        },
+      });
+      addSources(state, result.items);
+    }
   }
   await runAuxSearches(ctx, batch, round);
 }

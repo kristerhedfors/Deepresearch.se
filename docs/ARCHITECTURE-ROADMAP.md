@@ -439,11 +439,69 @@ fan-out and the paid-plan CPU ceiling (300s) leaves room. This is the
 only orchestrator. Sequence it last: it multiplies cost and only pays off
 once §5.0 can prove it.
 
+### 5.6 Adaptive fallback: model-chosen tools when no codified pipeline matches → learn and codify
+
+> **Status: proposed (owner directive, 2026-07-18).** The web-search knob
+> was decoupled from the depth slider in the same directive: the knob gates
+> Exa only, and *depth is how deep you go given the available sources* — so
+> a request with web search off still runs whatever sources apply (the HF
+> Hub source, developer-mode source investigation, the enrichments) up to
+> the time budget. The knob/slider/prompt/doc changes shipped; the adaptive
+> fallback below is the open part.
+
+Today every request is routed by a **codified pipeline**: a deterministic
+gate (`triage`, `externalSourceIntent`, the `SEARCH_SOURCES` intents, the
+enrichment `extractTargets`/`extractPlace`) decides which sources run, in
+code, at build time. That is a design pillar (§1.1, §3) and it must stay
+the *default*. But it has a blind spot: a request whose best research path
+nobody has codified yet falls through to a generic web-search-then-
+synthesize (or, web off, a plain model answer). The pillar says "keep tool
+*selection* out of the model's hands"; it does **not** say "never let the
+model select tools" — it says the *default hot path* must be deterministic
+and work across the whole model catalog.
+
+The proposal is a **bounded fallback**, entered only when no codified
+pipeline matches:
+
+1. **Detect the miss.** The deterministic router already knows when it has
+   nothing specific — triage returns a bare "research" with no source
+   intent firing, or a developer/tool-capable answer model is in use with
+   sources that came back thin. That is the trigger, not every request.
+2. **Let the model choose from the *available* tools.** Reuse the ONE
+   existing authorized tool-use seam (developer mode's
+   `grep_source`/`read_file`/`list_files`, plus `run_bash` on Se/cure —
+   invariant §1's single exception) and widen the offered toolset to the
+   registered sources for THIS request. Tool-capable models only;
+   everything else keeps the deterministic fallback. This never touches the
+   JSON planning phases (they stay on the fixed reliable model, invariant
+   §3) and never becomes the default path.
+3. **Learn and codify.** Log what the model chose and whether it helped
+   (the eval ledgers + `chat_logs` already capture the raw material). When
+   a chosen tool-path recurs and scores well, **promote it into a codified
+   deterministic pipeline** — a new `SEARCH_SOURCES` entry or intent gate,
+   authored the normal way (with EN+SV parity and a benchmark, §5.0). The
+   fallback is thus a *discovery* mechanism for new codified pipelines, not
+   a permanent replacement for them: over time the deterministic coverage
+   grows and the fallback fires less.
+
+**The tension, stated honestly.** This deliberately re-introduces
+model-driven tool selection that §3 argued against — but *bounded* (only on
+a codified-pipeline miss), *gated* (tool-capable answer models only, never
+the JSON phases), and *self-liquidating* (its whole point is to breed new
+deterministic pipelines that make it unnecessary). It only earns its place
+if §5.0's benchmark shows the fallback beats the generic path on the misses
+it fires for, and if the codify step actually happens (a fallback that
+never graduates into a pipeline is just the function-calling agent this
+project rejected). Sequence it **after** §5.0 can measure it, and treat the
+"codify" half as the deliverable — the model-chooses step is scaffolding
+for it.
+
 ### Sequencing
 
 §5.0 first, alone, and let it baseline the current pipeline. Then §5.1
 (it improves every budget tier), then §5.2/§5.3 (top tiers), then §5.4,
-then §5.5 — each merged only when the benchmark says it earned it.
+then §5.5 — each merged only when the benchmark says it earned it. §5.6
+rides last and only once §5.0 can score the misses it targets.
 
 ---
 

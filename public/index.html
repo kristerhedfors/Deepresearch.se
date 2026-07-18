@@ -81,8 +81,12 @@ try{var m=localStorage.getItem("dr_chat_mode");if(m==="sdk"){document.documentEl
           <strong>Web search</strong><br>
           <b>On:</b> your question is researched with live web searches (Exa) and
           answered with cited sources, within the time target.<br>
-          <b>Off:</b> the AI model (Berget.ai) answers from its own knowledge only
-          — no web requests.<br>
+          <b>Off:</b> no query is sent to Exa. This knob gates web search only —
+          the time slider stays active: the assistant still answers within the
+          time target, researching as deep as any other available source allows
+          (e.g. the Hugging Face Hub for model/dataset questions) and otherwise
+          answering from the model's own knowledge, with the depth the slider
+          buys.<br>
           <b>Note:</b> Exa retains search queries by default. For sensitive
           topics, see "Sensitive topics" in the
           <a href="/help/" target="_blank" rel="noopener">documentation</a>.
