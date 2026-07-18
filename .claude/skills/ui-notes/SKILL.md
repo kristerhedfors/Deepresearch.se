@@ -189,9 +189,11 @@ description: >-
   https://github.com/kristerhedfors/Deepresearch.se), invite-only and
   never placed on the market — plus a
   restricted-use-cases section grounded in the EU AI Act (Article 5
-  prohibited practices mapped onto a text research tool, and an honest
-  read of why the Article 2(6)/2(8) research and pre-market exemptions
-  don't cleanly apply to continuous real-world use by invited people).
+  prohibited practices mapped onto a text research tool, and a read of
+  how the Article 2(6)/2(8) research and pre-market exemptions fit —
+  the assistant is put into service solely to research which capabilities
+  and use cases fit the agent-pair architecture, not deployed for real-world
+  use by real users).
 - **"The build story"** at `/story/` (auth-gated static page, its own
   top-level account-panel entry): fetches and renders
   `public/build/history.md` (the complete, prompt-by-prompt build
