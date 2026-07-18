@@ -187,7 +187,7 @@ export async function handleMe(env, identity) {
   // src/user-messages.js); admins additionally get pending sign-in
   // approvals + open operational alerts folded into the same total.
   // Unread agent replies on the user's feedback threads count too — the
-  // "the developers wrote back" signal Feedback mode's dialogue depends on.
+  // "the developers wrote back" signal the feedback dialogue depends on.
   const [unreadMessages, unreadFeedback] = await Promise.all([
     countUnreadUserMessages(env, identity.id),
     countUnreadFeedbackReplies(env, identity.id),

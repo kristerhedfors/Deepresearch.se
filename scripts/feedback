@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The user-feedback queue on the LIVE site — the agent side of Feedback mode.
+# The user-feedback queue on the LIVE site — the agent side of the feedback pipeline.
 # Wraps /api/admin/feedback (src/feedback.js) using the break-glass Basic
 # Auth credentials, the same BASIC_AUTH_USER / BASIC_AUTH_PASS env vars the
 # e2e suite and scripts/chatlogs use. See .claude/skills/feedback-loop/SKILL.md

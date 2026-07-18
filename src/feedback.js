@@ -1,15 +1,24 @@
 // @ts-check
-// User feedback pipeline (D1 `feedback` + `feedback_messages`) — the back
-// end of the account panel's "Feedback mode" knob. With the knob on, every
-// assistant reply grows a Feedback button; a submission lands here as an
-// entry carrying the user's comment plus the reply it's about (question,
-// answer excerpt, model) — and, optionally, screenshot images (client-
-// downscaled data URLs in D1 `feedback_images`, one row per image, served
-// back via …/:id/images/:imgId). Each entry is a THREAD: the user and the
-// development agent exchange messages on it until it's resolved — a
-// user-friendly dialogue between end-users and the Claude Code loop that
-// processes the queue (see the **feedback-loop** skill and
+// User feedback pipeline (D1 `feedback` + `feedback_messages`). Feedback is
+// captured from the CHAT itself: a message whose text opens with the word
+// "feedback" (feedbackIntent below, EN+SV) is routed by the research pipeline
+// into the feedback case (src/pipeline.js runFeedbackCapture) instead of being
+// researched — it lands here (createFeedbackEntry, called from chat.js) as an
+// entry carrying the user's comment plus the turn it followed: the prior
+// question and the reply it comments on, and the model. Entries can also be
+// created directly via POST /api/feedback (this module), optionally with
+// screenshot images (client-downscaled data URLs in D1 `feedback_images`, one
+// row per image, served back via …/:id/images/:imgId). Each entry is a THREAD:
+// the user and the development agent exchange messages on it until it's
+// resolved — a user-friendly dialogue between end-users and the Claude Code
+// loop that processes the queue (see the **feedback-loop** skill and
 // scripts/feedback).
+//
+// Discovery is deliberately DOUBLE (owner directive, 2026-07-18): every
+// feedback message is both stored as an entry here AND tagged on its
+// chat_logs row (meta.feedback — src/chat.js), so the development loop can
+// find feedback either through scripts/feedback (the structured queue) or a
+// chatlogs scan.
 //
 // Two API surfaces:
 //   - /api/feedback*        the signed-in user's own entries (create, list,
@@ -32,7 +41,6 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
-import { feedbackEnabled } from "./settings.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -86,6 +94,33 @@ export const FEEDBACK_IMAGE_CAPS = {
 const IMAGE_DATA_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "declined"];
+
+// The feedback intent gate (deterministic, no model call — same posture as
+// quiz.js quizIntent / hf.js hfIntent). A message whose text OPENS with the
+// word "feedback" (case-insensitive — "The word feedback, small or large caps"
+// — the owner's whole trigger) is a report to the developers, not a research
+// question, and the pipeline routes it to the feedback case. English + Swedish
+// (invariant 6, EN/SV parity): "feedback" is used in both languages; the native
+// Swedish terms are "återkoppling" and "synpunkt(er)", definite forms included.
+//
+// "feedback loop(s)" is the ONE excluded collision: it's a ubiquitous fixed
+// phrase (control theory, ML, and this repo's own skill names), so a research
+// question that opens with it must NOT be swallowed by the gate.
+const FEEDBACK_PATTERNS = [
+  /^\s*feedback\b(?!\s+loops?\b)/i, // EN + SV loanword: "feedback", "Feedback:", "feedback – …"
+  /^\s*återkoppling(?:en)?\b/i, // SV: "återkoppling", "återkopplingen"
+  /^\s*synpunkt(?:er|en|erna)?\b/i, // SV: "synpunkt", "synpunkter", "synpunkten"
+];
+
+/**
+ * Whether the latest user message is feedback for the developers.
+ * @param {unknown} text the user's message text
+ * @returns {boolean}
+ */
+export function feedbackIntent(text) {
+  const t = typeof text === "string" ? text : "";
+  return FEEDBACK_PATTERNS.some((re) => re.test(t));
+}
 
 // Open = still on the loop's work queue.
 /**
@@ -476,6 +511,40 @@ export async function countUnreadFeedbackReplies(env, userId) {
   return /** @type {number} */ (row?.n) || 0;
 }
 
+// Insert one feedback entry (the row only — images, when any, are added by the
+// caller). Shared by the chat feedback pipeline (chat.js, from a "feedback …"
+// message) and the direct POST /api/feedback create below. Applies the field
+// caps; returns the new entry id, or null when there's no DB or no usable
+// comment (fail-soft — a feedback capture must never break the request it
+// rode in on).
+/**
+ * @param {D1Database | null} db
+ * @param {string | number} userId
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} entry
+ * @returns {Promise<number | null>}
+ */
+export async function createFeedbackEntry(db, userId, entry) {
+  if (!db) return null;
+  const comment = cleanStr(entry.comment, FEEDBACK_CAPS.comment);
+  if (!comment) return null;
+  const now = Date.now();
+  const res = await db
+    .prepare(
+      `INSERT INTO feedback (user_id, created_at, updated_at, status, comment, question, answer_excerpt, model, page)
+       VALUES (?, ?, ?, 'new', ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      String(userId), now, now,
+      comment,
+      cleanStr(entry.question, FEEDBACK_CAPS.question),
+      cleanStr(entry.answer_excerpt, FEEDBACK_CAPS.answer_excerpt),
+      cleanStr(entry.model, FEEDBACK_CAPS.model),
+      cleanStr(entry.page, FEEDBACK_CAPS.page),
+    )
+    .run();
+  return Number(res.meta?.last_row_id) || null;
+}
+
 // ---------------------------------------------------------------------------
 // User surface — /api/feedback* (identity gate in index.js; own rows only)
 // ---------------------------------------------------------------------------
@@ -498,28 +567,15 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
   const path = url.pathname.replace(/^\/api\/feedback/, "");
   const method = request.method;
 
-  // POST /api/feedback — create an entry. Gated on the knob: the UI only
-  // offers the button while Feedback mode is on, and the server enforces the
-  // same so the knob is authoritative, not cosmetic.
+  // POST /api/feedback — create an entry directly (any signed-in account).
+  // The primary capture path is now the chat feedback pipeline (a message that
+  // opens with "feedback"); this endpoint stays for programmatic use and any
+  // client that wants to submit an entry with screenshots attached.
   if (path === "" && method === "POST") {
-    if (!feedbackEnabled(env, identity)) {
-      return jsonResponse({ error: "Switch on Feedback mode in the account panel first." }, 403);
-    }
     const body = await request.json().catch(() => null);
     const v = validateFeedbackCreate(body);
     if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
-    const now = Date.now();
-    const res = await db
-      .prepare(
-        `INSERT INTO feedback (user_id, created_at, updated_at, status, comment, question, answer_excerpt, model, page)
-         VALUES (?, ?, ?, 'new', ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        userId, now, now,
-        v.entry.comment, v.entry.question, v.entry.answer_excerpt, v.entry.model, v.entry.page,
-      )
-      .run();
-    const id = /** @type {number} */ (res.meta?.last_row_id);
+    const id = /** @type {number} */ (await createFeedbackEntry(db, userId, v.entry));
     await insertImages(db, id, null, v.images);
     log.info("feedback.created", { user_id: userId, feedback_id: id, images: v.images.length });
     return jsonResponse({ feedback: await projectedEntry(db, id) }, 201);

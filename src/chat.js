@@ -51,6 +51,8 @@ import {
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
+import { createFeedbackEntry } from "./feedback.js";
+import { getDb } from "./db.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -110,6 +112,8 @@ import { buildSlugOk } from "./build-pub.js";
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
+ *   feedbackCapture?: boolean,
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string },
  * }} ChatRequestState
  */
 
@@ -283,6 +287,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       userId: String(identity.id),
     });
     disconnect.state = state;
+    // This channel captures feedback: a message that opens with the word
+    // "feedback" (feedback.js feedbackIntent) is routed to the feedback case
+    // (pipeline.js runFeedbackCapture) and recorded below instead of being
+    // researched. Gated on a real signed-in user row — feedback is per-user and
+    // needs someone to attribute the entry to and route the developers' reply
+    // back to; break-glass sessions (no row) keep researching.
+    state.feedbackCapture = !!identity.user;
 
     // Recovery marker (metadata only): lets the poller tell "still
     // researching" apart from "nothing will ever come".
@@ -464,8 +475,37 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // CSS build stamp. Lets a not-running sandbox be diagnosed from the
             // log without device access.
             client_diag: sanitizeClientDiag(body.client_diag),
+            // 1 when this message was FEEDBACK for the developers (pipeline.js
+            // runFeedbackCapture) — the chat-log half of the double discovery
+            // path (the structured entry is created just below). Lets a
+            // chatlogs scan find feedback even when the entry write failed.
+            feedback: state.feedback ? 1 : 0,
           },
         });
+      }
+      // Feedback pipeline (pipeline.js runFeedbackCapture): the message was a
+      // report to the developers. Persist it as a feedback entry — the Claude
+      // Code work queue (scripts/feedback + the feedback-loop skill) — alongside
+      // the meta.feedback chat-log tag above. Recorded even in incognito:
+      // opening a message with "feedback" is explicit intent to reach the
+      // developers (the reply says so). Fail-soft — a capture must never disturb
+      // the finished answer or the accounting above.
+      if (state.feedback && identity.user) {
+        try {
+          const id = await createFeedbackEntry(await getDb(env), String(identity.id), {
+            comment: state.feedback.comment,
+            question: state.feedback.question,
+            answer_excerpt: state.feedback.answer_excerpt,
+            model,
+            page: "chat",
+          });
+          if (id) log.info("feedback.captured", { user_id: identity.id, feedback_id: id, request_id: requestId });
+        } catch (err) {
+          log.warn("feedback.capture_failed", {
+            user_id: identity.id,
+            error: /** @type {any} */ (err)?.message || String(err),
+          });
+        }
       }
       /** @type {import('./types.js').StatusDone} */
       const stats = {

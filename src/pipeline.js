@@ -85,6 +85,7 @@ import {
   claimExtractionPrompt,
   claimVerifyPrompt,
   directPrompt,
+  feedbackReplyPrompt,
   gapPrompt,
   notesPrompt,
   quizPrompt,
@@ -116,6 +117,7 @@ import {
   stageBuildFile,
 } from "./sdk-tools.js";
 import { publishBuild } from "./build-pub.js";
+import { feedbackIntent } from "./feedback.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
@@ -166,6 +168,8 @@ import {
  *   fetchedUrls?: Set<string>,
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
+ *   feedbackCapture?: boolean,
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string },
  * }} PipelineState
  */
 
@@ -242,7 +246,19 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // phase, triage included (ctx.lastUser / ctx.convText / ctx.imageParts
   // are all read from `convo`). Fully fail-soft — the conversation comes
   // back unchanged if there's nothing to look up or a service is down.
-  const convo = await runEnrichments(env, log, emit, step, stepDone, conversation, state);
+  // Feedback pipeline (feedback.js feedbackIntent): a message that opens with
+  // "feedback" (EN+SV) is a report to the developers, not research. Detect it
+  // BEFORE the enrichments so a feedback note that happens to mention an IP or
+  // address doesn't fire a Shodan/Maps lookup on the way in. Gated on
+  // state.feedbackCapture — set only by the /api/chat channel (chat.js), so the
+  // MCP channel keeps researching. The capture itself (entry + chat-log tag) is
+  // done by chat.js from state.feedback; runFeedbackCapture below just answers.
+  const feedbackReq =
+    !!state.feedbackCapture &&
+    feedbackIntent(textOf(lastUserMessage(conversation)?.content));
+  const convo = feedbackReq
+    ? conversation
+    : await runEnrichments(env, log, emit, step, stepDone, conversation, state);
 
   const ctx = {
     env, log, emit, model, jsonModel, state, profile, jsonProfile, conversation: convo,
@@ -292,6 +308,11 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // examples, so with developer mode on EVERY request quiz-triggered and the
   // whole answer became a 5-question quiz (chat_logs #360, 2026-07-15; the
   // same bug class as externalSourceIntent's cleanLastUser fix below).
+  // Feedback takes priority over every other case (research, quiz, SDK,
+  // introspection): the user is reporting to the developers, so answer warmly
+  // and let chat.js record it — never route it into research.
+  if (feedbackReq) return runFeedbackCapture(ctx);
+
   let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
   // SDK ("lovable") mode — the green mode in the mode dropdown: the request
@@ -375,6 +396,40 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 }
 
 // ---- phases ------------------------------------------------------------
+
+// Fail-soft acknowledgment if the feedback reply model produced no text at all
+// (rare). EN only — this is a degraded path; the model handles EN/SV itself on
+// the normal path.
+const FEEDBACK_ACK_FALLBACK =
+  "Thank you — your feedback has been passed on to the developers, who read every submission. If a reply is needed, it will appear under Feedback in your account panel.";
+
+// The feedback case (routed at the top of runPipeline): the user's message is
+// feedback for the developers. Stash the report on the state so chat.js can
+// persist it as a feedback entry (the Claude Code work queue) AND tag the
+// chat-log row, then stream a short, warm acknowledgment. No search, no
+// sources, no validation — the fix is the developers' job, off the site. The
+// report is stashed BEFORE the model call so chat.js still records it even if
+// the acknowledgment stream fails.
+/** @param {PipelineCtx} ctx */
+async function runFeedbackCapture(ctx) {
+  const { state } = ctx;
+  ctx.step("plan", "Feedback…");
+  ctx.stepDone("plan", "Sending your feedback to the developers");
+  // The message IS the comment; the prior turn (the question it followed and
+  // the reply it comments on) rides along so the developer sees the context.
+  const priorAssistant = [...ctx.conversation].reverse().find((m) => m.role === "assistant");
+  state.feedback = {
+    comment: ctx.cleanLastUser,
+    question: previousUserText(ctx.conversation) || null,
+    answer_excerpt: (textOf(priorAssistant?.content) || "").slice(0, 8000) || null,
+    model: ctx.model,
+  };
+  const draft = await streamCompletion(ctx, [
+    { role: "system", content: feedbackReplyPrompt() },
+    ...withImageNudge(ctx.conversation),
+  ]);
+  if (!(draft || "").trim()) emitChunked(ctx, FEEDBACK_ACK_FALLBACK);
+}
 
 /** @param {PipelineCtx} ctx */
 async function runWithoutSearch(ctx) {

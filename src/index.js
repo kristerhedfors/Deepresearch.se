@@ -593,8 +593,9 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/server-token/adjust" && request.method === "POST") {
     return handleServerTokenAdjust(request, env, log, identity);
   }
-  // Feedback mode (src/feedback.js): the user's own feedback entries and
-  // their dialogue threads with the development agent.
+  // Feedback pipeline (src/feedback.js): the user's own feedback entries and
+  // their dialogue threads with the development agent (entries are created
+  // from the chat — feedbackIntent/runFeedbackCapture — or via POST here).
   if (url.pathname === "/api/feedback" || url.pathname.startsWith("/api/feedback/")) {
     return handleFeedbackApi(request, env, url, log, identity);
   }

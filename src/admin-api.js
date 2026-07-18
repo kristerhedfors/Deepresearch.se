@@ -113,7 +113,7 @@ export async function handleAdminApi(request, env, url, log, identity) {
       return handleChatLogs(request, env, url, log);
     }
     // The feedback queue (src/feedback.js): the agent/operator side of
-    // Feedback mode — list, read, set status, reply, delete.
+    // Feedback pipeline — list, read, set status, reply, delete.
     if (path === "/feedback" || path.startsWith("/feedback/")) {
       return handleAdminFeedback(request, env, url, log);
     }

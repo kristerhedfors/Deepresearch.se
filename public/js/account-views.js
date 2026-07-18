@@ -8,8 +8,8 @@
 // Plus the pieces every view shares: the settings switch row (settingRow),
 // its press-and-hold info popovers (wireSettingPopovers), the header's
 // notification badge (renderNotifBadge), and the Settings view's
-// Feedback-mode / execution-sandbox rows (renderConfigKnobs +
-// wireFeedbackKnob / wireSandboxKnob — rendered by account-settings.js).
+// execution-sandbox / introspection rows (renderConfigKnobs +
+// wireSandboxKnob / wireDeveloperKnob — rendered by account-settings.js).
 
 import { escapeHtml, formatCount as fmtN } from "./notifications.js";
 import {
@@ -17,13 +17,9 @@ import {
   bashLiteOn,
   developerModeAvailable,
   developerModeOn,
-  feedbackAvailable,
-  feedbackModeOn,
   setBashLiteMcp,
   setDeveloperMode,
-  setFeedbackMode,
 } from "./settings.js";
-import { applyFeedbackMode } from "./turns.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme } from "./chat-mode.js";
 import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
@@ -62,21 +58,7 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
     </div>`;
 }
 
-// Feedback mode's knob lives in the Settings view with every other
-// configuration knob (2026-07-11 directive: ALL configuration under the
-// header's gear icon).
-const FEEDBACK_INFO = `<strong>Feedback mode</strong><br>
-  <b>On:</b> every reply — including earlier ones — gets a <b>Feedback</b>
-  button. Press it to tell the developers what was good or bad about that
-  answer; your note is sent together with the question and the reply it's
-  about. The development agent reads every submission, and its answers show
-  up as a dialogue under <b>Feedback</b> here in the account panel.<br>
-  <b>Off (default):</b> no feedback buttons, nothing is sent.<br>
-  <b>Privacy:</b> only what you choose to submit is stored — the comment you
-  write plus that one question and reply — readable by the site's
-  developers. Withdrawing an entry deletes it, thread included.`;
-
-// The execution-sandbox knob sits beside it in Settings (short note; the
+// The execution-sandbox knob sits in Settings (short note; the
 // full story is in the /help pages). Enabling it reloads the page so the
 // app comes back cross-origin isolated and the in-browser Linux VM can boot.
 const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong><br>
@@ -101,10 +83,10 @@ const DEVELOPER_INFO = `<strong>Introspection</strong><br>
   tooling out of the way, not secrecy.`;
 
 /**
- * The Feedback-mode and execution-sandbox rows the Settings view renders
+ * The execution-sandbox and introspection rows the Settings view renders
  * under the server-backed knobs (account-settings.js) — knob state from
  * the cached /api/settings copy, both gated on a signed-in account.
- * Wire with wireFeedbackKnob + wireSandboxKnob after insertion.
+ * Wire with wireSandboxKnob + wireDeveloperKnob after insertion.
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */
@@ -116,8 +98,7 @@ export function renderConfigKnobs(me) {
   // developer/introspection AND sandbox knobs were simply ABSENT from the
   // admin's Settings panel — reported as "the introspection knob doesn't
   // move": there was no knob to move. Show them as read-only ON instead, so
-  // the admin sees the state honestly. Feedback needs a user row (it stores
-  // per-user threads), so it stays out of the admin view.
+  // the admin sees the state honestly.
   if (!me?.email) {
     return (
       settingRow({
@@ -140,15 +121,6 @@ export function renderConfigKnobs(me) {
     );
   }
   return (
-    settingRow({
-      id: "fbknob",
-      label: "Feedback mode",
-      checked: feedbackAvailable() && feedbackModeOn(),
-      disabled: !feedbackAvailable(),
-      popId: "fbpop",
-      info: FEEDBACK_INFO,
-    }) +
-    '<p id="fbstatus" class="muted setting-note" hidden></p>' +
     settingRow({
       id: "sbknob",
       label: `Execution sandbox <span class="exp-badge">Experimental</span>`,
@@ -271,34 +243,6 @@ export async function loadGamesView(ctx) {
   wireBack();
 }
 
-// The Feedback-mode knob (Settings view): persists via /api/settings
-// (feedback_mode) and flips the body's `feedback-mode` class so every
-// on-screen reply — existing ones included — shows/hides its Feedback
-// button immediately (turns.js). Popovers are wired by the view
-// (wireSettingPopovers once over the whole body), not here.
-export function wireFeedbackKnob(ctx) {
-  const knob = document.getElementById("fbknob");
-  if (!knob || knob.disabled) return;
-  const status = document.getElementById("fbstatus");
-  knob.addEventListener("change", async () => {
-    const on = knob.checked;
-    knob.disabled = true;
-    status.hidden = false;
-    try {
-      await setFeedbackMode(on);
-      applyFeedbackMode(on);
-      status.textContent = on
-        ? "Feedback mode is on — every reply now has a Feedback button."
-        : "Feedback mode is off. Your existing feedback dialogues stay under Feedback.";
-    } catch (err) {
-      knob.checked = !on;
-      status.textContent = err?.message || "Could not update the setting.";
-    } finally {
-      knob.disabled = false;
-    }
-  });
-}
-
 // The execution-sandbox knob (Settings view): persists via /api/settings
 // (bash_lite_mcp). Enabling changes how the PAGE must be served (cross-origin
 // isolation for the in-browser Linux VM), which only takes effect on the next
@@ -376,8 +320,8 @@ export function wireDeveloperKnob(ctx) {
 // ---- summary & usage rendering (pure HTML builders) ---------------------------
 
 /**
- * The summary view's HTML: identity line, the 5-hour usage block, the
- * Feedback-mode knob (signed-in accounts), and the navigation buttons.
+ * The summary view's HTML: identity line, the 5-hour usage block, and the
+ * navigation buttons (Feedback among them — the account's feedback threads).
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */

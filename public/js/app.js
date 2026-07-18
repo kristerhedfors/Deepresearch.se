@@ -10,7 +10,7 @@
 //   stream.js         — conversation history + /api/chat SSE send loop
 //   history-ui.js     — the encrypted local-history drawer
 //   projects.js/-ui   — project records, panel, header chip
-//   settings.js       — cached /api/settings (cloud/feedback knob state)
+//   settings.js       — cached /api/settings (cloud + feature knob state)
 //   sync.js           — boot-time cloud reconcile (push diff + pullNewer)
 //   imagedeck.js      — the conversation-wide image deck (onDeckAsk hook)
 //   pending-answer.js — the resume-across-relaunch pointer
@@ -48,7 +48,7 @@ import {
   stopGeneration,
 } from "./stream.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
-import { applyFeedbackMode, clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
+import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
 
 // ---- Elements -------------------------------------------------------------
@@ -152,9 +152,6 @@ const account = initAccountPanel();
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
   .then((s) => {
-    // Feedback mode (account panel knob): reveal the per-reply Feedback
-    // buttons — turns.js keeps them in the DOM, the body class shows them.
-    applyFeedbackMode(s?.feedback_mode === true);
     // Reconcile the mode theme with the server's authoritative developer_mode
     // capability: cache the knob (dev-mode.js), then let chat-mode.js decide
     // the effective mode — a knob turned off elsewhere downgrades a stored

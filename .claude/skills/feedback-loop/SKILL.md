@@ -2,28 +2,36 @@
 name: feedback-loop
 description: >-
   Load when processing user feedback from the live site — "handle the
-  feedback queue", "loop on feedback", a user submitted feedback via
-  Feedback mode, or when touching src/feedback.js, the account panel's
-  Feedback view (public/js/account-feedback.js), or scripts/feedback. Governs the whole agent loop: pulling
+  feedback queue", "loop on feedback", a user sent feedback from the chat,
+  or when touching src/feedback.js, the chat feedback gate (feedbackIntent /
+  runFeedbackCapture), the account panel's Feedback view
+  (public/js/account-feedback.js), or scripts/feedback. Governs the whole agent loop: pulling
   the queue, the mandatory human-in-the-loop decision on EVERY entry,
   implementing or declining, messaging back to the user in plain language,
   status lifecycle, and how to run it as a recurring loop.
 ---
 
-# The feedback loop — Claude Code as the back end of Feedback mode
+# The feedback loop — Claude Code as the back end of the feedback pipeline
 
 ## What this is
 
-Users of deepresearch.se can switch on **Feedback mode** (a knob directly
-on the account panel, `feedback_mode` in `/api/settings`). While it's on,
-every assistant reply — including previously rendered ones — carries a
-**Feedback** button; a submission stores the user's comment plus the
-question/answer it's about as a `feedback` entry (D1, `src/feedback.js`).
-Each entry is a **dialogue thread**: the user and the development agent
-exchange messages on it until it's resolved. The account panel's Feedback
-view is the user's side; **this loop, run inside Claude Code, is the other
-side** — the queue is the product's user-facing change-request inbox, and
-you are the engineer answering it.
+Users of deepresearch.se give feedback **straight from the chat**: a message
+whose text opens with the word "feedback" (`feedbackIntent`, EN+SV — e.g.
+"feedback: the map view was cut off") is routed by the research pipeline into
+the **feedback case** (`src/pipeline.js` `runFeedbackCapture`) instead of being
+researched. That answers the user warmly and records the message as a `feedback`
+entry (D1, `src/feedback.js` `createFeedbackEntry`, called from `chat.js`) —
+carrying the comment plus the turn it followed (the prior question and the reply
+it comments on). The capture is **double**: the entry lands in the queue AND the
+`chat_logs` row is tagged (`meta.feedback`), so feedback is findable both through
+`scripts/feedback` (the structured queue) and a chatlogs scan. There is no
+per-reply Feedback button and no settings knob any more.
+
+Each entry is a **dialogue thread**: the user and the development agent exchange
+messages on it until it's resolved. The account panel's Feedback view is the
+user's side (where the developers' replies come back); **this loop, run inside
+Claude Code, is the other side** — the queue is the product's user-facing
+change-request inbox, and you are the engineer answering it.
 
 The loop's shape follows Anthropic's canonical agent loop (Building
 Effective Agents / the Agent SDK docs): **gather context → take action →
@@ -138,12 +146,15 @@ requirement:
 ## Privacy & posture notes
 
 - A feedback entry is user content stored readable **by the user's explicit
-  submission** — consented, disclosed on the knob and the form. Don't copy
-  thread content anywhere less protected than D1 (no pasting into public
+  act** — opening a chat message with "feedback" — disclosed in the chat
+  empty-state, the Settings note, and the warm reply the pipeline sends. Don't
+  copy thread content anywhere less protected than D1 (no pasting into public
   issues/PRs).
 - The user can withdraw an entry (deletes the thread). Respect it — never
   restore from memory or logs.
-- Entry creation is knob-gated server-side; thread replies are not (a
-  dialogue must survive the knob turning off). Don't "fix" that asymmetry.
-- Break-glass identities can't file feedback (no user row) — the admin
-  surface is read/reply/manage only.
+- Feedback is recorded even in **incognito** (ghost) mode: typing "feedback …"
+  is explicit intent to reach the developers (the reply says so). The
+  `chat_logs` row is still suppressed under incognito, so the entry is the only
+  record then — that's by design, not a leak to "fix".
+- Break-glass identities can't file feedback (no user row — the chat gate is
+  off for them) — the admin surface is read/reply/manage only.

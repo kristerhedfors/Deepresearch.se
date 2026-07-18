@@ -223,11 +223,7 @@ description: >-
   amended branding rule).
 - **Account panel** (`public/js/account.js`) is five views: the default
   view shows only the rolling 5-hour window (the one that actually gates
-  the next message) and the **Feedback mode** knob (directly on the
-  summary, NOT in Settings — deliberate placement; it toggles the body's
-  `feedback-mode` class, revealing a Feedback button on EVERY assistant
-  reply, existing ones included — the buttons are always in the DOM,
-  `turns.js`, CSS shows them), plus navigation (Messages, Feedback, Full
+  the next message), plus navigation (Messages, Feedback, Full
   usage & history, Settings, About this project, The build story,
   The architecture story, Documentation, Admin, Sign out); "Full usage & history" drills into
   today/this-week/this-month (reuses the cached `/api/me` response);
@@ -235,7 +231,12 @@ description: >-
   entries as dialogue threads with the development agent — reply box,
   Withdraw, unread-reply badge from `/api/me`'s `unread_feedback`
   (server side `src/feedback.js`; the agent side is the **feedback-loop**
-  skill); "Settings" holds the other knobs (cloud/Shodan/Maps).
+  skill); "Settings" holds the knobs (cloud/Shodan/Maps/sandbox/
+  introspection). **Feedback is given from the CHAT**, not a knob or a
+  button: a message opening with the word "feedback" (`feedbackIntent`,
+  EN+SV) routes to the feedback pipeline (`src/pipeline.js`
+  `runFeedbackCapture`) — disclosed in the chat empty-state and the
+  Settings note.
 - **Message center** (`GET /api/messages`, `src/user-api.js` +
   `src/user-messages.js`): account-level notices for EVERY user — quota
   exhausted, quota available again, sign-in approved, quota changed by an

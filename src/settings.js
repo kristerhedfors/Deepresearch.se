@@ -47,15 +47,19 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
  */
 /**
  * The effective per-account knob state parseSettings coerces to.
- * @typedef {{ shodan_mcp: boolean, google_maps: boolean, feedback_mode: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
+ * @typedef {{ shodan_mcp: boolean, google_maps: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability).
- * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, feedback: boolean, bash_lite: boolean, developer: boolean }} FeatureAvailability
+ * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, bash_lite: boolean, developer: boolean }} FeatureAvailability
  */
 
-// Five knobs today (cloud storage is deliberately NOT among them — see the
-// header note; it is implicit whenever storage is available):
+// Four knobs today (cloud storage is deliberately NOT among them — see the
+// header note; it is implicit whenever storage is available). Feedback is NOT
+// a knob either (as of 2026-07-18): feedback is given straight from the chat —
+// a message that opens with "feedback" is routed to the feedback pipeline
+// (src/feedback.js feedbackIntent, src/pipeline.js runFeedbackCapture) — so
+// there is nothing per-account to switch.
 //  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
 //    sends the host/IP to a third party, so it stays off until asked for;
 //    only an explicit stored `true` enables it).
@@ -63,11 +67,6 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    sent to Google Maps Platform (Places + Street View + Static Maps) and the
 //    imagery fetches are billed, so it stays off until asked for; only an
 //    explicit stored `true` enables it).
-//  - feedback_mode:  default OFF (opt-in — switches a Feedback button onto
-//    every assistant reply, existing ones included; a submission stores the
-//    comment PLUS that reply's question/answer readable server-side for the
-//    development loop (src/feedback.js), so it stays off until the user
-//    asks for it; only an explicit stored `true` enables it).
 //  - bash_lite_mcp:  default OFF (opt-in, EXPERIMENTAL — enables the
 //    in-browser Linux execution sandbox (CheerpX) and the agentic bash tool
 //    (src/bash-agent.js): when a task "wants a shell" the model proposes
@@ -82,7 +81,7 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    source is public on GitHub anyway; the knob keeps the mode out of
 //    ordinary users' way, not out of reach. No server secret; only an
 //    explicit stored `true` enables it).
-const DEFAULTS = { shodan_mcp: false, google_maps: false, feedback_mode: false, bash_lite_mcp: false, developer_mode: false };
+const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, developer_mode: false };
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped
 // (a legacy stored server_history flag simply falls away), known keys are
@@ -105,7 +104,6 @@ export function parseSettings(json) {
   return {
     shodan_mcp: raw.shodan_mcp === true,
     google_maps: raw.google_maps === true,
-    feedback_mode: raw.feedback_mode === true,
     bash_lite_mcp: raw.bash_lite_mcp === true,
     developer_mode: raw.developer_mode === true,
   };
@@ -141,9 +139,6 @@ export function featureAvailability(env, identity) {
     ...storageAvailability(env, identity),
     shodan: !!(shodanAvailable(env) && identity.user),
     google_maps: !!(googleMapsAvailable(env) && identity.user),
-    // Feedback needs D1 (the entries/threads live there) and a real user row
-    // to attribute entries and route the agent's replies back to.
-    feedback: !!(env.DB && identity.user),
     // The bash-lite sandbox is a pure BROWSER capability (CheerpX runs
     // client-side; the server only remembers the knob and, when it's on,
     // serves the app shell cross-origin-isolated so SharedArrayBuffer works).
@@ -210,19 +205,6 @@ export function googleMapsEnabled(env, identity) {
   return featureAvailability(env, identity).google_maps && getSettings(identity).google_maps;
 }
 
-// The effective Feedback-mode state: the knob on AND D1 + a real user row
-// behind it. Gates creating new entries (src/feedback.js) — replying on an
-// existing thread deliberately does NOT check this, so a dialogue survives
-// the knob being switched off mid-conversation.
-/**
- * @param {Env} env
- * @param {Identity} identity
- * @returns {boolean}
- */
-export function feedbackEnabled(env, identity) {
-  return featureAvailability(env, identity).feedback && getSettings(identity).feedback_mode;
-}
-
 // The effective bash-lite sandbox state. Read by index.js to decide whether
 // the DRS app shell is served cross-origin-isolated (COEP) so CheerpX can
 // boot, and by chat.js/bash-api.js to accept a shell transcript / run the
@@ -285,7 +267,6 @@ function settingsPayload(env, identity, settings) {
   return {
     shodan_mcp: available.shodan && settings.shodan_mcp,
     google_maps: available.google_maps && settings.google_maps,
-    feedback_mode: available.feedback && settings.feedback_mode,
     bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
     developer_mode: available.developer && (identity.user ? settings.developer_mode : true),
     // Browser key for the interactive Street View embed — public by design,
@@ -309,12 +290,12 @@ export async function handleSettingsGet(env, identity) {
 }
 
 // PUT /api/settings — body may carry any knob (partial updates allowed):
-// {shodan_mcp?, google_maps?, feedback_mode?, bash_lite_mcp?,
-// developer_mode?}. Turning a knob ON requires its backing to actually
-// exist — Shodan needs the SHODAN_API_KEY secret, feedback needs D1 — so a
-// knob can't be switched on with nothing behind it (which would silently
-// lose data or do nothing). Cloud storage is not a knob and cannot be
-// switched here (see the header note).
+// {shodan_mcp?, google_maps?, bash_lite_mcp?, developer_mode?}. Turning a knob
+// ON requires its backing to actually exist — Shodan needs the SHODAN_API_KEY
+// secret — so a knob can't be switched on with nothing behind it (which would
+// silently do nothing). Cloud storage is not a knob and cannot be switched here
+// (see the header note); feedback is no longer a knob either (given from the
+// chat — see the DEFAULTS note).
 /**
  * @param {Request} request
  * @param {Env} env
@@ -335,14 +316,13 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   const hasShodan = body?.shodan_mcp !== undefined;
   const hasGoogleMaps = body?.google_maps !== undefined;
-  const hasFeedback = body?.feedback_mode !== undefined;
   const hasBashLite = body?.bash_lite_mcp !== undefined;
   const hasDeveloper = body?.developer_mode !== undefined;
-  if (!hasShodan && !hasGoogleMaps && !hasFeedback && !hasBashLite && !hasDeveloper) {
+  if (!hasShodan && !hasGoogleMaps && !hasBashLite && !hasDeveloper) {
     return jsonResponse(
       {
         error:
-          "Expected {shodan_mcp?: boolean, google_maps?: boolean, feedback_mode?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
+          "Expected {shodan_mcp?: boolean, google_maps?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
       },
       400,
     );
@@ -352,9 +332,6 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   if (hasGoogleMaps && typeof body.google_maps !== "boolean") {
     return jsonResponse({ error: "google_maps must be a boolean." }, 400);
-  }
-  if (hasFeedback && typeof body.feedback_mode !== "boolean") {
-    return jsonResponse({ error: "feedback_mode must be a boolean." }, 400);
   }
   if (hasBashLite && typeof body.bash_lite_mcp !== "boolean") {
     return jsonResponse({ error: "bash_lite_mcp must be a boolean." }, 400);
@@ -372,12 +349,6 @@ export async function handleSettingsPut(request, env, log, identity) {
   if (hasGoogleMaps && body.google_maps && !available.google_maps) {
     return jsonResponse(
       { error: "Google Maps is not configured on this server (GOOGLE_MAPS_API_KEY missing)." },
-      503,
-    );
-  }
-  if (hasFeedback && body.feedback_mode && !available.feedback) {
-    return jsonResponse(
-      { error: "Feedback is not configured on this server (database missing)." },
       503,
     );
   }
@@ -400,7 +371,6 @@ export async function handleSettingsPut(request, env, log, identity) {
   const settings = { ...getSettings(identity) };
   if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
   if (hasGoogleMaps) settings.google_maps = body.google_maps;
-  if (hasFeedback) settings.feedback_mode = body.feedback_mode;
   if (hasBashLite) settings.bash_lite_mcp = body.bash_lite_mcp;
   if (hasDeveloper) settings.developer_mode = body.developer_mode;
   await saveSettings(env, identity.user.id, settings);
@@ -408,7 +378,6 @@ export async function handleSettingsPut(request, env, log, identity) {
     user_id: identity.id,
     shodan_mcp: settings.shodan_mcp,
     google_maps: settings.google_maps,
-    feedback_mode: settings.feedback_mode,
     bash_lite_mcp: settings.bash_lite_mcp,
     developer_mode: settings.developer_mode,
   });
