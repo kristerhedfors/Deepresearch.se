@@ -30,7 +30,8 @@ import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNA
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
+import { bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
+import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
 import {
@@ -846,6 +847,23 @@ export function prewarmSandbox() {
   } catch { /* best-effort — never disturb the composer */ }
 }
 
+// The latest user message's plain text — the conversation's last user turn,
+// whose content is a string or an array of {type:"text"} parts (images ride
+// alongside). Empty when there is none. Used to route around the sandbox for
+// pure model questions.
+function latestUserText() {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (!m || m.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (Array.isArray(m.content)) {
+      return m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n");
+    }
+    return "";
+  }
+  return "";
+}
+
 /**
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
@@ -853,6 +871,16 @@ export function prewarmSandbox() {
 async function maybeRunShellLoop(turn, opts) {
   try {
     if (!bashLiteOn()) return []; // knob off — feature disabled, nothing to do
+    // Skip the (slow, mobile-costly) offline sandbox for a PURE AI-model
+    // question — "latest on glm-5.2", "kimi k2 vs k3", "what's new in
+    // deepseek". The sandbox is OFFLINE and cannot answer an external-knowledge
+    // ask; the model otherwise mistakes the model name for a local package and
+    // burns the ~25 s boot on `apt-cache search glm-5.2` (IMG_5207). Only skip
+    // when no actual shell verb is present (bashIntent) so a genuine
+    // "download glm-5.2 weights and du -sh them" still runs; the bash prompt
+    // (AI_MODEL_NOT_A_PACKAGE_NOTE) covers the residual mixed-intent case.
+    const latestUser = latestUserText();
+    if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
     // cannot boot. app.js self-heals by reloading once; if we still land here,
     // tell the user plainly instead of silently answering "I can't run code".
