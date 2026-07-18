@@ -112,6 +112,21 @@ Known provider limits baked into the design:
 - Outbound enrichment requests carry the minimum (a query, a coordinate, a
   host) — never the conversation, filenames, or account identity.
 
+The table above is *network* dependencies — services the Worker calls at
+request time. *Code* dependencies are a separate, deliberately narrow story
+(invariant 5): `package.json` carries **zero runtime dependencies** for the
+Worker or client, only two dev-only tools (`typescript`,
+`@cloudflare/workers-types`) used for `npm run typecheck` and never shipped
+— no build step, no bundler, no lockfile drift to audit. The exceptions are
+third-party JS that isn't npm-managed: the hand-vendored, SHA-256-pinned
+libraries in `public/vendor/` (`docs/CODE-LAYOUT.md`'s vendor section) and
+one live CDN load, the CheerpX sandbox engine (`cxrtnc.leaningtech.com`,
+pending its license question — the **execution-sandbox** skill). Net effect:
+a narrow, mostly-auditable supply-chain surface with two known, tracked
+exceptions rather than an npm dependency tree — see `SECURITY-RISKS.md`
+R-9/R-10 and the L-12 backlog item (a version+SHA-256 manifest for the
+vendored libs) for the open follow-up.
+
 ## 2. Deployment & configuration
 
 `wrangler.toml`:
