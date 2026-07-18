@@ -121,6 +121,16 @@ unknown `status` types (forward compatibility).
   export (id-numbered `[Embedded element #N: …]` lines) — any NEW event
   type that renders a persistent turn-body element must do the same (see
   the **add-research-source** skill, section 6).
+- `{"status":{"type":"build","slug":"todo-app-a1b2","url":"/app/todo-app-a1b2/","files":3,"title":"Todo App"}}`
+  — SDK mode published (or republished) this conversation's generated app
+  (src/pipeline.js `runSdkBuild` → src/build-pub.js). The client
+  (stream.js) remembers `slug` per conversation (persisted as the record's
+  `buildSlug`) and sends it back as `build_slug` on the next SDK-mode send so
+  an iteration republishes the SAME `/app/<slug>/` URL; the visible link
+  rides in the answer text ("**Try it live:** …"), so no turn-body element is
+  rendered and the embed-registry rules don't apply. Older clients ignore the
+  event (forward compatibility) — they just mint a fresh slug per turn. See
+  the **sdk-mode** skill.
 - `{"status":{"type":"quiz","quiz":{"title":"…","intro":"…","questions":[{"question":"…","alternatives":["…","…"],"correct":1,"explanation":"…"}]}}}`
   — the inline-quiz capability (src/quiz.js's deterministic `quizIntent`
   gate, with a fail-soft triage `quiz:true` backup flag for typos/paraphrases

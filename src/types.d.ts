@@ -398,6 +398,19 @@ export interface StatusStreetViewFrames {
 export interface StatusDiscardText {
   type: "discard_text";
 }
+/**
+ * SDK mode published (or republished) this conversation's build
+ * (src/pipeline.js runSdkBuild → src/build-pub.js). The client remembers
+ * `slug` and sends it back as `build_slug` so an iteration keeps the same
+ * live /app/<slug>/ URL; the link itself rides in the answer text.
+ */
+export interface StatusBuild {
+  type: "build";
+  slug: string;
+  url: string;
+  files: number;
+  title: string;
+}
 /** Terminal stats footer. */
 export interface StatusDone {
   type: "done";
@@ -419,6 +432,7 @@ export type SseStatus =
   | StatusStreetViewEmbed
   | StatusStreetViewFrames
   | StatusDiscardText
+  | StatusBuild
   | StatusDone;
 
 /** An OpenAI-style text-delta chunk. */

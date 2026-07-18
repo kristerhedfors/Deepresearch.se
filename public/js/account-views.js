@@ -24,7 +24,8 @@ import {
   setFeedbackMode,
 } from "./settings.js";
 import { applyFeedbackMode } from "./turns.js";
-import { applyDeveloperTheme } from "./dev-mode.js";
+import { storeDeveloperMode } from "./dev-mode.js";
+import { applyChatModeTheme } from "./chat-mode.js";
 import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
@@ -350,10 +351,16 @@ export function wireDeveloperKnob(ctx) {
     status.hidden = false;
     try {
       await setDeveloperMode(on);
-      // Flip the white-titanium composer tint the instant the knob commits (and
-      // cache it for the next load — dev-mode.js). Only after the server accepts
-      // the write, so a rejected save leaves the pane untouched.
-      applyDeveloperTheme(on);
+      // Flip the mode the instant the knob commits (and cache both the knob and
+      // the mode pick for the next load): the knob IS the introspection
+      // capability, so turning it on selects Introspection mode (titanium pane)
+      // and turning it off returns to Normal — keeping the mode dropdown, the
+      // theme class, and the caches consistent (chat-mode.js). Only after the
+      // server accepts the write, so a rejected save leaves everything untouched.
+      storeDeveloperMode(on);
+      const mode = applyChatModeTheme(on ? "introspection" : "normal");
+      const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
+      if (modeSel) modeSel.value = mode;
       status.textContent = on
         ? "Introspection is on — the composer pane turns white titanium, and asking about this site's own source code answers from the deployed source."
         : "Introspection is off.";

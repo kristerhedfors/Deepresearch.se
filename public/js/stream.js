@@ -25,6 +25,7 @@ import {
 } from "./activity.js";
 import { balloonTaskDone } from "./balloon.js";
 import { bashLiteOn, developerModeOn } from "./settings.js";
+import { cachedChatMode } from "./chat-mode.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { runDrcResearch } from "./drc-research.js";
@@ -138,6 +139,12 @@ initEmbeds({ history, persist: () => persistConversation(lastSendOpts) });
 // the project's cloud knob.
 let convProjectId = null;
 
+// SDK mode: the conversation's published build slug (the `build` SSE event —
+// src/pipeline.js runSdkBuild). Sent back as `build_slug` on the next SDK-mode
+// send so an iteration republishes the SAME /app/<slug>/ URL; persisted with
+// the conversation record so iteration survives a reload.
+let convBuildSlug = null;
+
 // The most recent send's persistence options (model/budget/webSearch) — a
 // quiz answered AFTER its stream finished still needs to persist the
 // conversation with the right metadata (quizHooks, embeds.js). Seeded from the
@@ -227,6 +234,7 @@ function openConversationRecord(id, record) {
   convRagDocs = Array.isArray(record.ragDocs) ? record.ragDocs : [];
   setEmbeds(record.embeds); // normalized inside (any non-array means none)
   convIncognito = false; // a saved conversation is by definition not incognito
+  convBuildSlug = record.buildSlug || null; // an SDK build iteration keeps its URL
   // Reopening a project conversation re-enters that project's context
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
@@ -275,6 +283,7 @@ async function persistConversation(opts) {
         ragDocs: convRagDocs,
         embeds: getEmbeds(),
         projectId: convProjectId,
+        buildSlug: convBuildSlug,
         createdAt: convCreatedAt,
         updatedAt: now,
       },
@@ -328,6 +337,7 @@ function resetConversationMeta() {
   convRagDocs = [];
   setEmbeds([]);
   convProjectId = null;
+  convBuildSlug = null;
 }
 
 // Stop button: abort the in-flight request WITHOUT bumping `generation` —
@@ -532,6 +542,13 @@ function handleEvent(turn, evt, acc) {
       const embed = recordEmbed({ kind: "quiz", quiz: s.quiz, answers: [] });
       renderQuiz(turn, s.quiz, quizHooks(embed));
     }
+    else if (s.type === "build" && typeof s.slug === "string" && s.slug) {
+      // SDK mode published (or republished) this conversation's app — adopt
+      // the slug so the next send iterates on the same /app/<slug>/ URL. The
+      // link itself arrives in the answer text ("Try it live"); nothing to
+      // render here.
+      convBuildSlug = s.slug;
+    }
     else if (s.type === "done") {
       turn.model = s.model || ""; // titles the PDF report metadata
       turn.doneStats = s; // final stats for the debug-JSON export
@@ -707,6 +724,18 @@ async function buildChatPayload(opts) {
     web_search: opts.webSearch,
   };
   if (opts.model) payload.model = opts.model;
+  // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection
+  // enrichment per request (the server's existing off-only developer_mode
+  // override — a knob-on account still gets plain web research); SDK asks for
+  // the Agent-Pair-SDK build flow, carrying the conversation's published
+  // build slug so an iteration keeps its /app/<slug>/ URL. Introspection
+  // sends nothing extra — the knob-on default IS introspection.
+  const chatMode = cachedChatMode();
+  if (chatMode === "normal") payload.developer_mode = false;
+  else if (chatMode === "sdk") {
+    payload.sdk_mode = true;
+    if (convBuildSlug) payload.build_slug = convBuildSlug;
+  }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice
   // that keeps it out of local/cloud chat history.
