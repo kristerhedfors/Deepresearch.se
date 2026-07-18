@@ -113,6 +113,10 @@ export function isPublicAsset(url, method) {
     // dark).
     url.pathname === "/js/bash-core.js" ||
     url.pathname === "/js/bash-agent.js" ||
+    // drc-research.js imports the AI/LLM model-name recognizer (glm-5.2, kimi
+    // k2, deepseek …) to route model questions away from the offline sandbox —
+    // in the /cure graph, so it must be public too.
+    url.pathname === "/js/ai-models.js" ||
     url.pathname === "/js/sandbox.js" ||
     // sandbox.js imports sandbox-files.js (the file-mounting pure core) — both
     // must be public or the /cure module graph (drc-research.js → sandbox.js)
