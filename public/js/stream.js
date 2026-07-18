@@ -370,6 +370,15 @@ async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
     turn.doneStats = recovered.stats;
     renderStats(turn, recovered.stats);
   }
+  // The `build` status event that carries the slug rides the LIVE stream; a
+  // recovered (dropped-then-polled) answer replays only text + stats, so the
+  // slug is lost and the next SDK/SWE iteration would mint a NEW /app/<slug>/
+  // instead of updating this one. Re-derive it from the "Try it live" link the
+  // server guarantees in the answer text (build-pub replyLinksTo / pipeline).
+  if (!convBuildSlug) {
+    const m = /\/app\/([a-z0-9][a-z0-9-]*)\//.exec(recovered.text || "");
+    if (m) convBuildSlug = m[1];
+  }
   history.push({ role: "assistant", content: recovered.text });
   ackAnswer(requestId);
   await persistConversation(opts);
