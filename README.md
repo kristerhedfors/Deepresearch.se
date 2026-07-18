@@ -294,4 +294,5 @@ conversation used the ghost/incognito toggle. See `docs/ARCHITECTURE.md`
 ## License
 
 [MIT](LICENSE). The vendored libraries in `public/vendor/` (marked,
-DOMPurify, jsPDF, pdf.js) keep their own licenses.
+DOMPurify, jsPDF, pdf.js, xterm.js, transformers.js) keep their own
+licenses.
