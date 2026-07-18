@@ -383,6 +383,7 @@ const DOC_LINKS = [
   ["/story/", "The build story", "How the site was built, session by session."],
   ["/architecture/", "The architecture story", "How the Worker, pipeline, and privacy split fit together."],
   ["/pulse/", "Project pulse", "Live charts of commits, lines, and new features over the repo's history."],
+  ["https://github.com/kristerhedfors/Deepresearch.se", "Source code", "MIT-licensed, on GitHub — every privacy claim is yours to verify."],
 ];
 
 export function renderDocs() {
