@@ -46,6 +46,37 @@ export function isTransientConnectStatus(status) {
   return status >= 500 || status === 429 || status === 408;
 }
 
+// A deterministic "input larger than this model's context window" upstream
+// 400 (OpenAI-shape `context_length_exceeded`, or the equivalent "maximum
+// context length" / "reduce the length of the messages" phrasing every
+// OpenAI-compatible provider returns). Observed live (chat_logs #524,
+// 2026-07-18): an introspection-mode "Security assessment" turn on the 32k
+// Mistral Small prepended a source-snapshot block that overran the window,
+// and the raw Berget 400 JSON was dumped straight at the user with no answer
+// — the "gives up" complaint made concrete. It is NOT failover-eligible (the
+// fixed JSON fallback shares the same small window and fails identically),
+// and the raw provider JSON is meaningless to an end user, so we rewrite it
+// into a clean, actionable sentence. Returns null for any other 400.
+/**
+ * @param {number} status HTTP status of the failed connect.
+ * @param {string} detail Upstream response body (already truncated).
+ * @returns {string | null}
+ */
+export function contextOverflowMessage(status, detail) {
+  if (status !== 400 || !detail) return null;
+  const overflow =
+    /context[_ ]length[_ ]exceeded/i.test(detail) ||
+    /maximum context length/i.test(detail) ||
+    /context window/i.test(detail) ||
+    /reduce the length of the (?:messages|input|prompt)/i.test(detail);
+  if (!overflow) return null;
+  return (
+    "This conversation is too long for the selected model's context window. " +
+    "Start a new chat, remove some attached files, or choose a model with a " +
+    "larger context window, then try again."
+  );
+}
+
 // Tags an error as eligible for the model failover in streamCompletion():
 // set only where the failing model never delivered a byte the user still
 // has on screen, so a different model's answer can't visibly diverge.
@@ -143,6 +174,14 @@ async function streamOnModel(ctx, messages, model, profile, totals) {
     }
     if (!upstream.ok || !upstream.body) {
       const detail = (await upstream.text().catch(() => "")).slice(0, 300);
+      // Input-too-large is deterministic and user-fixable — surface a clean,
+      // actionable message instead of the raw provider JSON, and don't burn
+      // the failover on it (the fallback model's window is no bigger).
+      const overflow = contextOverflowMessage(upstream.status, detail);
+      if (overflow) {
+        ctx.log.warn("chat.context_overflow", { model, attempt, status: upstream.status });
+        throw new Error(overflow);
+      }
       const transient = !upstream.body || isTransientConnectStatus(upstream.status);
       ctx.log.warn("chat.connect_failed", { model, attempt, status: upstream.status, error: detail });
       if (transient && attempt < maxAttempts) continue;

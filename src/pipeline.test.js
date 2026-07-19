@@ -7,7 +7,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isTransientConnectStatus } from "./answer-stream.js";
+import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
 import { normalizeTriage } from "./triage.js";
 
@@ -184,6 +184,45 @@ describe("isTransientConnectStatus", () => {
     for (const status of [400, 401, 403, 404, 413, 422]) {
       assert.equal(isTransientConnectStatus(status), false, `status ${status}`);
     }
+  });
+});
+
+// Regression pin for chat_logs #524 (2026-07-18): an introspection turn on the
+// 32k Mistral Small overran the context window and the raw Berget 400 JSON was
+// dumped at the user with no answer. contextOverflowMessage() rewrites that
+// deterministic "input too large" 400 into a clean, actionable sentence; every
+// other 400 (and every non-400) passes through untouched so the normal error
+// path still surfaces.
+describe("contextOverflowMessage", () => {
+  test("rewrites the OpenAI-shape context_length_exceeded 400", () => {
+    const berget400 =
+      '{"error":{"message":"This model\'s maximum context length is 32768 tokens. ' +
+      'However, your input is estimated at 32134 tokens. Please reduce the length of ' +
+      'the input.","type":"invalid_request_error","code":"context_length_exceeded"}}';
+    const msg = contextOverflowMessage(400, berget400);
+    assert.ok(msg, "an overflow 400 yields a message");
+    assert.match(msg, /too long for the selected model/i);
+    assert.doesNotMatch(msg, /context_length_exceeded|invalid_request_error/, "no raw provider JSON leaks");
+  });
+
+  test("matches the several phrasings OpenAI-compatible providers use", () => {
+    for (const detail of [
+      "context_length_exceeded",
+      "context length exceeded",
+      "This model's maximum context length is 8192 tokens",
+      "the model's context window is too small",
+      "Please reduce the length of the messages",
+      "Please reduce the length of the prompt",
+    ]) {
+      assert.ok(contextOverflowMessage(400, detail), `should match: ${detail}`);
+    }
+  });
+
+  test("leaves other 400s and non-400 statuses alone", () => {
+    assert.equal(contextOverflowMessage(400, '{"error":{"message":"bad request"}}'), null);
+    assert.equal(contextOverflowMessage(400, ""), null);
+    assert.equal(contextOverflowMessage(401, "context_length_exceeded"), null);
+    assert.equal(contextOverflowMessage(500, "maximum context length"), null);
   });
 });
 
