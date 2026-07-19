@@ -417,7 +417,7 @@ hand-edit the artifacts.
   testability path). In the account panel's Settings view the capability is
   now driven by the **Chat mode dropdown** (`account-views.js` MODE_INFO /
   `wireModeKnob` — picking Introspection/SDK turns developer_mode on,
-  Normal turns it off), which replaced the old Introspection on/off switch.
+  Research turns it off), which replaced the old Introspection on/off switch.
 - DRC: `state.developerMode` in the sealed project state (`drc-core.js`),
   knob in the settings drawer (`#devpanel` in cure/index.html).
 - No /api/chat protocol change: the SERVER decides from the knob + the

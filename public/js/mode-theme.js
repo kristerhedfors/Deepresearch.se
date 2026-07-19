@@ -2,7 +2,7 @@
 // The MODE-THEME REGISTRY — the codified catalog of what makes each mode
 // visually its own. The site now speaks four sibling identities: two TIERS
 // (DeepResearch.Se/cure and DeepResearch.Se/rver — separate served apps) and,
-// WITHIN the Se/rver app, three chat MODES picked from the dropdown (Normal /
+// WITHIN the Se/rver app, three chat MODES picked from the dropdown (Research /
 // Introspection / SDK — chat-mode.js). Each identity distinguishes itself the
 // same way, along the SAME axes:
 //
@@ -39,11 +39,12 @@
  * @property {boolean} depthSlider   whether the composer's research depth/time
  *                                   slider (#budget) applies in this mode — an
  *                                   OPTIONAL theme feature (owner, 2026-07-19):
- *                                   Normal researches so it shows it;
- *                                   Introspection (answers from source) and SDK
- *                                   (builds, no web research) don't need it, so
- *                                   the slider is hidden (CSS keys off the theme
- *                                   class, `:root.dev-mode`/`:root.sdk-mode`).
+ *                                   Research mode researches the web, so it
+ *                                   shows it; Introspection (answers from
+ *                                   source) and SDK (builds, no web research)
+ *                                   don't need it, so the slider is hidden
+ *                                   (CSS keys off the theme class,
+ *                                   `:root.dev-mode`/`:root.sdk-mode`).
  * @property {string} symbol         the identity's symbol, in words
  * @property {string} blurb          one line: what the identity says
  */
@@ -57,7 +58,7 @@ export const CHAT_MODE_IDS = ["normal", "introspection", "sdk"];
 export const MODE_THEMES = {
   normal: {
     id: "normal",
-    label: "Normal",
+    label: "Research",
     rootClass: null,
     tag: null,
     accent: "#0d4fa0",
@@ -144,7 +145,7 @@ export const TIER_THEMES = {
 };
 
 /**
- * The descriptor for a mode, falling back to Normal for anything unknown.
+ * The descriptor for a mode, falling back to Research for anything unknown.
  * @param {unknown} mode
  * @returns {ModeTheme}
  */

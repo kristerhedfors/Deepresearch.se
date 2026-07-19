@@ -57,7 +57,7 @@ export function initHistorySidebar(opts = {}) {
     const mode = cachedChatMode();
     // Flavour the whole drawer by mode (the mode-theme registry's `panel` axis):
     // SDK tints the pane green + shows the build-idea library, introspection
-    // tints titanium, Normal is plain history. CSS keys off [data-mode].
+    // tints titanium, Research is plain history. CSS keys off [data-mode].
     const sidebar = document.getElementById("historysidebar");
     if (sidebar) sidebar.dataset.mode = mode;
     const sdk = mode === "sdk";

@@ -558,7 +558,7 @@ function makeStepDom(labelText, toggleGateClass) {
   // Each in-progress step plays the intro in miniature, fixed in its slot;
   // best-effort, and stops itself when markFinished/settlePendingSteps removes
   // the `.spin` element. The waiting symbol is the CURRENT CHAT MODE's own
-  // (mode-spinner.js): Se/rver's balloon → blue ✓ in Normal/Introspection, the
+  // (mode-spinner.js): Se/rver's balloon → blue ✓ in Research/Introspection, the
   // PLANT → green ✓ in SDK mode (docs/SYMBOL-LANGUAGE.md §6–7). The handle is
   // kept so markFinished can play the finale.
   const spinner = mountModeSpinner(spin, { style: stepSpinnerSeq++, size: 34 });

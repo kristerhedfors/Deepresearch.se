@@ -1,7 +1,7 @@
 // @ts-check
 // The MODE spinner dispatch — the one place turns.js and activity.js reach for
 // a waiting symbol, so the Se/rver app's loading slots wear the CURRENT chat
-// mode's animation instead of always the balloon. Normal / Introspection mount
+// mode's animation instead of always the balloon. Research / Introspection mount
 // the balloon (Se/rver's tier symbol); SDK mode mounts the PLANT (plant-
 // spinner.js) — a seed that hits the ground, gets planted, and grows into a
 // green ✓ on completion. Which one is decided by the mode registry

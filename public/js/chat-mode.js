@@ -1,7 +1,7 @@
 // @ts-check
-// The chat MODE dropdown's state + theming — Normal / Introspection / SDK
+// The chat MODE dropdown's state + theming — Research / Introspection / SDK
 // (owner directive, 2026-07-18: introspection and SDK as explicit modes
-// alongside Normal, picked in a dropdown; the titanium-white composer pane
+// alongside Research, picked in a dropdown; the titanium-white composer pane
 // marks introspection, GREEN marks the SDK "lovable experience" mode).
 //
 // The mode is a per-BROWSER choice (localStorage `dr_chat_mode`) layered on
@@ -66,7 +66,7 @@ export function cachedChatMode() {
 }
 
 /**
- * Persist the picked mode ("normal" is stored too — an explicit Normal pick
+ * Persist the picked mode ("normal" is stored too — an explicit Research pick
  * on a knob-on account must survive reloads). Fail-soft.
  * @param {string} mode
  * @returns {string} the stored (normalized) mode

@@ -83,7 +83,7 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 // The Chat mode picker's dropdown options (account-views + the composer #modesel
 // share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
 const CHAT_MODE_OPTIONS = [
-  { value: "normal", label: "Normal" },
+  { value: "normal", label: "Research" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "SDK" },
 ];
@@ -98,12 +98,12 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
   slow to start; enabling it reloads the page.`;
 
 // The Chat mode picker (the dropdown that replaced the Introspection on/off
-// switch): one of three modes. The non-Normal modes all need the developer_mode
-// capability, so picking one turns that on (and Normal turns it off) — see
+// switch): one of three modes. The non-Research modes all need the developer_mode
+// capability, so picking one turns that on (and Research turns it off) — see
 // wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
 const MODE_INFO = `<strong>Chat mode</strong><br>
   Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
-  <b>Normal (default):</b> ordinary web research.<br>
+  <b>Research (default):</b> ordinary web research.<br>
   <b>Introspection:</b> ask about this site's own implementation (“how are you
   built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
   source this deployment runs — the composer pane turns white titanium. With the
@@ -112,14 +112,14 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   <b>SDK:</b> the green “lovable” builder — describe a flavour to distill from
   this site (above all the client-side Se/cure tier) with DistillSDK and get a
   live, self-contained web app at its own link.<br>
-  The non-Normal modes turn on introspection access for this account.`;
+  The non-Research modes turn on introspection access for this account.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders
  * under the server-backed knobs (account-settings.js) — state from the cached
  * /api/settings copy, both gated on a signed-in account. The mode dropdown
  * REPLACED the old Introspection on/off switch (owner directive: the modes —
- * Normal / Introspection / SDK — should be CHOSEN from a dropdown here,
+ * Research / Introspection / SDK — should be CHOSEN from a dropdown here,
  * not just introspection on/off). Wire with wireSandboxKnob + wireModeKnob.
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
@@ -156,7 +156,7 @@ export function renderConfigKnobs(me) {
     );
   }
   // The displayed mode reflects the authoritative capability: with developer
-  // access off, the effective mode is Normal regardless of a stale stored pick
+  // access off, the effective mode is Research regardless of a stale stored pick
   // (reconcileChatMode does the same downgrade for the composer dropdown).
   const mode = developerModeAvailable() && developerModeOn() ? cachedChatMode() : "normal";
   return (
@@ -321,10 +321,10 @@ export function wireSandboxKnob(ctx) {
   });
 }
 
-// The Chat mode dropdown (Settings view): the modes Normal / Introspection /
-// SDK. Replaces the old Introspection on/off switch. The non-Normal modes
+// The Chat mode dropdown (Settings view): the modes Research / Introspection /
+// SDK. Replaces the old Introspection on/off switch. The non-Research modes
 // need the developer_mode capability, so this drives that server knob too:
-// picking any non-Normal mode turns developer_mode ON, Normal turns it OFF —
+// picking any non-Research mode turns developer_mode ON, Research turns it OFF —
 // exactly the capability the old switch controlled, now folded into the pick.
 // The composer's own dropdown (#modesel) shares the underlying chat-mode.js
 // state, so both stay in sync. Fail-soft: a rejected server write (break-glass
@@ -336,7 +336,7 @@ export function wireModeKnob(ctx) {
   if (!sel || sel.disabled) return;
   const status = document.getElementById("modestatus");
   const STATUS = {
-    normal: "Normal — ordinary web research.",
+    normal: "Research — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
   };
@@ -351,8 +351,8 @@ export function wireModeKnob(ctx) {
     sel.disabled = true;
     if (status) status.hidden = false;
     try {
-      // Drive the developer_mode capability to match: on for any non-Normal
-      // mode, off for Normal. Only persist the cache after the server accepts.
+      // Drive the developer_mode capability to match: on for any non-Research
+      // mode, off for Research. Only persist the cache after the server accepts.
       await setDeveloperMode(needsCapability);
       storeDeveloperMode(needsCapability);
       if (status) status.textContent = STATUS[mode] || STATUS.normal;

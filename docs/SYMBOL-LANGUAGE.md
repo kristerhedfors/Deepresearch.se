@@ -219,7 +219,7 @@ The standing per-provider line beside the model picker
 
 §2–6 give each TIER its symbol (Se/cure the umbrella + ghost, Se/rver the
 balloon). But the Se/rver app is not one experience — it holds three chat
-MODES picked from the dropdown (Normal / Introspection / SDK — `chat-mode.js`),
+MODES picked from the dropdown (Research / Introspection / SDK — `chat-mode.js`),
 and the brief now extends the language INWARD: each mode is distinct in its own
 way, along the same axes the tiers use — a **color theme**, an **animation**
 (its waiting-symbol spinner), and **optionally a character** — plus a **side
@@ -239,7 +239,7 @@ fail-soft, decoration never costs a chat).
 
 As shipped:
 
-- **Normal** — the tier default: the **balloon** spinner → **blue ✓**
+- **Research** — the tier default: the **balloon** spinner → **blue ✓**
   (`--check-blue`), plain history drawer, the balloon greeter (§5).
 - **Introspection** — the **titanium** pane + **TIN**, the titanium mascot
   (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon

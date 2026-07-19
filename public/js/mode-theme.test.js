@@ -51,7 +51,7 @@ test("depth slider is an optional theme feature: off for Introspection + SDK", (
   assert.equal(showsDepthSlider("sdk"), false);
   assert.equal(MODE_THEMES.introspection.depthSlider, false);
   assert.equal(MODE_THEMES.sdk.depthSlider, false);
-  assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
+  assert.equal(showsDepthSlider("nope"), true, "unknown → Research (shows it)");
 });
 
 test("SDK is the plant / green / showcase identity", () => {
@@ -79,7 +79,7 @@ test("normal has no theme class and mounts the balloon", () => {
   assert.equal(n.spinner, "balloon");
 });
 
-test("selectors resolve known modes and fall back to Normal on garbage", () => {
+test("selectors resolve known modes and fall back to Research on garbage", () => {
   assert.equal(spinnerKind("sdk"), "plant");
   assert.equal(spinnerKind("normal"), "balloon");
   assert.equal(spinnerKind("introspection"), "balloon");

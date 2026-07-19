@@ -58,7 +58,7 @@ const form = document.getElementById("form");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
 
-// Chat-mode theme (Normal / Introspection titanium / SDK green) — applied
+// Chat-mode theme (Research / Introspection titanium / SDK green) — applied
 // FIRST, synchronously, from the local cache (chat-mode.js) so a returning
 // introspection- or SDK-mode user (a PWA relaunch reads the device-cached
 // shell before /api/settings answers) paints the right pane tint with no
@@ -155,7 +155,7 @@ loadSettings()
     // Reconcile the mode theme with the server's authoritative developer_mode
     // capability: cache the knob (dev-mode.js), then let chat-mode.js decide
     // the effective mode — a knob turned off elsewhere downgrades a stored
-    // Introspection/SDK pick to Normal; a knob-on account with no stored pick
+    // Introspection/SDK pick to Research; a knob-on account with no stored pick
     // keeps the legacy introspection default. The dropdown mirrors the result.
     storeDeveloperMode(s?.developer_mode === true);
     syncModeSelect(reconcileChatMode(s?.developer_mode === true));
@@ -244,8 +244,8 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
-// ---- Chat-mode dropdown (Normal / Introspection / SDK) ----------------------
-// The mode picker (owner directive, 2026-07-18): Normal is the ordinary
+// ---- Chat-mode dropdown (Research / Introspection / SDK) ----------------------
+// The mode picker (owner directive, 2026-07-18): Research is the ordinary
 // research pipeline; Introspection (white-titanium pane) answers from the
 // site's own source; SDK (green pane — the "lovable experience") designs and
 // builds with DistillSDK and publishes a live /app/<slug>/ link.
@@ -599,7 +599,7 @@ let introspectTypeTimer = 0;
 input.addEventListener("input", () => {
   clearTimeout(introspectTypeTimer);
   introspectTypeTimer = setTimeout(() => {
-    // TIN is the INTROSPECTION mascot: only that mode summons it — Normal
+    // TIN is the INTROSPECTION mascot: only that mode summons it — Research
     // declines the enrichment per-request and SDK mode has its own flow.
     if (developerModeOn() && cachedChatMode() === "introspection") noteIntrospectionText(input.value);
   }, 350);

@@ -1,5 +1,5 @@
 // Unit suite for the chat-mode dropdown state (public/js/chat-mode.js) — the
-// Normal / Introspection / SDK mode cache, theming classes, and the settings
+// Research / Introspection / SDK mode cache, theming classes, and the settings
 // reconcile. Runs without a DOM (module is import-safe); localStorage is
 // stubbed the dev-mode.test.js way.
 import test from "node:test";
@@ -42,7 +42,7 @@ test("cachedChatMode: stored choice wins; else the dev-mode cache maps to intros
   store.set(CHAT_MODE_KEY, "sdk");
   assert.equal(cachedChatMode(), "sdk"); // explicit choice beats the knob
   store.set(CHAT_MODE_KEY, "normal");
-  assert.equal(cachedChatMode(), "normal"); // explicit Normal survives knob-on
+  assert.equal(cachedChatMode(), "normal"); // explicit Research survives knob-on
 });
 
 test("applyChatModeTheme: exactly one theme class per mode; persist opt-out honored", () => {

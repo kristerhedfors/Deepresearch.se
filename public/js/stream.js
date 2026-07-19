@@ -734,7 +734,7 @@ async function buildChatPayload(opts) {
     web_search: opts.webSearch,
   };
   if (opts.model) payload.model = opts.model;
-  // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection
+  // The chat-mode dropdown (chat-mode.js): Research DECLINES the introspection
   // enrichment per request (the server's existing off-only developer_mode
   // override — a knob-on account still gets plain web research); SDK asks for
   // the DistillSDK build flow (distill a flavour from this site — above all the

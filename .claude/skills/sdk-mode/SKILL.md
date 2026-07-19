@@ -1,6 +1,6 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK) that DISTILLS this site (above all the client-side Se/cure tier) into a new self-contained-web-app FLAVOUR with DistillSDK and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Research / Introspection / SDK) that DISTILLS this site (above all the client-side Se/cure tier) into a new self-contained-web-app FLAVOUR with DistillSDK and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable distiller" (2026-07-18; SWE folded in 2026-07-19)
@@ -102,8 +102,8 @@ show live signatures/`:root` vars.
   `#modesel` (index.html, wired in app.js) AND the **Settings-panel Chat mode
   dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
   REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
-  Both pick from Normal / Introspection / SDK; picking a non-Normal mode
-  flips the `developer_mode` knob on via PUT /api/settings (Normal flips it
+  Both pick from Research / Introspection / SDK; picking a non-Research mode
+  flips the `developer_mode` knob on via PUT /api/settings (Research flips it
   off), fail-soft — break-glass has it implicitly and its PUT refuses; theme
   applies anyway. `loadSettings().then` reconciles: knob off elsewhere →
   stored pick downgrades to normal (`reconcileChatMode`). `wireModeKnob`
@@ -122,7 +122,7 @@ reference model **Claude Sonnet 5** (`SHOWCASE_REF`, kept in sync with the
 Anthropic catalog id). It renders into the LEFT library pane (the history
 drawer, `#sdkshowcase` in index.html) **only when the chat mode is SDK**:
 `history-ui.js` calls `renderShowcase()` in its `refresh()`, gated on
-`cachedChatMode() === "sdk"`, so the same drawer is history in Normal/
+`cachedChatMode() === "sdk"`, so the same drawer is history in Research/
 Introspection and a build-idea library in SDK mode (green cards, matching the
 composer pane + `sdk studio` tag). Picking a card calls app.js's
 `onShowcasePick`, which prefills the composer with the brief (switching to SDK

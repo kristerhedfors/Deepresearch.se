@@ -499,7 +499,7 @@ function showTyping(content) {
   icon.className = "typing-icon";
   content.appendChild(icon);
   // The single waiting spinner: play the current chat mode's symbol in
-  // miniature, fixed in place (mode-spinner.js — balloon in Normal/
+  // miniature, fixed in place (mode-spinner.js — balloon in Research/
   // Introspection, the plant in SDK mode).
   // Best-effort — falls back to the CSS twirly logo on reduced-motion/no-canvas.
   // The animation stops itself when setText/resetForRevision clears the icon.

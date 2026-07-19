@@ -217,13 +217,13 @@ answers; `app.js` applies the cache synchronously at boot then reconciles with
 the server's authoritative `developer_mode`, and the Settings-panel Chat mode
 dropdown flips it on pick — Node-tested), `chat-mode.js` (the chat MODE
 dropdown's state —
-Normal / Introspection / SDK, 2026-07-18 (the khaki SWE build mode was folded
+Research / Introspection / SDK, 2026-07-18 (the khaki SWE build mode was folded
 into SDK 2026-07-19): the `dr_chat_mode` localStorage pick layered over the
 developer_mode capability; decides which theme class the root carries —
 `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the SDK "lovable
 experience" (distill this site — above all the Se/cure tier — into a new
 flavour) — and which per-send fields `stream.js` declares
-(`developer_mode:false` for Normal, `sdk_mode:true` + `build_slug` for SDK);
+(`developer_mode:false` for Research, `sdk_mode:true` + `build_slug` for SDK);
 `reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
 `sdk-core.js` (DistillSDK's shared PURE core — see the `src/sdk-tools.js`
 row above; lives under `public/` per the pure-core convention, imported by the
@@ -277,12 +277,12 @@ boomerang/tumble clocks, pure plan helpers Node-tested), `mode-theme.js`
 (the MODE-THEME REGISTRY — the codified catalog of what makes each chat mode
 its own: root class, accent + ✓ color, waiting-symbol spinner, theme
 character, side-panel flavour, and optional theme features like the research
-`depthSlider` (hidden in Introspection + SDK), one descriptor per mode (Normal
+`depthSlider` (hidden in Introspection + SDK), one descriptor per mode (Research
 / Introspection / SDK) plus the two tier reference entries (Se/cure first); pure/import-free,
 Node-tested; the shape SDK mode distills into when it "creates new themes of
 this kind" — see `docs/SYMBOL-LANGUAGE.md` §7), `mode-spinner.js` (the DOM
 dispatch `turns.js`/`activity.js` call — mounts the CURRENT mode's spinner off
-`mode-theme.js` `spinnerKind`: balloon in Normal/Introspection, the PLANT in
+`mode-theme.js` `spinnerKind`: balloon in Research/Introspection, the PLANT in
 SDK; fail-soft to the balloon), `plant-spinner.js` (SDK mode's WAITING SYMBOL —
 `mountPlantSpinner`, the sibling of the balloon/umbrella spinners: a seed HITS
 THE GROUND, GETS PLANTED and boomerangs a settled sprout, turning back JUST
