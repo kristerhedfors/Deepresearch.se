@@ -148,3 +148,18 @@ export function sourceDigest(sources, capChars) {
   }
   return blocks.join("\n\n");
 }
+
+// The synthesis prompt already appends its own "Sources:" list, so only add a
+// structured one when the answer text doesn't already carry it — guarantees
+// an MCP consumer always gets the source list without double-printing it.
+/**
+ * @param {string} text
+ * @param {SourceEntry[]} sources
+ * @returns {string}
+ */
+export function withSources(text, sources) {
+  if (!sources?.length) return text;
+  if (/(^|\n)\s*sources\s*:/i.test(text)) return text;
+  const list = sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
+  return `${text}\n\nSources:\n${list}`;
+}

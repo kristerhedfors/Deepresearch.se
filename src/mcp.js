@@ -461,6 +461,10 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     // Nothing usable came back — surface the soft error if one was emitted.
     throw new Error(emittedError || "The pipeline produced no answer.");
   }
+  // withSources lives in sources.js (the source-registry/formatting owner);
+  // dynamic-imported like the other heavy-ish deps so mcp.test.js can load
+  // this module without pulling the source/search graph.
+  const { withSources } = await import("./sources.js");
   const result = withSources(finalText, state.sources);
 
   // Full-visibility interaction log (src/chatlog.js), same table as
@@ -496,21 +500,6 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   });
 
   return result;
-}
-
-// The synthesis prompt already appends its own "Sources:" list, so only add a
-// structured one when the answer text doesn't already carry it — guarantees
-// an MCP consumer always gets the source list without double-printing it.
-/**
- * @param {string} text
- * @param {import('./types.js').SourceEntry[]} sources
- * @returns {string}
- */
-function withSources(text, sources) {
-  if (!sources?.length) return text;
-  if (/(^|\n)\s*sources\s*:/i.test(text)) return text;
-  const list = sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
-  return `${text}\n\nSources:\n${list}`;
 }
 
 // Per-request pipeline state — the same shape src/chat.js's newRequestState
