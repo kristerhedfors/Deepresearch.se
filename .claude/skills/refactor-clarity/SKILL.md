@@ -11,7 +11,12 @@ description: >-
   focus on (residual pure helpers → testable companion modules; verbatim
   duplicates → leaf modules), the baseline→survey→extract→verify workflow, and
   the traps (local typedefs, the source-snapshot freshness, client vs server
-  risk). Canonical worked example: the 2026-07-12 clarity pass that added
+  risk). Also how DistillSDK changed the calculus: the pure-core convention is
+  now the SDK's class-X / PA-7 shared-core contract and SDK mode DISTILLS the
+  Se/cure source, so client-side Se/cure core extractions gained value — and
+  moving a file named in `SECURE_SOURCE_REFS` (sdk-core.js) or a
+  `sdk/MANIFEST.json` `reference` list breaks the distiller with NO test
+  catching it. Canonical worked example: the 2026-07-12 clarity pass that added
   assets.js / security-headers.js / model-routing.js / pipeline-inputs.js /
   activity-core.js.
 ---
@@ -64,6 +69,15 @@ file (`maps-enrichment.js`) is inherent complexity, not tangling.
      the dynamic block, not the top.
    - Leaf modules (`model-routing.js`) import nothing so neither handler graph
      is pulled into the other.
+   - **The Se/cure (`/cure`, `drc-*`) class-C boundary is now doubly
+     load-bearing.** It was always a module-graph rule (keep the browser graph
+     off server modules); DistillSDK formalized it as **PA-1's class rule** — a
+     class-C module's graph may not import a class-S module — because SDK mode
+     *distills the Se/cure source into standalone flavours*. A pure core you
+     extract from a `drc-*.js` / `public/cure/*` file must stay class-C-safe
+     (no server import, no DOM-only dependency), or you have quietly made that
+     file harder to distill. Splitting Se/cure toward cleaner pure cores is a
+     GOOD refactor for exactly this reason (see the DistillSDK reframing below).
 
 5. **Public import surfaces.** If other modules or tests import a symbol you're
    moving, **re-export it from the original file** (`export { x } from
@@ -105,6 +119,47 @@ In rough priority order (all behavior-preserving, all verified by tests):
 Prefer **server-side splits** (protected by the unit suite) over **client
 splits** (verified live). When you must split client code, do the smallest
 possible pure relocation and confirm the original file still *links* in Node.
+
+## DistillSDK reframing (2026-07-19) — the pure core is now a shipped contract
+
+The `-core.js` convention this whole skill extends is no longer just *this
+repo's* taste. **DistillSDK** (`sdk/`) codified it as two of its load-bearing
+contracts — **class X** (shared substrate: "logic needed by both tiers is
+written ONCE as a pure, Node-testable core under the client tree; the server
+imports it through a façade re-export") and **PA-7** (the shared-core rule) —
+and **SDK mode** (the green dropdown entry) now *reads the deployed source and
+distills it into new flavours*. That changes the refactor calculus in three
+concrete ways:
+
+1. **Client-side Se/cure core extractions gained value.** This skill used to
+   rank client splits LAST (priority 4) because the client is live-verified,
+   not just unit-tested — so the payoff (a DOM-free unit target) was modest
+   against the live-verify cost. DistillSDK adds a second payoff: a clean pure
+   core inside a `drc-*.js` / `public/cure/*` file is exactly the class-C
+   boundary SDK mode reshapes into a flavour. A well-factored Se/cure is a
+   more distillable Se/cure. So a *pure relocation* out of a Se/cure file (kept
+   class-C-safe, per the module-graph note above) is now a higher-value move
+   than the old ordering implies — still smallest-possible, still link-checked
+   in Node, but no longer bottom of the list. It does NOT license behavior
+   changes or churn: the byte-identical bar (§"What to PRESERVE" #1) is
+   unchanged.
+
+2. **The manifest tells you where the next seam is.** `sdk/MANIFEST.json`
+   already declares, per module, the exact `reference` files that realize it.
+   A module whose `reference` names several files where pure logic is tangled
+   with orchestration is a *pre-surveyed* refactor candidate — extracting the
+   pure core aligns the code with the boundary the SDK already asserts. Read
+   the module's `sdk/skills/<id>/SKILL.md` (its "reference implementation" map)
+   before cutting; the acceptance checklist there is a second, SDK-level
+   statement of the behavior you must preserve.
+
+3. **Two new lists silently couple to file moves** — see the traps below.
+
+None of this adds a step for a *server-side* dedup that touches neither Se/cure
+nor a referenced file: the SDK reframing is a lens on WHICH client seams are
+now worth cutting and a drift hazard when you move referenced files, not a new
+mandate. A whole-repo pass still yields a short list of relocations — that
+remains the correct outcome.
 
 ## The workflow
 
@@ -152,8 +207,11 @@ possible pure relocation and confirm the original file still *links* in Node.
 
 7. **Document.** Add each new module to the `docs/CODE-LAYOUT.md` **Code
    layout** table (and the client prose for client modules), and add this
-   skill to the CLAUDE.md skills list if not present. Then re-bundle (step 6
-   order).
+   skill to the CLAUDE.md skills list if not present. **If any file you moved,
+   renamed, or split is named in `SECURE_SOURCE_REFS` (public/js/sdk-core.js)
+   or a `sdk/MANIFEST.json` `reference` list, fix those in this same commit**
+   (see the two SILENT-drift traps below — nothing goes red if you forget).
+   Then re-bundle (step 6 order).
 
 ## Traps that cost time here
 
@@ -177,6 +235,24 @@ possible pure relocation and confirm the original file still *links* in Node.
   is consistent with the current snapshot", that's the SECOND freshness test —
   the fix is `npm run bundle:rag` (needs a Berget key / break-glass creds),
   never hand-editing `source-rag.json` either.
+- **`SECURE_SOURCE_REFS` drift is SILENT — no test guards it.** `export const
+  SECURE_SOURCE_REFS` in `public/js/sdk-core.js` is the explicit allowlist of
+  Se/cure files SDK mode points the distiller at (`public/cure/index.html`,
+  `public/cure/drc.{js,css}`, the `public/js/drc-*.js` cores,
+  `sdk/skills/secure-tier/SKILL.md`). If your refactor **renames, moves, or
+  splits** one of these, the distiller reads a stale or missing ref and NO unit
+  test fails (it only feeds a prompt string). Update the array in the SAME
+  commit — treat it like the `/cure` public-module-graph allowlist. If a split
+  produces a new pure core that the distiller should also study, add it.
+- **`sdk/MANIFEST.json` `reference` paths drift SILENTLY too.** Each module's
+  `reference: [...]` names the exact `src/`/`public/` files that realize it.
+  `sdk_validate` / `snapshotFileCheck` only verify SKILL files exist — NOT the
+  `reference` paths — so moving a referenced file leaves a dangling pointer with
+  a green suite. When a moved/renamed file appears in a `reference` list, fix
+  that list (and `sdk/DESIGN.md` / `docs/DISTILLSDK.md` if the module's file map
+  is described there) alongside `docs/CODE-LAYOUT.md` in step 7's mirror
+  discipline. Grep both before finishing: `grep -rn "<oldpath>" sdk/
+  public/js/sdk-core.js`.
 
 ## Canonical worked example (2026-07-12)
 
