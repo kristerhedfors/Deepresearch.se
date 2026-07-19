@@ -37,7 +37,7 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 /**
  * A D1 `users` row as it rides on the identity (src/accounts.js). Loose by
  * design: columns are additive and several are nullable.
- * @typedef {{ id: number | string, email?: string | null, name?: string | null, role?: string, status?: string, quota_json?: string | null, settings_json?: string | null }} UserRow
+ * @typedef {{ id: number | string, email?: string | null, name?: string | null, role?: string, status?: string, quota_json?: string | null, quota_reset_at?: number | null, settings_json?: string | null }} UserRow
  */
 /**
  * The resolved request identity (src/auth.js `identify`): either a D1-backed

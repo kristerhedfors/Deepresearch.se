@@ -394,7 +394,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       ? null
       : effectiveQuota(config, identity?.user);
   if (quota) {
-    const usage = await getUsage(env, identity.id);
+    const usage = await getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
     const blocked = quotaExceeded(usage, quota);
     if (blocked) {
       log.info("mcp.quota_blocked", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });

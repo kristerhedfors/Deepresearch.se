@@ -166,7 +166,7 @@ export async function handleHistoryKey(env, identity) {
  */
 export async function handleMe(env, identity) {
   const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id);
+  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
   const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
   /** @type {Record<string, { budget_pct: number | null, searches: number, searches_limit: number, reset: number }>} */
   const windows = {};
@@ -241,7 +241,7 @@ export async function handleMessages(env, identity) {
   let currentBlock = null;
   if (messages.some((m) => m.type === "quota_exceeded")) {
     const config = await getConfig(env);
-    const usage = await getUsage(env, identity.id);
+    const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
     const quota = identity.isSecretAdmin ? null : effectiveQuota(config, identity.user);
     currentBlock = quota ? quotaExceeded(usage, quota) : null;
   }
