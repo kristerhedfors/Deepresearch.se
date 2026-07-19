@@ -12,15 +12,19 @@ import {
   MAX_BUILD_FILES,
   MAX_BUILD_FILE_BYTES,
   SDK_TOOLS,
+  SECURE_DIGEST_BUDGET,
   buildFilesSummary,
   buildSdkContextBlock,
+  buildSecureSourceDigest,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
   sanitizeBuildPath,
+  secureSourceExcerpt,
   sdkToolStepHeadline,
   slugify,
   snapshotFileCheck,
+  sourceSkeleton,
   stageBuildFile,
 } from "./sdk-core.js";
 
@@ -158,4 +162,84 @@ test("buildSdkContextBlock: DistillSDK catalog + Se/cure reference + privacy inv
   assert.match(toolBlock, /grep_source/); // tool path names the snapshot readers
   assert.match(toolBlock, /\/app\/x-1234\//);
   assert.match(buildSdkContextBlock(null, {}), /could not be loaded/);
+});
+
+test("sourceSkeleton: keeps the shape-bearing lines per language, drops the body", () => {
+  const js = sourceSkeleton(
+    "x.js",
+    [
+      "// ---- section one ----",
+      "export function alpha(a, b) {",
+      "  const hidden = a + b; // body line, must be dropped",
+      "  return hidden;",
+      "}",
+      "const CAP = 40;",
+      "class Beta {}",
+    ].join("\n"),
+  );
+  assert.match(js, /export function alpha/);
+  assert.match(js, /const CAP = 40/);
+  assert.match(js, /class Beta/);
+  assert.match(js, /section one/);
+  assert.doesNotMatch(js, /hidden = a \+ b/); // interior body is not kept
+
+  const css = sourceSkeleton("x.css", ":root {\n  --bg: #fff;\n  color: red;\n}\n.card {\n  padding: 4px;\n}");
+  assert.match(css, /:root/);
+  assert.match(css, /--bg: #fff/);
+  assert.match(css, /\.card \{/);
+  assert.doesNotMatch(css, /color: red/); // ordinary declaration dropped
+
+  const html = sourceSkeleton("x.html", '<main id="stage">\n  <p>hello there body</p>\n  <form id="f"></form>\n');
+  assert.match(html, /id="stage"/);
+  assert.match(html, /id="f"/);
+  assert.doesNotMatch(html, /hello there body/);
+
+  assert.equal(sourceSkeleton("x.md", "# Title\n\nprose"), ""); // no skeleton for markdown
+});
+
+test("secureSourceExcerpt: verbatim when it fits, skeleton/clip when it doesn't", () => {
+  const small = "export const a = 1;\n";
+  assert.deepEqual(secureSourceExcerpt("s.js", small, 1000), { body: small, mode: "full" });
+
+  const big = "export function keepMe() {}\n" + "  const filler = 0;\n".repeat(500);
+  const ex = secureSourceExcerpt("b.js", big, 200);
+  assert.equal(ex.mode, "skeleton");
+  assert.ok(ex.body.length <= 200);
+  assert.match(ex.body, /keepMe/); // the signature survives, the filler body doesn't
+
+  // Markdown has no skeleton → a head excerpt (mode "head"), still bounded.
+  const md = secureSourceExcerpt("d.md", "# Title\n" + "prose line\n".repeat(500), 120);
+  assert.equal(md.mode, "head");
+  assert.ok(md.body.length <= 120);
+});
+
+test("buildSecureSourceDigest: real source content, fairly shared, bounded", () => {
+  const snap = {
+    files: [
+      { p: "public/cure/index.html", t: '<main id="stage"></main>\n'.repeat(400) },
+      { p: "public/cure/drc.js", t: "export function bigThing(){}\n" + "x;\n".repeat(4000) },
+      { p: "public/js/drc-store.js", t: "export const tiny = 42;\n" }, // small → verbatim, must not be starved
+    ],
+  };
+  const digest = buildSecureSourceDigest(snap, { budget: 4000, refs: ["public/cure/index.html", "public/cure/drc.js", "public/js/drc-store.js"] });
+  assert.match(digest, /reference SOURCE/);
+  assert.match(digest, /public\/cure\/index\.html/);
+  assert.match(digest, /public\/cure\/drc\.js/);
+  assert.match(digest, /bigThing/); // the big file's signature is present
+  assert.match(digest, /tiny = 42/); // the small trailing file still made it in (fair share)
+  assert.ok(digest.length <= 6000, `digest ${digest.length} within budget-ish`); // bounded (headers add a little)
+
+  assert.equal(buildSecureSourceDigest(null), ""); // no snapshot → empty
+  assert.equal(buildSecureSourceDigest({ files: [] }), "");
+  assert.ok(SECURE_DIGEST_BUDGET > 0);
+});
+
+test("buildSdkContextBlock: injects the Se/cure source digest when provided", () => {
+  const m = manifestFromSnapshot(snapshot());
+  const digest = "Se/cure reference SOURCE (the original to distill — study it before building):\n\n----- x.js (10 chars) -----\nexport a";
+  const withDigest = buildSdkContextBlock(m, { toolMode: true, secureDigest: digest });
+  assert.match(withDigest, /reference SOURCE/);
+  assert.match(withDigest, /digest above is your starting material/i); // tool-path guidance leans on it
+  const without = buildSdkContextBlock(m, { toolMode: true });
+  assert.doesNotMatch(without, /reference SOURCE/);
 });

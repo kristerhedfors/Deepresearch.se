@@ -22,6 +22,7 @@ export {
   SDK_TOOL_NAMES,
   buildFilesSummary,
   buildSdkContextBlock,
+  buildSecureSourceDigest,
   manifestFromSnapshot,
   parseFileBlocks,
   renderList,

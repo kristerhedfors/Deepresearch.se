@@ -37,6 +37,24 @@ set is the snapshot readers (read the real Se/cure source) + `SDK_TOOLS`
 (plan against the manifest) + `BUILD_TOOLS`. When extending the build mode,
 edit the single `runSdkBuild`/`sdkBuild*`/`buildSdkContextBlock` path.
 
+**Source is GATHERED deterministically, not left to the model to discover
+(2026-07-19).** `runSdkBuild` calls `buildSecureSourceDigest(snapshot)`
+(sdk-core.js) and passes the result into `buildSdkContextBlock({ secureDigest })`
+on BOTH paths, so a bounded (~30 KB / `SECURE_DIGEST_BUDGET`) digest of the
+ACTUAL `SECURE_SOURCE_REFS` files rides the conversation. Each ref is reduced to
+a `sourceSkeleton` (JS top-level declarations + section headers, CSS selectors +
+`:root` custom properties, HTML landmark/`id=` tags; Markdown → head excerpt),
+fairly shared across files so a big early file (drc.js) can't starve the small
+trailing ones (drc-store.js). This exists because before it, the model only ever
+saw a *list of paths* — the deterministic fallback has no read tools, so it
+distilled from nothing, and the tool path could burn its rounds/time re-reading
+before reaching any real source (a live `claude-sonnet-5` run read only two
+`SKILL.md` files, then the stream dropped mid-build → the ugly FILE-block
+fallback). The digest is the floor; the tool path still `read_file`s a listed
+path for detail the skeleton omits. Verify a change to it against the real
+snapshot, not just the fixture — `buildSecureSourceDigest(realSnapshot)` must
+show live signatures/`:root` vars.
+
 ## The mode dropdown (client)
 
 - `public/js/chat-mode.js` — the pure state module (Node-tested):

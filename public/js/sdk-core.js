@@ -502,6 +502,117 @@ export const SECURE_SOURCE_REFS = [
   "sdk/skills/secure-tier/SKILL.md",
 ];
 
+// Bounds for the Se/cure source digest injected into the SDK context block.
+// The whole digest stays under BUDGET chars; each file gets a fair share of
+// what's left (clamped between MIN and MAX) so a big early file (drc.js) can't
+// starve the small later ones (drc-store.js). ~30 KB ≈ 7.5 K tokens — a small
+// price for always having real source in front of the model.
+export const SECURE_DIGEST_BUDGET = 30_000;
+const SECURE_DIGEST_MAX_PER_FILE = 7_000;
+const SECURE_DIGEST_MIN_PER_FILE = 700;
+
+/**
+ * Reduce one source file to a structural SKELETON: the lines that reveal its
+ * shape (JS declaration/signature + section-header lines, CSS selectors +
+ * custom properties, HTML landmark/id-bearing tags). Returns "" for formats
+ * with no useful skeleton (e.g. Markdown — the caller head-slices those).
+ * @param {string} path @param {string} text @returns {string}
+ */
+export function sourceSkeleton(path, text) {
+  const lines = String(text || "").split("\n");
+  const clip = (/** @type {string} */ s) => (s.length > 160 ? s.slice(0, 157) + "…" : s);
+  /** @type {string[]} */
+  const keep = [];
+  if (/\.(js|mjs)$/i.test(path)) {
+    for (const line of lines) {
+      const t = line.trim();
+      const indent = line.length - line.trimStart().length;
+      // Top-level (indent 0) declarations only — a `const` inside a function
+      // body is interior detail, not part of the module's shape.
+      if (indent === 0 && /^(export\b|(async\s+)?function\b|class\b|(const|let|var)\s)/.test(t)) {
+        keep.push(clip(line.replace(/\s+$/, "")));
+      } else if (indent === 0 && /^\/\/\s*[-=]{2,}\s*\S/.test(t)) {
+        keep.push(clip(t)); // a "// ---- section ----" header
+      }
+    }
+  } else if (/\.css$/i.test(path)) {
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t.endsWith("{") || t.startsWith(":root") || /^--[\w-]+\s*:/.test(t) || t.startsWith("@")) keep.push(clip(t));
+    }
+  } else if (/\.html?$/i.test(path)) {
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+      if (/\bid=/.test(t) || /<(header|main|section|nav|footer|form|template|dialog|aside|article|h1|h2|title)\b/i.test(t) || /<script\b[^>]*\bsrc=/i.test(t) || /<link\b[^>]*\bhref=/i.test(t)) {
+        keep.push(clip(t));
+      }
+    }
+  }
+  return keep.join("\n");
+}
+
+/**
+ * A compact, bounded excerpt of one reference file: the whole thing when it
+ * already fits `cap` (mode "full"), otherwise its skeleton (mode "skeleton"),
+ * otherwise a head slice (mode "head"). `mode` drives an accurate label so the
+ * model knows it's seeing a reduction and can read_file for full detail.
+ * @param {string} path @param {string} text @param {number} cap
+ * @returns {{ body: string, mode: "full" | "skeleton" | "head" }}
+ */
+export function secureSourceExcerpt(path, text, cap) {
+  const t = String(text || "");
+  if (t.length <= cap) return { body: t, mode: "full" };
+  const skel = sourceSkeleton(path, t);
+  if (skel && skel.length <= cap) return { body: skel, mode: "skeleton" };
+  const base = skel || t;
+  const clipped = base.slice(0, Math.max(0, cap - 16)).replace(/\n[^\n]*$/, "") + "\n… (truncated)";
+  return { body: clipped, mode: skel ? "skeleton" : "head" };
+}
+
+/**
+ * A bounded digest of the deployed Se/cure reference source, pulled straight
+ * from the committed snapshot so SDK mode ALWAYS has the real source to distill
+ * from — not merely a list of paths. Small files ride near-verbatim; large ones
+ * are reduced to a skeleton (see sourceSkeleton) so the whole digest fits the
+ * byte budget. This is a floor of real source for the deterministic fallback
+ * (which otherwise reads nothing) and orients the tool path so it doesn't burn
+ * rounds rediscovering the shape — it can read_file for full detail on demand.
+ * Empty string when there is no snapshot to read.
+ * @param {{ files?: Array<{p: string, t: string}> } | null | undefined} snapshot
+ * @param {{ budget?: number, refs?: string[] }} [opts]
+ * @returns {string}
+ */
+export function buildSecureSourceDigest(snapshot, opts = {}) {
+  const files = snapshot?.files;
+  if (!Array.isArray(files) || !files.length) return "";
+  const budget = opts.budget || SECURE_DIGEST_BUDGET;
+  const refs = opts.refs || SECURE_SOURCE_REFS;
+  const byPath = new Map(files.map((f) => [f.p, f.t]));
+  /** @type {string[]} */
+  const sections = [];
+  let used = 0;
+  for (let i = 0; i < refs.length; i++) {
+    if (used >= budget) break;
+    const text = byPath.get(refs[i]);
+    if (typeof text !== "string" || !text) continue;
+    const filesLeft = refs.length - i;
+    const share = Math.floor((budget - used) / filesLeft);
+    const cap = Math.max(SECURE_DIGEST_MIN_PER_FILE, Math.min(SECURE_DIGEST_MAX_PER_FILE, share));
+    const { body, mode } = secureSourceExcerpt(refs[i], text, cap);
+    if (!body) continue;
+    used += body.length;
+    const tag =
+      mode === "skeleton" ? " — structural skeleton; read_file for full source"
+      : mode === "head" ? " — head excerpt; read_file for full source"
+      : "";
+    sections.push(`----- ${refs[i]} (${text.length} chars${tag}) -----\n${body}`);
+  }
+  if (!sections.length) return "";
+  return ["Se/cure reference SOURCE (the original to distill — study it before building):", "", sections.join("\n\n")].join("\n");
+}
+
 /**
  * The SDK-mode context block appended to the conversation (the introspection-
  * block pattern): orients ANY answer model — tool-capable or not — about what
@@ -511,7 +622,7 @@ export const SECURE_SOURCE_REFS = [
  * invariants a Se/cure-derived flavour must uphold, and (for the deterministic
  * path) the FILE-block emission convention.
  * @param {any | null} manifest
- * @param {{ toolMode?: boolean, buildUrl?: string | null }} [opts]
+ * @param {{ toolMode?: boolean, buildUrl?: string | null, secureDigest?: string }} [opts]
  * @returns {string}
  */
 export function buildSdkContextBlock(manifest, opts = {}) {
@@ -525,6 +636,9 @@ export function buildSdkContextBlock(manifest, opts = {}) {
     "",
     "PRIVACY INVARIANTS a Se/cure-derived flavour MUST uphold (this is the point of Se/cure — do not weaken them): no server round-trip for conversation content; provider calls go browser→provider directly; secrets (API keys) live only in memory/this device and never appear in any log or third-party request; outbound requests to third parties carry the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.",
   ];
+  if (opts.secureDigest) {
+    parts.push("", opts.secureDigest);
+  }
   if (manifest) {
     parts.push("", "DistillSDK module catalog (sdk/MANIFEST.json) — use it to STRUCTURE the flavour:", renderList(manifest));
   } else {
@@ -538,7 +652,12 @@ export function buildSdkContextBlock(manifest, opts = {}) {
     parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
   }
   if (opts.toolMode) {
-    parts.push("", "Plan with the sdk_* tools, read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.");
+    parts.push(
+      "",
+      opts.secureDigest
+        ? "The Se/cure source DIGEST above is your starting material — study it first; distilling is your job, so don't over-plan. read_file a listed source path only for detail the digest skeleton omits (prioritize the actual Se/cure source over the SKILL.md playbooks, which are secondary guidance); sdk_plan/sdk_show are optional. Then stage each file with write_file and call publish_app ONCE."
+        : "Plan with the sdk_* tools, read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.",
+    );
   } else {
     parts.push(
       "",
