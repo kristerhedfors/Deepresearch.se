@@ -1,5 +1,5 @@
 // The "articles" view — the admin-only ARTICLE COLLECTION: the planned
-// LinkedIn/blog series about this project (ten abstracts, Swedish), kept
+// LinkedIn/blog series about this project (nine abstracts, Swedish), kept
 // here so the admin can read, reference, and copy them from any device via
 // the account panel instead of digging through chat transcripts. The
 // button into this view renders only for admin identities (account-views.js
@@ -17,7 +17,7 @@
 // Sources: docs/ (the repo itself), public/pulse/data.json + size.json
 // (regenerated 2026-07-17).
 const SERIES_INTRO = `
-  <p class="muted">Artikelserie om projektet — tio abstracts att expandera till
+  <p class="muted">Artikelserie om projektet — nio abstracts att expandera till
   fulla artiklar. Bärande siffror (verifierbara i repot och på
   <a href="/pulse/" target="_blank" rel="noopener">/pulse</a>): helgen 4–6 juli
   gav 77 commits och 8&nbsp;500 rader; 4–17 juli totalt 716 commits,
@@ -25,7 +25,7 @@ const SERIES_INTRO = `
   137&nbsp;475 rader i 548 filer med noll runtime-beroenden. Allt
   MIT-licensierat.</p>`;
 
-// The ten article abstracts, in recommended publishing order. `title` and
+// The nine article abstracts, in recommended publishing order. `title` and
 // `body` are trusted static HTML authored here (no user input flows in).
 export const ARTICLES = [
   {
@@ -53,38 +53,10 @@ kontrollera. Dashboarden /pulse visar commits, radvolym och feature-räkning per
 dag, publikt, genererad ur git-historiken — build in public där "public"
 inkluderar bevisen, inte bara berättelsen. Det är också en ärlig artikel: den
 redovisar vad som <i>inte</i> gick fort (features som regresserat upprepade gånger, se
-artikel 8) så att kompressionstesen inte blir triumfalism.</p>`,
+artikel 7) så att kompressionstesen inte blir triumfalism.</p>`,
   },
   {
     n: 2,
-    title: "”Detta tog en dag”: anatomi av en enskild feature",
-    body: `<p>Där artikel 1 zoomar ut, zoomar den här in — hela vägen till en enda features
-livscykel, timme för timme. Fallet är MCP-servern: sajten exponerad som ett
-deep_research-verktyg som andra AI-agenter (Claude, Cursor, vilken MCP-klient som
-helst) kan anropa. Det är ett bra val av fall eftersom det låter tekniskt
-skrämmande — ett JSON-RPC 2.0-protokoll över Streamable HTTP, handrullat utan
-bibliotek, med initialize/tools-list/tools-call-handskakningen, kopplat till samma
-kvot-gate, modellrouting och kostnadsbokföring som chatten använder — och ändå
-gick från idé till live på produktionsdomänen inom ett dygn.</p>
-<p>Artikeln följer hela loopen: hur uppgiften formulerades som prompt, hur agenten
-föreslog filläggning och protokollval, var människan grep in (arkitekturbeslut:
-återanvänd chattens per-request-setup i stället för en parallell väg), hur
-enhetstester och en live JSON-RPC-probe verifierade resultatet, och hur deployen
-skedde via git-push. Poängen är att avdramatisera: "en dag" betyder inte magi utan
-en annan <i>arbetsfördelning</i> — människan står för riktning, smakbeslut och
-verifieringskrav; agenten står för att den tråkiga fullständigheten (felhantering,
-edge cases, testfall) faktiskt blir skriven.</p>
-<p>Abstraktet ställer det mot vad samma leverans kostar i en traditionell process:
-spec-möte, sprintplacering, implementation, code review, releasefönster — inte för
-att håna processen, utan för att fråga vilka delar av den som var värdeskapande
-och vilka som var koordinationskostnad. Timeline-vyn på /pulse/timeline visar var
-utvecklingsfokus låg dag för dag och gör det möjligt för läsaren att själv plocka
-en annan feature och göra samma obduktion. Avslutningen ger en mall: så här
-strukturerar du ett endagsexperiment i din egen organisation för att mäta er egen
-kompressionsfaktor i stället för att tro på min.</p>`,
-  },
-  {
-    n: 3,
     title: "DistillSDK: destillera fram exakt den mjukvara du behöver",
     body: `<p>Seriens mest originella tankegods och den artikel som planterar en term.
 Utgångsläget: i repot ligger Agent-Pair SDK:n — en designartefakt, inte ett
@@ -114,7 +86,7 @@ hypotesen skulle se ut. Namnet <b>DistillSDK</b> lanseras här, med en öppen in
 registret är MIT-licensierat — försök själv, rapportera vad som gick sönder.</p>`,
   },
   {
-    n: 4,
+    n: 3,
     title: "Deterministisk orkestrering: pipelinen som klarar sig utan function calling",
     body: `<p>En teknisk trovärdighetsartikel med en medvetet motvalls tes: i en tid när
 varje AI-keynote handlar om agentic tool use är den mest robusta arkitekturen för
@@ -143,7 +115,7 @@ designprincip: ge modellen friheten där friheten skapar värde (syntes,
 undersökning) och ta bort den där den bara skapar varians (orkestrering).</p>`,
   },
   {
-    n: 5,
+    n: 4,
     title: "Bevisbar privacy som feature, inte policy: Se/cure + Se/rver-paret",
     body: `<p>Missionsartikeln — den som förklarar vad projektet egentligen undersöker: hur
 långt en <i>riktig, användbar</i> research-assistent kan pressas mot bevisbar privacy,
@@ -172,7 +144,7 @@ här är ett existensbevis för att svensk AI-infrastruktur räcker för att byg
 komplett produkt på.</p>`,
   },
   {
-    n: 6,
+    n: 5,
     title: "Linux i webbläsaren: sandboxen som aldrig lämnar din maskin",
     body: `<p>Seriens mest delningsbara tekniska artikel, för att premissen låter omöjlig:
 en riktig Linux-miljö — inte en emulerad terminal-leksak — bootar i
@@ -187,7 +159,7 @@ flytta den till klienten är det starkaste enskilda beviset för parets privacy-
 — även den mest kapabla featuren kan göras never-cloud. Tekniskt går abstraktet
 igenom de intressanta bitarna: cross-origin-isoleringen (COEP-headers) som
 SharedArrayBuffer-kravet tvingar fram och som visade sig bete sig olika på iOS
-Safari än överallt annars; den agentiska loopen som — i linje med artikel 4 — körs
+Safari än överallt annars; den agentiska loopen som — i linje med artikel 3 — körs
 helt utan function calling genom en fenced-block-konvention där modellen skriver
 kommandon i markdown och klienten exekverar och återmatar; samt
 filmonteringssystemet där användarens bilagor ingestas stegvis in i VM:ets
@@ -195,12 +167,12 @@ filsystem.</p>
 <p>Artikeln är också medvetet ärlig om kostnaden: detta är den feature som
 regresserat flest gånger i projektet — boot-häng, cache-fällor, enhetsspecifika
 Safari-beteenden — och den har därför en stående underhållsägare i
-agentorganisationen (vilket ger en naturlig brygga till artikel 8). Avslutningen
+agentorganisationen (vilket ger en naturlig brygga till artikel 7). Avslutningen
 breddar: vad mer kan flyttas in i fliken? Var går gränsen där webbläsaren som
 privacy-bubbla tar slut — och är den gränsen teknisk eller bara ovan?</p>`,
   },
   {
-    n: 7,
+    n: 6,
     title: "Noll beroenden, inget byggsteg: 137 000 rader utan node_modules",
     body: `<p>En kontraintuitiv artikel som börjar i en siffra ur repots egen size-mätning:
 137&nbsp;475 rader kod, 548 filer, tio språk — noll runtime-beroenden, tre
@@ -227,7 +199,7 @@ behov, inte en vana. Slutfrågan till läsaren: hur många av dina beroenden sku
 fallit med en tiopotens?</p>`,
   },
   {
-    n: 8,
+    n: 7,
     title: "Mjukvara som underhåller sig själv: agent-loopar, beslutstavlor och regressionsägare",
     body: `<p>Seriens mest framåtblickande artikel, om något repot råkade bygga vid sidan av
 produkten: en fungerande <i>organisationsmodell</i> där noderna är AI-agenter och
@@ -235,7 +207,7 @@ människans roll är prioritering och godkännande. Konkretionen är det som gö
 artikeln: varje fix författas av en worker-session som äger exakt en PR och
 förblir prenumererad på den efter merge — en GitHub-kommentar på PR:en väcker
 författaren igen. När en shippad feature regresserar (och det gör de; sandboxen i
-artikel 6 är återfallsmästaren) är regeln att <i>inte</i> fixa i tysthet: i stället
+artikel 5 är återfallsmästaren) är regeln att <i>inte</i> fixa i tysthet: i stället
 slås den ägande PR:en upp i ett underhållsregister och en precis
 regressionsrapport kommenteras dit — symptom, loggreferens, verbatim repro, vilken
 tidigare fix som brutits — varpå ägaragenten vaknar, fixar och öppnar en
@@ -256,7 +228,7 @@ koordinationsprotokoll som redan idag kan köras av en prenumererad agent med et
 register och en väckningsmekanism?</p>`,
   },
   {
-    n: 9,
+    n: 8,
     title: "Spec-first, öppna standarder: när dokumentationen medvetet leder koden",
     body: `<p>En artikel om en inversion av mjukvaruutvecklingens vanligaste synd. Normalt
 släpar dokumentationen efter koden; i det här repot <i>leder</i> två specifikationer
@@ -269,7 +241,7 @@ scheman och medföljande tooling — och den deployade workspace-featuren är
 uttryckligen standardens <i>referensimplementation</i>, inte tvärtom.</p>
 <p>Artikeln driver två teser. Den första: i agent-byggd mjukvara blir specen det
 primära artefaktet av rent praktiska skäl — det är den agenter bygger <i>från</i>,
-testar <i>mot</i> och (via artikel 3:s destillationsidé) stämplar varianter <i>ur</i>; en
+testar <i>mot</i> och (via artikel 2:s destillationsidé) stämplar varianter <i>ur</i>; en
 precis spec är den form av kunskap som överlever både modellbyten och
 kodomskrivningar. Den andra tesen är strategisk och hämtas ur repots
 visionsdokument om "stackless research": dagens research-assistenter är stackar —
@@ -285,7 +257,7 @@ adoptörer, standarder på version /1 — och avslutar med det öppna draget: sp
 finns.</p>`,
   },
   {
-    n: 10,
+    n: 9,
     title: "Genomlysning hela vägen: sajten som kan förklara sin egen källkod",
     body: `<p>Slutknuten, som samlar seriens tråd — verifierbarhet — och driver den till sin
 logiska ändpunkt: en tjänst vars mest radikala transparens-feature är att den kan
@@ -296,12 +268,12 @@ ur den deployade källkodens committade snapshot, med symbolreferenser ner på
 filnivå. I developer mode, på modeller som bevisat klarar det, går det längre:
 svarsmodellen får riktiga verktyg — grep, filläsning, kataloglistning — över
 sajtens källkod och undersöker den <i>live</i> medan användaren tittar på; på
-Se/cure-nivån får den till och med köra kommandon i sandboxen från artikel 6.</p>
+Se/cure-nivån får den till och med köra kommandon i sandboxen från artikel 5.</p>
 <p>Artikeln placerar detta i en trappa av transparens som resten av serien byggt:
 berättelsen är öppen (varje prompt, tidslinje och tokenförbrukning ligger i
 repot), takten är öppen (/pulse genereras ur git och visar 716 commits och 93
 features för vem som helst), koden är öppen (MIT, noll beroenden att lita blint på
-— artikel 7), arkitekturen är öppen (standarderna i artikel 9) — och överst:
+— artikel 6), arkitekturen är öppen (standarderna i artikel 8) — och överst:
 produkten är sitt eget revisionsverktyg.</p>
 <p>Tesen är att detta är svaret på AI-erans förtroendeproblem i miniatyr. "Lita på
 oss" skalar inte när mjukvara byggs snabbare än den kan granskas manuellt (artikel
@@ -309,13 +281,13 @@ oss" skalar inte när mjukvara byggs snabbare än den kan granskas manuellt (art
 som produkten själv. Avslutningen knyter ihop hela serien i en mening per artikel
 och landar i inbjudan: sajten är live, koden är öppen, ställ din elakaste fråga
 till den — om introspektionen inte kan svara är <i>det</i> en buggrapport, och den
-tas emot av organisationen i artikel 8.</p>`,
+tas emot av organisationen i artikel 7.</p>`,
   },
 ];
 
 /**
  * Pure HTML builder for the article-collection view: intro, then each
- * abstract as a collapsible <details> block so the ten long texts stay
+ * abstract as a collapsible <details> block so the nine long texts stay
  * scannable on a phone — the admin opens one at a time.
  * @returns {string} HTML for the panel body
  */
