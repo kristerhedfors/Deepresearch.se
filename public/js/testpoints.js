@@ -39,6 +39,8 @@ import {
   noteTexts,
   stripTryParam,
   targetPath,
+  useCaseTag,
+  tagStarterPrompt,
 } from "./testpoints-core.js";
 
 const API = "/api/admin/testpoints";
@@ -178,7 +180,7 @@ async function openQueue() {
     row.innerHTML =
       `<span class="tryqueue-item-label"></span>` +
       `<span class="tryqueue-item-target muted"></span>`;
-    row.querySelector(".tryqueue-item-label").textContent = p.label;
+    row.querySelector(".tryqueue-item-label").textContent = `${useCaseTag(p.id)} ${p.label}`;
     row.querySelector(".tryqueue-item-target").textContent = p.target;
     row.addEventListener("click", () => showDetail(p));
     els.list.appendChild(row);
@@ -229,7 +231,7 @@ function showDetail(point) {
       </div>
     </div>`;
   const d = els.list;
-  d.querySelector(".tryqueue-detail-label").textContent = point.label;
+  d.querySelector(".tryqueue-detail-label").textContent = `${useCaseTag(point.id)} ${point.label}`;
   d.querySelector(".tryqueue-detail-target").textContent = point.target;
   d.querySelector(".tryqueue-detail-summary").textContent = point.summary;
   if (notes.length) {
@@ -283,22 +285,22 @@ async function openPoint(id, prefetched) {
   const point =
     prefetched || (await apiGet("/" + id).then((d) => (d && d.testpoint ? d.testpoint : null)));
   if (!point) return; // not admin / gone — stay quiet
-  await runActions(point.actions || []);
+  await runActions(point.actions || [], point);
   showBanner(point);
 }
 
-async function runActions(actions) {
+async function runActions(actions, point) {
   const { known } = partitionActions(actions);
   for (const a of known) {
     try {
-      await executeAction(a);
+      await executeAction(a, point);
     } catch {
       // one bad action must never abort the rest — the point still opens
     }
   }
 }
 
-async function executeAction(a) {
+async function executeAction(a, point) {
   switch (a.type) {
     case "note":
       return; // guidance only; rendered in the banner
@@ -324,7 +326,15 @@ async function executeAction(a) {
       hooks.newChat?.();
       return;
     case "compose":
-      hooks.compose?.(a.text || "", a.send === true);
+      // Prepend the use-case tag so the starter prompt carries its number
+      // (#UC-<id>) — the owner runs it, then feeds back with "feedback
+      // #UC-<id> …" and it lands on this point's thread (owner directive,
+      // 2026-07-19). A point opened outside a try context (no id) composes
+      // untagged.
+      hooks.compose?.(
+        point && point.id ? tagStarterPrompt(point.id, a.text || "") : a.text || "",
+        a.send === true,
+      );
       return;
     case "setSearch":
       hooks.setSearch?.(a.on === true);
@@ -351,7 +361,7 @@ function showBanner(point) {
   b.innerHTML = `
     <div class="trybanner-inner">
       <div class="trybanner-top">
-        <span class="trybanner-tag">Try it</span>
+        <span class="trybanner-tag" title="Use-case number — feed back with 'feedback ${useCaseTag(point.id)} …'">${useCaseTag(point.id)}</span>
         <span class="trybanner-label"></span>
         <button type="button" class="trybanner-x" aria-label="Close">✕</button>
       </div>

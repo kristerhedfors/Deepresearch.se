@@ -99,6 +99,39 @@ routing each finding to its fix channel, and minting the next batch of points
 — is the **test-feedback-loop** skill. This skill owns the queue mechanics;
 that one owns the process.
 
+## Use-case tags — `#UC-<id>` and feedback-by-number (owner directive, 2026-07-19)
+
+Every test point IS a **use case**: a starter prompt the owner runs to
+evaluate one front of the app, then feeds back on. Each point has a stable
+display tag, `#UC-<id>` (the id is the row id — `useCaseTag` in both cores,
+carried on the projection as `.tag` and shown in the `?format=text` header).
+Two things ride on it:
+
+1. **The starter prompt carries its number.** When a point's `compose`
+   action prefills the composer, the client prepends the tag
+   (`tagStarterPrompt` — idempotent, never doubles) so the run opens with
+   `#UC-34 <prompt>`. The queue rows, the detail view, and the try-it banner
+   all show the tag too.
+2. **Feedback references the number instead of the queue.** A chat message
+   `feedback #UC-34 the map was cut off on mobile` is parsed by
+   `parseUseCaseRef` (EN + SV, invariant 6 — it strips a leading
+   feedback/återkoppling/synpunkt keyword, then reads `#UC-34` / `UC-34` /
+   `UC 34` / `#34`). The pipeline's feedback case
+   (`pipeline.js runFeedbackCapture`) confirms it with a deterministic step
+   line and tells the ack model which use case it was; `chat.js` then calls
+   `recordUseCaseFeedback(db, 34, comment)` — posting the note as a **tester
+   message on point #34's thread** (re-opening a point that already carried a
+   verdict, never an `archived` one) so the outcome lands "as if answered in
+   the list of use cases" without reopening the queue. It is **admin-gated**
+   (the test-point surface is owner-only) and fail-soft; the normal feedback
+   entry is still written, tagged `page: "usecase #UC-34"` for double
+   discovery. A `#UC-<id>` that matches no point degrades to a plain feedback
+   entry — no error.
+
+`useCaseTag`/`parseUseCaseRef` are defined in BOTH pure cores
+(`src/testpoints.js`, `public/js/testpoints-core.js`) — mirror discipline,
+unit-tested each side. Keep the two regexes in lockstep.
+
 ## The ACTION GRAMMAR — this IS the reachability boundary
 
 An **action** is one step the landing page's client runs on arrival to set
@@ -123,7 +156,7 @@ all three (plus a unit test) in one change.
 | `openProjects` | — | Opens the left drawer (chat history **and** the projects list). |
 | `openHistory` | — | Opens the left drawer. |
 | `newChat` | — | Starts a fresh chat. |
-| `compose` | `text`, `send?` | Prefills the composer; `send:true` submits it (spends quota — use sparingly). |
+| `compose` | `text`, `send?` | Prefills the composer, prepending the point's `#UC-<id>` use-case tag; `send:true` submits it (spends quota — use sparingly). |
 | `setSearch` | `on` (bool) | Flips the web-search knob. |
 | `setBudget` | `seconds` (5–1800) | Sets the research time-target slider. |
 | `selectModel` | `model` (id) | Picks a model in the dropdown. |

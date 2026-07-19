@@ -27,6 +27,16 @@ it comments on). The capture is **double**: the entry lands in the queue AND the
 `scripts/feedback` (the structured queue) and a chatlogs scan. There is no
 per-reply Feedback button and no settings knob any more.
 
+**Use-case reference (owner directive, 2026-07-19).** A feedback message may
+name a try-it **use case** by its tag: `feedback #UC-34 the map was cut off`.
+The feedback case parses it (`parseUseCaseRef`, in `src/testpoints.js`,
+EN+SV) and — for an admin/owner — posts the note straight onto test point
+#34's clarification thread (`recordUseCaseFeedback`), re-opening the point so
+it returns to the try-it queue. The outcome lands "as if answered in the list
+of use cases" without reopening the queue by hand; the normal feedback entry
+is still written (tagged `page: "usecase #UC-34"`). See the
+**testable-interaction-points** skill for the tag end to end.
+
 Each entry is a **dialogue thread**: the user and the development agent exchange
 messages on it until it's resolved. The account panel's Feedback view is the
 user's side (where the developers' replies come back); **this loop, run inside

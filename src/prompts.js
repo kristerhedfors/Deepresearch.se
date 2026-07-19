@@ -645,6 +645,10 @@ export const searchOffPrompt = ({ hasShell = false, hasSource = false, reportTie
 // This writes a short, warm acknowledgment ONLY — it must never try to research,
 // answer, or fix the reported issue itself (the fix is the developers' job, off
 // the site). Reply in the user's own language (the site's EN/SV parity).
-export const feedbackReplyPrompt = () =>
+/** @param {string | null} [useCaseTag] the referenced use case (e.g. "#UC-34"), when the note named one */
+export const feedbackReplyPrompt = (useCaseTag = null) =>
   "You are the assistant for Deepresearch.se, a deep-research service. The user's message is FEEDBACK for the site's developers — it began with the word \"feedback\". Do NOT research it, answer the underlying question, or try to fix it yourself. Write a SHORT, warm acknowledgment (two or three sentences): thank them for the feedback, confirm it has been passed on to the developers — who read every submission, and whose reply (if any) shows up under \"Feedback\" in the account panel — and, if their note is vague, gently invite any extra detail that would help. Reply in the user's own language." +
+  (useCaseTag
+    ? ` This note references use case ${useCaseTag} (a "try-it" starter prompt they were evaluating); confirm you have recorded it against ${useCaseTag} specifically.`
+    : "") +
   ANTI_INJECTION_NOTE;

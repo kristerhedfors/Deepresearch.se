@@ -119,6 +119,7 @@ import {
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
 import { feedbackIntent } from "./feedback.js";
+import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
@@ -170,7 +171,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, useCase?: { id: number, tag: string } | null },
  * }} PipelineState
  */
 
@@ -416,7 +417,18 @@ const FEEDBACK_ACK_FALLBACK =
 async function runFeedbackCapture(ctx) {
   const { state } = ctx;
   ctx.step("plan", "Feedback…");
-  ctx.stepDone("plan", "Sending your feedback to the developers");
+  // A use-case reference ("feedback #UC-34 …") ties this note to a try-it
+  // point (testpoints.js) — the outcome is recorded straight onto that
+  // point's thread (src/chat.js recordUseCaseFeedback) so it lands "as if
+  // answered in the list of use cases". The step line confirms it
+  // deterministically, independent of the model's acknowledgment.
+  const useCase = parseUseCaseRef(ctx.cleanLastUser);
+  ctx.stepDone(
+    "plan",
+    useCase
+      ? `Recording your feedback on use case ${useCase.tag}`
+      : "Sending your feedback to the developers",
+  );
   // The message IS the comment; the prior turn (the question it followed and
   // the reply it comments on) rides along so the developer sees the context.
   const priorAssistant = [...ctx.conversation].reverse().find((m) => m.role === "assistant");
@@ -425,9 +437,10 @@ async function runFeedbackCapture(ctx) {
     question: previousUserText(ctx.conversation) || null,
     answer_excerpt: (textOf(priorAssistant?.content) || "").slice(0, 8000) || null,
     model: ctx.model,
+    useCase: useCase || null,
   };
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: feedbackReplyPrompt() },
+    { role: "system", content: feedbackReplyPrompt(useCase ? useCase.tag : null) },
     ...withImageNudge(ctx.conversation),
   ]);
   if (!(draft || "").trim()) emitChunked(ctx, FEEDBACK_ACK_FALLBACK);
