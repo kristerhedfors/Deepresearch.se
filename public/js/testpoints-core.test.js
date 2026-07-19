@@ -14,6 +14,9 @@ import {
   partitionActions,
   stripTryParam,
   targetPath,
+  useCaseTag,
+  parseUseCaseRef,
+  tagStarterPrompt,
 } from "./testpoints-core.js";
 
 test("parseTryId reads a positive integer, else null", () => {
@@ -97,4 +100,30 @@ test("nextOpenPoint picks the oldest open point, skipping the just-done id", () 
   assert.equal(nextOpenPoint([{ id: 1, status: "passed" }]), null);
   assert.equal(nextOpenPoint([]), null);
   assert.equal(nextOpenPoint(null), null);
+});
+
+// Use-case identity — mirror of src/testpoints.js (keep in lockstep).
+test("useCaseTag renders #UC-<id>", () => {
+  assert.equal(useCaseTag(34), "#UC-34");
+  assert.equal(useCaseTag("7"), "#UC-7");
+});
+
+test("parseUseCaseRef mirrors the server: EN + SV, every accepted shape", () => {
+  assert.deepEqual(parseUseCaseRef("feedback #UC-34 the map was cut off"), { id: 34, tag: "#UC-34" });
+  assert.deepEqual(parseUseCaseRef("feedback UC 34 note"), { id: 34, tag: "#UC-34" });
+  assert.deepEqual(parseUseCaseRef("feedback #34 note"), { id: 34, tag: "#UC-34" });
+  assert.deepEqual(parseUseCaseRef("återkoppling #UC-7 kartan"), { id: 7, tag: "#UC-7" });
+  assert.deepEqual(parseUseCaseRef("synpunkt #7 här"), { id: 7, tag: "#UC-7" });
+  assert.equal(parseUseCaseRef("feedback no number here"), null);
+  assert.equal(parseUseCaseRef("feedback #0 nope"), null);
+  assert.equal(parseUseCaseRef(""), null);
+});
+
+test("tagStarterPrompt prepends the tag once, never doubling", () => {
+  assert.equal(tagStarterPrompt(34, "Research quantum computing"), "#UC-34 Research quantum computing");
+  assert.equal(tagStarterPrompt(34, ""), "#UC-34");
+  // Already opens with its own tag → left as-is.
+  assert.equal(tagStarterPrompt(34, "#UC-34 already tagged"), "#UC-34 already tagged");
+  // A DIFFERENT tag in the text is not the point's own → still prepends.
+  assert.equal(tagStarterPrompt(34, "#UC-9 other"), "#UC-34 #UC-9 other");
 });

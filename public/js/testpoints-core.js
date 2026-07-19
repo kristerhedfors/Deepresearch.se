@@ -13,6 +13,56 @@
 // The query param carrying a point id into a landing page.
 export const TRY_PARAM = "try";
 
+// Use-case identity — the #UC-<id> tag (owner directive, 2026-07-19). Mirror
+// of src/testpoints.js useCaseTag/parseUseCaseRef — keep the two in lockstep.
+// The client uses useCaseTag to prepend the tag to a point's composed starter
+// prompt (testpoints.js compose action) so a run carries its use-case number;
+// the server reads it back off a "feedback #UC-<id> …" message.
+
+/**
+ * The canonical display tag for a use case (test point id).
+ * @param {number|string} id
+ * @returns {string}
+ */
+export function useCaseTag(id) {
+  return `#UC-${id}`;
+}
+
+const FEEDBACK_LEAD_RE =
+  /^\s*(?:feedback|återkoppling(?:en)?|synpunkt(?:er|en|erna)?)\b[\s:,.\-–—]*/i;
+const USE_CASE_REF_RE = /^(?:#?\s*uc[\s\-]?0*(\d{1,6})|#0*(\d{1,6}))\b/i;
+
+/**
+ * Read a use-case reference out of a feedback message (EN + SV parity).
+ * Mirror of src/testpoints.js parseUseCaseRef.
+ * @param {unknown} text
+ * @returns {{ id: number, tag: string } | null}
+ */
+export function parseUseCaseRef(text) {
+  if (typeof text !== "string" || !text) return null;
+  const body = text.replace(FEEDBACK_LEAD_RE, "");
+  const m = body.match(USE_CASE_REF_RE);
+  if (!m) return null;
+  const id = Number(m[1] || m[2]);
+  return Number.isInteger(id) && id > 0 ? { id, tag: useCaseTag(id) } : null;
+}
+
+/**
+ * Prepend a use-case tag to a composed starter prompt, once. A prompt that
+ * already opens with the tag (author baked it into the compose text) is left
+ * as-is, so the tag never doubles up.
+ * @param {number|string} id
+ * @param {string} text
+ * @returns {string}
+ */
+export function tagStarterPrompt(id, text) {
+  const tag = useCaseTag(id);
+  const body = typeof text === "string" ? text : "";
+  const ref = parseUseCaseRef(body);
+  if (ref && ref.id === Number(id)) return body; // already tagged
+  return body ? `${tag} ${body}` : tag;
+}
+
 // The action types the client executor (testpoints.js) can run. Keep in
 // lockstep with ACTION_TYPES in src/testpoints.js and the grammar table in
 // the skill.
