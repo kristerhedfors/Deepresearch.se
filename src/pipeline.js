@@ -118,7 +118,7 @@ import {
   stageBuildFile,
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
-import { feedbackIntent } from "./feedback.js";
+import { feedbackIntent, buildFeedbackContext } from "./feedback.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
@@ -419,13 +419,14 @@ async function runFeedbackCapture(ctx) {
   ctx.stepDone("plan", "Sending your feedback to the developers");
   // The message IS the comment; the prior turn (the question it followed and
   // the reply it comments on) rides along so the developer sees the context.
-  const priorAssistant = [...ctx.conversation].reverse().find((m) => m.role === "assistant");
-  state.feedback = {
+  // buildFeedbackContext derives it identically for a fresh chat and a REOPENED
+  // HISTORICAL chat (the whole restored conversation is re-sent, so the prior
+  // Q&A is the turn the feedback comments on) — src/feedback.js, regression-
+  // locked in src/feedback.test.js.
+  state.feedback = buildFeedbackContext(ctx.conversation, {
     comment: ctx.cleanLastUser,
-    question: previousUserText(ctx.conversation) || null,
-    answer_excerpt: (textOf(priorAssistant?.content) || "").slice(0, 8000) || null,
     model: ctx.model,
-  };
+  });
   const draft = await streamCompletion(ctx, [
     { role: "system", content: feedbackReplyPrompt() },
     ...withImageNudge(ctx.conversation),
