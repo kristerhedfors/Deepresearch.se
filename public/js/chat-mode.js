@@ -1,11 +1,8 @@
 // @ts-check
-// The chat MODE dropdown's state + theming — Normal / Introspection / SDK / SWE
+// The chat MODE dropdown's state + theming — Normal / Introspection / SDK
 // (owner directive, 2026-07-18: introspection and SDK as explicit modes
 // alongside Normal, picked in a dropdown; the titanium-white composer pane
-// marks introspection, GREEN marks the SDK "lovable experience" mode. SWE
-// mode added 2026-07-18: the KHAKI "software engineering" mode that prompts new
-// instances of Se/cure in different shapes and forms — the khaki echoes the
-// Se/cure tier it forges).
+// marks introspection, GREEN marks the SDK "lovable experience" mode).
 //
 // The mode is a per-BROWSER choice (localStorage `dr_chat_mode`) layered on
 // top of the server's developer_mode capability knob:
@@ -17,12 +14,10 @@
 //                   picking the mode flips it via PUT /api/settings). Theme:
 //                   the `dev-mode` root class (dev-mode.js's titanium pane).
 //   sdk           → the request carries `sdk_mode: true` (chat.js), routing to
-//                   the DistillSDK build flow. Same knob gate. Theme: the
-//                   `sdk-mode` root class (the green pane).
-//   swe           → the request carries `swe_mode: true` (chat.js), routing to
-//                   the Se/cure-variant build flow — "prompt a new instance of
-//                   Se/cure". Same knob gate + same publish pipeline as sdk.
-//                   Theme: the `swe-mode` root class (the khaki pane).
+//                   the DistillSDK build flow — distill this site (above all
+//                   the Se/cure tier) into a new flavour published at a live
+//                   URL. Same knob gate. Theme: the `sdk-mode` root class (the
+//                   green pane).
 //
 // This module does NOT own the `dr_dev_mode` knob cache — that stays
 // dev-mode.js's mirror of the server knob. It only decides which THEME class
@@ -40,10 +35,8 @@ import { DEV_MODE_CLASS, cachedDeveloperMode } from "./dev-mode.js";
 export const CHAT_MODE_KEY = "dr_chat_mode";
 /** The root class carrying the green SDK-mode pane tint. */
 export const SDK_MODE_CLASS = "sdk-mode";
-/** The root class carrying the khaki SWE-mode pane tint. */
-export const SWE_MODE_CLASS = "swe-mode";
-/** The four modes, dropdown order. */
-export const CHAT_MODES = ["normal", "introspection", "sdk", "swe"];
+/** The three modes, dropdown order. */
+export const CHAT_MODES = ["normal", "introspection", "sdk"];
 
 /**
  * Clamp any value to a known mode.
@@ -89,9 +82,9 @@ export function storeChatMode(mode) {
 }
 
 /**
- * Apply a mode's theme: exactly one of the `dev-mode` / `sdk-mode` / `swe-mode`
- * root classes (or none, for normal). Persists unless {persist:false} (the
- * boot-time cached apply is READING the cache, not deciding).
+ * Apply a mode's theme: exactly one of the `dev-mode` / `sdk-mode` root classes
+ * (or none, for normal). Persists unless {persist:false} (the boot-time cached
+ * apply is READING the cache, not deciding).
  * @param {string} mode
  * @param {{ persist?: boolean }} [opts]
  * @returns {string} the applied (normalized) mode
@@ -103,7 +96,6 @@ export function applyChatModeTheme(mode, opts) {
     const root = globalThis.document?.documentElement;
     root?.classList?.toggle(DEV_MODE_CLASS, m === "introspection");
     root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
-    root?.classList?.toggle(SWE_MODE_CLASS, m === "swe");
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
   }

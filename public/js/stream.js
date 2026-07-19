@@ -372,7 +372,7 @@ async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
   }
   // The `build` status event that carries the slug rides the LIVE stream; a
   // recovered (dropped-then-polled) answer replays only text + stats, so the
-  // slug is lost and the next SDK/SWE iteration would mint a NEW /app/<slug>/
+  // slug is lost and the next SDK iteration would mint a NEW /app/<slug>/
   // instead of updating this one. Re-derive it from the "Try it live" link the
   // server guarantees in the answer text (build-pub replyLinksTo / pipeline).
   if (!convBuildSlug) {
@@ -737,17 +737,14 @@ async function buildChatPayload(opts) {
   // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection
   // enrichment per request (the server's existing off-only developer_mode
   // override — a knob-on account still gets plain web research); SDK asks for
-  // the DistillSDK build flow and SWE for the Se/cure-variant build flow,
-  // each carrying the conversation's published build slug so an iteration keeps
-  // its /app/<slug>/ URL. Introspection sends nothing extra — the knob-on
-  // default IS introspection.
+  // the DistillSDK build flow (distill a flavour from this site — above all the
+  // Se/cure tier), carrying the conversation's published build slug so an
+  // iteration keeps its /app/<slug>/ URL. Introspection sends nothing extra —
+  // the knob-on default IS introspection.
   const chatMode = cachedChatMode();
   if (chatMode === "normal") payload.developer_mode = false;
   else if (chatMode === "sdk") {
     payload.sdk_mode = true;
-    if (convBuildSlug) payload.build_slug = convBuildSlug;
-  } else if (chatMode === "swe") {
-    payload.swe_mode = true;
     if (convBuildSlug) payload.build_slug = convBuildSlug;
   }
   // Ghost toggle: tells the server to keep this exchange out of the

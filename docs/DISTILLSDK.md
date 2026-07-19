@@ -15,15 +15,17 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 > and three application surfaces consume the SDK:
 >
 > - **SDK mode** — the green "lovable experience" entry in the chat-mode
->   dropdown (Normal / Introspection / SDK / SWE; the khaki SWE sibling reuses
->   this same build/publish machinery to build a new instance of Se/cure —
->   see the sdk-mode skill): the model plans with `sdk_plan`,
->   reads the module skills out of the deployed source snapshot, builds a
->   self-contained web app, and the pipeline publishes it live at
->   `/app/<slug>/` (`src/pipeline.js` `runSdkBuild`, `src/build-pub.js` —
->   opaque-origin CSP sandbox). Tool-capable answer models drive native tools
->   (invariant 1's authorized exception, extended 2026-07-18); every other
->   model uses the deterministic `FILE:` fenced-block convention.
+>   dropdown (Normal / Introspection / SDK — see the sdk-mode skill): the user
+>   describes a FLAVOUR to distill from this site (above all the client-side
+>   Se/cure tier), the model plans with `sdk_plan`, reads the module skills and
+>   the deployed Se/cure source out of the snapshot, builds a self-contained web
+>   app, and the pipeline publishes it live at `/app/<slug>/`
+>   (`src/pipeline.js` `runSdkBuild`, `src/build-pub.js` — opaque-origin CSP
+>   sandbox). Tool-capable answer models drive native tools (invariant 1's
+>   authorized exception, extended 2026-07-18); every other model uses the
+>   deterministic `FILE:` fenced-block convention. (The retired khaki **SWE**
+>   sibling — "build a new instance of Se/cure" — was folded into SDK mode on
+>   2026-07-19: distilling the Se/cure tier is now SDK mode's core purpose.)
 > - **MCP** — `POST /mcp` exposes `sdk_list_modules` / `sdk_show_module` /
 >   `sdk_plan` / `sdk_validate`, so external agents operate on the manifest
 >   directly instead of shelling into the execution sandbox.
