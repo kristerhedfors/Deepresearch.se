@@ -18,6 +18,11 @@ import {
   INFLIGHT_CAP,
   INFLIGHT_TTL_MS,
   PERIODS,
+  quotaResetAt,
+  applyResetFloor,
+  DAY_MS,
+  DEFAULT_RESET_DAYS,
+  MAX_RESET_DAYS,
 } from "./quota.js";
 
 describe("windowStart / windowReset", () => {
@@ -255,6 +260,60 @@ describe("inflightLimitResponse", () => {
     assert.ok(/limit/i.test(r.error));
     // No internal cost/budget figures leak into a rate-limit message.
     assert.ok(!/eur|budget|€/i.test(r.error));
+  });
+});
+
+describe("quotaResetAt (admin Reset-quota button)", () => {
+  const now = Date.UTC(2026, 6, 19, 12, 0, 0);
+  test("defaults to a whole week into the future", () => {
+    assert.equal(quotaResetAt(now), now + DEFAULT_RESET_DAYS * DAY_MS);
+    assert.ok(quotaResetAt(now) > now, "reset floor is in the future (grace window)");
+  });
+  test("honours an explicit day count", () => {
+    assert.equal(quotaResetAt(now, 14), now + 14 * DAY_MS);
+  });
+  test("clamps to at least one day and at most the max", () => {
+    assert.equal(quotaResetAt(now, 0), now + 1 * DAY_MS);
+    assert.equal(quotaResetAt(now, -5), now + 1 * DAY_MS);
+    assert.equal(quotaResetAt(now, 9999), now + MAX_RESET_DAYS * DAY_MS);
+  });
+  test("falls back to the default on a non-numeric day count", () => {
+    assert.equal(quotaResetAt(now, /** @type {any} */ ("nope")), now + DEFAULT_RESET_DAYS * DAY_MS);
+  });
+});
+
+describe("applyResetFloor (usage-counting floor)", () => {
+  const now = Date.UTC(2026, 6, 19, 12, 0, 0);
+  const base = {
+    starts: { h5: now - 5 * 3600 * 1000, day: now - 12 * 3600 * 1000, week: now - 3 * DAY_MS, month: now - 18 * DAY_MS },
+    minStart: now - 18 * DAY_MS,
+  };
+  test("no reset (0/null/undefined) leaves the windows untouched", () => {
+    for (const v of [0, null, undefined, -1]) {
+      const r = applyResetFloor(base.starts, base.minStart, /** @type {any} */ (v));
+      assert.deepEqual(r.starts, base.starts);
+      assert.equal(r.minStart, base.minStart);
+    }
+  });
+  test("a reset at 'now' floors every window to now — all windows go empty from here", () => {
+    const r = applyResetFloor(base.starts, base.minStart, now);
+    for (const p of PERIODS) assert.equal(r.starts[p], now);
+    assert.equal(r.minStart, now);
+  });
+  test("a FUTURE reset floors every window past now — nothing counts until it passes (grace)", () => {
+    const future = now + DEFAULT_RESET_DAYS * DAY_MS;
+    const r = applyResetFloor(base.starts, base.minStart, future);
+    for (const p of PERIODS) assert.equal(r.starts[p], future);
+    assert.equal(r.minStart, future);
+  });
+  test("only floors windows that start before the reset (max, never lowers a start)", () => {
+    // A reset between the month start and the week start: month/day/h5 that
+    // begin before it get raised; a window already starting later is unchanged.
+    const mid = now - 5 * DAY_MS; // after month start, before week start
+    const r = applyResetFloor(base.starts, base.minStart, mid);
+    assert.equal(r.starts.month, mid, "month start (older) raised to the floor");
+    assert.equal(r.starts.week, base.starts.week, "week start (newer) left as-is");
+    assert.equal(r.minStart, mid);
   });
 });
 

@@ -602,7 +602,7 @@ async function resolveChatModels(env, log, body) {
  * @returns {Promise<Response | null>} the 429 response, or null to proceed
  */
 async function enforceQuotaGate(env, log, config, identity) {
-  const usage = await getUsage(env, identity.id);
+  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
   const quota =
     identity.isSecretAdmin || identity.role === "admin"
       ? null

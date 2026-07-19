@@ -78,6 +78,56 @@ export function windowReset(period, now = Date.now(), h5Oldest = null) {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
 }
 
+// ---- quota reset (admin "Reset quota" button) ------------------------------
+//
+// A per-user `quota_reset_at` timestamp is a FLOOR on which usage_events count
+// toward the windows: only events with ts >= quota_reset_at are summed. ONE
+// field, and both behaviors the admin asked for fall out of it:
+//   • Set to "now"        → every prior event drops out; all bars reset to 0.
+//   • Set to now + N days → every event until then has ts < quota_reset_at, so
+//                           nothing counts → the user is effectively uncapped
+//                           for that whole period ("extend available quota by
+//                           a whole week"). It self-expires, no cleanup needed.
+// Crucially it NEVER deletes a row: usage_events (and the admin's cost
+// analytics / the chat history in other tables) stay fully intact — "reset the
+// quota without losing history". The button sets it to now + DEFAULT_RESET_DAYS.
+
+export const DAY_MS = 24 * 3600 * 1000;
+export const DEFAULT_RESET_DAYS = 7; // "a whole week long period at least"
+export const MAX_RESET_DAYS = 90;
+
+/**
+ * The `quota_reset_at` timestamp for a reset of `days` (clamped to a sane
+ * range) starting at `now`. Pure + unit-tested.
+ * @param {number} now
+ * @param {number} [days]
+ * @returns {number}
+ */
+export function quotaResetAt(now, days = DEFAULT_RESET_DAYS) {
+  const d = Number.isFinite(Number(days))
+    ? Math.min(MAX_RESET_DAYS, Math.max(1, Math.round(Number(days))))
+    : DEFAULT_RESET_DAYS;
+  return now + d * DAY_MS;
+}
+
+/**
+ * Clamps each window start (and the widest-window scan floor) UP to `resetAt`
+ * when it is set, so usage counts only events at/after the reset. A no-op when
+ * resetAt is unset/0/past-all-starts. Pure + unit-tested.
+ * @param {Record<string, number>} starts
+ * @param {number} minStart
+ * @param {number | null | undefined} resetAt
+ * @returns {{ starts: Record<string, number>, minStart: number }}
+ */
+export function applyResetFloor(starts, minStart, resetAt) {
+  const floor = Number(resetAt);
+  if (!(floor > 0)) return { starts, minStart };
+  const clamped = Object.fromEntries(
+    Object.entries(starts).map(([p, s]) => [p, Math.max(s, floor)]),
+  );
+  return { starts: clamped, minStart: Math.max(minStart, floor) };
+}
+
 // ---- per-user quota resolution --------------------------------------------
 
 // A user's quota_json can override any subset:
@@ -162,17 +212,22 @@ const emptyWindow = () => ({
 // rolling reset estimate.
 /**
  * One user's usage per window, plus h5_oldest for the rolling reset estimate.
+ * `resetAt` (the user's quota_reset_at) floors which events count — see
+ * applyResetFloor: a value at/after `now` zeroes every window, a future value
+ * keeps them zero until it passes (the admin "Reset quota" grace).
  * @param {Env} env
  * @param {string | number} userId
  * @param {number} [now]
+ * @param {number | null} [resetAt]
  * @returns {Promise<Usage>}
  */
-export async function getUsage(env, userId, now = Date.now()) {
+export async function getUsage(env, userId, now = Date.now(), resetAt = 0) {
   const db = await getDb(env);
   /** @type {Usage} */
   const out = { h5: emptyWindow(), day: emptyWindow(), week: emptyWindow(), month: emptyWindow(), h5_oldest: null };
   if (!db) return out;
-  const { starts, minStart } = windowStarts(now);
+  const base = windowStarts(now);
+  const { starts, minStart } = applyResetFloor(base.starts, base.minStart, resetAt);
   const cols = bucketCols(starts, { ...USAGE_EXPRS, requests: "1" });
   // Every selected column is a numeric aggregate (NULL on an empty scan).
   const row = /** @type {Record<string, number | null> | null} */ (

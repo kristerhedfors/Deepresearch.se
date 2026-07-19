@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   google_sub TEXT,
   quota_json TEXT,
   terms_accepted_at INTEGER,
+  quota_reset_at INTEGER,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS usage_events (
@@ -232,6 +233,9 @@ const ALTERS = [
   "ALTER TABLE users ADD COLUMN google_sub TEXT",
   "ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER",
   "ALTER TABLE users ADD COLUMN settings_json TEXT",
+  // Per-user quota reset floor (admin "Reset quota" button) — usage counts
+  // only events with ts >= this timestamp. Added 2026-07-19; additive.
+  "ALTER TABLE users ADD COLUMN quota_reset_at INTEGER",
   // websearch_grants gained label/source after its first ship (2026-07-14) —
   // additive so a DB that created the table earlier picks them up.
   "ALTER TABLE websearch_grants ADD COLUMN label TEXT",

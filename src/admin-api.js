@@ -6,6 +6,9 @@
 //   GET    /api/admin/notifications  lightweight alerts + pending users, for
 //                                    the in-app message center (account.js)
 //   PATCH  /api/admin/users/:id      {status?, name?, quota?} quota={day:{budget_eur,searches},...}|null
+//   POST   /api/admin/users/:id/quota/reset  {days?}|{clear} — zero a user's
+//                                    usage + grant an uncapped grace window
+//                                    (default a week) without deleting history
 //   DELETE /api/admin/users/:id
 //   PUT    /api/admin/config         partial config patch -> full config
 //   POST   /api/admin/alerts/:id/ack dismiss one operational alert
@@ -56,7 +59,7 @@ import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, saveConfig } from "./config.js";
-import { getUsageAllUsers, getUsageByModel, PERIODS } from "./quota.js";
+import { getUsageAllUsers, getUsageByModel, PERIODS, quotaResetAt, DEFAULT_RESET_DAYS } from "./quota.js";
 import { addUserMessage } from "./user-messages.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -93,6 +96,10 @@ export async function handleAdminApi(request, env, url, log, identity) {
     }
     if (path === "/notifications" && method === "GET") {
       return notifications(env);
+    }
+    const resetPath = path.match(/^\/users\/(\d+)\/quota\/reset$/);
+    if (resetPath && method === "POST") {
+      return resetUserQuota(request, env, log, Number(resetPath[1]));
     }
     const userPath = path.match(/^\/users\/(\d+)$/);
     if (userPath && method === "PATCH") {
@@ -249,6 +256,38 @@ async function patchUser(request, env, log, userId) {
     await addUserMessage(env, userId, "quota_changed");
   }
   return jsonResponse({ user });
+}
+
+// POST /api/admin/users/:id/quota/reset — {days?} | {clear:true}
+// "Reset the entire quota for a user with a button tap." Sets the user's
+// quota_reset_at (src/quota.js): usage before it stops counting, so every
+// quota bar drops to zero immediately AND — because the timestamp is set into
+// the FUTURE (now + days) — the user is uncapped until it passes, i.e. their
+// available quota is extended by a whole week (DEFAULT_RESET_DAYS) at least.
+// Nothing is deleted: usage_events, chat history, and the admin's cost
+// analytics all stay intact. {clear:true} removes the reset (normal counting).
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {number} userId
+ */
+async function resetUserQuota(request, env, log, userId) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  if (body?.clear) {
+    const user = await updateUser(env, userId, { quota_reset_at: null });
+    if (!user) return jsonResponse({ error: "Not found." }, 404);
+    log.info("admin.quota_reset_cleared", { user_id: String(userId) });
+    return jsonResponse({ user, quota_reset_at: null });
+  }
+  const days = Number.isFinite(Number(body?.days)) ? Number(body.days) : DEFAULT_RESET_DAYS;
+  const resetAt = quotaResetAt(Date.now(), days);
+  const user = await updateUser(env, userId, { quota_reset_at: resetAt });
+  if (!user) return jsonResponse({ error: "Not found." }, 404);
+  // Notify the affected user (structured event only — never the numbers).
+  await addUserMessage(env, userId, "quota_changed");
+  log.info("admin.quota_reset", { user_id: String(userId), reset_at: resetAt });
+  return jsonResponse({ user, quota_reset_at: resetAt });
 }
 
 /** @param {Env} env */

@@ -23,6 +23,9 @@ import { getDb } from "./db.js";
  * @property {string | null} [google_sub] Google's stable subject id
  * @property {string | null} [quota_json] per-user quota overrides (JSON)
  * @property {number | null} [terms_accepted_at] ms epoch of terms acceptance
+ * @property {number | null} [quota_reset_at] usage-counting floor: only events
+ *   at/after this ms epoch count toward quotas (admin "Reset quota" button;
+ *   a future value = an uncapped grace window). Additive ALTER, may be absent.
  * @property {string | null} [settings_json] per-user settings (src/settings.js)
  * @property {number} created_at ms epoch
  */
@@ -74,7 +77,7 @@ export async function listUsers(env) {
   const db = await getDb(env);
   if (!db) return [];
   const { results } = await db
-    .prepare("SELECT id, email, name, role, status, quota_json, created_at FROM users ORDER BY created_at DESC")
+    .prepare("SELECT id, email, name, role, status, quota_json, quota_reset_at, created_at FROM users ORDER BY created_at DESC")
     .all();
   return results || [];
 }
@@ -147,6 +150,16 @@ export async function updateUser(env, id, patch) {
   if ("quota_json" in patch) {
     sets.push("quota_json = ?");
     binds.push(patch.quota_json ? JSON.stringify(patch.quota_json) : null);
+  }
+  // Quota reset floor (admin "Reset quota"): a positive ms timestamp sets the
+  // grace/reset; null clears it (usage counts normally again). Anything else
+  // is ignored — never write a bogus value.
+  if ("quota_reset_at" in patch) {
+    const v = patch.quota_reset_at;
+    if (v === null || (Number.isFinite(Number(v)) && Number(v) > 0)) {
+      sets.push("quota_reset_at = ?");
+      binds.push(v === null ? null : Math.round(Number(v)));
+    }
   }
   if (typeof patch.name === "string") {
     sets.push("name = ?");

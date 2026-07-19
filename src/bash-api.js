@@ -86,7 +86,7 @@ export async function handleBashStep(request, env, log, identity) {
 
   // Same quota gate as /api/chat and /api/quiz/grade (admins never blocked).
   const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id);
+  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
   const quota =
     identity.isSecretAdmin || identity.role === "admin" ? null : effectiveQuota(config, identity.user);
   const blocked = quota ? quotaExceeded(usage, quota) : null;

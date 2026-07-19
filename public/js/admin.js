@@ -665,6 +665,10 @@ function renderUsers() {
     const usage = u.usage || {};
     let override = null;
     try { override = u.quota_json ? JSON.parse(u.quota_json) : null; } catch { override = null; }
+    // Quota reset grace (admin "Reset quota" button): a future quota_reset_at
+    // means usage bars are held at zero and the user is uncapped until then.
+    const graceUntil = Number(u.quota_reset_at) || 0;
+    const inGrace = graceUntil > Date.now();
     const q = {};
     for (const p of PERIODS) {
       q[p] = {
@@ -682,8 +686,11 @@ function renderUsers() {
         ${u.status === "disabled" ? '<span class="badge disabled">disabled</span>' : ""}
         ${u.status === "pending" ? '<span class="badge pending">awaiting approval</span>' : ""}
         ${override ? '<span class="badge">custom quota</span>' : ""}
+        ${inGrace ? `<span class="badge" title="Usage bars held at zero; user uncapped until this date. History kept.">quota reset · until ${new Date(graceUntil).toISOString().slice(0, 10)}</span>` : ""}
         <span class="spacer"></span>
         ${u.status === "pending" ? '<button data-act="approve">Approve</button>' : ""}
+        <button data-act="reset-quota" class="secondary" title="Zero this user's usage and give them a week of uncapped quota — nothing is deleted">Reset quota</button>
+        ${inGrace ? '<button data-act="clear-reset" class="secondary" title="End the grace window; usage counts normally again">Clear grace</button>' : ""}
         <button data-act="edit" class="secondary">Quota…</button>
         ${u.status === "pending" ? "" : `<button data-act="toggle-status" class="secondary">${u.status === "disabled" ? "Enable" : "Disable"}</button>`}
         <button data-act="delete" class="danger">Delete</button>
@@ -726,6 +733,17 @@ function renderUsers() {
           await load();
         } else if (act === "toggle-status") {
           await api(`/users/${u.id}`, { method: "PATCH", body: { status: u.status === "disabled" ? "active" : "disabled" } });
+          await load();
+        } else if (act === "reset-quota") {
+          const msg = inGrace
+            ? `Extend ${u.email}'s quota grace by another week? Bars stay at zero and they stay uncapped. Usage history is kept.`
+            : `Reset ${u.email}'s quota? Every usage bar drops to zero and they get at least a week of uncapped quota. Nothing is deleted — usage history and chats are kept.`;
+          if (!confirm(msg)) return;
+          await api(`/users/${u.id}/quota/reset`, { method: "POST", body: {} });
+          await load();
+        } else if (act === "clear-reset") {
+          if (!confirm(`End ${u.email}'s quota grace now? Their usage will count normally again.`)) return;
+          await api(`/users/${u.id}/quota/reset`, { method: "POST", body: { clear: true } });
           await load();
         } else if (act === "delete") {
           if (!confirm(`Delete ${u.email} and their usage history? They can sign in again with Google and start fresh.`)) return;

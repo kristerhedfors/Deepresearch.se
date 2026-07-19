@@ -178,7 +178,7 @@ export function validateRagIndexPayload(body) {
  */
 async function quotaGate(env, identity) {
   const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id);
+  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
   const quota =
     identity.isSecretAdmin || identity.role === "admin"
       ? null
