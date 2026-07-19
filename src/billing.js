@@ -48,6 +48,54 @@ export function summarizeSpend(state, catalog) {
 }
 
 /**
+ * Per-model spend attribution for the request: one row per model bucket that
+ * ran (answer / JSON planning / vision), each priced at its own catalog rate.
+ * Where summarizeSpend COLLAPSES the three buckets into a single total (all the
+ * quota-enforcement ledger needs — a cost cap doesn't care which model spent
+ * it), this KEEPS them apart so a user's spend stays attributable to the model
+ * that actually drove it: the answer model the user chose, the fixed JSON
+ * planning model (Mistral), or the Street View vision helper. Without this the
+ * whole request's Berget cost is folded onto the single answer model, and you
+ * can no longer tell an expensive answer model from a search-heavy run that
+ * pounded the cheap JSON phases. Feeds the usage_model_events attribution
+ * ledger (src/quota.js recordModelUsage) that getUsageByModelForUser reads.
+ *
+ * The `answer` bucket is ALWAYS emitted — even at zero tokens it carries the
+ * request (a search-only reply spends no answer-model tokens but is still a
+ * request that cost Exa money); the json/vision buckets only when they spent.
+ * Pure (state + catalog in, rows out); never throws.
+ * @param {Pick<RequestState, "model" | "jsonModel" | "visionModel" | "totals" | "jsonTotals" | "visionTotals">} state
+ * @param {ModelCatalog | null | undefined} catalog
+ * @returns {Array<{ role: "answer" | "json" | "vision", model: string | null, prompt_tokens: number, completion_tokens: number, berget_cost: number }>}
+ */
+export function spendByModel(state, catalog) {
+  /** @type {Array<["answer" | "json" | "vision", string | null, import('./types.js').TokenTotals]>} */
+  const buckets = [
+    ["answer", state.model, state.totals],
+    ["json", state.jsonModel, state.jsonTotals],
+    ["vision", state.visionModel, state.visionTotals],
+  ];
+  /** @type {Array<{ role: "answer" | "json" | "vision", model: string | null, prompt_tokens: number, completion_tokens: number, berget_cost: number }>} */
+  const rows = [];
+  for (const [role, modelId, totals] of buckets) {
+    const prompt_tokens = totals?.prompt_tokens || 0;
+    const completion_tokens = totals?.completion_tokens || 0;
+    // Skip an unused helper bucket, but always keep the answer row (it carries
+    // the request and its Exa/search cost even when it spent no LLM tokens).
+    if (role !== "answer" && prompt_tokens + completion_tokens === 0) continue;
+    const entry = catalog?.find((m) => m.id === modelId);
+    rows.push({
+      role,
+      model: modelId ?? null,
+      prompt_tokens,
+      completion_tokens,
+      berget_cost: bergetCost(entry, prompt_tokens, completion_tokens),
+    });
+  }
+  return rows;
+}
+
+/**
  * The request's Exa cost. The admin-configured per-search price is priced
  * for Exa's standard tier; a request whose time budget bought a costlier
  * tier (src/budget.js's searchDepth, e.g. `type: "deep"`) gets its recorded

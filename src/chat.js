@@ -17,7 +17,7 @@ import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
-import { exaCost, summarizeSpend } from "./billing.js";
+import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
 export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
@@ -32,6 +32,7 @@ import {
   inflightLimitResponse,
   quotaBlockedResponse,
   quotaExceeded,
+  recordModelUsage,
   recordUsage,
   releaseInflight,
   reserveInflight,
@@ -410,6 +411,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         berget_cost,
         exa_cost,
         duration_ms,
+      });
+      // Per-model attribution ledger (usage_model_events) — the "tell what a
+      // user's budget went to" half. Separate + fail-soft; never disturbs the
+      // enforcement row above. Pair with the row's exa_cost for search vs LLM.
+      await recordModelUsage(env, log, {
+        user_id: identity.id,
+        request_id: requestId,
+        by_model: spendByModel(state, catalog),
       });
       // Full-visibility interaction log (src/chatlog.js): the complete
       // question, answer, conversation, research metadata, and any error —

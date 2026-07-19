@@ -15,10 +15,19 @@
 // 0 = uncapped.
 //
 // The admin additionally gets per-model token counts and cost
-// (getUsageByModel) — granular ground truth for what the budget is spent
-// on. Global defaults live in the config table; per-user overrides in
-// users.quota_json (same shape, missing fields inherit). The break-glass
-// admin identity is exempt from enforcement but still recorded.
+// (getUsageByModel site-wide, getUsageByModelForUser for one user) — granular
+// ground truth for WHAT a budget was spent on, not just how much. Global
+// defaults live in the config table; per-user overrides in users.quota_json
+// (same shape, missing fields inherit). The break-glass admin identity is
+// exempt from enforcement but still recorded.
+//
+// TWO ledgers (see src/db.js):
+//   - usage_events        ENFORCEMENT: one row per request, berget_cost = the
+//                         SUM across every model that ran. All a cost cap needs.
+//   - usage_model_events  ATTRIBUTION: one row per model bucket that spent
+//                         (answer/JSON/vision), so spend stays attributable to
+//                         the model that drove it. recordModelUsage writes it;
+//                         getUsageByModelForUser reads it. Never enforcement.
 
 import { getDb } from "./db.js";
 
@@ -308,6 +317,43 @@ export async function getUsageByModel(env, now = Date.now()) {
   return results || [];
 }
 
+// Per-model breakdown for ONE user — the same shape as getUsageByModel but
+// scoped to a single user_id and read from the ATTRIBUTION ledger
+// (usage_model_events), so each model's cost is the model's REAL cost, not the
+// whole request folded onto the answer model. This is what answers "what has
+// cost so much for this user": pair it with getUsage (whose berget_cost vs
+// exa_cost already splits LLM spend from search spend). Sorted by month cost.
+/**
+ * One user's per-model token/cost breakdown, sorted by month cost.
+ * @param {Env} env
+ * @param {string | number} userId
+ * @param {number} [now]
+ * @returns {Promise<any[]>}
+ */
+export async function getUsageByModelForUser(env, userId, now = Date.now()) {
+  const db = await getDb(env);
+  if (!db) return [];
+  const { starts, minStart } = windowStarts(now);
+  const cols = bucketCols(starts, {
+    tokens: "prompt_tokens + completion_tokens",
+    cost: "berget_cost",
+  });
+  const { results } = await db
+    .prepare(
+      `SELECT COALESCE(model, '(unknown)') AS model, ${cols},
+         SUM(CASE WHEN ts >= ${starts.month} THEN prompt_tokens ELSE 0 END) AS month_prompt,
+         SUM(CASE WHEN ts >= ${starts.month} THEN completion_tokens ELSE 0 END) AS month_completion,
+         SUM(CASE WHEN ts >= ${starts.month} THEN 1 ELSE 0 END) AS month_requests
+       FROM usage_model_events
+       WHERE user_id = ?1 AND ts >= ?2 AND (prompt_tokens + completion_tokens) > 0
+       GROUP BY COALESCE(model, '(unknown)')
+       ORDER BY month_cost DESC`,
+    )
+    .bind(String(userId), minStart)
+    .all();
+  return results || [];
+}
+
 // ---- enforcement -----------------------------------------------------------
 
 // Returns null when within quota, else {period, kind, limit, used, reset_at}.
@@ -562,5 +608,52 @@ export async function recordUsage(env, log, evt) {
   } catch (err) {
     // Accounting must never break a served answer.
     log.error("quota.record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
+  }
+}
+
+/**
+ * Records the per-model ATTRIBUTION rows for one request into
+ * usage_model_events — one row per model bucket that spent (answer / JSON
+ * planning / vision, from billing.js spendByModel). This is the "tell next
+ * time" half of cost tracking: it keeps each request's spend attributable to
+ * the model that drove it, which the single-row usage_events enforcement
+ * ledger folds together. It is NEVER read for quota enforcement, so a failure
+ * here is pure analytics loss — fully fail-soft, and kept separate from
+ * recordUsage so it can't disturb the enforcement row (recorded already).
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {{ user_id: string | number, request_id?: string | null, by_model?: Array<{ role?: string, model?: string | null, prompt_tokens?: number, completion_tokens?: number, berget_cost?: number }> }} evt
+ * @returns {Promise<void>}
+ */
+export async function recordModelUsage(env, log, evt) {
+  const rows = Array.isArray(evt.by_model) ? evt.by_model : [];
+  if (!rows.length) return;
+  try {
+    const db = await getDb(env);
+    if (!db) return;
+    const ts = Date.now();
+    const stmt = db.prepare(
+      `INSERT INTO usage_model_events
+         (request_id, user_id, ts, role, model, prompt_tokens, completion_tokens, berget_cost)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    await db.batch(
+      rows.map((r) =>
+        stmt.bind(
+          evt.request_id || null,
+          String(evt.user_id),
+          ts,
+          String(r.role || "answer"),
+          r.model || null,
+          (r.prompt_tokens ?? 0) | 0,
+          (r.completion_tokens ?? 0) | 0,
+          Number(r.berget_cost) || 0,
+        ),
+      ),
+    );
+  } catch (err) {
+    // Attribution is analytics-only; its failure must never break a served
+    // answer or the enforcement accounting.
+    log.error("quota.record_model_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
 }

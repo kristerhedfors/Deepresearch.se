@@ -34,6 +34,24 @@ CREATE TABLE IF NOT EXISTS usage_events (
   duration_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usage_user_ts ON usage_events(user_id, ts);
+-- usage_events is the ENFORCEMENT ledger: one row per request, its berget_cost
+-- the SUM across every model the request ran, which is all a cost cap needs.
+-- usage_model_events is the ATTRIBUTION ledger: one row per model bucket that
+-- actually spent (answer / JSON planning / vision), so a user's spend stays
+-- attributable to the model that drove it. NEVER read for quota enforcement —
+-- purely to answer "what did this user's budget go to" (getUsageByModelForUser).
+CREATE TABLE IF NOT EXISTS usage_model_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT,
+  user_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  model TEXT,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  berget_cost REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_usage_model_user_ts ON usage_model_events(user_id, ts);
 CREATE TABLE IF NOT EXISTS inflight (
   req_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
