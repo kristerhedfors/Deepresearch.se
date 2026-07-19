@@ -138,6 +138,24 @@ the granular ground truth behind the budgets). Note the usage SQL
 filters from the MINIMUM of all window starts — the ISO week can begin
 before the month does.
 
+**"What has cost so much for user X?"** Two ledgers, so an answer is never
+an opaque lump. `usage_events` is the ENFORCEMENT ledger (one row per
+request; `berget_cost` is the SUM across every model the request ran — all
+a cost cap needs). `usage_model_events` (added 2026-07-19) is the
+ATTRIBUTION ledger: `recordModelUsage` writes one row per model bucket that
+actually spent (answer / JSON planning / vision, from `billing.js`
+`spendByModel`), so LLM spend stays attributable to the model that drove it
+instead of the whole request folding onto the answer model. It is NEVER
+read for enforcement — pure analytics, fully fail-soft (its failure can't
+touch the served answer or the enforcement row). To investigate one user:
+`GET /api/admin/user-cost?user_id=|email=` (handler `userCost`) returns the
+per-window totals (`berget_cost` = LLM vs `exa_cost` = search — the first
+split) plus `getUsageByModelForUser` (the per-model breakdown — the second
+split). The CLI is `scripts/user-cost <email>` (break-glass Basic Auth,
+like `scripts/chatlogs`). The per-model breakdown is populated for requests
+served AFTER this ledger shipped; older spend still shows in the totals and
+in each request's `chat_logs.meta_json` (`berget_cost`/`exa_cost`).
+
 **Admin interface** at `/admin` (role-gated; non-admins get 302 → `/`):
 notifications, usage totals, user management (role/status/quota/delete),
 config (default quotas, Exa cost, max time budget, default model — stored
