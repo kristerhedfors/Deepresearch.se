@@ -13,6 +13,7 @@ import {
   modeCharacter,
   modeTheme,
   panelFlavour,
+  showsDepthSlider,
   spinnerKind,
 } from "./mode-theme.js";
 import { CHAT_MODES } from "./chat-mode.js";
@@ -38,9 +39,19 @@ test("every descriptor declares all distinguishing axes", () => {
     assert.ok(spinners.has(t.spinner), `spinner for ${t.id}`);
     assert.ok(chars.has(t.character), `character for ${t.id}`);
     assert.ok(panels.has(t.panel), `panel for ${t.id}`);
+    assert.ok(typeof t.depthSlider === "boolean", `depthSlider for ${t.id}`);
     assert.ok(typeof t.symbol === "string" && t.symbol);
     assert.ok(typeof t.blurb === "string" && t.blurb);
   }
+});
+
+test("depth slider is an optional theme feature: off for Introspection + SDK", () => {
+  assert.equal(showsDepthSlider("normal"), true);
+  assert.equal(showsDepthSlider("introspection"), false);
+  assert.equal(showsDepthSlider("sdk"), false);
+  assert.equal(MODE_THEMES.introspection.depthSlider, false);
+  assert.equal(MODE_THEMES.sdk.depthSlider, false);
+  assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
 });
 
 test("SDK is the plant / green / showcase identity", () => {

@@ -276,8 +276,9 @@ reuses balloon-intro's timeline/renderer AND umbrella-spinner's pure
 boomerang/tumble clocks, pure plan helpers Node-tested), `mode-theme.js`
 (the MODE-THEME REGISTRY — the codified catalog of what makes each chat mode
 its own: root class, accent + ✓ color, waiting-symbol spinner, theme
-character, side-panel flavour, one descriptor per mode (Normal / Introspection
-/ SDK) plus the two tier reference entries (Se/cure first); pure/import-free,
+character, side-panel flavour, and optional theme features like the research
+`depthSlider` (hidden in Introspection + SDK), one descriptor per mode (Normal
+/ Introspection / SDK) plus the two tier reference entries (Se/cure first); pure/import-free,
 Node-tested; the shape SDK mode distills into when it "creates new themes of
 this kind" — see `docs/SYMBOL-LANGUAGE.md` §7), `mode-spinner.js` (the DOM
 dispatch `turns.js`/`activity.js` call — mounts the CURRENT mode's spinner off
