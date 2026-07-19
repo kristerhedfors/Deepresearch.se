@@ -5,6 +5,10 @@
 //   GET    /api/admin/overview       users(+usage) + config + totals + alerts
 //   GET    /api/admin/notifications  lightweight alerts + pending users, for
 //                                    the in-app message center (account.js)
+//   GET    /api/admin/user-cost      ?user_id=|email= — one user's spend
+//                                    attribution: per-window LLM vs search
+//                                    totals + per-model breakdown ("what has
+//                                    cost so much for this user")
 //   PATCH  /api/admin/users/:id      {status?, name?, quota?} quota={day:{budget_eur,searches},...}|null
 //   POST   /api/admin/users/:id/quota/reset  {days?}|{clear} — zero a user's
 //                                    usage + grant an uncapped grace window
@@ -55,11 +59,19 @@ import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
-import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
+import { deleteUser, getUserByEmail, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, saveConfig } from "./config.js";
-import { getUsageAllUsers, getUsageByModel, PERIODS, quotaResetAt, DEFAULT_RESET_DAYS } from "./quota.js";
+import {
+  getUsage,
+  getUsageAllUsers,
+  getUsageByModel,
+  getUsageByModelForUser,
+  PERIODS,
+  quotaResetAt,
+  DEFAULT_RESET_DAYS,
+} from "./quota.js";
 import { addUserMessage } from "./user-messages.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -96,6 +108,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     }
     if (path === "/notifications" && method === "GET") {
       return notifications(env);
+    }
+    // Per-user cost attribution: "what has this user's budget gone to?" —
+    // the per-window totals (berget_cost = LLM, exa_cost = search) plus the
+    // per-model breakdown (usage_model_events). ?user_id= or ?email=.
+    if (path === "/user-cost" && method === "GET") {
+      return userCost(env, url);
     }
     const resetPath = path.match(/^\/users\/(\d+)\/quota\/reset$/);
     if (resetPath && method === "POST") {
@@ -318,6 +336,44 @@ async function overview(env) {
     config,
     totals,
     alerts,
+  });
+}
+
+// GET /api/admin/user-cost?user_id=<id>|email=<addr> — the drill-down that
+// answers "what has cost so much for this user". Two axes, so the answer is
+// never just an opaque lump:
+//   - usage: per-window totals — berget_cost (LLM spend) vs exa_cost (search
+//     spend), so the FIRST split (LLM vs search) is immediate;
+//   - by_model: per-model breakdown from the attribution ledger, so LLM spend
+//     is further attributable to the model that drove it (the user's answer
+//     model, the cheap JSON planner, or the vision helper) instead of folded
+//     onto one model. Populated for requests served after this ledger shipped.
+// The break-glass admin identity (user_id "admin", no users row) is accepted
+// directly so its own spend is inspectable too.
+/**
+ * @param {Env} env
+ * @param {URL} url
+ */
+async function userCost(env, url) {
+  const idParam = url.searchParams.get("user_id");
+  const email = url.searchParams.get("email");
+  let user = null;
+  if (idParam && /^\d+$/.test(idParam)) user = await getUserById(env, Number(idParam));
+  else if (email) user = await getUserByEmail(env, email);
+  // usage_events.user_id is String(users.id) for signed-in users, or the
+  // literal "admin" for the break-glass identity (which has no users row).
+  const userId = user ? String(user.id) : idParam === "admin" ? "admin" : null;
+  if (!userId) {
+    return jsonResponse({ error: "Unknown user. Pass ?user_id=<id> or ?email=<address>." }, 404);
+  }
+  const [usage, byModel] = await Promise.all([
+    getUsage(env, userId, Date.now(), user?.quota_reset_at || 0),
+    getUsageByModelForUser(env, userId),
+  ]);
+  return jsonResponse({
+    user: user ? { id: user.id, email: user.email, name: user.name } : { id: userId },
+    usage,
+    by_model: byModel,
   });
 }
 

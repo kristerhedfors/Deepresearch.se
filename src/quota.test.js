@@ -15,6 +15,8 @@ import {
   inflightLimitResponse,
   reserveInflight,
   releaseInflight,
+  recordModelUsage,
+  getUsageByModelForUser,
   INFLIGHT_CAP,
   INFLIGHT_TTL_MS,
   PERIODS,
@@ -24,6 +26,8 @@ import {
   DEFAULT_RESET_DAYS,
   MAX_RESET_DAYS,
 } from "./quota.js";
+
+const silentLog = { error() {}, warn() {}, info() {} };
 
 describe("windowStart / windowReset", () => {
   // A Wednesday, well clear of month/week/day boundaries.
@@ -406,5 +410,103 @@ describe("reserveInflight / releaseInflight (fail-soft)", () => {
     // Well past the TTL: the old rows are swept, so admission resumes.
     const later = t0 + INFLIGHT_TTL_MS + 1;
     assert.equal((await reserveInflight(env, "userC", "c-later", later)).ok, true);
+  });
+});
+
+// ---- per-model attribution ledger (usage_model_events) ---------------------
+// A fake D1 whose batch() captures the bound args of INSERT INTO
+// usage_model_events, so we can assert recordModelUsage writes one correctly
+// shaped row per model bucket. Migration (getDb) touches prepare/run/batch too;
+// those are tolerated (schema/ALTER statements never match the insert filter).
+function captureDb() {
+  /** @type {any[][]} */
+  const inserts = [];
+  const stmt = (sql) => ({
+    sql,
+    args: /** @type {any[]} */ ([]),
+    bind(...a) {
+      return { ...stmt(sql), args: a };
+    },
+    async run() {
+      return { success: true };
+    },
+    async first() {
+      return null;
+    },
+    async all() {
+      return { results: [] };
+    },
+  });
+  return {
+    _inserts: inserts,
+    prepare: (sql) => stmt(sql),
+    async batch(stmts) {
+      for (const s of stmts) {
+        if (s && s.sql && s.sql.includes("INSERT INTO usage_model_events")) inserts.push(s.args);
+      }
+      return [];
+    },
+  };
+}
+
+describe("recordModelUsage (attribution ledger)", () => {
+  test("writes one row per model bucket with the right columns", async () => {
+    const db = captureDb();
+    const env = /** @type {any} */ ({ DB: db });
+    await recordModelUsage(env, silentLog, {
+      user_id: 3,
+      request_id: "req-abc",
+      by_model: [
+        { role: "answer", model: "anthropic/opus", prompt_tokens: 1000, completion_tokens: 500, berget_cost: 4 },
+        { role: "json", model: "mistral/small", prompt_tokens: 200, completion_tokens: 100, berget_cost: 0.04 },
+      ],
+    });
+    assert.equal(db._inserts.length, 2);
+    // Column order: request_id, user_id, ts, role, model, prompt, completion, cost.
+    const [reqId, userId, ts, role, model, pt, ct, cost] = db._inserts[0];
+    assert.equal(reqId, "req-abc");
+    assert.equal(userId, "3"); // stringified
+    assert.equal(typeof ts, "number");
+    assert.equal(role, "answer");
+    assert.equal(model, "anthropic/opus");
+    assert.equal(pt, 1000);
+    assert.equal(ct, 500);
+    assert.equal(cost, 4);
+    // Both rows share the one request timestamp.
+    assert.equal(db._inserts[0][2], db._inserts[1][2]);
+    assert.equal(db._inserts[1][3], "json");
+  });
+
+  test("no rows to write is a no-op (never touches the db)", async () => {
+    const db = captureDb();
+    await recordModelUsage(/** @type {any} */ ({ DB: db }), silentLog, { user_id: 3, by_model: [] });
+    assert.equal(db._inserts.length, 0);
+  });
+
+  test("fail-soft: a db that throws on batch never throws (analytics is best-effort)", async () => {
+    const env = /** @type {any} */ ({
+      DB: { prepare: () => ({ bind: () => ({}), async run() {}, async first() { return null; } }), async batch() { throw new Error("d1 down"); } },
+    });
+    await recordModelUsage(env, silentLog, {
+      user_id: 3,
+      by_model: [{ role: "answer", model: "m", prompt_tokens: 1, completion_tokens: 1, berget_cost: 1 }],
+    });
+    // Reaching here without a throw is the assertion.
+    assert.ok(true);
+  });
+
+  test("no database configured is a silent no-op", async () => {
+    await recordModelUsage(/** @type {any} */ ({}), silentLog, {
+      user_id: 3,
+      by_model: [{ role: "answer", model: "m", prompt_tokens: 1, completion_tokens: 1, berget_cost: 1 }],
+    });
+    assert.ok(true);
+  });
+});
+
+describe("getUsageByModelForUser", () => {
+  test("returns [] when no database is configured (fail-soft)", async () => {
+    const rows = await getUsageByModelForUser(/** @type {any} */ ({}), 3);
+    assert.deepEqual(rows, []);
   });
 });
