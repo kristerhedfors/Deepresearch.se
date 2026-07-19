@@ -104,6 +104,33 @@ describe("planResearch — depth scales with budget tier", () => {
     assert.ok(long.digestCap >= short.digestCap);
   });
 
+  test("deep budgets strive toward the target — the round/search ceiling scales past the old cap", () => {
+    // Feedback (chat_logs #521): an 8-minute budget wrapped a rich question in
+    // ~60-90s because the gap loop hit a hard 4-round / 20-search ceiling far
+    // under the time available. The deep tiers now let the time deadline and
+    // the gap check's completeness judgment bind instead of an arbitrary cap.
+    const M = "test/deep-tier-" + Math.random();
+    const full = planResearch(M, 480);
+    assert.ok(full.gapIterations >= 6, `8-min plan gap rounds ${full.gapIterations} should exceed the old cap of 4`);
+    assert.ok(full.maxSearches >= 30, `8-min plan maxSearches ${full.maxSearches} should exceed the old cap of 20`);
+    // Strictly monotonic through the deep tiers (240s → 300s → 480s): a longer
+    // budget always buys the CAPACITY for more rounds and searches.
+    const ext = planResearch(M, 300);
+    const long = planResearch(M, 240);
+    assert.ok(full.gapIterations > ext.gapIterations, "480s buys more rounds than 300s");
+    assert.ok(ext.gapIterations > long.gapIterations, "300s buys more rounds than 240s");
+    assert.ok(full.maxSearches > ext.maxSearches, "480s buys more searches than 300s");
+  });
+
+  test("the default (60s) tier's depth is unchanged by the deep-tier scaling", () => {
+    // The deep-tier ceiling raise and the honest per-round costing must leave
+    // the standard/default plan byte-identical (eval baselines depend on it).
+    const plan = planResearch("test/default-depth-" + Math.random(), 60);
+    assert.equal(plan.gapIterations, 2);
+    assert.equal(plan.maxSearches, 10);
+    assert.equal(plan.followups, 3);
+  });
+
   test("every plan carries a searchDepth even on the floor-plan early return", () => {
     // Regression check: searchDepth must be set before the `avail <= search`
     // early return, not only at the end of the function.

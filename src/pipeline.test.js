@@ -7,7 +7,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isTransientConnectStatus } from "./answer-stream.js";
+import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
 import { normalizeTriage } from "./triage.js";
 
@@ -187,6 +187,45 @@ describe("isTransientConnectStatus", () => {
   });
 });
 
+// Regression pin for chat_logs #524 (2026-07-18): an introspection turn on the
+// 32k Mistral Small overran the context window and the raw Berget 400 JSON was
+// dumped at the user with no answer. contextOverflowMessage() rewrites that
+// deterministic "input too large" 400 into a clean, actionable sentence; every
+// other 400 (and every non-400) passes through untouched so the normal error
+// path still surfaces.
+describe("contextOverflowMessage", () => {
+  test("rewrites the OpenAI-shape context_length_exceeded 400", () => {
+    const berget400 =
+      '{"error":{"message":"This model\'s maximum context length is 32768 tokens. ' +
+      'However, your input is estimated at 32134 tokens. Please reduce the length of ' +
+      'the input.","type":"invalid_request_error","code":"context_length_exceeded"}}';
+    const msg = contextOverflowMessage(400, berget400);
+    assert.ok(msg, "an overflow 400 yields a message");
+    assert.match(msg, /too long for the selected model/i);
+    assert.doesNotMatch(msg, /context_length_exceeded|invalid_request_error/, "no raw provider JSON leaks");
+  });
+
+  test("matches the several phrasings OpenAI-compatible providers use", () => {
+    for (const detail of [
+      "context_length_exceeded",
+      "context length exceeded",
+      "This model's maximum context length is 8192 tokens",
+      "the model's context window is too small",
+      "Please reduce the length of the messages",
+      "Please reduce the length of the prompt",
+    ]) {
+      assert.ok(contextOverflowMessage(400, detail), `should match: ${detail}`);
+    }
+  });
+
+  test("leaves other 400s and non-400 statuses alone", () => {
+    assert.equal(contextOverflowMessage(400, '{"error":{"message":"bad request"}}'), null);
+    assert.equal(contextOverflowMessage(400, ""), null);
+    assert.equal(contextOverflowMessage(401, "context_length_exceeded"), null);
+    assert.equal(contextOverflowMessage(500, "maximum context length"), null);
+  });
+});
+
 // Regression pin for chat_logs #360 (2026-07-15): the deterministic quiz gate
 // must read the CLEAN pre-enrichment message, never the enrichment-appended
 // lastUser — the introspection block folded into lastUser carries the
@@ -206,6 +245,23 @@ describe("quiz gate reads the clean (pre-enrichment) user message", () => {
   test("the triage-backup question count uses cleanLastUser", () => {
     assert.match(src, /quizQuestionCount\(ctx\.cleanLastUser\)/);
     assert.doesNotMatch(src, /quizQuestionCount\(ctx\.lastUser\)/);
+  });
+});
+
+// Regression pin (feedback: "gave up too early" / "strive toward the depth
+// target, shortcut if there isn't more to explore"): the deep-tier gap loop
+// now runs a HIGH round ceiling (budget.js), so it needs a diminishing-returns
+// stop — a follow-up wave that adds NO new sources ends the loop instead of
+// spinning further rounds against the same registry. This is the meaningful-
+// action guarantee that keeps the raised ceiling honest.
+describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("runGapChecks captures the source count before the wave and breaks on no gain", () => {
+    assert.match(src, /const sourcesBefore = state\.sources\.length/);
+    assert.match(src, /if \(state\.sources\.length === sourcesBefore\)[\s\S]*?break/);
+    // The break lives AFTER the searches run (it measures their yield), not before.
+    assert.match(src, /await runSearches\(ctx, followups[\s\S]*?state\.sources\.length === sourcesBefore/);
   });
 });
 

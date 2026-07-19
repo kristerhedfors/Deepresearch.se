@@ -149,6 +149,21 @@ rounds — plus runtime deadline checks between phases (budget +15% grace;
 extra gap rounds are cut first, validation last, with a visible
 "Validation skipped" step when it happens).
 
+**Depth is a target to strive toward, not a floor (2026-07-19 feedback fix).**
+A user report — an 8-minute budget wrapping a rich question in ~60-90s —
+traced to a hard gap-round ceiling (4 rounds / 20 searches) that finished a
+deep budget far under its time. The deep tiers now scale the ceiling up
+(`gapRoundCap` 6 at ≥300s, 8 at ≥420s; `searchCeiling` 26 extended / 34 full;
+rounds costed at a real follow-up wave), so the binding constraints become the
+time deadline and the gap check's own "coverage complete" judgment rather than
+an arbitrary cap. It is a STRIVING ceiling, never a floor: `applyComplexityToPlan`
+still clamps genuinely-`simple` questions to ≤1 gap round (the evidence-driven
+over-research guard is untouched), and `runGapChecks` shortcuts the moment a
+follow-up wave surfaces **no new sources** (`chat.gap_saturated`) — so the extra
+headroom only cashes in when there is really more to find. Tiers below extended
+(<240s), the 60s default included, are byte-identical. Live A/B (rubric bench +
+hf-bench, the usual merge-gate) is the post-deploy evidence.
+
 **Report-comprehensiveness tiers (2026-07-15 product directive):** the
 slider buys OUTPUT depth, not just research depth — the delivered answer's
 structure and length scale with the budget. `budget.js reportTierFor(budgetS)`

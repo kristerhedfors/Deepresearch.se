@@ -93,6 +93,20 @@ describe("triagePrompt", () => {
     }
   });
 
+  // Regression pin (feedback #1, chat_logs #521, 2026-07-17): "Cheapest NH34
+  // watches" was classified "simple" and its research capped BELOW the user's
+  // budget (applyComplexityToPlan), finishing in ~65s — "gave up too early" —
+  // while the near-identical "Cheapest Rolex explorer 2 homages" (#506) got
+  // "survey" and full depth. Market-wide cheapest/best/list questions must
+  // steer AWAY from "simple", phrased conceptually so it holds in any language.
+  test("cheapest/best/list-across-a-market questions are steered away from simple", () => {
+    const p = triagePrompt(4);
+    assert.match(p, /CHEAPEST, BEST, TOP, or a LIST\/RANKING/);
+    assert.match(p, /is NOT "simple"/);
+    assert.match(p, /surveying MANY candidates/);
+    assert.match(p, /Reserve "simple" for a single stable fact/);
+  });
+
   test("asks for sub-questions on non-simple requests and orders multihop by dependency", () => {
     const p = triagePrompt(4);
     assert.match(p, /"subquestions"/);

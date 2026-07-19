@@ -192,18 +192,38 @@ export function planResearch(model, budgetS, jsonModel = model) {
   // Depth scales with the budget tier.
   const queryCap = budgetS >= 240 ? 6 : 4;
   plan.followups = budgetS >= 420 ? 5 : budgetS >= 240 ? 4 : 3;
-  const gapRoundCap = budgetS >= 300 ? 4 : budgetS >= 60 ? 3 : 2;
+  // Gap-round ceiling. The deep tiers (the user deliberately dialled a long
+  // "reason for up to N minutes" budget) get a HIGH ceiling so the loop keeps
+  // taking meaningful action toward that target — the binding constraints
+  // become the time deadline and the gap check's own "coverage complete"
+  // judgment (both enforced in runGapChecks), NOT an artificially low round
+  // count that wraps a rich question in ~60-90s and leaves most of an 8-minute
+  // budget unspent (the reported "gave up too early"). This is a striving
+  // ceiling, never a floor: a genuinely-simple question never reaches these
+  // rounds (applyComplexityToPlan clamps it), and a round that surfaces no new
+  // sources shortcuts the loop — so the extra headroom only cashes in when
+  // there is really more to find. Tiers below extended (<240s) are unchanged.
+  const gapRoundCap =
+    budgetS >= 420 ? 8 : budgetS >= 300 ? 6 : budgetS >= 240 ? 4 : budgetS >= 60 ? 3 : 2;
 
   plan.queries = Math.max(1, Math.min(queryCap, Math.floor((avail * 0.6) / t.search)));
   let rest = avail - plan.queries * t.search;
 
-  const gapCost = t.gap + 2 * t.search;
+  // Cost a planned round at its REAL search cost (a full follow-up wave), not a
+  // nominal two, so the round count the time budget can actually afford stays
+  // honest under the raised ceilings above. (At the default 60s tier this still
+  // resolves to the same round count as before — time, not the ceiling, binds.)
+  const gapCost = t.gap + plan.followups * t.search;
   while (plan.gapIterations < gapRoundCap && rest >= gapCost) {
     plan.gapIterations++;
     rest -= gapCost;
   }
 
-  plan.maxSearches = Math.min(20, plan.queries + plan.gapIterations * plan.followups);
+  // Total-search ceiling scales with the report tier so it can't become the
+  // premature limiter that pins a deep budget at ~20 searches; standard/default
+  // keeps the historical 20.
+  const searchCeiling = reportTier === "full" ? 34 : reportTier === "extended" ? 26 : 20;
+  plan.maxSearches = Math.min(searchCeiling, plan.queries + plan.gapIterations * plan.followups);
   if (plan.maxSearches > 8) {
     plan.maxSources = 24;
     plan.digestCap = 18_000;
