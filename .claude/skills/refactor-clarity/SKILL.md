@@ -430,3 +430,51 @@ of bash-core's one-protocol premise), `buildSourceToolUserContent` (~2 shared
 prompt lines), the dev-mode theme-toggle dedup (deliberate tier divergence +
 /cure allowlist), `sumRemaining` (tiny, inline in one endpoint each), and the
 table-parameterized meter cluster (standing decline, third pass running).
+
+## Seventh worked example (2026-07-19) — the single-move pass
+
+Whole-repo survey again (four `Explore` fan-outs: `pipeline.js` alone,
+`chat.js`/`index.js`/`mcp.js`, an all-of-`src` verbatim-duplicate sweep, and the
+Se/cure client tier `drc.js`/`drc-research.js`/`drc-providers.js`). `pipeline.js`
+had grown 1290→1654 but ENTIRELY from SDK/SWE build-mode + feedback-capture
+*orchestration* whose pure helpers were placed in companions at authoring time
+(`sdk-tools.js`/`build-tools.js`/`introspect-tools.js`/`pipeline-inputs.js`) —
+nothing left to extract. `chat.js`/`mcp.js` were byte-unchanged since prior
+passes; `index.js` regrowth was routing dispatch (left alone). Exactly ONE clean
+move survived, and the pass's real value is the DECLINE reasoning below:
+- **`withSources` → `sources.js`** (the only cut): the numbered-source-list
+  formatter (append a `Sources:` block unless the answer already carries one)
+  was inline in `mcp.js` but is a pure string builder belonging beside its
+  sibling `sourceDigest` in the source-registry module. Verbatim move with its
+  double-print-guard comment; `mcp.js` pulls it via a **dynamic** import at the
+  call site (next to `recordChatLog`) so `mcp.test.js` still loads without the
+  source/search graph (`sources.js` → `search-sources.js` → `hf.js`). New
+  `sources.test.js` cases cover the append / no-sources / no-double-print paths
+  that had no coverage inline.
+Declined this pass (record so the next pass doesn't re-survey them):
+- **`bucket = (env) => (env.STORAGE)` ×5** (storage/build-pub/rag/vault/pub) —
+  byte-identical, but every home is awkward: `storage.js` would be CIRCULAR
+  (it imports `rag.js`), `settings.js` is NOT a leaf (pulls googlemaps/shodan
+  into build-pub/pub), and `http.js` is a semantic mismatch (response helpers,
+  not storage). A one-line `R2Bucket` type-cast with ~zero drift risk — matches
+  the standing `base64ToBytes`-idiom decline ("churn, not drift risk").
+- **`sdkBuildTools` / `sdkBuildTitle`** (pipeline.js one-liners) — the former
+  composes constants from THREE modules (`INTROSPECTION_TOOLS`/`SDK_TOOLS`/
+  `BUILD_TOOLS`) so it belongs where it composes them; the latter isn't
+  `ctx`-free without a signature change (not a verbatim move).
+- **`newRequestState`** (chat.js vs mcp.js) — same RequestState SHAPE, different
+  fields (mcp forces enrichments off, takes `plan`); a base+extend split is a
+  feature-shaped change, not a byte-identical move (standing decline since the
+  2026-07-12 de-dup pass).
+- **The whole Se/cure client tier** — `drc-providers.js` is already import-free
+  with its pure/impure split done in-file (its own `filterAndSortModels`
+  docstring codifies "testable *within* the module, not a spawned `-core.js`");
+  `drc-research.js`'s pure prompts/normalizers are already exported + Node-tested
+  and NO separate consumer imports them (only `runDrcResearch` is imported). NEW
+  HAZARD LOGGED: both files are in `SECURE_SOURCE_REFS` **and** `sdk/MANIFEST.json`
+  `reference` lists, so spawning a `-core.js` that isn't ALSO added to those
+  lists would silently hide those prompts from the SDK distiller — a net negative
+  no test catches. Extraction there carries downside with no consumer/graph win.
+The lesson stands: on this codebase a "refactor the whole repo" job routinely
+converges to a SINGLE relocation (or none), and that is the correct outcome —
+1843 logic tests green throughout, typecheck clean, zero behavior change.

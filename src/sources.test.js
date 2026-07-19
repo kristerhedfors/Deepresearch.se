@@ -6,7 +6,7 @@
 // the capped sourceDigest block.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { hostnameOf, diversityKeyOf, addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
+import { hostnameOf, diversityKeyOf, addSources, backfillOverflowSources, sourceDigest, withSources } from "./sources.js";
 
 function freshState(maxSources = 10) {
   return {
@@ -152,6 +152,30 @@ describe("sourceDigest", () => {
 
   test("empty source list returns an empty string", () => {
     assert.equal(sourceDigest([], 1000), "");
+  });
+});
+
+describe("withSources", () => {
+  const sources = [
+    { n: 1, title: "A", url: "https://a.com", highlights: [] },
+    { n: 2, title: "B", url: "https://b.com", highlights: [] },
+  ];
+
+  test("appends a one-line-per-source 'Sources:' block", () => {
+    const out = withSources("answer body", sources);
+    assert.match(out, /^answer body\n\nSources:\n/);
+    assert.ok(out.includes("[1] A — https://a.com"));
+    assert.ok(out.includes("[2] B — https://b.com"));
+  });
+
+  test("no sources returns the text unchanged", () => {
+    assert.equal(withSources("answer body", []), "answer body");
+    assert.equal(withSources("answer body", undefined), "answer body");
+  });
+
+  test("does not double-print when the text already carries a Sources: list", () => {
+    const already = "answer body\n\nSources:\n[1] A — https://a.com";
+    assert.equal(withSources(already, sources), already);
   });
 });
 
