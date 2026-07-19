@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h47;
+  --css-version: h48;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -418,6 +418,13 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
 .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+/* The transient reopened-chat feedback cue (turns.js FEEDBACK_HINT_TEXT):
+   quieter than a message, centered under the restored turns, gone on the
+   next send. */
+.feedback-hint {
+  color: var(--muted); text-align: center; font-size: .82rem;
+  margin: 1.5rem auto .5rem; max-width: 46ch; line-height: 1.45; opacity: .85;
+}
 
 /* Live activity steps. During research the wrapper is [open] and every
    step bar shows; once the answer completes it collapses to a single

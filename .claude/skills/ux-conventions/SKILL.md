@@ -286,3 +286,36 @@ so the affirmative button's cost label is the tell.
 `odOpenConsent()` (live-size fetch → size-labeled `#odc-yes`, backdrop/
 `#odc-no` dismissal) and `renderOnDeviceRows()` (the Delete reversal row).
 Record: docs/BONSAI-27B-PHONE-INFERENCE.md §6.
+
+## UX-5 — A discoverability hint shown only on the empty state must be re-shown when the empty state is bypassed
+
+**When** a how-to hint lives on the chat's empty state (the fresh-chat
+`EMPTY_TEXT`) but the user can reach the same surface with the empty state
+already gone — **reopening a saved conversation from history renders turns and
+clears the empty hint** — **then** re-surface the hint in that path too, as a
+transient cue that is NOT persisted and disappears on the next turn. A hint the
+returning user never sees is a feature they can't discover.
+
+The concrete case: feedback is filed by starting a chat message with the word
+"feedback" (src/feedback.js `feedbackIntent`; the entry then enters the fix
+loop). The only on-screen instruction for that was `EMPTY_TEXT`, which never
+shows once a reopened history chat has rendered its turns — so a user who
+opened an old session specifically to comment on it had no cue. The fix appends
+a quieter `.feedback-hint` line below the restored turns.
+
+1. **Gated to an answered record** — `shouldShowFeedbackHint(messages)` shows
+   it only when there's an assistant turn to comment on (empty/user-only:
+   nothing).
+2. **Transient, never persisted** — appended after `renderStoredConversation`,
+   removed by `clearEmpty()` (same lifecycle as the empty hint) the moment a
+   new turn is added; it is never written to the history record.
+3. **Quieter than a message** — smaller, muted, centered, so it reads as chrome
+   not conversation.
+
+**Canonical implementation:** `public/js/turns.js` (`FEEDBACK_HINT_TEXT`, pure
+`shouldShowFeedbackHint` Node-tested in `turns.test.js`, `addFeedbackHint`
+appended in `renderStoredConversation`; `clearEmpty` removes it),
+`public/css/app.css` `.feedback-hint`. Server side of the same guarantee:
+src/feedback.js `buildFeedbackContext` (the reopened chat's last Q&A is what the
+feedback entry captures). Se/cure keeps no server feedback path (privacy
+invariant 4) and gets no hint.
