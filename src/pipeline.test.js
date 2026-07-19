@@ -248,6 +248,23 @@ describe("quiz gate reads the clean (pre-enrichment) user message", () => {
   });
 });
 
+// Regression pin (feedback: "gave up too early" / "strive toward the depth
+// target, shortcut if there isn't more to explore"): the deep-tier gap loop
+// now runs a HIGH round ceiling (budget.js), so it needs a diminishing-returns
+// stop — a follow-up wave that adds NO new sources ends the loop instead of
+// spinning further rounds against the same registry. This is the meaningful-
+// action guarantee that keeps the raised ceiling honest.
+describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("runGapChecks captures the source count before the wave and breaks on no gain", () => {
+    assert.match(src, /const sourcesBefore = state\.sources\.length/);
+    assert.match(src, /if \(state\.sources\.length === sourcesBefore\)[\s\S]*?break/);
+    // The break lives AFTER the searches run (it measures their yield), not before.
+    assert.match(src, /await runSearches\(ctx, followups[\s\S]*?state\.sources\.length === sourcesBefore/);
+  });
+});
+
 describe("the web-search knob gates Exa only — depth still runs over other sources", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 

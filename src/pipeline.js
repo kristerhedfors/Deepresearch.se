@@ -1104,8 +1104,20 @@ async function runGapChecks(ctx) {
       followups,
     );
     state.iterations++;
+    const sourcesBefore = state.sources.length;
     await runSearches(ctx, followups, state.iterations);
     await maybeDigest(ctx);
+    // Meaningful-action guarantee: the raised deep-tier round ceiling is only
+    // worth spending while each round still finds NEW ground. If a whole
+    // follow-up wave surfaced nothing the registry didn't already hold (all
+    // deduped away, or the registry is saturated), we've reached "there isn't
+    // more to explore" — stop rather than spin further rounds against the same
+    // sources. Below the deep tiers the round cap is small enough that this
+    // rarely fires; it's the safety valve that keeps the long budgets honest.
+    if (state.sources.length === sourcesBefore) {
+      log.info("chat.gap_saturated", { round: it, searches: state.searchCount });
+      break;
+    }
   }
 }
 
