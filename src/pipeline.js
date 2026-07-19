@@ -109,6 +109,7 @@ import {
   SDK_TOOL_NAMES,
   buildFilesSummary,
   buildSdkContextBlock,
+  buildSecureSourceDigest,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
@@ -700,6 +701,12 @@ async function runSdkBuild(ctx) {
   const snapshot = await sdkSnapshot(ctx);
   const manifest = manifestFromSnapshot(snapshot);
   if (!manifest) ctx.log.warn("sdk.manifest_missing", {});
+  // Deterministically gather the actual Se/cure reference source (a bounded
+  // digest of the real files, straight from the snapshot) and put it in front
+  // of the model on BOTH paths. Without this the deterministic fallback saw
+  // only a list of paths — never enough to distill — and the tool path could
+  // burn its rounds/time re-reading before it reached any real source.
+  const secureDigest = buildSecureSourceDigest(snapshot);
 
   const toolsOn = introspectionToolsAvailable(ctx);
   ctx.log.info("sdk.build_gate", {
@@ -707,17 +714,18 @@ async function runSdkBuild(ctx) {
     model: ctx.model,
     manifest: !!manifest,
     snapshot_files: snapshot?.files?.length || 0,
+    digest_chars: secureDigest.length,
     build_slug: /** @type {any} */ (state).buildSlug || null,
   });
   if (toolsOn) {
     try {
-      return await runSdkBuildTools(ctx, snapshot, manifest);
+      return await runSdkBuildTools(ctx, snapshot, manifest, secureDigest);
     } catch (/** @type {any} */ err) {
       ctx.log.warn("sdk.tools_failed", { model: ctx.model, error: err?.message || String(err) });
       // fall through to the deterministic FILE-block path
     }
   }
-  return runSdkBuildDeterministic(ctx, manifest);
+  return runSdkBuildDeterministic(ctx, manifest, secureDigest);
 }
 
 /**
@@ -755,8 +763,8 @@ async function publishSdkFiles(ctx, files, title) {
 /** @param {PipelineCtx} ctx @returns {string} */
 const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().slice(0, 80) || "App";
 
-/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest */
-async function runSdkBuildTools(ctx, snapshot, manifest) {
+/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {string} secureDigest */
+async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   const readBudget = { used: 0 };
   /** @type {Map<string, string>} */
   const staged = new Map();
@@ -793,8 +801,8 @@ async function runSdkBuildTools(ctx, snapshot, manifest) {
     `Request (latest user message):\n${ctx.cleanLastUser}\n\n` +
     `Conversation context:\n${ctx.cleanConvText}\n\n` +
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
-    buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null }) +
-    "\n\nBuild it now: plan with the sdk_* tools, read the relevant skills and Se/cure source, stage every file with write_file, publish_app once, then write the short reply.";
+    buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null, secureDigest }) +
+    "\n\nBuild it now: the Se/cure source digest above is your starting material — read_file only for detail it omits, stage every file with write_file, publish_app once, then write the short reply.";
 
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
@@ -857,15 +865,17 @@ async function runSdkBuildTools(ctx, snapshot, manifest) {
   ctx.stepDone("synth", "Report drafted");
 }
 
-/** @param {PipelineCtx} ctx @param {any} manifest */
-async function runSdkBuildDeterministic(ctx, manifest) {
+/** @param {PipelineCtx} ctx @param {any} manifest @param {string} secureDigest */
+async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
-  // The FILE-block convention + catalog/Se/cure reference ride the conversation
-  // (the introspection-enrichment append pattern) so the streamed completion
-  // sees them on any catalog model.
+  // The FILE-block convention + catalog/Se/cure reference (incl. the source
+  // digest) ride the conversation (the introspection-enrichment append pattern)
+  // so the streamed completion sees them on any catalog model — this is the ONLY
+  // real Se/cure source this path gets, since it has no read tools.
   const block = buildSdkContextBlock(manifest, {
     toolMode: false,
     buildUrl: buildSlug ? `/app/${buildSlug}/` : null,
+    secureDigest,
   });
   const convo = /** @type {Conversation} */ (withAppendedText(ctx.conversation, block));
   ctx.step("synth", "Building the app…");
