@@ -86,7 +86,6 @@ const CHAT_MODE_OPTIONS = [
   { value: "normal", label: "Normal" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "SDK" },
-  { value: "swe", label: "SWE" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -99,7 +98,7 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
   slow to start; enabling it reloads the page.`;
 
 // The Chat mode picker (the dropdown that replaced the Introspection on/off
-// switch): one of four modes. The non-Normal modes all need the developer_mode
+// switch): one of three modes. The non-Normal modes all need the developer_mode
 // capability, so picking one turns that on (and Normal turns it off) — see
 // wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
 const MODE_INFO = `<strong>Chat mode</strong><br>
@@ -110,11 +109,9 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   source this deployment runs — the composer pane turns white titanium. With the
   execution sandbox also on, the whole source tree mounts at <code>/src</code> in
   the in-browser Linux VM.<br>
-  <b>SDK:</b> the green “lovable” builder — describe an app and get a live,
-  self-contained web app at its own link.<br>
-  <b>SWE:</b> the khaki builder — prompt a new instance of DeepResearch.Se/cure
-  (the client-side, never-cloud tier) in a different shape or form, published at
-  a live link.<br>
+  <b>SDK:</b> the green “lovable” builder — describe a flavour to distill from
+  this site (above all the client-side Se/cure tier) with DistillSDK and get a
+  live, self-contained web app at its own link.<br>
   The non-Normal modes turn on introspection access for this account.`;
 
 /**
@@ -122,7 +119,7 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
  * under the server-backed knobs (account-settings.js) — state from the cached
  * /api/settings copy, both gated on a signed-in account. The mode dropdown
  * REPLACED the old Introspection on/off switch (owner directive: the modes —
- * Normal / Introspection / SDK / SWE — should be CHOSEN from a dropdown here,
+ * Normal / Introspection / SDK — should be CHOSEN from a dropdown here,
  * not just introspection on/off). Wire with wireSandboxKnob + wireModeKnob.
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
@@ -325,7 +322,7 @@ export function wireSandboxKnob(ctx) {
 }
 
 // The Chat mode dropdown (Settings view): the modes Normal / Introspection /
-// SDK / SWE. Replaces the old Introspection on/off switch. The non-Normal modes
+// SDK. Replaces the old Introspection on/off switch. The non-Normal modes
 // need the developer_mode capability, so this drives that server knob too:
 // picking any non-Normal mode turns developer_mode ON, Normal turns it OFF —
 // exactly the capability the old switch controlled, now folded into the pick.
@@ -341,8 +338,7 @@ export function wireModeKnob(ctx) {
   const STATUS = {
     normal: "Normal — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
-    sdk: "SDK — describe an app and get a live, self-contained web app at its own link.",
-    swe: "SWE — prompt a new instance of Se/cure in a different shape or form, published at a live link.",
+    sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
   };
   sel.addEventListener("change", async () => {
     const mode = sel.value;

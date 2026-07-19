@@ -13,15 +13,15 @@ test("settingSelectRow renders a labeled <select> with the value selected", () =
     label: "Chat mode",
     options: [
       { value: "normal", label: "Normal" },
-      { value: "swe", label: "SWE" },
+      { value: "sdk", label: "SDK" },
     ],
-    value: "swe",
+    value: "sdk",
     disabled: false,
     popId: "modepop",
     info: "info",
   });
   assert.match(html, /<select class="settings-select" id="modesetting"/);
-  assert.match(html, /<option value="swe" selected>SWE<\/option>/);
+  assert.match(html, /<option value="sdk" selected>SDK<\/option>/);
   assert.match(html, /<option value="normal">Normal<\/option>/);
   assert.doesNotMatch(html, /disabled/); // enabled row
 });
@@ -46,7 +46,7 @@ test("renderConfigKnobs: the mode dropdown replaced the Introspection switch (si
   assert.match(html, /Chat mode/);
   assert.match(html, /<option value="introspection">/);
   assert.match(html, /<option value="sdk">/);
-  assert.match(html, /<option value="swe">/);
+  assert.doesNotMatch(html, /<option value="swe">/); // SWE mode retired, folded into SDK
   assert.doesNotMatch(html, /id="devknob"/); // the old toggle is gone
 });
 

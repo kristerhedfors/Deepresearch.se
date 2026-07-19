@@ -14,7 +14,6 @@ import {
   SDK_TOOLS,
   buildFilesSummary,
   buildSdkContextBlock,
-  buildSweContextBlock,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
@@ -145,25 +144,18 @@ test("headlines + summaries: legible activity labels", () => {
   assert.deepEqual(buildFilesSummary([["index.html", "<h1>x</h1>"]]), ["index.html (10 bytes)"]);
 });
 
-test("buildSdkContextBlock: catalog + convention for the no-tools path only", () => {
+test("buildSdkContextBlock: DistillSDK catalog + Se/cure reference + privacy invariants; convention for the no-tools path only", () => {
   const m = manifestFromSnapshot(snapshot());
   const detBlock = buildSdkContextBlock(m, { toolMode: false });
-  assert.match(detBlock, /Module catalog/);
-  assert.match(detBlock, /FILE: index\.html/);
-  const toolBlock = buildSdkContextBlock(m, { toolMode: true, buildUrl: "/build/x-1234/" });
-  assert.doesNotMatch(toolBlock, /FILE: index\.html/);
-  assert.match(toolBlock, /\/build\/x-1234\//);
-  assert.match(buildSdkContextBlock(null, {}), /could not be loaded/);
-});
-
-test("buildSweContextBlock: Se/cure reference + privacy invariants; convention for the no-tools path only", () => {
-  const detBlock = buildSweContextBlock({ toolMode: false });
-  assert.match(detBlock, /instance of Se\/cure/);
-  assert.match(detBlock, /public\/cure\/drc\.js/); // points at the real Se/cure source
+  assert.match(detBlock, /DistillSDK module catalog/);
+  assert.match(detBlock, /public\/cure\/drc\.js/); // points at the real Se/cure source to distill
   assert.match(detBlock, /PRIVACY INVARIANTS/);
+  assert.match(detBlock, /flavour/i);
   assert.match(detBlock, /FILE: index\.html/); // deterministic path teaches the convention
-  const toolBlock = buildSweContextBlock({ toolMode: true, buildUrl: "/app/x-1234/" });
+  const toolBlock = buildSdkContextBlock(m, { toolMode: true, buildUrl: "/app/x-1234/" });
   assert.doesNotMatch(toolBlock, /FILE: index\.html/);
-  assert.match(toolBlock, /grep_source/); // tool path names the readers
+  assert.match(toolBlock, /sdk_\* tools/); // tool path names the planners
+  assert.match(toolBlock, /grep_source/); // tool path names the snapshot readers
   assert.match(toolBlock, /\/app\/x-1234\//);
+  assert.match(buildSdkContextBlock(null, {}), /could not be loaded/);
 });

@@ -1,38 +1,41 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK / SWE) that designs and BUILDS a self-contained web app with DistillSDK and publishes it live at /app/<slug>/ — or on its khaki sibling SWE MODE (prompt a new instance of Se/cure), or when touching public/js/sdk-core.js (buildSdkContextBlock / buildSweContextBlock), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild + BUILD_FLAVORS, the sdk_mode/swe_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode / khaki swe-mode themes. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Normal / Introspection / SDK) that DISTILLS this site (above all the client-side Se/cure tier) into a new self-contained-web-app FLAVOUR with DistillSDK and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
-# SDK mode — the "lovable experience" (2026-07-18)
+# SDK mode — the "lovable distiller" (2026-07-18; SWE folded in 2026-07-19)
 
-The third entry in the chat-mode dropdown: the user DESCRIBES an app, the
-model DESIGNS + BUILDS it with DistillSDK (`sdk/` — manifest +
-skills), and the pipeline PUBLISHES the files at a live, shareable
-`/app/<slug>/` URL. Green is the mode's color (the composer pane + the
+The third entry in the chat-mode dropdown: the user DESCRIBES a FLAVOUR to
+distill from this site — above all the client-side **Se/cure** tier — the model
+DESIGNS + BUILDS it with DistillSDK (`sdk/` — manifest + skills) plus the
+deployed Se/cure source, and the pipeline PUBLISHES the files at a live,
+shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 `sdk studio` header tag), as titanium white is introspection's.
 
-## SWE mode — the khaki sibling (2026-07-18)
+## Distilling Se/cure into flavours (the merged SWE capability)
 
-The FOURTH dropdown entry, `swe` — "prompt a new instance of Se/cure in a
-different shape or form". It is SDK mode's build/publish machinery with a
-different *flavor*: instead of the DistillSDK catalog, it seeds the build
-with the deployed **Se/cure** source (`public/cure/*`, `public/js/drc-*.js`,
-`sdk/skills/secure-tier/SKILL.md`) and instructs the model to build a
-client-side, never-cloud research app that upholds Se/cure's privacy
-invariants. Khaki is its color (the composer pane echoes Se/cure's `#c3b091`;
-the `swe studio` header tag). It shares EVERYTHING structural with SDK mode —
-same `/app/<slug>/` publish, same `build_slug` iteration, same
-capability gate (`developer_mode`), same tool/deterministic split — so the two
-run through ONE `runSdkBuild(ctx, flavor)` keyed by `BUILD_FLAVORS.{sdk,swe}`
-(src/pipeline.js). The only per-flavor differences: the system prompts
-(`sweBuildPrompt` / `sweBuildToolPrompt` in src/prompts.js), the context block
-(`buildSweContextBlock` in sdk-core.js — no manifest; points at the Se/cure
-source), the tool set (SWE drops SDK_TOOLS, keeps the snapshot readers +
-BUILD_TOOLS so the model reads the real Se/cure source), and the step labels.
-Client wiring mirrors SDK exactly: `swe` in `CHAT_MODES`, the `swe-mode` root
-class, `payload.swe_mode`, chat.js `sweOn` gating (SDK wins if both flags
-arrive) + `sweMode` state + `swe` chat_logs meta. When extending either build
-mode, prefer editing the shared runner/flavor over forking a third path.
+SDK mode's core purpose is to distill the original site into different
+flavours. The DistillSDK catalog is the METHOD (it describes this site's
+Se/cure + Se/rver pair as buildable modules with skill playbooks), and the
+deployed **Se/cure** source (`public/cure/*`, `public/js/drc-*.js`,
+`sdk/skills/secure-tier/SKILL.md` — the list is `SECURE_SOURCE_REFS` in
+sdk-core.js) is the ORIGINAL the model studies and reshapes. Most builds are a
+reshaped Se/cure: a minimal single-purpose research client, a themed/domain
+variant, a stripped-down single-file build, a different UI. When a flavour keeps
+Se/cure's client-side, browser-direct nature the model must UPHOLD its privacy
+invariants (no server in the data path; provider calls browser→provider on the
+user's own key; secrets never leave the device or hit a log; third-party
+requests carry the minimum) — `buildSdkContextBlock` and the `sdkBuild*` prompts
+spell this out, and the model states the built flavour's privacy posture in the
+reply. (History: a separate khaki **SWE mode** — "build a new instance of
+Se/cure" — shipped 2026-07-18 as a fourth dropdown entry and was folded into SDK
+mode on 2026-07-19 as redundant; the merge kept its Se/cure-distillation framing
+and privacy invariants inside SDK mode, and removed the `swe` mode, `swe-mode`
+theme, `swe_mode` field, `buildSweContextBlock`, `sweBuild*` prompts, and the
+`BUILD_FLAVORS` indirection — there is now ONE `runSdkBuild(ctx)`.) The tool
+set is the snapshot readers (read the real Se/cure source) + `SDK_TOOLS`
+(plan against the manifest) + `BUILD_TOOLS`. When extending the build mode,
+edit the single `runSdkBuild`/`sdkBuild*`/`buildSdkContextBlock` path.
 
 ## The mode dropdown (client)
 
@@ -49,7 +52,7 @@ mode, prefer editing the shared runner/flavor over forking a third path.
   `#modesel` (index.html, wired in app.js) AND the **Settings-panel Chat mode
   dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
   REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
-  Both pick from Normal / Introspection / SDK / SWE; picking a non-Normal mode
+  Both pick from Normal / Introspection / SDK; picking a non-Normal mode
   flips the `developer_mode` knob on via PUT /api/settings (Normal flips it
   off), fail-soft — break-glass has it implicitly and its PUT refuses; theme
   applies anyway. `loadSettings().then` reconciles: knob off elsewhere →
@@ -59,8 +62,7 @@ mode, prefer editing the shared runner/flavor over forking a third path.
 - Per-send fields (`stream.js buildChatPayload`): normal →
   `developer_mode:false` (the existing off-only override — a knob-on account
   still gets plain web research); sdk → `sdk_mode:true` (+ `build_slug` when
-  the conversation already published); swe → `swe_mode:true` (+ `build_slug`);
-  introspection → nothing extra.
+  the conversation already published); introspection → nothing extra.
 
 ## The server flow
 

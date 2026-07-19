@@ -25,8 +25,6 @@ import {
   sourceToolAgentPrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
-  sweBuildPrompt,
-  sweBuildToolPrompt,
 } from "./prompts.js";
 import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
 
@@ -642,16 +640,14 @@ describe("the HELP layer note (introspection = the interactive help)", () => {
   });
 });
 
-describe("SDK/SWE build prompts", () => {
+describe("SDK build prompts", () => {
   // Blocker (observed): a build needed a second "Go on" message because the
   // first turn replied with intent only ("I have enough, I'll build it") and
-  // produced no files. Every build prompt — both modes, both execution paths —
-  // must forbid the plan-only turn so the app ships on the first attempt.
+  // produced no files. Every build prompt — both execution paths — must forbid
+  // the plan-only turn so the app ships on the first attempt.
   const buildPrompts = [
     ["sdkBuildPrompt", sdkBuildPrompt],
     ["sdkBuildToolPrompt", sdkBuildToolPrompt],
-    ["sweBuildPrompt", sweBuildPrompt],
-    ["sweBuildToolPrompt", sweBuildToolPrompt],
   ];
 
   for (const [name, build] of buildPrompts) {
@@ -662,6 +658,13 @@ describe("SDK/SWE build prompts", () => {
       // No "I'll build it later / after you confirm" stalling.
       assert.match(p, /the first one included/);
       assert.match(p, /do NOT stop to ask first/);
+    });
+
+    test(`${name} frames SDK mode as distilling this site (esp. Se/cure) into a flavour`, () => {
+      const p = build();
+      assert.match(p, /DistillSDK/);
+      assert.match(p, /Se\/cure/);
+      assert.match(p, /flavour/i);
     });
   }
 });

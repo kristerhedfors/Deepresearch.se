@@ -71,13 +71,10 @@ import { getDb } from "./db.js";
  * @property {boolean} [web_search] knob, default on (only `false` disables)
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
  * @property {boolean} [sdk_mode] SDK ("lovable") mode: route this request to the
- *   DistillSDK build flow (pipeline.js runSdkBuild). Honored only when the
- *   caller's developer_mode knob grants introspection — the same capability
- *   gate; a client can't acquire the mode with the knob off
- * @property {boolean} [swe_mode] SWE ("software engineering") mode: route this
- *   request to the Se/cure-variant build flow (pipeline.js runSdkBuild with the
- *   swe flavor) — "prompt a new instance of Se/cure". Same capability gate and
- *   publish machinery as sdk_mode; sdk_mode wins if both arrive
+ *   DistillSDK build flow (pipeline.js runSdkBuild) — distill this site (above
+ *   all the Se/cure tier) into a new flavour published at a live URL. Honored
+ *   only when the caller's developer_mode knob grants introspection — the same
+ *   capability gate; a client can't acquire the mode with the knob off
  * @property {string} [build_slug] the conversation's already-published build
  *   slug (from a previous reply's build event), so a build-mode iteration
  *   republishes the SAME /app/<slug>/ URL. Validated; ignored outside a build mode
@@ -113,7 +110,6 @@ import { getDb } from "./db.js";
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  *   sandboxEnabled?: boolean,
  *   sdkMode?: boolean,
- *   sweMode?: boolean,
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -208,11 +204,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // developer_mode knob (enrich.developerOn) — so a client can't acquire the
   // mode the knob doesn't grant; the mode dropdown flips the knob first.
   const sdkOn = body.sdk_mode === true && enrich.developerOn;
-  // SWE ("software engineering") mode: the request asks for the Se/cure-variant
-  // build flow — "prompt a new instance of Se/cure". Same capability gate + same
-  // publish machinery as SDK mode; SDK wins if both flags somehow arrive.
-  const sweOn = !sdkOn && body.swe_mode === true && enrich.developerOn;
-  const buildSlug = (sdkOn || sweOn) && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
+  const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -292,7 +284,6 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       shellTranscript,
       sandboxEnabled: bashLiteEnabled(env, identity),
       sdkMode: sdkOn,
-      sweMode: sweOn,
       buildSlug,
       userId: String(identity.id),
     });
@@ -402,7 +393,6 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         google_maps: state.mapsCount,
         introspection: state.introspectionCount,
         sdk: sdkOn,
-        swe: sweOn,
         duration_ms,
         client_gone: disconnect.gone,
         incognito,
@@ -454,12 +444,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // 1 when developer mode's introspection enrichment folded the
             // source snapshot into this exchange (src/introspect.js).
             introspection: state.introspectionCount,
-            // Build modes: `sdk` is 1 when this request ran the SDK build flow,
-            // `swe` is 1 for the Se/cure-variant build flow; `build` is the
-            // published result ({slug, url, files, bytes} — pipeline.js
-            // runSdkBuild), dropped when nothing was published.
+            // SDK mode: `sdk` is 1 when this request ran the SDK build flow
+            // (distill a flavour from this site); `build` is the published
+            // result ({slug, url, files, bytes} — pipeline.js runSdkBuild),
+            // dropped when nothing was published.
             sdk: sdkOn ? 1 : 0,
-            swe: sweOn ? 1 : 0,
             build: /** @type {any} */ (state).buildResult,
             // Which maps intent matcher decided (or "none") — the routing
             // trace scripts/chatlogs surfaces (undefined when the knob is
@@ -696,7 +685,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, sweMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -741,14 +730,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // mode also on, the client mounts the source tree at /src in the VM, so
     // the introspection block may point the model there (src/introspect.js).
     sandboxEnabled: !!extras.sandboxEnabled,
-    // SDK ("lovable") mode — pipeline.js runSdkBuild: the DistillSDK
-    // build flow. buildSlug is the conversation's already-published build (an
-    // iteration keeps the /app/<slug>/ URL stable); userId is the publisher
-    // recorded as the build's owner (slug-reuse authorization).
+    // SDK ("lovable") mode — pipeline.js runSdkBuild: the DistillSDK build flow
+    // that distills a flavour from this site (above all the Se/cure tier).
+    // buildSlug is the conversation's already-published build (an iteration
+    // keeps the /app/<slug>/ URL stable); userId is the publisher recorded as
+    // the build's owner (slug-reuse authorization).
     sdkMode: !!extras.sdkMode,
-    // SWE mode — pipeline.js runSdkBuild with the swe flavor: the
-    // Se/cure-variant build flow. Shares buildSlug/userId with SDK mode.
-    sweMode: !!extras.sweMode,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

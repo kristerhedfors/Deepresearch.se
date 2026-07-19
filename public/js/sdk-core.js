@@ -485,44 +485,12 @@ export function buildFilesSummary(files) {
 }
 
 /**
- * The SDK-mode context block appended to the conversation (the introspection-
- * block pattern): orients ANY answer model — tool-capable or not — about the
- * SDK catalog, where the skills live, and (for the deterministic path) the
- * FILE-block emission convention.
- * @param {any | null} manifest
- * @param {{ toolMode?: boolean, buildUrl?: string | null }} [opts]
- * @returns {string}
+ * The deployed Se/cure source files SDK mode points a build at as the original
+ * to distill: the client-side, never-cloud research tier and its skill playbook.
+ * DistillSDK is meant to be used WITH the actual site's source — especially
+ * Se/cure, which the project can regenerate and redeploy as new flavours.
  */
-export function buildSdkContextBlock(manifest, opts = {}) {
-  const parts = [
-    "SDK mode: DistillSDK (this site's buildable module catalog)",
-    "=".repeat(66),
-    "DistillSDK (sdk/ in this repo) describes the Se/cure + Se/rver pair as 33 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The user is in SDK mode: they want things DESIGNED AND BUILT — a runnable collection of files published at a live URL — using the SDK's modules and skills as the method.",
-  ];
-  if (manifest) {
-    parts.push("", "Module catalog (sdk/MANIFEST.json):", renderList(manifest));
-  } else {
-    parts.push("", "(The SDK manifest could not be loaded from the deployed snapshot — describe the build honestly without it.)");
-  }
-  if (opts.buildUrl) {
-    parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
-  }
-  if (!opts.toolMode) {
-    parts.push(
-      "",
-      "To ship files WITHOUT native tools, emit each file in your reply exactly as:",
-      "FILE: index.html",
-      "```html",
-      "…the complete file content…",
-      "```",
-      "One FILE line + one fenced block per file; relative paths; always include index.html. The server collects the blocks, publishes them, and shares the live URL.",
-    );
-  }
-  return parts.join("\n");
-}
-
-/** The Se/cure source files SWE mode points a build at as its reference. */
-export const SWE_SECURE_SOURCES = [
+export const SECURE_SOURCE_REFS = [
   "public/cure/index.html",
   "public/cure/drc.js",
   "public/cure/drc.css",
@@ -535,33 +503,42 @@ export const SWE_SECURE_SOURCES = [
 ];
 
 /**
- * The SWE-mode context block appended to the conversation (the same pattern as
- * buildSdkContextBlock): orients any answer model about building a NEW INSTANCE
- * of Se/cure — the client-side, never-cloud research tier — in a different
- * shape or form, points a tool-capable model at the real Se/cure source to
- * study, spells out the privacy invariants a variant must uphold, and (for the
- * deterministic path) teaches the FILE-block emission convention.
+ * The SDK-mode context block appended to the conversation (the introspection-
+ * block pattern): orients ANY answer model — tool-capable or not — about what
+ * SDK mode IS (distilling the original site, especially the client-side Se/cure
+ * tier, into a new FLAVOUR published lovable-style), the DistillSDK catalog and
+ * where its skills live, the deployed Se/cure source to study, the privacy
+ * invariants a Se/cure-derived flavour must uphold, and (for the deterministic
+ * path) the FILE-block emission convention.
+ * @param {any | null} manifest
  * @param {{ toolMode?: boolean, buildUrl?: string | null }} [opts]
  * @returns {string}
  */
-export function buildSweContextBlock(opts = {}) {
+export function buildSdkContextBlock(manifest, opts = {}) {
   const parts = [
-    "SWE mode: build a new instance of Se/cure",
+    "SDK mode: DistillSDK — distill this site into a new flavour",
     "=".repeat(66),
-    "The user is in SWE (software-engineering) mode: they want you to DESIGN AND BUILD a new instance of DeepResearch.Se/cure — the site's client-side, never-cloud research tier — in a different SHAPE OR FORM, published as a runnable collection of files at a live URL.",
+    "The user is in SDK mode: they want you to DESIGN AND BUILD a runnable collection of files, published at a live URL, by DISTILLING this site into a new FLAVOUR. DistillSDK (sdk/ in this repo) is the method: it describes this site's Se/cure + Se/rver pair as 33 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The site itself — above all the client-side Se/cure tier — is the original you distill from.",
     "",
-    "What Se/cure IS (the tier you are reshaping): a fully client-side research assistant. The server is in NO data path — the browser talks to LLM/search providers DIRECTLY using the user's own API keys, the research pipeline runs in the page, and any state stays browser-local. Its reference implementation is the deployed source:",
-    SWE_SECURE_SOURCES.map((p) => `  - ${p}`).join("\n"),
+    "The Se/cure tier (the original most flavours distill from): a fully client-side research assistant. The server is in NO data path — the browser talks to LLM/search providers DIRECTLY using the user's own API keys, the research pipeline runs in the page, and any state stays browser-local. Its deployed reference source:",
+    SECURE_SOURCE_REFS.map((p) => `  - ${p}`).join("\n"),
     "",
-    "PRIVACY INVARIANTS every variant MUST uphold (this is the point of Se/cure — do not weaken them): no server round-trip for conversation content; provider calls go browser→provider directly; secrets (API keys) live only in memory/this device and never appear in any log or third-party request; outbound requests to third parties carry the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.",
-    "",
-    "SHAPE: reshape freely — a minimal single-purpose assistant, a themed or domain-specific variant, a stripped-down single-file client, a different UI entirely. Study the reference files for HOW Se/cure does browser-direct calls and its pipeline, then build YOUR variant; you need not copy its code verbatim.",
+    "PRIVACY INVARIANTS a Se/cure-derived flavour MUST uphold (this is the point of Se/cure — do not weaken them): no server round-trip for conversation content; provider calls go browser→provider directly; secrets (API keys) live only in memory/this device and never appear in any log or third-party request; outbound requests to third parties carry the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.",
   ];
+  if (manifest) {
+    parts.push("", "DistillSDK module catalog (sdk/MANIFEST.json) — use it to STRUCTURE the flavour:", renderList(manifest));
+  } else {
+    parts.push("", "(The DistillSDK manifest could not be loaded from the deployed snapshot — distill from the Se/cure source and describe the build honestly without it.)");
+  }
+  parts.push(
+    "",
+    "FLAVOUR: distill freely — a minimal single-purpose research client, a themed or domain-specific variant, a stripped-down single-file build, a different UI entirely. Study the Se/cure source and the relevant SDK modules/skills for HOW the tier does browser-direct calls and its pipeline, then build YOUR flavour; you need not copy the source verbatim. For requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks.",
+  );
   if (opts.buildUrl) {
     parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
   }
   if (opts.toolMode) {
-    parts.push("", "Read the reference files above with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.");
+    parts.push("", "Plan with the sdk_* tools, read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.");
   } else {
     parts.push(
       "",
