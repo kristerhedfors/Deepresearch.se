@@ -119,6 +119,7 @@ import {
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
 import { feedbackIntent, buildFeedbackContext } from "./feedback.js";
+import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
 import {
@@ -170,7 +171,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, useCase?: { id: number, tag: string } | null },
  * }} PipelineState
  */
 
@@ -416,19 +417,33 @@ const FEEDBACK_ACK_FALLBACK =
 async function runFeedbackCapture(ctx) {
   const { state } = ctx;
   ctx.step("plan", "Feedback…");
-  ctx.stepDone("plan", "Sending your feedback to the developers");
+  // A use-case reference ("feedback #UC-34 …") ties this note to a try-it
+  // point (testpoints.js) — the outcome is recorded straight onto that
+  // point's thread (src/chat.js recordUseCaseFeedback) so it lands "as if
+  // answered in the list of use cases". The step line confirms it
+  // deterministically, independent of the model's acknowledgment.
+  const useCase = parseUseCaseRef(ctx.cleanLastUser);
+  ctx.stepDone(
+    "plan",
+    useCase
+      ? `Recording your feedback on use case ${useCase.tag}`
+      : "Sending your feedback to the developers",
+  );
   // The message IS the comment; the prior turn (the question it followed and
   // the reply it comments on) rides along so the developer sees the context.
   // buildFeedbackContext derives it identically for a fresh chat and a REOPENED
   // HISTORICAL chat (the whole restored conversation is re-sent, so the prior
   // Q&A is the turn the feedback comments on) — src/feedback.js, regression-
   // locked in src/feedback.test.js.
-  state.feedback = buildFeedbackContext(ctx.conversation, {
-    comment: ctx.cleanLastUser,
-    model: ctx.model,
-  });
+  state.feedback = {
+    ...buildFeedbackContext(ctx.conversation, {
+      comment: ctx.cleanLastUser,
+      model: ctx.model,
+    }),
+    useCase: useCase || null,
+  };
   const draft = await streamCompletion(ctx, [
-    { role: "system", content: feedbackReplyPrompt() },
+    { role: "system", content: feedbackReplyPrompt(useCase ? useCase.tag : null) },
     ...withImageNudge(ctx.conversation),
   ]);
   if (!(draft || "").trim()) emitChunked(ctx, FEEDBACK_ACK_FALLBACK);

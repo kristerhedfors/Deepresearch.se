@@ -366,6 +366,59 @@ export function isOpenStatus(status) {
   return status === "open";
 }
 
+// ---------------------------------------------------------------------------
+// Use-case identity — the #UC-<id> tag (owner directive, 2026-07-19)
+// ---------------------------------------------------------------------------
+//
+// Each test point is a "use case": a starter prompt the owner runs to
+// evaluate one front of the app, then feeds back on. The tag makes a point
+// self-identifying: the client prepends it to the composed starter prompt
+// (public/js/testpoints.js compose action) so a run carries its use-case
+// number, and the feedback gate reads it back — a chat message like
+//   feedback #UC-34 the map was cut off on mobile
+// records the outcome straight onto point #34's thread (src/chat.js →
+// recordUseCaseFeedback), so the outcome lands "as if answered in the list
+// of use cases" without reopening the queue. Mirrored in the client pure
+// core (public/js/testpoints-core.js) — keep the two in lockstep.
+
+/**
+ * The canonical display tag for a use case (test point id). DISPLAY only —
+ * the functional identifier stays the bare integer id everywhere else.
+ * @param {number} id
+ * @returns {string}
+ */
+export function useCaseTag(id) {
+  return `#UC-${id}`;
+}
+
+// Strips an optional leading feedback keyword (EN + SV, invariant 6 — same
+// vocabulary as feedbackIntent) so parseUseCaseRef reads the ref whether the
+// message opens with "feedback"/"återkoppling"/"synpunkt" or the tag itself.
+const FEEDBACK_LEAD_RE =
+  /^\s*(?:feedback|återkoppling(?:en)?|synpunkt(?:er|en|erna)?)\b[\s:,.\-–—]*/i;
+
+// The use-case ref grammar, matched at the START of the (keyword-stripped)
+// message: "#UC-34", "#UC34", "UC-34", "UC 34", "uc34", or a bare "#34".
+// Language-neutral (the tag is a generated identifier), so EN + SV parity is
+// carried entirely by FEEDBACK_LEAD_RE above.
+const USE_CASE_REF_RE = /^(?:#?\s*uc[\s\-]?0*(\d{1,6})|#0*(\d{1,6}))\b/i;
+
+/**
+ * Read a use-case reference out of a feedback message. Returns the referenced
+ * point id and its canonical tag, or null when the message names no use case.
+ * Pure — unit-tested in src/testpoints.test.js (EN + SV parity).
+ * @param {unknown} text the user's feedback message
+ * @returns {{ id: number, tag: string } | null}
+ */
+export function parseUseCaseRef(text) {
+  if (typeof text !== "string" || !text) return null;
+  const body = text.replace(FEEDBACK_LEAD_RE, "");
+  const m = body.match(USE_CASE_REF_RE);
+  if (!m) return null;
+  const id = Number(m[1] || m[2]);
+  return Number.isInteger(id) && id > 0 ? { id, tag: useCaseTag(id) } : null;
+}
+
 // The verdict symbol vocabulary — one glyph per result, used everywhere a
 // verdict is shown (text render here, the banner buttons, PR comments).
 /** @type {Record<string, string>} */
@@ -398,6 +451,7 @@ export function projectTestpointMessage(row) {
 export function projectTestpoint(row) {
   return {
     id: row.id,
+    tag: useCaseTag(row.id),
     created_at: row.created_at,
     updated_at: row.updated_at,
     time: new Date(row.created_at).toISOString(),
@@ -428,7 +482,7 @@ export function formatTestpointsText(entries) {
     entries
       .map((e) => {
         const lines = [
-          `── #${e.id} [${e.status}] ${e.label}`,
+          `── ${e.tag} [${e.status}] ${e.label}`,
           `TRY: ${e.try_url}   →  ${e.target}`,
           `FIXED: ${e.summary}`,
         ];
@@ -509,6 +563,40 @@ async function insertMessage(db, pointId, author, body) {
     .prepare("INSERT INTO test_point_messages (point_id, created_at, author, body) VALUES (?, ?, ?, ?)")
     .bind(pointId, Date.now(), author, body)
     .run();
+}
+
+// Record use-case feedback captured from the chat (feedback #UC-<id> …) as a
+// tester message on the point's thread — the same dialogue a queue verdict
+// note joins — so the outcome lands "as if answered in the list of use
+// cases" without reopening the try-it queue. A message on a point that
+// already carries a verdict re-opens it (except an archived/retired one) so
+// the development loop sees the new note on its queue, matching the
+// reopen-on-reply posture of the feedback pipeline. Fail-soft: a missing
+// point or a write error returns { ok: false } and never disturbs the chat.
+// Admin-gated at the call site (src/chat.js) — the test-point surface is
+// owner-only.
+/**
+ * @param {D1Database} db
+ * @param {number} id the referenced test point id
+ * @param {string} comment the feedback message (verbatim, tag included)
+ * @returns {Promise<{ ok: false } | { ok: true, id: number, tag: string, label: string, reopened: boolean }>}
+ */
+export async function recordUseCaseFeedback(db, id, comment) {
+  const point = await getPoint(db, id).catch(() => null);
+  if (!point) return { ok: false };
+  await insertMessage(db, id, "tester", comment).catch(() => {});
+  const reopened = point.status !== "open" && point.status !== "archived";
+  const now = Date.now();
+  if (reopened) {
+    await db
+      .prepare("UPDATE test_points SET status = 'open', updated_at = ? WHERE id = ?")
+      .bind(now, id)
+      .run()
+      .catch(() => {});
+  } else {
+    await db.prepare("UPDATE test_points SET updated_at = ? WHERE id = ?").bind(now, id).run().catch(() => {});
+  }
+  return { ok: true, id, tag: useCaseTag(id), label: point.label, reopened };
 }
 
 // Count of open (still-to-test) points — feeds the client queue badge.

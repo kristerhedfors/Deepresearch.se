@@ -52,6 +52,7 @@ import {
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
 import { createFeedbackEntry } from "./feedback.js";
+import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -114,7 +115,7 @@ import { getDb } from "./db.js";
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, useCase?: { id: number, tag: string } | null },
  * }} ChatRequestState
  */
 
@@ -493,13 +494,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       // developers (the reply says so). Fail-soft — a capture must never disturb
       // the finished answer or the accounting above.
       if (state.feedback && identity.user) {
+        // A use-case reference ("feedback #UC-34 …", pipeline.js
+        // runFeedbackCapture) tags the entry with its use case for discovery.
+        const useCase = state.feedback.useCase || null;
         try {
           const id = await createFeedbackEntry(await getDb(env), String(identity.id), {
             comment: state.feedback.comment,
             question: state.feedback.question,
             answer_excerpt: state.feedback.answer_excerpt,
             model,
-            page: "chat",
+            page: useCase ? `usecase ${useCase.tag}` : "chat",
           });
           if (id) log.info("feedback.captured", { user_id: identity.id, feedback_id: id, request_id: requestId });
         } catch (err) {
@@ -507,6 +511,28 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             user_id: identity.id,
             error: /** @type {any} */ (err)?.message || String(err),
           });
+        }
+        // Use-case feedback ALSO lands on the referenced test point's thread —
+        // "as if answered in the list of use cases" — so the owner never
+        // reopens the try-it queue. Admin-only (the test-point surface is
+        // owner-only) and fail-soft.
+        if (useCase && (identity.isSecretAdmin || identity.role === "admin")) {
+          try {
+            const db = await getDb(env);
+            const rec = db ? await recordUseCaseFeedback(db, useCase.id, state.feedback.comment) : null;
+            log.info("feedback.usecase", {
+              user_id: identity.id,
+              use_case: useCase.id,
+              recorded: !!(rec && rec.ok),
+              reopened: rec && rec.ok ? rec.reopened : false,
+            });
+          } catch (err) {
+            log.warn("feedback.usecase_failed", {
+              user_id: identity.id,
+              use_case: useCase.id,
+              error: /** @type {any} */ (err)?.message || String(err),
+            });
+          }
         }
       }
       /** @type {import('./types.js').StatusDone} */
