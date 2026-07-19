@@ -258,6 +258,16 @@ const modeSel = document.getElementById("modesel");
 function syncModeSelect(mode) {
   if (modeSel) modeSel.value = mode;
 }
+// SDK mode's theme character (SPROUT, the plant — public/js/sdk-plant.js): a
+// one-shot greeter the first time a user enters SDK mode, the counterpart of
+// /cure's ghost, Se/rver's balloon and introspection's TIN. Dynamically
+// imported and fail-soft; self-guards to once per browser.
+function greetSdkMode(mode) {
+  if (mode !== "sdk") return;
+  import("./sdk-plant.js")
+    .then((m) => m.showSdkPlantGreeter())
+    .catch(() => {});
+}
 syncModeSelect(cachedChatMode());
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
@@ -267,6 +277,7 @@ modeSel.addEventListener("change", () => {
       .then(() => storeDeveloperMode(true))
       .catch(() => {});
   }
+  greetSdkMode(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -459,6 +470,7 @@ const historySidebar = initHistorySidebar({
       if (!developerModeOn()) {
         setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
       }
+      greetSdkMode("sdk");
     }
     input.value = item.prompt;
     autogrow();
@@ -647,7 +659,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h48";
+const CSS_VERSION = "h49";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

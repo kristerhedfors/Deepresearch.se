@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h48;
+  --css-version: h49;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -24,6 +24,11 @@
      must match), the tier's accent, where Se/cure's umbrella folds to pink. */
   --check-pink: #e06c8c;
   --check-blue: #0d4fa0;
+  /* SDK mode's ✓ — the plant spinner (public/js/plant-spinner.js CHECK_GREEN
+     must match) folds into this green where Normal/Introspection fold to
+     --check-blue. Applied to the real .check span under :root.sdk-mode so the
+     canvas ✓ and the swapped-in span agree (docs/SYMBOL-LANGUAGE.md §7). */
+  --check-green: #1f8a4c;
   --user: #d8edff;
 }
 /* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
@@ -469,6 +474,9 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .step.expandable summary::after { content: "▾"; opacity: .55; margin-left: auto; }
 .step.expandable[open] summary::after { content: "▴"; }
 .step .check { color: var(--check-blue); flex: none; }
+/* SDK mode: the completed-step ✓ is GREEN — matching the plant spinner's green
+   ✓ so the animated fold and the swapped-in span agree (mode-theme.js sdk). */
+:root.sdk-mode .step .check { color: var(--check-green); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
@@ -1194,6 +1202,21 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   display: flex; flex-direction: column; gap: .6rem;
   overflow-y: auto;
 }
+/* Per-mode drawer flavour (mode-theme.js `panel` axis; set as [data-mode] on
+   #historysidebar by history-ui.js). A quiet tint on the pane edge + head so
+   the side panel reads as the mode you're in — SDK green (its library lives
+   here), introspection titanium — without re-skinning the whole drawer.
+   Normal is plain (no rule). */
+#historysidebar[data-mode="sdk"] .history-panel {
+  border-right-color: rgba(31, 138, 76, .5);
+  box-shadow: 4px 0 30px rgba(20, 70, 45, .28), inset 0 3px 0 rgba(31, 138, 76, .35);
+}
+#historysidebar[data-mode="sdk"] .history-head strong { color: #1f6b45; }
+#historysidebar[data-mode="introspection"] .history-panel {
+  border-right-color: rgba(120, 140, 160, .55);
+  box-shadow: 4px 0 30px rgba(40, 60, 90, .26), inset 0 3px 0 rgba(150, 168, 186, .4);
+}
+#historysidebar[data-mode="introspection"] .history-head strong { color: #4a5a6a; }
 .history-head { display: flex; justify-content: space-between; align-items: center; }
 .history-head button {
   background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem;

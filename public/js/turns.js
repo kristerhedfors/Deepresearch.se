@@ -6,7 +6,7 @@ import { renderMarkdownInto } from "./markdown.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
-import { mountBalloonSpinner } from "./balloon-spinner.js";
+import { mountModeSpinner } from "./mode-spinner.js";
 import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
 
@@ -498,13 +498,15 @@ function showTyping(content) {
   const icon = document.createElement("span");
   icon.className = "typing-icon";
   content.appendChild(icon);
-  // The single waiting spinner: play the intro in miniature, fixed in place.
+  // The single waiting spinner: play the current chat mode's symbol in
+  // miniature, fixed in place (mode-spinner.js — balloon in Normal/
+  // Introspection, the plant in SDK mode).
   // Best-effort — falls back to the CSS twirly logo on reduced-motion/no-canvas.
   // The animation stops itself when setText/resetForRevision clears the icon.
   // The handle + wait-start are stashed on the content element so setText can
-  // play the colored-balloon→blue-✓ FINISH FINALE (the same one the step spinners
+  // play the colored-symbol→✓ FINISH FINALE (the same one the step spinners
   // got) when a research-length wait resolves into an answer.
-  content.__typingSpinner = mountBalloonSpinner(icon, { style: 0, size: 72 });
+  content.__typingSpinner = mountModeSpinner(icon, { style: 0, size: 72 });
   content.__typingStart = Date.now();
 }
 

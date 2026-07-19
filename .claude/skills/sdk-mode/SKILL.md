@@ -12,6 +12,38 @@ deployed Se/cure source, and the pipeline PUBLISHES the files at a live,
 shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 `sdk studio` header tag), as titanium white is introspection's.
 
+## The plant identity + the mode-theme registry (2026-07-19)
+
+SDK mode is not just a green pane — it has its own **symbol** in the site's
+symbol language (`docs/SYMBOL-LANGUAGE.md` §7). SDK mode GROWS a new flavour, so
+its symbol is a **plant**:
+
+- **The waiting symbol** — `public/js/plant-spinner.js` (`mountPlantSpinner`),
+  the sibling of the balloon (`balloon-spinner.js`) and umbrella
+  (`umbrella-spinner.js`) spinners: a seed **hits the ground, gets planted**,
+  boomerangs a settled sprout while working, and only the completion finale
+  **grows it out** into a **GREEN ✓** (`--check-green`). It reuses the umbrella
+  spinner's boomerang/finale clocks and exports a shared `drawPlantFigure`
+  renderer. Which spinner a loading slot mounts is decided by
+  `public/js/mode-spinner.js` off the current mode (`turns.js` / `activity.js`
+  now call `mountModeSpinner`, not `mountBalloonSpinner`).
+- **The character** — `public/js/sdk-plant.js` (`showSdkPlantGreeter`), SPROUT:
+  the ghost/balloon/TIN counterpart, a one-shot greeter shown the first time a
+  user enters SDK mode (dynamically imported in `app.js`, once per browser),
+  drawn with the SAME `drawPlantFigure` so the character and the waiting symbol
+  are one plant.
+- **The registry** — `public/js/mode-theme.js` codifies each mode's
+  distinguishing axes (root class, accent, ✓ color, `spinner`, `character`,
+  `panel`) as one descriptor per mode. This is the SCHEMA "the goal of SDK mode
+  itself — creating new themes of this kind" fills: a distilled flavour can
+  define its own mode-theme descriptor (color theme + spinner + character +
+  side-panel flavour), and the same wiring lights it up. The history drawer is
+  flavoured per mode via `[data-mode]` on `#historysidebar` (`history-ui.js`).
+
+Unit suites: `plant-spinner.test.js`, `mode-theme.test.js`, `sdk-plant.test.js`.
+Verification still owed (live-verify): pick SDK in the dropdown and confirm the
+plant spinner grows into a green ✓ on a step, and SPROUT greets on first entry.
+
 ## Distilling Se/cure into flavours (the merged SWE capability)
 
 SDK mode's core purpose is to distill the original site into different
