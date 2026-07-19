@@ -6,8 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ARTICLES, renderArticles } from "./account-articles.js";
 
-test("the collection holds the full ten-article series, in order", () => {
-  assert.equal(ARTICLES.length, 10);
+test("the collection holds the full nine-article series, in order", () => {
+  assert.equal(ARTICLES.length, 9);
   ARTICLES.forEach((a, i) => assert.equal(a.n, i + 1, `article ${i + 1} is numbered ${a.n}`));
 });
 
