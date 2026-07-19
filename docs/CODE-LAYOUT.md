@@ -200,7 +200,13 @@ normal page load never pays for it), `timescale.js` (slider scale), `history-sto
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
 project chats which rest readable because they're RAG-indexed — also
 dual-writing each record to the cloud, always, per invariant 4),
-`history-ui.js` (the left history sidebar: list/rename/delete/load),
+`history-ui.js` (the left history sidebar: list/rename/delete/load — and, in
+SDK mode only, it renders the showcase gallery at the top of the same pane;
+a pick prefills the composer via app.js's `onShowcasePick`),
+`sdk-showcase.js` (the SDK-mode SHOWCASE GALLERY: a curated, grouped catalog of
+single-shot chatbot build briefs — each a ready-to-send SDK prompt sized for the
+reference model Claude Sonnet 5 — plus a pure `renderShowcaseGallery`; data +
+lookups are Node-tested, the one DOM export is guarded),
 `settings.js` (cached `/api/settings` client; `storageAvailable()` is the
 synchronous question every storage-touching module asks), `dev-mode.js`
 (developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`

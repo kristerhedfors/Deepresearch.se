@@ -64,6 +64,25 @@ edit the single `runSdkBuild`/`sdkBuild*`/`buildSdkContextBlock` path.
   still gets plain web research); sdk → `sdk_mode:true` (+ `build_slug` when
   the conversation already published); introspection → nothing extra.
 
+## The showcase gallery (client — the SDK build-idea library)
+
+`public/js/sdk-showcase.js` is a curated, grouped catalog of **single-shot
+chatbot build briefs** — each a ready-to-send SDK prompt sized for the
+reference model **Claude Sonnet 5** (`SHOWCASE_REF`, kept in sync with the
+Anthropic catalog id). It renders into the LEFT library pane (the history
+drawer, `#sdkshowcase` in index.html) **only when the chat mode is SDK**:
+`history-ui.js` calls `renderShowcase()` in its `refresh()`, gated on
+`cachedChatMode() === "sdk"`, so the same drawer is history in Normal/
+Introspection and a build-idea library in SDK mode (green cards, matching the
+composer pane + `sdk studio` tag). Picking a card calls app.js's
+`onShowcasePick`, which prefills the composer with the brief (switching to SDK
+mode defensively) and closes the drawer — the user still presses send, so it
+stays a real *single shot*. The module is pure/Node-tested
+(`sdk-showcase.test.js`) except the one guarded DOM export
+`renderShowcaseGallery`. To ADD a showcase, append an item (stable slug id,
+one-line blurb, a 1–2 sentence build brief ending on the client-side reminder)
+to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
+
 ## The server flow
 
 - `src/chat.js`: `sdk_mode` is honored only when `developerModeEnabled`

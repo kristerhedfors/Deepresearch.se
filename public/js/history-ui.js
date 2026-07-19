@@ -5,6 +5,8 @@
 // isn't available (server not configured, or no IndexedDB) rather than
 // offering a feature that silently can't persist anything.
 
+import { cachedChatMode } from "./chat-mode.js";
+import { renderShowcaseGallery } from "./sdk-showcase.js";
 import { escapeHtml } from "./notifications.js";
 import {
   deleteConversation,
@@ -23,9 +25,12 @@ import { pullNewer } from "./sync.js";
  * Wires the history drawer once at boot. Both callbacks come from app.js,
  * which owns the composer state (model/budget/search-toggle) this module
  * has no access to.
- * @param {{onNew?: () => void, onLoad?: (record: object) => void}} [opts]
+ * @param {{onNew?: () => void, onLoad?: (record: object) => void,
+ *   onShowcasePick?: (item: {id: string, prompt: string}) => void}} [opts]
  *   onLoad receives the opened conversation record (stream.js
- *   ConversationRecord) so app.js can restore its send settings
+ *   ConversationRecord) so app.js can restore its send settings;
+ *   onShowcasePick receives a picked SDK-showcase build brief so app.js can
+ *   prefill the composer (this module has no access to composer state)
  * @returns {{onSaved: (id?: string) => void}} hook stream.js calls after
  *   every autosaved turn
  */
@@ -35,10 +40,28 @@ export function initHistorySidebar(opts = {}) {
   const list = document.getElementById("historylist");
   const closeBtn = document.getElementById("historyclose");
   const newBtn = document.getElementById("historynewbtn");
+  const showcase = document.getElementById("sdkshowcase");
   const onNew = opts.onNew || (() => {});
   const onLoad = opts.onLoad || (() => {});
+  const onShowcasePick = opts.onShowcasePick || (() => {});
 
   historyAvailable().then((ok) => { btn.hidden = !ok; });
+
+  // The SDK-mode showcase gallery lives at the top of this same left library
+  // pane, shown ONLY in SDK mode (the green distiller) — the drawer doubles as
+  // an SDK build-idea library there. Rendered once per open; a pick prefills
+  // the composer (via app.js) and closes the drawer so the brief is ready to
+  // send. In any other mode the gallery is hidden and the pane is pure history.
+  function renderShowcase() {
+    if (!showcase) return;
+    const sdk = cachedChatMode() === "sdk";
+    showcase.hidden = !sdk;
+    if (!sdk) { showcase.textContent = ""; return; }
+    renderShowcaseGallery(showcase, (item) => {
+      onShowcasePick(item);
+      close();
+    });
+  }
 
   // Diagnostic note under the list: an empty pane must SAY why it's empty
   // (records that won't decrypt, a cloud restore in progress) instead of
@@ -58,6 +81,7 @@ export function initHistorySidebar(opts = {}) {
   }
 
   async function refresh() {
+    renderShowcase();
     list.innerHTML = '<p class="muted">Loading…</p>';
     renderProjectsList().catch(() => {});
     const items = await listConversations();

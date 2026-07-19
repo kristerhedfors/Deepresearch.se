@@ -448,6 +448,23 @@ function applyRecordSettings(record) {
 const historySidebar = initHistorySidebar({
   onNew: newChat,
   onLoad: applyRecordSettings,
+  // A pick from the SDK-mode showcase gallery (history-ui.js) drops a
+  // ready-to-send build brief into the composer. The gallery only shows in
+  // SDK mode, but keep the switch defensively so a brief always lands in the
+  // green build flow; the user still presses send (the "single shot").
+  onShowcasePick: (item) => {
+    if (cachedChatMode() !== "sdk") {
+      applyChatModeTheme("sdk");
+      syncModeSelect("sdk");
+      if (!developerModeOn()) {
+        setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
+      }
+    }
+    input.value = item.prompt;
+    autogrow();
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch { /* not focusable yet */ }
+  },
 });
 // Projects (public/js/projects.js + projects-ui.js): collections of chats
 // and files with their own cloud knob and retrieval scope.

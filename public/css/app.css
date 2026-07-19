@@ -1226,6 +1226,37 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* New chat is the speech-bubble-with-a-plus icon (same glyph as the
    header's New chat and the project panel's new-chat-in-project). */
 #historynewbtn { display: flex; align-items: center; justify-content: center; line-height: 0; }
+
+/* SDK-mode showcase gallery (public/js/sdk-showcase.js), shown in this left
+   library pane ONLY in SDK mode — so it wears the mode's spring-green skin
+   regardless of the panel's usual glass, matching the green composer pane and
+   `sdk studio` tag. history-ui.js toggles [hidden]. */
+.showcase { display: flex; flex-direction: column; gap: .4rem; }
+.showcase[hidden] { display: none; }
+.showcase-head { display: flex; flex-direction: column; gap: .15rem; }
+.showcase-head strong {
+  font-size: .78rem; letter-spacing: .12em; text-transform: uppercase;
+  color: #1f6b45;
+}
+.showcase-sub { margin: 0; font-size: .74rem; line-height: 1.3; color: #3a6b52; }
+.showcase-group {
+  margin-top: .3rem; font-size: .7rem; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: #4a7d5f;
+}
+/* Each card is a full-width tap target: bold title over a one-line blurb, in a
+   translucent mint tile that brightens on hover/press. */
+.showcase-card {
+  display: flex; flex-direction: column; gap: .12rem; text-align: left;
+  padding: .5rem .6rem; font: inherit;
+  background: linear-gradient(180deg, rgba(246, 253, 248, .82), rgba(214, 240, 224, .82));
+  border: 1px solid rgba(120, 185, 145, .5); border-radius: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
+  cursor: pointer; transition: background .12s ease, border-color .12s ease, transform .06s ease;
+}
+.showcase-card:hover { background: linear-gradient(180deg, rgba(250, 255, 251, .95), rgba(203, 236, 214, .95)); border-color: rgba(90, 165, 120, .7); }
+.showcase-card:active { transform: translateY(1px); }
+.showcase-title { font-size: .86rem; font-weight: 650; color: #14432c; }
+.showcase-blurb { font-size: .74rem; line-height: 1.25; color: #3a6b52; }
 /* No flex:1/min-height:0 here: inside the panel's overflow-y:auto flex
    column, that combination collapses the list to ~zero height on iOS
    Safari and its cards paint OVER the panel's other children (this was
