@@ -223,13 +223,15 @@ MODES picked from the dropdown (Normal / Introspection / SDK — `chat-mode.js`)
 and the brief now extends the language INWARD: each mode is distinct in its own
 way, along the same axes the tiers use — a **color theme**, an **animation**
 (its waiting-symbol spinner), and **optionally a character** — plus a **side
-panel** flavour.
+panel** flavour and other **optional theme features** (e.g. whether the
+research **depth slider** applies).
 
 The axes are codified as data in the **mode-theme registry**
 (`public/js/mode-theme.js`): one descriptor per mode carrying its root class,
-accent + ✓ color, `spinner`, `character`, and `panel`. The registry is the
-single source the wiring reads (the spinner dispatch `mode-spinner.js`, the
-drawer flavour in `history-ui.js`), and it is the **shape SDK mode distills
+accent + ✓ color, `spinner`, `character`, `panel`, and `depthSlider`. The
+registry is the single source the wiring reads (the spinner dispatch
+`mode-spinner.js`, the drawer flavour in `history-ui.js`, and the depth-slider
+CSS keyed on the theme class), and it is the **shape SDK mode distills
 into** — a generated flavour defines its own descriptor, so "the goal of the
 SDK mode itself is to create new themes of this kind" has a concrete schema to
 fill. Craft rules are §1's, unchanged (pure core + Node tests, reduced-motion,
@@ -243,7 +245,8 @@ As shipped:
   (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon
   spinner (its distinctness is the pane + character), so its ✓ stays blue —
   the canvas ✓ and the swapped-in real ✓ must agree; a dedicated titanium
-  spinner is a drop-in in the registry later.
+  spinner is a drop-in in the registry later. It answers from the site's own
+  source, so the research **depth slider is hidden** (`depthSlider: false`).
 - **SDK** — the **plant**. SDK mode grows a new flavour of the site, so its
   symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) drops a seed
   that **hits the ground**, **gets planted**, and boomerangs a settled sprout
@@ -257,7 +260,8 @@ As shipped:
   enters SDK mode, drawn with the SAME shared renderer (`drawPlantFigure`) as
   the spinner so the character and the waiting symbol are one plant. The green
   pane + `sdk studio` tag + the build-idea library in a green-tinted drawer
-  complete the identity.
+  complete the identity. It builds a flavour rather than researching, so the
+  research **depth slider is hidden** (`depthSlider: false`).
 
 Semantic pairing, extending §4's: the umbrella says *"sheltered"*, the balloon
 *"carried"*, the plant *"grown"* — SDK's honest half: a new, useful thing

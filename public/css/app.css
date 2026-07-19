@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h49;
+  --css-version: h50;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -773,6 +773,16 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
     inset 0 14px 26px rgba(248, 255, 250, .4),
     inset 0 -10px 20px rgba(120, 185, 145, .16);
 }
+/* The research depth/time slider (#budget + its #budgetval readout) is an
+   OPTIONAL theme feature (mode-theme.js `depthSlider`; owner 2026-07-19):
+   Introspection answers from the site's own source and SDK builds a flavour —
+   neither does web research, so neither needs the slider. Hide it in those
+   themes (keyed on the root theme class, so both the composer dropdown and the
+   Settings dropdown stay consistent and it's hidden from first paint), and let
+   the lone web-search toggle sit at the row's end where the slider left it. */
+:root.dev-mode #budget, :root.dev-mode #budgetval,
+:root.sdk-mode #budget, :root.sdk-mode #budgetval { display: none; }
+:root.dev-mode #search-row, :root.sdk-mode #search-row { justify-content: flex-end; }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
   /* Textareas won't shrink below their cols-based intrinsic width unless

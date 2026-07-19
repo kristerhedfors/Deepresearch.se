@@ -36,6 +36,14 @@
  * @property {"balloon"|"plant"} spinner  the waiting-symbol animation
  * @property {"balloon"|"tin"|"plant"} character  the theme character/greeter
  * @property {"history"|"showcase"} panel  the side-panel flavour
+ * @property {boolean} depthSlider   whether the composer's research depth/time
+ *                                   slider (#budget) applies in this mode — an
+ *                                   OPTIONAL theme feature (owner, 2026-07-19):
+ *                                   Normal researches so it shows it;
+ *                                   Introspection (answers from source) and SDK
+ *                                   (builds, no web research) don't need it, so
+ *                                   the slider is hidden (CSS keys off the theme
+ *                                   class, `:root.dev-mode`/`:root.sdk-mode`).
  * @property {string} symbol         the identity's symbol, in words
  * @property {string} blurb          one line: what the identity says
  */
@@ -58,6 +66,7 @@ export const MODE_THEMES = {
     spinner: "balloon",
     character: "balloon",
     panel: "history",
+    depthSlider: true,
     symbol: "the balloon",
     blurb: "carried — the server lifts the load",
   },
@@ -76,6 +85,7 @@ export const MODE_THEMES = {
     spinner: "balloon",
     character: "tin",
     panel: "history",
+    depthSlider: false, // answers from source — the research depth slider doesn't apply
     symbol: "TIN, the titanium mascot",
     blurb: "shown its own source — the site read from the inside",
   },
@@ -90,6 +100,7 @@ export const MODE_THEMES = {
     spinner: "plant",
     character: "plant",
     panel: "showcase",
+    depthSlider: false, // builds a flavour, no web research — the slider doesn't apply
     symbol: "the plant",
     blurb: "grown — a new flavour distilled and planted live",
   },
@@ -111,6 +122,7 @@ export const TIER_THEMES = {
     spinner: "balloon", // n/a here — Se/cure mounts the umbrella spinner in its own app
     character: "tin", // n/a — the ghost is Se/cure's character (public/cure/ghostwalk.js)
     panel: "history",
+    depthSlider: true, // Se/cure has its own research depth control in its own app
     symbol: "the umbrella + the ghost",
     blurb: "sheltered — nothing leaves the device",
   },
@@ -125,6 +137,7 @@ export const TIER_THEMES = {
     spinner: "balloon",
     character: "balloon",
     panel: "history",
+    depthSlider: true,
     symbol: "the balloon",
     blurb: "carried — memory, reach and lift on your behalf",
   },
@@ -153,6 +166,14 @@ export function checkColor(mode) {
 /** The theme character/greeter for a mode. @param {unknown} mode @returns {"balloon"|"tin"|"plant"} */
 export function modeCharacter(mode) {
   return modeTheme(mode).character;
+}
+
+/** Whether the composer's research depth/time slider applies in a mode (an
+ * optional theme feature — hidden in Introspection and SDK). The CSS keys off
+ * the theme class; this selector is the codified declaration + the testable
+ * source of truth. @param {unknown} mode @returns {boolean} */
+export function showsDepthSlider(mode) {
+  return modeTheme(mode).depthSlider !== false;
 }
 
 /** The side-panel flavour for a mode. @param {unknown} mode @returns {"history"|"showcase"} */

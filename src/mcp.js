@@ -339,8 +339,8 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     { listChatModels },
     { runPipeline },
     { getConfig },
-    { getUsage, quotaExceeded, effectiveQuota, recordUsage },
-    { summarizeSpend, exaCost },
+    { getUsage, quotaExceeded, effectiveQuota, recordUsage, recordModelUsage },
+    { summarizeSpend, exaCost, spendByModel },
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
@@ -440,6 +440,12 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
         berget_cost,
         exa_cost,
         duration_ms: Date.now() - state.startedAt,
+      });
+      // Per-model attribution ledger, mirroring /api/chat — see recordModelUsage.
+      await recordModelUsage(env, log, {
+        user_id: identity?.id,
+        request_id: requestId,
+        by_model: spendByModel(state, catalog),
       });
     } catch (err) {
       log.warn("mcp.usage_record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });

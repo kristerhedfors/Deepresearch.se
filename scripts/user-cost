@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# "What has cost so much for this user?" — one user's spend attribution off the
+# LIVE site. Wraps GET /api/admin/user-cost (src/admin-api.js) with the
+# break-glass Basic Auth credentials (same BASIC_AUTH_USER / BASIC_AUTH_PASS
+# env vars scripts/chatlogs and the e2e suite use).
+#
+# It answers along two axes so the spend is never an opaque lump:
+#   1. LLM vs search — the per-window berget_cost (LLM) vs exa_cost (search).
+#   2. which model    — the per-model breakdown (usage_model_events), so LLM
+#                       spend is attributable to the answer model, the cheap
+#                       JSON planner, or the vision helper (not folded into one).
+# The per-model breakdown is populated for requests served after the
+# attribution ledger shipped; older spend still shows in the totals.
+#
+# Usage:
+#   scripts/user-cost krister.hedfors@gmail.com     by email
+#   scripts/user-cost --id 3                         by numeric user id
+#   scripts/user-cost --id admin                     the break-glass identity
+#   scripts/user-cost <who> --json                   raw JSON instead of text
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+who=""
+by="email"
+format="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --id) by="id"; who="$2"; shift ;;
+    --email) by="email"; who="$2"; shift ;;
+    -*) echo "unknown argument: $1" >&2; exit 2 ;;
+    *) who="$1" ;;
+  esac
+  shift
+done
+
+[ -n "$who" ] || { echo "usage: scripts/user-cost <email> | --id <id>" >&2; exit 2; }
+
+if [ "$by" = "id" ]; then
+  qs="user_id=$(printf %s "$who" | jq -sRr @uri)"
+else
+  qs="email=$(printf %s "$who" | jq -sRr @uri)"
+fi
+
+json="$(curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$BASE_URL/api/admin/user-cost?$qs")"
+
+if [ "$format" = "json" ]; then
+  printf '%s\n' "$json" | jq .
+  exit 0
+fi
+
+# Readable summary: identity, the four windows (LLM € vs search € + searches),
+# then the per-model month breakdown sorted by cost.
+printf '%s\n' "$json" | jq -r '
+  if .error then "error: \(.error)"
+  else
+    (.user.name // "") as $n | (.user.email // "") as $e |
+    "User: \($n) \($e) (id \(.user.id))",
+    "",
+    "Window   LLM (Berget)   Search (Exa)   searches   requests",
+    (["month","week","day","h5"][] as $p |
+      (.usage[$p] // {}) as $w |
+      "\($p | (. + "      ")[0:6])  " +
+      "€\((($w.berget_cost // 0)*10000|round)/10000 | tostring | (. + "         ")[0:11])  " +
+      "€\((($w.exa_cost // 0)*10000|round)/10000 | tostring | (. + "         ")[0:11])  " +
+      "\(($w.searches // 0) | tostring | (. + "        ")[0:9])  " +
+      "\($w.requests // 0)"),
+    "",
+    "Per-model (this month, by Berget cost):",
+    (if (.by_model | length) == 0 then "  (no per-model rows yet — served before the attribution ledger, or no spend)"
+     else (.by_model[] |
+       "  \(.model | (. + "                                        ")[0:40])  " +
+       "€\(((.month_cost // 0)*10000|round)/10000)  " +
+       "\(.month_tokens // 0) tok  \(.month_requests // 0) req")
+     end)
+  end
+'
