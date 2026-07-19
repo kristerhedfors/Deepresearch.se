@@ -59,7 +59,7 @@ import { deleteUser, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, saveConfig } from "./config.js";
-import { getUsageAllUsers, getUsageByModel, PERIODS, quotaResetAt, DEFAULT_RESET_DAYS } from "./quota.js";
+import { getUsage, getUsageAllUsers, getUsageByModel, flattenUsage, PERIODS, quotaResetAt, DEFAULT_RESET_DAYS } from "./quota.js";
 import { addUserMessage } from "./user-messages.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -290,6 +290,34 @@ async function resetUserQuota(request, env, log, userId) {
   return jsonResponse({ user, quota_reset_at: resetAt });
 }
 
+// Build the per-user usage rows for the overview, HONORING each user's
+// quota_reset_at floor. getUsageAllUsers is deliberately RAW (one grouped
+// scan; the site-wide `totals` want the pre-reset numbers so inflation stays
+// investigable) — but a user the admin has "Reset quota"'d must show their
+// FLOORED usage, or the bars keep the pre-reset totals and the button looks
+// like it did nothing. Reset users are rare, so recomputing just those with
+// getUsage (the same floored path enforcement uses) is cheap. `usageFor` is
+// injected so this is unit-testable without D1.
+/**
+ * @param {any[]} users
+ * @param {Record<string, any>} rawByUser raw getUsageAllUsers rows keyed by user_id
+ * @param {(userId: string | number, now: number, resetAt: number) => Promise<any>} usageFor
+ * @param {number} now
+ * @returns {Promise<any[]>}
+ */
+export async function usageRowsForOverview(users, rawByUser, usageFor, now) {
+  return Promise.all(
+    users.map(async (u) => {
+      const resetAt = Number(u.quota_reset_at) || 0;
+      if (resetAt > 0) {
+        const floored = await usageFor(u.id, now, resetAt);
+        return { ...u, usage: flattenUsage(String(u.id), floored) };
+      }
+      return { ...u, usage: rawByUser[String(u.id)] || null };
+    }),
+  );
+}
+
 /** @param {Env} env */
 async function overview(env) {
   const [users, config, usage, byModel, alerts] = await Promise.all([
@@ -300,7 +328,9 @@ async function overview(env) {
     listAlerts(env),
   ]);
   const usageByUser = Object.fromEntries(usage.map((u) => [u.user_id, u]));
-  // Aggregate counts AND costs per window across all identities.
+  // Aggregate counts AND costs per window across all identities. Deliberately
+  // sums the RAW rows (not the floored per-user copies below): the site-wide
+  // dashboard keeps showing pre-reset totals so inflation stays investigable.
   /** @type {Record<string, number>} */
   const totals = { month_requests: 0 };
   for (const p of PERIODS) {
@@ -311,8 +341,14 @@ async function overview(env) {
   for (const u of usage) {
     for (const k of Object.keys(totals)) totals[k] += u[k] || 0;
   }
+  const userRows = await usageRowsForOverview(
+    users,
+    usageByUser,
+    (userId, now, resetAt) => getUsage(env, userId, now, resetAt),
+    Date.now(),
+  );
   return jsonResponse({
-    users: users.map((u) => ({ ...u, usage: usageByUser[String(u.id)] || null })),
+    users: userRows,
     admin_usage: usageByUser["admin"] || null,
     by_model: byModel,
     config,

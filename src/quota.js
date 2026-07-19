@@ -252,6 +252,32 @@ export async function getUsage(env, userId, now = Date.now(), resetAt = 0) {
   return out;
 }
 
+// Reshape one user's nested getUsage() result into the FLAT per-window row
+// shape the admin dashboard consumes (the same keys getUsageAllUsers emits:
+// <period>_tokens/_searches/_berget_cost/_exa_cost/_ms + month_requests +
+// user_id). Used to substitute a reset user's FLOORED usage for their raw
+// row in the overview, so the admin bars actually drop after "Reset quota"
+// instead of showing the pre-reset totals. Pure — unit-tested.
+/**
+ * @param {string | number} userId
+ * @param {Usage} usage nested per-window usage from getUsage()
+ * @returns {Record<string, number | string>}
+ */
+export function flattenUsage(userId, usage) {
+  /** @type {Record<string, number | string>} */
+  const row = { user_id: String(userId) };
+  for (const p of PERIODS) {
+    const w = usage[p];
+    row[`${p}_tokens`] = w.tokens;
+    row[`${p}_searches`] = w.searches;
+    row[`${p}_berget_cost`] = w.berget_cost;
+    row[`${p}_exa_cost`] = w.exa_cost;
+    row[`${p}_ms`] = w.hours * 3_600_000;
+  }
+  row.month_requests = usage.month.requests;
+  return row;
+}
+
 // Site-wide per-user aggregates for the admin dashboard: counts AND costs
 // for every window. Keys: <period>_tokens/_searches/_berget_cost/_exa_cost/
 // _ms + month_requests.

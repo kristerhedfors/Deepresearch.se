@@ -20,6 +20,7 @@ import {
   PERIODS,
   quotaResetAt,
   applyResetFloor,
+  flattenUsage,
   DAY_MS,
   DEFAULT_RESET_DAYS,
   MAX_RESET_DAYS,
@@ -314,6 +315,36 @@ describe("applyResetFloor (usage-counting floor)", () => {
     assert.equal(r.starts.month, mid, "month start (older) raised to the floor");
     assert.equal(r.starts.week, base.starts.week, "week start (newer) left as-is");
     assert.equal(r.minStart, mid);
+  });
+});
+
+describe("flattenUsage (admin per-user bar shape)", () => {
+  const win = (n) => ({ tokens: n, searches: n * 2, berget_cost: n / 10, exa_cost: n / 20, hours: 1, requests: n });
+  const usage = { h5: win(1), day: win(2), week: win(3), month: win(4), h5_oldest: 123 };
+
+  test("reshapes nested per-window usage into the flat keys the admin UI reads", () => {
+    const row = flattenUsage(7, usage);
+    assert.equal(row.user_id, "7");
+    // Every window/dimension the client renders (public/js/admin.js renderUsers).
+    for (const [p, n] of [["h5", 1], ["day", 2], ["week", 3], ["month", 4]]) {
+      assert.equal(row[`${p}_tokens`], n);
+      assert.equal(row[`${p}_searches`], n * 2);
+      assert.equal(row[`${p}_berget_cost`], n / 10);
+      assert.equal(row[`${p}_exa_cost`], n / 20);
+      assert.equal(row[`${p}_ms`], 3_600_000, "hours→ms for shape parity with getUsageAllUsers");
+    }
+    assert.equal(row.month_requests, 4);
+  });
+
+  test("a FLOORED (all-zero) usage flattens to all-zero bars — the reset shows as cleared", () => {
+    const zero = { tokens: 0, searches: 0, berget_cost: 0, exa_cost: 0, hours: 0, requests: 0 };
+    const row = flattenUsage(7, { h5: zero, day: zero, week: zero, month: zero, h5_oldest: null });
+    for (const p of PERIODS) {
+      assert.equal(row[`${p}_tokens`], 0);
+      assert.equal(row[`${p}_searches`], 0);
+      assert.equal(row[`${p}_berget_cost`], 0);
+      assert.equal(row[`${p}_exa_cost`], 0);
+    }
   });
 });
 
