@@ -13,6 +13,27 @@ import { addFilesToProject, listProjects } from "./projects.js";
 export const EMPTY_TEXT =
   "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. To send the developers feedback, just start your message with the word “feedback” — for example: “feedback: the map view was cut off on my phone”.";
 
+// The how-to-give-feedback cue for a REOPENED chat. EMPTY_TEXT above only ever
+// shows on the empty state of a fresh chat; a user who opens an old session
+// from history to comment on it had no on-screen reminder that starting a
+// message with "feedback" reaches the developers (the feedback fix loop —
+// src/feedback.js). This subtle line, appended below a reopened conversation,
+// is that reminder. It is never persisted to history and is removed the moment
+// a new turn is added (clearEmpty).
+export const FEEDBACK_HINT_TEXT =
+  "Reopened from history. Spotted something off in this chat? Start a message with the word “feedback” to send it to the developers — they read every one.";
+
+// Whether to show FEEDBACK_HINT_TEXT under a reopened conversation: only when
+// the restored record actually has an answered turn to comment on (an empty or
+// user-only record gets nothing). Pure — unit-tested in turns.test.js.
+/**
+ * @param {Array<{role?: string}>} messages  the stored conversation
+ * @returns {boolean}
+ */
+export function shouldShowFeedbackHint(messages) {
+  return Array.isArray(messages) && messages.some((m) => m?.role === "assistant");
+}
+
 let chat;
 let scrollDown;
 let isBusy = () => false;
@@ -36,7 +57,20 @@ export function clearChatDom() {
   chat.replaceChildren(empty);
 }
 
-const clearEmpty = () => { chat.querySelector(".empty")?.remove(); };
+const clearEmpty = () => {
+  chat.querySelector(".empty")?.remove();
+  // The reopened-chat feedback cue is transient too — it goes as soon as the
+  // conversation gains a new turn (a send, or a re-render adding turns).
+  chat.querySelector(".feedback-hint")?.remove();
+};
+
+// Appends the transient reopened-chat feedback cue below the current turns.
+function addFeedbackHint() {
+  const hint = document.createElement("div");
+  hint.className = "feedback-hint";
+  hint.textContent = FEEDBACK_HINT_TEXT;
+  chat.appendChild(hint);
+}
 
 // Splits a stored {role:"user", content} entry back into bubble parts.
 // Document attachments aren't reconstructed as chips here — their text was
@@ -97,6 +131,10 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
       }
     }
   });
+  // Reopening a past session is the one place a returning user might want to
+  // give feedback on an old answer but has no empty-state hint to tell them how
+  // — so show the cue here (removed on the next send via clearEmpty).
+  if (shouldShowFeedbackHint(messages)) addFeedbackHint();
 }
 
 /**

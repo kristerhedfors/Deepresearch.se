@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   approxImageBytes,
+  buildFeedbackContext,
   decodeImageDataUrl,
   FEEDBACK_CAPS,
   FEEDBACK_IMAGE_CAPS,
@@ -60,6 +61,84 @@ test("feedbackIntent: non-string input is safe", () => {
   assert.equal(feedbackIntent(null), false);
   assert.equal(feedbackIntent(undefined), false);
   assert.equal(feedbackIntent(42), false);
+});
+
+// ---------------------------------------------------------------------------
+// buildFeedbackContext — the captured prior-turn context (pipeline.js
+// runFeedbackCapture). The historical-chat guarantee: reopening an OLD session
+// and giving feedback must capture that session's last Q&A, exactly like a
+// fresh chat, so the entry enters the fix loop with the right context.
+// ---------------------------------------------------------------------------
+
+test("buildFeedbackContext: captures the prior question + answer of the turn being commented on", () => {
+  const convo = [
+    { role: "user", content: "Tell me about Northvolt latest news" },
+    { role: "assistant", content: "Northvolt filed for bankruptcy in 2025 …" },
+    { role: "user", content: "feedback: that answer was outdated" },
+  ];
+  const ctx = buildFeedbackContext(convo, { comment: "feedback: that answer was outdated", model: "gpt-x" });
+  assert.deepEqual(ctx, {
+    comment: "feedback: that answer was outdated",
+    question: "Tell me about Northvolt latest news",
+    answer_excerpt: "Northvolt filed for bankruptcy in 2025 …",
+    model: "gpt-x",
+  });
+});
+
+test("buildFeedbackContext: a REOPENED HISTORICAL chat captures the LAST Q&A, not an earlier one", () => {
+  // A user opens an old multi-turn session from history and types feedback:
+  // the whole restored conversation is re-sent, so the context must be the
+  // final answer pair — never the first turn, never the feedback text itself.
+  const historical = [
+    { role: "user", content: "What is the capital of Sweden?" },
+    { role: "assistant", content: "Stockholm." },
+    { role: "user", content: "Now tell me about Northvolt" },
+    { role: "assistant", content: "Northvolt is a Swedish battery maker …" },
+    { role: "user", content: "feedback: the Northvolt part missed the 2026 restructuring" },
+  ];
+  const ctx = buildFeedbackContext(historical, {
+    comment: "feedback: the Northvolt part missed the 2026 restructuring",
+    model: "claude-x",
+  });
+  assert.equal(ctx.question, "Now tell me about Northvolt");
+  assert.equal(ctx.answer_excerpt, "Northvolt is a Swedish battery maker …");
+});
+
+test("buildFeedbackContext: feedback with no prior turn yields null context, not junk", () => {
+  const ctx = buildFeedbackContext([{ role: "user", content: "feedback: love the site" }], {
+    comment: "feedback: love the site",
+    model: "m",
+  });
+  assert.equal(ctx.question, null);
+  assert.equal(ctx.answer_excerpt, null);
+  assert.equal(ctx.comment, "feedback: love the site");
+});
+
+test("buildFeedbackContext: the answer excerpt is capped to FEEDBACK_CAPS.answer_excerpt", () => {
+  const longAnswer = "x".repeat(FEEDBACK_CAPS.answer_excerpt + 500);
+  const ctx = buildFeedbackContext(
+    [
+      { role: "user", content: "a question" },
+      { role: "assistant", content: longAnswer },
+      { role: "user", content: "feedback: too long" },
+    ],
+    { comment: "feedback: too long", model: "m" },
+  );
+  assert.equal(ctx.answer_excerpt.length, FEEDBACK_CAPS.answer_excerpt);
+});
+
+test("buildFeedbackContext: reads text out of multimodal prior turns and tolerates junk input", () => {
+  const convo = [
+    { role: "user", content: [{ type: "text", text: "look at this photo" }, { type: "image_url", image_url: { url: "data:…" } }] },
+    { role: "assistant", content: "That looks like Gamla stan." },
+    { role: "user", content: "feedback: nice" },
+  ];
+  const ctx = buildFeedbackContext(convo, { comment: "feedback: nice", model: "m" });
+  assert.match(ctx.question, /look at this photo/);
+  assert.equal(ctx.answer_excerpt, "That looks like Gamla stan.");
+  // Non-array conversation must not throw.
+  const safe = buildFeedbackContext(/** @type {any} */ (null), { comment: "c", model: "m" });
+  assert.deepEqual(safe, { comment: "c", question: null, answer_excerpt: null, model: "m" });
 });
 
 // ---------------------------------------------------------------------------

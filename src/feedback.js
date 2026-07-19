@@ -41,6 +41,9 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
+import { previousUserText, textOf } from "./conversation.js";
+
+/** @typedef {import('./conversation.js').Msg} Msg */
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -120,6 +123,35 @@ const FEEDBACK_PATTERNS = [
 export function feedbackIntent(text) {
   const t = typeof text === "string" ? text : "";
   return FEEDBACK_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * Derive a feedback entry's captured context from the conversation the user
+ * gave feedback in. The comment is the user's message; the PRIOR turn (the
+ * question that was asked and the answer it comments on) rides along so the
+ * development loop sees what the feedback is about.
+ *
+ * This works identically for a fresh chat and a REOPENED HISTORICAL chat: when
+ * a user opens an old session from history, the whole restored conversation is
+ * re-sent to /api/chat (public/js/stream.js openConversationRecord → history →
+ * buildChatPayload), so the turn the feedback comments on is exactly the last
+ * Q&A pair — captured here — and the entry enters the feedback fix loop just
+ * like feedback given in a brand-new chat. Pure so the historical-chat case is
+ * regression-locked in src/feedback.test.js.
+ *
+ * @param {Msg[]} conversation full conversation, ending in the "feedback…" user turn
+ * @param {{ comment: string, model: string }} meta
+ * @returns {{ comment: string, question: string | null, answer_excerpt: string | null, model: string }}
+ */
+export function buildFeedbackContext(conversation, { comment, model }) {
+  const convo = Array.isArray(conversation) ? conversation : [];
+  const priorAssistant = [...convo].reverse().find((m) => m?.role === "assistant");
+  return {
+    comment,
+    question: previousUserText(convo) || null,
+    answer_excerpt: (textOf(priorAssistant?.content) || "").slice(0, FEEDBACK_CAPS.answer_excerpt) || null,
+    model,
+  };
 }
 
 // Open = still on the loop's work queue.
