@@ -273,7 +273,28 @@ turning back JUST before the color revival; completion speed-runs INTO the
 fully colored blue-and-gold balloon and folds it into a **BLUE ✓**
 (`--check-blue`, app.css — Se/rver's counterpart of Se/cure's pink ✓);
 reuses balloon-intro's timeline/renderer AND umbrella-spinner's pure
-boomerang/tumble clocks, pure plan helpers Node-tested), `opfs.js`
+boomerang/tumble clocks, pure plan helpers Node-tested), `mode-theme.js`
+(the MODE-THEME REGISTRY — the codified catalog of what makes each chat mode
+its own: root class, accent + ✓ color, waiting-symbol spinner, theme
+character, side-panel flavour, one descriptor per mode (Normal / Introspection
+/ SDK) plus the two tier reference entries (Se/cure first); pure/import-free,
+Node-tested; the shape SDK mode distills into when it "creates new themes of
+this kind" — see `docs/SYMBOL-LANGUAGE.md` §7), `mode-spinner.js` (the DOM
+dispatch `turns.js`/`activity.js` call — mounts the CURRENT mode's spinner off
+`mode-theme.js` `spinnerKind`: balloon in Normal/Introspection, the PLANT in
+SDK; fail-soft to the balloon), `plant-spinner.js` (SDK mode's WAITING SYMBOL —
+`mountPlantSpinner`, the sibling of the balloon/umbrella spinners: a seed HITS
+THE GROUND, GETS PLANTED and boomerangs a settled sprout, turning back JUST
+before real growth; completion GROWS it out (stem, leaves, a gold-green bloom)
+and folds it into a **GREEN ✓** (`--check-green`, app.css); reuses
+umbrella-spinner's boomerang/finale clocks, exports the shared `drawPlantFigure`
+renderer, pure state/plan helpers Node-tested), `sdk-plant.js` (SPROUT — SDK
+mode's theme CHARACTER, the ghost/balloon/TIN counterpart: a one-shot greeter
+the first time a user enters SDK mode (`showSdkPlantGreeter`, dynamically
+imported in `app.js`, once per browser), a little plant that grows in with the
+SAME `drawPlantFigure` renderer, speaks a couple of pointer lines, then fades;
+DOM fail-soft/`pointer-events:none`/reduced-motion-static, pure grow-in easing
+Node-tested), `opfs.js`
 (original attached-file bytes in OPFS), `rag.js` (client RAG: chunking,
 `/api/embed` batches, the `dr_rag` IndexedDB vector store, cosine top-k,
 server-index push/import), `chat-rag.js` (project-chat RAG: incremental

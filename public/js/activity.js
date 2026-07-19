@@ -20,7 +20,7 @@ import {
   shellRunOutputText,
   zoomToFov,
 } from "./activity-core.js";
-import { mountBalloonSpinner } from "./balloon-spinner.js";
+import { mountModeSpinner } from "./mode-spinner.js";
 
 // Re-exported so importers of activity.js (stream.js, the unit tests) keep
 // their existing import paths; the implementations live in activity-core.js.
@@ -557,11 +557,11 @@ function makeStepDom(labelText, toggleGateClass) {
   details.appendChild(summary);
   // Each in-progress step plays the intro in miniature, fixed in its slot;
   // best-effort, and stops itself when markFinished/settlePendingSteps removes
-  // the `.spin` element. The BALLOON is the blue tier's own waiting symbol
-  // (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16: each tier wears ITS symbol on
-  // every step — privacy detail moved to Se/cure's ℹ privacy notice). The
-  // handle is kept so markFinished can play the blue-✓ finale.
-  const spinner = mountBalloonSpinner(spin, { style: stepSpinnerSeq++, size: 34 });
+  // the `.spin` element. The waiting symbol is the CURRENT CHAT MODE's own
+  // (mode-spinner.js): Se/rver's balloon → blue ✓ in Normal/Introspection, the
+  // PLANT → green ✓ in SDK mode (docs/SYMBOL-LANGUAGE.md §6–7). The handle is
+  // kept so markFinished can play the finale.
+  const spinner = mountModeSpinner(spin, { style: stepSpinnerSeq++, size: 34 });
   details.addEventListener("click", (e) => {
     if (!details.classList.contains(toggleGateClass)) e.preventDefault();
   });

@@ -214,3 +214,51 @@ detail the per-step bubbles used to carry, in one readable place on Se/cure:
 
 The standing per-provider line beside the model picker
 (`providerVisibilityNote`) is unchanged — the notice is its long form.
+
+## 7. Per-MODE symbols inside the Se/rver app (owner, 2026-07-19)
+
+§2–6 give each TIER its symbol (Se/cure the umbrella + ghost, Se/rver the
+balloon). But the Se/rver app is not one experience — it holds three chat
+MODES picked from the dropdown (Normal / Introspection / SDK — `chat-mode.js`),
+and the brief now extends the language INWARD: each mode is distinct in its own
+way, along the same axes the tiers use — a **color theme**, an **animation**
+(its waiting-symbol spinner), and **optionally a character** — plus a **side
+panel** flavour.
+
+The axes are codified as data in the **mode-theme registry**
+(`public/js/mode-theme.js`): one descriptor per mode carrying its root class,
+accent + ✓ color, `spinner`, `character`, and `panel`. The registry is the
+single source the wiring reads (the spinner dispatch `mode-spinner.js`, the
+drawer flavour in `history-ui.js`), and it is the **shape SDK mode distills
+into** — a generated flavour defines its own descriptor, so "the goal of the
+SDK mode itself is to create new themes of this kind" has a concrete schema to
+fill. Craft rules are §1's, unchanged (pure core + Node tests, reduced-motion,
+fail-soft, decoration never costs a chat).
+
+As shipped:
+
+- **Normal** — the tier default: the **balloon** spinner → **blue ✓**
+  (`--check-blue`), plain history drawer, the balloon greeter (§5).
+- **Introspection** — the **titanium** pane + **TIN**, the titanium mascot
+  (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon
+  spinner (its distinctness is the pane + character), so its ✓ stays blue —
+  the canvas ✓ and the swapped-in real ✓ must agree; a dedicated titanium
+  spinner is a drop-in in the registry later.
+- **SDK** — the **plant**. SDK mode grows a new flavour of the site, so its
+  symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) drops a seed
+  that **hits the ground**, **gets planted**, and boomerangs a settled sprout
+  while work is ongoing — turning back JUST before real growth (the
+  umbrella/balloon discipline: the good beat is reserved for "done"). The
+  completion finale **grows it out** — stem, leaves, a gold-green bloom — and
+  folds it into a **GREEN ✓** (`--check-green`). It reuses the umbrella
+  spinner's boomerang/finale clocks, so all three symbols stay siblings by
+  construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):
+  the ghost/balloon/TIN counterpart, a one-shot greeter the first time a user
+  enters SDK mode, drawn with the SAME shared renderer (`drawPlantFigure`) as
+  the spinner so the character and the waiting symbol are one plant. The green
+  pane + `sdk studio` tag + the build-idea library in a green-tinted drawer
+  complete the identity.
+
+Semantic pairing, extending §4's: the umbrella says *"sheltered"*, the balloon
+*"carried"*, the plant *"grown"* — SDK's honest half: a new, useful thing
+distilled from the site and planted, live, at its own link.
