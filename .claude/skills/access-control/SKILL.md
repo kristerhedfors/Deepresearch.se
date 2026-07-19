@@ -107,7 +107,24 @@ week / month), two dimensions:
   the cost; users see the counts.
 Deliberately NO time limits. Global defaults + per-user overrides (admin
 "Quota…" editor); 0 = no cap. Rolling-window resets are estimated from
-when the oldest event inside ages out. Every stream records a
+when the oldest event inside ages out.
+
+**Reset a user's quota (admin "Reset quota" button)**: `POST
+/api/admin/users/:id/quota/reset` `{days?}` sets the user's
+`quota_reset_at` (additive `users` column). It is a FLOOR on which
+`usage_events` count — `getUsage`/`applyResetFloor` sum only events with
+`ts >= quota_reset_at`. The button sets it to `now + days`
+(`DEFAULT_RESET_DAYS = 7`, `quotaResetAt` clamps 1..90), which does BOTH
+things the owner asked for from one field: every bar drops to zero
+immediately (prior events fall below the floor) AND the user is uncapped
+until the timestamp passes (new events stay below the future floor), i.e.
+their available quota is extended by at least a week. It NEVER deletes a
+row — `usage_events`, the admin's cost analytics, and chat history all
+stay intact ("reset the quota without losing history"). Self-expires; no
+cleanup. `{clear:true}` removes it (normal counting resumes). The admin
+user row shows a "quota reset · until <date>" badge while a grace window
+is live; the admin site-wide dashboard (`getUsageAllUsers`) intentionally
+still shows RAW usage so inflation stays investigable. Every stream records a
 `usage_events` row (model, tokens, searches, berget/exa cost split,
 duration). **Admins are never blocked**: enforcement (the 429 gate)
 applies to regular users only — admin usage is still recorded and their
