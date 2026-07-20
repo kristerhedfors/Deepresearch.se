@@ -247,6 +247,45 @@ bundles a local directory and publishes it via the break-glass admin auth.
 See the **publish-app** skill (built on top of **sdk-mode** — load that
 skill first for the feature this extends).
 
+### F-18 · Distributed secure research spaces — seal-back & aggregate/merge — 🔵 OPEN (high)
+
+Extends the secure-workspace mechanism (`docs/WORKSPACE-SECURITY.md`;
+`public/js/workspace-core.js`; the `/cure/workspace` share/unlock flow) from a
+single portable session into a **distribution + collection loop** for
+fan-out research. The subject of LinkedIn series article 3 (teased by articles
+1 & 2 in `docs/linkedin/`) — the article documents the reference
+implementation this item builds.
+
+Two capabilities to build:
+
+1. **Seal-back with the origin's public key.** Today a workspace link is
+   symmetric — sealed under a password anyone with the link+password can open.
+   For distributed nodes we want *asymmetric* return: an origin user (the
+   Se/rver account that minted the distributed research spaces) publishes a
+   **public key**; a node that finishes its research **seals its results to
+   that public key** so that once sealed, *only the origin user* — holder of the
+   private key — can open the results. The distributor hands out spaces
+   preloaded with material and conversations for others to work in; the workers
+   hand back results that are cryptographically readable only by the
+   distributor. (Primitive choice must follow the no-own-crypto rule: prefer
+   WebCrypto's asymmetric primitives / a vetted design, never a homegrown
+   scheme — see article 2 and `docs/ENCRYPTION.md`.)
+
+2. **Aggregate / merge mechanism.** The origin Se/rver user who created the
+   distributed workspace links needs to **collect the sealed result bundles,
+   decrypt them locally, and combine/merge the conclusions** from the whole set
+   of distributed research agents into one aggregated view — the reduce step of
+   a map-reduce over research spaces. Define the merged shape (per-node
+   provenance preserved, conclusions reconciled), and keep the collection
+   surface consistent with the DRSW/1 workspace-bundle standard
+   (`docs/WORKSPACE-PROTOCOL.md`) so a sealed result is just a workspace bundle
+   with an asymmetric envelope.
+
+Fail-soft and privacy invariants carry over unchanged: no server sits in a
+Se/cure data path; the sealed envelope is opaque to the server; keys never log.
+Design-first per the interchange-standards discipline — spec the envelope and
+merged shape before wiring UI.
+
 ---
 
 ## 4. History log (append-only)

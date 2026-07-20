@@ -184,15 +184,18 @@ körande kod.
 
 ## Vad serien kommer att gå igenom
 
-De följande artiklarna tar var sitt konkret spår ur samma experiment: den
-deterministiska pipelinen som klarar sig helt utan function calling; DistillSDK och
-idén att destillera fram exakt den mjukvara du behöver; privacy-paret Se/cure +
-Se/rver i detalj; en riktig Linux-miljö som kör i webbläsarfliken utan att en byte
-lämnar din maskin; en kodbas på ~137 000 rader med noll runtime-beroenden; en
-förvaltningsmodell där AI-agenter äger och underhåller sina egna fixar; öppna
-standarder som medvetet leder koden; och sajten som kan förklara sin egen
-källkod. Varenda en är en vinkel på samma sak — hur mycket kapabilitet, och hur
-mycket plattform, som ryms innanför bevisbar integritet.
+Serien tar **ett konkret spår i taget** — en artikel, ett tydligt avgränsat
+ämne ur samma experiment, i stället för en enda lång genomgång. De följande
+artiklarna behandlar var sitt: en kodbas på ~137 000 rader med noll
+runtime-beroenden; distribuerade säkra forskningsutrymmen som går att förladda,
+dela och försegla resultat ur; den deterministiska pipelinen som klarar sig helt
+utan function calling; DistillSDK och idén att destillera fram exakt den mjukvara
+du behöver; privacy-paret Se/cure + Se/rver i detalj; en riktig Linux-miljö som
+kör i webbläsarfliken utan att en byte lämnar din maskin; en förvaltningsmodell
+där AI-agenter äger och underhåller sina egna fixar; öppna standarder som
+medvetet leder koden; och sajten som kan förklara sin egen källkod. Varenda en är
+en vinkel på samma sak — hur mycket kapabilitet, och hur mycket plattform, som
+ryms innanför bevisbar integritet.
 
 ## En inbjudan, inte ett erbjudande
 
@@ -201,6 +204,10 @@ forskning ber jag om något annat: **läs koden, försök knäcka den, och berä
 som gick sönder.** Allt är MIT-licensierat och avsiktligt öppet just för att den
 här sortens frågor bara blir intressanta när fler än en person tittar på svaret.
 
-Det här är artikel 1 av en serie. Nästa gång: varför den mest robusta arkitekturen
-för en AI-pipeline, mitt i agent-eran, kan vara att inte låta modellen använda
-verktyg alls.
+Det här är artikel 1 av en serie. Nästa gång, i det första ämnesspåret:
+**noll beroenden** — hur ~137 000 rader kod körs utan ett enda runtime-paket
+och utan byggsteg, varför AI-assisterad utveckling ritat om hela
+beroendekalkylen, var gränsen ändå går absolut (man skriver inte sitt eget
+krypto), och varför en kodbas utan `node_modules` är det som gör Se/cure:s
+"servern ser inte din data" till något du kan *läsa dig till* i stället för att
+tro på.
