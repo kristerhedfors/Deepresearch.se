@@ -24,6 +24,14 @@ DeepResearch.**Se/rver**, Se/cure first (see `docs/BRANDING.md`).
 
 ## Drafts
 
-| # | Title | File | Status |
-|---|-------|------|--------|
-| 1 | Introduktion: ett 80-procentsprojekt om AI, LLM-applikationer och bevisbar privacy | `01-intro.md` | draft |
+Full drafts are written and numbered in **publishing order** (the order the
+owner chooses to publish them), which is not the same as the recommended-order
+`n` of the nine phone-readable abstracts in `account-articles.js` — the
+abstracts are the backlog, the files here are the drafts as they get written.
+The `Abstract` column maps each file back to its seed abstract.
+
+| # | Title | File | Abstract | Status |
+|---|-------|------|----------|--------|
+| 1 | Introduktion: ett 80-procentsprojekt om AI, LLM-applikationer och bevisbar privacy | `01-intro.md` | `n:1` | draft |
+| 2 | Noll beroenden: 137 000 rader utan node_modules | `02-zero-dependencies.md` | `n:6` | draft |
+| 3 | Distribuerade säkra forskningsutrymmen (förladda, dela, försegla, aggregera) | _planned_ | — | **planned** — teased by articles 1 & 2; the aggregate/seal/merge feature it will document is tracked as **F-18** in `FEATURES.md`. No matching abstract yet in the nine; add one when the draft is written. |

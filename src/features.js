@@ -196,6 +196,14 @@ export const FEATURE_ITEMS = [
     summary:
       "A small bridge into SDK mode's existing /app/<slug>/ build+publish flow (src/build-pub.js), for output the execution sandbox or introspection-mode source work already produced without a live model conversation. handleBuildManualPublish (PUT /api/build/:slug, admin-only) calls the SAME publishBuild the pipeline uses — identical caps and opaque-origin CSP-sandboxed serving, no second publish system. scripts/publish-app bundles a local directory and publishes it via the break-glass admin auth. See the publish-app skill (built on the sdk-mode skill).",
   },
+  {
+    id: "F-18",
+    title: "Distributed secure research spaces — seal-back & aggregate/merge",
+    impact: "high",
+    status: "open",
+    summary:
+      "Extends the secure-workspace mechanism (docs/WORKSPACE-SECURITY.md, public/js/workspace-core.js, the /cure/workspace flow) from one portable session into a distribution+collection loop for fan-out research; the subject of LinkedIn series article 3 (teased in docs/linkedin/). TWO capabilities: (1) SEAL-BACK with the origin's public key — an origin Se/rver user publishes a public key, a node that finishes its research seals its results to that key so once sealed ONLY the origin user (private-key holder) can open them; the distributor hands out spaces preloaded with material+conversations, workers hand back results readable only by the distributor. (2) AGGREGATE/MERGE — the origin user collects the sealed bundles, decrypts locally, and combines the conclusions from the whole set of distributed research agents into one aggregated view (the reduce step), keeping per-node provenance and staying consistent with the DRSW/1 workspace-bundle standard (docs/WORKSPACE-PROTOCOL.md). Follows the no-own-crypto rule (WebCrypto/vetted asymmetric primitives — see article 2 + docs/ENCRYPTION.md) and the privacy invariants (no server in a Se/cure data path; sealed envelope opaque to the server; keys never log). Spec the envelope + merged shape before wiring UI.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
