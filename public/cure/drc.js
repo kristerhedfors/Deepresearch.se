@@ -2438,16 +2438,49 @@ function closeWorkspaceView() {
   $("workspaceview").hidden = true;
 }
 
-// The share composer's dynamic bits: show the borrowed-allowances checkbox
-// only when this session actually holds something re-shareable.
+// The share composer is a MULTISTEP wizard (2026-07-20): one decision per
+// step, each step a full information card with a beginner recommendation.
+// The step order is fixed; the grants step only appears when this session
+// actually holds something re-shareable. Choices persist in the checkboxes
+// across steps (and across reopenings — the pane is never reset mid-session),
+// so Back/Next lose nothing.
+const WORKSPACE_STEPS = ["keys", "settings", "chats", "grants", "secure"];
+let workspaceStep = 0;
+let workspaceGrantsAvailable = false;
+
+function workspaceVisibleSteps() {
+  return WORKSPACE_STEPS.filter((s) => s !== "grants" || workspaceGrantsAvailable);
+}
+
+// Show exactly one step card; the nav row swaps Next for Create on the last
+// step; the result block is hidden whenever the wizard is in steps mode.
+function renderWorkspaceStep() {
+  const steps = workspaceVisibleSteps();
+  workspaceStep = Math.max(0, Math.min(workspaceStep, steps.length - 1));
+  const cur = steps[workspaceStep];
+  for (const el of document.querySelectorAll("#wkshare .wk-step")) el.hidden = el.dataset.step !== cur;
+  const last = workspaceStep === steps.length - 1;
+  $("wk-back").hidden = workspaceStep === 0;
+  $("wk-next").hidden = last;
+  $("wk-create").hidden = !last;
+  $("wk-nav").hidden = false;
+  $("wk-result").hidden = true;
+  $("wk-progress").textContent = "Step " + (workspaceStep + 1) + " of " + steps.length;
+  $("wk-status").textContent = "";
+}
+
+// The share composer's dynamic bits: register whether the borrowed-allowances
+// step applies, prefill a generated password, and start from the first step.
 function renderWorkspaceShare() {
   const g = shareableGrants();
   const bits = [];
   if (g.ws) bits.push("web search");
   for (const p of g.proxy) bits.push(p.svc === "api" ? "LLM API" : "web search (research space)");
-  $("wk-grants-row").hidden = !bits.length;
+  workspaceGrantsAvailable = bits.length > 0;
   if (bits.length) $("wk-grants-desc").textContent = "(" + bits.join(" + ") + " — quota-bound, minter-controlled)";
   if (!$("wk-pass").value) $("wk-pass").value = generateWorkspacePassword();
+  workspaceStep = 0;
+  renderWorkspaceStep();
 }
 
 // What this session can pass on: the web-search grant token (wsk1.…, the same
@@ -2635,12 +2668,12 @@ async function createWorkspaceLink() {
     keys: $("wk-inc-keys").checked,
     settings: $("wk-inc-settings").checked,
     conversations: $("wk-inc-chats").checked,
-    grants: $("wk-inc-grants").checked && !$("wk-grants-row").hidden ? shareableGrants() : null,
+    grants: $("wk-inc-grants").checked && workspaceGrantsAvailable ? shareableGrants() : null,
     name: $("wk-name").value.trim(),
   };
   const payload = buildWorkspacePayload(state, include);
   if (!workspacePayloadCarries(payload)) {
-    status("Tick at least one thing to include.");
+    status("Tick at least one thing to include (go Back to revisit the choices).");
     return;
   }
   $("wk-create").disabled = true;
@@ -2649,7 +2682,16 @@ async function createWorkspaceLink() {
     const blob = await sealWorkspace(payload, password);
     const link = workspaceLink(location.origin, blob);
     $("wk-link").value = link;
+    // Result mode: the wizard steps and nav give way to the finished link.
+    // The "Open workspace ↗" anchor carries the REAL link (new tab — opening
+    // in place would tear down this session under the composer): the minter
+    // can immediately open what they just sealed — e.g. to verify it, or to
+    // debug a workspace built around an embedded feedback/grant token.
+    for (const el of document.querySelectorAll("#wkshare .wk-step")) el.hidden = true;
+    $("wk-nav").hidden = true;
+    $("wk-progress").textContent = "";
     $("wk-result").hidden = false;
+    $("wk-openlink").href = link;
     $("wk-result-note").textContent =
       (link.length > 2000
         ? "⚠ This link is " + link.length + " characters — long links can break in some chat apps; consider fewer conversations. "
@@ -2991,21 +3033,53 @@ $("wkopenform").addEventListener("submit", (ev) => {
 $("wk-genpass").addEventListener("click", () => {
   $("wk-pass").value = generateWorkspacePassword();
 });
+$("wk-back").addEventListener("click", () => {
+  workspaceStep -= 1;
+  renderWorkspaceStep();
+});
+$("wk-next").addEventListener("click", () => {
+  workspaceStep += 1;
+  renderWorkspaceStep();
+});
+// From the result back into the wizard (last step), keeping every choice and
+// the sealed link intact — Create again re-seals with whatever changed.
+$("wk-again").addEventListener("click", () => {
+  workspaceStep = workspaceVisibleSteps().length - 1;
+  renderWorkspaceStep();
+});
 $("wk-create").addEventListener("click", createWorkspaceLink);
+
+// Copy buttons NOTIFY briefly and RETURN to their original label (2026-07-20
+// owner directive — the user goes back and forth; a checkmark that never
+// clears reads as stale state). flashButton restores after a beat; re-clicks
+// reset the timer instead of stacking reverts.
+function flashButton(btn, text, revertMs = 1500) {
+  if (btn._origLabel === undefined) btn._origLabel = btn.textContent;
+  if (btn._flashTimer) clearTimeout(btn._flashTimer);
+  btn.textContent = text;
+  btn._flashTimer = setTimeout(() => {
+    btn.textContent = btn._origLabel;
+    btn._flashTimer = null;
+  }, revertMs);
+}
 $("wk-copylink").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("wk-link").value);
-    $("wk-copylink").textContent = "Copied ✓";
+    flashButton($("wk-copylink"), "Copied ✓");
   } catch {
-    $("wk-copylink").textContent = "Select and copy manually";
+    // Clipboard denied (permissions) — select the text so a manual copy is
+    // one keystroke, and say so briefly.
+    $("wk-link").focus();
+    $("wk-link").select();
+    flashButton($("wk-copylink"), "Select and copy manually", 2500);
   }
 });
 $("wk-copypass").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("wk-pass").value);
-    $("wk-copypass").textContent = "Copied ✓";
+    flashButton($("wk-copypass"), "Copied ✓");
   } catch {
-    $("wk-copypass").textContent = "Copy manually";
+    flashButton($("wk-copypass"), "Copy manually", 2500);
   }
 });
 // The settings knobs' ⓘ info popovers (the Se/rver settings-pane component,
@@ -3172,9 +3246,9 @@ $("local-save").addEventListener("click", () => saveLocalUrl().catch(() => ($("l
 $("copysecret").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("newsecrettext").textContent);
-    $("copysecret").textContent = "Copied ✓";
+    flashButton($("copysecret"), "Copied ✓");
   } catch {
-    $("copysecret").textContent = "Select and copy manually";
+    flashButton($("copysecret"), "Select and copy manually", 2500);
   }
 });
 $("lockbtn").addEventListener("click", () => location.assign("/my/project-" + (profile?.refHash || "")));
