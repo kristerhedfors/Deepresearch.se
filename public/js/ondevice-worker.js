@@ -355,10 +355,10 @@ async function importRuntime() {
   env.useBrowserCache = false; // ONE disclosed storage location: our OPFS cache below
   env.useCustomCache = true;
   env.customCache = opfsCache;
-  // The vendored wasm pair (invariant 7 — never the CDN default), mirroring
-  // the runtime's own Safari/asyncify selection.
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  env.backends.onnx.wasm.wasmPaths = wasmPathsFor(isSafari);
+  // The vendored wasm pair (invariant 7 — never the CDN default) — always
+  // the WebGPU-capable asyncify build, since every load below requests
+  // device:"webgpu".
+  env.backends.onnx.wasm.wasmPaths = wasmPathsFor();
   return tf;
 }
 
