@@ -215,8 +215,14 @@ onto the first-visit intro animation's real play — delivers a few **pointers
 on how the tier works** (a short speech-bubble script), then retires
 (walks/climbs away) and **unmounts completely**. It is never mounted on a
 routine boot; returning visitors get a clean page with no figure following
-them around. Any tap dismisses it early (UX-1 — the bubbles hold no
-interactive content). Separately, **ambient always-running animation is kept
+them around. **The Se/cure ghost is click-through** (owner directive
+2026-07-20): a tap freezes its stroll and pages through the message queue one
+tap at a time, and the tap *after* the last message dismisses it — so the user
+can read at their own pace and then make it go away (`clickMessage` in
+`ghostwalk.js`; its wrap stays `pointer-events:none` so only the small ghost
+body + visible bubble intercept taps, the rest of the page stays reachable).
+The balloon greeter keeps the plain any-tap-dismisses behaviour. Separately,
+**ambient always-running animation is kept
 at a LOW level**: background drifts slow enough to barely register, marker
 events (the ghost-button glow/shimmer) rare (minutes apart, seconds long),
 breathing loops slow. Functional motion — loading spinners, per-task finales —
@@ -241,9 +247,12 @@ the tier's handshake.
    legs and `retire()`s; the balloon speaks `GREETER_LINES` (LINE_MS each)
    then `depart()`s (`departProgress`, DEPART_MS) and `unmount()`s —
    timers, listeners, and DOM all cleaned up.
-3. **Dismiss on any interaction** (UX-1): the balloon binds one
-   `pointerdown` capture listener on `document`; the figure layers are
-   `pointer-events:none` so the same tap still reaches the app.
+3. **Dismiss on interaction** (UX-1): the balloon binds one `pointerdown`
+   capture listener on `document` and its layers are `pointer-events:none`, so
+   any tap dismisses it and still reaches the app. The ghost is the exception
+   (2026-07-20): its body + visible bubble are `pointer-events:auto` and carry
+   a `click` handler that pages the queue, dismissing only after the last
+   message; the wrap around them stays `pointer-events:none`.
 4. **Reduced motion**: the automatic first-visit play is suppressed with the
    intro; the forced `?anim=1` path shows a static figure and skips the
    animated departure.
