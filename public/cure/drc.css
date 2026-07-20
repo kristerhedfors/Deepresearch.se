@@ -1116,6 +1116,26 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 #workspaceview .wk-check[hidden] { display: none; }
 #workspaceview .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .3rem; }
 #workspaceview p.muted { font-size: .8rem; line-height: 1.5; }
+/* The share composer's wizard steps: one information CARD at a time (glass
+   card look), a step counter above, the recommendation line tinted to the
+   fleet's rose so "what we'd suggest" reads apart from "what this is". */
+#workspaceview .wk-step {
+  margin-top: .5rem; padding: .6rem .7rem;
+  border: 1px solid rgba(124, 106, 36, .35); border-radius: 12px;
+  background: rgba(255, 255, 255, .45);
+}
+#workspaceview .wk-step[hidden] { display: none; }
+#workspaceview .wk-step h3 { margin: 0 0 .3rem; font-size: .92rem; }
+#workspaceview .wk-reco {
+  font-size: .8rem; line-height: 1.5; margin: .4rem 0;
+  padding: .35rem .5rem; border-radius: 8px;
+  background: rgba(223, 110, 142, .12);
+  border: 1px solid rgba(223, 110, 142, .35);
+}
+#workspaceview .wk-reco b { color: var(--pink); }
+#wk-progress { font-size: .74rem; margin-top: .4rem; }
+#wk-nav[hidden] { display: none; }
+#wk-openlink { text-decoration: none; }
 .acct-lead { font-size: .82rem; line-height: 1.5; margin: .1rem 0 .3rem; }
 .acct-section { margin-top: .6rem; }
 /* Account-view documentation links: a pub-item row with a one-line muted

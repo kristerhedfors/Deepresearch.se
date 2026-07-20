@@ -575,33 +575,100 @@
         </form>
       </div>
 
+      <!-- The share composer is a MULTISTEP flow (2026-07-20 owner directive):
+           one decision per step, each step a complete information card — what
+           travels, what it means, what it risks — plus a "for beginners"
+           recommendation leaning toward a more complete workspace that works
+           out of the box for the recipient. Wizard wiring in drc.js; the
+           checkbox/input ids are unchanged so createWorkspaceLink reads the
+           same controls it always did. -->
       <div id="wkshare">
-        <p class="muted">Seal this session into <b>one offline link</b>: everything you tick below is
-          encrypted into the link's <b>#anchor</b> (never sent to any server — the link IS the workspace).
-          Share the link and the password through <b>different channels</b>.</p>
-        <label class="wk-check"><input type="checkbox" id="wk-inc-keys"> Provider API keys <span class="muted">(+ provider/model choice)</span></label>
-        <label class="wk-check"><input type="checkbox" id="wk-inc-settings" checked> Settings <span class="muted">(research knob, sandbox, introspection, search backend, local model URL)</span></label>
-        <label class="wk-check"><input type="checkbox" id="wk-inc-chats"> Conversations</label>
-        <label class="wk-check" id="wk-grants-row" hidden><input type="checkbox" id="wk-inc-grants"> Borrowed allowances <span class="muted" id="wk-grants-desc"></span></label>
-        <label for="wk-name" style="display:block;margin-top:.5rem">Workspace name <span class="muted">(optional)</span></label>
-        <input id="wk-name" type="text" maxlength="80" placeholder="e.g. Team research space">
-        <label for="wk-pass" style="display:block;margin-top:.5rem">Password</label>
-        <div class="row">
-          <input id="wk-pass" type="text" autocomplete="off" placeholder="generate or type one" style="flex:1">
-          <button type="button" id="wk-genpass">Generate</button>
-        </div>
-        <div class="row" style="margin-top:.5rem">
-          <button type="button" id="wk-create">Create link</button>
+        <p class="muted">Seal this session into <b>one offline link</b> — a few choices, one at a
+          time. Everything you include is encrypted into the link's <b>#anchor</b> (never sent to
+          any server — the link IS the workspace).</p>
+        <div id="wk-progress" class="muted" aria-live="polite"></div>
+
+        <section class="wk-step" data-step="keys" hidden>
+          <h3>Provider API keys</h3>
+          <p class="muted">Your saved provider keys (and your current provider + model choice)
+            travel <b>encrypted inside the link</b>. Whoever opens the workspace can research
+            immediately — their browser talks straight to the provider on <b>your</b> key and
+            billing; this site's server never sees the key. If it's ever misused, revoke the key
+            at the provider — the link cannot be "un-shared".</p>
+          <p class="wk-reco"><b>For beginners:</b> include them when the recipient has no keys of
+            their own and you trust them — the workspace then works out of the box. Sharing widely
+            or publicly? Leave them out.</p>
+          <label class="wk-check"><input type="checkbox" id="wk-inc-keys"> Include provider API keys <span class="muted">(+ provider/model choice)</span></label>
+        </section>
+
+        <section class="wk-step" data-step="settings" hidden>
+          <h3>Settings</h3>
+          <p class="muted">Your configuration knobs: the research (web-search) switch, sandbox,
+            introspection, search backend and local model URL. No secrets — just how this session
+            is set up, so the recipient starts from your exact setup instead of the defaults.</p>
+          <p class="wk-reco"><b>For beginners:</b> include them — it costs nothing sensitive and
+            spares the recipient every setup step you already made.</p>
+          <label class="wk-check"><input type="checkbox" id="wk-inc-settings" checked> Include settings</label>
+        </section>
+
+        <section class="wk-step" data-step="chats" hidden>
+          <h3>Conversations</h3>
+          <p class="muted">Your chats travel in full — questions, answers, sources — encrypted in
+            the link. The recipient continues exactly where you left off. Conversations are the
+            bulky part: many or long chats make a <b>very long link</b>, and some chat apps
+            truncate long links.</p>
+          <p class="wk-reco"><b>For beginners:</b> include them when the point is handing over the
+            research itself; skip them when you only want to share a ready-to-use setup.</p>
+          <label class="wk-check"><input type="checkbox" id="wk-inc-chats"> Include conversations</label>
+        </section>
+
+        <section class="wk-step" data-step="grants" hidden>
+          <h3>Borrowed allowances</h3>
+          <p class="muted">Quota-bound tokens this session holds — server web search and/or a
+            research-space allowance. They let the recipient search and research <b>without any
+            API key</b>. Each token stays under its minter's control: the quota can be raised,
+            paused or revoked server-side at any time, while the link itself never changes.</p>
+          <p class="wk-reco"><b>For beginners:</b> include them — the recipient gets a working
+            research setup with zero keys, and you (or the minter) keep the spending lever.</p>
+          <label class="wk-check" id="wk-grants-row"><input type="checkbox" id="wk-inc-grants"> Include borrowed allowances <span class="muted" id="wk-grants-desc"></span></label>
+        </section>
+
+        <section class="wk-step" data-step="secure" hidden>
+          <h3>Name &amp; password</h3>
+          <p class="muted">The password encrypts the whole workspace (8192-round key derivation,
+            AES-256-GCM) in this browser. Anyone with <b>both</b> the link and the password gets
+            everything the workspace carries — so share the two through <b>different channels</b>
+            (e.g. link by mail, password by message).</p>
+          <p class="wk-reco"><b>For beginners:</b> use the generated 12-character password — it's
+            strong and easy to pass on. The name is optional; it shows to the recipient.</p>
+          <label for="wk-name">Workspace name <span class="muted">(optional)</span></label>
+          <input id="wk-name" type="text" maxlength="80" placeholder="e.g. Team research space">
+          <label for="wk-pass" style="margin-top:.5rem">Password</label>
+          <div class="row">
+            <input id="wk-pass" type="text" autocomplete="off" placeholder="generate or type one" style="flex:1">
+            <button type="button" id="wk-genpass">Generate</button>
+          </div>
+        </section>
+
+        <div class="row wk-nav" id="wk-nav" style="margin-top:.6rem">
+          <button type="button" id="wk-back" hidden>‹ Back</button>
+          <button type="button" id="wk-next">Next ›</button>
+          <button type="button" id="wk-create" hidden>Create link</button>
           <span id="wk-status" class="muted"></span>
         </div>
+
         <div id="wk-result" hidden>
           <label for="wk-link" style="display:block;margin-top:.5rem">Your workspace link</label>
           <textarea id="wk-link" readonly rows="4" style="width:100%;font-size:.75rem;word-break:break-all"></textarea>
           <div class="row">
             <button type="button" id="wk-copylink">Copy link</button>
             <button type="button" id="wk-copypass">Copy password</button>
+            <a class="btnlike" id="wk-openlink" href="/cure/workspace" target="_blank" rel="noopener">Open workspace ↗</a>
           </div>
           <p class="muted" id="wk-result-note"></p>
+          <div class="row">
+            <button type="button" id="wk-again">‹ Back to choices</button>
+          </div>
         </div>
       </div>
     </aside>
