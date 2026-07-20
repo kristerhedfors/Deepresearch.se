@@ -60,8 +60,9 @@ låter även mindre modeller destillera fram valfri delmängd ur referens-
 implementationen (projektets "SaaS-complete"-tes).</p>
 <p>Artikeln landar i seriens genomgående metodpoäng: varje påstående går att
 kontrollera. Koden är öppen (MIT), takten är öppen (dashboarden /pulse genereras
-ur git-historiken — 716 commits och 93 features 4–17 juli), och sajten kan till
-och med förklara sin egen källkod. Den är också ärlig om mognaden: detta är
+ur git-historiken — 716 commits och 93 features 4–17 juli, plus en
+feature-fokus-tidslinje som visar ~25 temaområden växa fram parallellt under samma
+två veckor), och sajten kan till och med förklara sin egen källkod. Den är också ärlig om mognaden: detta är
 experimentellt och långt ifrån produktionsfärdigt, och redovisar det som <i>inte</i>
 gick bra (features som regresserat upprepade gånger, se artikel 7) lika noga som
 det som gick bra — annars vore det inte forskning, bara en segerberättelse.</p>`,
