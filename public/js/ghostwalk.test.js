@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   GHOST_QUIPS,
   pickQuip,
+  clickMessage,
   facing,
   planStroll,
   STROLL_SPEED,
@@ -31,6 +32,24 @@ test("pickQuip cycles and tolerates any integer index", () => {
   assert.equal(pickQuip(GHOST_QUIPS, -1), GHOST_QUIPS[n - 1], "negatives wrap");
   assert.equal(pickQuip(GHOST_QUIPS, 5.9), GHOST_QUIPS[5 % n], "truncates");
   assert.equal(pickQuip([], 3), "", "empty is safe");
+});
+
+test("clickMessage pages through the queue in order, then signals retire", () => {
+  const n = GHOST_QUIPS.length;
+  // Tap 1 → first message, tap 2 → second, … tap n → last message.
+  for (let c = 1; c <= n; c++) {
+    assert.equal(clickMessage(GHOST_QUIPS, c), GHOST_QUIPS[c - 1], `tap ${c}`);
+  }
+  // The tap AFTER the last message returns null → the DOM layer retires.
+  assert.equal(clickMessage(GHOST_QUIPS, n + 1), null, "exhausted → retire");
+  assert.equal(clickMessage(GHOST_QUIPS, n + 5), null, "stays exhausted");
+});
+
+test("clickMessage does not wrap and is safe at the edges", () => {
+  assert.equal(clickMessage(GHOST_QUIPS, 0), null, "no tap yet");
+  assert.equal(clickMessage(GHOST_QUIPS, -3), null, "negatives are null");
+  assert.equal(clickMessage(GHOST_QUIPS, 1.9), GHOST_QUIPS[0], "truncates to tap 1");
+  assert.equal(clickMessage([], 1), null, "empty is safe");
 });
 
 test("facing is rightward by default, leftward only on a backward move", () => {

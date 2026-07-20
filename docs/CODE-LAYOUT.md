@@ -104,12 +104,18 @@ Server (`src/`):
 
 Client (`public/`): `index.html` (markup only) + `css/app.css` +
 ES modules in `js/` — `app.js` (bootstrap/wiring: scrolling, slider,
-search knob, composer; also wires the test-queue client
+search knob, composer, and the Introspection/SDK composer-row status chips
+(`#introroute`/`#sdkbuild`, 2026-07-20) that fill the space the slider leaves
+in those two modes — CSS keyed on the same root theme class as the slider
+hide; also wires the test-queue client
 `testpoints.js` — the try-it banner + queue over the pure
 `testpoints-core.js`, fed the app-specific action hooks so it never
 reaches into `app.js` internals — see the
 **testable-interaction-points** skill), `stream.js` (conversation history + `/api/chat`
-SSE send loop, autosaves to encrypted local history after every turn),
+SSE send loop, autosaves to encrypted local history after every turn;
+`currentBuildSlug`/`resetBuildSlug` expose the SDK-mode build-status chip's
+state — the conversation's remembered `/app/<slug>/`, and the chip's ↺ action
+to forget it so the next send starts a fresh build),
 `embeds.js` (the conversation embeds registry stream.js wires via
 `initEmbeds`: record/prune/size-cap of pipeline-embedded elements, quiz
 interaction hooks, the persisted `embeds` list — strict-checked),
@@ -187,8 +193,11 @@ question continues the conversation anchored AT that image's position
 via the map_view anchor; live-session only, pure registry core
 Node-tested),
 `introspect-ui.js` (INTROSPECTION MODE's DRS client — TIN the titanium
-mascot and the private-vs-remote model picker; its routing accessors are
-Node-tested, the DOM glue verified live) over the shared
+mascot and the private-vs-remote model picker, plus `introspectionRouteLabel`/
+`openRoutePicker` (2026-07-20) backing the composer's `#introroute` chip —
+app.js's compact readout of the picked route that reopens the picker on tap,
+filling the space the research-depth slider leaves in Introspection; its
+routing accessors are Node-tested, the DOM glue verified live) over the shared
 `introspect-core.js` pure core (the EN+SV intent gate, the sticky
 conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
