@@ -7,6 +7,32 @@
 
 ---
 
+## Sommarens stora skifte: hela sajten byggd från en telefon
+
+Sommarens stora nyhet inom AI-assisterad utveckling är ändå tveklöst att man
+numera kan göra i stort sett allt direkt från mobiltelefonen. Boris Cherny — en
+av de ledande bakom Claude Code — bygger enligt uppgift nästan uteslutande via
+Claude Code-appen i mobilen nuförtiden. Själv har jag laborerat med samma
+arbetssätt i drygt en månad, senast genom att bygga deepresearch.se från grunden
+med just det flödet — plus några medvetet valda constraints som förhoppningsvis
+gör projektet lite mer intressant.
+
+De där constrainten är egentligen hela poängen, så låt mig ta arbetssättet
+först. Allt i den här applikationen fram till nu — bokstavligen allt — är gjort
+från en iPhone. Huvudverktyget har varit Claude Code-appen, tillsammans med en
+handfull molntjänster för integrationerna: plattformar för API-nycklar, Google
+Maps, Shodan och liknande. Ingen laptop, ingen IDE, ingen terminal på ett
+skrivbord. I praktiken har sajten byggts mestadels *i rörelse* — stora delar
+under långsamma löppass i nordsvenska skogar, med telefonen i handen mellan
+intervallerna.
+
+Jag tar inte upp det som en pittoresk detalj, utan för att arbetssättet i sig är
+en del av det som undersöks: när enheten för utvecklingsarbete krymper till en
+telefon och en agent, vad blir då faktiskt byggbart, var, och av vem? Att svaret
+blev "en komplett research-assistent med egen domän, byggd på språng" är ett
+resultat i sig — men det intressanta ligger inte i *var* jag satt, utan i vad jag
+valde att bygga, och under vilka regler. Det är dit vi ska.
+
 ## Låt mig vara tydlig med vad det här är — och inte är
 
 Det här är ett **forsknings- och innovationsprojekt**. Ingenting annat.
@@ -41,23 +67,6 @@ helheten faktiskt håller ihop? Så första och främst går jag på **kapabilit
 betydelsen integration och orkestrering av LLM-applikationer** — och låter UX:en
 vara medvetet ofärdig. En trasig knapp är en fotnot. En arkitektur som inte bär
 är hela poängen.
-
-## Ett skifte i arbetssättet: allt är byggt från en iPhone
-
-En sak till som hör till varför jag kallar det här forskning och innovation, och
-inte bara ett bygge: **det är en genomgripande förändring av mitt eget arbetssätt.**
-Allt i den här applikationen fram till nu — bokstavligen allt — är gjort från en
-iPhone. Huvudverktyget har varit Claude Code-appen, tillsammans med en handfull
-molntjänster för integrationerna: plattformar för API-nycklar, Google Maps, Shodan
-och liknande. Ingen laptop, ingen IDE, ingen terminal på ett skrivbord.
-
-I praktiken har det inneburit att hela sajten byggts mestadels *i rörelse* — stora
-delar under långsamma löppass i nordsvenska skogar, med telefonen i handen mellan
-intervallerna. Jag tar inte upp det för att det är en pittoresk detalj, utan för att
-arbetssättet i sig är en del av det som undersöks: när enheten för utvecklingsarbete
-krymper till en telefon och en agent, vad blir då faktiskt byggbart, var, och av vem?
-Att svaret visade sig vara "en komplett research-assistent med egen domän, byggd på
-språng" är ett resultat i sig.
 
 ## Forskningsfrågorna
 

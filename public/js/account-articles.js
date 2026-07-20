@@ -44,18 +44,21 @@ export const ARTICLES = [
     n: 1,
     title: "Introduktion: ett 80-procentsprojekt om AI, LLM-applikationer och bevisbar privacy",
     body: `<p>Serieöppnaren, och den artikel som sätter ramen för alla följande. Den
-börjar med att vara tydlig med vad projektet är: ett <i>forsknings- och
-innovationsprojekt</i>, ingenting annat — ingen produkt, inget bolag, ingen pitch.
+öppnar med sommarens skifte i arbetssättet — att i stort sett allt numera går att
+bygga direkt från mobilen, och att allt i projektet fram till nu är gjort från en
+iPhone, huvudsakligen i Claude Code-appen, mestadels i rörelse under långsamma
+löppass i nordsvenska skogar. Därifrån blir den tydlig med vad projektet är: ett
+<i>forsknings- och innovationsprojekt</i>, ingenting annat — ingen produkt, inget
+bolag, ingen pitch.
 Området som undersöks är AI, LLM-applikationer och framför allt integriteten
 (privacy) i LLM-applikationer, och serien är forskningsloggen snarare än en
 kampanj. Allt som annars hade låtit som produktargument — "servern ser aldrig din
 data", "kör Linux i webbläsaren", "noll beroenden" — presenteras som experiment
 vars fråga är "hur långt går det, och var brister det", inte "hur får jag dig att
-köpa det". Artikeln är också tydlig med att projektet innebär ett genomgripande
-skifte i arbetssättet: allt fram till nu är byggt från en iPhone — huvudsakligen i
-Claude Code-appen plus ett par molntjänster för integrationerna (API-nycklar, Google
-Maps, Shodan och liknande) — vilket har låtit hela sajten växa fram mestadels i
-rörelse, i praktiken under långsamma löppass i nordsvenska skogar.</p>
+köpa det". Det mobila arbetssättet är i sig en av artikelns constraints — och en
+del av det som undersöks: när utvecklingsenheten krymper till en telefon och en
+agent (plus ett par molntjänster för integrationerna: API-nycklar, Google Maps,
+Shodan och liknande), vad blir då faktiskt byggbart, var, och av vem?</p>
 <p>Den andra ramsättande poängen är att detta med avsikt är och förblir ett
 <i>80-procentsprojekt</i>: målet är inte att slutföra de sista tjugo procenten av
 finputs och polerat gränssnitt, utan att koppla ihop kapabiliteter under
