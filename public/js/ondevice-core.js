@@ -357,12 +357,20 @@ export function capabilityVerdict(probe, model) {
   return { verdict: "ok", reason: "" };
 }
 
-// The wasm pair the vendored runtime should load: transformers.js's own
-// selection logic (Safari gets the plain build, everything else the asyncify
-// build), pointed at OUR vendor directory instead of its CDN default.
-/** @param {boolean} isSafari @param {string} [base] */
-export function wasmPathsFor(isSafari, base = "/vendor/transformers/") {
-  const stem = base + "ort-wasm-simd-threaded" + (isSafari ? "" : ".asyncify");
+// The wasm pair the vendored runtime should load, pointed at OUR vendor
+// directory instead of its CDN default. ALWAYS the asyncify build: WebGPU
+// support (the ORT JSEP execution provider — env.webgpuInit et al.) only
+// exists in the asyncify-compiled wasm binding, because the wasm<->JS calls
+// the WebGPU backend makes need asyncify's stack-switching to await GPU work
+// from inside wasm. The plain ort-wasm-simd-threaded.mjs/.wasm pair has ZERO
+// webgpu exports — every load ensureLoaded() does in this file always
+// requests device:"webgpu", so picking the plain build for Safari (found
+// 2026-07-20 from a live "no available backend found... webgpuInit is not a
+// function" report) broke on-device inference there outright instead of
+// degrading gracefully.
+/** @param {string} [base] */
+export function wasmPathsFor(base = "/vendor/transformers/") {
+  const stem = base + "ort-wasm-simd-threaded.asyncify";
   return { mjs: stem + ".mjs", wasm: stem + ".wasm" };
 }
 
