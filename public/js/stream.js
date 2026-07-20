@@ -209,6 +209,20 @@ export function currentConversationId() {
   return currentId;
 }
 
+// SDK mode's build-status composer chip (app.js #sdkbuild) reads this after
+// every send and conversation load — the slug this conversation last
+// published to, or null before anything has been built.
+export function currentBuildSlug() {
+  return convBuildSlug;
+}
+
+// The chip's ↺ action: forget this conversation's build slug so the NEXT
+// SDK-mode send publishes a FRESH /app/<slug>/ instead of iterating on the
+// current one. The conversation's messages are untouched.
+export function resetBuildSlug() {
+  convBuildSlug = null;
+}
+
 // The on-screen conversation as plain text for the header's copy button
 // (app.js): "User: …" / "Assistant: …" turns with images and appended
 // context blocks reduced to references — message-content.js's pure

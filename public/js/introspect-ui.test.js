@@ -18,7 +18,8 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 };
 
-const { privateIntrospectionRoute, introspectionRemoteModel } = await import("./introspect-ui.js");
+const { privateIntrospectionRoute, introspectionRemoteModel, introspectionRouteLabel, initIntrospectUi } =
+  await import("./introspect-ui.js");
 
 function setChoice(v) {
   store.set("dr_introspect_choice", v);
@@ -62,4 +63,29 @@ test("introspectionRemoteModel: the picked remote model, else empty", () => {
   assert.equal(introspectionRemoteModel(), "mistral-small");
   setChoice("p:openai:gpt-5.6-sol");
   assert.equal(introspectionRemoteModel(), ""); // a private choice is not a remote model
+});
+
+// The composer-row chip's label (app.js #introroute) — the same routing
+// decision the two accessors above make, worded for a small pill.
+test("introspectionRouteLabel: DRS tier reflects the stored route", () => {
+  initIntrospectUi({ tier: "drs" });
+  store.clear();
+  assert.equal(introspectionRouteLabel(), "☁ Server"); // nothing chosen yet
+  setChoice("s:mistral-small");
+  assert.equal(introspectionRouteLabel(), "☁ mistral-small"); // explicit remote pick
+  setChoice("p:openai:gpt-5.6-sol");
+  setKeys({ openai: "sk-abc" });
+  assert.equal(introspectionRouteLabel(), "🔒 OpenAI"); // private route, key present
+  setChoice("p:openai:gpt-5.6-sol"); // chosen but the key was never saved
+  setKeys({});
+  assert.equal(introspectionRouteLabel(), "☁ Server"); // falls back — no key, no route
+});
+
+test("introspectionRouteLabel: DRC (secure) tier is fixed — every call is already private", () => {
+  initIntrospectUi({ tier: "drc" });
+  store.clear();
+  assert.equal(introspectionRouteLabel(), "🔒 Private");
+  setChoice("s:mistral-small"); // no picker on this tier — a stray value changes nothing
+  assert.equal(introspectionRouteLabel(), "🔒 Private");
+  initIntrospectUi({ tier: "drs" }); // restore default for any test file run after this one
 });

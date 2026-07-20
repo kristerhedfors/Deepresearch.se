@@ -115,6 +115,20 @@ try{var m=localStorage.getItem("dr_chat_mode");if(m==="sdk"){document.documentEl
           <div id="search-row">
             <input id="budget" type="range" min="0" max="100" step="1" value="28" aria-label="Research time target">
             <span id="budgetval" title="Research time target"><span id="budgettime">1 m</span><span id="budgettier">Answer</span></span>
+            <!-- Introspection-only: the answer route (private, on your own key
+                 — vs this site's server model) — tap re-opens TIN's picker.
+                 Sits where the research-depth slider left room; hidden outside
+                 Introspection (public/js/app.js, public/js/introspect-ui.js). -->
+            <button id="introroute" type="button" title="Introspection answer route — tap to change" aria-label="Introspection answer route"></button>
+            <!-- SDK-only: this conversation's build/publish status — the live
+                 /app/<slug>/ link once published, ↺ to start a fresh build on
+                 the next message instead of iterating on this one. Sits where
+                 the research-depth slider left room; hidden outside SDK mode. -->
+            <div id="sdkbuild">
+              <span id="sdkbuildnew">🌱 new build</span>
+              <a id="sdkbuildlink" href="#" target="_blank" rel="noopener" hidden></a>
+              <button id="sdkbuildreset" type="button" title="Start a fresh build on the next message — keeps this conversation" aria-label="Start a fresh build" hidden>↺</button>
+            </div>
             <label id="searchtoggle" aria-label="Web search on/off" title="Web search on/off — press and hold for details">
               <input id="websearch" type="checkbox" checked>
               <span class="knob-track"><span class="knob"></span></span>
