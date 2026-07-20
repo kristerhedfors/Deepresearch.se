@@ -95,11 +95,41 @@ export function introspectionRemoteModel() {
   return choice && choice.kind === "server" ? choice.model : "";
 }
 
+/**
+ * A short label for the composer-row route chip (app.js #introroute) — the
+ * SAME private-vs-remote decision the send path consults, worded for a
+ * ~9-char-wide pill. On the secure tier every call is already private by
+ * construction (no picker there — see bubbleHtml), so the label is fixed.
+ * Pure over localStorage, like the two accessors above — no DOM.
+ * @returns {string}
+ */
+export function introspectionRouteLabel() {
+  if (tier === "drc") return "🔒 Private";
+  const route = privateIntrospectionRoute();
+  if (route) return `🔒 ${route.label}`;
+  const remote = introspectionRemoteModel();
+  return remote ? `☁ ${remote}` : "☁ Server";
+}
+
 // ---- engagement triggers ------------------------------------------------------
 
 /** One-time setup: which tier this page is. */
 export function initIntrospectUi(opts = {}) {
   tier = opts.tier === "drc" ? "drc" : "drs";
+}
+
+/** Fires whenever the picked route changes (a select edit, a key save/remove) —
+ * the composer-row chip's cue to re-read introspectionRouteLabel(). */
+let onRouteChangeCb = () => {};
+export function onIntrospectionRouteChange(cb) {
+  onRouteChangeCb = typeof cb === "function" ? cb : () => {};
+}
+
+/** Force-open the route picker regardless of intent-gating/debounce — the
+ * composer-row chip's click target (app.js), so the choice is reachable
+ * without first typing something introspection-shaped. */
+export function openRoutePicker() {
+  showMascot();
 }
 
 /**
@@ -253,6 +283,7 @@ function renderNote() {
     note.textContent =
       "☁ Remote: answers run through this site's server pipeline and are handled per its normal rules. Add your own API key below for the private route.";
   }
+  onRouteChangeCb();
 }
 
 function renderKeysRow() {
