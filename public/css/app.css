@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h50;
+  --css-version: h51;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -782,7 +782,63 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    the lone web-search toggle sit at the row's end where the slider left it. */
 :root.dev-mode #budget, :root.dev-mode #budgetval,
 :root.sdk-mode #budget, :root.sdk-mode #budgetval { display: none; }
-:root.dev-mode #search-row, :root.sdk-mode #search-row { justify-content: flex-end; }
+:root.dev-mode #search-row, :root.sdk-mode #search-row { justify-content: space-between; }
+
+/* The two mode-specific composer-row chips filling the space the slider left
+   (owner directive 2026-07-20): Introspection's answer-route chip and SDK's
+   build-status chip. Each is hidden by default and shown only under its own
+   theme root class, so Normal never sees either and each mode sees only its
+   own — same keying as the slider hide above. Pill styling matches #modesel
+   (translucent glass, rounded, small text) so the row reads as one family. */
+#introroute, #sdkbuild { display: none; }
+:root.dev-mode #introroute {
+  display: inline-flex; align-items: center;
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .3rem .55rem;
+  font: inherit;
+  font-size: .78rem;
+  max-width: 9.5rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: pointer;
+}
+:root.sdk-mode #sdkbuild {
+  display: inline-flex; align-items: center; gap: .35rem;
+  min-width: 0;
+}
+#sdkbuildnew {
+  font-size: .78rem; color: var(--muted); white-space: nowrap;
+}
+#sdkbuildlink {
+  display: inline-block;
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .3rem .55rem;
+  font-size: .78rem;
+  max-width: 9.5rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-decoration: none;
+}
+#sdkbuildreset {
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .6);
+  color: var(--text);
+  border-radius: 10px;
+  padding: .3rem .5rem;
+  font-size: .82rem;
+  line-height: 1;
+  flex: none;
+}
+/* JS toggles these via the `hidden` attribute (app.js refreshSdkBuildChip) —
+   #sdkbuildlink's own `display` above outranks the UA [hidden] rule on
+   specificity alone, so it needs the explicit override (same fix #model[hidden]
+   uses); #sdkbuildreset sets no `display` of its own so the UA rule already
+   wins, but pinning it here keeps the pair from drifting apart later. */
+#sdkbuildlink[hidden], #sdkbuildreset[hidden] { display: none; }
 form { display: flex; flex-direction: column; gap: .35rem; }
 textarea {
   /* Textareas won't shrink below their cols-based intrinsic width unless

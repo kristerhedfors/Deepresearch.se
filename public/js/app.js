@@ -29,7 +29,13 @@ import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 import { setSandboxImage } from "./sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "./agent-backdrop.js";
-import { initIntrospectUi, noteIntrospectionText } from "./introspect-ui.js";
+import {
+  initIntrospectUi,
+  introspectionRouteLabel,
+  noteIntrospectionText,
+  onIntrospectionRouteChange,
+  openRoutePicker,
+} from "./introspect-ui.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
@@ -40,9 +46,11 @@ import {
   clearHistory,
   conversationAsText,
   conversationStarted,
+  currentBuildSlug,
   initStream,
   isStreaming,
   prewarmSandbox,
+  resetBuildSlug,
   resumePendingAnswer,
   sendMessage,
   stopGeneration,
@@ -244,6 +252,49 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
+// ---- Introspection / SDK composer-row status chips -------------------------
+// The research-depth slider is hidden in these two modes (mode-theme.js
+// depthSlider:false — neither mode does web research) — the space it leaves
+// in #search-row instead surfaces what each mode is actually doing right now,
+// so it's a status readout + quick action rather than idle blank space:
+//   Introspection — the private-vs-server answer route TIN's picker decides,
+//     reachable directly instead of only after typing an introspection-y ask.
+//   SDK — this conversation's build/publish status: a live /app/<slug>/ link
+//     once published, ↺ to start a fresh build on the next message.
+// Both are pure status/action controls over state that already exists
+// (introspect-ui.js's stored route choice, stream.js's convBuildSlug) — CSS
+// alone decides which (if either) is visible, keyed off the same root theme
+// class the slider hide uses.
+
+const introRouteChip = document.getElementById("introroute");
+const sdkBuildEl = document.getElementById("sdkbuild");
+const sdkBuildNew = document.getElementById("sdkbuildnew");
+const sdkBuildLink = document.getElementById("sdkbuildlink");
+const sdkBuildReset = document.getElementById("sdkbuildreset");
+
+function refreshIntroRouteChip() {
+  introRouteChip.textContent = introspectionRouteLabel();
+}
+introRouteChip.addEventListener("click", openRoutePicker);
+onIntrospectionRouteChange(refreshIntroRouteChip);
+
+function refreshSdkBuildChip(slug) {
+  const s = slug !== undefined ? slug : currentBuildSlug();
+  sdkBuildNew.hidden = !!s;
+  sdkBuildLink.hidden = !s;
+  sdkBuildReset.hidden = !s;
+  if (s) {
+    sdkBuildLink.href = `/app/${s}/`;
+    sdkBuildLink.textContent = `🌱 /app/${s}/`;
+  }
+}
+sdkBuildReset.addEventListener("click", () => {
+  resetBuildSlug();
+  refreshSdkBuildChip(null);
+});
+refreshIntroRouteChip();
+refreshSdkBuildChip();
+
 // ---- Chat-mode dropdown (Normal / Introspection / SDK) ----------------------
 // The mode picker (owner directive, 2026-07-18): Normal is the ordinary
 // research pipeline; Introspection (white-titanium pane) answers from the
@@ -435,6 +486,7 @@ function newChat(keepProject = false) {
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
   syncCopyState();
+  refreshSdkBuildChip(null); // a fresh chat has no build of its own yet
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
@@ -452,6 +504,7 @@ function applyRecordSettings(record) {
   }
   webSearchBox.checked = record.webSearch !== false;
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+  refreshSdkBuildChip(record.buildSlug || null); // this conversation's own build, if any
   syncCopyState(); // …and the loaded conversation is copyable
 }
 
@@ -645,6 +698,7 @@ form.addEventListener("submit", async (e) => {
   });
   setSendMode(false);
   syncCopyState();
+  refreshSdkBuildChip(); // an SDK send may have just published/republished
   input.focus();
 });
 
@@ -659,7 +713,7 @@ form.addEventListener("submit", async (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h50";
+const CSS_VERSION = "h51";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
