@@ -743,9 +743,11 @@ button:disabled { opacity: .5; cursor: default; }
 /* ---- the strolling ghost (public/cure/ghostwalk.js) --------------------------------
    After the umbrella intro the little Se/cure ghost ambles across the lower
    part of the page carrying one of the intro's PINK umbrellas over its
-   shoulder, swaying with swagger, pausing to say things. Pure decoration: the
-   overlay is pointer-events:none end to end so the chat underneath is never
-   blocked, and reduced-motion suppresses it (the JS returns before building
+   shoulder, swaying with swagger, pausing to say things. Decoration: the wrap
+   is pointer-events:none so its empty fixed region never blocks the chat, but
+   the ghost body and its visible bubble opt back IN so a tap can page through
+   the messages and finally dismiss it (owner directive 2026-07-20).
+   Reduced-motion suppresses the whole thing (the JS returns before building
    anything). The wrap only ever gets translateX (a clean, un-mirrored travel
    coordinate); the SVG child carries the facing mirror and the sway/swagger. */
 #ghostwalk {
@@ -763,7 +765,11 @@ button:disabled { opacity: .5; cursor: default; }
   filter: drop-shadow(0 8px 12px rgba(60, 50, 10, .28));
 }
 #ghostwalk.bye { transition: opacity .6s ease; opacity: 0; }
-.gw-inner { position: relative; width: 80px; height: 88px; }
+/* The wrap itself stays pointer-events:none (its empty fixed region is
+   click-through), but the ghost body and its bubble opt back IN so a tap can
+   page through the messages and finally dismiss it (owner directive
+   2026-07-20). Only these small child boxes intercept clicks. */
+.gw-inner { position: relative; width: 80px; height: 88px; pointer-events: auto; cursor: pointer; }
 /* The stage holds the ghost + the umbrella canvas and carries the STRUT — a
    bob + a little rotate + squash — so the pair swaggers together. */
 .gw-stage {
@@ -815,7 +821,9 @@ button:disabled { opacity: .5; cursor: default; }
   border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
   transform: rotate(45deg);
 }
-.gw-say.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+/* Only a VISIBLE bubble is a click target (and advances the queue too); the
+   hidden bubble box never intercepts taps meant for the page or the ghost. */
+.gw-say.show { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   /* The script already returns before building the overlay under reduced
      motion; this is belt-and-braces for the ?anim=1 forced replay. */

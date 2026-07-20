@@ -8,12 +8,17 @@
 // carries it around and shows a bit of personality.
 //
 // Structured like every DRC module: a PURE core (the stroll planner, the
-// facing math and the quip cycle — everything above `startGhostWalk`) that
-// runs in Node for the unit suite (public/js/ghostwalk.test.js), and a DOM
-// layer (one fixed, pointer-events:none overlay) that only ever runs in the
-// browser. No dependencies, no server involvement — decoration, like the
-// intro. Nothing downstream awaits it for correctness, and it never blocks the
-// chat underneath (pointer-events:none end to end).
+// facing math, the quip cycle and the click-through message queue — everything
+// above `startGhostWalk`) that runs in Node for the unit suite
+// (public/js/ghostwalk.test.js), and a DOM layer (one fixed overlay) that only
+// ever runs in the browser. No dependencies, no server involvement —
+// decoration, like the intro. Nothing downstream awaits it for correctness.
+//
+// The overlay wrap is pointer-events:none so its empty fixed region never
+// blocks the chat, but the ghost body and its speech bubble opt back IN (owner
+// directive 2026-07-20): a tap on the ghost freezes the stroll and pages
+// through the messages one per tap, and the tap after the last message retires
+// it. Everything else on the page stays reachable.
 //
 // The umbrella it carries is the SAME 3D umbrella as the first-visit intro: it
 // reuses the intro's pure geometry (public/cure/umbrella.js) verbatim — the
@@ -55,6 +60,22 @@ export function pickQuip(quips, i) {
   if (!quips.length) return "";
   const n = quips.length;
   return quips[((Math.trunc(i) % n) + n) % n];
+}
+
+/** The click-through message queue (owner directive 2026-07-20). Once the user
+ * taps the ghost it stops strolling and becomes a click-to-advance reader: each
+ * tap shows the NEXT message in order, walking the full quip list from the top.
+ * `clicks` is the running tap count (1 = the first tap → first message). Returns
+ * the message to show for that tap, or null once the queue is exhausted — the
+ * signal for the DOM layer to retire (the final tap that dismisses it). Unlike
+ * `pickQuip` this does NOT wrap: it is a finite queue with a defined end so the
+ * ghost always has a last message and then goes away.
+ * @param {string[]} quips @param {number} clicks */
+export function clickMessage(quips, clicks) {
+  const n = quips.length;
+  const c = Math.trunc(clicks);
+  if (n === 0 || c < 1 || c > n) return null;
+  return quips[c - 1];
 }
 
 /** Which way the ghost faces walking from `fromX` to `toX`: +1 = rightward
@@ -420,6 +441,12 @@ export function startGhostWalk(opts = {}) {
   let i = 0;
   let sayTimer = 0;
   let doneTimer = 0;
+  let legTimer = 0;
+  // Interaction state (owner directive 2026-07-20): the first tap on the ghost
+  // freezes the stroll and hands control to a click-through message reader.
+  let interactive = false;
+  let retiring = false;
+  let clicks = 0;
 
   /** @param {number} face */
   function setFacing(face) {
@@ -429,17 +456,20 @@ export function startGhostWalk(opts = {}) {
     inner.style.transform = face < 0 ? "scaleX(-1)" : "scaleX(1)";
   }
 
-  /** @param {string} text */
-  function speak(text) {
+  /** @param {string} text @param {boolean} [sticky] */
+  function speak(text, sticky) {
     say.textContent = text;
     say.classList.add("show");
     clearTimeout(sayTimer);
-    sayTimer = window.setTimeout(() => say.classList.remove("show"), 2600);
+    // Ambient legs auto-hide the bubble; a click-driven message holds until the
+    // next tap so the user can read at their own pace.
+    if (!sticky) sayTimer = window.setTimeout(() => say.classList.remove("show"), 2600);
   }
 
   function retire() {
     clearTimeout(sayTimer);
     clearTimeout(doneTimer);
+    clearTimeout(legTimer);
     wrap.classList.add("bye");
     window.setTimeout(() => {
       if (umbRaf) cancelAnimationFrame(umbRaf);
@@ -448,7 +478,47 @@ export function startGhostWalk(opts = {}) {
     }, 700);
   }
 
+  // Halt the current stroll leg in place: pin the wrap to its live on-screen x
+  // (read from the computed transform mid-glide) with a zero-duration
+  // transition so it stops cleanly instead of coasting to the leg's target.
+  function freezeStroll() {
+    clearTimeout(doneTimer);
+    clearTimeout(legTimer);
+    let x = 0;
+    try {
+      const t = window.getComputedStyle(wrap).transform;
+      if (t && t !== "none") x = new DOMMatrixReadOnly(t).m41;
+    } catch {
+      // no computed matrix — fall back to leaving the current transform as-is
+      return;
+    }
+    wrap.style.transitionDuration = "0ms";
+    wrap.style.transform = `translateX(${x}px)`;
+  }
+
+  // A tap on the ghost: the first one freezes the stroll; every tap then shows
+  // the next queued message, and the tap AFTER the last message retires it.
+  function onGhostClick() {
+    if (retiring) return;
+    if (!interactive) {
+      interactive = true;
+      freezeStroll();
+    }
+    clicks++;
+    const msg = clickMessage(GHOST_QUIPS, clicks);
+    if (msg == null) {
+      retiring = true;
+      retire();
+      return;
+    }
+    speak(msg, true);
+  }
+  wrap.addEventListener("click", onGhostClick);
+
   function nextLeg() {
+    // Once the user has taken over (or we're leaving), the ambient stroll stops
+    // scheduling itself — clicks drive everything from here.
+    if (interactive || retiring) return;
     if (i >= legs.length) {
       retire();
       return;
@@ -461,14 +531,14 @@ export function startGhostWalk(opts = {}) {
 
     let advanced = false;
     const onArrive = () => {
-      if (advanced) return;
+      if (advanced || interactive || retiring) return;
       advanced = true;
       wrap.removeEventListener("transitionend", onTransEnd);
       if (leg.say) {
         speak(leg.quip);
-        window.setTimeout(nextLeg, 2900); // linger while it talks
+        legTimer = window.setTimeout(nextLeg, 2900); // linger while it talks
       } else {
-        window.setTimeout(nextLeg, 500);
+        legTimer = window.setTimeout(nextLeg, 500);
       }
     };
     /** @param {TransitionEvent} e */
