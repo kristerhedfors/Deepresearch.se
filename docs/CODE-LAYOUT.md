@@ -156,9 +156,13 @@ summary's Settings button OR directly via the header's gear icon,
 screenshots render as thumbnails off the per-image endpoint, and each
 reply box carries the `feedback-attach.js` widget),
 `account-articles.js` (the admin-only "Article collection" view — the
-planned article series about the project as pure data + a pure HTML
-builder, Node-tested; the summary button renders only for
-`role === "admin"`)),
+article series about the project as pure data + a pure HTML builder,
+Node-tested; each entry carries a `body` abstract/intent plus an optional
+full `article` imported from `account-articles-full.js`; the summary
+button renders only for `role === "admin"`)),
+`account-articles-full.js` (the expanded full-article HTML bodies,
+Swedish — the mirror of the `docs/linkedin/*.md` drafts, kept separate so
+the data module stays readable; imported by `account-articles.js`),
 `notifications.js` (the small rendering fragments — alert severity
 badges, pending-user rows, the K/M `formatCount` abbreviator — genuinely
 shared between `account.js`'s

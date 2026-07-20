@@ -1,15 +1,20 @@
-// The "articles" view — the admin-only ARTICLE COLLECTION: the planned
-// LinkedIn/blog series about this project (nine abstracts, Swedish), kept
-// here so the admin can read, reference, and copy them from any device via
-// the account panel instead of digging through chat transcripts. The
-// button into this view renders only for admin identities (account-views.js
-// renderSummary), same gate as the "Admin interface" link — the content is
-// not secret (the site is auth-gated anyway), the gate just keeps the
-// summary uncluttered for regular users.
+// The "articles" view — the admin-only ARTICLE COLLECTION: the LinkedIn/blog
+// series about this project (Swedish), kept here so the admin can read,
+// reference, and copy it from any device via the account panel instead of
+// digging through chat transcripts. Each entry carries BOTH the `body` — the
+// short intent/abstract (what the article will contain) — AND, once written,
+// the full article text in `article` (imported from account-articles-full.js,
+// the expanded HTML mirror of docs/linkedin/<file>.md). So one collection holds
+// both the intent and the actual article, both in Swedish. The button into this
+// view renders only for admin identities (account-views.js renderSummary), same
+// gate as the "Admin interface" link — the content is not secret (the site is
+// auth-gated anyway), the gate just keeps the summary uncluttered.
 //
 // Pure data + pure HTML builders up top (Node-tested in
 // account-articles.test.js), the ctx-touching loader at the bottom —
 // the same split every account-* view module uses.
+
+import { FULL_ARTICLES } from "./account-articles-full.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -17,16 +22,23 @@
 // Sources: docs/ (the repo itself), public/pulse/data.json + size.json
 // (regenerated 2026-07-17).
 const SERIES_INTRO = `
-  <p class="muted">Artikelserie om projektet — nio abstracts att expandera till
-  fulla artiklar. Bärande siffror (verifierbara i repot och på
+  <p class="muted">Artikelserie om projektet — varje post har en kort idé
+  (abstract) och, för de som redan skrivits, hela artikeln i fulltext (öppna
+  posten för att läsa). Bärande siffror (verifierbara i repot och på
   <a href="/pulse/" target="_blank" rel="noopener">/pulse</a>): helgen 4–6 juli
   gav 77 commits och 8&nbsp;500 rader; 4–17 juli totalt 716 commits,
   ~181&nbsp;000 tillagda rader och 93 shippade features; kodbasen är
   137&nbsp;475 rader i 548 filer med noll runtime-beroenden. Allt
   MIT-licensierat.</p>`;
 
-// The nine article abstracts, in recommended publishing order. `title` and
-// `body` are trusted static HTML authored here (no user input flows in).
+// The article collection. Each entry: `title` + `body` (the short intent /
+// abstract) + optional `article` (the full text, imported from
+// account-articles-full.js). All are trusted static HTML authored here / in the
+// docs/linkedin drafts (no user input flows in). Entries n:1–9 are the original
+// recommended-order abstracts; the written full articles attach `article` to
+// their matching abstract (intro → n:1, zero-deps → n:6), and n:10 is the newer
+// distributed-workspaces piece (both intent and full article). Publishing order
+// (intro → zero-deps → workspaces) is documented in docs/linkedin/README.md.
 export const ARTICLES = [
   {
     n: 1,
@@ -66,6 +78,7 @@ två veckor), och sajten kan till och med förklara sin egen källkod. Den är o
 experimentellt och långt ifrån produktionsfärdigt, och redovisar det som <i>inte</i>
 gick bra (features som regresserat upprepade gånger, se artikel 7) lika noga som
 det som gick bra — annars vore det inte forskning, bara en segerberättelse.</p>`,
+    article: FULL_ARTICLES.intro,
   },
   {
     n: 2,
@@ -209,6 +222,7 @@ håller linjen: varje förslag om ny dependency måste spåras till ett reproduc
 behov, inte en vana. Slutfrågan till läsaren: hur många av dina beroenden skulle
 överleva samma prövning idag, när alternativkostnaden för att skriva själv har
 fallit med en tiopotens?</p>`,
+    article: FULL_ARTICLES.zerodeps,
   },
   {
     n: 7,
@@ -295,12 +309,47 @@ och landar i inbjudan: sajten är live, koden är öppen, ställ din elakaste fr
 till den — om introspektionen inte kan svara är <i>det</i> en buggrapport, och den
 tas emot av organisationen i artikel 7.</p>`,
   },
+  {
+    n: 10,
+    title: "Distribuerade säkra forskningsutrymmen: förladda, dela, försegla, aggregera",
+    body: `<p>Seriens mest framåtblickande ämnesartikel, och den som tar det längsta
+klivet ut från den enskilda assistenten — från en flik till ett <i>protokoll</i>.
+Utgångspunkten är en funktion som redan finns: säkra workspaces, där en komplett
+Se/cure-session (nycklar, inställningar, konversationer, eventuella tillfälliga
+tokens) packas krypterad i URL-fragmentet av en enda länk. Länken <i>är</i>
+arbetsutrymmet: ingen serverpost, inget id, och ankaret skickas aldrig till
+servern — mediet självt garanterar att innehållet stannar i klienten
+(AES-256-GCM via webbläsarens <code>crypto.subtle</code>, designen klonad från
+hacka.re).</p>
+<p>Artikeln beskriver hur den där förseglade länken blir enheten i ett
+distribuerat flöde — i praktiken en map-reduce över forskningsutrymmen. Tre steg:
+<i>förladda och distribuera</i> (ursprungsanvändaren packar varje utsnitt av
+underlaget till en egen förladdad workspace-länk och delar ut arbetsplatser, inte
+bara data); <i>försegla tillbaka asymmetriskt</i> (ursprunget publicerar en publik
+nyckel, varje nod förseglar sitt resultat mot den så att bara nyckelns innehavare
+— aldrig de andra noderna, aldrig servern — kan läsa det); och <i>aggregera och slå
+samman</i> (ursprunget samlar in de förseglade buntarna, dekrypterar lokalt och
+förlikar slutsatserna med bevarad proveniens per nod). Kryptovalet följer artikel
+2:s no-own-crypto-regel — WebCryptos asymmetriska primitiver, aldrig ett
+hemmasnickrat schema — och den insamlade formen hålls förenlig med
+workspace-buntstandarden (artikel 8).</p>
+<p>Det här är seriens tydligaste spec-first-artikel och är ärlig om det: den
+enskilda säkra länken är byggd i dag, men förseglingen tillbaka och
+sammanslagningen är spec:ade och ännu inte färdigimplementerade (spårat som F-18).
+Poängen artikeln driver är ägandet: när forskning är en förseglad bunt som
+distribueras, bearbetas och förseglas tillbaka — utan att någon nod på vägen kan
+läsa den utan rätt nyckel — slutar det säkra paret vara en egenskap hos en flik
+och börjar bli ett protokoll. Det finns inget centralt tillstånd att läcka, och
+det är det första konkreta steget mot "stackless research"-visionen.</p>`,
+    article: FULL_ARTICLES.workspaces,
+  },
 ];
 
 /**
- * Pure HTML builder for the article-collection view: intro, then each
- * abstract as a collapsible <details> block so the nine long texts stay
- * scannable on a phone — the admin opens one at a time.
+ * Pure HTML builder for the article-collection view: intro, then each entry as
+ * a collapsible <details> block so the long texts stay scannable on a phone —
+ * the admin opens one at a time. Each block shows the intent (abstract) and,
+ * when the article has been written, the full text below a divider.
  * @returns {string} HTML for the panel body
  */
 export function renderArticles() {
@@ -308,7 +357,17 @@ export function renderArticles() {
     (a) => `
     <details class="article-item">
       <summary><b>${a.n}.</b> ${a.title}</summary>
-      <div class="article-body">${a.body}</div>
+      <div class="article-body">
+        <p class="section-lbl">Idé</p>
+        ${a.body}
+        ${
+          a.article
+            ? `<hr class="article-sep">
+        <p class="section-lbl">Artikel — fulltext</p>
+        <div class="article-full">${a.article}</div>`
+            : `<p class="muted article-pending">Fulltext ännu inte skriven — se abstractet ovan.</p>`
+        }
+      </div>
     </details>`,
   ).join("");
   return `
