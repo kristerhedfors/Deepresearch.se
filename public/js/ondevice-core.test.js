@@ -275,12 +275,8 @@ test("withDeadline: passes a settle through, and turns a silent stall into a sta
 
 // ---- wasm pair -------------------------------------------------------------------------
 
-test("wasmPathsFor mirrors the runtime's Safari/asyncify selection, on our vendor dir", () => {
-  assert.deepEqual(wasmPathsFor(true), {
-    mjs: "/vendor/transformers/ort-wasm-simd-threaded.mjs",
-    wasm: "/vendor/transformers/ort-wasm-simd-threaded.wasm",
-  });
-  assert.deepEqual(wasmPathsFor(false), {
+test("wasmPathsFor always selects the WebGPU-capable asyncify build, on our vendor dir", () => {
+  assert.deepEqual(wasmPathsFor(), {
     mjs: "/vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs",
     wasm: "/vendor/transformers/ort-wasm-simd-threaded.asyncify.wasm",
   });
