@@ -42,6 +42,23 @@ betydelsen integration och orkestrering av LLM-applikationer** — och låter UX
 vara medvetet ofärdig. En trasig knapp är en fotnot. En arkitektur som inte bär
 är hela poängen.
 
+## Ett skifte i arbetssättet: allt är byggt från en iPhone
+
+En sak till som hör till varför jag kallar det här forskning och innovation, och
+inte bara ett bygge: **det är en genomgripande förändring av mitt eget arbetssätt.**
+Allt i den här applikationen fram till nu — bokstavligen allt — är gjort från en
+iPhone. Huvudverktyget har varit Claude Code-appen, tillsammans med en handfull
+molntjänster för integrationerna: plattformar för API-nycklar, Google Maps, Shodan
+och liknande. Ingen laptop, ingen IDE, ingen terminal på ett skrivbord.
+
+I praktiken har det inneburit att hela sajten byggts mestadels *i rörelse* — stora
+delar under långsamma löppass i nordsvenska skogar, med telefonen i handen mellan
+intervallerna. Jag tar inte upp det för att det är en pittoresk detalj, utan för att
+arbetssättet i sig är en del av det som undersöks: när enheten för utvecklingsarbete
+krymper till en telefon och en agent, vad blir då faktiskt byggbart, var, och av vem?
+Att svaret visade sig vara "en komplett research-assistent med egen domän, byggd på
+språng" är ett resultat i sig.
+
 ## Forskningsfrågorna
 
 Modern AI byggs nästan uteslutande som en tjänst du *litar på*. Du skickar din

@@ -39,7 +39,11 @@ Området som undersöks är AI, LLM-applikationer och framför allt integriteten
 kampanj. Allt som annars hade låtit som produktargument — "servern ser aldrig din
 data", "kör Linux i webbläsaren", "noll beroenden" — presenteras som experiment
 vars fråga är "hur långt går det, och var brister det", inte "hur får jag dig att
-köpa det".</p>
+köpa det". Artikeln är också tydlig med att projektet innebär ett genomgripande
+skifte i arbetssättet: allt fram till nu är byggt från en iPhone — huvudsakligen i
+Claude Code-appen plus ett par molntjänster för integrationerna (API-nycklar, Google
+Maps, Shodan och liknande) — vilket har låtit hela sajten växa fram mestadels i
+rörelse, i praktiken under långsamma löppass i nordsvenska skogar.</p>
 <p>Den andra ramsättande poängen är att detta med avsikt är och förblir ett
 <i>80-procentsprojekt</i>: målet är inte att slutföra de sista tjugo procenten av
 finputs och polerat gränssnitt, utan att koppla ihop kapabiliteter under
