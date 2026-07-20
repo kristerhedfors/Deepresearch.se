@@ -30,30 +30,41 @@ const SERIES_INTRO = `
 export const ARTICLES = [
   {
     n: 1,
-    title: "Tidslinjekompression: helgen som blev två veckor — och vad siffrorna faktiskt säger",
-    body: `<p>Serieöppnaren, och den artikel som sätter måttstocken för alla följande.
-Utgångspunkten är två datapunkter ur samma repo: helgen 4–6 juli — 77 commits,
-8&nbsp;500 rader, en fungerande deep research-pipeline live på en egen domän — och de
-fjorton dagarna 4–17 juli: 716 commits, cirka 181&nbsp;000 tillagda rader, 93 shippade
-features. Artikeln argumenterar för att det intressanta inte är volymen i sig
-("titta vad mycket kod" är fel läsning, och LLM-genererad radräkning är en mätare
-man ska misstro) utan att <i>enheten för mjukvaruarbete har bytt storlek</i>. Det som
-för två år sedan var ett kvartalsprojekt för ett litet team — auth, kvoter,
-betalflöden av API-nycklar, streaming, adminpanel, testsvit — är nu en helg. Det
-som var en helg är en eftermiddag.</p>
-<p>Abstraktet går igenom tre konkreta features med faktisk kalendertid från
-commit-historiken och kontrasterar med en klassisk uppskattning för samma arbete:
-vad en erfaren utvecklare hade sagt i sprintplanering, och varför den siffran inte
-var fel <i>då</i>. Sedan vänds perspektivet mot läsaren: om tidslinjerna komprimeras
-tiofalt, vad händer med backloggen som prioriterades under antagandet att features
-är dyra? Vilka "det är inte värt det"-beslut i din organisation fattades med en
-kostnadskalkyl som inte längre gäller?</p>
-<p>Artikeln avslutas med seriens genomgående metodpoäng: varje påstående går att
-kontrollera. Dashboarden /pulse visar commits, radvolym och feature-räkning per
-dag, publikt, genererad ur git-historiken — build in public där "public"
-inkluderar bevisen, inte bara berättelsen. Det är också en ärlig artikel: den
-redovisar vad som <i>inte</i> gick fort (features som regresserat upprepade gånger, se
-artikel 7) så att kompressionstesen inte blir triumfalism.</p>`,
+    title: "Introduktion: ett 80-procentsprojekt om AI, LLM-applikationer och bevisbar privacy",
+    body: `<p>Serieöppnaren, och den artikel som sätter ramen för alla följande. Den
+börjar med att vara tydlig med vad projektet är: ett <i>forsknings- och
+innovationsprojekt</i>, ingenting annat — ingen produkt, inget bolag, ingen pitch.
+Området som undersöks är AI, LLM-applikationer och framför allt integriteten
+(privacy) i LLM-applikationer, och serien är forskningsloggen snarare än en
+kampanj. Allt som annars hade låtit som produktargument — "servern ser aldrig din
+data", "kör Linux i webbläsaren", "noll beroenden" — presenteras som experiment
+vars fråga är "hur långt går det, och var brister det", inte "hur får jag dig att
+köpa det". Artikeln är också tydlig med att projektet innebär ett genomgripande
+skifte i arbetssättet: allt fram till nu är byggt från en iPhone — huvudsakligen i
+Claude Code-appen plus ett par molntjänster för integrationerna (API-nycklar, Google
+Maps, Shodan och liknande) — vilket har låtit hela sajten växa fram mestadels i
+rörelse, i praktiken under långsamma löppass i nordsvenska skogar.</p>
+<p>Den andra ramsättande poängen är att detta med avsikt är och förblir ett
+<i>80-procentsprojekt</i>: målet är inte att slutföra de sista tjugo procenten av
+finputs och polerat gränssnitt, utan att koppla ihop kapabiliteter under
+specifika arkitekturer och se om helheten över huvud taget håller — att bevisa
+teserna. Antagandet är att hundra procent UX är ett känt, lösbart problem givet
+resurser; det olösta och intressanta ligger i integrationen och orkestreringen av
+LLM-applikationer. Artikeln formulerar de två drivande frågorna — hur långt en
+riktig assistent går att pressa mot <i>bevisbar</i> privacy (skillnaden mellan "lita
+på oss" och "läs själv"), och hur mycket kapabilitet som får plats innanför den
+ramen — och visar hur bitarna nu ligger nära början till en
+agentorkestreringsplattform: avspinnbara, mätade (token-styrda) säkra instanser,
+schemalagda bakgrundskörningar som matar ett projekts kunskapsbas, och en SDK som
+låter även mindre modeller destillera fram valfri delmängd ur referens-
+implementationen (projektets "SaaS-complete"-tes).</p>
+<p>Artikeln landar i seriens genomgående metodpoäng: varje påstående går att
+kontrollera. Koden är öppen (MIT), takten är öppen (dashboarden /pulse genereras
+ur git-historiken — 716 commits och 93 features 4–17 juli), och sajten kan till
+och med förklara sin egen källkod. Den är också ärlig om mognaden: detta är
+experimentellt och långt ifrån produktionsfärdigt, och redovisar det som <i>inte</i>
+gick bra (features som regresserat upprepade gånger, se artikel 7) lika noga som
+det som gick bra — annars vore det inte forskning, bara en segerberättelse.</p>`,
   },
   {
     n: 2,
