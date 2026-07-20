@@ -143,6 +143,30 @@ sajten kan till och med förklara sin egen implementation för dig i klartext. V
 påstående i serien är avsett att gå att kontrollera. Det är metodpoängen som
 återkommer i varje artikel.
 
+## Bilden av det parallella: feature-fokus-tidslinjen
+
+Om en enda bild ska fånga vad "80 procent, brett" betyder i praktiken är det den
+här. Under `/pulse` finns en andra graf — **feature-fokus-tidslinjen** — som inte
+räknar commits eller rader utan visar *vad* arbetet handlade om över tid: varje
+commit taggas med de temaområden den rör, och grafen ritar hur områdena stiger,
+konkurrerar och ebbar ut dag för dag, som parallella linjer (eller ett
+streamgraf-band).
+
+Siffrorna bakom bilden, alla ur git-historiken för samma tvåveckorsfönster
+(4–17 juli): **716 commits fördelade på 25 temaområden**, där 88 % av alla commits
+bär minst ett tema och **17 av områdena har fler än tjugo commits var** — alltså i
+storleksordningen sytton *samtidigt pågående* utvecklingsspår under samma två
+veckor. Linux-sandboxen, introspektionsläget, Se/cure-nivån, kart- och
+geo-intelligensen, hjälp/dokumentation, adminpanelens beslutstavlor, kvoter och
+konton — de växer inte i tur och ordning utan om vartannat, ofta samma dag.
+
+Det är just det som är poängen med att ta med grafen redan i introduktionen: den
+gör det abstrakta ("integration och orkestrering av många kapabiliteter") visuellt
+och konkret. Man *ser* att projektet inte är en funktion som polerats, utan ett
+tjugotal kapabilitetsspår som förts samman parallellt — och eftersom taggningen
+körs på commit-ämnena ur git går även den bilden att räkna efter. Grafen finns live
+på `/pulse/timeline.html`.
+
 ## Ärlighet först: det här är ett experiment
 
 Lika tydligt som syftet vill jag vara med mognaden: **det här är experimentellt
