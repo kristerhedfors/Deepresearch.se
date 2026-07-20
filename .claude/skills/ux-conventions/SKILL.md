@@ -319,3 +319,57 @@ appended in `renderStoredConversation`; `clearEmpty` removes it),
 src/feedback.js `buildFeedbackContext` (the reopened chat's last Q&A is what the
 feedback entry captures). Se/cure keeps no server feedback path (privacy
 invariant 4) and gets no hint.
+
+## UX-6 — A copy-to-clipboard button notifies briefly, then RETURNS to its original label
+
+**When** a "Copy …" button succeeds, **then** it shows a short confirmation
+("Copied ✓") and **reverts to its original label after ~1.5 s** — it never
+stays in the copied state. On clipboard denial it shows the manual-copy hint
+(selecting the text for the user where there is a field to select) and reverts
+the same way (a touch longer, ~2.5 s).
+
+**Why.** Users go back and forth over a surface (regenerate a password, edit,
+re-copy): a checkmark that never clears reads as stale state and hides whether
+a SECOND copy actually happened. The notification is the feedback; the resting
+label is the affordance. (2026-07-20 owner directive, from the secure-workspace
+result pane.)
+
+1. **One revert timer per button** — a re-click resets the timer instead of
+   stacking reverts (`btn._flashTimer` cleared before re-arm).
+2. **The original label is captured once** (`btn._origLabel`) so nested
+   flashes can't bake a transient text in as "original".
+3. Failure text also reverts — a permanent "copy manually" is as stale as a
+   permanent checkmark.
+
+**Canonical implementation:** `flashButton` in `public/cure/drc.js` (used by
+`#wk-copylink`, `#wk-copypass`, `#copysecret`); the earlier hand-rolled
+`#odtracecopy` revert (same file, ~L1224) predates the helper and matches the
+rule. New copy buttons reuse `flashButton` (or clone it into their module —
+DRS surfaces don't import from /cure).
+
+## UX-7 — A multi-decision composer walks ONE decision per step, each step a complete information card with a beginner recommendation
+
+**When** a surface asks the user to make several consequential choices to
+produce something (the secure-workspace share composer: keys? settings? chats?
+allowances? password?), **then** it presents them as a WIZARD — one decision
+per step, Back/Next, a "Step N of M" counter — where each step is a complete
+information card: what the choice covers, what it means/risks in full
+sentences, and a visually distinct **"For beginners:"** recommendation
+(leaning toward the more complete choice that works out of the box for the
+recipient). Steps that don't apply (no shareable allowances) are skipped, not
+greyed. Choices persist across Back/Next and reopenings; the final step's
+primary action replaces "Next". The result view offers a way back into the
+wizard with everything intact.
+
+**Why.** A flat checkbox list forces the user to already understand every
+option before ticking any; one card at a time gives each choice the space to
+be actually understood, and the recommendation gives a newcomer a default
+they can trust. (2026-07-20 owner directive.)
+
+**Canonical implementation:** `public/cure/index.html` `#wkshare` (the
+`.wk-step` cards + `.wk-reco` callouts), `public/cure/drc.js`
+(`WORKSPACE_STEPS` / `workspaceVisibleSteps` / `renderWorkspaceStep`,
+result-mode flip in `createWorkspaceLink`), `public/cure/drc.css` (`.wk-step`,
+`.wk-reco`). Distinct from UX-4 (a single costly consent): this rule is about
+SEQUENCING several free choices, and composes with UX-4 if a step carries a
+real cost.
