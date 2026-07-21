@@ -562,6 +562,19 @@ function startGhostStroll(force) {
     });
 }
 
+// The ambient stroll is HELD while the first-visit greeter popover (#ghostsay)
+// is up — otherwise the ghost runs around underneath the info box, competing
+// for attention the moment the user lands. When a stroll is queued behind the
+// popover, `hideGhostSay` releases it (any dismissal: the ×, an outside tap, or
+// opening the account menu). If the popover was never shown (returning visitor
+// / replay) the stroll starts immediately at the call site instead.
+let pendingGhostStroll = null;
+function runPendingGhostStroll() {
+  const fn = pendingGhostStroll;
+  pendingGhostStroll = null;
+  if (fn) fn();
+}
+
 function dismissIntro() {
   $("intro").hidden = true;
   try {
@@ -609,6 +622,9 @@ function hideGhostSay() {
   if ($("ghostsay").hidden) return;
   $("ghostsay").hidden = true;
   $("accountbtn").classList.remove("nudge");
+  // The ambient ghost stroll waits behind the greeter popover so it doesn't run
+  // around underneath the info box; releasing the popover releases the stroll.
+  runPendingGhostStroll();
 }
 
 // ---- the account view (right drawer, the person icon) -----------------------------
@@ -2966,7 +2982,17 @@ handlePublicationLink().then((opened) => {
     // Extend the intro: when it actually played (first visit, or the ?anim=1
     // replay), send the little ghost strolling across the page with a pink
     // umbrella. Gated on a real play so returning visitors get a clean page.
-    if (played) startGhostStroll(/[?&]anim=(1|rev)\b/.test(location.search));
+    // But if afterUmbrella just raised the first-visit greeter popover, HOLD the
+    // stroll behind it — the ghost only ambles out once the user has read and
+    // dismissed the info box (hideGhostSay releases the queued stroll).
+    if (played) {
+      const force = /[?&]anim=(1|rev)\b/.test(location.search);
+      if (!$("ghostsay").hidden) {
+        pendingGhostStroll = () => startGhostStroll(force);
+      } else {
+        startGhostStroll(force);
+      }
+    }
   });
 });
 

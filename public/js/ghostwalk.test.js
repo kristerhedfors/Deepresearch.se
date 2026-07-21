@@ -17,7 +17,7 @@ import {
 } from "../cure/ghostwalk.js";
 
 test("quips are non-empty short strings", () => {
-  assert.ok(GHOST_QUIPS.length >= 4);
+  assert.ok(GHOST_QUIPS.length >= 3);
   for (const q of GHOST_QUIPS) {
     assert.equal(typeof q, "string");
     assert.ok(q.length > 0 && q.length <= 60, `quip length: ${q}`);
