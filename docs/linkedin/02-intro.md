@@ -10,31 +10,24 @@
 
 ---
 
-## Sommarens stora skifte: allt byggt från en telefon
+## Arbetssättet som constraint: allt byggt från en telefon
 
-Sommarens stora nyhet inom AI-assisterad utveckling är, när allt kommer omkring,
-att man numera kan göra i stort sett allt direkt från mobiltelefonen. Boris
-Cherny — en av de ledande bakom Claude Code — bygger enligt uppgift nästan
-uteslutande från Claude Code-appen i mobilen nuförtiden. Själv har jag laborerat
-med samma arbetssätt i drygt en månad. Det senaste jag gjort med det är att
-bygga deepresearch.se från grunden — hela sajten, från första raden — plus en
-handfull medvetet valda constraints som förhoppningsvis gör projektet en aning
-mer intressant än "ännu en chattbot".
+I ingången till serien nämnde jag arbetssättet i förbigående, men här är det värt
+att stanna kvar — för det är inte en pittoresk detalj utan en av projektets
+medvetet valda constraints. Allt i den här applikationen, fram till nu, är gjort
+från en iPhone. Huvudverktyget har varit Claude Code-appen; runt omkring den
+ligger ett par molntjänster för integrationerna — plattformar för API-nycklar,
+Google Maps, Shodan och liknande. Ingen laptop, ingen IDE, ingen terminal på ett
+skrivbord. I praktiken har sajten vuxit fram mestadels *i rörelse*: stora delar
+under långsamma löppass i nordsvenska skogar, med telefonen i handen mellan
+intervallerna.
 
-Låt mig ta arbetssättet först, för det är en av de där constrainten. Allt i den
-här applikationen, fram till nu, är gjort från en iPhone. Huvudverktyget har
-varit Claude Code-appen; runt omkring den ligger ett par molntjänster för
-integrationerna — plattformar för API-nycklar, Google Maps, Shodan och liknande.
-Ingen laptop, ingen IDE, ingen terminal på ett skrivbord. I praktiken har sajten
-vuxit fram mestadels *i rörelse*: stora delar under långsamma löppass i
-nordsvenska skogar, med telefonen i handen mellan intervallerna.
-
-Jag nämner det inte som en pittoresk detalj. Arbetssättet är i sig en del av det
-som undersöks: när enheten för utvecklingsarbete krymper till en telefon och en
-agent, vad blir då faktiskt byggbart — var, och av vem? Att svaret visade sig
-bli "en komplett research-assistent med egen domän" säger något. Men det
-intressanta ligger inte i *var* jag satt, utan i vad jag valde att bygga, och
-under vilka regler. Det är dit resten av artikeln går.
+Arbetssättet är i sig en del av det som undersöks: när enheten för
+utvecklingsarbete krymper till en telefon och en agent, vad blir då faktiskt
+byggbart — var, och av vem? Att svaret visade sig bli "en komplett
+research-assistent med egen domän" säger något. Men det intressanta ligger inte i
+*var* jag satt, utan i vad jag valde att bygga, och under vilka regler. Det är dit
+resten av artikeln går.
 
 ## Vad det här är — och inte är
 
