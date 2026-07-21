@@ -437,6 +437,25 @@ planned, pull `eval-harness` forward to land immediately after
 `research-pipeline` — the reference's canonical lesson is three plausible
 pipeline upgrades that benchmarked net-negative and shipped OFF.
 
+**Beyond phase 6 — fine-tuned, model-sized SDKs (future direction, 2026-07-21).**
+Recorded in full under "Beyond the phases" in `sdk/ROADMAP.md`. Once the
+`eval-harness` scores success on specific development *tasks* and the SDK can be
+bound to more than one source implementation, the SDK stops being one fixed
+artifact and becomes a *family*: define several **constellations** — subsets of
+the full feature set assembled in particular ways, each with different guest
+integrations — enumerate the reasonable dependency-closed permutations as
+complete implementations, and keep each one's real (development query → response)
+dataset alongside the harness's success verdict. That corpus feeds an **SDK
+fine-tuning mechanism**: for a given (often small, mobile) model, fit an SDK
+whose dimensions and promised use cases are kept small enough for the model's
+size and attention span, chosen by *measured* task success rather than guessed.
+The distilled, model-sized SDK then becomes the basis for a bounded domain
+training set on which a small on-device model is fine-tuned — carrying SDK mode's
+green distill-and-build flow to its conclusion: not a prompt-time SDK a large
+model reads, but a distilled SDK *baked into* a small model that already knows
+how to build with it. It stays a note rather than a phase because every step is
+downstream of shipped, measured features and a plural SDK↔source binding.
+
 ---
 
 ## 9. Using the SDK
