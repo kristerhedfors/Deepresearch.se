@@ -451,9 +451,9 @@ whose dimensions and promised use cases are kept small enough for the model's
 size and attention span, chosen by *measured* task success rather than guessed.
 The distilled, model-sized SDK then becomes the basis for a bounded domain
 training set on which a small on-device model is fine-tuned — carrying SDK mode's
-green "lovable experience" to its conclusion: not a prompt-time SDK a large model
-reads, but a distilled SDK *baked into* a small model that already knows how to
-build with it. It stays a note rather than a phase because every step is
+green distill-and-build flow to its conclusion: not a prompt-time SDK a large
+model reads, but a distilled SDK *baked into* a small model that already knows
+how to build with it. It stays a note rather than a phase because every step is
 downstream of shipped, measured features and a plural SDK↔source binding.
 
 ---

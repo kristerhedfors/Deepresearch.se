@@ -324,16 +324,17 @@ implementations, "small enough and still delivers" stops being a guess — it is
 measured. The fine-tuning mechanism searches for the SDK shape that maximises
 task success under the model's context/size budget.
 
-### 5. The payoff — a "lovable model"
+### 5. The payoff — a small model that builds from the SDK
 
 These fine-tuned, model-sized SDKs then become the **basis for producing a
 bounded amount of training data within a particular domain**. Fine-tune one of
 these small mobile models on that domain-specific corpus, and it should be able
-to deliver a *lovable* experience — implementing things from this SDK as it has
-been trained to do, reliably, at a size that runs on-device. This is SDK mode's
-green "lovable experience" (see the **sdk-mode** skill) carried to its
-conclusion: not just a prompt-time SDK a large model reads, but a distilled SDK
-*baked into* a small model that already knows how to build with it.
+to deliver a smooth, high-success build experience — implementing things from
+this SDK as it has been trained to do, reliably, at a size that runs on-device.
+This is SDK mode's green distill-and-build flow (see the **sdk-mode** skill)
+carried to its conclusion: not just a prompt-time SDK a large model reads, but a
+distilled SDK *baked into* a small model that already knows how to build with
+it.
 
 **Why it stays a note, not a phase:** every step here is downstream of shipped,
 measured features and of a plural SDK↔source binding. Recording it keeps the
