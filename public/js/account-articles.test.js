@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { ARTICLES, renderArticles } from "./account-articles.js";
 
 test("the collection holds the article series, numbered in order", () => {
-  assert.equal(ARTICLES.length, 10);
+  assert.equal(ARTICLES.length, 11);
   ARTICLES.forEach((a, i) => assert.equal(a.n, i + 1, `article ${i + 1} is numbered ${a.n}`));
 });
 
@@ -23,13 +23,13 @@ test("every article has a non-empty title and a multi-paragraph body (the intent
 });
 
 test("the written full articles are attached and substantial", () => {
-  // The three drafts written so far (docs/linkedin/) attach their full text as
+  // The four drafts written so far (docs/linkedin/) attach their full text as
   // `article`; the rest are intent-only until written.
   const withArticle = ARTICLES.filter((a) => a.article);
   assert.deepEqual(
     withArticle.map((a) => a.n).sort((x, y) => x - y),
-    [1, 6, 10],
-    "intro (n:1), zero-deps (n:6) and workspaces (n:10) carry full articles",
+    [1, 2, 7, 11],
+    "moat lead (n:1), intro (n:2), zero-deps (n:7) and workspaces (n:11) carry full articles",
   );
   for (const a of withArticle) {
     // A full article is longer than its abstract and multi-section.

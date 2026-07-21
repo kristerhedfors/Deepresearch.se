@@ -34,14 +34,39 @@ const SERIES_INTRO = `
 // The article collection. Each entry: `title` + `body` (the short intent /
 // abstract) + optional `article` (the full text, imported from
 // account-articles-full.js). All are trusted static HTML authored here / in the
-// docs/linkedin drafts (no user input flows in). Entries n:1–9 are the original
-// recommended-order abstracts; the written full articles attach `article` to
-// their matching abstract (intro → n:1, zero-deps → n:6), and n:10 is the newer
-// distributed-workspaces piece (both intent and full article). Publishing order
-// (intro → zero-deps → workspaces) is documented in docs/linkedin/README.md.
+// docs/linkedin drafts (no user input flows in). n:1 is the news-hook lead
+// ("Grattis — allt till alla", the Kimi K3 / no-moat piece) that now opens the
+// series; n:2–10 are the recommended-order abstracts (intro → n:2, zero-deps →
+// n:7) and n:11 is the distributed-workspaces piece. The written full articles
+// attach `article` to their matching abstract (n:1, n:2, n:7, n:11). Publishing
+// order (moat lead → intro → zero-deps → workspaces) is documented in
+// docs/linkedin/README.md.
 export const ARTICLES = [
   {
     n: 1,
+    title: "Grattis — allt till alla",
+    body: `<p>Serieledaren, byggd kring en färsk nyhet i stället för kring
+projektet självt: i juli 2026 släppte Moonshot AI <b>Kimi K3</b> — öppna vikter,
+2,8 biljoner parametrar — som stänger glappet till de amerikanska frontier-labben
+och på kod- och agent-uppgifter till och med leder. Det bevingade Google-memot
+"We have no moat" gick från spådom till observation. Rubriken är <i>grattis — allt
+till alla</i>: den mest strategiska resursen i fältet, frontier-intelligens,
+slutar vara något ett fåtal grindar ut bakom en API-vägg och blir något vem som
+helst kan ladda ner och köra själv.</p>
+<p>Därifrån leder artikeln in på vad det <i>betyder</i> för den som bygger: när
+intelligensen blir en råvara komprimeras själva byggandet, och med rätt
+byggställning — ett SDK av modulära kapabiliteter — får även en modell som inte är
+den absolut starkaste ihop riktiga appar på dagar, körda på en frontier-modell som
+Fable 5 eller på en öppen modell i klass med K3. Projektet självt dyker upp bara
+som ett kort referensexempel (två veckor, byggt från en telefon, siffrorna på
+<a href="/pulse/" target="_blank" rel="noopener">/pulse</a>) innan serien går
+vidare. Den ärliga brasklappen: den nya bristvaran är inte modellen utan
+<b>compute</b> att köra den på — du får den mjukvara du ber om, om du har compute
+att komma dit.</p>`,
+    article: FULL_ARTICLES.moat,
+  },
+  {
+    n: 2,
     title: "Introduktion: ett 80-procentsprojekt om AI, LLM-applikationer och bevisbar privacy",
     body: `<p>Serieöppnaren, och den artikel som sätter ramen för alla följande. Den
 öppnar med sommarens skifte i arbetssättet — att i stort sett allt numera går att
@@ -84,7 +109,7 @@ det som gick bra — annars vore det inte forskning, bara en segerberättelse.</
     article: FULL_ARTICLES.intro,
   },
   {
-    n: 2,
+    n: 3,
     title: "DistillSDK: destillera fram exakt den mjukvara du behöver",
     body: `<p>Seriens mest originella tankegods och den artikel som planterar en term.
 Utgångsläget: i repot ligger Agent-Pair SDK:n — en designartefakt, inte ett
@@ -114,7 +139,7 @@ hypotesen skulle se ut. Namnet <b>DistillSDK</b> lanseras här, med en öppen in
 registret är MIT-licensierat — försök själv, rapportera vad som gick sönder.</p>`,
   },
   {
-    n: 3,
+    n: 4,
     title: "Deterministisk orkestrering: pipelinen som klarar sig utan function calling",
     body: `<p>En teknisk trovärdighetsartikel med en medvetet motvalls tes: i en tid när
 varje AI-keynote handlar om agentic tool use är den mest robusta arkitekturen för
@@ -143,7 +168,7 @@ designprincip: ge modellen friheten där friheten skapar värde (syntes,
 undersökning) och ta bort den där den bara skapar varians (orkestrering).</p>`,
   },
   {
-    n: 4,
+    n: 5,
     title: "Bevisbar privacy som feature, inte policy: Se/cure + Se/rver-paret",
     body: `<p>Missionsartikeln — den som förklarar vad projektet egentligen undersöker: hur
 långt en <i>riktig, användbar</i> research-assistent kan pressas mot bevisbar privacy,
@@ -172,7 +197,7 @@ här är ett existensbevis för att svensk AI-infrastruktur räcker för att byg
 komplett produkt på.</p>`,
   },
   {
-    n: 5,
+    n: 6,
     title: "Linux i webbläsaren: sandboxen som aldrig lämnar din maskin",
     body: `<p>Seriens mest delningsbara tekniska artikel, för att premissen låter omöjlig:
 en riktig Linux-miljö — inte en emulerad terminal-leksak — bootar i
@@ -200,7 +225,7 @@ breddar: vad mer kan flyttas in i fliken? Var går gränsen där webbläsaren so
 privacy-bubbla tar slut — och är den gränsen teknisk eller bara ovan?</p>`,
   },
   {
-    n: 6,
+    n: 7,
     title: "Noll beroenden, inget byggsteg: 137 000 rader utan node_modules",
     body: `<p>En kontraintuitiv artikel som börjar i en siffra ur repots egen size-mätning:
 137&nbsp;475 rader kod, 548 filer, tio språk — noll runtime-beroenden, tre
@@ -228,7 +253,7 @@ fallit med en tiopotens?</p>`,
     article: FULL_ARTICLES.zerodeps,
   },
   {
-    n: 7,
+    n: 8,
     title: "Mjukvara som underhåller sig själv: agent-loopar, beslutstavlor och regressionsägare",
     body: `<p>Seriens mest framåtblickande artikel, om något repot råkade bygga vid sidan av
 produkten: en fungerande <i>organisationsmodell</i> där noderna är AI-agenter och
@@ -257,7 +282,7 @@ koordinationsprotokoll som redan idag kan köras av en prenumererad agent med et
 register och en väckningsmekanism?</p>`,
   },
   {
-    n: 8,
+    n: 9,
     title: "Spec-first, öppna standarder: när dokumentationen medvetet leder koden",
     body: `<p>En artikel om en inversion av mjukvaruutvecklingens vanligaste synd. Normalt
 släpar dokumentationen efter koden; i det här repot <i>leder</i> två specifikationer
@@ -286,7 +311,7 @@ adoptörer, standarder på version /1 — och avslutar med det öppna draget: sp
 finns.</p>`,
   },
   {
-    n: 9,
+    n: 10,
     title: "Genomlysning hela vägen: sajten som kan förklara sin egen källkod",
     body: `<p>Slutknuten, som samlar seriens tråd — verifierbarhet — och driver den till sin
 logiska ändpunkt: en tjänst vars mest radikala transparens-feature är att den kan
@@ -313,7 +338,7 @@ till den — om introspektionen inte kan svara är <i>det</i> en buggrapport, oc
 tas emot av organisationen i artikel 7.</p>`,
   },
   {
-    n: 10,
+    n: 11,
     title: "Distribuerade säkra forskningsutrymmen: förladda, dela, försegla, aggregera",
     body: `<p>Seriens mest framåtblickande ämnesartikel, och den som tar det längsta
 klivet ut från den enskilda assistenten — från en flik till ett <i>protokoll</i>.
