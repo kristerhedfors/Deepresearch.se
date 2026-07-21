@@ -39,18 +39,14 @@ import {
 // ---- the pure core -----------------------------------------------------------------
 
 // What the ghost says as it strolls, in order. Kept short (they float above a
-// moving character) and squarely on the tier's message: your research runs in
-// THIS browser, the server is never in the path. The umbrella lines lean into
-// the prop it's carrying.
+// moving character) and DELIBERATELY few — just the three most important points
+// of the tier's message, so it's a light touch, not a wall of bubbles: your
+// research runs in THIS browser, the server is never in the path, your key
+// never leaves the tab.
 export const GHOST_QUIPS = [
   "Everything here stays in this browser. Spooky, right?",
   "No server's watching — cross my heart. 👻",
   "Your API key never leaves this tab.",
-  "Se/cure by construction. That's the whole trick.",
-  "Bring your own key; I'll bring the umbrella. ☂",
-  "Rain or shine, your chats stay local.",
-  "I don't haunt your data — I shelter it.",
-  "Private research, no account. Boo.",
 ];
 
 /** Cycle the quips forever, tolerant of any integer index (negatives, huge).
