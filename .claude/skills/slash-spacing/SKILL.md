@@ -31,6 +31,24 @@ is:
 JS-built prose; static pages hand-write it. **Plain text (markdown, docs,
 commit messages, prompts) never tightens — no span, no rule.**
 
+## Keeping the wordmark on ONE line (a separate failure mode)
+
+The `.sl` span is a *margined inline box*, and WebKit/iOS inserts soft-wrap
+opportunities at its edges. So in a narrow, wrapping container the wordmark
+can SPLIT across lines — "Se" / "/" / "rver" — even though the slash margin
+is perfect. This is NOT a margin problem; no `slash-gap.mjs` value fixes it.
+The fix is to wrap the whole wordmark in `<span class="wm">…</span>` with
+`.wm { white-space: nowrap }` so the wordmark is atomic while the prose
+after it still wraps normally. `wmHtml` emits the `.wm` wrapper for all
+JS-built prose; static pages must hand-write it too. (Owner report
+2026-07-21: the Se/cure account drawer's "Se/rver documentation" card split
+into three lines; fixed with the `.wm` wrapper + a `.wm` rule in
+`public/cure/drc.css`, and every static wordmark in `public/cure/index.html`
+wrapped. Verify a wrapped wordmark's `.getClientRects().length === 1` in a
+narrow container.) When the surface uses a stylesheet OTHER than `drc.css`
+(welcome, help, architecture, login), the `.wm` rule must exist there too —
+add it alongside that page's `.sl` rule.
+
 ## The problem this skill solves
 
 **The right margin depends on the font — there is no one correct

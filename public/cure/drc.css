@@ -308,6 +308,12 @@ header {
 #privacybtn:hover { opacity: 1; }
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server". */
 .sl { margin: 0 -.12em; }
+/* Keep the whole wordmark on ONE line. The .sl slash span (a margined inline
+   box) introduces soft-wrap opportunities at its edges on WebKit/iOS, so a
+   narrow container splits "Se/rver" into "Se" / "/" / "rver" (owner report
+   2026-07-21: the account drawer's "Se/rver documentation" card). Wrapping the
+   wordmark in .wm makes it non-breaking; the following prose still wraps. */
+.wm { white-space: nowrap; }
 /* In the ghost speech bubble and the DRS explainer popup the wordmarks sit in
    heavier/running body text where the tight negative margin crowds the slash —
    give it a touch more room in just those two surfaces. */

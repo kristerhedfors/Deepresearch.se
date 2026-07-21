@@ -162,12 +162,14 @@ export function parsePublicationRef(pathname, search) {
 
 // Render prose we build for innerHTML with the Se/cure & Se/rver wordmark
 // slash tightened (the .sl rule) so it reads closer to "secure"/"server".
-// Escapes &<> FIRST, so any plain string stays safe as markup.
+// Escapes &<> FIRST, so any plain string stays safe as markup. The wordmark is
+// wrapped in .wm (white-space: nowrap) so the margined .sl span can't be split
+// across lines by WebKit's inline-boundary soft-wrap ("Se" / "/" / "rver").
 /** @param {*} s @returns {string} */
 export function wmHtml(s) {
   return String(s)
     .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
-    .replace(/(se)\/(cure|rver)/gi, '$1<span class="sl">/</span>$2');
+    .replace(/(se)\/(cure|rver)/gi, '<span class="wm">$1<span class="sl">/</span>$2</span>');
 }
 
 // ---- the PRIVACY NOTICE (owner directive, 2026-07-16) --------------------------

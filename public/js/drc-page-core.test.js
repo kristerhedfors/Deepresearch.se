@@ -104,12 +104,12 @@ test("parsePublicationRef: /cure/<slug> path vs ?continue= legacy", () => {
 });
 
 test("wmHtml escapes markup first, then tightens the wordmark slash", () => {
-  assert.equal(wmHtml("Se/cure ready"), 'Se<span class="sl">/</span>cure ready');
-  assert.equal(wmHtml("a Se/rver feature"), 'a Se<span class="sl">/</span>rver feature');
+  assert.equal(wmHtml("Se/cure ready"), '<span class="wm">Se<span class="sl">/</span>cure</span> ready');
+  assert.equal(wmHtml("a Se/rver feature"), 'a <span class="wm">Se<span class="sl">/</span>rver</span> feature');
   // Escaping happens BEFORE the wordmark wrap, so injected markup stays inert.
   assert.equal(wmHtml("<b>x</b> & y"), "&lt;b&gt;x&lt;/b&gt; &amp; y");
   // Case-insensitive wordmark match, and unrelated slashes untouched.
-  assert.equal(wmHtml("SE/CURE"), 'SE<span class="sl">/</span>CURE');
+  assert.equal(wmHtml("SE/CURE"), '<span class="wm">SE<span class="sl">/</span>CURE</span>');
   assert.equal(wmHtml("a/b"), "a/b");
 });
 
