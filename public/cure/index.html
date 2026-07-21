@@ -34,7 +34,7 @@
            the privacy notice (what THIS session sends where) with a link on to
            the documentation; a shared workspace opening pops the notice up on
            its own (drc.js showPrivacyNotice). -->
-      <div class="brand" id="brand" title="About Se/cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b><button id="privacybtn" type="button" title="Privacy — what this session sends where" aria-label="Privacy notice"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></button><span class="brand-tier"> — client-side</span></div>
+      <div class="brand" id="brand" title="About Se/cure">DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b><button id="privacybtn" type="button" title="Privacy — what this session sends where" aria-label="Privacy notice"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></button><span class="brand-tier"> — client-side</span></div>
       <div class="introspection-tag">introspection</div>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chats &amp; project (this browser)" aria-label="Chats and project">
@@ -88,11 +88,11 @@
       </svg>
     </span>
     <div class="ghostsay-body">
-      <strong>You're on DeepResearch.<b>Se<span class="sl">/</span>cure</b></strong>
+      <strong>You're on DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></strong>
       <p>The private, all-client-side side. Your chats, keys and projects stay in <b>this browser</b> — the server never sees them. Just add your own API key and ask.</p>
-      <p><b>A research project, not a product.</b> It's experimental — put into service solely to research which capabilities and use cases fit the <b>Se<span class="sl">/</span>cure</b> + <b>Se<span class="sl">/</span>rver</b> architecture. Please don't rely on it for any real-world use.</p>
-      <p class="ghostsay-point">Want accounts, cloud sync and live web search? That's <b>Se<span class="sl">/</span>rver</b> — tap the account button, top-right ↗</p>
-      <a id="ghostsaygo" href="/login">Sign in to <b>Se<span class="sl">/</span>rver</b> →</a>
+      <p><b>A research project, not a product.</b> It's experimental — put into service solely to research which capabilities and use cases fit the <b><span class="wm">Se<span class="sl">/</span>cure</span></b> + <b><span class="wm">Se<span class="sl">/</span>rver</span></b> architecture. Please don't rely on it for any real-world use.</p>
+      <p class="ghostsay-point">Want accounts, cloud sync and live web search? That's <b><span class="wm">Se<span class="sl">/</span>rver</span></b> — tap the account button, top-right ↗</p>
+      <a id="ghostsaygo" href="/login">Sign in to <b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
     </div>
   </div>
 
@@ -117,7 +117,7 @@
   <div id="privacypop" hidden>
     <strong>Privacy — what this session sends where</strong>
     <div id="privacypop-text"></div>
-    <a class="pp-docs" href="/cure/help/" target="_blank" rel="noopener">Read on in the documentation — how Se<span class="sl">/</span>cure works →</a>
+    <a class="pp-docs" href="/cure/help/" target="_blank" rel="noopener">Read on in the documentation — how <span class="wm">Se<span class="sl">/</span>cure</span> works →</a>
   </div>
 
   <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
@@ -132,7 +132,7 @@
         <div id="drspop" hidden>
           <strong id="drspop-title"></strong><br>
           <span id="drspop-text"></span><br>
-          <a href="/login">Sign in — DeepResearch.<b>Se<span class="sl">/</span>rver</b> →</a>
+          <a href="/login">Sign in — DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
         </div>
         <form id="form">
           <textarea id="input" rows="1" placeholder="Ask a research question…" autofocus></textarea>
@@ -200,7 +200,7 @@
           password manager; losing it loses the project. Browsers can also evict
           site data — download a <b>.drc backup</b> below so a cleared browser
           can't take the project with it. Cross-device sync is what the signed-in
-          Se<span class="sl">/</span>rver offers.</p>
+          <span class="wm">Se<span class="sl">/</span>rver</span> offers.</p>
         <!-- A real form so 1Password / Apple Passwords capture the secret as a
              site password: username = the project reference, password = the
              secret. Submit is intercepted; nothing is ever posted. -->
@@ -236,10 +236,10 @@
         <p id="gatestatus" class="muted" hidden></p>
       </details>
 
-      <p class="drawer-note">Se<span class="sl">/</span>cure — <i>deep research secure</i> — keeps everything in this
+      <p class="drawer-note"><span class="wm">Se<span class="sl">/</span>cure</span> — <i>deep research secure</i> — keeps everything in this
         browser and calls the model provider directly. The hosted tier with live web
         search, documents and cloud storage is
-        <a href="/login">DeepResearch.<b>Se<span class="sl">/</span>rver</b></a>.</p>
+        <a href="/login">DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b></a>.</p>
     </aside>
   </div>
 
@@ -285,7 +285,7 @@
             <button type="button" class="setting-info" data-pop="localpop" aria-label="More about local models">ⓘ</button>
           </span>
         </div>
-        <div class="setting-pop" id="localpop" hidden>Run the model YOURSELF and point Se<span class="sl">/</span>cure
+        <div class="setting-pop" id="localpop" hidden>Run the model YOURSELF and point <span class="wm">Se<span class="sl">/</span>cure</span>
           at it — any OpenAI-compatible server works: <b>Ollama</b> (<code>http://localhost:11434/v1</code>),
           <b>LM Studio</b> (<code>http://localhost:1234/v1</code>), <b>llama.cpp</b>
           (<code>http://localhost:8080/v1</code>). No API key, no account — and <b>nothing leaves your
@@ -338,7 +338,7 @@
            Revealed by renderWsRow() in drc.js. -->
       <div class="settings-item" id="wsrow" hidden>
         <div class="settings-row">
-          <span class="settings-label">Web search (via Se<span class="sl">/</span>rver)
+          <span class="settings-label">Web search (via <span class="wm">Se<span class="sl">/</span>rver</span>)
             <button type="button" class="setting-info" data-pop="wspop" aria-label="More about server web search">ⓘ</button>
           </span>
           <label class="switch">
@@ -346,7 +346,7 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
           </label>
         </div>
-        <div class="setting-pop" id="wspop" hidden>A signed-in <b>Se<span class="sl">/</span>rver</b> session granted this
+        <div class="setting-pop" id="wspop" hidden>A signed-in <b><span class="wm">Se<span class="sl">/</span>rver</span></b> session granted this
           browser a small, fixed number of <b>live web searches</b> routed through the server's search key — so your
           research can use fresh web results even while you run your own (e.g. local) model. Only the <b>search
           query</b> leaves this browser (never your conversation); the allowance is fixed for this session and
@@ -402,10 +402,10 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
           </label>
         </div>
-        <div class="setting-pop" id="proxypop" hidden>A signed-in <b>Se<span class="sl">/</span>rver</b> account LENT this
+        <div class="setting-pop" id="proxypop" hidden>A signed-in <b><span class="wm">Se<span class="sl">/</span>rver</span></b> account LENT this
           browser a temporary, quota-limited <b>research space</b>: proxied access to its server-side keys, so you can
           research without your own keys. The <b>web search</b> half sends only a query; the <b>LLM API</b> half routes
-          your conversation through the server on the account's model key (so, unlike the rest of Se<span class="sl">/</span>cure,
+          your conversation through the server on the account's model key (so, unlike the rest of <span class="wm">Se<span class="sl">/</span>cure</span>,
           the server DOES see those messages) — it's opt-in and bounded. Turn it off to go fully client-side again.</div>
         <span id="proxystatus" class="muted setting-note"></span>
       </div>
@@ -415,7 +415,7 @@
            Revealed by renderStRow() in drc.js. -->
       <div class="settings-item" id="strow" hidden>
         <div class="settings-row">
-          <span class="settings-label">Se<span class="sl">/</span>rver token
+          <span class="settings-label"><span class="wm">Se<span class="sl">/</span>rver</span> token
             <button type="button" class="setting-info" data-pop="stpop" aria-label="More about the Se/rver token">ⓘ</button>
           </span>
           <label class="switch">
@@ -426,8 +426,8 @@
         <div class="setting-pop" id="stpop" hidden>One ticket, one JWT: a single temporary token bundling this
           session's borrowed allowances — <b>web search</b> (only the query leaves this browser) and the
           <b>LLM API</b> (routes your conversation through the server to Berget, metered). It is named a
-          <b>Se<span class="sl">/</span>rver token</b> so you never forget: using it sends data to a server. It opens
-          <b>upstream APIs only</b> — it can never read any Se<span class="sl">/</span>rver data (no projects, no
+          <b><span class="wm">Se<span class="sl">/</span>rver</span> token</b> so you never forget: using it sends data to a server. It opens
+          <b>upstream APIs only</b> — it can never read any <span class="wm">Se<span class="sl">/</span>rver</span> data (no projects, no
           chats), and it is never a login. Quotas are metered server-side and can be adjusted or revoked by whoever
           minted it. Turn it off to stay fully client-side.</div>
         <span id="ststatus" class="muted setting-note"></span>
@@ -447,7 +447,7 @@
         <div class="setting-pop" id="wkpop" hidden>Package this session — API keys, settings, chats, even a borrowed
           web-search or research-space allowance — into <b>one link</b> that IS the workspace: everything rides
           <b>encrypted in the link's #anchor</b>, which browsers never send to any server. Whoever you give the link
-          (and its password, shared separately) opens a fully configured Se<span class="sl">/</span>cure session,
+          (and its password, shared separately) opens a fully configured <span class="wm">Se<span class="sl">/</span>cure</span> session,
           completely offline. Same mechanism as <a href="https://github.com/kristerhedfors/hacka.re" target="_blank" rel="noopener">hacka.re</a>'s shared links.</div>
         <span class="muted setting-note">Your workspace lives at <code>/cure/workspace</code> — share it as one offline link.</span>
       </div>
@@ -524,20 +524,20 @@
         <button id="accountclose" type="button" aria-label="Close">›</button>
       </div>
 
-      <p class="acct-lead">Se<span class="sl">/</span>cure has <b>no accounts</b>: your keys, chats and
+      <p class="acct-lead"><span class="wm">Se<span class="sl">/</span>cure</span> has <b>no accounts</b>: your keys, chats and
         projects live only in this browser, so there is nothing to sign in to here.
         Accounts — with cloud sync, documents and live web search — are the hosted
-        tier, DeepResearch.<b>Se<span class="sl">/</span>rver</b>.</p>
-      <a class="btnlike" href="/login">Sign in to DeepResearch.<b>Se<span class="sl">/</span>rver</b> →</a>
+        tier, DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b>.</p>
+      <a class="btnlike" href="/login">Sign in to DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
 
       <p class="acct-lead acct-section"><b>Documentation</b></p>
-      <a class="pub-item acct-link" href="/cure/help/" target="_blank" rel="noopener">Documentation<span>How Se<span class="sl">/</span>cure works — your own keys, chats stored in this browser only.</span></a>
-      <a class="pub-item acct-link" href="/help/" target="_blank" rel="noopener">Se<span class="sl">/</span>rver documentation<span>The signed-in tier — hosted web search, accounts, cloud storage.</span></a>
+      <a class="pub-item acct-link" href="/cure/help/" target="_blank" rel="noopener">Documentation<span>How <span class="wm">Se<span class="sl">/</span>cure</span> works — your own keys, chats stored in this browser only.</span></a>
+      <a class="pub-item acct-link" href="/help/" target="_blank" rel="noopener"><span class="wm">Se<span class="sl">/</span>rver</span> documentation<span>The signed-in tier — hosted web search, accounts, cloud storage.</span></a>
       <a class="pub-item acct-link" href="/build/" target="_blank" rel="noopener">About this project<span>What DeepResearch is and the ideas behind it.</span></a>
       <a class="pub-item acct-link" href="/story/" target="_blank" rel="noopener">The build story<span>How the site was built, session by session.</span></a>
       <a class="pub-item acct-link" href="/architecture/" target="_blank" rel="noopener">The architecture story<span>How the Worker, pipeline, and privacy split fit together.</span></a>
       <a class="pub-item acct-link" href="/pulse/" target="_blank" rel="noopener">Project pulse<span>Live charts of commits, lines, and new features over the repo's history.</span></a>
-      <a class="pub-item acct-link" href="/welcome/" target="_blank" rel="noopener">The landing page<span>Se<span class="sl">/</span>cure and Se<span class="sl">/</span>rver side by side — what each tier does.</span></a>
+      <a class="pub-item acct-link" href="/welcome/" target="_blank" rel="noopener">The landing page<span><span class="wm">Se<span class="sl">/</span>cure</span> and <span class="wm">Se<span class="sl">/</span>rver</span> side by side — what each tier does.</span></a>
       <a class="pub-item acct-link" href="https://github.com/kristerhedfors/Deepresearch.se" target="_blank" rel="noopener">Source code<span>MIT-licensed, on GitHub — every privacy claim is yours to verify.</span></a>
     </aside>
   </div>
@@ -561,7 +561,7 @@
              text embeds the door to what they just landed on. target=_blank —
              navigating this tab away would drop the pending #w= blob. -->
         <p class="muted">Someone shared a <b>secure workspace</b> with you: a fully configured
-          <a href="/welcome/" target="_blank" rel="noopener">DeepResearch.<b>Se<span class="sl">/</span>cure</b></a>
+          <a href="/welcome/" target="_blank" rel="noopener">DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></a>
           session sealed inside this link's <b>#anchor</b> — the encrypted
           part after <code>#</code> that browsers never send to any server. Enter the password
           you received separately to open it, entirely in this browser.</p>
@@ -677,7 +677,7 @@
   <!-- ---- first-visit glass pane: the landing, condensed ---- -->
   <div id="intro" hidden>
     <div class="intro-card">
-      <h1>DeepResearch.<b>Se<span class="sl">/</span>cure</b> <span class="tier">deep research secure</span></h1>
+      <h1>DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b> <span class="tier">deep research secure</span></h1>
       <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
         your own OpenAI, Groq or Berget API key and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
@@ -692,10 +692,10 @@
         <button type="button" id="introstart">Start chatting</button>
         <a class="btnlike" href="/welcome/">About</a>
         <a class="btnlike" href="/pulse/">Project pulse</a>
-        <a class="btnlike" href="/login">Sign in to Se<span class="sl">/</span>rver</a>
+        <a class="btnlike" href="/login">Sign in to <span class="wm">Se<span class="sl">/</span>rver</span></a>
       </div>
-      <p class="muted">The dimmed buttons you'll see are Se<span class="sl">/</span>rver features — <i>deep research
-        server</i>, the signed-in tier at DeepResearch.<b>Se<span class="sl">/</span>rver</b>: the hosted research
+      <p class="muted">The dimmed buttons you'll see are <span class="wm">Se<span class="sl">/</span>rver</span> features — <i>deep research
+        server</i>, the signed-in tier at DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b>: the hosted research
         pipeline with live web search and cited sources, documents and projects,
         cloud storage, on hosted EU models.</p>
     </div>
