@@ -258,3 +258,85 @@ live URL the user opens and tries in the same session.
 | 31 | pair-generator | 6 | Meta — used throughout, listed last |
 | 32 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
 | 33 | deploy-pipeline | 6 | Deploy the workspace live (same-origin preview / user's own account); server-tier |
+
+---
+
+## Beyond the phases — future direction: fine-tuned, model-sized SDKs
+
+*(A long-horizon goal, recorded 2026-07-21. It sits after phase 6 because it
+presupposes the whole thing shipped AND measured — do not start it before
+`eval-harness` (18) and the feedback loops (20) are real and the pair is
+demonstrably passing scored tasks.)*
+
+The current SDK is one fixed artifact — 33 modules, one baseplate, contracts
+that hold for any model. The direction below turns "the SDK" into a *family of
+distilled SDKs*, each tuned to a specific model, and uses the reference itself
+as a training-data factory. Two capabilities have to be in place first, which is
+why this is a *future* goal, not a phase:
+
+1. **A testing system that scores success on specific tasks** — the
+   `eval-harness` grown from "does the pipeline answer" (phase 4) into a
+   per-task success-rate meter: given a development task and a chosen SDK +
+   source implementation, did the agent actually deliver it? Without this
+   number there is nothing to tune toward.
+2. **The SDK fully wired to the source it distills** — SDK mode already
+   distills the deployed Se/cure source into a flavour; the tuning loop needs
+   that binding to be *plural*: the SDK can be pointed at more than one
+   implementation as its knowledge base.
+
+### 1. Tune the SDK *and* the source it has access to
+
+Once both hold, two things become tunable together: the **SDK** (which modules,
+skills, contracts, and how they are phrased) and the **source code of the
+implementation(s)** the SDK carries as knowledge. Tuning either changes the
+success-rate number; the eval harness is what closes the loop.
+
+### 2. Many implementations = subsets of the full feature set
+
+Today the full feature set lives in one main repo. The idea: define several
+**constellations** — three, four, five distinct *subsets* of these features
+assembled in particular ways. Guest integrations (which providers, sources,
+enrichments, extension surfaces are present) differ per subset, so each
+constellation is a genuinely different complete implementation, not a subset
+that merely omits code paths. The module model (§5 of `DESIGN.md`: baseplate +
+selectable features, dependency-closed) is exactly what makes these subsets
+*buildable and valid* rather than arbitrary — every reasonable permutation of
+features that closes under its dependencies is a candidate complete
+implementation.
+
+### 3. Keep the (query → response) dataset per implementation
+
+For each such implementation, keep the **actual development query→response
+dataset** it produced — the real interactions of agents building against that
+particular constellation. Across all reasonable permutations, this is a large,
+domain-specific corpus of "given this SDK over this source, here is how a
+development task was carried out," paired with the eval harness's verdict on
+whether it succeeded.
+
+### 4. The SDK fine-tuning mechanism
+
+With permutations + datasets + per-task scores in hand, we can **fit an SDK to a
+model**: for a particular (often small, mobile) model, produce an SDK whose
+*dimensions are kept small enough* to fit the model's size and attention span,
+and whose *promised use cases are bounded* to what that model can actually hold.
+Because we have success-rate data on specific tasks across a selection of
+implementations, "small enough and still delivers" stops being a guess — it is
+measured. The fine-tuning mechanism searches for the SDK shape that maximises
+task success under the model's context/size budget.
+
+### 5. The payoff — a "lovable model"
+
+These fine-tuned, model-sized SDKs then become the **basis for producing a
+bounded amount of training data within a particular domain**. Fine-tune one of
+these small mobile models on that domain-specific corpus, and it should be able
+to deliver a *lovable* experience — implementing things from this SDK as it has
+been trained to do, reliably, at a size that runs on-device. This is SDK mode's
+green "lovable experience" (see the **sdk-mode** skill) carried to its
+conclusion: not just a prompt-time SDK a large model reads, but a distilled SDK
+*baked into* a small model that already knows how to build with it.
+
+**Why it stays a note, not a phase:** every step here is downstream of shipped,
+measured features and of a plural SDK↔source binding. Recording it keeps the
+generation phases (6) and the eval harness (4) pointed at a destination — a
+*trainable* SDK family — without pulling any of the work forward before its
+preconditions exist.
