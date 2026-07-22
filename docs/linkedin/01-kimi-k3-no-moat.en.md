@@ -69,6 +69,10 @@ abundance. You ask for something; you get it.
 
 ## And you can build it from a phone — a two-week floor on a fixed token budget
 
+So what do you actually get for the tokens — for this suddenly abundant,
+increasingly free intelligence? At what level can it deliver? The honest way to
+answer is to stop arguing over benchmarks and point at a built thing.
+
 It sounds like it ought to require a fully rigged workstation. It doesn't. The
 summer's other quiet shift is that you can now do essentially all of it straight
 from a mobile phone. Boris Cherny — one of the leads behind Claude Code —
@@ -81,11 +85,15 @@ built a complete deep-research assistant, `deepresearch.se`, almost entirely fro
 an iPhone: no laptop, no IDE, much of it *on the move*, phone in hand between
 intervals on runs through the forests of northern Sweden. But the sharper way to
 read it is as a **controlled sample**: those were exactly the final two weeks of
-a **max-tier Fable 5 token allowance in Claude Code** — the highest tier's
-budget — the last fortnight before that access was switched off. So this is a
-qualitative result, not a benchmark, but it pins down something specific: it's a
-**floor**. It shows what you are *able* to build in two weeks with this model and
-this budget — a lower bound on what's possible, not a ceiling.
+a **max-tier, flat-rate Fable 5 token allowance in Claude Code** — the highest
+tier's budget — running right up until that plan ended on 19 July 2026. So this
+is a qualitative result, not a benchmark, but it pins down something specific:
+it's a **floor**. It shows what you are *able* to build in two weeks with this
+model and this budget — a lower bound on what's possible, not a ceiling. And the
+floor isn't bolted to a closed model: assuming the benchmarks reflect reality to
+a reasonable degree, Kimi K3 is by now *at least on par* with Fable 5 for
+agentic development — so the same two weeks are, in principle, within reach on an
+open model you run yourself.
 
 What an agent plus a phone can check off in two weeks is countable, live on
 `/pulse`: **716 commits across 25 theme areas**, of which **17 areas had more
@@ -96,9 +104,10 @@ out new variants — not polished one after another, but carried forward in
 parallel. Take it as a spot sample of what "you get what you ask for" looks like
 in practice.
 
-And because it's a floor, the obvious next move is to see how much lower the cost
-goes on a second pass. Doing it again would almost certainly take far less
-time — partly because it's been done once already, but also because the project
+So read the whole thing with the emphasis on *at least*: at least this, in two
+weeks, on this budget — and *exactly* this, faster, next time. Because it's a
+floor, the obvious next move is to see how much lower the cost goes on a second
+pass. Doing it again would almost certainly take far less time — partly because it's been done once already, but also because the project
 I built includes, as one of its own features, an **SDK designed to rebuild
 itself**: distill the site into a fresh, self-contained variant. I'm about to put
 exactly that to the test, and I'll report back with the result — using the SDK to
@@ -130,6 +139,12 @@ just promises not to), and what you learn from pushing a real research assistant
 up against that limit. Everything is open and MIT-licensed, precisely because
 claims of this kind only get interesting when more than one person can check them
 and run them for themselves.
+
+And if you're weighing what to build yourself — a chatbot, an agent, whatever it
+is — take this as a reference point rather than a pitch: look at
+`deepresearch.se`, compare it against what you'd expect two weeks of tokens to
+buy, and judge for yourself. You may find value in it; you may not. It's open
+source, and it's back to you.
 
 Read the code, run it yourself, try to break it, and tell me what broke.
 
