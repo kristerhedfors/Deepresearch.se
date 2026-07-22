@@ -1,0 +1,11 @@
+extends: existence
+message: "Negative-parallelism template: '%s' — a strong AI tell; state it directly."
+link: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+level: warning
+ignorecase: true
+nonword: true
+tokens:
+  - "not just [^,.]{2,40}, (it'?s|but)"
+  - "isn'?t just [^,.]{2,40}, (it'?s|but)"
+  - "not merely [^,.]{2,40} but"
+  - "it'?s not [^,.]{2,40}, it'?s"

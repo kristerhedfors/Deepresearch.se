@@ -1,0 +1,39 @@
+extends: substitution
+message: "AI-tell vocabulary: prefer '%s' over '%s' (or say what you mean)."
+link: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+level: suggestion
+ignorecase: true
+action:
+  name: replace
+swap:
+  'delve into': examine
+  delve: examine
+  leverage: use
+  leverages: uses
+  leveraging: using
+  utilize: use
+  utilizes: uses
+  utilizing: using
+  facilitate: help
+  foster: encourage
+  underscore: show
+  underscores: shows
+  showcase: show
+  showcases: shows
+  'boasts a': has
+  tapestry: (cut)
+  myriad: many
+  plethora: many
+  pivotal: key
+  multifaceted: complex
+  seamless: smooth
+  seamlessly: smoothly
+  'game-changer': (say the effect)
+  'game-changing': (say the effect)
+  'cutting-edge': (name the version)
+  'state-of-the-art': (name the version)
+  empower: let
+  empowers: lets
+  harnessing: using
+  streamline: simplify
+  streamlines: simplifies

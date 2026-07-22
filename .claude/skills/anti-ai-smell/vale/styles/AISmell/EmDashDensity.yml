@@ -1,0 +1,11 @@
+# Flags files that lean on the em-dash as an all-purpose connector — a common
+# AI tell. The fix is to REDUCE density (swap some for periods, commas,
+# parentheses, colons), not to eliminate: this repo uses em-dashes as house
+# style. Raise `max` if the warnings are pure noise for a given doc.
+extends: occurrence
+message: "Em-dash used %s times — AI writing overuses them; vary the punctuation."
+level: suggestion
+scope: raw
+ignorecase: false
+token: '—'
+max: 15

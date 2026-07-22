@@ -1,0 +1,18 @@
+extends: existence
+message: "Promotional tone: '%s' — docs state what a thing does and its limits, not how great it is."
+link: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+level: suggestion
+ignorecase: true
+tokens:
+  - powerful
+  - robust
+  - seamless
+  - effortless
+  - blazing(ly)?
+  - supercharge[sd]?
+  - unlock(s|ing)?
+  - elevate[sd]?
+  - revolutioniz(e|es|ed|ing)
+  - best-in-class
+  - world-class
+  - next-generation
