@@ -275,6 +275,7 @@ Workflow & docs:
 - **refactor-clarity** — refactoring for clarity here without breaking anything: the pure-core convention, what to preserve.
 - **update-docs** — reconciling the whole documentation surface with the code: the inventory, drift greps, regenerate rules.
 - **docs-drift-validation** — bottom-up docs⇄code validation: the doc-age drift scan, layer walk, and the OWNER-checkmark loop for capability/posture drift (ledger `docs/DOC-DRIFT-LOG.md`).
+- **anti-ai-smell** — removing AI smell (LLM writing tells) from documentation prose: the tell taxonomy, the two de-smell modes (lint-guided edit vs. full regeneration + fact-verify), the fact-preservation contract, and the runnable Vale style. The one place rewriting docs for STYLE is the goal (update-docs deliberately does not); docs files only, never code.
 
 Pipeline & models:
 

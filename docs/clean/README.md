@@ -1,0 +1,391 @@
+# DeepResearch.se
+
+**Innovation and research into the privacy capabilities of LLM
+applications.** The question is how far a real, useful research assistant can
+be pushed toward *provable* privacy, and where that trades against capability.
+The proof is the site itself: a fully open-sourced, independently verifiable
+pair. **DeepResearch.Se/cure** is the public client-side tier, where the
+research runs entirely in the browser and the server sits in no data path.
+**DeepResearch.Se/rver** is the signed-in tier, where a server adds capability
+and protects what it handles with encryption and policy. It is still
+experimental and nowhere near production-ready. It is MIT-licensed, so every
+privacy claim is yours to check. The `/architecture/` page shows the trade.
+
+One part of the security story belongs up front. The live site, the
+**Se/cure** tier included, is deployed on Cloudflare and served directly from
+this GitHub repository. It is git-connected, so a push to `main` is what
+production runs. That serving chain is what makes the claims independently
+verifiable, and it is also the trust boundary. Building on it is the way to
+make it genuinely secure: the point of the project is for anyone to fork this
+architecture and run it for their own use case, ideally in an environment that
+is already network- and authentication-restricted. The "Installing your own
+instance" section below is the full walkthrough. The architecture gives you an
+extendable platform with a few unusual features — a browser-side research
+pipeline, sealed browser-local state, lendable capability grants, an in-browser
+Linux VM — and those features are what this research project explores.
+
+The **Se/rver** tier is a deep-research AI assistant on Cloudflare Workers: a
+static chat UI plus a streaming `/api/chat` endpoint. That endpoint runs a
+Worker-orchestrated research pipeline — triage → search waves → gap check →
+cited synthesis → post-validation — with no function calling, using
+deterministic JSON-mode and streamed calls only. Berget.ai's EU-hosted,
+OpenAI-compatible models are the primary LLM provider. Anthropic (`claude-*`)
+and OpenAI (`gpt-*`) are optional, key-gated answer-model providers behind the
+`src/providers.js` registry; the JSON planning phases always stay on Berget.
+Exa is the web search, the Hugging Face Hub is an auxiliary search source, and
+opt-in enrichments (Shodan host intelligence, Google Maps and Street View) feed
+the pipeline context. Google sign-in gates the whole site. D1 stores accounts,
+real-cost research quotas, the chat interaction log, and feedback threads.
+Opt-in R2 and Vectorize hold encrypted cloud history and document RAG. An
+`/admin` console shows usage and approves users. The pipeline is also exposed
+as an MCP tool (`POST /mcp`, `deep_research`).
+
+```
+browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.js)
+    ├── static UI            public/ (env.ASSETS)
+    ├── POST /api/chat       src/chat.js → src/pipeline.js
+    │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js
+    │     ├── web search     src/exa.js (+ src/search-sources.js: hf.js)
+    │     └── enrichments    src/enrichment.js (shodan.js, maps-enrichment.js)
+    ├── POST /mcp            src/mcp.js (deep_research tool)
+    ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
+    ├── D1  (accounts, quotas, config, chat_logs, feedback, answer recovery, game saves)
+    └── R2 + Vectorize (opt-in encrypted cloud history + document RAG)
+```
+
+See `docs/ARCHITECTURE.md` for the full design, `CLAUDE.md` for the code
+layout and load-bearing invariants, and `.claude/skills/` for the per-area
+working guides. The complete prompt-by-prompt build history lives in
+`public/build/history.md`, rendered in-app at `/story/`. It is the origin story
+of the first weekend, kept as the record of how the project began. `/build/`
+holds the project purpose and EU AI Act use restrictions.
+
+## DistillSDK
+
+The architecture is also distilled into a reusable form: **DistillSDK**
+(`sdk/`). It is a design, a 33-module skill library, a machine-readable module
+registry (`sdk/MANIFEST.json`), and a dependency-free CLI for building **agent
+pairs** like this one — one AI-assistant product shipped as a wholly-in-browser
+client tier plus a one-edge-worker server tier, with at most one server
+component across the whole pair. Every module maps back to the repo files that
+already realize it and carries the incident history behind them.
+
+The SDK is wired into the app. Its shared core `public/js/sdk-core.js` (server
+façade `src/sdk-tools.js`) powers **SDK mode**, the third chat mode alongside
+Normal and Introspection, which distills this site — the Se/cure tier above all
+— into a new self-contained web app and publishes it at `/app/<slug>/`. The
+CLI, the DRS pipeline (`src/pipeline.js`), and the `/mcp` `sdk_*` tools all read
+that one manifest core, so they stay in sync by construction.
+
+- **`docs/DISTILLSDK.md`** — the complete standalone documentation: the
+  pair abstraction, capability classes, contracts PA-1…PA-10, the full module
+  catalog, the CLI, and the implementation order.
+- `sdk/README.md` — the catalog front page; `sdk/DESIGN.md` the full design;
+  `sdk/ROADMAP.md` the build-order rationale.
+- `node sdk/pair-cli.mjs list|show|plan|validate` — explore the registry,
+  compute a build order for a module selection, check manifest integrity.
+
+## Installing your own instance
+
+Everything below reproduces the production setup end-to-end. You need:
+
+- A **Cloudflare account** and, optionally, a domain with its zone active
+  in that account. Note: the committed `wrangler.toml` sets
+  `[limits] cpu_ms = 300_000`, which requires the **Workers Paid** plan. On
+  the Free plan the deploy API rejects it outright, so delete the `[limits]`
+  block first.
+- A **Berget.ai** account and API token — the primary LLM provider
+  (OpenAI-compatible API, EU-hosted).
+- An **Exa** API key — the web-search provider.
+- A **Google Cloud project** for the OAuth sign-in client.
+- Node.js with `npx` for wrangler (CLI deploys and local dev).
+
+### 1. Clone and adapt `wrangler.toml`
+
+```bash
+git clone https://github.com/kristerhedfors/Deepresearch.se
+cd Deepresearch.se
+```
+
+In `wrangler.toml`:
+
+- `name` — must match the Worker's name in your Cloudflare dashboard
+  exactly, or deploys land on a different Worker than your domain maps to.
+- `routes` — replace the `deepresearch.se` custom-domain patterns with your
+  own domain (the zone must be active in the same account; Cloudflare
+  provisions DNS + TLS automatically), or delete the block to serve from
+  `*.workers.dev`.
+- Leave `[assets]` (`run_worker_first = true` is what lets the auth gate
+  cover the static UI) and `[observability]` as they are.
+- `[limits] cpu_ms = 300_000` — keep on Workers Paid, delete on Free (see
+  above).
+- The committed `[[r2_buckets]]` and `[[vectorize]]` blocks point at
+  production resources. **Delete them for now** — they make every deploy
+  fail unless the named resources exist, and step 7 recreates them.
+
+### 2. Create the D1 database
+
+```bash
+npx wrangler d1 create deepresearch-se
+```
+
+Paste the printed `database_id` into the `[[d1_databases]]` block in
+`wrangler.toml`. (Dashboard alternative: Storage & Databases → D1 → Create;
+the full UUID is visible in the database page's URL.) The schema applies
+itself on first use — there is no migration step.
+
+Without the binding the Worker still runs, but degraded: Google sign-in
+bounces with a clear message, no quotas, break-glass Basic Auth only.
+
+### 3. First deploy (unlocks secrets)
+
+An assets-only Worker has **no Variables & Secrets section** in the
+dashboard, so the `main` script must be deployed once before secrets can be
+attached:
+
+```bash
+npx wrangler deploy
+```
+
+For continuous deploys, connect the repo to the Worker in the dashboard
+(Workers & Pages → your Worker → Settings → Build). Every push to `main`
+then auto-deploys, which is how production runs.
+
+### 4. Google OAuth client
+
+Follow `docs/GOOGLE-AUTH.md` §1 for the console walkthrough. In short:
+OAuth consent screen (External, scopes `openid email profile` only,
+**publish it** — Testing mode breaks for non-test users), then an OAuth
+client ID of type Web application with the redirect URI
+`https://<your-domain>/auth/google/callback` (exact match; add the `www`
+variant if you serve it, and `http://127.0.0.1:8787/auth/google/callback`
+for local dev). Copy the client ID and secret.
+
+### 5. Secrets and variables
+
+Set on the Worker (Settings → Variables and Secrets in the dashboard, or
+`npx wrangler secret put <NAME>`). All are required:
+
+| Secret | Purpose |
+|---|---|
+| `BERGET_API_TOKEN` | Berget.ai API auth (sent as `Authorization: Bearer`) |
+| `EXA_API_KEY` | Exa web search (sent as `x-api-key`) |
+| `SESSION_SECRET` | HMAC key for the session cookie and OAuth-state cookie — a high-entropy random string, `openssl rand -hex 32`. It is the **sole** signing key: there is no fallback. If it is unset the Worker has no signing key and serves a configuration-error page instead of running any auth flow keyless (an earlier admin-credential fallback was removed — it left every session cookie offline-brute-forceable against `ADMIN_PASS`). Rotating it invalidates every session. |
+| `ADMIN_USER` / `ADMIN_PASS` | Break-glass Basic Auth (curl/scripts/emergencies) — the Worker **fails closed without them**. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The OAuth client from step 4 |
+
+Optional but recommended — enables encrypted, client-side chat history
+(`GET /api/history-key`, `src/history-key.js`):
+
+| Secret | Purpose |
+|---|---|
+| `HISTORY_KEY_SECRET` | Any long random string. Derives each user's local-history encryption key (HMAC-SHA256, per user id) — never sent to the client itself, only the derived key is. **Fails closed, not soft**: without it, `/api/history-key` returns 503 and the client hides the History button entirely rather than storing conversations unencrypted. Rotating it invalidates every previously-saved conversation (the old key can no longer be re-derived to decrypt them). |
+
+Optional feature-gate secrets — each one switches its feature on. Absent,
+the models or knobs never appear:
+
+| Secret | Enables |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude answer models (`claude-*`) in the model dropdown (`src/anthropic.js`) |
+| `OPENAI_API_KEY` | GPT answer models (`gpt-*`) in the model dropdown (`src/openai.js`) |
+| `SHODAN_API_KEY` | The per-user Shodan host-intelligence knob (`src/shodan.js`) |
+| `GOOGLE_MAPS_API_KEY` | The per-user Google Maps / Street View knob (`src/googlemaps.js`) — see `wrangler.toml`'s notes for the Google Cloud APIs it needs and the optional referrer-locked `GOOGLE_MAPS_EMBED_KEY` |
+| `HUGGINGFACE_API_TOKEN` | Higher-rate Hugging Face Hub search (`src/hf.js` works without it) |
+
+Plaintext variables (dashboard "Variables", or `[vars]`):
+
+| Variable | Purpose |
+|---|---|
+| `ADMIN_EMAIL` | The Google account that gets — and keeps — the admin role on sign-in. Set as a dashboard variable, deliberately not committed in `wrangler.toml`. **The only path to admin**: the admin API cannot promote anyone. |
+| `LOG_LEVEL` | `debug` \| `info` (default) \| `warn` \| `error` — already in `wrangler.toml` |
+| `BERGET_MODEL` | Optional default-model override (falls back to Mistral Small) |
+| `BERGET_EMBED_MODEL` | Optional embedding-model override for document RAG (falls back to `intfloat/multilingual-e5-large`, 1024 dims). The Vectorize index (step 7) is created with fixed dimensions — a model with different dimensions needs the index recreated. |
+
+(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` are accepted as legacy fallbacks for
+`ADMIN_USER`/`ADMIN_PASS`; `BERGET_URL`, `ANTHROPIC_URL`, `OPENAI_URL`,
+`GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL` exist solely so tests can point at
+mocks — never set them in production.)
+
+### 6. First sign-in
+
+Deploy (push to `main`, or `npx wrangler deploy`), open the site, sign in
+with the Google account matching `ADMIN_EMAIL`. That first sign-in
+auto-provisions the row with the admin role. Every account (admin included)
+accepts the terms of use once, right after first sign-in. Every other
+Google account then lands as `pending` on an awaiting-approval page until
+approved in `/admin`, where default quotas, Exa cost, max time budget, and
+the default model are also configured (settings live in the D1 `config`
+table).
+
+### 7. Optional: cloud storage + document RAG (R2 + Vectorize)
+
+Enables the signed-in tier's implicit cloud storage — conversations and
+projects are always stored in the cloud when these resources exist (there
+is no per-account switch; the never-cloud tier is Se/cure) — and
+server-side retrieval for large attached documents.
+Entirely optional: without these resources the app runs browser-only
+(large-document RAG still works locally via OPFS/IndexedDB, using
+`POST /api/embed` for embeddings only):
+
+```bash
+npx wrangler r2 bucket create deepresearch-se-storage
+npx wrangler vectorize create deepresearch-se-rag --dimensions=1024 --metric=cosine
+npx wrangler vectorize create-metadata-index deepresearch-se-rag --property-name=u --type=string
+```
+
+Then restore the `[[r2_buckets]]` and `[[vectorize]]` blocks in
+`wrangler.toml` (binding names `STORAGE` and `RAG_INDEX`) and deploy.
+**Create the resources first** — a binding that points at a nonexistent
+bucket or index makes every deploy fail outright. What lands where (and what
+is or isn't encrypted) is documented in `docs/ARCHITECTURE.md` §9 and the
+**storage-privacy** skill (`.claude/skills/storage-privacy/`).
+
+## Running outside Cloudflare (untested)
+
+We deploy **exclusively to Cloudflare**, so nothing below is exercised in
+CI or in production. Treat it as a design checklist, not a supported path.
+The good news is that the porting surface is small and well-isolated. The
+Worker's request-handling code (`src/`) is written against **web-standard
+globals** — `Request`/`Response` (Fetch), Web Streams, WebCrypto
+(`crypto.subtle` / `crypto.randomUUID` / `crypto.getRandomValues`),
+`TextEncoder`/`TextDecoder`, `URL` — with **no `node:` imports** anywhere in
+the runtime path (only the test files import `node:*`). The entrypoint is a
+plain module-worker export:
+
+```js
+export default { async fetch(request, env, ctx) { … } }
+```
+
+Everything Cloudflare-specific is reached through exactly two objects the
+platform injects: **`env`** (bindings + secrets) and **`ctx`** (background
+work). Port those and the rest runs unchanged.
+
+### What actually has to be replaced
+
+`env` carries two very different kinds of values:
+
+- **Secrets and variables** (`BERGET_API_TOKEN`, `SESSION_SECRET`,
+  `GOOGLE_CLIENT_ID`, `ADMIN_EMAIL`, `LOG_LEVEL`, …) are just strings. On any
+  other host, populate `env` from process environment variables or a `.env`
+  file. No code changes.
+- **Resource bindings** are live objects with Cloudflare method shapes.
+  There are only **four**, and each needs a substitute exposing the same
+  methods the code calls:
+
+| Binding | Cloudflare service | Methods the code uses | Substitute with |
+|---|---|---|---|
+| `env.ASSETS` | Static assets (`./public`) | `ASSETS.fetch(request)` → `Response` | Any static file server; only `src/assets.js` calls it. Serve `./public` and return a `Response`. **Load-bearing** (it serves the whole UI). |
+| `env.DB` | D1 (SQLite) | `.prepare(sql).bind(…).first()/.run()/.all()`, `.batch([…])` | Any SQLite-compatible driver wrapped to the D1 statement shape — better-sqlite3, libSQL/Turso, Postgres with a shim. Schema self-applies (`CREATE TABLE IF NOT EXISTS` in `src/db.js`); no migration step. **Load-bearing** for accounts/quotas — without it the app runs degraded (break-glass Basic Auth only, no Google sign-in). |
+| `env.STORAGE` | R2 (object store) | `.get/.put/.delete/.list/.head` | Any S3-compatible store (MinIO, AWS S3, Backblaze) or a filesystem shim, wrapped in the R2 method shape. **Optional** — absent, cloud storage/RAG index copies just switch off (`/api/settings` reports unavailable). |
+| `env.RAG_INDEX` | Vectorize (vector DB) | `.query/.upsert/.insert/.deleteByIds` | Any vector store (pgvector, Qdrant, Milvus, …), 1024-dim / cosine to match the embedding model, wrapped in the Vectorize shape. **Optional** — absent, large-document RAG falls back to browser-local OPFS/IndexedDB. |
+
+Beyond `env`, two more platform seams need attention:
+
+- **`ctx.waitUntil(promise)`** — the pipeline registers post-response work
+  with it (usage/billing accounting in `src/chat.js`, the answer-recovery
+  cache in `src/answers.js`). Your adapter must **keep the request context
+  alive until that promise settles** rather than tearing down as soon as the
+  `Response` body ends, or accounting rows and recoverable answers get
+  dropped. A minimal shim can just collect the promises and `await` them
+  after the response is fully flushed.
+- **`caches.default`** (the Workers Cache API) — used for edge-caching Exa,
+  geocode, and Maps lookups (`src/edge-cache.js`, `src/exa.js`,
+  `src/googlemaps.js`). Every call is already **fail-soft**, so a no-op
+  `caches.default` (get→miss, put→ignore) is a correct, if slower,
+  substitute; a real cache (in-memory LRU, Redis) restores the speedup.
+
+### Two shapes this can take
+
+1. **Self-host Cloudflare's runtime (`workerd`).** `workerd` is open source
+   and runs standalone, so the request code executes verbatim. The catch:
+   bare `workerd` does **not** provide D1 / R2 / Vectorize / the ASSETS
+   binding — those are Cloudflare's managed services, and Miniflare's local
+   emulations of them are dev-grade, not production stores. You would still
+   wire the four bindings above to real backends yourself. Closest to
+   production for the *runtime*, no help for the *bindings*.
+2. **Run under Node 20+ / Deno / Bun via a thin HTTP adapter** (the honest
+   "any server" path). Write a small server that, per request, builds an
+   `env` object (secrets from the environment + your four binding
+   implementations) and a `ctx` (`waitUntil` collector + a `caches.default`
+   shim), then calls the exported `fetch(request, env, ctx)` and streams the
+   returned `Response`. Node needs the request/response bridged to
+   Web-standard `Request`/`Response` (Deno and Bun serve those natively). The
+   bulk of the work is the four binding adapters; the handler code is
+   untouched.
+
+### Everything else is config, not code
+
+Drop the Cloudflare-only blocks from `wrangler.toml` (they mean nothing off
+Cloudflare) and bring the equivalent yourself:
+
+- `[limits] cpu_ms`, `[observability]`, `[assets]`, `routes` /
+  `custom_domain`, `preview_urls` — all Cloudflare platform config. Remove
+  them. Provide your own **TLS + reverse proxy** (nginx / Caddy), a
+  **process manager** (systemd, PM2, a container), and **log shipping** (the
+  logger already emits one JSON object per line to stdout — point your
+  collector at it).
+- **Google OAuth redirect URI** must match your real host
+  (`https://<your-host>/auth/google/callback`), and `src/canonical.js` only
+  rewrites the `deepresearch.se` / `www` hosts — review it if you enforce a
+  canonical host elsewhere.
+
+None of this is wired up in the repo today. It is the list of what a port
+would have to cover, so you can scope it before committing.
+
+## Develop locally
+
+```bash
+npx wrangler dev
+```
+
+Local secrets go in `.dev.vars` (gitignored):
+
+```
+BERGET_API_TOKEN=...
+EXA_API_KEY=...
+SESSION_SECRET=...
+ADMIN_USER=...
+ADMIN_PASS=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+ADMIN_EMAIL=...
+HISTORY_KEY_SECRET=...
+```
+
+Break-glass Basic Auth (`curl -u`) is the practical way to hit local
+endpoints; a real Google round-trip needs the `127.0.0.1:8787` redirect
+URI from step 4. Note that client-disconnect detection doesn't fire in
+`wrangler dev` local mode — verify streaming behavior in production logs.
+
+## Tests
+
+```bash
+npm test              # unit suite: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs (no deps)
+npm run typecheck     # tsc --noEmit on src/ + public/ (checked JSDoc, dev-only)
+
+cd tests && npm install && npm run fixtures   # Playwright E2E, once
+npm run test:mocked   # free — /api/chat & friends intercepted
+npm run test:live     # spends real tokens against the live site
+```
+
+The E2E suite runs against the live site using the break-glass credentials
+(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` env vars). Three eval harnesses live
+in `tests/` (`eval:models`, `eval:bench`, `eval:hf`) with append-only
+findings ledgers — see `docs/ARCHITECTURE.md` §12 and CLAUDE.md.
+
+## Logging
+
+Structured JSON logs (one object per line) with a per-request `request_id`,
+also returned to clients as the `x-request-id` response header. Persisted
+via `[observability]` (dashboard: Worker → Logs), live via
+`npx wrangler tail`. Workers Logs never carry secrets or chat content;
+user text appears at `debug` only. Separately, and by explicit disclosed
+design, the D1 `chat_logs` interaction log stores each completed exchange's
+full question and answer for debugging, unless the conversation used the
+ghost/incognito toggle. See `docs/ARCHITECTURE.md` §9.
+
+## License
+
+[MIT](LICENSE). The vendored libraries in `public/vendor/` (marked,
+DOMPurify, jsPDF, pdf.js, xterm.js, transformers.js) keep their own
+licenses.

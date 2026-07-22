@@ -1,0 +1,18 @@
+extends: existence
+message: "AI-tell phrase template: '%s' — open on the concrete thing instead."
+link: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+level: warning
+ignorecase: true
+nonword: true
+tokens:
+  - "in today's [a-z-]+ (world|landscape|era|age|environment)"
+  - "in the (world|realm) of"
+  - "it'?s (important|worth noting|crucial|essential) to note that"
+  - "it should be noted that"
+  - "plays? an? (crucial|pivotal|vital|key|central|important) role"
+  - "when it comes to"
+  - "at the end of the day"
+  - "that being said"
+  - "needless to say"
+  - "look no further"
+  - "whether you'?re an? [a-z]+ or an? [a-z]+"

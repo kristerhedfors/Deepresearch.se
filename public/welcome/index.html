@@ -314,6 +314,7 @@
 </header>
 
 <main>
+<div data-doc-variant="original">
   <div class="hero">
     <img class="logo" src="/icons/icon-192.png?v=4" alt="DeepResearch.se">
     <h1>DeepResearch.se</h1>
@@ -385,6 +386,80 @@
     Not a commercial product; never placed on the market.
     See <a href="/build/">About this project</a> for the use restrictions.
   </footer>
+</div>
+<div data-doc-variant="clean" hidden>
+  <div class="hero">
+    <img class="logo" src="/icons/icon-192.png?v=4" alt="DeepResearch.se">
+    <h1>DeepResearch.se</h1>
+    <p class="tagline">A deep-research AI assistant that plans its own web
+    searches and checks that they cover the question. It answers with
+    numbered citations, within a time budget you set.</p>
+  </div>
+
+  <div class="card">
+    <video src="/llm-assiterad-utveckling.mp4" controls autoplay muted loop playsinline
+      aria-label="Promotional video: LLM-assisted development research"></video>
+  </div>
+
+  <div class="card">
+    <h2>Research into LLM privacy capabilities</h2>
+    <p>DeepResearch.se is an innovation-and-research project into the
+    privacy capabilities of LLM applications. It asks how far a real, useful
+    research assistant can be pushed toward <em>provable</em> privacy, and
+    where that trades against capability. The site itself is the proof, and
+    the goal is to take that proof as far as possible: a fully open-sourced,
+    independently verifiable pair.
+    DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b> runs the
+    research entirely in your browser, with the server absent from every
+    data path.
+    DeepResearch.<b class="tail">Se<span class="sl">/</span>rver</b> is the
+    signed-in tier, where a server buys capability and protects what it
+    handles with encryption and policy. It's still experimental and nowhere
+    near production-ready. The code is open (MIT), so every privacy claim is
+    yours to verify, and to reuse. It began as a weekend build through the
+    Claude Code iPhone app, kept in <a href="/story/">the build story</a>.</p>
+  </div>
+
+  <div class="card">
+    <h2>Questions before you sign in?</h2>
+    <p class="askhint">These are quick <b>prepackaged answers</b> (not the AI
+      model, which needs sign-in), here to help you get your bearings.</p>
+    <div class="askchips">
+      <button type="button" class="askchip">What is this?</button>
+      <button type="button" class="askchip">Is it private?</button>
+      <button type="button" class="askchip">How is it built?</button>
+      <button type="button" class="askchip">What does it cost?</button>
+      <button type="button" class="askchip">How do I sign in?</button>
+    </div>
+    <div class="askmsgs" aria-live="polite"></div>
+    <form class="askform" autocomplete="off">
+      <input class="askinput" type="text" placeholder="Ask a question…" aria-label="Ask a question">
+      <button type="submit">Ask</button>
+    </form>
+  </div>
+
+  <div class="links">
+    <a href="/cure"><b>Try it now, no account</b><span>DeepResearch.<b>Se<span class="sl">/</span>cure</b> runs in your browser, on your own OpenAI, Groq or Berget API key</span></a>
+    <a href="/story/"><b>The build story</b><span>Every prompt, verbatim, with its commit</span></a>
+    <a href="/architecture/"><b>The architecture story</b><span>Se/cure and Se/rver paired: privacy vs capabilities, visualized</span></a>
+    <a href="/pulse/"><b>Project pulse</b><span>Commits, lines and new features per day, week and month</span></a>
+    <a href="/build/"><b>About this project</b><span>Purpose &amp; EU AI Act use restrictions</span></a>
+    <a href="/cure/help/"><b>Se<span class="sl">/</span>cure documentation</b><span>The client-side tier: your own keys, with chats stored in the browser only</span></a>
+    <a href="/help/"><b>Se<span class="sl">/</span>rver documentation</b><span>The signed-in tier: every control, and its privacy meaning</span></a>
+    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener"><b>Source code</b><span>MIT-licensed, on GitHub</span></a>
+  </div>
+
+  <div class="card cta">
+    <a class="signin" href="/login">Sign in</a>
+    <p>This is an invite-only research project. New accounts await the
+    operator's approval after signing in with Google.</p>
+  </div>
+
+  <footer>
+    Not a commercial product; never placed on the market.
+    See <a href="/build/">About this project</a> for the use restrictions.
+  </footer>
+</div>
 </main>
 
 <!-- ---- first-visit onboarding: the what-it-does/doesn't pane, then the
@@ -599,5 +674,6 @@
     if (chip) answer(chip.textContent);
   });
 </script>
+<script type="module" src="/js/doc-variant.js"></script>
 </body>
 </html>
