@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch Lite</title>
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">DeepResearch<span class="tail">.Se/rv+</span></span>
+    <span class="badge" id="searchbadge" hidden>web search on</span>
+    <a class="logout" href="/logout">Sign out</a>
+  </header>
+
+  <main id="chat" class="chat" aria-live="polite"></main>
+
+  <form id="composer" class="composer" autocomplete="off">
+    <textarea id="input" rows="1" placeholder="Ask a research question…" aria-label="Research question"></textarea>
+    <button id="send" type="submit" aria-label="Send">Research</button>
+  </form>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

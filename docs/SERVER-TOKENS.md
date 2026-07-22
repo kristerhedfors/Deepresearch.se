@@ -127,7 +127,8 @@ unmetered server-paid usage is possible.
 | `POST /api/server-token/status` | token | Non-consuming live per-permission state |
 | `POST /api/server-token/web` | token | One metered Exa search — only the query string crosses the wire |
 | `GET /api/server-token/llm/models` | token (`api`) | Berget catalog, non-metered |
-| `POST /api/server-token/llm/chat/completions` | token (`api`) | One metered OpenAI-wire completion (JWT as bearer; shares `src/proxy.js`'s forwarders) |
+| `POST /api/server-token/llm/chat/completions` | token (`api`) | One metered OpenAI-wire completion (JWT as bearer; shares the leaf `src/llm-proxy.js`'s forwarders — moved there from `proxy.js` 2026-07-17) |
+| `POST /api/server-token/llm/embeddings` | token (`api`) | One metered embeddings call (RAG parity; same `src/llm-proxy.js` forwarders) |
 | `GET/POST/PATCH/DELETE /api/admin/server-token*` | admin **login only** (a token is never accepted) | List (grouped by jti) / mint / per-permission adjust (`/:jti/:svc`) / revoke (`/:jti`) |
 
 ## Governance
