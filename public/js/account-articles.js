@@ -52,7 +52,11 @@ och på kod- och agent-uppgifter till och med leder. Det bevingade Google-memot
 "We have no moat" gick från spådom till observation. Rubriken är <i>grattis — allt
 till alla</i>: den mest strategiska resursen i fältet, frontier-intelligens,
 slutar vara något ett fåtal grindar ut bakom en API-vägg och blir något vem som
-helst kan ladda ner och köra själv.</p>
+helst kan ladda ner och köra själv. Och med det faller skälet att skicka sin
+känsligaste data över havet till ett stängt labb — det var kapabiliteten som
+betalade för den risken, och nu står bara priset kvar: din privacy (sommarens
+Apple-stämning mot OpenAI får illustrera vilken sorts motpart man egentligen
+litade på).</p>
 <p>Därifrån leder artikeln in på vad det <i>betyder</i> för den som bygger: när
 intelligensen blir en råvara komprimeras själva byggandet, och med rätt
 byggställning — ett SDK av modulära kapabiliteter — får även en modell som inte är

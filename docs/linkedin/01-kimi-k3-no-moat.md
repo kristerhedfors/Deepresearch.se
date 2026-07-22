@@ -1,16 +1,32 @@
 # Grattis — allt till alla
 
-I juli 2026 hände det som ett numera bevingat Google-memo förutspådde redan 2023:
-*"We have no moat, and neither does OpenAI."* Moonshot AI släppte **Kimi K3** —
-öppna vikter, ett kinesiskt labb, 2,8 biljoner parametrar, den största
-öppenviktsmodellen någonsin — och den landade mitt i de amerikanska
-frontier-labbens toppskikt. På Artificial Analysis Intelligence Index v4.1 får
-den **57,1**, mot Fable 5:s 59,9 och GPT-5.6 Sol:s 58,9 — ett hår efter på
-generellt resonemang. Och på den axel som betyder mest för den som *bygger*:
-på Frontend Code Arena rankas K3 **etta**, före både Fable 5 och GPT-5.6 Sol,
-och i kod och agent-uppgifter slår den Claude Opus 4.8 och GPT-5.5. Glappet
-mellan den bästa modellen du kan *äga* och den bästa modellen bara *de* har är i
-praktiken borta.
+Grattis — allt till alla. I juli 2026 hände det som ett numera bevingat
+Google-memo förutspådde redan 2023: *"We have no moat, and neither does
+OpenAI."* De kinesiska öppenviktsmodellerna kom faktiskt ikapp Silicon Valleys
+stängda toppskikt. Moonshot AI släppte **Kimi K3** — öppna vikter, ett kinesiskt
+labb, 2,8 biljoner parametrar, den största öppenviktsmodellen någonsin — och den
+landade mitt i de amerikanska frontier-labbens toppskikt. På Artificial Analysis
+Intelligence Index v4.1 får den **57,1**, mot Fable 5:s 59,9 och GPT-5.6 Sol:s
+58,9 — ett hår efter på generellt resonemang. Och på den axel som betyder mest
+för den som *bygger*: på Frontend Code Arena rankas K3 **etta**, före både Fable
+5 och GPT-5.6 Sol, och i kod och agent-uppgifter slår den Claude Opus 4.8 och
+GPT-5.5. Glappet mellan den bästa modellen du kan *äga* och den bästa modellen
+bara *de* har är i praktiken borta.
+
+Och när det glappet försvinner faller ett helt argument med det. Den enda
+riktigt goda anledningen att skicka sina tokens — och därmed sina frågor, sina
+dokument, sin känsligaste information — över havet till ett stängt labb var att
+kapabiliteten satt inlåst just där. Det var *frontier-försprånget* som fick
+betala för risken. Nu är försprånget borta, men risken är kvar: du lämnar
+fortfarande ifrån dig allt du matar in till en motpart med både förmåga och
+räckvidd att göra vad den vill med det. Att det inte är ett rent hypotetiskt
+bekymmer skymtar i sommarens rubriker — se bara Apples stämning mot OpenAI, som
+i återgivningarna läser som en spionthriller: stulna laptops, dataintrång,
+insidermullvadar, rekrytering-som-spionage (OpenAI bestrider anklagelserna).
+Poängen är inte att fälla en dom i den saken. Poängen är att "kapabiliteten
+finns bara här" inte längre är ett skäl som väger tyngre än vad du ger upp. När
+intelligensen blir en råvara vem som helst kan köra själv står bara priset kvar
+— och priset var din privacy.
 
 Så: grattis. Inte främst till labben — till alla andra. Den mest strategiska
 resursen i hela fältet, frontier-intelligens, slutar vara något ett fåtal aktörer
@@ -77,11 +93,13 @@ Så det kokar ner till en enda mening:
 
 ## Härifrån
 
-Det är där den här serien tar vid. Nästa artikel lämnar nyheten och går in på
-projektet jag nyss använde som exempel — vad `deepresearch.se` faktiskt är, varför
-det byggs som ett medvetet 80-procentsprojekt om *bevisbar* privacy (att servern
-strukturellt inte kan se din data, inte bara lovar det), och vad man lär sig av att
-pressa en riktig research-assistent mot den gränsen. Allt är öppet och
+Det är där den här serien tar vid. Och om kapabiliteten inte längre är skälet att
+lämna ifrån sig sin data, blir följdfrågan desto intressantare: hur *lite* behöver
+en riktigt användbar tjänst egentligen se? Nästa artikel lämnar nyheten och går in
+på projektet jag nyss använde som exempel — vad `deepresearch.se` faktiskt är,
+varför det byggs som ett medvetet 80-procentsprojekt om *bevisbar* privacy (att
+servern strukturellt inte kan se din data, inte bara lovar det), och vad man lär
+sig av att pressa en riktig research-assistent mot den gränsen. Allt är öppet och
 MIT-licensierat, just för att den här sortens påståenden bara blir intressanta när
 fler än en person kan läsa efter och köra själv.
 
@@ -95,3 +113,11 @@ Frontend Code Arena-Elo via lanseringsrapporteringen —
 [Axios](https://www.axios.com/2026/07/16/moonshot-kimi-ai-china-model-openai-anthropic),
 [The Decoder](https://the-decoder.com/kimis-open-model-k3-nears-gpt-5-6-sol-and-fable-5-while-signaling-the-end-of-super-cheap-chinese-ai/),
 [Tom's Hardware](https://www.tomshardware.com/tech-industry/artificial-intelligence/moonshot-releases-2-8-trillion-parameter-kimi-k3).
+
+**Källor (Apples stämning mot OpenAI, som pågår och bestrids):** Apple lämnade in
+stämningen den 10 juli 2026 med anklagelser om företagshemlighetsstöld; OpenAI
+tillbakavisar dem —
+[Axios](https://www.axios.com/2026/07/10/apple-sues-openai-trade-secret-theft),
+[CNBC](https://www.cnbc.com/2026/07/10/apple-openai-lawsuit-trade-secrets.html),
+[Fortune](https://fortune.com/2026/07/13/apple-lawsuit-against-openai-stolen-trade-secrets-wildest-claims/),
+[TechCrunch (OpenAI:s svar)](https://techcrunch.com/2026/07/14/openai-pushes-back-on-apple-trade-secret-lawsuit/).
