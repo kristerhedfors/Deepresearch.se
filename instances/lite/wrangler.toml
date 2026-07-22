@@ -1,0 +1,36 @@
+# DeepResearch Lite — a distilled instance rebuilt with DistillSDK.
+#
+# This is a SEPARATE Cloudflare Worker from the parent site. It shares no code
+# and no bindings with it — but it DOES share the parent's auth secrets
+# (SESSION_SECRET, GOOGLE_CLIENT_ID/SECRET, ADMIN_*), so when deployed on the
+# same registrable domain it validates the very `dr_session` cookies the parent
+# mints: a visitor already signed in to the main site is signed in here too.
+# "Same authentication mechanism; stay behind the same auth."
+#
+# Secrets are set out-of-band (`wrangler secret put …`), never in this file:
+#   SESSION_SECRET        — the SOLE cookie/state HMAC key (same value as parent)
+#   GOOGLE_CLIENT_ID      — OIDC client id (register this worker's /auth/callback
+#   GOOGLE_CLIENT_SECRET    redirect URI, or reuse the parent's if same origin)
+#   ADMIN_EMAIL           — the Google email auto-granted admin
+#   ADMIN_USER/ADMIN_PASS — break-glass HTTP Basic (optional)
+#   BERGET_API_TOKEN      — the LLM provider (dependency exception #1)
+#   EXA_API_KEY           — web search (dependency exception #2)
+name = "deepresearch-lite"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+# run_worker_first: the worker sees every request, so the auth gate covers the
+# static assets too (an anonymous visitor can't fetch the app shell's modules).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+[vars]
+LOG_LEVEL = "info"
+# Web search on by default; set to "false" to run the pipeline search-free.
+SEARCH_ENABLED = "true"
