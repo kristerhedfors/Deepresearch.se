@@ -17,7 +17,7 @@
     "3": "Privacy & storage plane",
     "4": "Operations & feedback plane",
     "5": "Extension surfaces",
-    "6": "Generation & studio"
+    "6": "Generation, studio & deploy"
   },
   "cli": "sdk/pair-cli.mjs",
   "baseplate": ["pair-architecture", "baseplate-worker", "baseplate-client"],
