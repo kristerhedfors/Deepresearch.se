@@ -67,6 +67,23 @@ can compose together things it would never have reached freehand: a chat client,
 a research pipeline, a small focused tool. Software starts to behave like an
 abundance. You ask for something; you get it.
 
+## The other half: the harness
+
+A model on its own doesn't build anything. To turn frontier capability into
+working software — and, increasingly, into work across plenty of other fields —
+you need a second component: a *harness*. The harness is the thing you actually
+talk to: Claude Code, or the chat and code interfaces wrapped around any of the
+coding agents out there. Model plus harness; you need both.
+
+And the harness has been doing real work. Claude Code — Anthropic's coding
+harness, paired with owning a frontier model — is widely credited as a major
+reason for its standing among developers. But notice what *kind* of advantage
+that is. An application-layer feature you can reimplement in code is far less of
+a moat than owning a frontier-level model training stack — all the more so now
+that Claude Code's own source has already leaked. Expect the same arc here as
+with the models: capable open and alternative implementations, popularized fast.
+The harness isn't where the moat lives either.
+
 ## And you can build it from a phone — a two-week floor on a fixed token budget
 
 So what do you actually get for the tokens — for this suddenly abundant,
@@ -77,12 +94,14 @@ It sounds like it ought to require a fully rigged workstation. It doesn't. The
 summer's other quiet shift is that you can now do essentially all of it straight
 from a mobile phone. Boris Cherny — one of the leads behind Claude Code —
 reportedly builds almost entirely from the Claude Code app on his phone these
-days.
+days. The striking part isn't the feature as such; it's that one of the harness's
+own authors now works this way by default.
 
 I ran the same way of working for a good month, and here I want to be precise
 about what the concrete example actually measures. Over the last two weeks I
-built a complete deep-research assistant, `deepresearch.se`, almost entirely from
-an iPhone: no laptop, no IDE, much of it *on the move*, phone in hand between
+built a complete deep-research assistant, `deepresearch.se`, and I did not touch
+a keyboard once: all of it went through the Claude Code mobile app, entirely from
+an iPhone — no laptop, no IDE, much of it *on the move*, phone in hand between
 intervals on runs through the forests of northern Sweden. But the sharper way to
 read it is as a **controlled sample**: those were exactly the final two weeks of
 a **max-tier, flat-rate Fable 5 token allowance in Claude Code** — the highest
@@ -90,10 +109,14 @@ tier's budget — running right up until that plan ended on 19 July 2026. So thi
 is a qualitative result, not a benchmark, but it pins down something specific:
 it's a **floor**. It shows what you are *able* to build in two weeks with this
 model and this budget — a lower bound on what's possible, not a ceiling. And the
-floor isn't bolted to a closed model: assuming the benchmarks reflect reality to
-a reasonable degree, Kimi K3 is by now *at least on par* with Fable 5 for
-agentic development — so the same two weeks are, in principle, within reach on an
-open model you run yourself.
+floor isn't bolted to a closed model. I'll put this cautiously, because
+benchmarks only ever approximate real work: taken at face value they already put
+Kimi K3 at least level with Fable 5 on agentic and coding tasks. But I've also
+spent time sampling recent frontier open-weights models for actual development
+myself, and nothing in that hands-on experience gives me reason to doubt that K3
+has essentially closed the remaining gap — so I'd put a high probability on it.
+Which means the same two weeks are, in principle, within reach on an open model
+you run yourself.
 
 What an agent plus a phone can check off in two weeks is countable, live on
 `/pulse`: **716 commits across 25 theme areas**, of which **17 areas had more
@@ -103,6 +126,15 @@ browser tab, map and geo intelligence, accounts and quotas, an SDK that distills
 out new variants — not polished one after another, but carried forward in
 parallel. Take it as a spot sample of what "you get what you ask for" looks like
 in practice.
+
+The scale is easy to state: on the order of **137,000 lines of code with zero
+runtime dependencies** — no `node_modules` at all — the count live on `/pulse`.
+And a data point on reproducibility: a previous project I built in the same
+spirit landed in the same size range, which is at least suggestive that this
+isn't a one-off fluke. So use it as a yardstick. If you're sizing up a harness,
+or just wondering what a given model-plus-harness can actually produce at this
+level of complexity, hold `deepresearch.se` up against it and compare — a fixed
+reference build you can measure other setups against.
 
 So read the whole thing with the emphasis on *at least*: at least this, in two
 weeks, on this budget — and *exactly* this, faster, next time. Because it's a
