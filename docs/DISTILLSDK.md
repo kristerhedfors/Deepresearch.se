@@ -79,7 +79,7 @@ The SDK has three parts:
 |---|---|
 | `sdk/DESIGN.md` | The pair abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
 | `sdk/MANIFEST.json` | The module registry: 33 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
-| `sdk/ROADMAP.md` | The implementation order: six phases, why each module lands where it does, exit criteria per phase |
+| `sdk/ROADMAP.md` | The implementation order: seven phases (0–6), why each module lands where it does, exit criteria per phase |
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
 | `sdk/pair-cli.mjs` | The dependency-free CLI over the manifest (`list` / `show` / `plan` / `validate`), unit-tested in `npm test` |
@@ -488,8 +488,13 @@ checklist satisfied before starting the next.
 
 ## 10. Relationship to the existing application (adoption mode)
 
-Nothing in `sdk/` is imported by `src/` or `public/` today. The later wiring
-task proceeds per module, in the manifest's dependency order:
+Nothing in `sdk/` is imported by `src/` or `public/` today (SDK **mode**
+consumes the manifest via the committed source snapshot — `manifestFromSnapshot`
+in `public/js/sdk-core.js` — not a direct `../sdk/` import; and `sdk/pair-cli.mjs`
+imports FROM `public/js/sdk-core.js`, not the reverse). This section is about
+per-module ADOPTION — renaming/aligning each reference file to its SDK
+contract — which genuinely hasn't happened. The later wiring task proceeds
+per module, in the manifest's dependency order:
 
 1. Pick a module; read its skill's "reference implementation" map.
 2. Extract/align the reference files to the module's stated contract (usually

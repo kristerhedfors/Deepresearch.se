@@ -123,8 +123,9 @@ it unifies the two above going forward:** "one ticket, one JWT"
 (`src/server-token.js` + `src/server-grants.js`, D1 `server_tokens`,
 `docs/SERVER-TOKENS.md`) — one standard HS256 JWT per grant carrying a
 permission SET (`perms: ["web","api"]`) over the SAME two bounded upstream
-services, one duration, per-permission quota rows (token fixed, rows
-metered, same governance/budget/fail-safe posture). It carries THE
+services (the `api` permission covers the LLM completion AND embeddings
+routes — RAG parity), one duration, per-permission quota rows (token fixed,
+rows metered, same governance/budget/fail-safe posture). It carries THE
 SERVER-TOKEN GUARANTEE (owner directive, stated so it is never diluted):
 **an API call bearing a Se/rver token reaches UPSTREAM APIs ONLY — it is
 NEVER handed project contents, chat contents, or any other Se/rver data**

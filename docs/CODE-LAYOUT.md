@@ -138,10 +138,16 @@ derivation, history image-stripping, `splitUserContent`, plus
 pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
-`models.js` (model dropdown), `attachments.js` (pending images/docs;
+`models.js` (model dropdown; its country-of-processing flags come from the
+shared `provider-region.js` — Berget EU/Sweden, OpenAI/Anthropic/Groq US,
+local/on-device no flag — read here, in `cure/drc.js`, and in
+`introspect-core.js`), `attachments.js` (pending images/docs;
 the canvas downscaler itself lives in `image-downscale.js`, the shared
 leaf `feedback-attach.js` — the feedback pipeline's add-a-screenshot
-widget — also compresses through),
+widget — also compresses through; `docs.js` extracts text AND metadata from
+attachments — pdf via the vendored pdf.js, docx via a hand-rolled
+ZIP/DecompressionStream reader that also surfaces tracked-changes /
+`&lt;w:delText&gt;` leaks, plus md/txt),
 `account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
 `account-views.js` (summary, full usage,
@@ -221,7 +227,12 @@ single-shot chatbot build briefs — each a ready-to-send SDK prompt sized for t
 reference model Claude Sonnet 5 — plus a pure `renderShowcaseGallery`; data +
 lookups are Node-tested, the one DOM export is guarded),
 `settings.js` (cached `/api/settings` client; `storageAvailable()` is the
-synchronous question every storage-touching module asks), `dev-mode.js`
+synchronous question every storage-touching module asks),
+`canned-faq.js` (the prepackaged NON-LLM "get-started helper" both tiers show
+BEFORE a model is reachable — Se/cure before an API key, Se/rver before
+sign-in: short prewritten answers to the common questions, each carrying the
+`CANNED_LABEL` badge so it is unmistakably not the AI; static markdown, EN+SV
+per invariant 6, Node-tested), `dev-mode.js`
 (developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`
 class on the ROOT element re-pointing the nine palette variables, `:root.dev-mode`
 in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
@@ -247,7 +258,22 @@ the cache — closing the 2026-07-13 boot-race where a send before `/api/setting
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested), `bar-tint.js` (the iOS bar-tint re-assert
+all route through; Node-tested),
+`sandbox-files.js` (the sandbox's file-mounting PURE core — the `/workspace`
++ `/mnt/<projname>-<hash>` layout, the mount manifest, and `buildSeedScript`
+that cp's host bytes ingested via CheerpX DataDevices into the persistent
+tree; Node-tested, the DOM glue is `sandbox.js` — see the **execution-sandbox**
+skill),
+`agent-backdrop.js` over the pure `agent-backdrop-core.js` (the AGENT ACTIVITY
+BACKDROP — instead of popping the sandbox terminal open, raw commands + output
+drift faintly across the page background; fed from `execInSandbox` in
+`sandbox.js` so both tiers surface automatically; a ring-buffered
+multi-channel transcript, Node-tested; transparency has been FIXED since the
+2026-07-13 slider removal),
+`boot-messages.js` (the pure, Node-tested rotating boot-bar quips shown on the
+notification bar while the CheerpX Linux image streams and boots; ticked by
+`sandbox.js`),
+`bar-tint.js` (the iOS bar-tint re-assert
 helper, an import-free PUBLIC-graph leaf both tiers boot with: iOS Safari can
 keep the PREVIOUS page's `theme-color` chrome tint across the tier crossing —
 2026-07-10, recurred 2026-07-17 with the bottom toolbar too — so `wireBarTint`
