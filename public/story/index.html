@@ -61,6 +61,7 @@
 </head>
 <body>
 <main>
+<div data-doc-variant="original">
   <div class="top">
     <h1>The build story</h1>
     <a class="back" href="/">← Back to the app</a>
@@ -81,6 +82,29 @@
     <a href="/build/">About this project</a>.</p>
     <div id="history"><p class="muted">Loading…</p></div>
   </section>
+</div>
+<div data-doc-variant="clean" hidden>
+  <div class="top">
+    <h1>The build story</h1>
+    <a class="back" href="/">← Back to the app</a>
+  </div>
+
+  <section>
+    <p class="lead">How this site <i>started</i>, built over a weekend
+    entirely through the Claude Code iPhone app. The domain purchase, every
+    deployment, and every service were configured without the source or
+    config ever viewed directly on any other device (one exception: the D1
+    database UUID had to be copied by hand from the Cloudflare dashboard
+    URL). It records every prompt verbatim, what broke, what was discovered,
+    and the commit that landed each step. That first weekend of ~70 prompts
+    was only the beginning; the project has kept growing in new directions
+    since, and stays experimental. The source is public at
+    <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>;
+    what the site is for and its use restrictions are on
+    <a href="/build/">About this project</a>.</p>
+    <div><p class="muted">Loading…</p></div>
+  </section>
+</div>
 </main>
 <script src="/vendor/marked.min.js"></script>
 <script src="/vendor/purify.min.js"></script>
@@ -92,5 +116,6 @@
     .then((md) => renderMarkdownInto(el, md))
     .catch(() => { el.innerHTML = '<p class="muted">Could not load the build history.</p>'; });
 </script>
+<script type="module" src="/js/doc-variant.js"></script>
 </body>
 </html>

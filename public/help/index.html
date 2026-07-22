@@ -62,6 +62,7 @@
 </head>
 <body>
 <main>
+<div data-doc-variant="original">
   <div class="top">
     <h1>How DeepResearch.<b>Se<span class="sl">/</span>rver</b> works</h1>
     <a class="back" href="/rver">← Back to the app</a>
@@ -541,6 +542,490 @@
   so every privacy claim above is yours to verify.</p>
 
   <p class="muted">Questions or something unclear? Ask the site owner.</p>
+</div>
+
+<div data-doc-variant="clean" hidden>
+  <div class="top">
+    <h1>How DeepResearch.<b>Se<span class="sl">/</span>rver</b> works</h1>
+    <a class="back" href="/rver">← Back to the app</a>
+  </div>
+
+  <p class="tier-switch">This page documents the <b>signed-in</b> tier,
+  DeepResearch.<b>Se<span class="sl">/</span>rver</b>: hosted deep research
+  with live web search, accounts, and cloud storage. If you are using the
+  khaki, no-account tier that runs entirely in your browser, read the
+  <a href="/cure/help/">DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+  documentation</a> instead. Its storage and privacy story is deliberately
+  different: everything stays in the browser.</p>
+
+  <section>
+    <h2>What this site does</h2>
+    <p>You ask a question. The site plans web searches, runs them, reads the
+    results, and writes an answer with numbered citations, like a research
+    assistant on a deadline you choose. The default AI models run at
+    <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
+    (🇸🇪 EU-hosted). If an administrator has enabled them, you can also
+    choose 🇺🇸 Claude or GPT models, which process your conversation at
+    Anthropic or OpenAI in the US. <b>Your conversation goes wherever the
+    model you pick resides</b>; the model selector flags each choice with
+    its provider's country so you can tell at a glance. Web searches go
+    through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
+    <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
+    is encrypted in your browser, and an encrypted copy is <b>always</b>
+    kept in this site's storage. That is what a signed-in tier is for, so it
+    follows your account across devices
+    (see "Chat history" below). To improve
+    the service, the server keeps a log of completed research interactions:
+    the question, the answer, and the research steps. For chats that should
+    leave <b>no trace on this server at all</b>, the <b>ghost button</b>
+    (upper right) opens ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
+    the client-side twin of this app where the server is never in the data
+    path (your own API key, browser-local storage).</div>
+  </section>
+
+  <section>
+    <h2>The header</h2>
+    <img src="/help/img/header.png" alt="Header: history and new chat on the left; ghost, share, settings and account buttons on the right" width="390">
+    <ul>
+      <li><b>History</b> (list icon, far left) — opens the chat history
+        panel: see "Chat history" below. Hidden entirely if this server
+        hasn't set up encrypted history.</li>
+      <li><b>New chat</b> (speech-bubble icon) — saves the current
+        conversation (if it has one) and starts a fresh one on screen. The
+        old one isn't erased; find it again in the History panel, or delete
+        it there if you're done with it.</li>
+      <li><b>Ghost button</b> — the door to ghost mode:
+        DeepResearch.<b>Se<span class="sl">/</span>cure</b>, the client-side
+        twin of this app where the server is never in the data path (see
+        "Privacy in one line" above).</li>
+      <li><b>Share button</b> (three connected dots) — share a
+        Se<span class="sl">/</span>cure workspace: one offline link carrying
+        a bounded allowance from your account. Opens the share section in
+        Settings.</li>
+      <li><b>Settings</b> (gear icon) — opens your account's Settings
+        directly: see "Settings" below.</li>
+      <li><b>Account button</b> (person icon, right) — opens your usage
+        panel: see below.</li>
+    </ul>
+    <p class="muted">The model selector lives in the input
+    area at the bottom, next to the send arrow (see "The input area" below).
+    A copy-conversation button also appears under the header once a
+    conversation is on screen.</p>
+  </section>
+
+  <section>
+    <h2>Chat history — encrypted, and yours alone</h2>
+    <p>Every conversation you have is saved automatically, right here in
+    your browser, so you can pick it back up later. The History panel
+    (list icon in the header) lists them by their first question, most
+    recent first. Click one to reopen it (this also restores the model,
+    time target, and web-search setting it was sent with); the pencil
+    renames it, the trash bin deletes it.</p>
+    <p><b>Where it actually lives:</b> in this browser's IndexedDB (the
+    modern, larger-capacity successor to <code>localStorage</code>), and,
+    always, an <b>encrypted copy</b> in this site's storage as well, so
+    your history follows your account across devices. There is no switch:
+    on this signed-in tier, cloud storage simply is how history works. The
+    server never holds a <i>readable</i> copy of your saved history; the
+    cloud copy is ciphertext. Separate from history, completed exchanges go
+    to the server's interaction log unless the conversation was started
+    incognito (see "Privacy, in full" below).</p>
+    <p class="muted">If you want conversations that are stored in the
+    browser <b>only</b>, with no server copy even possible, because the
+    server is never in the data path at all, that is the client-side tier,
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b>: see
+    <a href="/cure/help/">its documentation</a>.</p>
+    <h3>How the encryption works</h3>
+    <p>Every conversation is encrypted (AES-256-GCM) before it touches your
+    browser's storage. The key comes from the server, derived per-account
+    from a secret it holds, but that key is fetched fresh each time you
+    open the app and kept only in memory for that page load; it is never
+    written to <code>localStorage</code>, <code>IndexedDB</code>, or any
+    other disk-backed storage. This split is deliberate, and gives two
+    separate guarantees instead of one:</p>
+    <ul>
+      <li><b>If your browser's storage is examined at rest</b> (a stolen
+        or cloned device, a forensic disk image), the attacker finds only
+        ciphertext. The key that would unlock it was never written down in
+        that browser to begin with.</li>
+      <li><b>The key is never stored beside the ciphertext.</b> It is
+        derived on the server, fetched fresh each page load, and held only
+        in memory, so neither storage location ever contains both halves
+        at rest.</li>
+    </ul>
+    <div class="privacy-flag"><b>Honest limitation:</b> this tier stores
+    your history in the cloud <i>by design</i>, and the server holds both
+    the encrypted copies and the secret your key derives from, so a full
+    server compromise could decrypt them. The encryption is a real barrier
+    against storage examined at rest (a disk image, a leaked bucket, where
+    the key isn't there), not against a fully compromised live server. If a
+    conversation must not carry that trade-off, that is exactly what
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b> is for
+    (<a href="/cure/help/">its documentation</a>): there the server never
+    sees ciphertext <i>or</i> key, because it is never in the data path at
+    all.</div>
+    <h3>What this means day to day</h3>
+    <ul>
+      <li><b>History follows your account.</b> Sign in on your phone and
+        your conversations are there too, pulled down as encrypted records
+        and decrypted locally. Clearing one browser's site data loses
+        nothing; the cloud copy restores it.</li>
+      <li><b>Conversations that must stay out of any cloud</b> don't belong
+        on this tier at all. Use
+        DeepResearch.<b>Se<span class="sl">/</span>cure</b> (the ghost
+        button), where everything rests in your browser only and the server
+        is never in the data path.</li>
+      <li>If this server hasn't configured cloud storage, the app runs
+        browser-only: conversations still save locally, they just don't
+        follow the account.</li>
+    </ul>
+    <h3>The exception: chats inside a project</h3>
+    <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the
+    same way project documents and notes are, so your other chats in that
+    project can automatically draw on what was worked out in it. The index
+    keeps growing as the conversation does: each new exchange is added to
+    it. Because a search index needs readable text, indexed material is
+    stored <b>readable, not encrypted</b>, and that includes project chats
+    themselves, in this browser and in the cloud
+    copy. Chats outside projects are not indexed and stay encrypted exactly
+    as described above. If a conversation shouldn't be readable at rest,
+    or retrievable from your other chats, keep it outside projects, or
+    take it to ghost mode (the ghost button → DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
+    where nothing reaches this server at
+    all).</p>
+    <h3>Backing up or moving a project with a secret</h3>
+    <p>A project, even one kept out of the cloud, can be stored as
+    <b>one encrypted archive</b> keyed by a secret: open the project and
+    press <b>Store</b> next to "Encrypted copy, keyed by a secret". Your
+    browser packs the project's chats, files, and search index, encrypts
+    everything locally with a freshly generated secret
+    (<code>DR1-XXXX-…</code>, 160 random bits), and uploads only the
+    unreadable result. Unlike regular cloud storage, the server never holds
+    anything readable: not the project's name, not its files, not even a
+    key it could derive. The secret shown to you (once, so copy it!) is the
+    only way to find and decrypt the copy. Use <b>🔑 Load project from
+    secret</b> in the History panel on any of your devices to bring the
+    project back. Storing again replaces the copy under a new secret, and
+    the old secret stops working; losing the secret loses the copy, with
+    deliberately no recovery.</p>
+  </section>
+
+  <section>
+    <h2>The input area</h2>
+    <img src="/help/img/composer-on.png" alt="Composer with web search on" width="390">
+    <ul>
+      <li><b>Text field</b> — type your question. <b>Enter inserts a line
+        break</b>; nothing is sent until you tap the <b>arrow</b>. The field
+        grows up to about six lines.</li>
+      <li><b>Paperclip</b> — attach images or documents
+        (<code>pdf</code>, <code>docx</code>, <code>md</code>,
+        <code>txt</code>). Each attachment appears as a small card above
+        the bottom edge of the pane, with a white ✕ to remove it.
+        Documents are read <i>in your browser</i>; their extracted text
+        travels inside your message. The files themselves are never
+        uploaded anywhere. Images need a vision-capable model (you'll be
+        offered a switch) and are downscaled in your browser first.</li>
+      <li><b>Camera</b> — take a photo with your device's camera and attach
+        it, same rules as an attached image.</li>
+      <li><b>Model selector</b> (next to the send arrow) — picks which AI
+        model answers, flagged with its provider's country (🇸🇪 EU-hosted
+        Berget models by default; 🇺🇸 Claude or GPT models if enabled here).
+        Models that are down for maintenance show as greyed out and come
+        back automatically. Your choice is remembered in this browser.</li>
+      <li><b>Attachments can carry more than their visible content.</b>
+        Photos often embed where and when they were taken and what device
+        took them; Word documents can carry the author's name, edit
+        history, and reviewer comments, sometimes including text that was
+        deleted but is still physically present in the file. Since this is
+        often exactly what a research question is about ("where was this
+        photo taken", "what did this document originally say"), it's
+        extracted along with the visible content and sent as part of your
+        message. Whenever anything is found, the attachment's card shows a
+        small badge <i>before you send</i>: a plain "ℹ️ metadata
+        included" for routine details, or a distinct "📍 location data
+        included" (a photo's GPS coordinates) / "⚠️ tracked changes
+        included" (a document's unaccepted deletions) for the two cases
+        worth a second look. Remove the attachment if you'd rather not
+        include what the badge is telling you about. A photo's raw
+        coordinates are also resolved server-side into an actual place
+        name (via <a href="https://nominatim.openstreetmap.org"
+        target="_blank" rel="noopener">OpenStreetMap Nominatim</a>, where
+        only the coordinates are sent, nothing else) since a place name is
+        far more useful for research than bare numbers.</li>
+      <li><b>Spiderweb knob</b> — the web-search switch, with a spiderweb
+        inside the knob: it glows blue when search is on and turns grey
+        when off. Tap to toggle; <b>press and hold</b> it for a short
+        explanation of the switch. This is the control with the biggest
+        privacy meaning; see the next section.</li>
+      <li><b>Slider + time</b> — your research time target, from 15 seconds
+        to 10 minutes. More time buys more search angles, more follow-up
+        rounds, and a fact-checking pass, plus <b>a more thorough
+        answer</b>: the bottom of the slider delivers a quick cited brief,
+        the default a focused answer, the middle a structured report with
+        sections, and the top a full research report (executive summary,
+        thematic sections, tables, limitations). The readout right of the
+        slider shows the time and what it delivers. The slider stays active
+        <b>regardless of the web-search knob</b>: depth is how deep the
+        assistant goes over whatever sources are available, so it still shapes
+        the answer with web search off (see the next section).</li>
+      <li><b>Arrow</b> — sends the question. This is the only way to send.</li>
+    </ul>
+    <h3>On each answer</h3>
+    <ul>
+      <li><b>Raw</b> — toggles between rendered and plain-text view.</li>
+      <li><b>Copy</b> — copies the answer text to your clipboard.</li>
+      <li><b>PDF</b> — downloads the answer as a formatted report tagged
+        DeepResearch.se, generated entirely in your browser.</li>
+    </ul>
+    <img src="/help/img/popover.png" alt="The web-search info popover" width="390">
+  </section>
+
+  <section>
+    <h2>Quizzes — test yourself on anything</h2>
+    <p>Ask to be quizzed (<i>"quiz me on this document"</i>, <i>"quiz me on
+    the French Revolution with 8 questions"</i>, <i>"förhör mig på
+    kapitlet"</i>) and the answer becomes an interactive quiz: one question
+    at a time, each with multiple-choice alternatives <b>plus a free-text
+    field</b> to answer in your own words, immediate feedback with a short
+    explanation after every answer, and a final score with a per-question
+    recap at the end.</p>
+    <ul>
+      <li><b>The material is up to you</b> — the conversation so far, an
+        attached document, your project's files and notes, or (with web
+        search on) fresh web research on the topic you name.</li>
+      <li><b>Written answers are graded on meaning</b>, not exact wording:
+        synonyms, paraphrases, and another language all count. If a written
+        answer can't be graded, it's shown as ungraded and simply doesn't
+        count toward the score.</li>
+      <li><b>The result stays in the conversation</b> — after finishing you
+        can ask follow-ups like "explain the ones I got wrong", and a
+        reopened conversation shows the finished quiz (or lets you resume an
+        unfinished one).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Web search on / off — and what it means for privacy</h2>
+    <img src="/help/img/composer-off.png" alt="Composer with web search off — the slider stays active" width="390">
+    <p><b>On</b> (knob blue): the AI plans a few search queries derived from
+    your question, runs them against Exa, and answers from the sources it
+    finds, with citations.</p>
+    <p><b>Off</b> (spiderweb grey): no query is sent to Exa. The knob gates
+    <i>web search only</i>: the time slider <b>stays active</b>, because depth
+    is how deep the assistant goes over whatever sources <i>are</i> available.
+    With Exa off it still researches within your time target using the other
+    sources that apply (the Hugging Face Hub for a model/dataset question, or
+    this site's own source in developer mode), and otherwise answers from the
+    model's own training knowledge, in both cases with the depth the
+    slider buys. Only when no such source applies are no web requests made at
+    all.</p>
+    <div class="privacy-flag"><b>Privacy:</b> with web search ON, short
+    search queries <i>derived from</i> your question are sent to Exa (never
+    your full conversation), and <b>Exa retains those queries by
+    default</b> (see the next section). With web search OFF, <b>nothing is sent
+    to Exa</b>; any other source the assistant uses receives only a short
+    derived query (a Hugging Face Hub lookup, say, never your conversation),
+    and if none applies, nothing leaves except the conversation itself going to
+    your chosen model's provider (Berget in the EU, or Anthropic/OpenAI in the
+    US) to generate the answer. Either way, our server stores no message
+    content.</div>
+  </section>
+
+  <section>
+    <h2>Sensitive topics — a two-step, semi-private workflow</h2>
+    <p>Be aware: <b>Exa is not a zero-data-retention service by
+    default</b>. The search queries it receives may be retained under Exa's
+    own policies. Exa offers true zero data retention only as a paid
+    enterprise arrangement, which this site does not currently have. The
+    queries are short and AI-derived, never your full conversation, but on
+    a sensitive subject even a short query reveals the topic.</p>
+    <p>If that matters for your question, split the work in two:</p>
+    <ol>
+      <li><b>Fetch generically.</b> With web search <b>on</b>, ask a broad,
+        impersonal question about the subject, the kind that could appear
+        in any textbook index ("current treatment options for X",
+        "how does Swedish law regulate Y"). The assistant searches Exa and
+        pulls the source material into the conversation. Keep names, case
+        details, and anything personal out of this step: it is what Exa
+        sees.</li>
+      <li><b>Ask specifically.</b> Turn web search <b>off</b> and ask your
+        real questions. Nothing further is sent to Exa; the model answers from
+        the sources already fetched into the conversation (plus its own
+        knowledge). The other sources are topic-gated (a Hugging Face Hub
+        lookup only fires on a model/dataset question), so an ordinary sensitive
+        question sends nothing further out.</li>
+    </ol>
+    <p>If the step-2 answer lacks source material, flip search back on for
+    another <i>generic</i> round on the missing angle, then switch it off
+    again and continue.</p>
+    <div class="privacy-flag"><b>This is semi-private, not anonymous:</b>
+    your generic step-1 queries were still seen (and possibly retained) by
+    Exa, and the whole conversation, including the fetched excerpts, is
+    still processed by your chosen model's provider (Berget in the EU, or
+    Anthropic/OpenAI in the US) on every turn. For anything truly
+    sensitive, keep identifying details out of the chat entirely.</div>
+  </section>
+
+  <section>
+    <h2>Your account panel</h2>
+    <img src="/help/img/account-panel.png" alt="Account and usage panel: 5-hour quota bars and buttons for messages, feedback, full usage, settings, games, documentation and sign out" width="390">
+    <ul>
+      <li><b>Research budget</b> — an opaque percentage of your allowance
+        for AI-model usage in the last 5 hours. When a bar reaches 100%
+        you'll be asked to wait until the window resets. <b>Full usage &amp;
+        history</b> shows the same bars for every window (last 5 hours,
+        today, this week, this month) with their reset times.</li>
+      <li><b>Web searches</b> — how many live searches you've used of your
+        allowance in the window.</li>
+      <li><b>Messages</b> — account notices from this site (sign-in
+        approved, quota exhausted or changed). <b>Feedback</b> holds your
+        feedback threads with the developers; to start one, just open a
+        chat message with the word “feedback” (see below).</li>
+      <li><b>Settings</b> — your account's on/off switches (also reachable
+        straight from the header's gear icon): see below.</li>
+      <li><b>Games</b> — the games shelf, if any are enabled here.</li>
+      <li><b>Documentation</b> — this page.</li>
+      <li><b>Sign out</b> — ends your session on this device. You stay
+        signed in for a year otherwise (sessions renew themselves while you
+        use the site).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <p>Account &amp; usage → <b>Settings</b> holds the on/off switches for
+      your account. Each is a single line; press and hold (or click) the
+      <b>ⓘ</b> next to a switch for the full explanation.</p>
+    <ul>
+      <li><b>History is stored in the cloud</b> (always on, an
+        informational row, not a switch) — your conversations, files and
+        search index are kept in this site's storage so your history follows
+        your account across devices; that is what this signed-in tier is
+        for, and the opposite of Se<span class="sl">/</span>cure, which
+        never stores anything server-side. Conversations and
+        files are stored encrypted; indexed material (large documents,
+        project files and notes, project chats, and the search index itself)
+        is stored readable, since retrieval needs readable text.
+        See "Chat history" above for how the encryption works.</li>
+      <li><b>Shodan host intelligence</b> (off by default) — when on, if a
+        question mentions an IP address or hostname, the site looks it up on
+        <a href="https://www.shodan.io" target="_blank" rel="noopener">Shodan</a>
+        and folds what it finds (open ports, running services, the hosting
+        organization and ASN, location, and any known CVEs) into the research
+        so the answer can use and cite it. Only the IP or hostname itself is
+        ever sent to Shodan, never your question or anything about your
+        account, and only when your message actually names a host. It works
+        whether or not web search is on.</li>
+      <li><b>Google Maps &amp; Street View</b> (off by default) — when on, if a
+        question names a street address (or you attach a photo carrying GPS
+        location), the site looks it up on
+        <a href="https://developers.google.com/maps" target="_blank" rel="noopener">Google
+        Maps Platform</a>: it resolves the place with the Places API (name,
+        address, type, rating), confirms Google Street View coverage and its
+        imagery capture date, and pulls a road map, then folds those details
+        and clickable Maps/Street View links into the research, and hands the
+        Street View (several angles around the spot) and map images to a
+        vision-capable model to describe. When Street View coverage exists you
+        also get an <b>inline, drag-to-navigate Street View</b> right in the
+        answer. Only the address itself (or a photo's coordinates) is ever sent
+        to Google, never your whole question or anything about your account, and
+        only when your message actually names an address. It works whether or
+        not web search is on.</li>
+      <li><b>Feedback</b> (no switch) — feedback is given straight from the
+        chat: start a message with the word <b>“feedback”</b> (for example
+        “feedback: the map view was cut off”) and, instead of researching it,
+        the site passes your note to its developers and confirms it was sent.
+        Their replies come back as a short thread under <b>Feedback</b> in the
+        account panel. Only the message you send that way is shared.</li>
+      <li><b>Execution sandbox</b> (off by default, <b>experimental</b>) — when
+        on, for questions that call for running code, a small Linux environment
+        boots inside this browser tab and the assistant can run shell commands
+        in it, folding the real output into its answer. It runs entirely on
+        your device; nothing about the commands or their output leaves the
+        browser. Being experimental, it may be rough or slow to start.</li>
+      <li><b>Developer mode</b> (off by default) — when on, the assistant can
+        answer questions about how this site itself is built, drawing on its own
+        source code, instead of declining. Handy if you're curious about the
+        implementation.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Privacy, in full</h2>
+    <ul>
+      <li><b>Conversations</b>: processed by your chosen model's provider to
+        generate answers: Berget in the EU (🇸🇪, the default), or, if you
+        pick a Claude or GPT model, Anthropic or OpenAI in the US (🇺🇸). The
+        model selector flags each model's country. Saved locally in your browser,
+        encrypted, plus an encrypted cloud copy while the cloud-storage
+        switch is on (see "Chat history" above); erased when you delete a
+        conversation, and the cloud copies when you switch cloud storage
+        off. Chats inside
+        a <b>project</b> are the exception: they're indexed for retrieval and
+        stored readable, like the project's documents (see "The exception"
+        above).</li>
+      <li><b>The interaction log</b>: to improve the service, the server
+        logs each completed exchange: your question, the answer, the
+        searches run and sources found, timings, and any error. For
+        conversations that should never touch this server, the <b>ghost
+        button</b> takes you to ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
+        where the server never receives your
+        messages in the first place.
+        (API clients can still send <code>incognito: true</code> per
+        conversation to suppress the log row.)</li>
+      <li><b>Project vault copies</b>: made only when you press <b>Store</b>
+        on a project's "Encrypted copy, keyed by a secret". The archive is
+        encrypted in your browser under a secret only you hold; the server
+        stores unreadable bytes it has no key for (not even derivable), and
+        switching cloud storage off never touches these copies. Load one
+        back with 🔑 Load project from secret in the History panel.</li>
+      <li><b>Search queries</b>: sent to Exa only while web search is ON,
+        and only as short queries the AI derives from your question.
+        <b>Exa retains queries by default</b> (zero data retention is an
+        enterprise-only Exa feature we don't currently have); see
+        "Sensitive topics" above for the two-step workflow.</li>
+      <li><b>Shodan lookups</b>: only if you turn on <b>Shodan host
+        intelligence</b> in Settings (off by default). Then, when a message
+        names an IP or hostname, that IP/hostname alone is sent to Shodan to
+        fetch its public infrastructure record, never your question or
+        anything identifying you.</li>
+      <li><b>Google Maps lookups</b>: only if you turn on <b>Google Maps &amp;
+        Street View</b> in Settings (off by default). Then, when a message names
+        a street address (or you attach a located photo), that address alone
+        (or the photo's coordinates) is sent to Google Maps Platform to fetch
+        the place, its Street View coverage and a road map, never your whole
+        question or anything identifying you.</li>
+      <li><b>What our server keeps</b>: your account (Google email, name),
+        per-request usage numbers (token counts, search counts, durations)
+        used for the quota bars, the interaction log above, the encrypted
+        history copies, and the
+        readable indexed material described under Settings (chats in
+        ghost mode, Se<span class="sl">/</span>cure, never reach the server to begin with).</li>
+      <li><b>Cookies</b>: <code>dr_session</code> (keeps you signed in) and
+        <code>dr_privacy_ack</code> (remembers you saw the privacy notice).</li>
+      <li><b>In your browser only</b>: model choice, time target, and the
+        web-search switch position (localStorage). If you switch away
+        mid-research, a small marker (the conversation and request ids plus
+        those same settings, never any message text) is also kept there
+        briefly so the app can pick the finished answer back up when you
+        return, even if the phone closed it in the background; it clears
+        itself once the answer arrives, and expires within 15 minutes.</li>
+      <li><b>Sign-in</b>: Google only. We receive your verified email and
+        name from Google; we never see your Google password.</li>
+    </ul>
+  </section>
+
+  <p class="tier-switch">Jump to the client-side tier's documentation:
+  <a href="/cure/help/">DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+  documentation →</a></p>
+
+  <p class="muted">The source code is public (MIT license) at
+  <a href="https://github.com/kristerhedfors/Deepresearch.se" target="_blank" rel="noopener">github.com/kristerhedfors/Deepresearch.se</a>,
+  so every privacy claim above is yours to verify.</p>
+
+  <p class="muted">Questions or something unclear? Ask the site owner.</p>
+</div>
 </main>
+<script type="module" src="/js/doc-variant.js"></script>
 </body>
 </html>
