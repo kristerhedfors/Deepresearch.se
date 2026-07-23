@@ -27,7 +27,7 @@ import {
   introspectionIntent,
   parseIntrospectionChoice,
 } from "./introspect-core.js";
-import { DRC_PROVIDERS, detectDrcProvider, drcProvider, listDrcModels } from "./drc-providers.js";
+import { DRC_PROVIDERS, detectDrcProvider, drcProvider, foreignDrcKeyHint, listDrcModels } from "./drc-providers.js";
 
 const CHOICE_KEY = "dr_introspect_choice";
 const KEYS_KEY = "dr_introspect_keys";
@@ -306,13 +306,16 @@ function renderKeysRow() {
   host.querySelector("#iui-savekey").addEventListener("click", async () => {
     const input = host.querySelector("#iui-key");
     const key = (input.value || "").trim();
-    const providerId = detectDrcProvider(key);
-    if (!key || !providerId) {
-      input.setCustomValidity("Unrecognized key prefix");
+    // detectDrcProvider returns the ENTRY, not an id — store under .id
+    // (passing the object through stringified it to "[object Object]",
+    // so keys saved here were never found again).
+    const detected = detectDrcProvider(key);
+    if (!key || !detected) {
+      input.setCustomValidity(foreignDrcKeyHint(key) || "Unrecognized key prefix");
       input.reportValidity?.();
       return;
     }
-    saveStoredKey(providerId, key);
+    saveStoredKey(detected.id, key);
     input.value = "";
     await renderPicker(true); // new private group appears; auto-pick it
   });
