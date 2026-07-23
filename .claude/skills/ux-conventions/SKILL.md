@@ -382,3 +382,42 @@ result-mode flip in `createWorkspaceLink`), `public/cure/drc.css` (`.wk-step`,
 `.wk-reco`). Distinct from UX-4 (a single costly consent): this rule is about
 SEQUENCING several free choices, and composes with UX-4 if a step carries a
 real cost.
+
+## UX-8 — Enter sends the message; Shift+Enter inserts a newline (guarded for IME + touch)
+
+**When** the user presses **Enter** in the chat composer (`#input`), **then**
+the message is sent (the form is submitted) — **except** `Shift+Enter` (and
+`Ctrl`/`Cmd`/`Alt+Enter`), which insert a newline; an **IME composition**
+Enter (`e.isComposing` or `keyCode === 229`), which commits a candidate and is
+never a send; and a **touch-primary device** (coarse pointer — phones/tablets),
+where Enter stays a newline and the ↑ send button is how you send. This is the
+near-universal chat-composer convention (Claude, ChatGPT, Slack's default);
+before 2026-07-23 Enter only ever inserted a newline and the arrow was the sole
+way to send.
+
+**Why.** A first-time keyboard user expects Enter to send and Shift+Enter to
+add a line — anything else is surprising. The two guards prevent the two classic
+mis-sends: an IME user committing a CJK candidate, and a phone user whose
+on-screen Enter key means "newline". (Owner request 2026-07-23: "go with what
+Claude uses… the most common convention.")
+
+**The mechanics (match both tiers):**
+
+1. **A `keydown` listener on the textarea**, not `keypress`, so modifier state
+   and `isComposing` are reliable.
+2. **Early-return on any modifier** (`shiftKey || ctrlKey || metaKey ||
+   altKey`) and on the IME guard — those fall through to the textarea's own
+   newline, no `preventDefault`.
+3. **Touch check via `matchMedia("(pointer: coarse)")`**, wrapped in try/catch
+   so a missing/throwing `matchMedia` assumes a physical keyboard (send).
+4. **Only then** `preventDefault()` + `form.requestSubmit()` — routing through
+   the existing submit handler so quota/attachments/streaming-stop all behave
+   identically to an arrow tap.
+5. **Discoverability**: the send button's `title` reads
+   "Send (Enter — Shift+Enter for a new line)".
+
+**Canonical implementations:** `public/js/app.js` (`enterShouldSend` + the
+`input` keydown handler, Se/rver) and `public/cure/drc.js` (the `$("input")`
+keydown handler, Se/cure — inlined, since /cure surfaces don't import from
+`/js`); the `#send` `title` in `public/index.html` and `public/cure/index.html`.
+Language-agnostic (a key event, no text routing), so no EN/SV parity applies.
