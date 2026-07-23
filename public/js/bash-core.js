@@ -44,7 +44,7 @@
 export const MAX_SHELL_ROUNDS = 6; // agentic iterations before we synthesize regardless
 export const MAX_COMMANDS_PER_ROUND = 6; // commands accepted from one model turn
 export const MAX_OUTPUT_CHARS = 4000; // per-command stdout/stderr kept in the transcript
-export const MAX_COMMAND_CHARS = 2000; // a single command line is clamped to this
+export const MAX_COMMAND_CHARS = 8000; // one command clamped to this (heredoc file writes need room; a mid-body truncation would leave the doc unterminated)
 // Total wall-clock budget for the WHOLE loop (the lazy first boot — a ~25 s cold
 // Debian stream, slower still on iOS where the persistent /workspace IndexedDB
 // mount alone can take 20–30 s — plus every round's model call and command). A
@@ -249,21 +249,90 @@ function reasoningText(raw, block) {
     .slice(0, 400);
 }
 
-// Split a shell block into individual command lines: join `\`-continuations,
-// drop comments (# …) and blank lines, clamp each, cap the batch.
+// Find the here-document delimiters opened on one logical command line, in the
+// order they appear. Each entry is { delim, stripTabs } — stripTabs is the
+// `<<-` form (leading tabs stripped from the terminator). Recognizes the quoted
+// (`<< 'EOF'`, `<<"EOF"`) and unquoted (`<< EOF`, `<<EOF`, `<<-EOF`) forms.
+// A here-STRING (`<<<`) is NOT a heredoc — it consumes no following lines — so
+// it is deliberately skipped. Scanned by hand (not one regex) so `<<<` and the
+// several spacing/quoting variants are all handled without lookbehind. Exported
+// for unit tests.
+/**
+ * @param {string} line one logical command line
+ * @returns {Array<{ delim: string, stripTabs: boolean }>}
+ */
+export function heredocDelimiters(line) {
+  const s = String(line || "");
+  const out = [];
+  for (let i = 0; i + 1 < s.length; i++) {
+    if (s[i] !== "<" || s[i + 1] !== "<") continue;
+    // `<<<` is a here-string, not a heredoc — skip past it entirely.
+    if (s[i + 2] === "<") { i += 2; continue; }
+    let j = i + 2;
+    let stripTabs = false;
+    if (s[j] === "-") { stripTabs = true; j++; }
+    while (s[j] === " " || s[j] === "\t") j++;
+    let quote = "";
+    if (s[j] === "'" || s[j] === '"') { quote = s[j]; j++; }
+    let delim = "";
+    if (quote) {
+      while (j < s.length && s[j] !== quote) { delim += s[j]; j++; }
+    } else {
+      while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) { delim += s[j]; j++; }
+    }
+    if (delim) { out.push({ delim, stripTabs }); i = j - 1; }
+  }
+  return out;
+}
+
+// Split a shell block into individual commands. One command per line, EXCEPT a
+// here-document (`cat > file << 'EOF'` … `EOF`) is kept WHOLE — opener plus its
+// literal body plus the terminator — as a single multi-line command, so the
+// body reaches /bin/sh intact instead of each line running as its own command
+// (the "import: not found / class: not found" symptom when a model writes a
+// file via a heredoc — feedback #3, 2026-07-23). Outside a heredoc: join
+// `\`-continuations, drop comments (# …) and blank lines. Each command is
+// clamped to MAX_COMMAND_CHARS and the batch capped at MAX_COMMANDS_PER_ROUND.
+// Exported (indirectly via parseShellRequest) — unit-tested there.
 /**
  * @param {string} body
  * @returns {string[]}
  */
 function splitCommands(body) {
-  const joined = String(body || "").replace(/\\\n/g, " ");
+  const lines = String(body || "").split("\n");
   const out = [];
-  for (const line of joined.split("\n")) {
-    const cmd = line.trim();
-    if (!cmd) continue;
-    if (cmd.startsWith("#")) continue;
-    out.push(cmd.slice(0, MAX_COMMAND_CHARS));
+  let i = 0;
+  while (i < lines.length) {
+    // Build the logical opener line, joining trailing-`\` continuations — but
+    // stop the moment the line opens a heredoc (its body is literal, consumed
+    // below, and must NOT have continuations collapsed).
+    let logical = lines[i];
+    while (/\\\s*$/.test(logical) && i + 1 < lines.length && !heredocDelimiters(logical).length) {
+      i++;
+      logical = logical.replace(/\\\s*$/, " ") + lines[i];
+    }
+    const delims = heredocDelimiters(logical);
+    if (delims.length) {
+      // Consume body lines until every opened delimiter has been closed (or the
+      // block ends — an unterminated heredoc still fails soft as one command).
+      const parts = [logical];
+      let d = 0;
+      while (d < delims.length && i + 1 < lines.length) {
+        i++;
+        const bodyLine = lines[i];
+        parts.push(bodyLine);
+        const cur = delims[d];
+        const cmp = cur.stripTabs ? bodyLine.replace(/^\t+/, "") : bodyLine;
+        if (cmp === cur.delim) d++;
+      }
+      const cmd = parts.join("\n").trim();
+      if (cmd) out.push(cmd.slice(0, MAX_COMMAND_CHARS));
+    } else {
+      const cmd = logical.trim();
+      if (cmd && !cmd.startsWith("#")) out.push(cmd.slice(0, MAX_COMMAND_CHARS));
+    }
     if (out.length >= MAX_COMMANDS_PER_ROUND) break;
+    i++;
   }
   return out;
 }
@@ -512,6 +581,13 @@ export function deliverablesRun(files) {
  * command's real exit code was lost. /bin/sh here is dash (no PIPESTATUS),
  * so the temp-file form is the correct way to preserve it. The
  * marker+base64 envelope is unchanged (base64 emits no ':' or '#').
+ *
+ * The command is placed on its OWN lines inside the subshell —
+ * `(\n<command>\n) >…` — never inline `( <command> )`. A here-document's
+ * terminator must sit on a line by itself, so an inline close would land
+ * `) >/tmp/…` on the same line as `EOF` and break the heredoc (the file write
+ * would swallow the rest of the wrapper as body). The leading/trailing
+ * newlines are transparent to every ordinary one-line command too.
  * @param {string} command
  * @param {string} id a unique run id (uniqueness is the caller's job)
  * @returns {{ marker: string, wrapped: string }}
@@ -521,7 +597,7 @@ export function execEnvelope(command, id) {
   const of = "/tmp/_o" + id;
   const ef = "/tmp/_e" + id;
   const wrapped =
-    "( " + command + " ) >" + of + " 2>" + ef + "; RC=$?; " +
+    "(\n" + command + "\n) >" + of + " 2>" + ef + "; RC=$?; " +
     "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
     "rm -f " + of + " " + ef + "; " +
     'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
