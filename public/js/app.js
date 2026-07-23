@@ -25,6 +25,7 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
+import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 import { setSandboxImage } from "./sandbox.js";
@@ -78,12 +79,15 @@ applyChatModeTheme(cachedChatMode(), { persist: false });
 
 // iOS bar tint — the reverse of /cure's crossing: coming BACK from the khaki
 // tier (or any khaki-tinted page) by same-window navigation or a bfcache
-// restore, WebKit can keep the previous page's theme-color over this blue
-// page (the mirror of the 2026-07-10 / 2026-07-17 reports on /cure). Same
-// shared layered nudge; a no-op when the tint is already right. Note this is
-// the STATIC blue on purpose: the titanium introspection theme deliberately
-// leaves the theme-color meta untouched (dev-mode.test.js pins that).
-wireBarTint("#6fc3fd");
+// restore, WebKit can keep the previous page's theme-color over this page (the
+// mirror of the 2026-07-10 / 2026-07-17 reports on /cure). Same shared layered
+// nudge; a no-op when the tint is already right. The target is a GETTER off the
+// current chat mode (2026-07-23): each mode is a complete theme now, so the
+// status bar follows it — Normal blue, introspection titanium, Agent Studio
+// green (mode-theme.js barTint). The mode class is already applied above, so
+// this first nudge paints the right tint from boot; applyChatModeTheme repaints
+// it on a switch.
+wireBarTint(() => barTint(cachedChatMode()));
 
 // Execution-sandbox isolation self-heal — fired SYNCHRONOUSLY at first paint
 // from the cached knob (sandbox-mode.js), BEFORE loadSettings() resolves. The

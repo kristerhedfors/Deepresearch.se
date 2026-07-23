@@ -44,9 +44,9 @@ that exist to be copied:
 | **Research** | Se/rver | The full signed-in deep-research assistant (renamed from "Server"). The whole pipeline, the full model catalog, cloud storage, quotas. |
 | **Secure** | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
-| **Agent Builder** | Se/rver | The mode that *builds* agents (renamed from "SDK mode"): describe a flavour, it distils this site into it and publishes it live. |
+| **Agent Studio** | Se/rver | The mode that *builds* agents (renamed from "SDK mode"): describe a flavour, it distils this site into it and publishes it live. |
 
-The **Agent Builder** is where the platform folds back on itself — it is the
+The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →
 generate in the VM → preview → publish at `/app/<slug>/`.
 
@@ -100,7 +100,7 @@ Node-tested ([`agent-spec-core.test.js`](../public/js/agent-spec-core.test.js)).
    `npm test`. Inspect it: `node sdk/pair-cli.mjs agent <id>`.
 4. Prove it renders: `node scripts/agent-proof.mjs` (§5).
 
-That is the whole loop — a new agent is data, not code. The **Agent Builder**
+That is the whole loop — a new agent is data, not code. The **Agent Studio**
 mode does this same thing from a natural-language prompt, distilling the Se/cure
 source into the new flavour and publishing it live.
 
@@ -126,7 +126,7 @@ Because the proof and the live composer both build from the *same*
 The preview surface ([`public/agents/preview.html`](../public/agents/preview.html)
 + [`public/js/agent-preview.js`](../public/js/agent-preview.js)) loads the
 registry from the committed source snapshot (the same artifact introspection
-and the Agent Builder plan from), renders each agent's composer, and lets you:
+and the Agent Studio plan from), renders each agent's composer, and lets you:
 
 - **ask an example question** — each seed example is a chip that opens the real
   agent composer with the question prefilled (a §8-style deep-link);

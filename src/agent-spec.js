@@ -3,7 +3,7 @@
 // validation, resolution, quota/theme/example helpers, and the snapshot loader
 // — lives in ONE shared module, public/js/agent-spec-core.js (the sdk-core.js /
 // bash-core.js / introspect-core.js pattern), so the CLI (sdk/pair-cli.mjs),
-// the Worker (Agent Builder mode, share-link minting), and the tests all use a
+// the Worker (Agent Studio mode, share-link minting), and the tests all use a
 // single source of truth. The core lives under public/ because the browser can
 // only import served modules, while the Worker bundler can import from anywhere
 // — so the server reaches it through this re-export. New shared AgentSpec logic

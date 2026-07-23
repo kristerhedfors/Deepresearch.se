@@ -231,10 +231,11 @@ abstraction as a design (`sdk/DESIGN.md`), a 34-module registry
 dependency-free CLI (`node sdk/pair-cli.mjs list|show|plan|validate|agents|agent`,
 unit-tested in `npm test`). Since 2026-07-18 the SDK is WIRED into the app:
 the pure core `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI
-re-exports it) powers **SDK mode** — labeled **Agent Builder** in the UI since
-2026-07-23 (the mode id stays `sdk`; internally still "SDK mode"/DistillSDK) —
-the green "lovable experience" entry in the chat-mode dropdown (Normal /
-Introspection / Agent Builder) that DISTILLS this site — above all the
+re-exports it) powers **SDK mode** — labeled **Agent Studio** in the UI
+(2026-07-23; renamed from "Agent Builder"; the mode id stays `sdk`, internally
+still "SDK mode"/DistillSDK) — the green "lovable experience" entry in the
+chat-mode dropdown (Normal / Introspection / Agent Studio) that DISTILLS this
+site — above all the
 client-side **Se/cure** tier — into a new self-contained web-app
 *flavour*, using the SDK's modules/skills as the method and the deployed Se/cure
 source as the original, then publishes it live at `/app/<slug>/`

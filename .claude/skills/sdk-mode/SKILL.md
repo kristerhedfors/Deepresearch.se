@@ -10,13 +10,14 @@ distill from this site — above all the client-side **Se/cure** tier — the mo
 DESIGNS + BUILDS it with DistillSDK (`sdk/` — manifest + skills) plus the
 deployed Se/cure source, and the pipeline PUBLISHES the files at a live,
 shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
-`sdk studio` header tag), as titanium white is introspection's.
+`agent studio` header tag), as titanium white is introspection's.
 
-> **Named "Agent Builder" in the UI (2026-07-23).** The dropdown option, the
-> account-settings label, and the plant greeter now read **Agent Builder** —
-> distilling this site into a new agent is the mode's purpose. The **mode id
-> stays `sdk`** and every internal name here (SDK mode, DistillSDK, `sdk_*`
-> tools, `sdk-mode` theme class) is unchanged. The agents this mode builds are
+> **Named "Agent Studio" in the UI (2026-07-23; renamed from "Agent Builder").**
+> The dropdown option, the account-settings label, the composer `agent studio`
+> tag and the plant greeter all read **Agent Studio** — distilling this site
+> into a new agent is the mode's purpose. The **mode id stays `sdk`** and every
+> internal name here (SDK mode, DistillSDK, `sdk_*` tools, `sdk-mode` theme
+> class) is unchanged. The agents this mode builds are
 > defined declaratively by the **agent-platform** SDK module (`sdk/AGENTS.json`,
 > `docs/AGENT-PLATFORM.md`) — an agent IS its chat-input-pane controls, theme,
 > animations, examples and share-link quota.
@@ -133,7 +134,7 @@ drawer, `#sdkshowcase` in index.html) **only when the chat mode is SDK**:
 `history-ui.js` calls `renderShowcase()` in its `refresh()`, gated on
 `cachedChatMode() === "sdk"`, so the same drawer is history in Normal/
 Introspection and a build-idea library in SDK mode (green cards, matching the
-composer pane + `sdk studio` tag). Picking a card calls app.js's
+composer pane + `agent studio` tag). Picking a card calls app.js's
 `onShowcasePick`, which prefills the composer with the brief (switching to SDK
 mode defensively) and closes the drawer — the user still presses send, so it
 stays a real *single shot*. The module is pure/Node-tested
@@ -219,7 +220,7 @@ consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
 - Unit: `sdk-core.test.js`, `build-pub.test.js`, `chat-mode.test.js`,
   `mcp.test.js` (5 tools), plus the pair-cli suite.
 - STILL OWED (live-verify discipline): a real SDK-mode round trip on the
-  deployed site — pick SDK in the dropdown (green pane + `sdk studio` tag),
+  deployed site — pick SDK in the dropdown (green pane + `agent studio` tag),
   "build me a todo app", confirm the build steps stream, the reply carries
   `/app/<slug>/`, the URL renders the app (and check the response CSP header
   is the sandbox one), then an iteration message republishes the SAME slug.

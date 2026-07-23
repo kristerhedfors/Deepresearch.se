@@ -30,6 +30,7 @@
 // localStorage access is guarded and fails soft.
 
 import { DEV_MODE_CLASS, cachedDeveloperMode } from "./dev-mode.js";
+import { barTint } from "./mode-theme.js";
 
 /** The localStorage key holding the picked chat mode. */
 export const CHAT_MODE_KEY = "dr_chat_mode";
@@ -98,6 +99,18 @@ export function applyChatModeTheme(mode, opts) {
     root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
+  }
+  // Repaint the iOS status-bar tint to the new mode's field color, so switching
+  // modes moves the chrome above the app too (each mode is a full theme). A
+  // direct set suffices for a switch (the value actually changes, so WebKit
+  // re-evaluates); bar-tint.js owns the layered re-asserts. Guarded separately
+  // so a DOM-less test never loses the class toggles above.
+  try {
+    globalThis.document
+      ?.querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", barTint(m));
+  } catch {
+    /* no DOM / no meta — bar-tint.js still re-asserts the current mode */
   }
   return m;
 }

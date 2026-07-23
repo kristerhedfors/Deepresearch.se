@@ -30,7 +30,7 @@ export const SDK_GREET_KEY = "dr_sdk_greeted";
 
 /** The pointer lines SPROUT speaks — plain text, one per beat. */
 export const SDK_GREETER_LINES = [
-  "Agent Builder — describe an agent and I distil this site into it.",
+  "Agent Studio — describe an agent and I distil this site into it.",
   "It grows into a new flavour, published live at its own link.",
 ];
 
