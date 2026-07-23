@@ -11,6 +11,7 @@ import {
   DEFAULT_OPACITY_PCT,
   FOLLOW_CAP_PX,
   LAYER_CONVO,
+  LAYER_HIDDEN,
   LAYER_TERMINAL,
   MAX_LINES,
   MAX_LINE_CHARS,
@@ -234,9 +235,17 @@ test("parallaxNudge opposes the gesture, clamped to ±cap, finite on garbage", (
   assert.equal(parallaxNudge("nope"), 0); // never NaN
 });
 
-test("nextLayerMode toggles convo ↔ terminal; unknown → terminal first", () => {
+test("nextLayerMode cycles convo → terminal → hidden → convo; unknown → terminal first", () => {
   assert.equal(nextLayerMode(LAYER_CONVO), LAYER_TERMINAL);
-  assert.equal(nextLayerMode(LAYER_TERMINAL), LAYER_CONVO);
+  assert.equal(nextLayerMode(LAYER_TERMINAL), LAYER_HIDDEN);
+  assert.equal(nextLayerMode(LAYER_HIDDEN), LAYER_CONVO);
+  // one full loop returns to the start
+  assert.equal(
+    nextLayerMode(nextLayerMode(nextLayerMode(LAYER_CONVO))),
+    LAYER_CONVO,
+  );
+  // the three modes are distinct
+  assert.equal(new Set([LAYER_CONVO, LAYER_TERMINAL, LAYER_HIDDEN]).size, 3);
   // a first background tap (mode unset/garbage) always brings the terminal up
   assert.equal(nextLayerMode(undefined), LAYER_TERMINAL);
   assert.equal(nextLayerMode("nope"), LAYER_TERMINAL);
