@@ -212,7 +212,9 @@ conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
 behind `src/introspect.js` and both tiers' clients),
 `markdown.js`
-(sanitized rendering), `report.js` (the branded PDF report export of
+(sanitized rendering; a complete ```` ```mermaid ```` fence in an answer draws
+as a real diagram — the vendored `mermaid.min.js` lazy-loads on first use
+only, fail-soft to the plain code block), `report.js` (the branded PDF report export of
 an answer — lazy-injects the vendored jsPDF on first use only, so the
 normal page load never pays for it), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
@@ -489,7 +491,9 @@ links, and the `/free*` legacy aliases (`/?continue=<slug>` is the
 legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked` and `DOMPurify`
-for Markdown rendering + sanitizing; `jsPDF`, lazy-loaded by `report.js`
+for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
+`markdown.js` only when an answer contains a mermaid diagram block;
+`jsPDF`, lazy-loaded by `report.js`
 for the PDF report; `pdf.js` for parsing PDF attachments client-side;
 `vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
 vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN

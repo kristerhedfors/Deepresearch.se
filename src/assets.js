@@ -190,6 +190,10 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/markdown.js" ||
     url.pathname === "/vendor/marked.min.js" ||
     url.pathname === "/vendor/purify.min.js" ||
+    // The vendored mermaid diagram renderer: markdown.js lazy-loads it when a
+    // rendered answer contains a ```mermaid block. Answers render on public
+    // /cure too, so it must serve unauthenticated (same rule as marked/purify).
+    url.pathname === "/vendor/mermaid.min.js" ||
     // The vendored xterm terminal (sandbox.js loads it same-origin now instead
     // of from a runtime CDN — a CDN outage must not break the sandbox). The
     // sandbox runs on public /cure too, so these must serve unauthenticated.
