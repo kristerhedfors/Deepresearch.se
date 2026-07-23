@@ -93,6 +93,7 @@ import {
 } from "./pool.js";
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
+import { recordServerError } from "./server-errors.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
 import { applySecurityHeaders } from "./security-headers.js";
@@ -145,6 +146,19 @@ export default {
         stack: /** @type {any} */ (err)?.stack,
         duration_ms: Date.now() - startedAt,
       });
+      // Record the crash into the server-error fix queue (src/server-errors.js)
+      // so this 500 becomes a work item the fix loop pulls, not just a Workers
+      // Logs line. Fail-soft and off the hot path — it must never turn one
+      // failure into two, so it rides ctx.waitUntil and swallows its own errors.
+      ctx.waitUntil(
+        recordServerError(env, log, {
+          requestId,
+          method: request.method,
+          path: url.pathname,
+          message: /** @type {any} */ (err)?.message || String(err),
+          stack: /** @type {any} */ (err)?.stack,
+        }).catch(() => {}),
+      );
       return applySecurityHeaders(
         jsonResponse({ error: "Internal server error.", request_id: requestId }, 500),
         requestId,
