@@ -8,7 +8,7 @@
 // Schema is applied lazily, once per isolate (CREATE TABLE IF NOT EXISTS is
 // idempotent), so there is no separate migration step to operate.
 
-const SCHEMA = `
+export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE NOT NULL,
@@ -349,6 +349,28 @@ const ALTERS = [
 let migrated = false; // per isolate
 
 /**
+ * Splits the multi-statement SCHEMA into individual SQL statements to prepare.
+ *
+ * SQL `--` line comments are STRIPPED FIRST, before splitting on `;`. This is
+ * load-bearing: a comment may itself contain a semicolon (e.g. "bump
+ * count/last_seen_at; a recurrence …"), and a naive `SCHEMA.split(";")` would
+ * cut the comment mid-sentence, leaving a fragment like "a recurrence …" as its
+ * own "statement". D1 then rejects it (`near "a": syntax error`), `db.batch`
+ * throws, `getDb` throws, and EVERY database-backed feature — sign-in included —
+ * 500s site-wide. Stripping comments (exactly what SQLite does with them anyway)
+ * makes the split immune to punctuation in the prose.
+ * @param {string} schema
+ * @returns {string[]} trimmed, non-empty SQL statements
+ */
+export function splitStatements(schema) {
+  return schema
+    .replace(/--[^\n]*/g, "") // drop line comments (they can contain ';')
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
  * Returns the D1 binding with schema applied, or null when the database is
  * not configured. Callers must handle null (feature off, not an error).
  * @param {import('./types.js').Env} env
@@ -358,10 +380,7 @@ export async function getDb(env) {
   const db = env.DB;
   if (!db) return null;
   if (!migrated) {
-    const statements = SCHEMA.split(";")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => db.prepare(s));
+    const statements = splitStatements(SCHEMA).map((s) => db.prepare(s));
     await db.batch(statements);
     for (const alter of ALTERS) {
       await db.prepare(alter).run().catch(() => {});
