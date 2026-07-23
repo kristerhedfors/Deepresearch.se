@@ -110,9 +110,9 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   execution sandbox also on, the whole source tree mounts at <code>/src</code> in
   the in-browser Linux VM.<br>
   <b>Agent Studio:</b> the green “lovable” builder — describe an agent to distil
-  from this site (above all the client-side Se/cure tier) with DistillSDK and get
-  a live, self-contained web app at its own link.<br>
-  The non-Normal modes turn on introspection access for this account.`;
+  from this site (above all the client-side Se/cure tier) and get a live,
+  self-contained web app at its own link.<br>
+  Introspection and Agent Studio turn on introspection access for this account.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders

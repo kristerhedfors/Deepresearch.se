@@ -4,7 +4,7 @@
 applications.** The question is how far a real, useful research assistant can
 be pushed toward *provable* privacy, and where that trades against capability.
 The proof is the site itself: a fully open-sourced, independently verifiable
-pair. **DeepResearch.Se/cure** is the public client-side tier, where the
+platform. **DeepResearch.Se/cure** is the public client-side tier, where the
 research runs entirely in the browser and the server sits in no data path.
 **DeepResearch.Se/rver** is the signed-in tier, where a server adds capability
 and protects what it handles with encryption and policy. It is still
@@ -60,25 +60,39 @@ working guides. The complete prompt-by-prompt build history lives in
 of the first weekend, kept as the record of how the project began. `/build/`
 holds the project purpose and EU AI Act use restrictions.
 
-## DistillSDK
+## The SDKs — Agents and Platform
 
-The architecture is also distilled into a reusable form: **DistillSDK**
-(`sdk/`). It is a design, a 33-module skill library, a machine-readable module
-registry (`sdk/MANIFEST.json`), and a dependency-free CLI for building **agent
-pairs** like this one — one AI-assistant product shipped as a wholly-in-browser
-client tier plus a one-edge-worker server tier, with at most one server
-component across the whole pair. Every module maps back to the repo files that
-already realize it and carries the incident history behind them.
+The architecture is also distilled into reusable form as **two SDKs**, both
+drawn from this repository. One builds a single **agent** inside a platform; the
+other builds a whole **platform**.
 
-The SDK is wired into the app. Its shared core `public/js/sdk-core.js` (server
-façade `src/sdk-tools.js`) powers **SDK mode**, the third chat mode alongside
-Normal and Introspection, which distills this site — the Se/cure tier above all
-— into a new self-contained web app and publishes it at `/app/<slug>/`. The
-CLI, the DRS pipeline (`src/pipeline.js`), and the `/mcp` `sdk_*` tools all read
-that one manifest core, so they stay in sync by construction.
+- **DeepResearch Agents SDK** — build an individual **agent**: a flavour of this
+  platform defined by its chat-input-pane controls, intro and loading
+  animations, colour theme, example questions, and the quota a shared link
+  carries. An agent is data, not code (`sdk/AGENTS.json`,
+  `public/js/agent-spec-core.js`) — copy one spec, change those five things,
+  validate. The full reference is **`docs/AGENT-PLATFORM.md`**.
+- **DeepResearch Platform SDK** (internal codename **DistillSDK**, `sdk/`) —
+  build a whole **platform**: one AI-assistant product shipped as a
+  wholly-in-browser client tier plus a one-edge-worker server tier, with at most
+  one server component across the whole platform. It is a design, a 34-module
+  skill library, a machine-readable module registry (`sdk/MANIFEST.json`), and a
+  dependency-free CLI. Every module maps back to the repo files that already
+  realize it and carries the incident history behind them. The full reference is
+  **`docs/DISTILLSDK.md`**.
 
-- **`docs/DISTILLSDK.md`** — the complete standalone documentation: the
-  pair abstraction, capability classes, contracts PA-1…PA-10, the full module
+Both SDKs are wired into the app. Their shared core `public/js/sdk-core.js`
+(server façade `src/sdk-tools.js`) powers **Agent Studio**, the green chat mode
+alongside Deep Research and Introspection, which distils this site — the Se/cure
+tier above all — into either a new individual agent *or* an entire new platform,
+and publishes it live at `/app/<slug>/`. The CLI, the server pipeline
+(`src/pipeline.js`), and the `/mcp` `sdk_*` tools all read that one manifest
+core, so they stay in sync by construction.
+
+- **`docs/AGENT-PLATFORM.md`** — the Agents SDK reference: the AgentSpec, the
+  four shipped agents, the visual proof, and the metered share-link token.
+- **`docs/DISTILLSDK.md`** — the Platform SDK reference: the platform
+  abstraction, capability classes, contracts PA-1…PA-10, the full module
   catalog, the CLI, and the implementation order.
 - `sdk/README.md` — the catalog front page; `sdk/DESIGN.md` the full design;
   `sdk/ROADMAP.md` the build-order rationale.

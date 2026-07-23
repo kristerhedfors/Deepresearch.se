@@ -1,7 +1,7 @@
 ---
 name: secure-tier
 description: >-
-  Load when building the CLIENT TIER of an agent pair — the wholly-in-browser
+  Load when building the CLIENT TIER of a platform — the wholly-in-browser
   assistant page (the Se/cure archetype): the minimal-server-by-design page,
   chat-first UX, the look-and-feel twin discipline with dimmed server-only
   affordances, the one-field API-key form with prefix auto-detect, the
@@ -15,7 +15,7 @@ description: >-
 
 # The client tier — a first-class product, not a demo
 
-The client tier is the pair's proof, not its teaser (`sdk/DESIGN.md` §4:
+The client tier is the platform's proof, not its teaser (`sdk/DESIGN.md` §4:
 "Why the client tier is not a demo"). The assistant runs wholly in the
 browser: model calls go browser-direct to the user's own CORS-capable
 providers (or their own local OpenAI-compatible server — then no third party
@@ -31,7 +31,7 @@ tier's privacy claim, and this module is where it is built and pinned.
 
 Manifest class: **C — client-pure.** Layer 2; deps `baseplate-client`,
 `provider-registry`, `sealed-crypto`. This module IS the client tier: it must
-work served from any static host, with the pair's one worker reduced to a
+work served from any static host, with the platform's one worker reduced to a
 file server. Its server tier story is deliberately near-empty — the worker
 serves the tier's static page and the public replay JSONs, routes the tier's
 paths BEFORE the identity gate, and nothing else. Bridged (class-B)
@@ -43,7 +43,7 @@ sealed local projects is already the product.
 
 - **PA-4 (carries, strongest form)** — the tier holds the *structural* form
   of the privacy split: keys and content sealed at rest in the browser under
-  a user-held secret, nothing project-derived ever sent to the pair's server,
+  a user-held secret, nothing project-derived ever sent to the platform's server,
   and every standing/per-step disclosure states exactly what leaves the
   browser and to whom.
 - **PA-1/PA-2/PA-3 (hosts)** — the client-side pipeline this page wires keeps
@@ -169,7 +169,7 @@ sealed local projects is already the product.
     thin and is verified live.
 13. **Write the standing disclosures.** A one-line "where your words go"
     note beside the model picker (the chosen provider CAN read the
-    conversation; the pair's server cannot; the local provider flips to
+    conversation; the platform's server cannot; the local provider flips to
     "nothing leaves this device"), and per-step online/offline channel
     marking with unknown phases defaulting to ONLINE — over-disclosing is
     the safe failure for a privacy tier.

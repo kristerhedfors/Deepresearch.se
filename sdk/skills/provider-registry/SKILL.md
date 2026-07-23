@@ -1,7 +1,7 @@
 ---
 name: provider-registry
 description: >-
-  Load when building an agent pair's LLM provider plane — the
+  Load when building a platform's LLM provider plane — the
   namespace-dispatched multi-provider registry on the server tier, the
   CORS-capable browser-direct registry (including the keyless local-server
   provider) on the client tier, a new provider client (foreign-wire SSE

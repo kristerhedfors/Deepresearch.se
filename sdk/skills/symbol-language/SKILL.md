@@ -1,13 +1,13 @@
 ---
 name: symbol-language
 description: >-
-  Load when designing or extending a generated agent pair's VISUAL IDENTITY
+  Load when designing or extending a generated platform's VISUAL IDENTITY
   SYSTEM — per-tier palettes and symbol characters, first-visit intro
   animations, per-tier waiting symbols and completion marks, the client
   tier's privacy notice (the what-goes-where read-up), the wordmark
   slash-spacing discipline, or the numbered UX-conventions registry — or when
   wiring ANY new interactive surface (popover, speech bubble, explainer,
-  gesture, dismissal) that must match the pair's established feel. The
+  gesture, dismissal) that must match the platform's established feel. The
   symbols are a design LANGUAGE, not decoration: each one states something
   true about where the user's data goes, so this module is the privacy
   mission rendered visible. Also load when a wordmark slash "touches the
@@ -15,9 +15,9 @@ description: >-
   low-animation directive live here.
 ---
 
-# Symbol language — the pair's visual identity as a truth channel
+# Symbol language — the platform's visual identity as a truth channel
 
-Give the pair a visual identity SYSTEM: per-tier palettes, per-tier symbol
+Give the platform a visual identity SYSTEM: per-tier palettes, per-tier symbol
 characters, one shared animation grammar, a wordmark discipline, and a
 numbered registry of interaction conventions. The load-bearing idea: the
 symbols are a second, wordless channel that tells the user something TRUE
@@ -71,7 +71,7 @@ with their own vocabulary:
 
 ## Build plan
 
-1. **Name the pair and its wordplay FIRST** (see the pair-generator skill —
+1. **Name the platform and its wordplay FIRST** (see the pair-generator skill —
    it flows into everything here). Fix the display convention: full form
    CamelCase with the bold wordplay tail, short form the slashed tail alone,
    functional URLs lowercase, and the client tier ALWAYS named first when

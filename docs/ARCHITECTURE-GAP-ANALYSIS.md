@@ -65,7 +65,7 @@ frequently the wrong target). **Δ** = the gap worth acting on; a **negative**
 
 | # | Principle | Now | Setpoint | Δ | Headline gap |
 |---|---|---|---|---|---|
-| P17 | Zero-or-one-server property + the distillable pair abstraction | 85% | 85% | 0 | Property holds; DistillSDK only partly wired (SDK mode live, 33-module manifest mostly design) |
+| P17 | Zero-or-one-server property + the distillable platform abstraction | 85% | 85% | 0 | Property holds; the Platform SDK only partly wired (SDK mode live, 34-module manifest mostly design) |
 | P18 | Spec-leads-code interchange standards (DRSW / DRPL / stackless) | 40% | *choose* | — | **Deliberately** ahead of code; the open question is whether to fund a second node or park the bet |
 | P19 | Hand-rolled durability over platform primitives (Workflows **not** adopted) | 100% | *conditional* | — | Correct today; the value of *reversing* it rises exactly with P4/P7 fan-out |
 | P20 | MCP as a product surface, not internal plumbing | 95% | 95% | 0 | Shipped (`/mcp` + `sdk_*`); extension is more tools, not more architecture |
@@ -415,16 +415,17 @@ its least honest sentence.
 
 ## IV. Platform & product direction
 
-### P17 — Zero-or-one-server property + the distillable pair abstraction
+### P17 — Zero-or-one-server property + the distillable platform abstraction
 
 **Now 85% · Setpoint 85%.**
 
-The load-bearing property holds: across the whole pair there is at most one
+The load-bearing property holds: across the whole platform there is at most one
 server component (the one Worker), and Se/cure stays fully functional with that
 Worker reduced to a static host, which is what makes the privacy claims
-*auditable* rather than policy. DistillSDK generalizes the pair as a reusable
+*auditable* rather than policy. The DeepResearch Platform SDK (codename
+DistillSDK) generalizes the platform as a reusable
 abstraction; SDK mode (`public/js/sdk-core.js`) is wired and live, distilling
-Se/cure into publishable flavours. The 33-module manifest is still mostly
+Se/cure into publishable flavours. The 34-module manifest is still mostly
 design and skills. **Value:** medium and strategic, not urgent. This is the
 differentiator, but the near-term ROI is lower than the P7/P8/P9 cluster.
 

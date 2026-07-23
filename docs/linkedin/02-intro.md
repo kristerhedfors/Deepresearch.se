@@ -90,8 +90,8 @@ av hur mycket som får plats *innanför* det bevisbara.
 
 ## Beviset är sajten själv
 
-Det här prövas inte i ett white paper utan i en körande sajt — byggd som ett
-**par**, och släppt i sin helhet under MIT-licens så att den kan granskas
+Det här prövas inte i ett white paper utan i en körande sajt — byggd som en
+**plattform**, och släppt i sin helhet under MIT-licens så att den kan granskas
 oberoende:
 
 - DeepResearch.**Se/cure** — never-cloud-nivån. Servern finns inte i någon
@@ -194,8 +194,9 @@ ur samma experiment, i stället för en enda lång genomgång. De följande arti
 behandlar var sitt: en kodbas på ~137 000 rader med noll runtime-beroenden;
 distribuerade säkra forskningsutrymmen som går att förladda, dela och försegla
 resultat ur; den deterministiska pipelinen som klarar sig helt utan function
-calling; DistillSDK och idén att destillera fram exakt den mjukvara du behöver;
-privacy-paret Se/cure + Se/rver i detalj; en riktig Linux-miljö som kör i
+calling; DeepResearch Platform SDK (kodnamn DistillSDK) och idén att destillera
+fram exakt den mjukvara du behöver; privacy-plattformen Se/cure + Se/rver i
+detalj; en riktig Linux-miljö som kör i
 webbläsarfliken utan att en byte lämnar din maskin; en förvaltningsmodell där
 AI-agenter äger och underhåller sina egna fixar; öppna standarder som medvetet
 leder koden; och sajten som kan förklara sin egen källkod. Varenda en är en

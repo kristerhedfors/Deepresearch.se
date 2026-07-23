@@ -1,6 +1,6 @@
-# DistillSDK
+# DistillSDK — the DeepResearch Platform SDK
 
-A software development kit for building **agent pairs** — one AI-assistant
+A software development kit for building **platforms** — one AI-assistant
 product shipped as two tiers of the same capability set:
 
 - a **client tier** that runs wholly in the browser, with the server (if
@@ -31,7 +31,7 @@ the catalog front page of the `sdk/` directory itself.
 
 | File | What it is |
 |---|---|
-| `DESIGN.md` | The agent-pair abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
+| `DESIGN.md` | The platform abstraction: the zero-or-one-server property, capability classes (C/S/B/X/D), contracts **PA-1…PA-10**, the module model, the design decisions |
 | `MANIFEST.json` | The machine-readable module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `ROADMAP.md` | The implementation-order rationale: six phases, why each module lands where it does, exit criteria per phase |
 | `skills/<module>/SKILL.md` | One buildable capability module per skill — the complete capability foundation of deepresearch.se |
@@ -98,7 +98,7 @@ evidence-driven decisions).
 |---|---|---|
 | `execution-sandbox` | X | In-browser Linux VM + the fenced-block shell agent |
 | `introspection-help` | X | Self-source answering + the docs-first interactive help |
-| `mcp-surface` | S | The pair exposed as an MCP tool (the outbound edge) |
+| `mcp-surface` | S | The platform exposed as an MCP tool (the outbound edge) |
 | `publish-replays` | S | Frozen research sessions as public replay pages |
 | `symbol-language` | X | Per-tier symbols, disclosure grammar, wordmark discipline, UX registry |
 | `games-shelf` | S | The registry seam for whole product surfaces (worked example: a game) |
@@ -113,7 +113,7 @@ evidence-driven decisions).
 | `pair-generator` | D | Selection → dependency closure → module-at-a-time generation; adoption mode |
 | `pair-studio` | X | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application; platform types (client-tier builds run instantly, server-tier builds export) |
 | `agent-platform` | X | AgentSpec — an agent defined by its chat-input-pane controls, animations, theme, examples and share-link quota; the four shipped agents; composer renderer + visual proof + example generation + share-link minting (`docs/AGENT-PLATFORM.md`) |
-| `deploy-pipeline` | S | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the pair's origin). Server-tier |
+| `deploy-pipeline` | S | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the platform's origin). Server-tier |
 
 ## How to use it
 
@@ -135,7 +135,7 @@ it as a runnable test application.
 **To learn the architecture:** read `DESIGN.md`, then the
 `pair-architecture` skill.
 
-**To generate a new pair from scratch:** load the `pair-generator` skill.
+**To generate a new platform from scratch:** load the `pair-generator` skill.
 In short: pick a selection (the baseplate is mandatory; three worked
 selections are in `DESIGN.md` §3 — from a zero-server client-only
 assistant up to the full reference), close it over `MANIFEST.json`

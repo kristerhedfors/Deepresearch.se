@@ -1,7 +1,7 @@
 ---
 name: eval-harness
 description: >-
-  Load when building or running the pair's evaluation system — the
+  Load when building or running the platform's evaluation system — the
   model-matrix trace harness, the LLM-judged rubric bench, or the external
   gold-answer bench — when an answer-quality change wants to merge, when a
   per-model quirk needs a profile entry, or when a findings ledger must be
@@ -15,7 +15,7 @@ description: >-
 # Eval harness — the three-legged stool that gates quality changes
 
 "Seems better" is not evidence. This module builds the measurement system
-that lets a pair's answer quality be CHANGED safely: a trace harness that
+that lets a platform's answer quality be CHANGED safely: a trace harness that
 finds integration bugs, a scored rubric bench that says whether a pipeline
 change made answers better, and an external gold-answer bench that says
 whether the pipeline gets independently-verifiable answers right — each

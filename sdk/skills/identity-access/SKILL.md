@@ -1,7 +1,7 @@
 ---
 name: identity-access
 description: >-
-  Load when building the server tier's identity layer for an agent pair —
+  Load when building the server tier's identity layer for a platform —
   OIDC sign-in with state-cookie CSRF and claims validation, the long-lived
   sliding session cookie HMAC-keyed solely by the session secret (fail
   closed, no fallback), one-time terms and approval gate pages (PWAs cannot
@@ -14,7 +14,7 @@ description: >-
 
 # Identity & access — the server tier's front door
 
-The server tier is the signed-in half of the pair: exactly one identity
+The server tier is the signed-in half of the platform: exactly one identity
 gate, in the one worker, resolves who is calling before any API or asset is
 served. This module builds that gate from scratch: OIDC sign-in as the only
 user-facing login (no passwords ever stored — the identity provider proves

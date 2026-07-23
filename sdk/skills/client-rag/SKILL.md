@@ -1,7 +1,7 @@
 ---
 name: client-rag
 description: >-
-  Load when building an agent pair's RAG plane — retrieval over documents,
+  Load when building a platform's RAG plane — retrieval over documents,
   projects, and the conversations themselves — on either tier: the
   chunking/cosine/top-k pure core, the per-tier embedding paths (server-tier
   embedding proxy vs browser-direct on the user's own key), incremental chat
@@ -15,7 +15,7 @@ description: >-
 
 # Client-side RAG over documents, projects and chats
 
-Retrieval that keeps the pair's privacy story intact: one pure,
+Retrieval that keeps the platform's privacy story intact: one pure,
 Node-testable core (chunking, cosine, top-k, vector codec) shared by both
 tiers, with embedding routed per tier — through the server's metered proxy
 on the server tier, browser-direct on the user's own key on the client tier

@@ -1,10 +1,14 @@
-# DistillSDK
+# DeepResearch Platform SDK
 
-**The complete documentation of `sdk/` — DistillSDK — as a standalone
-section of the project's documentation.** The SDK is the *constructive*
-counterpart to the repo's operational skills: a design, a 33-module skill
-library, a machine-readable manifest, an implementation-order rationale, and a
-dependency-free CLI for building **agent pairs** — one AI-assistant product
+**The complete documentation of `sdk/` — the DeepResearch Platform SDK
+(internal codename DistillSDK) — as a standalone section of the project's
+documentation.** It is one of the project's two SDKs: this one builds a whole
+**platform**; its companion, the **DeepResearch Agents SDK**
+([`docs/AGENT-PLATFORM.md`](./AGENT-PLATFORM.md)), builds a single **agent**
+inside a platform. The Platform SDK is the *constructive* counterpart to the
+repo's operational skills: a design, a 34-module skill library, a
+machine-readable manifest, an implementation-order rationale, and a
+dependency-free CLI for building **platforms** — one AI-assistant product
 shipped as two tiers of the same capability set, the way this site ships
 DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 
@@ -15,7 +19,8 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 > and three application surfaces consume the SDK:
 >
 > - **SDK mode** — the green "lovable experience" entry in the chat-mode
->   dropdown (Normal / Introspection / SDK — see the sdk-mode skill): the user
+>   dropdown (Deep Research / Introspection / Agent Studio — see the sdk-mode
+>   skill): the user
 >   describes a FLAVOUR to distill from this site (above all the client-side
 >   Se/cure tier), the model plans with `sdk_plan`, reads the module skills and
 >   the deployed Se/cure source out of the snapshot, builds a self-contained web
@@ -35,7 +40,7 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 >
 > The SDK remains distilled *from* this repository — every module points back
 > at the files that already realize it. The reference itself is experimental;
-> the SDK does not make a generated pair production-ready. Operational detail:
+> the SDK does not make a generated platform production-ready. Operational detail:
 > the **sdk-mode** skill.
 
 This document is self-contained: it covers the abstraction, the capability
@@ -52,7 +57,7 @@ repo's mirror discipline).
 
 ## 1. What the SDK is
 
-An **agent pair** is one product, two tiers:
+A **platform** is one product, two tiers:
 
 - a **client tier** (archetype: DeepResearch.**Se/cure**, `/cure`) that runs
   wholly in the browser, with the server — if any — in **no data path**: the
@@ -65,8 +70,8 @@ An **agent pair** is one product, two tiers:
 
 The SDK has three parts:
 
-1. **The design** (`sdk/DESIGN.md`, condensed here in §2–§5) — the agent-pair
-   abstraction and the contracts every generated pair must preserve.
+1. **The design** (`sdk/DESIGN.md`, condensed here in §2–§5) — the platform
+   abstraction and the contracts every generated platform must preserve.
 2. **The skill library** (`sdk/skills/<id>/SKILL.md`) — one buildable
    capability module per skill, covering the entire capability foundation of
    deepresearch.se, each with a from-scratch build plan, the reference
@@ -77,34 +82,34 @@ The SDK has three parts:
 
 | File | What it is |
 |---|---|
-| `sdk/DESIGN.md` | The pair abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
-| `sdk/MANIFEST.json` | The module registry: 33 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `sdk/DESIGN.md` | The platform abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
+| `sdk/MANIFEST.json` | The module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `sdk/ROADMAP.md` | The implementation order: six phases, why each module lands where it does, exit criteria per phase |
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
 | `sdk/pair-cli.mjs` | The dependency-free CLI over the manifest (`list` / `show` / `plan` / `validate`), unit-tested in `npm test` |
-| `sdk/drpl.mjs` | The DRPL/1 pipeline-language reference tooling (`validate` / `show` / `fingerprint` / `diff` over `*.drpl.json` documents) — the formal language declaring a pipeline's structure incl. privacy placement, so pairs and nodes can be compared structurally (spec: `docs/PIPELINE-LANGUAGE.md`; part of the DRSW workspace-interchange standard, `docs/WORKSPACE-PROTOCOL.md`); unit-tested in `npm test` (`sdk/drpl.test.mjs`) |
+| `sdk/drpl.mjs` | The DRPL/1 pipeline-language reference tooling (`validate` / `show` / `fingerprint` / `diff` over `*.drpl.json` documents) — the formal language declaring a pipeline's structure incl. privacy placement, so platforms and nodes can be compared structurally (spec: `docs/PIPELINE-LANGUAGE.md`; part of the DRSW workspace-interchange standard, `docs/WORKSPACE-PROTOCOL.md`); unit-tested in `npm test` (`sdk/drpl.test.mjs`) |
 
 **Why skills, not a framework.** The reference codebase's entire bug history
 is integration behavior — hung fetches, silent stream truncation, CPU
 ceilings, model quirks — which frameworks hide rather than prevent. The SDK
 therefore ships *knowledge* (skills with contracts, build plans, and
 acceptance tests) plus a thin generator, not a runtime library. Generated
-pairs own their `fetch` calls and their stream loops, exactly like the
+platforms own their `fetch` calls and their stream loops, exactly like the
 reference does. A skill is also the unit an agent session can actually
-execute, which is how both the reference and any generated pair are, in
+execute, which is how both the reference and any generated platform are, in
 practice, built.
 
 ---
 
-## 2. The agent-pair abstraction
+## 2. The platform abstraction
 
-**The zero-or-one-server property.** Across the whole pair there is at most
+**The zero-or-one-server property.** Across the whole platform there is at most
 one server component. There is no microservice mesh, no separate auth service,
 no search proxy fleet: every server-side responsibility lives in the one
 worker, and the client tier must remain fully functional with that worker
 reduced to a static file host (or replaced by any static host). This is the
-property the SDK exists to preserve. It is what makes the pair's privacy
+property the SDK exists to preserve. It is what makes the platform's privacy
 claims *auditable*: the client tier's guarantees follow from the absence of a
 server in the data path, not from a policy document.
 
@@ -122,7 +127,7 @@ server in the data path, not from a policy document.
 ```
 
 The upstream APIs themselves are **optional**: a client-tier session against a
-local model server has *no* upstream third party at all, and a pair can be
+local model server has *no* upstream third party at all, and a platform can be
 generated with no web search, no maps, no enrichment. The baseplate plus a
 provider registry is already a working product.
 
@@ -141,9 +146,9 @@ PA-2, PA-3 all hold client-side in the reference's `drc-research.js`), not a
 feature-reduced teaser. Every capability skill states its client-tier story:
 implementable / bridged / honestly server-only.
 
-**Naming convention.** The pair's two tiers are named by one wordplay: a
+**Naming convention.** The platform's two tiers are named by one wordplay: a
 shared brand stem whose URL path completes a word per tier (`DeepResearch.Se`
-+ `/cure` → "Secure"; + `/rver` → "Server"). A generated pair may pick any
++ `/cure` → "Secure"; + `/rver` → "Server"). A generated platform may pick any
 stem/wordplay, but the convention carries real rules the reference codified:
 the display form is CamelCase-with-bold-tail (DeepResearch.**Se/cure**),
 functional URLs stay lowercase, the short form is the slashed tail alone
@@ -164,7 +169,7 @@ heart of the design. It is what "preserving the properties" means:
 | **S — server-backed** | Requires the one server component. Only ever exists in the server tier. | identity/accounts, quotas, cloud ciphertext storage, the MCP surface |
 | **B — bridged** | A server capability *lent* to a client-tier session through metered grant tokens — the ONLY sanctioned way the client tier touches the server. | the grant-token bridge (granted web search, proxied LLM completions, the consolidated server token) |
 | **X — shared substrate** | Pure logic used by BOTH tiers: one implementation as a pure core under the client's module tree, re-exported by a server façade. | the research pipeline, provider registry, bash-core, introspect-core |
-| **D — development system** | Not product code: the loops, evals, boards and workflows that keep the pair maintainable by agent sessions. | eval harness, feedback/test loops, the generator, the architecture itself |
+| **D — development system** | Not product code: the loops, evals, boards and workflows that keep the platform maintainable by agent sessions. | eval harness, feedback/test loops, the generator, the architecture itself |
 
 Class rules the generator (and `pair-cli.mjs validate`) enforces:
 
@@ -240,7 +245,7 @@ skills can cite them precisely.
   findings ledgers are append-only. The class-D modules exist to make this
   cheap.
 
-**Why the bridge is a token system and not "just an API".** The pair's story
+**Why the bridge is a token system and not "just an API".** The platform's story
 collapses if the client tier quietly calls authenticated server endpoints.
 Grant tokens make every crossing *visible* (disclosed in UI), *bounded*
 (quota, TTL, budget ceiling), *revocable* (delete the meter row), and
@@ -253,7 +258,7 @@ disclosure device: nobody forgets it goes to a server somewhere.
 
 ## 5. The module model: baseplate + selectable features
 
-A generated pair is assembled from **modules**. Each module is one skill in
+A generated platform is assembled from **modules**. Each module is one skill in
 `sdk/skills/`, one entry in `sdk/MANIFEST.json`, and maps to a bounded set of
 files in the generated tree. Modules declare:
 
@@ -274,7 +279,7 @@ selectable. Three worked selections:
 | Selection | Modules | What you get |
 |---|---|---|
 | **Minimal client-only assistant** | baseplate + `provider-registry` (client half) + `secure-tier` + `sealed-crypto` | A `/cure`-style bring-your-own-key chat with sealed local state, deployable on any static host — zero servers |
-| **Minimal pair** | the above + `identity-access` + `quota-metering` + `sse-recovery` + `research-pipeline` | Both tiers: signed-in server-orchestrated research + the client twin |
+| **Minimal platform** | the above + `identity-access` + `quota-metering` + `sse-recovery` + `research-pipeline` | Both tiers: signed-in server-orchestrated research + the client twin |
 | **Full deepresearch.se** | everything in the manifest | The reference product, rebuilt |
 
 **Feature selection is additive and ordered.** The generator takes a
@@ -293,9 +298,9 @@ the type is its logical boundary:
   local model server, or grant tokens borrowed through the bridge). Because it
   is just static files it is **instantly runnable**: the `pair-studio` module
   preview-deploys it into an in-app pane, and the saved artifact runs from any
-  static host. This is the default type, deliberately: the pair's own mission
-  posture applied to what the pair builds.
-- **A server-tier build** adds the one server component. The pair's own server
+  static host. This is the default type, deliberately: the platform's own mission
+  posture applied to what the platform builds.
+- **A server-tier build** adds the one server component. The platform's own server
   **never executes or hosts generated server code** (a hard rule — anything
   else breaks the zero-or-one-server property and the trust boundary at once),
   so a server-tier build exports as a deployable bundle for the user's own
@@ -304,7 +309,7 @@ the type is its logical boundary:
 
 ---
 
-## 6. The module catalog (33 modules)
+## 6. The module catalog (34 modules)
 
 The complete registry, grouped by layer. `Deps` is the manifest's dependency
 edge set, the generator's topological order.
@@ -342,7 +347,7 @@ edge set, the generator's topological order.
 | `sealed-crypto` | C | baseplate-client | User-held secrets, HKDF derivations, AES-GCM archives — the pure crypto core (frozen derivation constants from day one) |
 | `ciphertext-storage` | S | identity-access, sealed-crypto | Cloud ciphertext, the blind-blob vault tier, drain-wipe — every stored byte argues PA-4 |
 | `client-rag` | X | provider-registry, sealed-crypto | Chunking/embedding/retrieval over docs, projects and chats, per-tier storage postures |
-| `grant-bridge` | B | identity-access, quota-metering, secure-tier, web-search | The metered grant-token bridge — the only sanctioned tier crossing (PA-8/PA-9); a new pair builds the consolidated one-JWT form directly |
+| `grant-bridge` | B | identity-access, quota-metering, secure-tier, web-search | The metered grant-token bridge — the only sanctioned tier crossing (PA-8/PA-9); a new platform builds the consolidated one-JWT form directly |
 | `offline-workspaces` | C | sealed-crypto, grant-bridge, secure-tier | A whole configured session sealed into one URL-fragment link |
 
 **Layer 4 — Operations & feedback plane**
@@ -361,7 +366,7 @@ edge set, the generator's topological order.
 |---|---|---|---|
 | `execution-sandbox` | X | baseplate-client, research-pipeline | In-browser Linux VM + the fenced-block shell agent (the deepest well — treat as its own project with a standing maintenance owner) |
 | `introspection-help` | X | research-pipeline, secure-tier | Self-source answering + the docs-first interactive help |
-| `mcp-surface` | S | research-pipeline, identity-access, quota-metering | The pair exposed as an MCP tool — the strategic outbound edge |
+| `mcp-surface` | S | research-pipeline, identity-access, quota-metering | The platform exposed as an MCP tool — the strategic outbound edge |
 | `publish-replays` | S | secure-tier, baseplate-worker | Frozen research sessions as public replay pages |
 | `symbol-language` | X | baseplate-client | Per-tier symbols, disclosure grammar, wordmark discipline, the UX-conventions registry |
 | `games-shelf` | S | identity-access | The registry seam for whole product surfaces (worked example: a game) |
@@ -375,7 +380,7 @@ edge set, the generator's topological order.
 |---|---|---|---|
 | `pair-generator` | D | pair-architecture | Selection → dependency closure → module-at-a-time generation; adoption mode for wiring an existing product. Meta — used from day one, listed last |
 | `pair-studio` | X | vm-toolchain, secure-tier, pair-generator | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application |
-| `deploy-pipeline` | S | workspace-fs, pair-studio, grant-bridge | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the pair's origin). Server-tier only |
+| `deploy-pipeline` | S | workspace-fs, pair-studio, grant-bridge | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the platform's origin). Server-tier only |
 
 ### The skill shape
 
@@ -407,7 +412,7 @@ layer-sorted module order to build. `validate` enforces the registry's
 integrity (every module's skill file exists, deps resolve, class rules hold)
 and is also test-pinned, so a broken manifest fails `npm test`.
 
-The same CLI runs **inside the pair's own sandbox VM**: the SDK is mounted at
+The same CLI runs **inside the platform's own sandbox VM**: the SDK is mounted at
 `/src/sdk` (the `vm-toolchain` module), so with a nodejs-equipped image,
 `node /src/sdk/pair-cli.mjs …` works from within the browser's own Linux.
 
@@ -424,9 +429,9 @@ server tier before cloud storage).
 
 | Phase | Modules | The point | Exit criterion |
 |---|---|---|---|
-| **0 — Foundation** | pair-architecture, baseplate-worker, baseplate-client | Lock the contracts and the name/wordplay — the only decisions that get more expensive with every later module | A deployed "hello pair" page served by the one worker, tests + typecheck green, headers verified live |
+| **0 — Foundation** | pair-architecture, baseplate-worker, baseplate-client | Lock the contracts and the name/wordplay — the only decisions that get more expensive with every later module | A deployed "hello platform" page served by the one worker, tests + typecheck green, headers verified live |
 | **1 — Model plane** | provider-registry, research-pipeline, web-search, enrichments | The product's spine; the pipeline lands BEFORE search exists (PA-2's ordering trick) | Both tiers produce researched, cited answers end to end, pipeline unit-tested against a mock provider |
-| **2 — The two tiers** | sealed-crypto (pulled forward), secure-tier, identity-access, quota-metering, sse-recovery | The client tier FIRST — the stricter posture makes every later server capability argue its way in; never open sign-ups before quotas | The pair exists as a pair; class-C module-graph pins green |
+| **2 — The two tiers** | sealed-crypto (pulled forward), secure-tier, identity-access, quota-metering, sse-recovery | The client tier FIRST — the stricter posture makes every later server capability argue its way in; never open sign-ups before quotas | The platform exists as a platform; class-C module-graph pins green |
 | **3 — Privacy & storage** | ciphertext-storage, client-rag, grant-bridge, offline-workspaces | Every module here is defined by which tier it must NOT touch; the bridge builds last against stable subsystems | Cross-subsystem grant invariant suite green; a workspace link round-trips mint → seal → open → hydrate → spend → pause → revoke |
 | **4 — Operations & loops** | observability, eval-harness, decision-boards, feedback-loops, agent-dev-workflow | Timed by people, not code: land when real users generate signal and agent sessions work in parallel | A keyword-only bug report can be traced, fixed with the verbatim message as a regression test, and verified live |
 | **5 — Extensions** | execution-sandbox, introspection-help, mcp-surface, publish-replays, symbol-language, games-shelf, exec-engine, vm-toolchain, workspace-fs | All leaves; order by product priority, not dependency | Each lands independently with its own acceptance |
@@ -478,7 +483,7 @@ same UI, save it as a runnable test application.
 **To learn the architecture:** read this document, then `sdk/DESIGN.md`, then
 the `pair-architecture` skill.
 
-**To generate a new pair from scratch:** load the `pair-generator` skill. In
+**To generate a new platform from scratch:** load the `pair-generator` skill. In
 short: pick a selection (the baseplate is mandatory; §5's worked selections
 are the calibration points), close it over the manifest's dependencies
 (`pair-cli.mjs plan`), then walk the roadmap's phase order executing one
@@ -532,7 +537,7 @@ behavior-preserving.
   `bundle:rag`, `bundle:docs`, `bundle:docs-rag`) like any other tracked-text
   change — `npm test` names the drift if forgotten.
 
-**What the SDK does NOT promise.** It does not make a pair production-ready
+**What the SDK does NOT promise.** It does not make a platform production-ready
 (the reference itself is explicitly experimental); it does not abstract away
 providers' wire quirks (skills document them instead); and it does not let a
 selection violate the contracts. There is no flag to "just this once" put the

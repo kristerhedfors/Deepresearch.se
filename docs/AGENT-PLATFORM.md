@@ -1,11 +1,15 @@
-# The Agent Platform
+# The Agent Platform — the DeepResearch Agents SDK
 
-**Build complete agents through the SDK — define them, preview them, prove
-them, and share them.** This is the top of a three-level documentation tree.
-Read this page for the whole picture; follow the links down to the subsystem
-docs and then to the source; and use the **"ask the source"** links (§8) to
-put any question straight to the introspection agent, which answers from the
-project's own code.
+**Build complete agents through the Agents SDK — define them, preview them,
+prove them, and share them.** This is the reference for the **DeepResearch
+Agents SDK**, the project's SDK for building a single **agent** inside a
+platform. (Its companion, the **DeepResearch Platform SDK** — codename
+DistillSDK, [`docs/DISTILLSDK.md`](./DISTILLSDK.md) — builds a whole *platform*;
+this one builds one *agent* that runs on a platform.) This is the top of a
+three-level documentation tree. Read this page for the whole picture; follow the
+links down to the subsystem docs and then to the source; and use the **"ask the
+source"** links (§8) to put any question straight to the introspection agent,
+which answers from the project's own code.
 
 > **Status (2026-07-23):** the definition layer, the four shipped agents, the
 > composer renderer, the visual proof, the CLI, the live preview surface, and
@@ -18,8 +22,8 @@ project's own code.
 
 ## 1. What an agent is
 
-An **agent** is a *flavour* of this site's Se/cure + Se/rver pair — and it is
-**defined by five things you can see and change**:
+An **agent** is a *flavour* of this site's platform — its Se/cure + Se/rver
+tiers — and it is **defined by five things you can see and change**:
 
 1. its **chat-input-pane controls** — which affordances hang off the composer:
    a model picker, a research-depth slider, web-search / incognito toggles,
@@ -31,7 +35,7 @@ An **agent** is a *flavour* of this site's Se/cure + Se/rver pair — and it is
 
 That is the whole idea: **an agent IS its chat-input pane** (plus its
 animations, theme, examples and quota). Everything else — the pipeline, the
-providers, the privacy posture — it inherits from the pair. So **deriving a new
+providers, the privacy posture — it inherits from the platform. So **deriving a new
 agent is: copy one spec, change those five things, validate.** No code change.
 
 ## 2. The four agents we ship
@@ -138,7 +142,7 @@ and the Agent Studio plan from), renders each agent's composer, and lets you:
 
 Creating an agent **as a link** mints a **token** carrying the agent's default
 **quota/credits** — bounded, disclosed, revocable, fail-safe. This is wired
-**by the book**: it reuses the pair's existing **Se/rver-token** subsystem
+**by the book**: it reuses the platform's existing **Se/rver-token** subsystem
 verbatim — no new crypto, no new meter.
 
 - `agentTokenGrantParams(agent)` (pure) maps the spec to the subsystem's

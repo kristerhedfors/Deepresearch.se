@@ -35,7 +35,7 @@ truly needs to *execute*. The workspace stays coherent across the boundary
 The capability presumes three things Se/rver has and Se/cure structurally does
 not:
 
-1. **An MCP tool surface the model drives.** Se/rver already exposes the pair
+1. **An MCP tool surface the model drives.** Se/rver already exposes the platform
    *as* an MCP server (`src/mcp.js`); adding file/exec/deploy tools extends
    that surface, and a tool-capable answer model (or an external MCP client)
    drives them. Se/cure's model is the user's own provider called
@@ -183,14 +183,14 @@ user can open (the `deploy-pipeline` module):
 1. **Build** (optional): `run_bash` the project's build (`npm run build`, etc.)
    in the VM; harvest the output into the store.
 2. **Deploy target by platform type** (the `pair-studio` platform-type rule
-   still governs — the pair's own server never hosts generated *server* code):
+   still governs — the platform's own server never hosts generated *server* code):
    - **Client-tier build** (static): publish the workspace's built assets to a
      **live preview route** (the reserved-scope service worker from
      `pair-studio`, promoted from in-tab preview to a shareable same-origin
      URL) — instantly openable.
    - **Server-tier build**: push a **deployable bundle to the user's own edge
      account** (a wrangler-style publish the user authorizes with their own
-     token, minted/held like any grant), returning the live URL. The pair
+     token, minted/held like any grant), returning the live URL. The platform
      never runs the user's server code on its own origin.
 3. **Return a live URL** to "try it out," plus the deploy log.
 

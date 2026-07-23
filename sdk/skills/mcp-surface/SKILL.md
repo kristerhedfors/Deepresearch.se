@@ -1,11 +1,11 @@
 ---
 name: mcp-surface
 description: >-
-  Load when exposing a generated agent pair AS a tool that other agents call
-  — an MCP server on the pair's outbound edge — or when touching the
+  Load when exposing a generated platform AS a tool that other agents call
+  — an MCP server on the platform's outbound edge — or when touching the
   JSON-RPC 2.0 / Streamable HTTP endpoint, the tool schema, or an MCP client
   that can't connect or call the tool. Covers the outbound-only verdict (MCP
-  is how the pair is composed WITH, never internal plumbing — inside, tool
+  is how the platform is composed WITH, never internal plumbing — inside, tool
   selection stays deterministic), the hand-rolled dependency-free protocol
   handling (initialize / tools/list / tools/call / notifications ack), the
   load-bearing file-layout rule (pure protocol helpers statically importable
@@ -16,13 +16,13 @@ description: >-
   the validation ladder (protocol unit suite → live JSON-RPC probe).
 ---
 
-# The MCP surface — the pair as a tool other agents call
+# The MCP surface — the platform as a tool other agents call
 
-Expose the pair's research pipeline **as an MCP server**: one high-leverage
+Expose the platform's research pipeline **as an MCP server**: one high-leverage
 tool (question in; cited, validated, source-diverse answer out) that any MCP
 client — a chat assistant, an IDE agent, an agent SDK — can call. This is the
 one place the pipeline points *outward*: MCP adds a transport over the
-existing pipeline; it never hands control flow to a model. The pair becomes a
+existing pipeline; it never hands control flow to a model. The platform becomes a
 composable capability in other agents' toolboxes without growing a second
 orchestration style inside itself.
 
@@ -38,19 +38,19 @@ by design: the server tier gains an inbound machine-to-machine face that
 inherits every gate the human-facing chat already passes through.
 
 **The outbound-only verdict (carry this reasoning into the generated
-pair).** The reference's architecture roadmap (`docs/ARCHITECTURE-ROADMAP.md`
-§3) settled where MCP belongs: on the **outbound edge** — the pair *as* a
+platform).** The reference's architecture roadmap (`docs/ARCHITECTURE-ROADMAP.md`
+§3) settled where MCP belongs: on the **outbound edge** — the platform *as* a
 tool other agents compose with — and NOT as internal plumbing. Internal
 integrations (search, enrichments, providers) stay deterministic registries
 in the orchestrator's hands, because model-driven internal tool selection is
 exactly the function-calling shape PA-1 rules out and would break the
 works-on-any-catalog guarantee. An MCP client's model choosing to call the
-pair's tool is fine — that model belongs to the caller; inside the tool call,
+platform's tool is fine — that model belongs to the caller; inside the tool call,
 orchestration stays deterministic.
 
 ## Contracts
 
-- **PA-1** — the inbound surface adds no function calling inside the pair:
+- **PA-1** — the inbound surface adds no function calling inside the platform:
   `tools/call` runs the same deterministic pipeline as chat; the "tool
   choice" happens in the CALLER's model, outside the boundary.
 - **PA-3** — the tool call resolves its JSON planning model through the SAME
@@ -61,7 +61,7 @@ orchestration stays deterministic.
   posture and opt-out semantics as chat; secrets never appear in any log.
 - **PA-5** — the protocol surface is tiny, so it is hand-rolled: JSON-RPC
   2.0 over a single POST, zero dependencies, same minimal-deps stance as
-  the rest of the pair.
+  the rest of the platform.
 - **PA-9-adjacent (quota, not grants)** — the endpoint enforces the SAME
   quota gate as chat BEFORE any spend; without it, MCP is an unmetered
   bypass that runs the full pipeline for real provider and search money.

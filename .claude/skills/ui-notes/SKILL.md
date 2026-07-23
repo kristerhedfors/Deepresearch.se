@@ -202,7 +202,7 @@ description: >-
   prohibited practices mapped onto a text research tool, and a read of
   how the Article 2(6)/2(8) research and pre-market exemptions fit —
   the assistant is put into service solely to research which capabilities
-  and use cases fit the agent-pair architecture, not deployed for real-world
+  and use cases fit the platform architecture, not deployed for real-world
   use by real users).
 - **"The build story"** at `/story/` (auth-gated static page, its own
   top-level account-panel entry): fetches and renders

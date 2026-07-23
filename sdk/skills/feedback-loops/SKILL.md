@@ -1,7 +1,7 @@
 ---
 name: feedback-loops
 description: >-
-  Load when building or running the pair's user-feedback and testing loops —
+  Load when building or running the platform's user-feedback and testing loops —
   per-reply feedback dialogue threads with the development agent, the
   testable-interaction-points ("try-it") queue with its deep-link action
   grammar and 👍/👎/❓ verdicts, the git-transported test-request channel
@@ -14,7 +14,7 @@ description: >-
 
 # Feedback & testing loops — three channels from users to fixes
 
-A pair maintained by agent sessions needs structured channels from "a human
+A platform maintained by agent sessions needs structured channels from "a human
 noticed something" to "a verified fix shipped". This module builds three:
 (1) per-reply **user feedback** as dialogue threads between end users and
 the development agent, (2) the **try-it queue** of declared, deep-linkable

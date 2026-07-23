@@ -1,14 +1,14 @@
 ---
 name: execution-sandbox
 description: >-
-  Load when giving a generated agent pair a REAL shell — an in-browser x86
+  Load when giving a generated platform a REAL shell — an in-browser x86
   Linux VM (WASM) the assistant runs commands in, with the sandbox being the
   user's own browser — or when touching any part of that capability: the
   client-orchestrated fenced-block shell loop, the shared bash pure core and
   its server façade, the one-step decision endpoint, the exec bridge's
   marker+base64 envelope codec, cross-origin isolation (COOP/COEP), file
   mounts into the VM, the outbox deliverables flow, boot observability, or
-  the agent-activity backdrop. Also load when a generated pair's sandbox
+  the agent-activity backdrop. Also load when a generated platform's sandbox
   "refuses to run code" on a real device — this skill carries the reference
   implementation's full incident history (iOS COEP, boot races, IDBDevice
   wedges, stale-cache masking) so it is diagnosed, not re-discovered.
@@ -16,7 +16,7 @@ description: >-
 
 # Execution sandbox — an in-browser Linux VM as the assistant's shell
 
-Give the pair an EXPERIMENTAL, opt-in, default-OFF capability: when a message
+Give the platform an EXPERIMENTAL, opt-in, default-OFF capability: when a message
 wants a shell, a real x86 Linux boots **inside the user's browser** (a WASM
 x86 virtualizer such as CheerpX), an agentic loop runs commands in it, and
 the real output feeds the answer as ground truth. The privacy story is the

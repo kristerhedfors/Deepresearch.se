@@ -1,10 +1,10 @@
 ---
 name: introspection-help
 description: >-
-  Load when giving a generated agent pair SELF-INTROSPECTION — the ability to
+  Load when giving a generated platform SELF-INTROSPECTION — the ability to
   answer questions about its OWN implementation from the exact source the
   running deploy serves — and its double, the interactive HELP layer that
-  answers usage questions verbatim from the pair's documentation. Covers the
+  answers usage questions verbatim from the platform's documentation. Covers the
   committed-artifact pattern (source snapshot + dense int8 RAG index, delta
   builds, freshness enforced by unit tests), the shared intent/retrieval pure
   core behind the server enrichment and both tiers' clients, the docs corpus
@@ -12,19 +12,19 @@ description: >-
   surfaced to answer models, the capabilities-line flip, the ONE scoped
   dev-mode exception to PA-1 (agentic source tools with a deterministic read
   loop as universal fallback), and the private-vs-remote model picker. Also
-  load when a generated pair's test suite fails on a stale-artifact freshness
+  load when a generated platform's test suite fails on a stale-artifact freshness
   check — the fix is always "regenerate", never hand-editing.
 ---
 
-# Introspection & help — the pair answers for its own implementation
+# Introspection & help — the platform answers for its own implementation
 
 With a developer-mode knob on (both tiers), a conversation can ask about the
-pair's OWN implementation — "how are you built?", a named repo path, "prove
+platform's OWN implementation — "how are you built?", a named repo path, "prove
 the server never sees my key" — and get answered from the **real deployed
-source**, not memory or denial. The same machinery doubles as the pair's
+source**, not memory or denial. The same machinery doubles as the platform's
 interactive help: usage questions are answered near-verbatim from the
 documentation corpus (structure, images, captions included), and follow-ups
-escalate into the source for proof. For an open-source pair whose privacy
+escalate into the source for proof. For an open-source platform whose privacy
 claims are meant to be *auditable*, this is the mission made interactive: the
 product can walk a user through its own guarantees, grounded in code.
 
@@ -160,7 +160,7 @@ imported by the server enrichment AND both tiers' clients (PA-7).
    block builder additionally lists them as a first-class catalog (name +
    frontmatter one-liner) so ANY answer model in EITHER tier sees the
    institutional knowledge exists and can quote or inline a playbook by
-   name — the same knowledge the pair's dev agents work from. Keep the
+   name — the same knowledge the platform's dev agents work from. Keep the
    catalog always-on (small, and it is the point).
 10. **The client-tier wiring.** Fetch snapshot + docs corpus as public
     static files (allowlist them; make JSON revalidate per deploy), build

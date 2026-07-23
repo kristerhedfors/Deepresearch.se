@@ -1,9 +1,9 @@
 ---
 name: publish-replays
 description: >-
-  Load when giving a generated agent pair PUBLISHED RESEARCH REPLAYS — frozen
+  Load when giving a generated platform PUBLISHED RESEARCH REPLAYS — frozen
   research sessions served as public read-only pages under the CLIENT tier's
-  URL path, where the slug completes the pair's wordplay and the replay opens
+  URL path, where the slug completes the platform's wordplay and the replay opens
   IN PLACE inside the client-tier app so "continue on your own keys" is just
   typing — or when touching the frozen-JSON shape, the slug rules, the
   admin-only publish/unpublish endpoints, the public pre-auth reads, the
@@ -15,7 +15,7 @@ description: >-
 
 # Published replays — frozen research sessions as public pages
 
-Publish the pair's best research sessions as READ-ONLY replays under wordplay
+Publish the platform's best research sessions as READ-ONLY replays under wordplay
 URLs on the CLIENT tier's path: the slug completes the phrase the tier's name
 starts (reference: `DeepResearch.Se/cure/<slug>` reads "deep research secure
 <slug>"). A publication is a frozen conversation — question plus researched
@@ -58,7 +58,7 @@ discoverable without any extra page.
 ## Build plan
 
 1. **Choose the slug discipline FIRST — it is the product.** The slug must
-   complete the pair's wordplay phrase as natural language, lowercase
+   complete the platform's wordplay phrase as natural language, lowercase
    `[a-z0-9-]`, bounded length (reference: 1–80), and **dot-free** — dots
    are reserved so a slug can never collide with the viewer page's own
    asset files living under the same path prefix. Keep a RESERVED-slug set
@@ -108,7 +108,7 @@ discoverable without any extra page.
 6. **The publication shelf.** The client tier's first-visit intro pane
    doubles as the shelf: render the index endpoint's titles + descriptions
    as links. No separate page, no server-side templating.
-7. **Legacy aliases.** If the pair ever moves its handoff URL shape, keep
+7. **Legacy aliases.** If the platform ever moves its handoff URL shape, keep
    the old form working as a redirect/seed alias (the reference keeps
    `/?continue=<slug>`). Cheap to keep, expensive in dead links to drop.
 8. **The sourcing workflow (operator-side, document it with the module).**

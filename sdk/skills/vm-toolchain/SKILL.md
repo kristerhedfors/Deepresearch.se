@@ -1,7 +1,7 @@
 ---
 name: vm-toolchain
 description: >-
-  Load when making the SDK available INSIDE the pair's in-browser Linux VM or
+  Load when making the SDK available INSIDE the platform's in-browser Linux VM or
   from the application interface itself — "the SDK in the sandbox", picking or
   building the prepackaged Linux image (CheerpX engine i386; small Alpine
   Alpine fallback), the self-hosted image pipeline (R2 Range streamer, config
@@ -13,21 +13,22 @@ description: >-
 
 # VM toolchain — the SDK inside the prepackaged Linux
 
-Make the pair its own development environment: the complete DistillSDK —
-manifest, all skills, the CLI — available (1) from a **desktop checkout** (VS
-Code or any editor/agent harness), (2) **inside the in-browser Linux VM** the
-pair already ships, and (3) **from the application interface itself** (the
-skills catalog both tiers' answer models can browse and quote). The VM path is
-the distinctive one: a prepackaged, self-hosted Linux image that boots in the
-user's browser with the SDK mounted, so "develop a pair" becomes something the
-pair itself can do, on any device, with nothing installed.
+Make the platform its own development environment: the complete DeepResearch
+Platform SDK (codename DistillSDK) — manifest, all skills, the CLI — available
+(1) from a **desktop checkout** (VS Code or any editor/agent harness), (2)
+**inside the in-browser Linux VM** the platform already ships, and (3) **from
+the application interface itself** (the skills catalog both tiers' answer models
+can browse and quote). The VM path is the distinctive one: a prepackaged,
+self-hosted Linux image that boots in the user's browser with the SDK mounted,
+so "develop a platform" becomes something the platform itself can do, on any
+device, with nothing installed.
 
 ## Capability class & tier story
 
 Class **X**. The VM, the mounted SDK, and the CLI run **client-side in both
 tiers** (the sandbox is the user's own browser — see the `execution-sandbox`
 module). The server tier's only involvement is serving bytes: the image
-streams from the pair's own origin (blob store + a Range-capable route), and
+streams from the platform's own origin (blob store + a Range-capable route), and
 the SDK rides the same committed source snapshot the introspection module
 already serves. Both are **public, static, operator-chosen content carrying no
 user data** — the client tier fetching them is the same posture as fetching

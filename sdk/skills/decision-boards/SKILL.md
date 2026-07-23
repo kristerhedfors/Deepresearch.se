@@ -1,7 +1,7 @@
 ---
 name: decision-boards
 description: >-
-  Load when building the pair's admin decision boards — the mechanism where an
+  Load when building the platform's admin decision boards — the mechanism where an
   agent session produces a list (risks, features, findings), the human decides
   over it in an admin panel (votes, scores, notes, an explicit priority), and
   the choices feed back to agent loops as a FIXED work order — or when adding
@@ -14,7 +14,7 @@ description: >-
 
 # Decision boards — human-decided work orders for agent loops
 
-A decision board is how the pair puts a human in command of an agent loop
+A decision board is how the platform puts a human in command of an agent loop
 without meetings: **the agent produces the list, the human decides over it,
 the loop reads the decisions back as its plan.** One shared core implements
 the whole choice mechanism (votes, scores, notes, explicit priority,

@@ -123,7 +123,8 @@ possible pure relocation and confirm the original file still *links* in Node.
 ## DistillSDK reframing (2026-07-19) — the pure core is now a shipped contract
 
 The `-core.js` convention this whole skill extends is no longer just *this
-repo's* taste. **DistillSDK** (`sdk/`) codified it as two of its load-bearing
+repo's* taste. **The DeepResearch Platform SDK** (codename DistillSDK, `sdk/`)
+codified it as two of its load-bearing
 contracts — **class X** (shared substrate: "logic needed by both tiers is
 written ONCE as a pure, Node-testable core under the client tree; the server
 imports it through a façade re-export") and **PA-7** (the shared-core rule) —

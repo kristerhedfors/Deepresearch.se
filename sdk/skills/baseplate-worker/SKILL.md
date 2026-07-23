@@ -1,7 +1,7 @@
 ---
 name: baseplate-worker
 description: >-
-  Load when building or modifying the pair's ONE server component — the edge
+  Load when building or modifying the platform's ONE server component — the edge
   worker skeleton: the hand-rolled routing table, static-asset serving and
   the public allowlist, the single security-header wrap point, the
   canonical-origin redirect, optional-D1 with lazy schema, the cached config
@@ -181,7 +181,7 @@ zero-or-one-server property permits.
 - [ ] `npm test` green on the skeleton (assets, security-headers, canonical,
       http/logger suites) and `npm run typecheck` clean for both configs.
 - [ ] The worker serves the client shell at the tier path and the root
-      redirect behaves per the pair's routing plan.
+      redirect behaves per the platform's routing plan.
 - [ ] Live probe: every response — including static assets and error paths —
       carries `x-request-id` and the full static header set (`curl -sI` the
       root, an asset, a 404, and an `/api/*` 401).

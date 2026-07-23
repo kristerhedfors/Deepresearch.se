@@ -1,7 +1,7 @@
 ---
 name: agent-dev-workflow
 description: >-
-  Load when setting up or operating the development system that keeps a pair
+  Load when setting up or operating the development system that keeps a platform
   buildable BY agent sessions — the slim project memory + on-demand skills
   structure, the git discipline for a fleet of parallel sessions (sync-main
   hooks, the merge barrier, the merged-branch ledger, PR watching), regression
@@ -13,7 +13,7 @@ description: >-
 
 # The agent development system
 
-A pair is built and maintained by many short-lived agent sessions working
+A platform is built and maintained by many short-lived agent sessions working
 in parallel on one repository. Left alone, that fleet re-derives solved
 problems, builds on stale bases, rebuilds on dead branches, leaks secrets
 into public history, and lets docs rot. This module is the development
@@ -224,7 +224,7 @@ module installs.
   the recorded fallback.
 - **Never auto-approve on a human channel, never spam a thread** — the
   human-in-the-loop checkpoints (feedback entries, board priorities) are
-  the pair's steering; a workflow that routes around them optimizes itself
+  the platform's steering; a workflow that routes around them optimizes itself
   out of alignment with its owner.
 - **Webhooks are incomplete by design** — CI success, new pushes, and
   merge-conflict transitions never arrive; the scheduled self check-in is
