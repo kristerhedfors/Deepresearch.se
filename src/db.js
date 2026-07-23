@@ -136,6 +136,29 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, id DESC);
+-- The server-ERROR fix queue (src/server-errors.js): one row per DISTINCT
+-- uncaught top-level exception (deduped by signature), recorded from
+-- index.js's fetch catch so a 500 becomes a work item the fix loop pulls.
+-- Recurrences bump count/last_seen_at; a recurrence of a fixed row reopens
+-- it (regression). Carries no user content: method, path, message, stack,
+-- request id only.
+CREATE TABLE IF NOT EXISTS server_errors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  signature TEXT UNIQUE NOT NULL,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'open',
+  method TEXT,
+  path TEXT,
+  message TEXT,
+  stack TEXT,
+  request_id TEXT,
+  note TEXT,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_server_errors_status ON server_errors(status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_server_errors_seen ON server_errors(last_seen_at DESC);
 CREATE TABLE IF NOT EXISTS security_reviews (
   item_id TEXT PRIMARY KEY,
   votes INTEGER NOT NULL DEFAULT 0,

@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# The server-ERROR fix queue on the LIVE site — the runtime-recorded uncaught
+# top-level 500s (the `{"error":"Internal server error.","request_id":…}`
+# responses), deduped per distinct bug, that a Claude Code loop pulls and turns
+# into bug-fix tasks. Wraps GET/PATCH/DELETE /api/admin/errors
+# (src/server-errors.js) using the break-glass Basic Auth credentials, the same
+# BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/chatlogs and
+# scripts/feedback use. See .claude/skills/live-verify/SKILL.md.
+#
+# Usage:
+#   scripts/errors                     open crashes (the work queue), readable text
+#   scripts/errors --all               every row, any status
+#   scripts/errors 50                  limit (default 20)
+#   scripts/errors --id 7              one bug with its full stack (text)
+#   scripts/errors --status 7 fixed    set status (open|fixed|ignored)
+#   scripts/errors --note 7 "cause…"   attach an investigation note
+#   scripts/errors --delete 7          delete a row
+#   scripts/errors --q "some term"     substring match on message OR path OR signature
+#   scripts/errors --json              JSON instead of text (list/--id)
+#   scripts/errors --params "since=1751970000000"
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+limit=20
+format="text"
+id=""
+query=""
+extra=""
+open="1"
+action=""
+arg=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --all) open="" ;;
+    --id) id="$2"; shift ;;
+    --q) query="$2"; shift ;;
+    --params) extra="$2"; shift ;;
+    --status) action="status"; id="$2"; arg="$3"; shift 2 ;;
+    --note) action="note"; id="$2"; arg="$3"; shift 2 ;;
+    --delete) action="delete"; id="$2"; shift ;;
+    [0-9]*) limit="$1" ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+curl_auth() {
+  curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$@"
+}
+
+case "$action" in
+  status)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$(jq -n --arg s "$arg" '{status:$s}')" \
+      "$BASE_URL/api/admin/errors/$id"
+    exit 0 ;;
+  note)
+    curl_auth -X PATCH -H 'content-type: application/json' \
+      -d "$(jq -n --arg n "$arg" '{note:$n}')" \
+      "$BASE_URL/api/admin/errors/$id"
+    exit 0 ;;
+  delete)
+    curl_auth -X DELETE "$BASE_URL/api/admin/errors/$id"
+    exit 0 ;;
+esac
+
+if [ -n "$id" ]; then
+  url="$BASE_URL/api/admin/errors/$id"
+  [ "$format" = "text" ] && url="$url?format=text"
+  curl_auth "$url"
+  exit 0
+fi
+
+qs="limit=$limit"
+[ "$format" = "text" ] && qs="$qs&format=text"
+[ -n "$open" ] && qs="$qs&open=1"
+[ -n "$query" ] && qs="$qs&q=$(printf %s "$query" | jq -sRr @uri)"
+[ -n "$extra" ] && qs="$qs&$extra"
+
+curl_auth "$BASE_URL/api/admin/errors?$qs"
