@@ -704,6 +704,16 @@ function showDrs(feature) {
 // Set when a shared workspace link opened this session: the workspace's name,
 // or true for an unnamed one (privacyNoticeLines renders both).
 let sharedWorkspace = false;
+// Set when THAT workspace link bundled a borrowed allowance (a "research
+// token"), to `{ llm, search }` naming EXACTLY which services it carried —
+// mapped to the two share-menu grant families and nothing else: the `api`
+// grant (server-proxied Berget for the model + embeddings) → llm, the web /
+// legacy web-search grant (server-proxied Exa, query only) → search. These are
+// the ONLY third parties a link can borrow (never Shodan/Maps/etc.), so the
+// notice can state the exact routes AND the ceiling. Based on what the payload
+// CARRIED (independent of hydration success) — the token still phones home
+// once it works. `false` when no allowance was bundled.
+let sharedWorkspaceGrants = false;
 
 function privacyCtx() {
   const [pid] = ($("model").value || "").split("::");
@@ -726,6 +736,7 @@ function privacyCtx() {
     embedBorrowed,
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
+    workspaceGrants: sharedWorkspaceGrants,
   };
 }
 
@@ -2684,6 +2695,13 @@ async function unlockWorkspace(ev) {
     // configuration sends where — and can reopen it any time from the (i)
     // on the header wordmark.
     sharedWorkspace = name || true;
+    // Map the carried grants to the exact share-menu families (nothing else is
+    // shareable): `api` proxy grant → Berget model + embeddings; web / legacy
+    // web-search grant → Exa web search.
+    const proxySvcs = new Set((grants.proxy || []).map((p) => p.svc));
+    const gotLlm = proxySvcs.has("api");
+    const gotSearch = !!grants.ws || proxySvcs.has("web");
+    sharedWorkspaceGrants = gotLlm || gotSearch ? { llm: gotLlm, search: gotSearch } : false;
     showPrivacyNotice();
   } finally {
     $("wkunlock").disabled = false;
