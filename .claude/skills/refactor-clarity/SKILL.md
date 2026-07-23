@@ -478,3 +478,42 @@ Declined this pass (record so the next pass doesn't re-survey them):
 The lesson stands: on this codebase a "refactor the whole repo" job routinely
 converges to a SINGLE relocation (or none), and that is the correct outcome —
 1843 logic tests green throughout, typecheck clean, zero behavior change.
+
+## Eighth worked example (2026-07-23) — the lockstep-mirror pass
+
+Survey scoped to code merged since the seventh pass (three `Explore` fan-outs:
+the new compute-sharing pool subsystem, server-errors.js + the grown src
+modules, and the client changes) PLUS an independent hash-scan for
+byte-identical function bodies across src/ + public/js/ + public/cure/. All
+three fan-outs returned "none" — the new subsystems were AUTHORED to the
+discipline (`pool-token.js` imports token-crypto.js with a test PINNING its
+import list to exactly that; `pool.js` imports all six grant-http.js helpers;
+`server-errors.js` names its status helper `normalizeErrorStatus` to dodge the
+normalizeStatus trap and imports cleanStr/likePattern/textResponse instead of
+copying them). The hash-scan earned its keep: it surfaced two cuts the
+fan-outs missed, both fitting known precedents:
+- **`useCaseTag`/`parseUseCaseRef` → single source in `testpoints-core.js`**
+  (flagship): byte-identical in src/testpoints.js and the client core, held
+  together by a "keep the two in lockstep" comment — the copy-with-apology of
+  §FOCUS 2, resolved by the class-X façade direction (server imports the
+  public/js core and re-exports, the agent-spec.js pattern), so pipeline.js
+  and src/testpoints.test.js kept their import path. The server side's richer
+  comments (invariant-6 note, ref grammar) carried onto the core verbatim.
+- **`lerpCol` → exported from `public/cure/umbrella.js`**: byte-identical
+  (with its `rgb` helper) in umbrella-spinner.js, which ALREADY imports the
+  umbrella geometry/palette — the hex() ×3 precedent again; the spinner's
+  orphaned `hex` import dropped with the copy.
+Declined this pass: `balloon-intro.js`'s lerpCol (different body — inline
+channel rounding, no rgb helper; replacing it is behavior-equivalent but not a
+verbatim move), `plant-spinner.js`'s clampAnimMult (its own comment declares
+the copy deliberate — "kept local so the plant doesn't couple to
+umbrella/balloon"), pool.js's `safeModels` (4 lines, single-file, internal,
+un-duplicated — below the bar), the `nowS` clock one-liners (not pure, not
+byte-identical), and the standing declines re-confirmed by the scan
+(src/rag.js ↔ public/js/rag.js f32ToB64/b64ToF32 cross-tier; drc-store ↔
+vault-core base64 pair; the spinner finale trio — byte-identical TEXT but
+free-variable-bound to module-local MARKS/FLEET, so same text ≠ same
+behavior; the drc.js Enter-send inline, documented cross-tier separation).
+METHOD NOTE: keep the hash-scan (normalize whitespace, hash function bodies
+≥4 lines) as a survey step — agents reason about which duplications SHOULD
+exist; the scan finds the ones that DO.

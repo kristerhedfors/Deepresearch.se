@@ -229,8 +229,10 @@ export function hex(c) {
 }
 /** @param {number[]} a */
 const rgb = (a) => `rgb(${a[0] | 0},${a[1] | 0},${a[2] | 0})`;
-/** Linear blend c1→c2 by t∈[0,1]. @param {string} c1 @param {string} c2 @param {number} t */
-function lerpCol(c1, c2, t) {
+/** Linear blend c1→c2 by t∈[0,1]. @param {string} c1 @param {string} c2 @param {number} t
+ * Exported for the umbrella SPINNER sibling (public/js/umbrella-spinner.js),
+ * which had carried a byte-identical copy — same hex() from this module. */
+export function lerpCol(c1, c2, t) {
   const a = hex(c1),
     b = hex(c2);
   return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);

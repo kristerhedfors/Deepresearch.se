@@ -37,7 +37,7 @@ import {
   PANELS,
   DOME_FRAC,
   SCALLOP_DEPTH,
-  hex,
+  lerpCol,
 } from "../cure/umbrella.js";
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
@@ -183,14 +183,6 @@ const CHECK_PINK = "#e06c8c"; // the finale's ✓ — the fleet rose, matching t
 // The umbrella is Se/cure's OWN symbol (docs/SYMBOL-LANGUAGE.md §6, 2026-07-16:
 // each tier wears its own symbol; the blue tier's is the balloon spinner).
 
-/** @param {number[]} a */
-const rgb = (a) => `rgb(${a[0] | 0},${a[1] | 0},${a[2] | 0})`;
-/** Linear blend c1→c2 by t. @param {string} c1 @param {string} c2 @param {number} t */
-function lerpCol(c1, c2, t) {
-  const a = hex(c1),
-    b = hex(c2);
-  return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
-}
 
 /** Is a canvas 2D context available at all? Node/SSR/old browsers → no.
  * Exported for the balloon sibling (balloon-spinner.js). */
