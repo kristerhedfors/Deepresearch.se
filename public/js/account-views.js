@@ -85,7 +85,7 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 const CHAT_MODE_OPTIONS = [
   { value: "normal", label: "Normal" },
   { value: "introspection", label: "Introspection" },
-  { value: "sdk", label: "SDK" },
+  { value: "sdk", label: "Agent Builder" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -109,9 +109,9 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   source this deployment runs — the composer pane turns white titanium. With the
   execution sandbox also on, the whole source tree mounts at <code>/src</code> in
   the in-browser Linux VM.<br>
-  <b>SDK:</b> the green “lovable” builder — describe a flavour to distill from
-  this site (above all the client-side Se/cure tier) with DistillSDK and get a
-  live, self-contained web app at its own link.<br>
+  <b>Agent Builder:</b> the green “lovable” builder — describe an agent to distil
+  from this site (above all the client-side Se/cure tier) with DistillSDK and get
+  a live, self-contained web app at its own link.<br>
   The non-Normal modes turn on introspection access for this account.`;
 
 /**

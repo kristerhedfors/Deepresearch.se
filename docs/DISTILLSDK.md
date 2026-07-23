@@ -2,7 +2,7 @@
 
 **The complete documentation of `sdk/` — DistillSDK — as a standalone
 section of the project's documentation.** The SDK is the *constructive*
-counterpart to the repo's operational skills: a design, a 33-module skill
+counterpart to the repo's operational skills: a design, a 34-module skill
 library, a machine-readable manifest, an implementation-order rationale, and a
 dependency-free CLI for building **agent pairs** — one AI-assistant product
 shipped as two tiers of the same capability set, the way this site ships
@@ -78,7 +78,7 @@ The SDK has three parts:
 | File | What it is |
 |---|---|
 | `sdk/DESIGN.md` | The pair abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
-| `sdk/MANIFEST.json` | The module registry: 33 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `sdk/MANIFEST.json` | The module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
 | `sdk/ROADMAP.md` | The implementation order: seven phases (0–6), why each module lands where it does, exit criteria per phase |
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
@@ -304,7 +304,7 @@ the type is its logical boundary:
 
 ---
 
-## 6. The module catalog (33 modules)
+## 6. The module catalog (34 modules)
 
 The complete registry, grouped by layer. `Deps` is the manifest's dependency
 edge set — the generator's topological order.
@@ -375,6 +375,7 @@ edge set — the generator's topological order.
 |---|---|---|---|
 | `pair-generator` | D | pair-architecture | Selection → dependency closure → module-at-a-time generation; adoption mode for wiring an existing product. Meta — used from day one, listed last |
 | `pair-studio` | X | vm-toolchain, secure-tier, pair-generator | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application |
+| `agent-platform` | X | pair-studio, symbol-language, grant-bridge | AgentSpec — an agent DEFINED by its chat-input-pane controls, intro + loading animations, colour theme, seed example questions, and a minted share-link's quota; the closed control vocabulary; the composer renderer + visual proof; the four shipped agents (research, secure, under-construction, agent-builder); example generation + share-link minting. Full docs: `docs/AGENT-PLATFORM.md` |
 | `deploy-pipeline` | S | workspace-fs, pair-studio, grant-bridge | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the pair's origin). Server-tier only |
 
 ### The skill shape
@@ -398,7 +399,9 @@ selection. Unit-tested by `sdk/pair-cli.test.mjs` as part of the repo's
 node sdk/pair-cli.mjs list            # the catalog, grouped by layer
 node sdk/pair-cli.mjs show <id>       # one module: class, deps, provides, skill, reference, acceptance
 node sdk/pair-cli.mjs plan <id ...>   # dependency closure of a selection → build order
-node sdk/pair-cli.mjs validate       # manifest integrity + class rules (run before committing a manifest change)
+node sdk/pair-cli.mjs validate       # manifest + AGENTS.json integrity + class rules (run before committing a change)
+node sdk/pair-cli.mjs agents         # the shipped agent flavours (sdk/AGENTS.json)
+node sdk/pair-cli.mjs agent <id>     # one agent's full definition: controls, theme, animations, quota, examples
 ```
 
 `plan` is the generator's first step made inspectable: give it a selection

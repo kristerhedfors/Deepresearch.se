@@ -311,6 +311,15 @@
       "acceptance": "Prompt → generated client-tier app previews in-pane in the same session on both tiers; preview survives COEP on real devices; exported bundle runs from a plain static host; S-class modules refused in client-tier selections; no code path hosts generated server code"
     },
     {
+      "id": "agent-platform",
+      "name": "AgentSpec — the declarative agent-definition layer",
+      "layer": 6, "class": "X", "deps": ["pair-studio", "symbol-language", "grant-bridge"],
+      "skill": "sdk/skills/agent-platform/SKILL.md",
+      "provides": "The AgentSpec schema (an agent DEFINED by its chat-input-pane controls, intro + loading animations, colour theme, seed example questions, and the default quota a minted share-link token carries); the closed control vocabulary; validation/resolution; the composer renderer (one pure markup fn both the browser preview and the Node visual proof consume); the four shipped agents (research, secure, under-construction, agent-builder) as reference specs; example-question generation; share-link minting with a metered token",
+      "reference": ["sdk/AGENTS.json", "public/js/agent-spec-core.js", "src/agent-spec.js", "public/js/agent-preview.js", "public/agents/preview.html", "scripts/agent-proof.mjs", "src/agent-link.js", "docs/AGENT-PLATFORM.md"],
+      "acceptance": "sdk/AGENTS.json validates (pair-cli validate + agent-spec-core.test.js); every shipped agent's declared controls render (proveComposer / scripts/agent-proof.mjs); POST /api/admin/agent-link mints a standard Se/rver token (agent-link.test.js: JWT verifies, D1 meter rows carry the spec quota) reusing the existing subsystem — no new crypto/meter; deriving a new agent is copy-one-spec-and-change-fields"
+    },
+    {
       "id": "pair-generator",
       "name": "Generating a pair from a feature selection",
       "layer": 6, "class": "D", "deps": ["pair-architecture"],

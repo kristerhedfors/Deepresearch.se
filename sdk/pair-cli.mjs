@@ -12,6 +12,8 @@
 //   node sdk/pair-cli.mjs plan <id> [<id> …]       # selection -> dependency
 //                                                  #   closure -> build order
 //   node sdk/pair-cli.mjs validate                 # manifest + skill integrity
+//   node sdk/pair-cli.mjs agents                   # the shipped agent flavours
+//   node sdk/pair-cli.mjs agent <id>               # one agent's full definition
 //
 // `plan` is the generator's mechanical half: it closes the selection over
 // `deps`, always includes the baseplate, orders by (layer, deps, manifest
@@ -42,6 +44,11 @@ import {
   renderShow,
   validateManifest,
 } from "../public/js/sdk-core.js";
+import {
+  renderAgentList,
+  renderAgentShow,
+  validateAgentRegistry,
+} from "../public/js/agent-spec-core.js";
 
 export {
   CLASSES,
@@ -52,6 +59,11 @@ export {
   renderShow,
   validateManifest,
 } from "../public/js/sdk-core.js";
+export {
+  renderAgentList,
+  renderAgentShow,
+  validateAgentRegistry,
+} from "../public/js/agent-spec-core.js";
 
 const SDK_ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SDK_ROOT, "..");
@@ -62,6 +74,14 @@ export function loadManifest(root = REPO_ROOT) {
   const m = JSON.parse(raw);
   if (!m || !Array.isArray(m.modules)) throw new Error("manifest has no modules[]");
   return m;
+}
+
+/** Load the agent registry (sdk/AGENTS.json). Throws on unreadable/unparsable. */
+export function loadAgents(root = REPO_ROOT) {
+  const raw = readFileSync(join(root, "sdk/AGENTS.json"), "utf8");
+  const reg = JSON.parse(raw);
+  if (!reg || !Array.isArray(reg.agents)) throw new Error("registry has no agents[]");
+  return reg;
 }
 
 // ---- entry -------------------------------------------------------------------
@@ -77,12 +97,19 @@ function main(argv) {
   }
   if (cmd === "validate") {
     const problems = validateManifest(m, (p) => existsSync(join(REPO_ROOT, p)));
-    if (!problems.length) return console.log(`OK: ${m.modules.length} modules, all skills present, deps + class rules hold.`);
-    for (const p of problems) console.error(`PROBLEM: ${p}`);
+    const agentProblems = validateAgentRegistry(loadAgents());
+    const all = [...problems, ...agentProblems.map((p) => `agents: ${p}`)];
+    if (!all.length) return console.log(`OK: ${m.modules.length} modules + ${loadAgents().agents.length} agents, all skills present, deps + class rules hold.`);
+    for (const p of all) console.error(`PROBLEM: ${p}`);
     process.exitCode = 1;
     return;
   }
-  console.log("usage: node sdk/pair-cli.mjs <list|show <id>|plan <id...>|validate>");
+  if (cmd === "agents") return console.log(renderAgentList(loadAgents()));
+  if (cmd === "agent") {
+    if (!args.length) return console.error("usage: pair-cli agent <agent-id>");
+    return console.log(renderAgentShow(loadAgents(), args[0]));
+  }
+  console.log("usage: node sdk/pair-cli.mjs <list|show <id>|plan <id...>|validate|agents|agent <id>>");
 }
 
 // Import-safe for tests: only run as a CLI when executed directly.

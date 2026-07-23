@@ -199,7 +199,7 @@ order:
   pipeline build on. Design: `docs/WORKSPACE-FS-DESIGN.md`.
 - `publish-replays` and `games-shelf` are small and land whenever wanted.
 
-## Phase 6 — Generation, studio & deploy (modules: `pair-generator`, `pair-studio`, `deploy-pipeline`)
+## Phase 6 — Generation, studio & deploy (modules: `pair-generator`, `pair-studio`, `agent-platform`, `deploy-pipeline`)
 
 `pair-generator` is not a build phase: the generator skill is *used* from
 day one (it is how phases 0–5 are executed) and is listed last only because
@@ -257,7 +257,8 @@ live URL the user opens and tries in the same session.
 | 22–30 | extensions (incl. exec-engine, vm-toolchain, workspace-fs) | 5 | Leaves; product priority decides. exec-engine is the source-built substrate; workspace-fs is the fast-track file plane (server-tier) |
 | 31 | pair-generator | 6 | Meta — used throughout, listed last |
 | 32 | pair-studio | 6 | The capstone: the generator moved into the product; client-tier builds try out in-UI |
-| 33 | deploy-pipeline | 6 | Deploy the workspace live (same-origin preview / user's own account); server-tier |
+| 33 | agent-platform | 6 | AgentSpec: an agent defined by its composer controls, animations, theme, examples and share-link quota; the four shipped agents; visual proof + minting (`docs/AGENT-PLATFORM.md`) |
+| 34 | deploy-pipeline | 6 | Deploy the workspace live (same-origin preview / user's own account); server-tier |
 
 ---
 
@@ -268,7 +269,7 @@ presupposes the whole thing shipped AND measured — do not start it before
 `eval-harness` (18) and the feedback loops (20) are real and the pair is
 demonstrably passing scored tasks.)*
 
-The current SDK is one fixed artifact — 33 modules, one baseplate, contracts
+The current SDK is one fixed artifact — 34 modules, one baseplate, contracts
 that hold for any model. The direction below turns "the SDK" into a *family of
 distilled SDKs*, each tuned to a specific model, and uses the reference itself
 as a training-data factory. Two capabilities have to be in place first, which is

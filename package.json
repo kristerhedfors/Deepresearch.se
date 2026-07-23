@@ -16,7 +16,8 @@
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
     "pulse": "node scripts/build-pulse.mjs",
     "pulse:timeline": "node scripts/build-pulse-timeline.mjs",
-    "pulse:size": "node scripts/build-pulse-size.mjs"
+    "pulse:size": "node scripts/build-pulse-size.mjs",
+    "proof:agents": "node scripts/agent-proof.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

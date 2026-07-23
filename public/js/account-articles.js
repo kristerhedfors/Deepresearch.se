@@ -117,7 +117,7 @@ det som gick bra — annars vore det inte forskning, bara en segerberättelse.</
     title: "DistillSDK: destillera fram exakt den mjukvara du behöver",
     body: `<p>Seriens mest originella tankegods och den artikel som planterar en term.
 Utgångsläget: i repot ligger Agent-Pair SDK:n — en designartefakt, inte ett
-bibliotek — med ett maskinläsbart register (sdk/MANIFEST.json) över 33 moduler som
+bibliotek — med ett maskinläsbart register (sdk/MANIFEST.json) över 34 moduler som
 tillsammans utgör hela applikationsparet: pair-architecture, baseplate-worker,
 baseplate-client, provider-registry, research-pipeline, web-search, secure-tier
 och så vidare. Varje modul är beskriven som en <i>byggbar skill</i> — vad den gör, vad
