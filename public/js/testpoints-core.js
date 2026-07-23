@@ -13,14 +13,15 @@
 // The query param carrying a point id into a landing page.
 export const TRY_PARAM = "try";
 
-// Use-case identity — the #UC-<id> tag (owner directive, 2026-07-19). Mirror
-// of src/testpoints.js useCaseTag/parseUseCaseRef — keep the two in lockstep.
-// The client uses useCaseTag to prepend the tag to a point's composed starter
-// prompt (testpoints.js compose action) so a run carries its use-case number;
-// the server reads it back off a "feedback #UC-<id> …" message.
+// Use-case identity — the #UC-<id> tag (owner directive, 2026-07-19). This is
+// the SINGLE source for useCaseTag/parseUseCaseRef: the server reaches them
+// through src/testpoints.js's re-export (the agent-spec-core.js façade
+// pattern), so the client's tag-prepending (testpoints.js compose action) and
+// the server's "feedback #UC-<id> …" read-back can never drift apart.
 
 /**
- * The canonical display tag for a use case (test point id).
+ * The canonical display tag for a use case (test point id). DISPLAY only —
+ * the functional identifier stays the bare integer id everywhere else.
  * @param {number|string} id
  * @returns {string}
  */
@@ -28,14 +29,24 @@ export function useCaseTag(id) {
   return `#UC-${id}`;
 }
 
+// Strips an optional leading feedback keyword (EN + SV, invariant 6 — same
+// vocabulary as feedbackIntent) so parseUseCaseRef reads the ref whether the
+// message opens with "feedback"/"återkoppling"/"synpunkt" or the tag itself.
 const FEEDBACK_LEAD_RE =
   /^\s*(?:feedback|återkoppling(?:en)?|synpunkt(?:er|en|erna)?)\b[\s:,.\-–—]*/i;
+
+// The use-case ref grammar, matched at the START of the (keyword-stripped)
+// message: "#UC-34", "#UC34", "UC-34", "UC 34", "uc34", or a bare "#34".
+// Language-neutral (the tag is a generated identifier), so EN + SV parity is
+// carried entirely by FEEDBACK_LEAD_RE above.
 const USE_CASE_REF_RE = /^(?:#?\s*uc[\s\-]?0*(\d{1,6})|#0*(\d{1,6}))\b/i;
 
 /**
- * Read a use-case reference out of a feedback message (EN + SV parity).
- * Mirror of src/testpoints.js parseUseCaseRef.
- * @param {unknown} text
+ * Read a use-case reference out of a feedback message. Returns the referenced
+ * point id and its canonical tag, or null when the message names no use case.
+ * Pure — unit-tested in public/js/testpoints-core.test.js AND (via the server
+ * re-export) src/testpoints.test.js (EN + SV parity).
+ * @param {unknown} text the user's feedback message
  * @returns {{ id: number, tag: string } | null}
  */
 export function parseUseCaseRef(text) {
