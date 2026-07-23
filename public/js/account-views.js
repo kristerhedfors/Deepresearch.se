@@ -83,7 +83,7 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 // The Chat mode picker's dropdown options (account-views + the composer #modesel
 // share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
 const CHAT_MODE_OPTIONS = [
-  { value: "normal", label: "Normal" },
+  { value: "normal", label: "Deep Research" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
 ];
@@ -103,7 +103,7 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 // wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
 const MODE_INFO = `<strong>Chat mode</strong><br>
   Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
-  <b>Normal (default):</b> ordinary web research.<br>
+  <b>Deep Research (default):</b> ordinary web research.<br>
   <b>Introspection:</b> ask about this site's own implementation (“how are you
   built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
   source this deployment runs — the composer pane turns white titanium. With the
@@ -336,7 +336,7 @@ export function wireModeKnob(ctx) {
   if (!sel || sel.disabled) return;
   const status = document.getElementById("modestatus");
   const STATUS = {
-    normal: "Normal — ordinary web research.",
+    normal: "Deep Research — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
   };

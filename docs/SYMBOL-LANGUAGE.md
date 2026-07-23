@@ -239,7 +239,7 @@ fail-soft, decoration never costs a chat).
 
 As shipped:
 
-- **Normal** — the tier default: the **balloon** spinner → **blue ✓**
+- **Deep Research** — the tier default: the **balloon** spinner → **blue ✓**
   (`--check-blue`), plain history drawer, the balloon greeter (§5).
 - **Introspection** — the **titanium** pane + **TIN**, the titanium mascot
   (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon
