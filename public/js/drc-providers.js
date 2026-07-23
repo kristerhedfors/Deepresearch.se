@@ -258,6 +258,34 @@ export function foreignDrcKeyHint(key) {
   return foreign ? foreign.hint : null;
 }
 
+// The SHARED-COMPUTE POOL provider (src/pool.js /api/pool/llm): another
+// user's machine — often the workspace creator's localhost Ollama — reached
+// through the server's blind job-queue relay, with the pt1 POOL TOKEN as the
+// bearer credential. Like the sharer's own `local` entry there is no static
+// catalog (the models are whatever the sharer pulled) and no jsonModel (the
+// JSON planning phases collapse onto the chosen model). `whole: true` because
+// pooled jobs return complete (DRSC/1 relays no streams); drcChatStream
+// adapts. No `embed`: the pool wire is chat completions ONLY — the strict
+// DRSC/1 profile — so a pooled session runs without client-side RAG, like a
+// local-only one (fail-soft, never an error).
+export const POOL_LLM_PROVIDER_ID = "pool";
+export function poolLlmProvider(origin) {
+  return {
+    id: POOL_LLM_PROVIDER_ID,
+    label: "Shared compute (workspace)",
+    base: (origin || "") + "/api/pool/llm",
+    proxied: true,
+    whole: true,
+    jsonModel: null,
+    fallbackModels: [],
+    modelFilter: (id) => !/(embed|whisper|rerank|guard|tts|moderation)/i.test(id),
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // A pooled job crosses two hops (relay + a peer's model) bounded by the
+    // broker's job TTL — give JSON phases the same patience.
+    jsonTimeoutMs: 130_000,
+  };
+}
+
 /**
  * Identify the provider a pasted API key belongs to by its prefix
  * (sk_ber_… → Berget, gsk_… → Groq, sk-… minus sk-ant-… → OpenAI), or
@@ -382,12 +410,36 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
  */
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   if (provider.engine) return provider.engine.chatStream(model, messages, { signal, maxTokens });
+  if (provider.whole) return drcChatWhole(provider, apiKey, model, messages, { signal, baseUrl, maxTokens });
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
     headers: wireHeaders(apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: true, maxTokens })),
     signal,
   });
+}
+
+/**
+ * The WHOLE-completion adapter behind `provider.whole` (the shared-compute
+ * pool): the broker relays completions un-streamed (DRSC/1 v1 has no relay
+ * streaming), so fetch stream:false and synthesize the one-chunk OpenAI-SSE
+ * Response every downstream consumer already parses — the engine providers'
+ * adapt-at-the-wire pattern, for a wire that answers whole. Failed responses
+ * return as-is so providerErrorDetail reads them unchanged.
+ */
+async function drcChatWhole(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
+  const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
+    method: "POST",
+    headers: wireHeaders(apiKey),
+    body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: false, maxTokens })),
+    signal,
+  });
+  if (!res.ok) return res;
+  const data = await res.json().catch(() => null);
+  const text = data?.choices?.[0]?.message?.content || "";
+  const sse =
+    "data: " + JSON.stringify({ choices: [{ delta: { content: text } }] }) + "\n\n" + "data: [DONE]\n\n";
+  return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
 /**

@@ -30,6 +30,8 @@ XSalsa20-Poly1305 (no TweetNaCl dependency here; WebCrypto has no Salsa).
 | Se/rver minting row (ghost grants → link, sealed client-side) | `public/js/account-settings.js` |
 | Per-token quota adjust (websearch) | `src/websearch.js` `adjustGrantQuota` + `handleWebSearchAdjust`; admin `PATCH /api/admin/websearch/:jti` |
 | Per-token quota adjust (proxy) | `src/proxy.js` `adjustProxyGrantQuota` + `handleProxyAdjust`; admin `PATCH /api/admin/proxy/:jti` |
+| Per-token quota adjust (pool) | `src/pool.js` `adjustPoolTokenQuota` + sharer `POST /api/pool/adjust`; admin `DELETE /api/admin/pool/:jti` |
+| Shared compute in a workspace (`grants.pool`) + 👍 knowledge curation | `public/js/pool-core.js` / `pool-provider.js` / `knowledge-core.js`, server `src/pool.js` + `src/knowledge.js`, pane wiring `public/cure/drc.js`, owner import `public/js/account-knowledge.js` — docs/COMPUTE-SHARING.md §5b, §9, §9b |
 | Admin ± / Set… quota controls | `public/js/admin.js` grant/bundle lists |
 | Reserved slug ("workspace" is never a publication) | `src/pub.js` `pubSlugOk`, `public/js/drc-page-core.js` `parsePublicationRef` |
 | Public allowlist entry | `src/assets.js` (`/js/workspace-core.js`) |
@@ -48,9 +50,14 @@ tap-to-skip, reduced-motion-skipped, watchdog-cleared, entirely fail-soft).
 1. **Fragment-only transport.** The blob rides `#w=` (never the query); the
    app strips it from the address bar after opening. Never move workspace
    content into a query param or a server round-trip.
-2. **Only URL-safe token tiers travel.** `wsk1` web-search tokens and `prg1`
-   proxy GRANT tokens may be embedded; working `prx1` proxy tokens NEVER
-   enter a link (two-tier design, src/proxy-grant.js).
+2. **Only URL-safe token tiers travel.** `wsk1` web-search tokens, `prg1`
+   proxy GRANT tokens, and `pt1` shared-compute POOL tokens (`grants.pool`,
+   single-tier by design — src/pool-token.js) may be embedded; working
+   `prx1` proxy tokens NEVER enter a link (two-tier design,
+   src/proxy-grant.js). A workspace carrying `grants.pool` shows EVERY
+   recipient the shared-compute data-flow notice on unlock
+   (`poolDataFlowNotice`, public/js/pool-core.js — the compute-sharing
+   design docs/COMPUTE-SHARING.md §9).
 3. **KDF constants are FROZEN** (salt 10, nonce 10, 8192 rounds, the
    expansion). Changing any breaks every workspace link in circulation.
 4. **Fail-soft opens.** `openWorkspace` returns null on any problem;

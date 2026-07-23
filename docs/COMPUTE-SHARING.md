@@ -13,14 +13,22 @@ abuse surface, and the phased build. It is written against the ACTUAL seams in
 the tree (file:line references throughout) so the implementation follows it
 directly.
 
-> **Status (2026-07-23):** design + backend backbone. The privacy framing in
-> §7 touches CLAUDE.md invariant 4 ("EXACTLY TWO deliberate Se/cure
-> server-touching exceptions") and the SERVER-TOKEN GUARANTEE — it is written as
-> the RECOMMENDED framing and is flagged for owner sign-off; the CLAUDE.md
-> invariant text is NOT changed by this document. The backend backbone
-> (`src/pool-token.js`, `src/pool.js`, the `pool_*` D1 tables, the config block,
-> the routes, the admin + owner-dashboard endpoints) is framing-independent and
-> is what the first change ships.
+> **Status (2026-07-23, second change):** design + backend backbone + the
+> CLIENT halves + workspace knowledge. Shipped now: the strict **DRSC/1 wire
+> profile** (§5b — the broker forwards a fixed whitelisted shape, never a
+> passthrough body), the sharer's provider loop + "Share my compute" toggle,
+> the consumer's pool provider + `?pt=` / workspace `grants.pool` intake, the
+> data-flow notice every participant sees, and the **workspace knowledge**
+> flow (§9b: 👍-curated conclusions, ±blocks with undo/redo, sealed transport
+> + the owner's Se/rver-panel import). The privacy framing in §7 touches
+> CLAUDE.md invariant 4 ("EXACTLY TWO deliberate Se/cure server-touching
+> exceptions") and the SERVER-TOKEN GUARANTEE — it is written as the
+> RECOMMENDED framing and is flagged for owner sign-off; the CLAUDE.md
+> invariant text is NOT changed by this document. §9b's knowledge submit is
+> framed the same way (an explicit, disclosed, user-initiated share — like
+> filing feedback — not a pipeline data path) and awaits the same sign-off.
+> Not yet built: the sharer's full account-panel dashboard UI (the endpoints
+> exist; today oversight runs through `/api/pool` + the admin panel).
 
 ---
 
@@ -283,6 +291,33 @@ Step 3 makes "no capacity" cheap and non-blocking — the consumer never waits o
 pool nobody is serving. Steps 4 and the refunds reuse the meter discipline
 verbatim from `server-grants.js:301-342`.
 
+### 5b. The DRSC/1 wire profile (the "proper solid protocol wrapper")
+
+A pooled job relays a prompt to ANOTHER USER'S MACHINE, so the broker never
+forwards an arbitrary passthrough body. Every `/api/pool/llm/chat/completions`
+body is forced through `sanitizePoolRequest` (`public/js/pool-core.js` — a
+pure core the Worker imports directly, so client and server enforce the SAME
+function and can never drift). **DRSC/1** is a deliberately narrow profile of
+the OpenAI chat-completions wire:
+
+- **Whitelisted, nothing else:** `model` (required), `messages` as plain
+  `{role, content:string}` pairs with roles limited to
+  `system`/`user`/`assistant`, and exactly two tuning knobs — `temperature`
+  (clamped 0..2) and `max_tokens` (capped). Unknown fields — tools, functions,
+  `response_format`, `logit_bias`, `n`, `user`, vendor params — are STRIPPED,
+  so ordinary OpenAI-compatible clients drive the surface unchanged.
+- **Placeholders over flexibility:** no multimodal content parts, no
+  streaming (`stream` is forced `false` by construction), fixed caps on
+  message count and total characters (a pool must not be an amplifier).
+- **Structural problems reject** with stable codes (`bad_role`,
+  `bad_content`, `too_large`, …) before any queueing or metering.
+- The sanitized request carries a `wire: "DRSC/1"` stamp for auditability;
+  the provider loop strips it (`poolRequestToOpenAiBody`) before the job
+  touches the local model.
+
+The profile is pinned by `public/js/pool-core.test.js` (the wire spec as a
+test suite) and endpoint-level by `src/pool.test.js`.
+
 ### Why the consumer request holds open
 
 The consumer POST is the request/response bridge: it blocks (bounded) until the
@@ -416,6 +451,56 @@ This is the "sharing through a token" the owner asked for, unified with the
 platform case: a workspace pool token is just a pool token with `source:
 'workspace'`.
 
+**Every participant is told how data flows.** Unlocking a workspace that
+carries `grants.pool` pops the privacy notice with the shared-compute
+data-flow lines appended — `poolDataFlowNotice` (`public/js/pool-core.js`) is
+the ONE source of that text, reused by the settings row's ⓘ and the sharer's
+toggle copy: your prompt → this site's server (held only while the job runs,
+never stored or logged) → the sharer's machine (which can read everything you
+send) → back the same way; requests limited to the DRSC/1 shape; conclusions
+you pass along are sealed before they leave the browser.
+
+### 9b. Workspace knowledge — 👍-curated conclusions back to the owner
+
+The return path: shared compute pushes the owner's models OUT to the
+workspace; workspace knowledge passes curated CONCLUSIONS back IN. Pure core
+`public/js/knowledge-core.js`, server half `src/knowledge.js`, curation pane
+in `public/cure/drc.js`, owner import view `public/js/account-knowledge.js`.
+
+- **Tap 👍 on any stored reply** (visible while a workspace pool token is
+  present). The exchange becomes a CONCLUSION: a deterministic **context
+  summary** (the preceding turns compressed client-side, editable) + the
+  **query** + the **reply split into text blocks**.
+- **Curate with ± :** tapping **＋** on a block tags it along as key context
+  wherever the conclusion is used; **−** removes the block ENTIRELY — it is
+  not shown in the pane and not included in anything exported. Every step
+  runs through a pure reducer with full **undo/redo**, so a mis-tap never
+  loses work (`curate`/`curationState`, test-pinned).
+- **Sealed transport, one envelope, two routes.** The finalized bundle seals
+  to the site's IMPORT-AGENT public key (`GET /api/knowledge/key`) as a
+  `drskn-bundle` — the DRCR/1 ECIES suite (ECDH P-256 · HKDF-SHA-256 ·
+  AES-256-GCM) with its own frozen kind + HKDF info so the two seal families
+  can never cross-open. DEFAULT route: `POST /api/knowledge/submit`
+  (authorized by the workspace's pool token; revocation- and block-aware;
+  backlog-capped), resting as CIPHERTEXT in `knowledge_inbox`. MIGRATION
+  route: the same envelope downloads as a **`.drskn` file** for out-of-band
+  delivery.
+- **The owner imports in the Se/rver panel** (account panel → **Workspace
+  knowledge**): list (metadata only), Import (the server decrypts with the
+  agent key and returns the bundle to the owner alone), Copy-as-context
+  (`conclusionToContext` — summary + question + key points, ready to paste
+  into any chat or project), Delete — and an upload box for `.drskn` files,
+  which the server refuses to open unless the bundle's `owner` field IS the
+  caller (the pool id the sender's token named), so a stray blob can't be
+  read by a signed-in bystander.
+- **Posture, stated plainly:** the import agent's private key lives in D1,
+  so THE SERVER CAN DECRYPT these envelopes — deliberate (the owner asked
+  for "encrypted with the server agent's public key") and disclosed in the
+  data-flow notice. What the seal buys: ciphertext at rest, plaintext only
+  at the owner's explicit import, nothing about a conclusion ever logged.
+  For knowledge the server must never be able to read, the DRCR/1 campaign
+  path (client-held keys, `docs/CROWD-RESEARCH.md`) is the tool.
+
 ---
 
 ## 10. Abuse surface and mitigations
@@ -480,9 +565,13 @@ platform case: a workspace pool token is just a pool token with `source:
 | Module | Role |
 |---|---|
 | `src/pool-token.js` | The `pt1.` token family — mint + verify, pure over Web Crypto (mirrors `server-token.js`). |
-| `src/pool.js` | The broker + all endpoints + the D1 meter/queue (mirrors `server-grants.js`). |
-| `public/js/account-pool.js` | The sharer dashboard account panel (mirrors `account-feedback.js`). |
-| `public/js/pool-provider.js` | The provider poll loop (mirrors `recovery.js`). |
+| `src/pool.js` | The broker + all endpoints + the D1 meter/queue (mirrors `server-grants.js`); enforces DRSC/1 via the shared core. |
+| `src/knowledge.js` | The workspace-knowledge inbox: import-agent keypair, sealed submit, owner list/import/open/delete (§9b). |
+| `public/js/pool-core.js` | The DRSC/1 wire profile (`sanitizePoolRequest`) + the data-flow notice — ONE pure core, imported by client AND Worker. |
+| `public/js/pool-provider.js` | The provider poll loop (mirrors `recovery.js`); dependency-injected transport, Node-tested. |
+| `public/js/knowledge-core.js` | Conclusions, ±block curation with undo/redo, the `drskn-bundle` ECIES seal (§9b). |
+| `public/js/account-knowledge.js` | The owner's "Workspace knowledge" import view in the account panel (§9b). |
+| `public/js/account-pool.js` | The sharer dashboard account panel (mirrors `account-feedback.js`) — NOT YET BUILT (endpoints live). |
 
 Server files re-export any shared pure core per the mirror discipline. This table
 is reflected into `docs/CODE-LAYOUT.md` in the same change that adds the modules.
