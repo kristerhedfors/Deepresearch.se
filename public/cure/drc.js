@@ -57,6 +57,7 @@ import {
   drcEmbed,
   drcEmbedProvider,
   drcProvider,
+  foreignDrcKeyHint,
   listDrcModels,
   proxyLlmProvider,
   serverTokenLlmProvider,
@@ -1066,13 +1067,17 @@ function renderKeysPanel() {
 
 // The dropdown follows the key as it's typed/pasted; the hint says when
 // the provider was recognized (and the choice is therefore automatic).
+// A recognized-but-unsupported shape (an Anthropic sk-ant-… key) says so
+// honestly instead of showing nothing — see FOREIGN_KEY_SHAPES.
 function syncKeyDetection() {
-  const detected = detectDrcProvider($("key-input").value);
+  const raw = $("key-input").value;
+  const detected = detectDrcProvider(raw);
   if (detected) {
     /** @type {HTMLSelectElement} */ ($("key-provider")).value = detected.id;
     $("keydetect").textContent = "— detected: " + detected.label;
   } else {
-    $("keydetect").textContent = "";
+    const foreign = foreignDrcKeyHint(raw);
+    $("keydetect").textContent = foreign ? "— " + foreign : "";
   }
 }
 
