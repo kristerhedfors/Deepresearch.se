@@ -89,6 +89,11 @@ export function isPublicAsset(url, method) {
     // the DRS account panel uses it to build workspace links client-side —
     // same public-graph rule as its import, proxy-bundle.js above.
     url.pathname === "/js/workspace-core.js" ||
+    // Crowd-research (DRCR/1) result-sealing pure core: the asymmetric seal/open
+    // + QR chunk framing behind distributed secure workspaces (docs/CROWD-RESEARCH.md).
+    // Imported by the /cure participant return surface and the Se/rver dashboard;
+    // same public-graph rule as workspace-core.js above.
+    url.pathname === "/js/research-seal-core.js" ||
     url.pathname === "/js/drc-rag.js" ||
     // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
     // helpers) each import settings.js — all three must be public or the

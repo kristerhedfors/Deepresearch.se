@@ -165,6 +165,22 @@ is `docs/STACKLESS-RESEARCH.md`. This document remains the security
 architecture of the DEPLOYED implementation; the protocol document
 deliberately leads the code on the interchange extensions.
 
+## 6a. Crowd research — distributed workspaces (DRCR/1)
+
+Since 2026-07-23 the workspace is also the substrate for **crowd-sourced /
+distributed deep research** — `docs/CROWD-RESEARCH.md` (**DRCR/1**). A Se/rver
+organizer fans out a set of invite links (each a workspace carrying a new
+`campaign` section: a per-campaign project PUBLIC key, an alias, the seeded
+task), participants research in their own Se/cure sessions, and each **seals
+their conclusion to the organizer's public key** and returns it by QR / file /
+link. The organizer's live dashboard merges the returned results (a
+Mentimeter-for-research model). This adds the ONE asymmetric primitive the
+symmetric workspace envelope does not have — an ECIES sealed box (ECDH P-256 →
+HKDF-SHA-256 → AES-256-GCM), seeded in `public/js/research-seal-core.js` and
+specified in `docs/CROWD-RESEARCH.md`. The privacy accounting (where the crowd
+flow does and does not touch a server) is that document's §7; the deployed
+symmetric workspace below is unchanged.
+
 ## 7. Relationship to invariant 4 (the privacy split)
 
 Secure workspaces add **no new server data path**. The transport is

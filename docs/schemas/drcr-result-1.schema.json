@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepresearch.se/schemas/drcr-result-1.schema.json",
+  "title": "DRCR/1 result envelope (kind drcr-result, v 1)",
+  "description": "The sealed conclusion a crowd-research participant returns to the organizer. Sealed to the campaign's project PUBLIC key (ECDH P-256 -> HKDF-SHA-256 -> AES-256-GCM); only the organizer's private key opens it. Normative prose: docs/CROWD-RESEARCH.md sections 5-6. Reference implementation: public/js/research-seal-core.js. This schema describes the OUTER envelope (the wire form); the inner plaintext (answer/sources/notes) is described in docs/CROWD-RESEARCH.md section 5.3 and is only visible after decryption.",
+  "type": "object",
+  "required": ["v", "kind", "kid", "epk", "iv", "ct"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1, "description": "Result envelope version." },
+    "kind": { "const": "drcr-result", "description": "Envelope type discriminator." },
+    "kid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$",
+      "description": "Campaign key id: first 8 lowercase-hex chars of SHA-256(raw project public key). Routing hint only, never load-bearing for security."
+    },
+    "epk": {
+      "type": "string",
+      "description": "base64url of the ephemeral P-256 public key (raw uncompressed point, 65 bytes). Fresh per seal; also the HKDF salt."
+    },
+    "iv": {
+      "type": "string",
+      "description": "base64url of the 12-byte AES-256-GCM IV."
+    },
+    "ct": {
+      "type": "string",
+      "description": "base64url of the AES-256-GCM ciphertext (the UTF-8 JSON result plaintext, GCM tag appended). Opens only with the organizer's campaign private key."
+    }
+  }
+}
