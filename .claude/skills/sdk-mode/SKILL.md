@@ -217,7 +217,7 @@ consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
 
 ## Known build pitfalls in generated apps (feedback #5, build-urx0, 2026-07-23)
 
-Two bugs that shipped in a real Agent Studio build and made it 100% dead on
+Two bugs that shipped in a real Agent Studio build and left it dead on
 arrival — check generated bundles for both, and bake the guards in:
 
 - **Classic-script global collision.** Generated apps use plain
