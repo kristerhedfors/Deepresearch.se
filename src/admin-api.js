@@ -59,6 +59,7 @@ import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
+import { handleAdminPool } from "./pool.js";
 import { handleAgentLink } from "./agent-link.js";
 import { deleteUser, getUserByEmail, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
@@ -233,6 +234,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // revoke. (Defaults are edited via PUT /config.)
     if (path === "/server-token" || path.startsWith("/server-token/")) {
       return handleAdminServerToken(request, env, url, log, identity);
+    }
+    // The compute-sharing oversight surface (src/pool.js): list live pool
+    // tokens + online providers across ALL pools, revoke any token. (Defaults
+    // are edited via PUT /config.)
+    if (path === "/pool" || path.startsWith("/pool/")) {
+      return handleAdminPool(request, env, url, log);
     }
     // Mint a shareable Se/rver token for an AgentSpec (src/agent-link.js):
     // the agent's spec sets the upstream services + quota; the token is a
