@@ -93,3 +93,14 @@ append-only ledger and the same don't-deploy-mid-battery rule):
   Rows are fetched at run time; keep `HF_SEED`/budget/judge fixed across a
   before/after; watch the `leaked_runs` counter (pipeline citing the
   benchmark itself).
+
+## The bench gate (the routine before/after discipline)
+
+`tests/bench-gate.mjs` (`npm run bench:gate`) turns the rubric bench into a
+ROUTINE gate for pipeline-sensitive changes: it runs a pinned de-noised
+battery (pins live in the committed `tests/bench-baseline.json`; `--record`
+re-records it) and prints a noise-aware verdict — REGRESSION exits non-zero
+— plus a ready-to-paste `EVAL-BENCH-FINDINGS.md` line. The pre-push hook
+names the gate whenever outgoing commits touch pipeline-sensitive files.
+Full workflow: `docs/TESTING.md` §"The bench gate". Same
+don't-deploy-mid-battery rule as everything above.

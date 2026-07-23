@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "recordedAt": "2026-07-23T21:12:15.547Z",
+  "commit": "b2a5ab6",
+  "baseUrl": "https://deepresearch.se",
+  "model": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+  "judge": "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+  "budgetS": 240,
+  "qids": [
+    "mh_semiconductor_export",
+    "rec_eu_ai_act_timeline",
+    "div_openai_safety",
+    "con_coffee_health"
+  ],
+  "samples": 2,
+  "batteryMeans": [
+    3.667,
+    3.583
+  ],
+  "overall": {
+    "n": 2,
+    "mean": 3.625,
+    "sd": 0.042
+  },
+  "perQuestion": {
+    "mh_semiconductor_export": {
+      "overall": {
+        "n": 2,
+        "mean": 2.833,
+        "sd": 0.5
+      },
+      "citation": {
+        "n": 2,
+        "mean": 3.5,
+        "sd": 0.5
+      },
+      "coverage": {
+        "n": 2,
+        "mean": 2.5,
+        "sd": 0.5
+      },
+      "calibration": {
+        "n": 2,
+        "mean": 2.5,
+        "sd": 0.5
+      }
+    },
+    "rec_eu_ai_act_timeline": {
+      "overall": {
+        "n": 3,
+        "mean": 5,
+        "sd": 0
+      },
+      "citation": {
+        "n": 3,
+        "mean": 5,
+        "sd": 0
+      },
+      "coverage": {
+        "n": 3,
+        "mean": 5,
+        "sd": 0
+      },
+      "calibration": {
+        "n": 3,
+        "mean": 5,
+        "sd": 0
+      }
+    },
+    "div_openai_safety": {
+      "overall": {
+        "n": 3,
+        "mean": 3.111,
+        "sd": 0.314
+      },
+      "citation": {
+        "n": 3,
+        "mean": 3.333,
+        "sd": 0.943
+      },
+      "coverage": {
+        "n": 3,
+        "mean": 3,
+        "sd": 0
+      },
+      "calibration": {
+        "n": 3,
+        "mean": 3,
+        "sd": 0
+      }
+    },
+    "con_coffee_health": {
+      "overall": {
+        "n": 3,
+        "mean": 4,
+        "sd": 0.471
+      },
+      "citation": {
+        "n": 3,
+        "mean": 4,
+        "sd": 0.816
+      },
+      "coverage": {
+        "n": 3,
+        "mean": 3.667,
+        "sd": 0.471
+      },
+      "calibration": {
+        "n": 3,
+        "mean": 4.333,
+        "sd": 0.471
+      }
+    }
+  }
+}

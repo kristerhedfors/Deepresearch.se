@@ -46,6 +46,7 @@ import {
   wantsClaimValidation,
   wantsFullContent,
   wantsNotes,
+  wantsSubqFanout,
 } from "./budget.js";
 import {
   formatConversation,
@@ -67,6 +68,7 @@ import {
   collectConflicts,
   conflictsSection,
   extractClaims,
+  mergeFanoutQueries,
   notesSection,
   shellReplyMessages,
   subquestionsSection,
@@ -388,6 +390,8 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
   // ---- Phase 2.5: notes digest (budget-gated, mid/high tiers) ------------
   await maybeDigest(ctx);
+  // ---- Phase 2.75: sub-question fan-out (flag-gated, long tiers) ---------
+  await runSubquestionFanout(ctx);
   // ---- Phase 3: gap-check iterations (budgeted) -------------------------
   await runGapChecks(ctx);
   // ---- Phase 3.5: full-content fetch of top sources (budget-gated, ≥240s)
@@ -1042,6 +1046,88 @@ async function runSourceResearch(ctx) {
   ]);
   recordPhase(ctx.model, "synth", Date.now() - synthStartedAt);
   ctx.stepDone("synth", "Report drafted");
+}
+
+// Phase 2.75 — sub-question fan-out (roadmap §5.5's full form; OFF behind
+// budget.js's SUBQ_FANOUT_ENABLED pending bench-gate evidence). For
+// comparison/survey questions at the long tiers, the sub-questions stand
+// alone, so their coverage audits don't need the serial gap cascade: one
+// bounded JSON audit per sub-question runs CONCURRENTLY (each auditing ONLY
+// its own sub-question against the shared registry), then ONE merged
+// follow-up wave. multihop is deliberately excluded — its sub-questions are
+// dependency-ordered (hop 2's query needs a bridging fact surfaced by hop
+// 1's sources), which is exactly what runGapChecks's serial rounds exist
+// for; those still run after this phase and catch integration gaps. The
+// wave stays deterministic: queries merge round-robin in sub-question order
+// (mergeFanoutQueries), and runSearches processes results in query order,
+// so source numbering is stable regardless of fetch completion order.
+// Fail-soft like every helper phase: a failed audit contributes no queries,
+// and no queries means the phase quietly did nothing.
+const MAX_FANOUT_SUBQUESTIONS = 4;
+const FANOUT_QUERIES_PER_SUBQUESTION = 2;
+/** @param {PipelineCtx} ctx */
+async function runSubquestionFanout(ctx) {
+  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
+  const plan = state.plan;
+  if (!wantsSubqFanout(plan)) return;
+  if (state.complexity !== "comparison" && state.complexity !== "survey") return;
+  const subqs = (state.subquestions || []).slice(0, MAX_FANOUT_SUBQUESTIONS);
+  if (subqs.length < 2) return;
+  if (state.searchCount >= plan.maxSearches) return;
+  const est = plan.estimates;
+  // Wall-clock cost of the whole fan-out is ONE audit + ONE wave (audits run
+  // in parallel), so the deadline math matches a single gap round.
+  const upcoming = est.gap + 2 * est.search + est.synth + (plan.validate ? est.validate : 0);
+  if (!fitsDeadline(state.startedAt, plan.budgetMs, upcoming)) {
+    log.info("chat.budget_cut", { cut: "subq_fanout" });
+    return;
+  }
+  ctx.step("fanout", `Checking coverage per sub-question (${subqs.length} in parallel)…`);
+  const audits = await Promise.all(
+    subqs.map((sq) =>
+      jsonPhase(ctx, {
+        label: "subq_fanout",
+        statKey: "gap",
+        maxTokens: 300,
+        messages: [
+          {
+            role: "system",
+            content: gapPrompt([...state.ranQueries], FANOUT_QUERIES_PER_SUBQUESTION, {
+              subquestions: [sq],
+              reinforceJsonOnly,
+            }),
+          },
+          {
+            role: "user",
+            content:
+              `Research question (latest user message):\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
+              `Audit coverage of THIS sub-question only:\n${sq}\n\n` +
+              notesSection(state.notes) +
+              `Sources collected so far:\n${sourceDigest(state.sources, plan.digestCap) || "(none)"}`,
+          },
+        ],
+      }),
+    ),
+  );
+  const queryLists = audits.map((raw) => {
+    const gap = hardenJson(GAP_SCHEMA, raw);
+    collectConflicts(state, gap);
+    if (!gap || gap.complete || !Array.isArray(gap.queries)) return [];
+    return gap.queries.slice(0, FANOUT_QUERIES_PER_SUBQUESTION);
+  });
+  const followups = mergeFanoutQueries(queryLists, Math.max(0, plan.maxSearches - state.searchCount));
+  if (!followups.length) {
+    ctx.stepDone("fanout", "Sub-question coverage sufficient");
+    return;
+  }
+  ctx.stepDone(
+    "fanout",
+    `Digging deeper: ${followups.length} sub-question search${followups.length === 1 ? "" : "es"}`,
+    followups,
+  );
+  state.iterations++;
+  await runSearches(ctx, followups, state.iterations);
+  await maybeDigest(ctx);
 }
 
 // Phase 3: audits source coverage and runs follow-up searches for the most

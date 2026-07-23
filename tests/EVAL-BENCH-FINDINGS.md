@@ -336,3 +336,20 @@ scaffolding regardless of slider position). Follow-up worth a future
 battery: re-run this same seam A/B post-refinement — the simple-kind
 losses should disappear from side B while the broad-kind gains remain.
 
+
+## 2026-07-23 — bench-gate baseline recorded (the P7 routine gate ships)
+
+The rubric bench is now a ROUTINE gate: `tests/bench-gate.mjs`
+(`npm run bench:gate`) runs the pinned de-noised battery and compares
+against the committed `tests/bench-baseline.json`; `--record` re-records
+it. Initial baseline recorded against deployed main (commit b2a5ab6):
+Mistral Small 3.2 as answer and judge model, 240 s budget, the four
+denoise diagnostic questions, 3 samples attempted → 2 complete battery
+means (sample 2 scored 3/4 questions — its battery mean was dropped, its
+per-question rows kept). **Battery overall 3.625±0.042** (per-question:
+mh_semiconductor_export 2.833, rec_eu_ai_act_timeline 5.0,
+div_openai_safety 3.111, con_coffee_health 4.0). The tiny SD is a 2-sample
+artifact — the gate floors its noise bar at 0.15 absolute for exactly this
+reason. Worth re-recording at SAMPLES=4+ when convenient. Discipline and
+verdict semantics: docs/TESTING.md §"The bench gate"; the pre-push hook
+now names the gate when outgoing commits touch pipeline-sensitive files.

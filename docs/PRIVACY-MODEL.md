@@ -45,7 +45,13 @@ Outbound requests to third parties carry the minimum (a query, a
 coordinate, a host), never the conversation, filename, or account
 identity.
 **TWO deliberate, bounded exceptions to "the server is in NO DRC data
-path".** The FIRST (2026-07-14 directive) is the **temporary web-search
+path".** Count precisely: two is the number of *exposure classes* — `web`
+(query-only) and `api` (content-bearing) — while the credential FAMILIES
+able to reach them are currently three: the legacy `wsk1` web-search
+grants, the legacy `prg1`/`prx1` proxy bundle, and the consolidated
+Se/rver TOKEN (2026-07-16) that subsumes both going forward. A newer key
+shape for the same two classes — never a third kind of data crossing.
+The FIRST exception (2026-07-14 directive) is the **temporary web-search
 GRANT subsystem**
 (`src/websearch.js` + `src/websearch-key.js`; client glue in
 `public/cure/drc.js` + `public/js/drc-research.js`; admin panel in
