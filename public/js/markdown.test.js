@@ -120,3 +120,45 @@ describe("isSafeDocImage", () => {
     }
   });
 });
+
+// The pure fence scanner behind mermaid diagram rendering. The DOM/library
+// wiring (renderMermaidBlocks) is verified live; this decides WHICH code
+// blocks are drawn — above all that a half-streamed (unterminated) fence is
+// never rendered — so it's covered here.
+import { completeMermaidSources } from "./markdown.js";
+
+describe("completeMermaidSources", () => {
+  test("extracts a complete mermaid block", () => {
+    const md = "Intro.\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nAfter.";
+    assert.deepEqual(completeMermaidSources(md), ["graph TD\n  A-->B"]);
+  });
+
+  test("extracts multiple blocks in order", () => {
+    const md = "```mermaid\ngraph TD\nA-->B\n```\ntext\n```mermaid\nsequenceDiagram\nA->>B: hi\n```";
+    assert.deepEqual(completeMermaidSources(md), [
+      "graph TD\nA-->B",
+      "sequenceDiagram\nA->>B: hi",
+    ]);
+  });
+
+  test("ignores an unterminated fence (mid-stream)", () => {
+    const md = "Answer so far…\n\n```mermaid\ngraph TD\n  A-->B";
+    assert.deepEqual(completeMermaidSources(md), []);
+  });
+
+  test("only the closed block renders while a later one is still streaming", () => {
+    const md = "```mermaid\ngraph TD\nA-->B\n```\n\n```mermaid\ngraph LR\nC-->";
+    assert.deepEqual(completeMermaidSources(md), ["graph TD\nA-->B"]);
+  });
+
+  test("ignores non-mermaid fences and empty blocks", () => {
+    assert.deepEqual(completeMermaidSources("```js\nlet x = 1;\n```"), []);
+    assert.deepEqual(completeMermaidSources("```mermaid\n\n```"), []);
+  });
+
+  test("handles non-string / empty input safely", () => {
+    assert.deepEqual(completeMermaidSources(""), []);
+    assert.deepEqual(completeMermaidSources(/** @type {any} */ (null)), []);
+    assert.deepEqual(completeMermaidSources(/** @type {any} */ (undefined)), []);
+  });
+});
