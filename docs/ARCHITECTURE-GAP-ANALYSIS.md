@@ -151,6 +151,15 @@ P3 gap.
 
 **Now 100% (as designed) · Setpoint ~85% (the principle is *over*-applied).**
 
+> **Status update (2026-07-23): the fan-out is built, gated OFF.**
+> `runSubquestionFanout` (`src/pipeline.js`) runs one bounded coverage audit
+> per sub-question CONCURRENTLY for comparison/survey questions at the long
+> tiers (multihop stays serial — its hops are dependency-ordered), merging
+> one deterministic follow-up wave (`mergeFanoutQueries`, round-robin in
+> sub-question order). Behind `SUBQ_FANOUT_ENABLED = false` (`src/budget.js`)
+> until the P7 bench gate proves it — and flipping it on is the agreed P19
+> trigger (see below).
+
 The macro-pipeline is a strictly serial cascade: enrichments → routing gates →
 triage → search → gap-loop → synthesis → validation (`:363`–`:398`), each a
 bare `await` consuming the prior phase's mutations to shared `state`.
@@ -209,6 +218,13 @@ model (mediated by evidence-driven `model-profiles.js`, P7). Leave it here.
 ### P7 — Evidence-driven tuning / benchmark-first
 
 **Now 85% · Setpoint 95% — the highest-value single lever in this document.**
+
+> **Status update (2026-07-23): the gate shipped.** `tests/bench-gate.mjs`
+> (`npm run bench:gate` in `tests/`) runs the pinned de-noised battery and
+> compares against the committed `tests/bench-baseline.json` with a
+> noise-aware verdict (REGRESSION exits non-zero); `--record` re-records the
+> baseline. The pre-push hook now names the gate whenever outgoing commits
+> touch pipeline-sensitive files. Discipline: `docs/TESTING.md`.
 
 The discipline is real where it is applied: every `model-profiles.js` override
 traces to a reproduced, ledgered finding (audited: zero evidence-free
@@ -450,6 +466,12 @@ is most of the port. **Recommendation:** treat P4 and P19 as a pair. If fan-out
 gets funded, migrate the orchestration shell to Workflows in the same effort
 rather than extending the hand-built recovery again.
 
+> **Status update (2026-07-23): the trigger is armed, not fired.** The P4
+> fan-out now exists in code behind `SUBQ_FANOUT_ENABLED = false`; that
+> flag's comment records the pairing as a condition — enabling the fan-out
+> and migrating the orchestration shell to Workflows are ONE effort, gated
+> on the bench gate showing the fan-out earns its cost.
+
 ### P20 — MCP as a product surface, not internal plumbing
 
 **Now 95% · Setpoint 95%.**
@@ -481,11 +503,15 @@ where the project's stated *mission* and its actual *code* diverge most.
 2. **Make the scored benchmark a routine gate (P7).** The highest quality
    lever, and the prerequisite that unlocks everything in section I. Until a
    number moves, every pipeline change is a guess. Dependency-free.
+   *(Done 2026-07-23 — `tests/bench-gate.mjs` + committed baseline + the
+   pre-push reminder; see the P7 status note.)*
 
 3. **Sub-question fan-out at the top budget tier (P4), paired with a Workflows
    migration (P19).** The largest remaining latency+depth lever, but only
    *after* P7 can score it, and taken together with the durability migration
-   its triggers imply.
+   its triggers imply. *(Built 2026-07-23, gated OFF behind
+   `SUBQ_FANOUT_ENABLED` pending bench-gate evidence; enabling it and the
+   Workflows migration are one effort — see the P4/P19 status notes.)*
 
 4. **Finish the vendor SHA-pin manifest (P13 / L-12).** Cheap supply-chain
    hardening that directly strengthens the P9 auditability story.
@@ -496,6 +522,9 @@ where the project's stated *mission* and its actual *code* diverge most.
 
 6. **Reconcile the doc overclaims (P16 → P2, P10).** Small, and it keeps the
    *docs-as-verifiable-truth* principle honest about its own two soft spots.
+   *(Done 2026-07-23 — `ARCHITECTURE.md` now states the helpers-degrade-
+   silently / answer-degrades-to-honest-error split; `PRIVACY-MODEL.md` now
+   counts two exposure classes vs three credential families explicitly.)*
 
 The through-line: the engine's *discipline* (P1–P6, P14) sits close to its
 setpoints, and in one case (P4) is worth deliberately relaxing; the real,

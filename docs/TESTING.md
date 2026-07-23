@@ -394,3 +394,30 @@ never committed). Its pure helpers are unit-tested in
 `tests/hf-bench-lib.test.js` (`node --test`). Same disciplines as the other
 ledgers: fixed seed/judge/budget across a before/after comparison, don't
 deploy mid-battery, append-only ledgers.
+
+## The bench gate (routine, for pipeline-sensitive changes)
+
+The rubric bench doubles as a routine merge gate — the P7 discipline from
+`docs/ARCHITECTURE-GAP-ANALYSIS.md`. `tests/bench-gate.mjs` wraps it:
+
+```bash
+cd tests
+npm run bench:gate -- --record   # (re)record tests/bench-baseline.json vs deployed main
+npm run bench:gate               # compare current deployment to the baseline
+```
+
+Both modes run a pinned battery (fixed answer model, fixed judge, fixed
+question ids, 240 s budget, `SAMPLES` × each — de-noised, because one judged
+sample swings ±2+) and aggregate battery means ± SD. Compare mode takes every
+pin FROM the committed baseline so a gate run can't drift from what the
+baseline measured, prints a noise-aware verdict (REGRESSION exits non-zero,
+with the bar scaled to the pooled standard error), and emits a ready-to-paste
+ledger line for `tests/EVAL-BENCH-FINDINGS.md`.
+
+The routine: a change touching pipeline-sensitive files (`src/pipeline.js`,
+`prompts.js`, `budget.js`, `model-profiles.js`, and friends — the pre-push
+hook prints the exact list when it fires) deploys, runs the gate, and appends
+the ledger line; on IMPROVED, re-record the baseline in the same PR. The gate
+needs the break-glass creds and a live deployment, so the hook only reminds —
+it never blocks. Don't push mid-battery (the model-eval rule): an auto-deploy
+truncates in-flight streams and poisons the run.

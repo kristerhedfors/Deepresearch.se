@@ -10,7 +10,8 @@
     "test:mocked": "playwright test --grep-invert @live",
     "eval:models": "node model-eval.mjs",
     "eval:bench": "node eval-bench.mjs",
-    "eval:hf": "node hf-bench.mjs"
+    "eval:hf": "node hf-bench.mjs",
+    "bench:gate": "node bench-gate.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

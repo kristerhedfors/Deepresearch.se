@@ -416,3 +416,25 @@ export function wantsFullContent(plan) {
 export function wantsClaimValidation(plan) {
   return DEEP_TIER_FEATURES_ENABLED && !!plan && plan.budgetS >= 240;
 }
+
+// Sub-question fan-out (roadmap §5.5's full form): at the long tiers, audit
+// each independent sub-question's coverage CONCURRENTLY (one bounded JSON
+// call per sub-question, comparison/survey questions only — see
+// pipeline.js's runSubquestionFanout) and run one merged follow-up wave,
+// instead of leaving all per-sub-question digging to the serial gap cascade.
+// OFF until the bench gate (tests/bench-gate.mjs) proves it earns its cost.
+// Flipping it on is ALSO the agreed platform trigger: migrate the
+// orchestration shell to Cloudflare Workflows in the same effort that
+// enables this (docs/ARCHITECTURE-ROADMAP.md §6; ARCHITECTURE-GAP-ANALYSIS
+// P4/P19). Deliberately a separate flag from DEEP_TIER_FEATURES_ENABLED:
+// those features measured net-negative; this one is unmeasured, not
+// disproven.
+const SUBQ_FANOUT_ENABLED = false;
+
+/**
+ * @param {BudgetPlan | null | undefined} plan
+ * @returns {boolean}
+ */
+export function wantsSubqFanout(plan) {
+  return SUBQ_FANOUT_ENABLED && !!plan && plan.budgetS >= 240;
+}

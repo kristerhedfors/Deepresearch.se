@@ -366,6 +366,12 @@ duration into the budget stats, logs `chat.phase` / `chat.phase_failed`,
 and returns `null` — the pipeline degrades (fewer searches, skipped
 iteration, accepted draft, unchanged conversation) but never fails the
 request. Exa failures likewise return error strings, not exceptions.
+The ANSWER phases are deliberately NOT fail-soft: `streamCompletion`
+throws on a missing `finish_reason`, a deterministic 4xx, and context
+overflow, and `chat.js` converts the throw into an emitted error event
+carrying a `(ref …)` plus the one-shot model failover. So the precise
+rule is: helpers degrade *silently* to a lesser result; the answer
+degrades to an *honest, correlatable error* — never to silence.
 
 ### 4.3 Time-budget planner (`src/budget.js`)
 

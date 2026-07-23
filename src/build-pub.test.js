@@ -109,6 +109,50 @@ test("republish: same owner keeps the slug and prunes dropped files; foreign own
   assert.match(await (await handleBuildGet(env, first.slug, "")).text(), /v2/);
 });
 
+test("keepOwner (admin in-place republish): slug reused, ORIGINAL owner preserved", async () => {
+  const env = { STORAGE: mockBucket() };
+  const first = await publishBuild(env, log, { slug: null, title: "App", files: appFiles(), userId: "u1" });
+
+  // The admin path (handleBuildManualPublish sets keepOwner) republishes the
+  // user's build IN PLACE — same URL — instead of minting a fresh slug.
+  const fixed = await publishBuild(env, log, {
+    slug: first.slug,
+    title: "App (fixed)",
+    files: [{ path: "index.html", content: "<h1>fixed</h1>" }],
+    userId: "admin",
+    keepOwner: true,
+  });
+  assert.equal(fixed.slug, first.slug);
+  assert.match(await (await handleBuildGet(env, first.slug, "")).text(), /fixed/);
+
+  // …and the build still belongs to u1: the user's own next republish keeps
+  // the slug (an admin fix must never wrest an app from its owner's chat).
+  const usersOwn = await publishBuild(env, log, {
+    slug: first.slug,
+    title: "App v3",
+    files: [{ path: "index.html", content: "<h1>v3</h1>" }],
+    userId: "u1",
+  });
+  assert.equal(usersOwn.slug, first.slug);
+  assert.match(await (await handleBuildGet(env, first.slug, "")).text(), /v3/);
+
+  // keepOwner on a FRESH slug just publishes normally, owned by the caller.
+  const freshByAdmin = await publishBuild(env, log, {
+    slug: null,
+    title: "Admin tool",
+    files: appFiles(),
+    userId: "admin",
+    keepOwner: true,
+  });
+  const next = await publishBuild(env, log, {
+    slug: freshByAdmin.slug,
+    title: "Admin tool v2",
+    files: [{ path: "index.html", content: "<h1>admin v2</h1>" }],
+    userId: "admin",
+  });
+  assert.equal(next.slug, freshByAdmin.slug);
+});
+
 test("publishBuild rejects junk: no files, no index.html, missing storage", async () => {
   const env = { STORAGE: mockBucket() };
   assert.match((await publishBuild(env, log, { title: "x", files: [], userId: "u" })).error, /Nothing publishable/);

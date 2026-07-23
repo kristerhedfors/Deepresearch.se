@@ -239,7 +239,7 @@ fail-soft, decoration never costs a chat).
 
 As shipped:
 
-- **Normal** — the tier default: the **balloon** spinner → **blue ✓**
+- **Deep Research** — the tier default: the **balloon** spinner → **blue ✓**
   (`--check-blue`), plain history drawer, the balloon greeter (§5).
 - **Introspection** — the **titanium** pane + **TIN**, the titanium mascot
   (`introspect-ui.js`), and a titanium-tinted drawer. It keeps the balloon
@@ -248,14 +248,17 @@ As shipped:
   spinner is a drop-in in the registry later. It answers from the site's own
   source, so the research **depth slider is hidden** (`depthSlider: false`).
 - **SDK** — the **plant**. SDK mode grows a new flavour of the site, so its
-  symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) drops a seed
-  that **hits the ground**, **gets planted**, and boomerangs a settled sprout
-  while work is ongoing — turning back JUST before real growth (the
-  umbrella/balloon discipline: the good beat is reserved for "done"). The
-  completion finale **grows it out** — stem, leaves, a gold-green bloom — and
-  folds it into a **GREEN ✓** (`--check-green`). It reuses the umbrella
-  spinner's boomerang/finale clocks, so all three symbols stay siblings by
-  construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):
+  symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) runs a
+  forward **life-cycle** while work is ongoing — a seed falls, **hits the
+  ground**, **gets planted**, sprouts, grows and **blooms**; the open flower
+  then releases a fresh seed that falls to the soil while the parent withers,
+  and the cycle replants. (Owner directive, 2026-07-23: the earlier boomerang
+  loop rewound through the seed drop and read as a brown bouncing ball — the
+  loop now owns the whole seed→seedling→flower story, and only the ✓ is
+  reserved for "done".) The completion finale catches the plant wherever it
+  is, grows it out to full bloom and folds it into a **GREEN ✓**
+  (`--check-green`). It keeps the umbrella spinner's finale pacing, so the
+  three symbols stay siblings by construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):
   the ghost/balloon/TIN counterpart, a one-shot greeter the first time a user
   enters SDK mode, drawn with the SAME shared renderer (`drawPlantFigure`) as
   the spinner so the character and the waiting symbol are one plant. The green
