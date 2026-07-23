@@ -15,6 +15,7 @@ import {
   drcProvider,
   drcToolRun,
   filterAndSortModels,
+  foreignDrcKeyHint,
   listDrcModels,
   providerErrorDetail,
   proxyLlmProvider,
@@ -28,7 +29,10 @@ test("the registry holds the CORS-capable providers plus the keyless local entry
   assert.equal(drcProvider("openai").label, "OpenAI");
   assert.equal(drcProvider("groq").label, "Groq");
   assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
-  assert.equal(drcProvider("anthropic"), null); // no browser CORS — not in this registry
+  // Anthropic: still outside the registry — its CORS exists (probed live
+  // 2026-07-23, with the anthropic-dangerous-direct-browser-access opt-in)
+  // but its Messages-API wire needs a client-side adapter first.
+  assert.equal(drcProvider("anthropic"), null);
   for (const p of DRC_PROVIDERS) {
     if (p.keyless) continue; // the local entry: no key, no fixed catalog (below)
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
@@ -69,6 +73,36 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
   assert.equal(detectDrcProvider("hf_abc123"), null);
   assert.equal(detectDrcProvider(""), null);
   assert.equal(detectDrcProvider(null), null);
+});
+
+test("an Anthropic sk-ant-… key is NEVER claimed by OpenAI's sk- pattern", () => {
+  // The feedback-#6 regression (2026-07-23): sk-ant-… matched /^sk-/ and
+  // was routed to OpenAI's wire, which 401s. The most specific prefix owns
+  // the key; a foreign shape detects as null, not as the wrong provider.
+  assert.equal(detectDrcProvider("sk-ant-api03-abc123"), null);
+  assert.equal(detectDrcProvider("  sk-ant-api03-abc123\n"), null);
+  // …and the patterns stay mutually exclusive by construction, so no
+  // future reordering of DRC_PROVIDERS can bring the collision back.
+  const key = "sk-ant-api03-abc123";
+  const claimants = DRC_PROVIDERS.filter((p) => p.keyPattern && p.keyPattern.test(key));
+  assert.deepEqual(claimants, []);
+  // OpenAI's own variants are untouched by the exclusion.
+  assert.equal(detectDrcProvider("sk-abc123").id, "openai");
+  assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
+});
+
+test("foreignDrcKeyHint names a recognized-but-unsupported key shape", () => {
+  // Anthropic: recognized so the key panel can say WHY it won't work here.
+  assert.match(foreignDrcKeyHint("sk-ant-api03-abc123"), /Anthropic/);
+  assert.match(foreignDrcKeyHint("  sk-ant-api03-abc123\n"), /Anthropic/);
+  assert.match(foreignDrcKeyHint("hf_abc123"), /Hugging Face/);
+  // Supported and unknown shapes get NO foreign hint.
+  assert.equal(foreignDrcKeyHint("sk-abc123"), null);
+  assert.equal(foreignDrcKeyHint("sk_ber_abc123"), null);
+  assert.equal(foreignDrcKeyHint("gsk_abc123"), null);
+  assert.equal(foreignDrcKeyHint("something-else"), null);
+  assert.equal(foreignDrcKeyHint(""), null);
+  assert.equal(foreignDrcKeyHint(null), null);
 });
 
 test("Berget's JSON-phase model mirrors the server's DEFAULT_MODEL choice", () => {

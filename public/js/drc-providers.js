@@ -7,9 +7,19 @@
 // /chat/completions and /models (probed live 2026-07-11 — it used to have
 // no browser CORS, which is why it was originally excluded here). So the
 // user's browser can call all three with the user's own API key and
-// Deepresearch's server is never in the request path at all. Providers
-// without browser CORS (Anthropic) cannot join this registry — they'd
-// need a proxy, which is exactly what DRC exists to avoid.
+// Deepresearch's server is never in the request path at all.
+//
+// Anthropic: NOT in the registry, but no longer for lack of CORS — probed
+// live 2026-07-23, api.anthropic.com/v1/messages serves
+// `Access-Control-Allow-Origin: *` and allows x-api-key / anthropic-version
+// plus the explicit browser opt-in header
+// `anthropic-dangerous-direct-browser-access: true` (the earlier "Anthropic
+// has no browser CORS" note here was true when written, stale now). What
+// still keeps it out is the WIRE: the Messages API is not OpenAI chat
+// completions, so admission needs a client-side foreign-wire adapter (the
+// browser mirror of src/anthropic.js's openAiStreamFromAnthropic) — a
+// deliberate later step. Until then its key shape is recognized as FOREIGN
+// (FOREIGN_KEY_SHAPES below) so detection never misroutes it.
 //
 // Same registry discipline as the server seam: one declarative entry per
 // provider (id, label, base URL, wire-param quirks, a JSON-phase default
@@ -41,8 +51,11 @@ export const DRC_PROVIDERS = [
     base: "https://api.openai.com/v1",
     // Key auto-detection (the one-field key panel): OpenAI keys are
     // sk-… (sk-proj-…, sk-svcacct-…) — hyphen, unlike Berget's sk_ber_
-    // underscore form, so the two never collide.
-    keyPattern: /^sk-/,
+    // underscore form. But Anthropic's sk-ant-… is ALSO an sk- key, so it
+    // is excluded explicitly: the most specific prefix owns the key, and a
+    // key routed to the wrong wire is worse than one left undetected
+    // (feedback #6, 2026-07-23 — an Anthropic key misdetected as OpenAI).
+    keyPattern: /^sk-(?!ant-)/,
     // The fixed cheap model for the JSON planning phases (the client-side
     // mirror of the split-model-routing invariant — planning does not run
     // on the user's chosen answer model).
@@ -212,12 +225,48 @@ export function serverTokenLlmProvider(origin) {
   };
 }
 
+// Key shapes we RECOGNIZE but cannot serve browser-direct yet — known
+// prefixes of providers outside the registry. Detection returns null for
+// these (never a wrong provider), and foreignDrcKeyHint gives the key
+// panel an honest one-liner instead of silence. Kept in sync with the
+// prefixes scripts/scan-secrets already knows.
+export const FOREIGN_KEY_SHAPES = [
+  {
+    pattern: /^sk-ant-/,
+    label: "Anthropic",
+    hint: "That looks like an Anthropic key — Anthropic isn't callable browser-direct here yet.",
+  },
+  {
+    pattern: /^hf_/,
+    label: "Hugging Face",
+    hint: "That looks like a Hugging Face token — not a chat provider this app can call.",
+  },
+];
+
+/**
+ * The honest message for a recognized-but-unsupported key shape (an
+ * Anthropic sk-ant-… key above all), or null for anything else. The key
+ * panels show this instead of nothing, so a paste that CANNOT work says so
+ * up front rather than failing downstream on the wrong provider.
+ * @param {string} key
+ * @returns {?string}
+ */
+export function foreignDrcKeyHint(key) {
+  const k = typeof key === "string" ? key.trim() : "";
+  if (!k) return null;
+  const foreign = FOREIGN_KEY_SHAPES.find((f) => f.pattern.test(k));
+  return foreign ? foreign.hint : null;
+}
+
 /**
  * Identify the provider a pasted API key belongs to by its prefix
- * (sk_ber_… → Berget, gsk_… → Groq, sk-… → OpenAI), or null for an
- * unrecognized shape — the key panel's one-field UX: the provider
- * dropdown follows the detected prefix automatically, and stays
- * user-pickable for keys no pattern knows.
+ * (sk_ber_… → Berget, gsk_… → Groq, sk-… minus sk-ant-… → OpenAI), or
+ * null for an unrecognized shape — the key panel's one-field UX: the
+ * provider dropdown follows the detected prefix automatically, and stays
+ * user-pickable for keys no pattern knows. The patterns are mutually
+ * exclusive BY CONSTRUCTION (the most specific prefix owns the key —
+ * OpenAI's pattern excludes Anthropic's sk-ant-…), so no entry's match
+ * can depend on registry order.
  * @param {string} key
  * @returns {?{id: string, label: string}}
  */
