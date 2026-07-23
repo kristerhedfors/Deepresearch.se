@@ -63,6 +63,73 @@ origin story of the first weekend, kept as the record of how it began —
 lives in `public/build/history.md` (rendered in-app at `/story/`; `/build/`
 holds the project purpose and EU AI Act use restrictions).
 
+## Why partake — and what to expect
+
+This is a research and innovation project, and the invitation is to build on
+it, not just to use it. If you have ever wanted somewhere to explore how far
+an LLM application can be pushed toward *provable* privacy without hiding
+behind a proprietary stack, this is a working, forkable, MIT-licensed place
+to do it. A few things set the architecture apart from the usual way these
+apps get built:
+
+- **Zero dependency debt — and a standing invitation to keep it that way.**
+  The Worker ships with **no runtime dependencies whatsoever**. `package.json`
+  carries exactly two entries, both `devDependencies` (`typescript` and
+  `@cloudflare/workers-types`) and neither is part of the deploy: production
+  is the plain JavaScript in `src/`, running on web-standard globals, with no
+  build step. The browser client vendors a small, pinned, checked-in set of
+  libraries (`public/vendor/`) directly — no package manager, no transitive
+  tree, no lockfile churn. One of the heaviest burdens any UI project quietly
+  takes on is *another straw on the camel's back* — one more package, and the
+  hundreds it drags in behind it. Here that burden is simply not accepted.
+  Extending this codebase does not mean adding a dependency; it means writing
+  the feature. We would like to make that the norm, not the exception, and
+  the architecture is proof it is achievable for a real, non-trivial app.
+- **Deterministic, function-calling-free pipeline.** Every research phase is
+  a direct JSON-mode or streamed call, so the whole thing runs on essentially
+  any model in the catalog — including ones with unreliable tool-calling. No
+  agent framework, no orchestration library, no vendor lock to a single
+  model's function-calling dialect.
+- **Real cost and token accounting is already in place.** Per-request token
+  totals, per-model split billing, and rolling/daily/weekly/monthly quota
+  windows are implemented and unit-tested (`src/billing.js`, `src/quota.js`,
+  `src/budget.js`). It is lightly exercised rather than hardened, but the
+  machinery for real-cost cost control exists and works.
+- **Independently verifiable serving chain.** The live site is served
+  directly from this public repo (git-connected to Cloudflare: a push to
+  `main` is what production runs), so the code you read is the code that ran.
+
+### Not production-ready — deliberately, and worth understanding why
+
+Be clear-eyed about this: **this code is not production-ready, and that is a
+design decision, not an oversight.** The application ships with essentially
+**none of the security guardrails, input/output validations, prompt-injection
+defenses, content filtering, or abuse checks** that a real deployment
+requires. What safety it exhibits comes **entirely from what the underlying
+LLMs happen to provide** — and model-side behavior is, on its own, *never* a
+complete guardrail solution and never will be. We left the basics of that
+layer out on purpose. Partly it lets us state the limitation plainly instead
+of implying a safety it does not have; partly it reflects the project's whole
+posture — we aim for roughly the **80%** that proves what this architecture
+can do, rather than pouring in the disproportionate time the remaining 20%
+(the hardening, the exhaustive validation, the adversarial edge cases) always
+demands. Treat every security-adjacent claim in this repo as a claim about
+*architecture and intent*, not about a finished, audited system.
+
+That last 20% is also, deliberately, **not ours to ship generically** — and
+this is the second big idea alongside the zero-dependency stance. Any serious
+production deployment will have its own **uniquely generated,
+domain-specific security wiring**: auth boundaries, allow-lists, rate and
+abuse policy, validation rules, and secrets provisioning fitted to that one
+site and generated fresh for it. Bespoke-per-deployment wiring means there is
+no shared, copy-pasted security layer for a single discovered flaw to recur
+across — no boilerplate weakness inherited from this proof-of-concept
+platform into everyone who forks it. The intended path is exactly the one in
+*Installing your own instance* below: fork the architecture, deploy it into an
+environment that is already network- and authentication-restricted, and wire
+its security to your domain. This repository is the honest, verifiable
+starting point for that work — not the endpoint.
+
 ## DistillSDK
 
 The architecture is also distilled into a reusable form: **DistillSDK**
