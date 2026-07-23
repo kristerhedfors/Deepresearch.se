@@ -182,6 +182,122 @@ export function linkifyCitations(el) {
   }
 }
 
+// ---- Mermaid diagrams -------------------------------------------------------
+// A ```mermaid fence in an answer renders as a real flow diagram. The vendored
+// library (/vendor/mermaid.min.js, ~3.4 MB) is loaded ONLY when a rendered
+// answer actually contains a complete mermaid block — ordinary chats never pay
+// for it. Rendering is fail-soft end to end: a load failure, an invalid
+// diagram, or a half-streamed block just leaves the fenced code visible as
+// ordinary code, never breaks the answer.
+
+/** @type {Promise<any>|null} */
+let mermaidLoad = null; // one lazy script load per page
+let mmdSeq = 0; // unique render ids (mermaid requires one per render call)
+
+/**
+ * Extracts the bodies of COMPLETE ```mermaid fenced blocks from markdown
+ * source. Pure (no DOM) — unit-tested in Node. Exists because an UNTERMINATED
+ * fence still renders as a code block (CommonMark runs it to end of input), so
+ * during streaming the DOM alone can't tell a finished diagram from a
+ * half-streamed one; only blocks whose closing fence has arrived in the text
+ * are rendered — the rest stay code until the fence closes.
+ * @param {string} text
+ * @returns {string[]} trimmed diagram sources, in order
+ */
+export function completeMermaidSources(text) {
+  if (typeof text !== "string" || !text.includes("```mermaid")) return [];
+  /** @type {string[]} */
+  const out = [];
+  /** @type {string[]|null} */
+  let body = null;
+  for (const line of text.split("\n")) {
+    if (body === null) {
+      if (/^\s{0,3}```mermaid\s*$/.test(line)) body = [];
+    } else if (/^\s{0,3}```\s*$/.test(line)) {
+      const src = body.join("\n").trim();
+      if (src) out.push(src);
+      body = null;
+    } else {
+      body.push(line);
+    }
+  }
+  return out;
+}
+
+/** @returns {Promise<any>} the mermaid global, or null (fail soft) */
+function ensureMermaid() {
+  if (!mermaidLoad) {
+    mermaidLoad = new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "/vendor/mermaid.min.js";
+      s.onload = () => {
+        const m = /** @type {any} */ (window).mermaid;
+        try {
+          // strict: mermaid sanitizes label text itself; htmlLabels off keeps
+          // flowchart labels as plain SVG text (no foreignObject), which also
+          // survives the DOMPurify pass below. Light theme matches both tiers.
+          m?.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            theme: "default",
+            flowchart: { htmlLabels: false },
+          });
+          resolve(m || null);
+        } catch {
+          resolve(null);
+        }
+      };
+      s.onerror = () => resolve(null);
+      document.head.appendChild(s);
+    });
+  }
+  return mermaidLoad;
+}
+
+/**
+ * Replaces each rendered ```mermaid code block whose source is complete with
+ * the drawn diagram. Async (the library loads on first use); safe against
+ * re-renders — a block whose <pre> left the document while the diagram was
+ * being drawn is skipped.
+ * @param {HTMLElement} el @param {string} text the markdown source
+ */
+async function renderMermaidBlocks(el, text) {
+  const complete = new Set(completeMermaidSources(text));
+  if (!complete.size) return;
+  /** @type {Array<{pre: HTMLElement, src: string}>} */
+  const blocks = [];
+  for (const code of el.querySelectorAll("pre > code.language-mermaid")) {
+    const src = (code.textContent || "").trim();
+    const pre = /** @type {HTMLElement|null} */ (code.parentElement);
+    if (pre && complete.has(src)) blocks.push({ pre, src });
+  }
+  if (!blocks.length) return;
+  const mermaid = await ensureMermaid();
+  const { DOMPurify } = /** @type {any} */ (window);
+  if (!mermaid || !DOMPurify) return;
+  for (const { pre, src } of blocks) {
+    try {
+      const { svg } = await mermaid.render(`mmd-${(mmdSeq += 1)}`, src);
+      if (!pre.isConnected) continue; // the answer re-rendered meanwhile
+      const box = document.createElement("div");
+      box.className = "mermaid-diagram";
+      box.style.overflowX = "auto"; // wide diagrams scroll, never overflow the bubble
+      // Defense in depth: mermaid strict mode already sanitized the labels,
+      // but its SVG goes through DOMPurify like everything else we render.
+      box.innerHTML = DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true, html: true },
+      });
+      const svgEl = box.querySelector("svg");
+      if (!svgEl) continue;
+      svgEl.style.maxWidth = "100%";
+      svgEl.style.height = "auto";
+      pre.replaceWith(box);
+    } catch {
+      // invalid/unsupported diagram — the fenced code stays visible
+    }
+  }
+}
+
 /**
  * Render markdown into an element, sanitized; plain text when the vendored
  * libs are missing.
@@ -227,4 +343,7 @@ export function renderMarkdownInto(el, text) {
   // Run AFTER the loop above so the in-page [n] anchors it creates keep their
   // default same-page behavior instead of getting target="_blank".
   linkifyCitations(el);
+  // Fire-and-forget: diagrams draw in when the (lazy-loaded) library is
+  // ready; everything else in the answer is already usable.
+  void renderMermaidBlocks(el, text);
 }
