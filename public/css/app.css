@@ -1977,6 +1977,19 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .tryqueue-item:hover { border-color: var(--accent); }
 .tryqueue-item-label { font-weight: 600; font-size: .86rem; }
 .tryqueue-item-target { font-size: .72rem; overflow-wrap: anywhere; }
+/* Quick-search over the queue: a substring filter that highlights matches. */
+.tryqueue-search {
+  width: 100%; box-sizing: border-box; margin: 0 0 .35rem;
+  padding: .45rem .6rem; font: inherit; font-size: .84rem;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.tryqueue-search:focus { outline: none; border-color: var(--accent); }
+.tryqueue-search[hidden] { display: none; }
+.tryqueue-hl {
+  background: var(--accent); color: #fff;
+  border-radius: 3px; padding: 0 .08em;
+}
 
 /* The detail view a tapped queue item opens IN PLACE (read the task before
    going anywhere). The verdict widgets reuse the trybanner-* classes, so
