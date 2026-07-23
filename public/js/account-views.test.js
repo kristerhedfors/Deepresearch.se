@@ -5,7 +5,35 @@
 // guarded), so these run without a DOM.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { settingSelectRow, renderConfigKnobs } from "./account-views.js";
+import { settingSelectRow, renderConfigKnobs, renderSummary } from "./account-views.js";
+
+const baseMe = (notifications) => ({
+  email: "a@b.c",
+  role: "user",
+  windows: { h5: { budget_pct: null, searches: 0, searches_limit: 0, reset: 0 } },
+  db_configured: true,
+  notifications,
+});
+
+test("renderSummary: Messages count excludes feedback replies (badge total folds them in, the message center does not)", () => {
+  // A feedback reply is the ONLY unread item: it lights the header badge, but
+  // the message center has nothing to show — so the Messages button must not
+  // claim a count / highlight, or clicking it opens an empty view.
+  const html = renderSummary(baseMe({ unread_messages: 0, unread_feedback: 1, total: 1 }));
+  assert.match(html, /<button id="messagesbtn" type="button">Messages<\/button>/); // no (n), no has-badge
+  assert.match(html, /Feedback \(1\)/); // the reply is surfaced by the Feedback button instead
+});
+
+test("renderSummary: Messages count still counts real messages + admin notifications", () => {
+  // 2 personal messages + 1 pending user + 1 open alert (admin), plus a feedback
+  // reply — Messages shows 4 (everything the view renders), Feedback shows 1.
+  const me = baseMe({ unread_messages: 2, unread_feedback: 1, pending_users: 1, open_alerts: 1, total: 5 });
+  me.role = "admin";
+  const html = renderSummary(me);
+  assert.match(html, /Messages \(4\)/);
+  assert.match(html, /class="has-badge"/);
+  assert.match(html, /Feedback \(1\)/);
+});
 
 test("settingSelectRow renders a labeled <select> with the value selected", () => {
   const html = settingSelectRow({
