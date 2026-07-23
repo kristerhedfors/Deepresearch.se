@@ -41,6 +41,9 @@ export function docExt(file) {
   return (file.name.match(EXT_RE)?.[1] || "").toLowerCase();
 }
 
+/** True for image attachments (vision models), by MIME type or extension. @param {File} f */
+export const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
+
 /**
  * Parse one attachment. metadata is a formatted summary string or null
  * (txt/md never have any; pdf/docx do when the file actually carries some).

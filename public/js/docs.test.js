@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
-import { parseDocFile, formatPdfMetadata } from "./docs.js";
+import { parseDocFile, formatPdfMetadata, isImageFile } from "./docs.js";
 
 // ---- test-only minimal ZIP writer -----------------------------------------
 // Independent of docs.js's own zip READER, so this isn't tautological.
@@ -219,6 +219,21 @@ describe("parseDocFile / docx", () => {
   test("a corrupted/non-zip file throws a user-presentable error, not a crash", async () => {
     const file = new File([new Uint8Array([1, 2, 3, 4])], "broken.docx");
     await assert.rejects(() => parseDocFile(file, 9000), /does not look like a valid \.docx file/);
+  });
+});
+
+describe("isImageFile", () => {
+  test("classifies by MIME type", () => {
+    assert.equal(isImageFile({ type: "image/png", name: "x" }), true);
+    assert.equal(isImageFile({ type: "image/jpeg", name: "x" }), true);
+    assert.equal(isImageFile({ type: "application/pdf", name: "x" }), false);
+  });
+
+  test("falls back to extension when type is absent", () => {
+    assert.equal(isImageFile({ type: "", name: "photo.PNG" }), true);
+    assert.equal(isImageFile({ type: "", name: "shot.jpeg" }), true);
+    assert.equal(isImageFile({ type: "", name: "clip.webp" }), true);
+    assert.equal(isImageFile({ type: "", name: "notes.pdf" }), false);
   });
 });
 

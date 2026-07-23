@@ -149,7 +149,9 @@ leaf `feedback-attach.js` — the feedback pipeline's add-a-screenshot
 widget — also compresses through; `docs.js` extracts text AND metadata from
 attachments — pdf via the vendored pdf.js, docx via a hand-rolled
 ZIP/DecompressionStream reader that also surfaces tracked-changes /
-`&lt;w:delText&gt;` leaks, plus md/txt),
+`&lt;w:delText&gt;` leaks, plus md/txt — and owns the shared file-kind classifiers
+`isParsableDoc`/`docExt`/`isImageFile` used by both `attachments.js`
+and `projects.js`),
 `account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
 `account-views.js` (summary, full usage,

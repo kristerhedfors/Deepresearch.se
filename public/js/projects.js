@@ -29,7 +29,7 @@
 // Se/cure, where the server is in no data path at all.
 
 import { deleteChatIndex } from "./chat-rag.js";
-import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
+import { docExt, isImageFile, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import {
   decryptBytes,
@@ -47,8 +47,6 @@ import { storageAvailable } from "./settings.js";
 const MAX_FILES_PER_PROJECT = 100;
 const MAX_RAW_BYTES = 25 * 1024 * 1024; // same input cap as attachments
 const PARSE_MAX_CHARS = 8_000_000;
-
-const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
 
 // ---- cache + change notification --------------------------------------------
 

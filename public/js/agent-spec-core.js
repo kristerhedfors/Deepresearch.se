@@ -394,7 +394,7 @@ export function composerModel(a) {
 }
 
 /** Minimal HTML escape for text interpolated into the proof markup. @param {unknown} s */
-function esc(s) {
+export function esc(s) {
   /** @type {Record<string,string>} */
   const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   return String(s ?? "").replace(/[&<>"']/g, (c) => map[c]);

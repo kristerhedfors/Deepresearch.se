@@ -28,6 +28,7 @@ import {
   composerMarkup,
   composerModel,
   controlMarkup,
+  esc,
   proveComposer,
   agentLinkPlan,
   agentTokenGrantParams,
@@ -248,4 +249,11 @@ test("rendering helpers produce readable text", () => {
   assert.ok(/drives `depth`/.test(show));
   assert.ok(/quota \(share link\)/.test(show));
   assert.equal(renderAgentShow(reg, "nope"), "unknown agent: nope");
+});
+
+test("esc neutralizes the five HTML-significant characters", () => {
+  assert.equal(esc(`<a href="x" title='y'>&`), "&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;");
+  assert.equal(esc(null), "");
+  assert.equal(esc(undefined), "");
+  assert.equal(esc(42), "42");
 });

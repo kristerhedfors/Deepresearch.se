@@ -478,3 +478,54 @@ Declined this pass (record so the next pass doesn't re-survey them):
 The lesson stands: on this codebase a "refactor the whole repo" job routinely
 converges to a SINGLE relocation (or none), and that is the correct outcome —
 1843 logic tests green throughout, typecheck clean, zero behavior change.
+
+## Eighth worked example (2026-07-23) — the two-duplicate pass
+
+Whole-repo survey again (three `Explore` fan-outs: the newly-added theme/agent-spec
+surface from PR #203 — `mode-theme.js`/`agent-spec-core.js`/`chat-mode.js`/etc.;
+the `pipeline.js`/`chat.js`/`index.js`/`mcp.js` regrowth; and an all-of-`src` +
+`public/js` + `public/cure` verbatim-duplicate sweep). The orchestrators came
+back "nothing left" — `pipeline.js` had grown 1654→1692 purely from
+orchestration flow (every remaining function takes `ctx` or `await`s; the pure
+builders were already in `pipeline-inputs.js`/`sdk-tools.js`/etc.), and
+`chat.js`/`mcp.js` were byte-unchanged since prior passes. Exactly TWO clean
+same-graph verbatim duplicates survived, both de-duped into a leaf both callers
+ALREADY import (zero new graph edges):
+- **`isImageFile` → `docs.js`** (flagship): the image-attachment classifier
+  `(f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name)`
+  was byte-identical in `attachments.js` and `projects.js`. Its natural home is
+  `docs.js` — a pure import-free leaf that already owns the sibling file-kind
+  classifiers `isParsableDoc`/`docExt`, and which BOTH callers already import.
+  Routing through `attachments.js` (the sweep's first-guess home) would instead
+  have dragged `models.js`/`image-downscale.js` into `projects.js`'s graph — so
+  the file-kind leaf, not the bigger consumer, is the right owner. New
+  `docs.test.js` cases cover the MIME-type and extension-fallback paths.
+- **`esc` → exported from `agent-spec-core.js`**: the 5-char HTML escaper was a
+  private copy in both `agent-spec-core.js` and `agent-preview.js` (the `.replace`
+  line byte-identical; only the `@type` cast placement differed). `agent-preview.js`
+  ALREADY imports 6 symbols from the core — the canonical "export the existing
+  private helper from the `-core.js`, delete the consumer's copy" cut. New
+  `agent-spec-core.test.js` case pins the five-character escaping + nullish→"".
+  NOTE: both files are in `sdk/MANIFEST.json`'s agent-platform `reference` list,
+  but adding an EXPORT (not renaming/moving/splitting the file) leaves those
+  file-path pointers valid — no distiller drift, no `SECURE_SOURCE_REFS` edit.
+Declined this pass (record so the next pass doesn't re-survey them):
+- **`reqToPromise`** (history-store.js vs rag.js) — the IndexedDB request→promise
+  adapter differs in declaration FORM (`function` decl vs `const` arrow, not
+  byte-identical), the two files share no existing import edge, and no `idb-core`
+  leaf exists — a new module + two new graph edges for one tiny helper. Marginal;
+  matches the `base64ToBytes`-idiom decline.
+- **`greeterGrowth`** (sdk-plant.js) — pure, but its `dur = GROW_MS` default binds
+  a greeter-specific timing constant; a verbatim move would drag `GROW_MS` into
+  `plant-spinner.js` or force parameterization (not a verbatim move).
+- **The cross-graph identical pairs** — `f32ToB64`/`b64ToF32` (public vs src
+  `rag.js`), `clamp01`/`smooth`/`lerpCol` (cure/ vs js/ spinners),
+  `bytesToB64`/`b64ToBytes` (vault-core vs the self-contained distilled
+  `drc-store.js`), `today` — all separate module graphs, matching the standing
+  `base64ToBytes` decline.
+- **The `["normal","introspection","sdk"]` mode list** mirrored across
+  `chat-mode.js`/`mode-theme.js`/`deeplink-core.js` — intentional self-describing
+  mirrors (each comments why), not a de-dup seam.
+The lesson holds yet again: a "refactor the whole repo" job on this already-modular
+codebase converges to a SHORT list (here two relocations), and that is the correct
+outcome — 1985 logic tests green throughout, typecheck clean, zero behavior change.

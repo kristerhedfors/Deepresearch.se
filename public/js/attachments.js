@@ -4,7 +4,7 @@
 // documents are parsed to text via docs.js. The send path collects both
 // with takeAttachments().
 
-import { docExt, isParsableDoc, parseDocFile } from "./docs.js";
+import { docExt, isImageFile, isParsableDoc, parseDocFile } from "./docs.js";
 import { extractExif, formatExifSummary } from "./exif.js";
 import { downscaleImage } from "./image-downscale.js";
 import { currentModel, selectModel, visionFallback } from "./models.js";
@@ -38,7 +38,6 @@ let pendingBox;
 // reverse geocoding (src/geocode.js) rather than resolved client-side.
 let attachments = [];
 
-const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|webp|gif)$/i.test(f.name);
 const images = () => attachments.filter((a) => a.kind === "image");
 const docs = () => attachments.filter((a) => a.kind === "doc");
 

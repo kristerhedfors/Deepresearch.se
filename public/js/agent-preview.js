@@ -12,6 +12,7 @@ import {
   agentsFromSnapshot,
   findAgent,
   composerMarkup,
+  esc,
   resolveExamples,
   resolveQuota,
   resolveControls,
@@ -19,12 +20,6 @@ import {
 import { buildComposerDeepLink } from "./deeplink-core.js";
 
 const SNAPSHOT_URL = "/introspect/source-snapshot.json";
-
-/** @param {string} s */
-function esc(s) {
-  const map = /** @type {Record<string,string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" });
-  return String(s ?? "").replace(/[&<>"']/g, (c) => map[c]);
-}
 
 /** The chat mode a shipped agent opens in; derived flavours fall back to normal. @param {any} agent */
 function modeFor(agent) {
