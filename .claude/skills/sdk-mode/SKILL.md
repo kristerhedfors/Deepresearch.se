@@ -215,6 +215,32 @@ consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
   so `node /src/sdk/pair-cli.mjs …` works in-guest when the image ships
   node (bashAgentPrompt teaches this, with a cat/grep fallback).
 
+## Known build pitfalls in generated apps (feedback #5, build-urx0, 2026-07-23)
+
+Two bugs that shipped in a real Agent Studio build and left it dead on
+arrival — check generated bundles for both, and bake the guards in:
+
+- **Classic-script global collision.** Generated apps use plain
+  `<script src>` tags, which share ONE global scope. A registry file
+  declaring `const PROVIDERS` top-level plus an app file doing
+  `const { PROVIDERS } = window.X` is a PARSE-TIME SyntaxError
+  ("already been declared") that kills the second script entirely — zero
+  listeners attach, the app looks "dead" with no visible error. Guard: wrap
+  each generated file in an IIFE and export exactly one `window.*` object.
+- **`hidden` attribute defeated by author CSS.** Any author `display:` rule
+  (e.g. `.panel{display:flex}`) overrides the UA's `[hidden]{display:none}`.
+  On a `position:fixed; inset:0` overlay that means an invisible full-screen
+  layer eating every click. Guard: generated stylesheets should carry
+  `[hidden]{display:none !important}`.
+- **Page-scoped log pane (owner-approved pattern, feedback #5).** Builds
+  should include a self-contained `debuglog.js` loaded as the FIRST script
+  tag: captures console output, window `error` (catches parse errors in
+  later scripts — exactly the class above) + `unhandledrejection`, and
+  fetch method/URL/status/duration ONLY (never headers or bodies), redacts
+  key-shaped strings, renders a "🪵 Logs" button + pane, keeps everything
+  in-tab. Visible to any user of the app, exposes nothing beyond that page's
+  own activity. Reference implementation: `/app/build-urx0/js/debuglog.js`.
+
 ## Verification
 
 - Unit: `sdk-core.test.js`, `build-pub.test.js`, `chat-mode.test.js`,
