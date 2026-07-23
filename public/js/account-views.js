@@ -336,7 +336,7 @@ export function wireModeKnob(ctx) {
   if (!sel || sel.disabled) return;
   const status = document.getElementById("modestatus");
   const STATUS = {
-    normal: "Normal — ordinary web research.",
+    normal: "Deep Research — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
   };
@@ -406,6 +406,7 @@ export function renderSummary(me) {
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
       ${me.email ? '<button id="sharewsbtn" type="button">Share a workspace</button>' : ""}
+      ${me.email ? '<button id="knowledgebtn" type="button">Workspace knowledge</button>' : ""}
       <button id="gamesbtn" type="button">Games</button>
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<button id="articlesbtn" type="button">Article collection</button>' : ""}

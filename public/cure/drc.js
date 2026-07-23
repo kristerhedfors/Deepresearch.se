@@ -50,6 +50,7 @@ import {
 } from "/js/drc-core.js";
 import {
   DRC_PROVIDERS,
+  POOL_LLM_PROVIDER_ID,
   PROXY_LLM_PROVIDER_ID,
   SERVER_TOKEN_LLM_PROVIDER_ID,
   configuredDrcProviders,
@@ -59,9 +60,22 @@ import {
   drcProvider,
   foreignDrcKeyHint,
   listDrcModels,
+  poolLlmProvider,
   proxyLlmProvider,
   serverTokenLlmProvider,
 } from "/js/drc-providers.js";
+import { poolDataFlowNotice } from "/js/pool-core.js";
+import { createPoolProvider } from "/js/pool-provider.js";
+import {
+  KNOWLEDGE_FILE_EXT,
+  buildConclusion,
+  buildKnowledgeBundle,
+  curate,
+  curationState,
+  finalizeConclusion,
+  sealKnowledge,
+  summarizeContext,
+} from "/js/knowledge-core.js";
 import { openBundle, validateBundle } from "/js/proxy-bundle.js";
 import {
   applyWorkspacePayload,
@@ -742,9 +756,18 @@ function privacyCtx() {
 }
 
 function showPrivacyNotice() {
-  $("privacypop-text").innerHTML = privacyNoticeLines(privacyCtx())
-    .map((p) => "<p>" + wmHtml(p) + "</p>")
-    .join("");
+  const lines = privacyNoticeLines(privacyCtx()).map((p) => "<p>" + wmHtml(p) + "</p>");
+  // Shared compute present (a pool token in this browser): append its
+  // data-flow disclosure — ONE source of truth (pool-core.js), shown to every
+  // workspace participant, not just whoever flipped a knob.
+  if (poolGrant && poolGrant.token) {
+    lines.push(
+      ...poolDataFlowNotice().map(
+        (p) => '<p class="privacy-pool">🤝 ' + wmHtml(p) + "</p>",
+      ),
+    );
+  }
+  $("privacypop-text").innerHTML = lines.join("");
   $("privacypop").hidden = false;
 }
 
@@ -1407,7 +1430,8 @@ async function refreshModels() {
   // A downloaded on-device model is a configured provider in its own right —
   // a session with ONLY it (no key, no grant) still gets a working dropdown.
   const odGroup = await odDropdownGroup(esc);
-  if (!providers.length && !proxyOn && !stOn && !odGroup) {
+  const poolOn = poolUsable();
+  if (!providers.length && !proxyOn && !stOn && !odGroup && !poolOn) {
     pick.innerHTML = '<option value="">— add an API key first —</option>';
     return;
   }
@@ -1440,6 +1464,26 @@ async function refreshModels() {
     groups.unshift(
       `<optgroup label="🔒 Secure research space — connected">` +
         ids.map((id) => `<option value="${esc(pp.id + "::" + id)}">${esc(id)}</option>`).join("") +
+        "</optgroup>",
+    );
+  }
+  // SHARED COMPUTE (the pool): another user's machine, reached through the
+  // blind relay on the pt1 token. Its catalog is whatever the sharer's local
+  // server pulled; an empty list means no shared machine is online right now
+  // (the row still shows, honestly, instead of vanishing).
+  if (poolOn) {
+    const gp = poolLlmProvider(location.origin);
+    let ids = [];
+    try {
+      ids = await listDrcModels(gp, poolGrant.token);
+    } catch {
+      ids = [];
+    }
+    groups.unshift(
+      `<optgroup label="🤝 Shared compute — another user's machine">` +
+        (ids.length
+          ? ids.map((id) => `<option value="${esc(gp.id + "::" + id)}">${esc(id)}</option>`).join("")
+          : "<option disabled>— no shared machine online right now —</option>") +
         "</optgroup>",
     );
   }
@@ -1545,17 +1589,33 @@ function renderMessages() {
     box.appendChild(empty);
     return;
   }
-  for (const m of messages) {
-    box.appendChild(messageEl(m.role, m.content));
-  }
+  const conv = activeConv();
+  messages.forEach((m, i) => {
+    box.appendChild(messageEl(m.role, m.content, { conv, index: i }));
+  });
   box.scrollTop = box.scrollHeight;
 }
 
-function messageEl(role, content) {
+function messageEl(role, content, { conv, index } = {}) {
   const el = document.createElement("div");
   el.className = "msg " + role;
   if (role === "assistant") renderMarkdownInto(el, content);
   else el.textContent = content;
+  // WORKSPACE KNOWLEDGE: while a shared-compute workspace token is present,
+  // every stored assistant reply carries a 👍 — "pass this along to the
+  // workspace" — opening the curation pane (±blocks, undo/redo) over it.
+  if (role === "assistant" && conv && index != null && poolGrant && poolGrant.token) {
+    const acts = document.createElement("div");
+    acts.className = "msg-acts";
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "msg-thumb";
+    up.textContent = "👍";
+    up.title = "Pass this reply along to the secure workspace (curate first)";
+    up.addEventListener("click", () => openCuration(conv, index));
+    acts.appendChild(up);
+    el.appendChild(acts);
+  }
   return el;
 }
 
@@ -2465,6 +2525,321 @@ function renderProxyRow() {
     (on ? "Connected — " : "Off (fully client-side) — ") + bits.join(" · ");
 }
 
+// ---- SHARED COMPUTE (the pool): peer compute + workspace knowledge ---------------------
+//
+// Two halves, both scoped to secure workspaces (docs/COMPUTE-SHARING.md):
+//   CONSUMING — a pt1 POOL TOKEN (from a workspace's grants.pool or a ?pt=
+//   link) puts "Shared compute" in the model dropdown: completions run on the
+//   pool owner's machine (often their localhost Ollama), relayed by the
+//   server's blind job queue under the strict DRSC/1 wire. The data-flow
+//   notice (pool-core.js) is shown to EVERY participant on arrival.
+//   PROVIDING — a signed-in sharer flips "Share my compute" on the local-
+//   model row: this tab long-polls for jobs and runs them locally
+//   (pool-provider.js). Oversight (who used it, block, revoke) lives in the
+//   sharer's Se/rver panel.
+// Plus WORKSPACE KNOWLEDGE: 👍 on any reply opens the curation pane
+// (±blocks, undo/redo — knowledge-core.js) and passes the sealed conclusion
+// to the workspace owner (server inbox by default, a .drskn download as the
+// out-of-band migration path).
+
+const POOL_GRANT_KEY = "dr_pool_grant"; // { token, pool, quota, used, remaining, expiresAt }
+const POOL_ENABLED_KEY = "dr_pool_enabled"; // "1"/"0" — the consumer master toggle
+const POOL_SHARE_KEY = "dr_pool_share"; // "1" — the sharer's own toggle (auto-resumes)
+
+let poolGrant = readJson(POOL_GRANT_KEY);
+
+function poolEnabled() {
+  return grantFlagEnabled(localStorage.getItem(POOL_ENABLED_KEY));
+}
+function poolUsable() {
+  return grantLive(poolGrant) && poolEnabled();
+}
+function persistPoolGrant() {
+  try {
+    if (poolGrant && poolGrant.token) localStorage.setItem(POOL_GRANT_KEY, JSON.stringify(poolGrant));
+    else localStorage.removeItem(POOL_GRANT_KEY);
+  } catch {
+    /* storage blocked — the grant just won't survive a reload */
+  }
+}
+
+// Connect a pool token through the non-consuming status read (the same
+// fail-soft intake shape as the other grant families). True when it verified.
+async function connectPoolGrant(token) {
+  if (!token) return false;
+  try {
+    const res = await fetch("/api/pool/status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return false;
+    const v = await res.json(); // { jti, pool, quota, used, remaining, expiresAt }
+    poolGrant = { token, pool: v.pool, quota: v.quota, used: v.used, remaining: v.remaining, expiresAt: v.expiresAt };
+    persistPoolGrant();
+    try {
+      localStorage.setItem(POOL_ENABLED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A ?pt=<pool token> arrival (the sharer's dashboard mints these links).
+// Connect, strip the token from the URL, surface the row + the notice.
+async function maybeOpenPoolToken() {
+  let token = "";
+  try {
+    token = new URLSearchParams(location.search).get("pt") || "";
+  } catch {
+    /* no search params */
+  }
+  if (!token) return false;
+  const opened = await connectPoolGrant(token);
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete("pt");
+    history.replaceState(null, "", u.pathname + (u.search || "") + (u.hash || ""));
+  } catch {
+    /* history API blocked — harmless */
+  }
+  if (opened) {
+    renderPoolRow();
+    await refreshModels().catch(() => {});
+    workStatus(
+      "Shared compute connected — another user's machine will answer for the shared models. " +
+        "Read how your prompts travel under the (i) on the wordmark before using it.",
+    );
+    showPrivacyNotice();
+  }
+  return opened;
+}
+
+// The settings row: connected state + meter + the master toggle.
+function renderPoolRow() {
+  const row = $("poolrow");
+  if (!row) return;
+  row.hidden = !(poolGrant && poolGrant.token);
+  if (row.hidden) return;
+  /** @type {HTMLInputElement} */ ($("poolenabled")).checked = poolEnabled();
+  const live = grantLive(poolGrant);
+  const meter =
+    poolGrant.remaining == null
+      ? "unmetered (counted by the owner)"
+      : poolGrant.remaining + " of " + poolGrant.quota + " request" + (poolGrant.quota === 1 ? "" : "s") + " left";
+  $("poolstatus").textContent =
+    (poolEnabled() ? (live ? "Connected — " : "Expired/used up — ") : "Off — ") +
+    "🤝 another user's machine · " + meter;
+}
+
+// ---- the sharer's side: "Share my compute" on the local-model row ----------------------
+
+let poolShareLoop = null; // created lazily; survives toggle round-trips
+
+function poolShareStatus(s) {
+  const el = $("poolshare-status");
+  if (!el) return;
+  if (s.state === "off") el.textContent = "";
+  else if (s.state === "error") el.textContent = "⚠ " + (s.detail || "sharing stopped");
+  else if (s.state === "job") el.textContent = "Sharing — running a job for the workspace…";
+  else el.textContent = "Sharing — waiting for work" + (s.jobs ? " · " + s.jobs + " job" + (s.jobs === 1 ? "" : "s") + " served" : "");
+}
+
+function poolShareProvider() {
+  if (poolShareLoop) return poolShareLoop;
+  poolShareLoop = createPoolProvider({
+    label: "Se/cure local model",
+    listModels: async () => listDrcModels(drcProvider("local"), "", { baseUrl: localUrl() }),
+    runJob: async (body) => {
+      // The job runs against the sharer's OWN local server (Ollama / LM
+      // Studio / llama.cpp) — the same URL the `local` provider uses.
+      const res = await fetch(localUrl() + "/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("local server answered " + res.status);
+      const data = await res.json();
+      return { response: data, usage: data?.usage };
+    },
+    onStatus: poolShareStatus,
+  });
+  return poolShareLoop;
+}
+
+async function setPoolSharing(on) {
+  const box = /** @type {HTMLInputElement} */ ($("poolshare"));
+  if (on && !localUrl()) {
+    box.checked = false;
+    $("poolshare-status").textContent = "Set a local server URL first — sharing lends THAT model.";
+    return;
+  }
+  try {
+    localStorage.setItem(POOL_SHARE_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  if (on) {
+    const ok = await poolShareProvider().start();
+    box.checked = ok;
+    if (ok)
+      $("poolshare-status").textContent =
+        "Sharing is ON — workspace members' prompts will run on your machine. Oversee and revoke in your Se/rver account panel.";
+  } else if (poolShareLoop) {
+    await poolShareLoop.stop();
+  }
+}
+
+// ---- workspace knowledge: 👍 → curate (±blocks, undo/redo) → seal → pass along ----------
+
+let curation = null; // { state (knowledge-core curationState), conclusion, overlay }
+
+// The 👍 action on an assistant reply: build the conclusion (context summary +
+// query + reply, blocks split) and open the curation pane over it.
+function openCuration(conv, index) {
+  const messages = conv?.messages || [];
+  const reply = messages[index];
+  if (!reply || reply.role !== "assistant") return;
+  // The query is the nearest user turn before the reply; the context summary
+  // compresses everything before THAT (deterministic — no model call).
+  let qi = index - 1;
+  while (qi >= 0 && messages[qi].role !== "user") qi--;
+  const conclusion = buildConclusion({
+    query: qi >= 0 ? messages[qi].content : "",
+    reply: reply.content,
+    contextSummary: summarizeContext(messages.slice(0, Math.max(0, qi))),
+    model: state.model || undefined,
+    workspace: typeof sharedWorkspace === "string" ? sharedWorkspace : undefined,
+  });
+  curation = { state: curationState(conclusion), conclusion };
+  renderCuration();
+  $("curateview").hidden = false;
+}
+
+function closeCuration() {
+  curation = null;
+  $("curateview").hidden = true;
+}
+
+// Render the curation pane from the reducer state: summary (editable), query,
+// then one row per block — ＋ tags it along as key context, − removes it
+// entirely (hidden here too; undo brings it back).
+function renderCuration() {
+  if (!curation) return;
+  const c = curation.state.conclusion;
+  /** @type {HTMLTextAreaElement} */ ($("curate-summary")).value = c.summary;
+  $("curate-query").textContent = c.query;
+  const list = $("curate-blocks");
+  list.innerHTML = "";
+  for (const b of c.blocks) {
+    if (b.tag === "minus") continue; // removed — not shown here, not included
+    const row = document.createElement("div");
+    row.className = "curate-block" + (b.tag === "plus" ? " plus" : "");
+    const text = document.createElement("div");
+    text.className = "curate-text";
+    text.textContent = b.text;
+    const acts = document.createElement("div");
+    acts.className = "curate-acts";
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.textContent = b.tag === "plus" ? "＋ context" : "＋";
+    plus.title = "Tag this block along as key context (tap again to untag)";
+    plus.addEventListener("click", () => {
+      curate(curation.state, { type: "plus", blockId: b.id });
+      renderCuration();
+    });
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.textContent = "−";
+    minus.title = "Remove this block entirely (Undo brings it back)";
+    minus.addEventListener("click", () => {
+      curate(curation.state, { type: "minus", blockId: b.id });
+      renderCuration();
+    });
+    acts.append(plus, minus);
+    row.append(text, acts);
+    list.appendChild(row);
+  }
+  $("curate-undo").disabled = !curation.state.past.length;
+  $("curate-redo").disabled = !curation.state.future.length;
+  const kept = c.blocks.filter((b) => b.tag !== "minus").length;
+  $("curate-count").textContent =
+    kept + " of " + c.blocks.length + " block" + (c.blocks.length === 1 ? "" : "s") + " kept";
+}
+
+// Seal the curated conclusion to the site's import-agent key, addressed to
+// the workspace owner (the pool the token names). One envelope, two routes.
+async function sealCuratedBundle() {
+  const c = curation.state.conclusion;
+  c.summary = /** @type {HTMLTextAreaElement} */ ($("curate-summary")).value.slice(0, 2000);
+  const keyRes = await fetch("/api/knowledge/key");
+  if (!keyRes.ok) throw new Error("The import key is unavailable right now.");
+  const { publicKey } = await keyRes.json();
+  const bundle = buildKnowledgeBundle({
+    owner: poolGrant?.pool || undefined,
+    workspace: typeof sharedWorkspace === "string" ? sharedWorkspace : undefined,
+    conclusions: [finalizeConclusion(c)],
+  });
+  return sealKnowledge(bundle, publicKey);
+}
+
+async function sendCuration() {
+  if (!curation) return;
+  const status = (m) => ($("curate-status").textContent = m);
+  if (!poolUsable()) {
+    status("No live workspace compute token — download the blob instead and hand it to the owner.");
+    return;
+  }
+  $("curate-send").disabled = true;
+  status("Sealing…");
+  try {
+    const envelope = await sealCuratedBundle();
+    status("Passing along…");
+    const res = await fetch("/api/knowledge/submit", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + poolGrant.token },
+      body: JSON.stringify({ envelope }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      status("Could not pass it along — " + (err.error || "the server refused (" + res.status + ")."));
+      return;
+    }
+    closeCuration();
+    workStatus("Conclusion passed along — sealed, resting encrypted until the workspace owner imports it.");
+  } catch (e) {
+    status(e?.message || "Sealing failed.");
+  } finally {
+    $("curate-send").disabled = false;
+  }
+}
+
+// The MIGRATION route: the same sealed envelope as a downloadable .drskn file,
+// delivered out-of-band, imported by the owner in their Se/rver panel.
+async function downloadCuration() {
+  if (!curation) return;
+  const status = (m) => ($("curate-status").textContent = m);
+  $("curate-download").disabled = true;
+  status("Sealing…");
+  try {
+    const envelope = await sealCuratedBundle();
+    const blob = new Blob([JSON.stringify(envelope)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "conclusions-" + new Date().toISOString().slice(0, 10) + KNOWLEDGE_FILE_EXT;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    status("Downloaded — hand the file to the workspace owner (it opens only for their account).");
+  } catch (e) {
+    status(e?.message || "Sealing failed.");
+  } finally {
+    $("curate-download").disabled = false;
+  }
+}
+
 // ---- SECURE WORKSPACES: the /cure/workspace surface -----------------------------------
 //
 // A workspace is this session's whole configuration — keys, settings, chats,
@@ -2530,6 +2905,7 @@ function renderWorkspaceShare() {
   const bits = [];
   if (g.ws) bits.push("web search");
   for (const p of g.proxy) bits.push(p.svc === "api" ? "LLM API" : "web search (research space)");
+  if (g.pool || localStorage.getItem(POOL_SHARE_KEY) === "1") bits.push("shared compute");
   workspaceGrantsAvailable = bits.length > 0;
   if (bits.length) $("wk-grants-desc").textContent = "(" + bits.join(" + ") + " — quota-bound, minter-controlled)";
   if (!$("wk-pass").value) $("wk-pass").value = generateWorkspacePassword();
@@ -2541,13 +2917,39 @@ function renderWorkspaceShare() {
 // token a ?ws= link carries) and the proxy GRANT tokens (prg1.…, the
 // URL-safe tier — never the working proxy tokens). Only live allowances.
 function shareableGrants() {
-  const out = { ws: null, proxy: [] };
+  const out = { ws: null, proxy: [], pool: null };
   if (wsGrant && wsGrant.token && wsGrantActive()) out.ws = wsGrant.token;
   const grantTokens = readJson(PROXY_GRANT_TOKENS_KEY) || {};
   for (const svc of ["web", "api"]) {
     if (grantTokens[svc] && proxyLive(proxyGrants[svc])) out.proxy.push({ svc, token: grantTokens[svc] });
   }
+  // A live pool token re-shares as-is (pool tokens are single-tier and
+  // URL-safe); a SHARER minting a fresh one for the workspace happens at
+  // create time (workspacePoolToken) since it needs a server round-trip.
+  if (poolGrant && poolGrant.token && grantLive(poolGrant)) out.pool = poolGrant.token;
   return out;
+}
+
+// The pool token a new workspace should carry: the borrowed one this session
+// already holds, or — when this browser IS sharing its compute (a signed-in
+// sharer) — a freshly minted workspace token from the sharer's own pool.
+// Null when neither applies (the grants step just won't mention compute).
+async function workspacePoolToken(label) {
+  if (poolGrant && poolGrant.token && grantLive(poolGrant)) return poolGrant.token;
+  if (localStorage.getItem(POOL_SHARE_KEY) !== "1") return null;
+  try {
+    const res = await fetch("/api/pool/token", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: "workspace", label: label || "workspace" }),
+    });
+    if (!res.ok) return null;
+    const v = await res.json();
+    return typeof v.token === "string" ? v.token : null;
+  } catch {
+    return null;
+  }
 }
 
 // Recognize a workspace arrival at boot: a #w=<blob> fragment (any /cure
@@ -2662,6 +3064,7 @@ async function unlockWorkspace(ev) {
       }
     }
     if (grants.proxy.length) await connectProxyGrants(grants.proxy).catch(() => false);
+    if (grants.pool) await connectPoolGrant(grants.pool).catch(() => false);
 
     // Reflect the applied workspace everywhere.
     renderKeysPanel();
@@ -2671,6 +3074,7 @@ async function unlockWorkspace(ev) {
     renderWsRow();
     renderProxyRow();
     renderStRow();
+    renderPoolRow();
     reflectResearchKnob();
     reflectBudget();
     $("bashlite").checked = state.bashLite === true;
@@ -2707,6 +3111,9 @@ async function unlockWorkspace(ev) {
     const gotLlm = proxySvcs.has("api");
     const gotSearch = !!grants.ws || proxySvcs.has("web");
     sharedWorkspaceGrants = gotLlm || gotSearch ? { llm: gotLlm, search: gotSearch } : false;
+    // Shared compute carried: EVERY participant sees the data-flow notice
+    // (owner requirement) — showPrivacyNotice appends the pool lines while a
+    // pool token is present, and the notice pops open right here on arrival.
     showPrivacyNotice();
   } finally {
     $("wkunlock").disabled = false;
@@ -2732,6 +3139,11 @@ async function createWorkspaceLink() {
     grants: $("wk-inc-grants").checked && workspaceGrantsAvailable ? shareableGrants() : null,
     name: $("wk-name").value.trim(),
   };
+  if (include.grants && !include.grants.pool) {
+    // A sharing sharer mints a fresh pool token for this workspace (server
+    // round-trip; fail-soft — the workspace still seals without it).
+    include.grants.pool = await workspacePoolToken(include.name).catch(() => null);
+  }
   const payload = buildWorkspacePayload(state, include);
   if (!workspacePayloadCarries(payload)) {
     status("Tick at least one thing to include (go Back to revisit the choices).");
@@ -2784,7 +3196,7 @@ async function send(ev) {
   // A live secure-research-space LLM proxy — or a Se/rver token carrying the
   // api permission — counts as "has a provider": a borrowed session with no
   // key of its own can research on the lent API.
-  if (!configuredProviders().length && !apiProxyUsable() && !stApiUsable()) {
+  if (!configuredProviders().length && !apiProxyUsable() && !stApiUsable() && !poolUsable()) {
     const reply = matchCanned(text, { tier: "drc" });
     renderCannedExchange(text, reply);
     $("input").value = "";
@@ -2818,6 +3230,7 @@ async function send(ev) {
   // provider override so this needs no registry entry).
   const usingApiProxy = providerId === PROXY_LLM_PROVIDER_ID;
   const usingStApi = providerId === SERVER_TOKEN_LLM_PROVIDER_ID;
+  const usingPool = providerId === POOL_LLM_PROVIDER_ID;
   const usingLocal = providerId === "local";
   // The on-device engine provider is built on demand exactly like the proxy
   // providers (drc-providers.js has no registry entry for it) — its wire IS
@@ -2827,10 +3240,18 @@ async function send(ev) {
     ? proxyLlmProvider(location.origin)
     : usingStApi
       ? serverTokenLlmProvider(location.origin)
-      : usingOnDevice
-        ? (await odEngine()).onDeviceProvider()
-        : null;
-  const answerKey = usingApiProxy ? proxyGrants.api?.token : usingStApi ? stGrant?.token : state.keys[providerId];
+      : usingPool
+        ? poolLlmProvider(location.origin)
+        : usingOnDevice
+          ? (await odEngine()).onDeviceProvider()
+          : null;
+  const answerKey = usingApiProxy
+    ? proxyGrants.api?.token
+    : usingStApi
+      ? stGrant?.token
+      : usingPool
+        ? poolGrant?.token
+        : state.keys[providerId];
 
   let conv = activeConv();
   if (!conv) {
@@ -3422,6 +3843,48 @@ maybeRequestServerToken().then(() => {
   maybeOpenProxyBundle().then((opened) => {
     if (!opened) return maybeRequestWsGrant();
   }).finally(reflectResearchKnob);
+});
+// Shared compute joins the arrival chain independently: a ?pt= pool-token
+// link connects it (fail-soft), and the settings row reflects any stored one.
+maybeOpenPoolToken().catch(() => false).then(() => renderPoolRow());
+// The consumer master toggle: shared compute on/off (the provider group
+// appears/disappears in the dropdown).
+$("poolenabled")?.addEventListener("change", () => {
+  try {
+    localStorage.setItem(POOL_ENABLED_KEY, $("poolenabled").checked ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  renderPoolRow();
+  refreshModels().catch(() => {});
+});
+// The SHARER toggle on the local-model row — and its auto-resume: a sharer
+// who left it on gets their tab lending again on the next visit (their
+// explicit, revocable choice; stop() posts unregister on toggle-off).
+$("poolshare")?.addEventListener("change", () => setPoolSharing($("poolshare").checked));
+if (localStorage.getItem(POOL_SHARE_KEY) === "1" && localUrl()) {
+  const box = /** @type {HTMLInputElement} */ ($("poolshare"));
+  if (box) box.checked = true;
+  setPoolSharing(true).catch(() => {});
+}
+// The curation pane's chrome.
+$("curate-undo")?.addEventListener("click", () => {
+  if (curation) {
+    curate(curation.state, { type: "undo" });
+    renderCuration();
+  }
+});
+$("curate-redo")?.addEventListener("click", () => {
+  if (curation) {
+    curate(curation.state, { type: "redo" });
+    renderCuration();
+  }
+});
+$("curate-send")?.addEventListener("click", sendCuration);
+$("curate-download")?.addEventListener("click", downloadCuration);
+$("curate-close")?.addEventListener("click", closeCuration);
+$("curateview")?.addEventListener("click", (e) => {
+  if (e.target === $("curateview")) closeCuration();
 });
 $("form").addEventListener("submit", send);
 

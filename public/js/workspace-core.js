@@ -257,7 +257,12 @@ export function isWorkspacePath(pathname) {
 //     settings?: { research?, bashLite?, developerMode?, searchBackend? },
 //     conversations?: [{id?, title?, messages: [{role, content}]}],
 //     grants?: { ws?: "wsk1.…",             // web-search grant token (src/websearch.js)
-//                proxy?: [{svc, token}] } } // proxy grant tokens (src/proxy.js, prg1.…)
+//                proxy?: [{svc, token}],    // proxy grant tokens (src/proxy.js, prg1.…)
+//                pool?: "pt1.…" } }         // shared-compute pool token (src/pool.js)
+// The pool token is SAFE to embed (like prg1): it authorizes only submitting
+// completion jobs to the one pool it names, is quota/revocation-governed
+// server-side, and every recipient is shown the shared-compute data-flow
+// notice on unlock (public/js/pool-core.js poolDataFlowNotice).
 // The grant tokens are the deepresearch.se TEMPORARY QUOTA-BOUND tokens: the
 // minting user governs them live (quota can be raised/lowered per token, the
 // row revoked) — the link stays fixed while its allowance is administered
@@ -285,6 +290,7 @@ export function validateWorkspacePayload(w) {
     const g = w.grants;
     if (!g || typeof g !== "object" || Array.isArray(g)) return false;
     if (g.ws !== undefined && typeof g.ws !== "string") return false;
+    if (g.pool !== undefined && typeof g.pool !== "string") return false;
     if (g.proxy !== undefined) {
       if (!Array.isArray(g.proxy)) return false;
       const ok = g.proxy.every(
@@ -303,7 +309,7 @@ export function validateWorkspacePayload(w) {
  * Omitted sections are absent (not empty), keeping links minimal.
  * @param {any} state a DRC state (emptyDrcState shape)
  * @param {{ keys?: boolean, settings?: boolean, conversations?: boolean,
- *           grants?: {ws?: string|null, proxy?: {svc: string, token: string}[]|null} | null,
+ *           grants?: {ws?: string|null, proxy?: {svc: string, token: string}[]|null, pool?: string|null} | null,
  *           name?: string, note?: string }} opts
  * @returns {any} a payload passing validateWorkspacePayload
  */
@@ -343,10 +349,11 @@ export function buildWorkspacePayload(state, opts = {}) {
         .map((/** @type {any} */ m) => ({ role: m.role, content: m.content })),
     }));
   }
-  if (opts.grants && (opts.grants.ws || (opts.grants.proxy && opts.grants.proxy.length))) {
+  if (opts.grants && (opts.grants.ws || opts.grants.pool || (opts.grants.proxy && opts.grants.proxy.length))) {
     /** @type {any} */
     const grants = {};
     if (opts.grants.ws) grants.ws = String(opts.grants.ws);
+    if (opts.grants.pool) grants.pool = String(opts.grants.pool);
     if (opts.grants.proxy && opts.grants.proxy.length) {
       grants.proxy = opts.grants.proxy
         .filter((p) => p && (p.svc === "web" || p.svc === "api") && typeof p.token === "string" && p.token)
@@ -381,7 +388,7 @@ export function workspacePayloadCarries(payload) {
  * workspace itself opens fully offline).
  * @param {any} state a DRC state (mutated)
  * @param {any} payload a validated workspace payload
- * @returns {{ state: any, grants: { ws: string|null, proxy: {svc: string, token: string}[] }, note: string|null, name: string|null }}
+ * @returns {{ state: any, grants: { ws: string|null, proxy: {svc: string, token: string}[], pool: string|null }, note: string|null, name: string|null }}
  */
 export function applyWorkspacePayload(state, payload) {
   const w = payload || {};
@@ -419,6 +426,7 @@ export function applyWorkspacePayload(state, payload) {
     grants: {
       ws: w.grants && typeof w.grants.ws === "string" ? w.grants.ws : null,
       proxy: w.grants && Array.isArray(w.grants.proxy) ? w.grants.proxy : [],
+      pool: w.grants && typeof w.grants.pool === "string" ? w.grants.pool : null,
     },
     note: typeof w.note === "string" ? w.note : null,
     name: typeof w.name === "string" ? w.name : null,

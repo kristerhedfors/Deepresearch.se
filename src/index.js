@@ -91,6 +91,7 @@ import {
   handlePoolStatus,
   handlePoolUnregister,
 } from "./pool.js";
+import { handleKnowledgeApi, handleKnowledgeKey, handleKnowledgeSubmit } from "./knowledge.js";
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { recordServerError } from "./server-errors.js";
@@ -372,6 +373,17 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await handlePoolLlm(request, env, log, url) };
   }
 
+  // Workspace knowledge — PUBLIC halves (src/knowledge.js): the import-agent
+  // public key a Se/cure client seals conclusions to, and the sealed-envelope
+  // submit (authorized by the workspace's pool token; ciphertext only — the
+  // owner's list/import/delete surface is authed, below the gate).
+  if (url.pathname === "/api/knowledge/key" && request.method === "GET") {
+    return { response: await handleKnowledgeKey(env) };
+  }
+  if (url.pathname === "/api/knowledge/submit" && request.method === "POST") {
+    return { response: await handleKnowledgeSubmit(request, env, log) };
+  }
+
   // ---- unauthenticated: sign-in surface -----------------------------------
   if (url.pathname === "/login" && request.method === "GET") {
     return { response: htmlResponse(loginPage(url.searchParams.get("flash") || ""), 200) };
@@ -647,6 +659,12 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/pool" || url.pathname.startsWith("/api/pool/")) {
     return handlePoolDashboard(request, env, url, log, identity);
+  }
+  // Workspace knowledge (src/knowledge.js) — the OWNER's inbox: list sealed
+  // conclusion envelopes, import (decrypt) one, open an uploaded .drskn blob,
+  // delete. All owner-scoped by the signed-in identity.
+  if (url.pathname === "/api/knowledge" || url.pathname.startsWith("/api/knowledge/")) {
+    return handleKnowledgeApi(request, env, url, log, identity);
   }
   // Feedback pipeline (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent (entries are created

@@ -24,7 +24,7 @@ JSON planning phases always stay on Berget). Web search is **Exa**.
 research on the privacy capabilities of LLM applications** — how far a
 real, useful research assistant can be pushed toward *provable* privacy,
 and where that trades against capability. The **proof is the site itself**:
-a fully open-sourced, independently verifiable **Se/cure + Se/rver pair**.
+a fully open-sourced, independently verifiable **Se/cure + Se/rver platform**.
 It is still experimental and nowhere near production-ready (say so; do not
 frame it as a finished product). The "built over a weekend, phone-only"
 origin is kept in FULL only on `/story/`, with brief non-leading pointers on

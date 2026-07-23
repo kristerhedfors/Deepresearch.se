@@ -3,6 +3,9 @@
 // (owner directive, 2026-07-18: introspection and SDK as explicit modes
 // alongside Normal, picked in a dropdown; the titanium-white composer pane
 // marks introspection, GREEN marks the SDK "lovable experience" mode).
+// Normal is labeled **Deep Research** in the UI (owner directive, 2026-07-23);
+// the mode id stays `normal` — same convention as SDK mode staying `sdk`
+// while labeled "Agent Studio".
 //
 // The mode is a per-BROWSER choice (localStorage `dr_chat_mode`) layered on
 // top of the server's developer_mode capability knob:

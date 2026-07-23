@@ -93,6 +93,14 @@ export function isPublicAsset(url, method) {
     // Imported by the /cure participant return surface and the Se/rver dashboard;
     // same public-graph rule as workspace-core.js above.
     url.pathname === "/js/research-seal-core.js" ||
+    // SHARED COMPUTE (compute sharing): the DRSC/1 wire-profile pure core
+    // (also imported by src/pool.js — client and server share the sanitizer),
+    // the sharer's provider poll loop, and workspace knowledge's curation +
+    // sealed-envelope core. All imported by /cure/drc.js — same public-graph
+    // rule as workspace-core.js above.
+    url.pathname === "/js/pool-core.js" ||
+    url.pathname === "/js/pool-provider.js" ||
+    url.pathname === "/js/knowledge-core.js" ||
     url.pathname === "/js/drc-rag.js" ||
     // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
     // helpers) each import settings.js — all three must be public or the

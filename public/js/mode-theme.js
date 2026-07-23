@@ -2,8 +2,8 @@
 // The MODE-THEME REGISTRY — the codified catalog of what makes each mode
 // visually its own. The site now speaks four sibling identities: two TIERS
 // (DeepResearch.Se/cure and DeepResearch.Se/rver — separate served apps) and,
-// WITHIN the Se/rver app, three chat MODES picked from the dropdown (Normal /
-// Introspection / SDK — chat-mode.js). Each identity distinguishes itself the
+// WITHIN the Se/rver app, three chat MODES picked from the dropdown (Deep
+// Research / Introspection / SDK — chat-mode.js). Each identity distinguishes itself the
 // same way, along the SAME axes:
 //
 //   • a root THEME CLASS (the composer-pane tint + tag)   — chat-mode.js / CSS
@@ -42,7 +42,7 @@
  * @property {boolean} depthSlider   whether the composer's research depth/time
  *                                   slider (#budget) applies in this mode — an
  *                                   OPTIONAL theme feature (owner, 2026-07-19):
- *                                   Normal researches so it shows it;
+ *                                   Deep Research researches so it shows it;
  *                                   Introspection (answers from source) and SDK
  *                                   (builds, no web research) don't need it, so
  *                                   the slider is hidden (CSS keys off the theme
@@ -153,7 +153,7 @@ export const TIER_THEMES = {
 };
 
 /**
- * The descriptor for a mode, falling back to Normal for anything unknown.
+ * The descriptor for a mode, falling back to Deep Research for anything unknown.
  * @param {unknown} mode
  * @returns {ModeTheme}
  */
