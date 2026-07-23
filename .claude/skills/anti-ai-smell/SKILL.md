@@ -1,19 +1,24 @@
 ---
 name: anti-ai-smell
 description: >-
-  Load when the task is to remove "AI smell" (AI slop, LLM writing tells) from
-  documentation prose — "de-smell the docs", "these docs read like AI wrote
-  them", "make the README sound human", "strip the AI tells", regenerating an
-  AI-generated doc so it reads like a person wrote it, or wiring a prose linter
-  that flags AI writing patterns. Covers the tell taxonomy (references/ai-tells.md
-  — vocabulary fingerprints, phrase templates, structural + epistemic tells), the
-  two de-smell modes (lint-guided edit vs. full regeneration + fact-verify), the
-  fact-preservation contract (facts/invariants/dated-directives/branding kept
-  verbatim), and the runnable Vale style under vale/. This is the ONE place where
-  rewriting doc prose for STYLE is the goal — the update-docs skill deliberately
-  does not do that; docs-drift-validation owns capability/posture correctness.
-  Applies to .md / documentation files ONLY — never rewrite source code prose or
-  comments in this pass unless the owner says so.
+  Load when removing "AI smell" (AI slop, LLM writing tells) from documentation
+  prose — "de-smell the docs", "these docs read like AI wrote them", "make the
+  README sound human", "strip the AI tells", regenerating an AI-generated doc so
+  it reads like a person wrote it, or wiring a prose linter that flags AI writing
+  patterns. This is also THE CLEAN STEP wired into every documentation pipeline
+  (owner directive, 2026-07-23): whenever a doc is updated or changed — via
+  update-docs, docs-drift-validation, pr, or a hand edit — the pass here runs
+  last, in place, so the file that lands is "Cleaned". So ALSO load this as the
+  final tail of any doc-writing pass, even one you didn't start for style. Covers
+  the tell taxonomy (references/ai-tells.md — vocabulary fingerprints, phrase
+  templates, structural + epistemic tells), the two de-smell modes (lint-guided
+  edit vs. full regeneration + fact-verify), the fact-preservation contract
+  (facts/invariants/dated-directives/branding kept verbatim), and the runnable
+  Vale style under vale/. This is the ONE place where rewriting doc prose for
+  STYLE is the goal — the update-docs skill deliberately does not do that;
+  docs-drift-validation owns capability/posture correctness. Applies to .md /
+  documentation files ONLY — never rewrite source code prose or comments in this
+  pass unless the owner says so.
 ---
 
 # Remove AI smell from documentation
@@ -25,6 +30,40 @@ STYLE pass, and it is the only skill in this repo whose job is to change how the
 prose reads. `update-docs` reconciles docs with code and explicitly does *not*
 rewrite for style; `docs-drift-validation` owns whether a capability/posture
 claim is still true. Stay in your lane: texture, not facts.
+
+## The Clean step ("Cleaned") — the pipeline tail
+
+Owner directive (2026-07-23): treat AI-smell removal as **the standard final
+step of every documentation pipeline**, not an occasional chore. Any pass that
+writes or changes a doc ends by running this skill on the files it touched,
+editing them **in place**, so the committed version is the Cleaned one. We keep
+only that: no smelly draft to clean up later — the touched doc leaves the pass
+Cleaned, or the pass isn't done.
+
+Where the Clean step is wired in (each of these skills points back here):
+
+- **update-docs** — after reconciling prose with code, Clean every doc you
+  edited before the verify/commit step.
+- **docs-drift-validation** — Clean any prose you reconciled (Class M) or
+  rewrote after owner sign-off (approved Class C) before closing out.
+- **pr** — if the branch diff touched documentation prose, confirm those files
+  are Cleaned before the green gate.
+- **any hand edit** — if you change a doc's prose for any reason, Clean the
+  paragraphs you touched in the same edit.
+
+Scope of a wired Clean step (as opposed to an owner-requested full de-smell of a
+whole file): touch the prose the pass **actually changed or added**, plus any
+smell it sits next to, under the same fact-preservation contract below. You are
+Cleaning your own new/edited text, not re-styling untouched paragraphs — that
+keeps the diff reviewable and avoids churn on prose the owner didn't ask about.
+Use Mode A (lint-guided in-place edit) by default; Mode B (full regeneration) is
+still owner-requested only.
+
+The **`docs/clean/` review candidates + the Original⇄Cleaned toggle**
+(`bundle-docs-clean.mjs`, `public/js/doc-variant.js`, `/docs`) are the SEPARATE
+compare-and-decide surface where the owner reviews de-smelled whole-file
+candidates against the originals; the wired Clean step above operates on the
+authoritative doc directly and does not go through that staging.
 
 ## Scope guard (read first)
 
