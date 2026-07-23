@@ -234,7 +234,7 @@ the pure core `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI
 re-exports it) powers **SDK mode** — labeled **Agent Studio** in the UI
 (2026-07-23; renamed from "Agent Builder"; the mode id stays `sdk`, internally
 still "SDK mode"/DistillSDK) — the green "lovable experience" entry in the
-chat-mode dropdown (Normal / Introspection / Agent Studio) that DISTILLS this
+chat-mode dropdown (Deep Research / Introspection / Agent Studio) that DISTILLS this
 site — above all the
 client-side **Se/cure** tier — into a new self-contained web-app
 *flavour*, using the SDK's modules/skills as the method and the deployed Se/cure
