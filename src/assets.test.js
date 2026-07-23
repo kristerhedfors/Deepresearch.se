@@ -41,6 +41,7 @@ describe("isPublicAsset", () => {
       "/js/agent-backdrop-core.js", "/js/boot-messages.js", "/js/introspect-core.js",
       "/js/introspect-ui.js", "/introspect/source-snapshot.json", "/js/markdown.js",
       "/js/canned-faq.js", "/js/umbrella-spinner.js", "/js/websearch-backends-core.js",
+      "/js/workspace-core.js", "/js/research-seal-core.js",
     ]) {
       assert.equal(isPublicAsset(u(p), "GET"), true, p);
     }

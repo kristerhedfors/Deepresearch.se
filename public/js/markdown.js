@@ -234,17 +234,12 @@ function ensureMermaid() {
         const m = /** @type {any} */ (window).mermaid;
         try {
           // strict: mermaid sanitizes label text itself; htmlLabels off keeps
-          // labels as plain SVG text (no foreignObject), which also survives
-          // the DOMPurify pass below. htmlLabels must be set at the ROOT of
-          // the config: mermaid 11's flowchart-v2 ignores the flowchart-scoped
-          // key and emits foreignObject labels anyway, which DOMPurify then
-          // strips — diagrams drew with EMPTY labels (found in post-deploy
-          // live verification, 2026-07-23). Light theme matches both tiers.
+          // flowchart labels as plain SVG text (no foreignObject), which also
+          // survives the DOMPurify pass below. Light theme matches both tiers.
           m?.initialize({
             startOnLoad: false,
             securityLevel: "strict",
             theme: "default",
-            htmlLabels: false,
             flowchart: { htmlLabels: false },
           });
           resolve(m || null);

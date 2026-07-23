@@ -434,6 +434,20 @@ grants stay quota-metered and live-administered by their minter (the
 adjust endpoints above); pane wiring in `cure/drc.js`, the Se/rver minting
 row in `account-settings.js`, architecture in `docs/WORKSPACE-SECURITY.md`
 — Node-tested).
+`research-seal-core.js` (CROWD RESEARCH's pure core / DRCR/1 seed,
+2026-07-23: the ASYMMETRIC result-sealing behind distributed secure
+workspaces — an organizer fans out invite links carrying a per-campaign
+project PUBLIC key, participants research in their own Se/cure sessions and
+SEAL their conclusions back so ONLY the organizer's private key opens them.
+The one new primitive in the stack — every other path is symmetric
+password-KDF — as an ECIES composition of primitives already here: ECDH
+P-256 → HKDF-SHA-256 → AES-256-GCM (`generateProjectKeypair` /
+`exportProjectPublicKey` / `projectKid`, `sealResult` / `openResult`
+fail-closed, `validateResultEnvelope`), plus the `drcr1:` QR chunk framing
+(`chunkResult` / `reassembleChunks`) for phone-to-phone return. WebCrypto
+only; imports `proxy-bundle.js`'s b64url helpers; spec + full workflow in
+`docs/CROWD-RESEARCH.md`, schema `docs/schemas/drcr-result-1.schema.json`
+— Node-tested).
 DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 `drc.css`, plus `umbrella.js` — the first-visit intro animation, the
 logo vortex untwisting into wireframe 3D umbrellas, pure
