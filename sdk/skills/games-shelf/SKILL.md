@@ -1,12 +1,12 @@
 ---
 name: games-shelf
 description: >-
-  Load when giving a generated agent pair a GAMES SHELF — the smallest,
-  clearest demonstration of the pair's registry-seam pattern: one declarative
+  Load when giving a generated platform a GAMES SHELF — the smallest,
+  clearest demonstration of the platform's registry-seam pattern: one declarative
   entry per game (id/name/emoji/tagline/path/available(env)/handle), a shelf
   endpoint the account panel renders dynamically, and subpath dispatch, so
   adding an entire game touches NO shelf code — or when adding a new game to
-  an existing pair. Covers the pure-core/API/client split with ALL rules
+  an existing platform. Covers the pure-core/API/client split with ALL rules
   server-side and anti-cheat view projections, the no-invented-game-logic
   rule (adopt documented mechanics verbatim so correctness is checkable
   against published values), deterministic seeded spawning per (geocell, time
@@ -20,9 +20,9 @@ description: >-
 Give the server tier a games subsystem whose entire integration surface is
 ONE declarative registry entry per game. The module earns its place in an SDK
 not because a research assistant needs games, but because it is the cleanest
-worked example of the pair's recurring architectural move: a declarative
+worked example of the platform's recurring architectural move: a declarative
 registry + one dispatch function, with everything outside the registry
-game-agnostic — the same seam shape the pair uses for LLM providers,
+game-agnostic — the same seam shape the platform uses for LLM providers,
 research sources, and enrichments. Build this once and every future "add a
 whole product surface" decision has a template: registry entry in, zero
 changes to the shell that hosts it.
@@ -56,7 +56,7 @@ rest of the app, and the client tier does not carry the module at all.
   never crashes — dispatch does not block on availability.
 - **PA-4** — location-flavored games send the minimum outbound (a
   coordinate for a lookup, never identity or conversation), ride the same
-  per-user opt-in knobs as the pair's other integrations, and the
+  per-user opt-in knobs as the platform's other integrations, and the
   anti-cheat projections double as privacy projections: hidden server
   state never reaches the client.
 - **PA-6** — any text-command grammar the game accepts carries all
@@ -82,7 +82,7 @@ rest of the app, and the client tier does not carry the module at all.
      row), plus `requires` — the human-readable reason
    - `handle(request, env, url, log, identity, subpath)` — the game's API
      handler, `subpath` pre-stripped, identity already resolved by the
-     pair's gate.
+     platform's gate.
 2. **The two dispatch faces.** `GET /api/games` returns the shelf payload —
    a projection of every entry (id, name, emoji, tagline, description,
    path, availability, requires) that NEVER includes the handler.
@@ -110,7 +110,7 @@ rest of the app, and the client tier does not carry the module at all.
    difficulty per player (a level cap from the player's own save) —
    re-derivation must then use the SAME save's cap.
 6. **The API handler.** Persistence in the game's own table added to the
-   pair's lazy schema (one JSON save row per user); position claims pass a
+   platform's lazy schema (one JSON save row per user); position claims pass a
    proximity check only; battles/turns resolve ENTIRELY server-side (one
    POST per turn; the in-progress battle lives in the save row so a reload
    resumes it); no database → every endpoint 503s and the page explains
@@ -128,7 +128,7 @@ rest of the app, and the client tier does not carry the module at all.
    grants `geolocation=(self)` in the site-wide Permissions-Policy for the
    game page) is declared site-wide, deliberately, with a comment saying
    which feature owns it.
-9. **Optional integration hooks.** If the game touches the pair's paid
+9. **Optional integration hooks.** If the game touches the platform's paid
    integrations (street imagery, place search), ride the EXISTING per-user
    knobs and edge caches, return structured `{available:false, reason}`
    objects the page explains — never an error — and bill-shield with

@@ -14,7 +14,7 @@ description: >-
 
 # Exec engine — CheerpX + our own small, fast image
 
-The pair's sandbox runs a **real Linux userland** so arbitrary tools — `git`,
+The platform's sandbox runs a **real Linux userland** so arbitrary tools — `git`,
 `python3`, `jq`, an agentic coding CLI — run as ordinary binaries. The engine
 is **CheerpX** (owner decision, 2026-07-16): proprietary and CDN-loaded, the
 one part of the stack we do not build from source, and that is accepted. What
@@ -70,7 +70,7 @@ client tier's data path by default (the host-shim, below).
   prefetched).
 - **Fallback ladder (recorded, not adopted):** container2wasm (Apache-2.0,
   build-from-Dockerfile, x86_64), v86 (BSD, tiny, i386, snapshot), qemu-wasm
-  (GPL, 64-bit, heavy). Behind the `ExecEngine` interface so a future pair
+  (GPL, 64-bit, heavy). Behind the `ExecEngine` interface so a future platform
   *could* pick one; near-term we do not.
 
 ## Build plan

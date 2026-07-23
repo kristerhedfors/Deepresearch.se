@@ -1,7 +1,7 @@
 ---
 name: offline-workspaces
 description: >-
-  Load when building an agent pair's offline workspace links — a fully
+  Load when building a platform's offline workspace links — a fully
   configured client-tier session (provider keys, settings, conversations,
   borrowed grant tokens) sealed into ONE link whose ciphertext rides the URL
   fragment and therefore never reaches any server: the
@@ -34,7 +34,7 @@ XSalsa20-Poly1305 (TweetNaCl) becomes AES-256-GCM, because the reference
 ships no crypto dependency (PA-5) and WebCrypto offers no Salsa-family
 cipher. Both are AEADs; the 10-byte stored nonce is expanded by a single
 SHA-512 exactly as the original does (24 bytes for NaCl there, 12 for the
-GCM IV here). A generated pair keeps the provenance note in its module
+GCM IV here). A generated platform keeps the provenance note in its module
 header — cloned crypto claims its lineage; it does not pretend to be novel.
 
 ## Capability class & tier story
@@ -69,7 +69,7 @@ password or the assembled link.
 ## Build plan
 
 1. **The pure core** — `public/js/workspace-core.js`-equivalent: a
-   dependency-free ES module (it may import the pair's base64url helpers),
+   dependency-free ES module (it may import the platform's base64url helpers),
    import-safe in Node, publicly allowlisted. Freeze the constants on day
    one: salt 10 bytes, nonce 10 bytes, key 32 bytes, **8192 KDF rounds**,
    GCM IV 12 bytes. These are wire-format constants — changing any one

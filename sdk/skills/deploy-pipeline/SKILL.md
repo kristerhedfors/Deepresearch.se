@@ -4,7 +4,7 @@ description: >-
   Load when building the deploy-and-try-live pipeline — a deploy tool + build
   step that turns a workspace into a running thing the user can open: a live
   same-origin preview URL for a client-tier (static) build, or a push to the
-  USER'S OWN edge account for a server-tier build (the pair never hosts
+  USER'S OWN edge account for a server-tier build (the platform never hosts
   generated server code on its own origin). Server-tier first. Covers the build
   hook over the VM, the platform-type-driven deploy targets, the user-held
   deploy credential under the grant discipline, and the live-URL return.
@@ -27,7 +27,7 @@ builds from the authoritative workspace store and publishes to a live target.
 On **Se/cure** the analogue is export/download or the `pair-studio` in-tab
 preview — there is no server in its data path to deploy *from*, so a true live
 deploy is a server-tier capability. The hard rule from `pair-studio` holds:
-**the pair's own server never runs generated server code on its own origin** —
+**the platform's own server never runs generated server code on its own origin** —
 server-tier builds deploy to the *user's* account.
 
 ## Contracts
@@ -58,7 +58,7 @@ server-tier builds deploy to the *user's* account.
      credentials needed.
    - **Server-tier build:** push a **deployable bundle to the USER'S OWN edge
      account** — a wrangler-style publish the user authorizes with their own
-     token. The pair proxies/forwards the publish; it never runs the user's
+     token. The platform proxies/forwards the publish; it never runs the user's
      server code on its origin. Returns the user's live URL.
 3. **The deploy credential** is a grant-class secret: minted/stored like a
    server token, scoped to the one publish, never logged, revocable. For the
@@ -86,7 +86,7 @@ server-tier builds deploy to the *user's* account.
 - [ ] A client-tier build deploys to a **live same-origin URL** the user can
       open in the same session; opening it renders the built app.
 - [ ] A server-tier build publishes to the **user's own edge account** with the
-      user's token and returns their live URL; the pair's own origin serves
+      user's token and returns their live URL; the platform's own origin serves
       **no** generated server code (verify the module graph / routes).
 - [ ] The deploy credential is never logged (scan) and is scoped to the one
       publish; revoking it kills the deploy path.
@@ -100,10 +100,10 @@ server-tier builds deploy to the *user's* account.
 
 ## Pitfalls
 
-- **Never host generated server code on the pair's own origin.** This is the
+- **Never host generated server code on the platform's own origin.** This is the
   load-bearing rule inherited from `pair-studio`: a server-tier build deploys
-  to the *user's* account. Hosting it yourself makes the pair a code-execution
-  platform behind its own trust boundary — the exact thing the zero-or-one-
+  to the *user's* account. Hosting it yourself makes the platform a code-execution
+  service behind its own trust boundary — the exact thing the zero-or-one-
   server property forbids.
 - **The deploy token is a live credential — treat it as one.** Grant-class
   handling, minimal scope, never logged, revocable. It is the highest-value

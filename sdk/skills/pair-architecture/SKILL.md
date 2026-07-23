@@ -1,19 +1,19 @@
 ---
 name: pair-architecture
 description: >-
-  Load when starting ANY work on an agent pair built with this SDK — before
-  generating a new pair, before adding a module to an existing one, when
-  deciding which tier a capability belongs to, when naming a new pair (the
+  Load when starting ANY work on a platform built with this SDK — before
+  generating a new platform, before adding a module to an existing one, when
+  deciding which tier a capability belongs to, when naming a new platform (the
   stem/wordplay convention), or when reviewing whether a change violates a
-  pair contract. This is the SDK's constitution: the pair abstraction, the
+  platform contract. This is the SDK's constitution: the platform abstraction, the
   zero-or-one-server property, the capability classes C/S/B/X/D and their
   module-graph rules, contracts PA-1..PA-10, and the test patterns that PIN
   the rules so they cannot silently erode.
 ---
 
-# Pair architecture — the constitution of an agent pair
+# Pair architecture — the constitution of a platform
 
-An **agent pair** is one AI-assistant product shipped as two tiers of the same
+A **platform** is one AI-assistant product shipped as two tiers of the same
 capability set: a **client tier** that runs wholly in the browser with no
 server in the data path, and a **server tier** where exactly one server
 component (an edge worker) sits between the browser and the upstream APIs.
@@ -41,7 +41,7 @@ story mechanism itself:
 - **The server tier** (reference: DeepResearch.**Se/rver**, `/rver`) — the
   signed-in assistant. The one edge worker owns orchestration, identity,
   quotas, metering, cloud storage, observability, and the admin surface.
-- **The zero-or-one-server property.** Across the whole pair there is at most
+- **The zero-or-one-server property.** Across the whole platform there is at most
   ONE server component — no auth service, no search-proxy fleet, no mesh.
   Every server-side responsibility lives in the one worker, and the client
   tier must remain fully functional with that worker reduced to (or replaced
@@ -57,7 +57,7 @@ Every module is classified by where it can run:
 | **S** — server-backed | Lives only in the one worker | Never imported into a class-C graph |
 | **B** — bridged | A server capability *lent* to a client-tier session via metered grant tokens | Opt-in, disclosed, quota-metered, time-limited, fail-safe, minimal-payload — the ONLY sanctioned tier crossover |
 | **X** — shared substrate | One pure core used by BOTH tiers | Import-safe in Node, dependency-free, server side is a façade re-export |
-| **D** — development system | Loops/evals/boards/workflows | Not product code; keeps the pair maintainable by agent sessions |
+| **D** — development system | Loops/evals/boards/workflows | Not product code; keeps the platform maintainable by agent sessions |
 
 ## Contracts
 
@@ -92,7 +92,7 @@ cites the subset it carries. One line each on what enforcing it means:
 
 ## Build plan
 
-For a NEW pair, land this module first — it is documents, conventions, and
+For a NEW platform, land this module first — it is documents, conventions, and
 pinned tests, not features:
 
 1. **Pick the stem and wordplay.** The two tiers are named by ONE wordplay: a
@@ -102,7 +102,7 @@ pinned tests, not features:
    evoking the client tier's privacy, one naming the server. Test the split
    out loud: the capital tail letter must make the hidden word readable
    (**Se/cure** → "Secure"). Reserve both lowercase paths in the router plan.
-2. **Codify the naming rules** in the pair's CLAUDE.md-equivalent, verbatim
+2. **Codify the naming rules** in the platform's CLAUDE.md-equivalent, verbatim
    from the reference convention:
    - Display form: full URL without scheme, CamelCase, wordplay tail in bold —
      `Brand.`**St/em-a** and `Brand.`**St/em-b**; plain text drops the bold,
@@ -122,11 +122,11 @@ pinned tests, not features:
      font/weight-dependent and must be MEASURED, never eyeballed (the
      reference's `.sl` span + `scripts/slash-gap.mjs`; see the
      `symbol-language` module).
-3. **Write the pair's DESIGN.md** restating §1–2 of `sdk/DESIGN.md` with the
-   pair's own names: the tier definitions, the zero-or-one-server property,
+3. **Write the platform's DESIGN.md** restating §1–2 of `sdk/DESIGN.md` with the
+   platform's own names: the tier definitions, the zero-or-one-server property,
    the class table, and PA-1..PA-10 quoted by number so every later module and
    PR can cite them.
-4. **Write the pair's MANIFEST.json** (clone `sdk/MANIFEST.json`'s shape):
+4. **Write the platform's MANIFEST.json** (clone `sdk/MANIFEST.json`'s shape):
    `id`/`layer`/`class`/`deps`/`skill`/`reference`/`provides`/`acceptance`
    per module; declare the baseplate (`pair-architecture`, `baseplate-worker`,
    `baseplate-client`) mandatory and everything else selectable.
@@ -168,11 +168,11 @@ pinned tests, not features:
 
 | Concept | Reference file(s) |
 |---|---|
-| The pair abstraction, classes, PA contracts | `sdk/DESIGN.md` §1–2 |
+| The platform abstraction, classes, PA contracts | `sdk/DESIGN.md` §1–2 |
 | The machine-readable module registry | `sdk/MANIFEST.json` |
 | The load-bearing invariants as lived rules | `CLAUDE.md` ("Load-bearing invariants" 1–6) |
 | The proven-decision rationale (what must not change) | `docs/ARCHITECTURE-ROADMAP.md` §1, §7–8 |
-| The full system realization of the pair | `docs/ARCHITECTURE.md` §1–3, §9–10 |
+| The full system realization of the platform | `docs/ARCHITECTURE.md` §1–3, §9–10 |
 | Naming/wordplay rules incl. secure-first, lowercase URLs, no internal acronyms | `CLAUDE.md` ("Branding rule"), `src/index.js` (the wordplay URL map comment) |
 | Wordmark slash spacing (measured, not eyeballed) | `.claude/skills/slash-spacing/SKILL.md`, `scripts/slash-gap.mjs` |
 | Class-C graph pin (derived import walk + allowlist) | `src/assets.test.js`, `src/assets.js` (`isPublicAsset`) |
@@ -184,7 +184,7 @@ pinned tests, not features:
 
 ## Acceptance checklist
 
-- [ ] The pair's DESIGN.md restates the tier definitions, the
+- [ ] The platform's DESIGN.md restates the tier definitions, the
       zero-or-one-server property, and PA-1..PA-10 by number; the manifest
       declares every module's class and deps.
 - [ ] Every later module's skill/PR cites the PA contracts it touches by

@@ -1,13 +1,13 @@
 ---
 name: pair-studio
 description: >-
-  Load when building or working on the in-app pair builder — "prompt an app,
+  Load when building or working on the in-app platform builder — "prompt an app,
   design it in the virtual Linux, try it out in the same UI": the studio flow
   (prompt → SDK-guided generation in the sandbox VM → preview deploy in an
   in-app pane → save/export as a runnable test application), the two platform
   types (a client-tier/"Se/cure-type" build is instantly runnable in-browser; a
   server-tier build exports as a deployable bundle), the service-worker preview
-  origin, sealed-link/download export, and the hard rule that the pair's own
+  origin, sealed-link/download export, and the hard rule that the platform's own
   server never hosts generated server code.
 ---
 
@@ -19,8 +19,8 @@ application ("build me a support chatbot over my product docs"), the assistant
 mounted SDK (manifest, skills, CLI), and the result **deploys into a preview
 pane in the same interface** — then saves as a **runnable test application**
 the user can download, keep as a project, or (small apps) carry as a sealed
-link. The studio is where the pair stops being only a research assistant and
-becomes a factory for more pairs.
+link. The studio is where the platform stops being only a research assistant and
+becomes a factory for more platforms.
 
 ## Capability class & tier story
 
@@ -39,11 +39,11 @@ declares its platform type up front, and the type IS its logical boundary:
 | Platform type | What it is | Try-out story |
 |---|---|---|
 | **Client-tier build** (the reference's "Se/cure-type" — the default) | Class-C only: static no-build ES modules, sealed local state, browser-direct upstream APIs (user's keys / local server / embedded grant tokens) | **Instantly runnable in the same UI** — preview-deployed into an in-app pane; savable as a standalone artifact that runs from any static host (or `file://` for single-file builds) |
-| **Server-tier / pair build** | Adds the one worker (identity, metering, storage…) per the manifest's S modules | The worker **cannot run inside the studio** — it exports as a deployable bundle (worker project + assets) for the user's own edge account; its client half still previews in-app against a generated mock of its API surface |
+| **Server-tier / platform build** | Adds the one worker (identity, metering, storage…) per the manifest's S modules | The worker **cannot run inside the studio** — it exports as a deployable bundle (worker project + assets) for the user's own edge account; its client half still previews in-app against a generated mock of its API surface |
 
-**The hard rule (never bend it):** the pair's own server never executes or
+**The hard rule (never bend it):** the platform's own server never executes or
 hosts generated server code. Hosting arbitrary user workers would put the
-studio inside the pair's trust boundary and break the zero-or-one-server
+studio inside the platform's trust boundary and break the zero-or-one-server
 property in the worst possible way. "Try out a server build" = preview the
 client half against mocks + deploy the worker to the user's own account.
 
@@ -96,7 +96,7 @@ client half against mocks + deploy the worker to the user's own account.
 5. **Preview deploy — the same-UI try-out.** Serve the file map at a real
    URL scope so ES modules, relative fetches and routing work:
    - Register a **preview service worker** scoped to `/preview/` (a reserved
-     scope, never used by the pair's own routes). It serves
+     scope, never used by the platform's own routes). It serves
      `/preview/<appId>/<path>` from the file map (stored in the Cache API /
      IndexedDB), with correct MIME types.
    - Open `/preview/<appId>/index.html` in a **sandboxed iframe pane**
@@ -130,7 +130,7 @@ client half against mocks + deploy the worker to the user's own account.
    Export is a deployable bundle + a README naming the one command that
    deploys it to the user's own account. The studio UI labels the boundary
    plainly: *this preview mocks the server half; deploy to run it for real.*
-8. **Guardrails.** Preview panes get no access to the pair's own storage or
+8. **Guardrails.** Preview panes get no access to the platform's own storage or
    session (scope + sandbox attributes); generated apps that want web search
    or LLM calls get them the legitimate ways (user key, local server, or
    grant tokens through the bridge); the studio never proxies.
@@ -164,7 +164,7 @@ client half against mocks + deploy the worker to the user's own account.
 - [ ] `pair-cli validate` semantics enforced: an S-class module in a
       client-tier selection is refused with the platform-type explanation.
 - [ ] A server-tier build exports a deployable bundle; its client half
-      previews against the generated mocks; the pair's server never executes
+      previews against the generated mocks; the platform's server never executes
       any generated server code (nothing to test — there must be no such code
       path at all; review the module graph).
 - [ ] Studio stages each fail soft (VM down, SW registration refused, quota
@@ -178,14 +178,14 @@ client half against mocks + deploy the worker to the user's own account.
   free. Budget a live device pass for this before promising the feature.
 - **Service-worker scope discipline**: one reserved `/preview/` scope,
   registered lazily, never overlapping the app shell's paths — a greedy scope
-  can intercept the pair's own module loads and produce unexplainable
+  can intercept the platform's own module loads and produce unexplainable
   staleness (the repo's cache-layer history says this class of bug is
   expensive).
 - **URL-length limits bound sealed-link apps** hard (order tens of KB
   compressed); treat the link as the demo-sized delight path, the download as
   the real one — and say so in the UI rather than failing silently.
 - **Don't let "try it out" grow into hosting.** The moment a preview URL is
-  shareable server-side, the pair is a code-hosting platform with someone
+  shareable server-side, the platform is a code-hosting service with someone
   else's code behind its origin. Sharing = export (download/link), full stop.
 - **Generated apps drift from the SDK unless pinned**: stamp the app's
   mini-manifest with the SDK module list + snapshot digest it was built

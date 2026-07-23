@@ -1,13 +1,13 @@
 ---
 name: sealed-crypto
 description: >-
-  Load when building an agent pair's sealed client-side crypto core — the
+  Load when building a platform's sealed client-side crypto core — the
   user-held-secret key hierarchy the whole privacy plane rests on: copy-safe
   Crockford-base32 secrets with forgiving normalization, HKDF-independent
   derivations (public reference vs blob id vs blob key), AES-256-GCM archive
   sealing with tamper detection, the master-secret profile that keeps
   provider API keys INSIDE the sealed state, and the publicly-served
-  dependency-free pure-core rule. Also load when auditing a generated pair's
+  dependency-free pure-core rule. Also load when auditing a generated platform's
   derivation constants, when a sibling subsystem needs its own derivation of
   the SAME secret, or when any change touches a frozen HKDF info string.
 ---
@@ -45,7 +45,7 @@ graph and killed the entire client tier (see Pitfalls).
 - **PA-5 (minimal dependencies)** — WebCrypto primitives only
   (`crypto.subtle`, `crypto.getRandomValues`); zero third-party crypto
   dependencies is a standing invariant of the reference and must be of any
-  generated pair.
+  generated platform.
 - **PA-7 (shared-core rule)** — the core lives under the client module tree,
   is import-safe in Node, and is the ONE implementation every consumer
   (client tier, vault orchestration, workspace crypto) builds on; no
@@ -187,11 +187,11 @@ graph and killed the entire client tier (see Pitfalls).
   which are public assets, so anonymous visitors got a 401 mid-graph and the
   whole tier's JS died. The fix was the core split itself: `vault-core.js`
   is allowlisted and dependency-free; `vault.js` deliberately is NOT public.
-  When generating a pair, create the split from day one.
+  When generating a platform, create the split from day one.
 - **Frozen constants survive renames.** `drc-core.js`'s info strings say
   `"deepresearch.se free ref v1"` etc. — "free" predates the product name.
   Renaming them would silently break every existing secret and sealed state.
-  A generated pair should choose neutral strings, then never touch them; a
+  A generated platform should choose neutral strings, then never touch them; a
   "cleanup" PR that modernizes an info string is a data-loss bug.
 - **Misreads map BEFORE the prefix strip.** `normalizeVaultSecret` maps
   O→0/I,L→1 first so `DRl-…` still parses. Reordering the two steps passes
@@ -207,7 +207,7 @@ graph and killed the entire client tier (see Pitfalls).
 - **No recovery is the feature.** Every support-shaped instinct ("add a
   reset email", "escrow the key server-side") re-introduces the server into
   the trust boundary and voids the tier's structural claim. The reference's
-  UI copy states loss-is-loss plainly; keep that in any generated pair.
+  UI copy states loss-is-loss plainly; keep that in any generated platform.
 - **`crypto.subtle` needs a secure context.** Serve the client tier over
   HTTPS in every environment including previews, or the core throws at
   import-adjacent time on `crypto.subtle` being undefined — Node ≥ 18 and

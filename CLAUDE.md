@@ -223,32 +223,38 @@ hand. What each suite covers, the e2e fixtures/quirks, and the three eval
 harnesses (model-matrix, rubric bench, HF bench — append-only ledgers, don't
 deploy mid-battery): **`docs/TESTING.md`**.
 
-## DistillSDK and interchange standards
+## The SDKs and interchange standards
 
-`sdk/` is **DistillSDK** (2026-07-16): the Se/cure + Se/rver pair
-abstraction as a design (`sdk/DESIGN.md`), a 34-module registry
-(`sdk/MANIFEST.json`) with one buildable skill per module, and a
-dependency-free CLI (`node sdk/pair-cli.mjs list|show|plan|validate|agents|agent`,
-unit-tested in `npm test`). Since 2026-07-18 the SDK is WIRED into the app:
-the pure core `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI
-re-exports it) powers **SDK mode** — labeled **Agent Studio** in the UI
-(2026-07-23; renamed from "Agent Builder"; the mode id stays `sdk`, internally
-still "SDK mode"/DistillSDK) — the green "lovable experience" entry in the
-chat-mode dropdown (Normal / Introspection / Agent Studio) that DISTILLS this
-site — above all the
-client-side **Se/cure** tier — into a new self-contained web-app
-*flavour*, using the SDK's modules/skills as the method and the deployed Se/cure
-source as the original, then publishes it live at `/app/<slug>/`
-(`src/build-pub.js`, opaque-origin CSP sandbox) — and the `/mcp` `sdk_*` tools,
-so agents plan against the manifest without shelling into the sandbox (where
-`/src/sdk/pair-cli.mjs` also works in dev mode). (A separate khaki **SWE mode**
-— "a new instance of Se/cure" — shipped 2026-07-18 and was folded into SDK mode
-2026-07-19 as redundant; distilling Se/cure into flavours is now SDK mode's core
-purpose, upholding Se/cure's privacy invariants when the flavour stays
-client-side.) SDK mode's native tool loop rides invariant 1's SAME authorized
-exception as introspection (deterministic `FILE:`-block fallback on non-tool
-models); see the **sdk-mode** skill. Its complete standalone documentation is
-`docs/DISTILLSDK.md`, updated in the same commit as any `sdk/` change.
+Two SDKs, both distilled from this repo. `sdk/` is the **DeepResearch Platform
+SDK** (codename **DistillSDK**, 2026-07-16): the platform abstraction — the
+Se/cure + Se/rver tiers as one distillable two-tier product — as a design
+(`sdk/DESIGN.md`), a 34-module registry (`sdk/MANIFEST.json`) with one buildable
+skill per module, and a dependency-free CLI (`node sdk/pair-cli.mjs
+list|show|plan|validate|agents|agent`, unit-tested in `npm test`). Its companion
+is the **DeepResearch Agents SDK** (`docs/AGENT-PLATFORM.md`, `sdk/AGENTS.json`,
+`public/js/agent-spec-core.js`): an agent is one flavour of the platform (its
+chat-input-pane controls, theme, animations, examples, share-link quota) — data,
+not code. Since 2026-07-18 the SDK is WIRED into the app: the pure core
+`public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI re-exports it) powers
+**SDK mode** — labeled **Agent Studio** in the UI (2026-07-23; renamed from
+"Agent Builder"; the mode id stays `sdk`, internally still "SDK mode"/DistillSDK)
+— the green "lovable experience" entry in the chat-mode dropdown (Deep Research /
+Introspection / Agent Studio; the `normal` mode id displays as **Deep Research**)
+that DISTILLS this site — above all the client-side **Se/cure** tier — into
+either a new individual **agent** OR an entire new **platform**, using the SDK's
+modules/skills as the method and the deployed Se/cure source as the original,
+then publishes it live at `/app/<slug>/` (`src/build-pub.js`, opaque-origin CSP
+sandbox) — and the `/mcp` `sdk_*` tools, so agents plan against the manifest
+without shelling into the sandbox (where `/src/sdk/pair-cli.mjs` also works in
+dev mode). (A separate khaki **SWE mode** — "a new instance of Se/cure" —
+shipped 2026-07-18 and was folded into SDK mode 2026-07-19 as redundant;
+distilling Se/cure into flavours is now SDK mode's core purpose, upholding
+Se/cure's privacy invariants when the flavour stays client-side.) SDK mode's
+native tool loop rides invariant 1's SAME authorized exception as introspection
+(deterministic `FILE:`-block fallback on non-tool models); see the **sdk-mode**
+skill. The Platform SDK's complete standalone documentation is
+`docs/DISTILLSDK.md` and the Agents SDK's is `docs/AGENT-PLATFORM.md`, each
+updated in the same commit as its `sdk/` change.
 The **interchange standards** (2026-07-17) specify the workspace bundle and
 pipeline structure as open standards — **DRSW/1**
 (`docs/WORKSPACE-PROTOCOL.md`) and **DRPL/1** (`docs/PIPELINE-LANGUAGE.md`,
@@ -324,7 +330,7 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
-- **sdk-mode** — the green SDK "lovable experience" mode: the chat-mode dropdown, the DistillSDK build flow, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.

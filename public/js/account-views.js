@@ -83,7 +83,7 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 // The Chat mode picker's dropdown options (account-views + the composer #modesel
 // share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
 const CHAT_MODE_OPTIONS = [
-  { value: "normal", label: "Normal" },
+  { value: "normal", label: "Deep Research" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
 ];
@@ -103,16 +103,16 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 // wireModeKnob. The composer's own mode dropdown (#modesel) shares this state.
 const MODE_INFO = `<strong>Chat mode</strong><br>
   Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
-  <b>Normal (default):</b> ordinary web research.<br>
+  <b>Deep Research (default):</b> ordinary web research.<br>
   <b>Introspection:</b> ask about this site's own implementation (“how are you
   built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
   source this deployment runs — the composer pane turns white titanium. With the
   execution sandbox also on, the whole source tree mounts at <code>/src</code> in
   the in-browser Linux VM.<br>
   <b>Agent Studio:</b> the green “lovable” builder — describe an agent to distil
-  from this site (above all the client-side Se/cure tier) with DistillSDK and get
-  a live, self-contained web app at its own link.<br>
-  The non-Normal modes turn on introspection access for this account.`;
+  from this site (above all the client-side Se/cure tier) and get a live,
+  self-contained web app at its own link.<br>
+  Introspection and Agent Studio turn on introspection access for this account.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders

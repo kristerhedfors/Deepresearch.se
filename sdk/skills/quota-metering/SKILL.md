@@ -1,8 +1,8 @@
 ---
 name: quota-metering
 description: >-
-  Load when building the server tier's spend-control plane for an agent
-  pair — the multi-window quota model (rolling + calendar windows,
+  Load when building the server tier's spend-control plane for a
+  platform — the multi-window quota model (rolling + calendar windows,
   month-boundary math, per-user overrides), split-billing cost math across
   up-to-three model buckets and depth-priced search, usage recording as the
   one spend ledger, per-user in-flight concurrency reservations with
@@ -15,7 +15,7 @@ description: >-
 # Quota & metering — real-cost-grounded spend control
 
 The server tier fronts paid upstream APIs on the operator's keys, so the
-pair needs genuine cost control, not token counting: different models price
+platform needs genuine cost control, not token counting: different models price
 tokens differently, one request runs several models, and searches carry
 their own per-call price. This module builds the whole plane — quota windows
 and enforcement, the split-billing math that prices each model bucket at its
@@ -33,7 +33,7 @@ live in the grant-bridge module, not here.)
 Manifest class: **S — server-backed.** Layer 2; deps `identity-access`
 (quotas are per-account; the break-glass admin is exempt but recorded).
 Client-tier story: honestly server-only. The client tier spends the USER's
-own keys, so the pair's quota question does not arise there — its only
+own keys, so the platform's quota question does not arise there — its only
 metering is the bridged grants' (class B, `grant-bridge`), which reuse this
 module's *conventions* (429 shapes, atomic-meter thinking) but none of its
 code. Nothing here may enter the client tier's module graph.

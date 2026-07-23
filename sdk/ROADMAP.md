@@ -1,7 +1,7 @@
 # DistillSDK — implementation order and rationale
 
 This document is the human rationale over `sdk/MANIFEST.json`'s dependency
-graph: the order in which a new pair's modules should be implemented, why
+graph: the order in which a new platform's modules should be implemented, why
 that order and not another, and what "done" means at each phase. The
 `pair-generator` skill executes this order mechanically; this file explains
 it. The same order, run in *adoption mode*, is the plan for wiring the
@@ -10,7 +10,7 @@ existing deepresearch.se to SDK components later.
 Two principles drive every ordering decision:
 
 1. **Every intermediate state is a working product.** Modules land one at a
-   time, tests green and acceptance satisfied, so the pair is demoable and
+   time, tests green and acceptance satisfied, so the platform is demoable and
    verifiable after every single module — never a scaffold awaiting a big
    bang. This is how the reference was actually built (a weekend chat site
    first; everything else accreted onto a working core).
@@ -25,7 +25,7 @@ Two principles drive every ordering decision:
 ## Phase 0 — Foundation (modules: `pair-architecture`, `baseplate-worker`, `baseplate-client`)
 
 **Build first, always.** Nothing else can exist without it, and the two
-decisions it locks in — the pair's contracts and its name/wordplay — are the
+decisions it locks in — the platform's contracts and its name/wordplay — are the
 only ones that get more expensive to change with every later module.
 
 - `pair-architecture` costs no code: it is the decision record. Choose the
@@ -38,7 +38,7 @@ only ones that get more expensive to change with every later module.
   logging, optional-D1 — and resist adding features here; the whole point of
   the module model is that features are separate, selectable things.
 - **Exit criterion:** a deployed page served by the one worker, `npm test`
-  and typecheck green, security headers verified live. A "hello pair".
+  and typecheck green, security headers verified live. A "hello platform".
 
 ## Phase 1 — The model plane (modules: `provider-registry`, `research-pipeline`, then `web-search`, `enrichments`)
 
@@ -76,7 +76,7 @@ plausible pipeline upgrades that benchmarked net-negative and shipped OFF.
 
 ## Phase 2 — The two tiers become real (modules: `sealed-crypto`*, `secure-tier`, `identity-access`, `quota-metering`, `sse-recovery`)
 
-**The pair property is the mission — establish it early, while the surface
+**The platform property is the mission — establish it early, while the surface
 area is small.** Retrofitting a client tier onto a server-assuming codebase
 is exactly the trap the SDK exists to avoid.
 
@@ -89,7 +89,7 @@ is exactly the trap the SDK exists to avoid.
   and slightly counterintuitive: the client tier is the *stricter* posture,
   and building it first means every later server-side capability must argue
   its way in (as class S or B), rather than the client tier having to argue
-  server dependencies *out*. It also gives the pair its proof-of-mission
+  server dependencies *out*. It also gives the platform its proof-of-mission
   artifact earliest.
 - `identity-access` then `quota-metering`, in that order — metering needs
   identities to meter. Do not open sign-ups before quotas exist: the
@@ -100,7 +100,7 @@ is exactly the trap the SDK exists to avoid.
   with real phones exist — its machinery (answer cache, relaunch marker,
   stall watchdogs) is only provable live (PA-10), so it lands when there is
   a live product to prove it on.
-- **Exit criterion:** the pair exists as a pair — a visitor uses the client
+- **Exit criterion:** the platform exists as a platform — a visitor uses the client
   tier with their own key; a signed-in user uses the server tier under
   quota; the tier-crossing affordances (dimmed buttons, explainers) point
   each way; class-C module-graph pins are green.
@@ -117,13 +117,13 @@ here is defined by which tier it must NOT touch.**
   down (ciphertext, or a declared readable exception).
 - `client-rag` next: it spans both tiers and both storage postures, so it
   wants sealed-crypto, storage and the provider registry all settled.
-- `grant-bridge` after everything it bridges. The bridge is the pair's most
+- `grant-bridge` after everything it bridges. The bridge is the platform's most
   security-sensitive module; building it late means the things it lends
   (search, completions) and the identities that mint it are already stable,
   and the full invariant checklist (forgery matrix, meters, budgets,
   account binding, module-graph pin) can run against real subsystems. Build
-  the consolidated one-JWT form directly in a new pair — the reference's
-  three-family history is evolution baggage a fresh pair skips (its skill
+  the consolidated one-JWT form directly in a new platform — the reference's
+  three-family history is evolution baggage a fresh platform skips (its skill
   documents the legacy families so adoption mode can still reason about
   them).
 - `offline-workspaces` last: it composes sealed-crypto's link crypto with
@@ -134,7 +134,7 @@ here is defined by which tier it must NOT touch.**
 
 ## Phase 4 — Operations & the feedback loops (modules: `observability`, `eval-harness`, `decision-boards`, `feedback-loops`, `agent-dev-workflow`)
 
-**The loops that keep the pair alive once humans and agent fleets touch
+**The loops that keep the platform alive once humans and agent fleets touch
 it.** Minimal logging already exists (baseplate); this phase is the full
 apparatus, and its timing is driven by people, not code: land it when real
 users generate real signal and multiple agent sessions work in parallel.
@@ -150,7 +150,7 @@ users generate real signal and multiple agent sessions work in parallel.
   skill structure) — but it multiplies in value with fleet size, so set it
   up the moment more than one session works the repo. In practice the
   reference adopted it mid-life and paid a reconciliation cost (the merge
-  barrier exists because of it); a new pair should adopt it in phase 0–1
+  barrier exists because of it); a new platform should adopt it in phase 0–1
   and skip that tax. It sits in this phase only because its full loop
   (regression routing, maintenance owners, PR watching) presumes shipped
   features to maintain.
@@ -164,14 +164,14 @@ users generate real signal and multiple agent sessions work in parallel.
 independently selectable and none blocks another. Guidance rather than
 order:
 
-- `symbol-language` earns its place as soon as the pair has public users —
+- `symbol-language` earns its place as soon as the platform has public users —
   it is the identity system, and its wordmark/disclosure grammar touches
-  copy everywhere, so earlier is cheaper. (A pair that skips it should
+  copy everywhere, so earlier is cheaper. (A platform that skips it should
   still adopt its UX-conventions registry; that part is nearly free.)
 - `introspection-help` pairs naturally with a public "how are you built"
   story and doubles as the help system — high leverage for an
   open-source-as-proof product (the mission posture the reference takes).
-- `mcp-surface` is the strategic outbound edge: the pair as infrastructure
+- `mcp-surface` is the strategic outbound edge: the platform as infrastructure
   other agents compose with. Cheap (one file, no dependency) once the
   pipeline and identity exist.
 - `execution-sandbox` is the deepest well — treat it as its own project
@@ -185,7 +185,7 @@ order:
   fetching hundreds of MB. The thin `ExecEngine` seam + the c2w/v86/qemu
   fallback ladder are recorded as optional future-proofing, not a migration.
   Decision matrix: `docs/JS-VM-RESEARCH.md`.
-- `vm-toolchain` follows `exec-engine` + `introspection-help` when the pair
+- `vm-toolchain` follows `exec-engine` + `introspection-help` when the platform
   should become its own development environment: the small fast Alpine image
   loaded in its entirety by prefetch, the SDK mounted in-VM, and the in-app
   `sdk/<name>` skills catalog. Verified-gate before any image becomes fleet
@@ -214,14 +214,14 @@ the sandbox, the VM toolchain, the secure tier and the generator), and its
 ordering rationale is the same twin argument as phase 2: the **client-tier
 platform type first** — a generated client-tier app is class-C static
 files, so "try it out" is an in-UI preview pane with zero hosting risk,
-while server-tier builds are exports by rule (the pair's server never hosts
+while server-tier builds are exports by rule (the platform's server never hosts
 generated server code). Exit criterion: prompt → generated client-tier app
 previewed in the same session → exported bundle runs from a plain static
 host.
 
 `deploy-pipeline` promotes the studio's in-tab preview to a real live
 deploy: a same-origin preview URL for a static build, or a push to the
-**user's own** edge account for a server-tier build (never the pair's
+**user's own** edge account for a server-tier build (never the platform's
 origin). It lands after `workspace-fs` (the source tree it builds from) and
 `pair-studio` (the preview it promotes), and is server-tier only — a live
 deploy needs a real host. Exit criterion: a built workspace deploys to a
@@ -241,7 +241,7 @@ live URL the user opens and tries in the same session.
 | 6 | web-search | 1 | Lights up inside a tested pipeline |
 | 7 | enrichments | 1 | Optional drip-ins, one file each |
 | 8 | sealed-crypto | 2* | Pulled forward: the secure tier's foundation |
-| 9 | secure-tier | 2 | The stricter tier first — mission proof, keeps the pair honest |
+| 9 | secure-tier | 2 | The stricter tier first — mission proof, keeps the platform honest |
 | 10 | identity-access | 2 | Accounts before quotas |
 | 11 | quota-metering | 2 | Never open sign-ups before quotas |
 | 12 | sse-recovery | 2 | Provable only live; lands when live users exist |
@@ -266,7 +266,7 @@ live URL the user opens and tries in the same session.
 
 *(A long-horizon goal, recorded 2026-07-21. It sits after phase 6 because it
 presupposes the whole thing shipped AND measured — do not start it before
-`eval-harness` (18) and the feedback loops (20) are real and the pair is
+`eval-harness` (18) and the feedback loops (20) are real and the platform is
 demonstrably passing scored tasks.)*
 
 The current SDK is one fixed artifact — 34 modules, one baseplate, contracts

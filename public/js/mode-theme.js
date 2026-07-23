@@ -60,7 +60,7 @@ export const CHAT_MODE_IDS = ["normal", "introspection", "sdk"];
 export const MODE_THEMES = {
   normal: {
     id: "normal",
-    label: "Normal",
+    label: "Deep Research",
     rootClass: null,
     tag: null,
     accent: "#0d4fa0",

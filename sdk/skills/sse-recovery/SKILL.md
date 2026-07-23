@@ -1,7 +1,7 @@
 ---
 name: sse-recovery
 description: >-
-  Load when building the server tier's chat transport for an agent pair —
+  Load when building the server tier's chat transport for a platform —
   the SSE event vocabulary (delta/status/done) and its forward-compatibility
   rule, keepalives, the pure client line-buffer parser, and the full
   answer-recovery machinery for dropped connections: the TTL'd server-side
@@ -51,7 +51,7 @@ only happen when the run lives on a server. The client tier needs none of it
   incognito conversations write neither a log row nor a marker.
 - **PA-5 (carries)** — this is the module where "no framework" costs the
   most and pays the most: the stream loop, parser, and recovery ladder are
-  owned code, because the pair's entire bug history is integration behavior
+  owned code, because the platform's entire bug history is integration behavior
   that frameworks hide (`docs/ARCHITECTURE-ROADMAP.md` §7), and the platform
   alternative (durable execution) is explicitly NOT adopted until a trigger
   arrives (§6 — see the build plan's last step).
@@ -67,7 +67,7 @@ only happen when the run lives on a server. The client tier needs none of it
    custom `status` events: `step_start`/`step_done` (id names the phase or
    external service; `details` renders as an expandable list),
    `search_start`/`search_done` (round, query, source/service, results,
-   sources), embed events as the pair grows them, `discard_text` (clear the
+   sources), embed events as the platform grows them, `discard_text` (clear the
    streamed draft; a corrected answer follows), `done` (the stats footer:
    model, rounds, searches, duration, token sums), `{"error":…}` rendered
    inside the bubble, and a terminating `data: [DONE]` sent ALWAYS, errors

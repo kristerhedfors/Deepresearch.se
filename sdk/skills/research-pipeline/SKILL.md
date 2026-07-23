@@ -1,7 +1,7 @@
 ---
 name: research-pipeline
 description: >-
-  Load when building an agent pair's deterministic deep-research pipeline —
+  Load when building a platform's deterministic deep-research pipeline —
   the five phases (triage → search → gap → synthesis → validation) with NO
   function calling, the fail-soft helper-phase posture, split model routing
   with split token accounting, the time-budget/EWMA planner and report
@@ -16,7 +16,7 @@ description: >-
 
 # The deterministic deep-research pipeline
 
-The pair's crown jewel: an orchestrator (worker on the server tier, browser
+The platform's crown jewel: an orchestrator (worker on the server tier, browser
 module on the client tier) that runs research as a fixed sequence of plain
 model calls — triage, search, gap audit, synthesis, validation — where the
 orchestrator picks every phase and every query and models only fill in JSON

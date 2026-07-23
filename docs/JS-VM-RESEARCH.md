@@ -1,4 +1,4 @@
-# In-browser execution engines for the agent-pair sandbox — research & decision
+# In-browser execution engines for the platform sandbox — research & decision
 
 *Research date: 2026-07-16. Lens: we must **build our own execution
 environments from scratch** — for the part we control, which is the IMAGE
@@ -11,7 +11,7 @@ no mid-command stalls fetching hundreds of MB.***
 
 ## Why this research
 
-The pair's sandbox (the `execution-sandbox` module) and the SDK's
+The platform's sandbox (the `execution-sandbox` module) and the SDK's
 `vm-toolchain`/`pair-studio` modules need a JavaScript/WASM virtual machine
 that can:
 
@@ -112,7 +112,7 @@ small Alpine image from our recipe, self-host it, and wire full prefetch.
 ### B. Network egress for the in-VM agent (the real constraint)
 
 An agentic CLI inside the VM needs to reach an LLM API, and browsers give a
-VM no raw sockets. Two designs, and the pair's privacy model picks between
+VM no raw sockets. Two designs, and the platform's privacy model picks between
 them per tier:
 
 - **Preferred for the client tier — keep egress OUT of the VM.** The VM does

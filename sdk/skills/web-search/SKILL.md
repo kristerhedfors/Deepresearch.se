@@ -1,7 +1,7 @@
 ---
 name: web-search
 description: >-
-  Load when building an agent pair's web-search plane — the default search
+  Load when building a platform's web-search plane — the default search
   provider client (bounded, cost-tiered, edge-cached), the pluggable
   self-hosted backend shared core consumed by BOTH tiers (server façade
   with config/env resolution; browser-direct on the client tier), the
@@ -39,7 +39,7 @@ arrangement:
   also live server-side, called from the pipeline. The service is called
   from the server, so no CORS is needed.
 - **Client tier**: imports the core DIRECTLY and calls a self-hosted
-  search service **browser-direct** — no query ever touches the pair's
+  search service **browser-direct** — no query ever touches the platform's
   server, which is *stronger* than any bridged grant. The config (URL,
   optional key, result count) is a per-user expert setting resting inside
   the sealed client state; CORS on the service is the expert's declared
@@ -67,7 +67,7 @@ arrangement:
   under the client tree; the server side is a façade whose surface IS the
   core (pinned by test).
 - **PA-9 boundary** — this module never mints or meters anything; a
-  client-tier session using the pair's server-paid search does so through
+  client-tier session using the platform's server-paid search does so through
   the grant-bridge module's tokens, not through anything here.
 - **PA-10** — a new backend or source lands through unit tests → a service
   smoke (curl the wire shape) → the admin live test-search → a live

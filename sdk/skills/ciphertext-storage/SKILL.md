@@ -1,13 +1,13 @@
 ---
 name: ciphertext-storage
 description: >-
-  Load when building the server tier's storage plane for an agent pair — the
+  Load when building the server tier's storage plane for a platform — the
   knob-gated cloud mirror of client-encrypted conversations/projects/files,
   the server-derived in-memory history key, the declared readable exception
   for RAG-indexed material, dual-write + bidirectional bulk sync with
   newer-wins reconciliation, the full drain-wipe, and the blind-blob vault
   tier under a user-held secret the server never sees. Also load when
-  auditing what a generated pair's server can and cannot read at rest, or
+  auditing what a generated platform's server can and cannot read at rest, or
   when any change touches the encryption-asymmetry rule.
 ---
 
@@ -220,6 +220,6 @@ client-side and reduces the server to a namespaced blob shelf.
   "combination required", not end-to-end: a live compromised server can
   derive any user's key (it holds the root secret) — it just holds no
   ciphertext unless the knob is on. The reference discloses this at
-  `/help/` (E-12/§11-1); a generated pair that markets it as E2EE is
+  `/help/` (E-12/§11-1); a generated platform that markets it as E2EE is
   overclaiming, and the vault/client tier are the honest answers for users
   who need server-excluded crypto.

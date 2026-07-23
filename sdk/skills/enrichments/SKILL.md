@@ -1,7 +1,7 @@
 ---
 name: enrichments
 description: >-
-  Load when building an agent pair's opt-in context-enrichment plane — the
+  Load when building a platform's opt-in context-enrichment plane — the
   registry of pre-pipeline resolvers that turn something the latest message
   NAMES (a host/IP, a street address, a photo's GPS) into one labeled
   context block every phase can read: the enrichment contract
@@ -20,7 +20,7 @@ description: >-
 Enrichments resolve things the user's message *names* — not topics to
 research — into live external data, appended to the conversation as labeled
 context blocks BEFORE any model call, so triage, search, and synthesis all
-see them. They are the pair's pattern for integrating intelligence feeds
+see them. They are the platform's pattern for integrating intelligence feeds
 without function calling: the orchestrator decides in code whether a lookup
 runs, the request that leaves carries the minimum, and every branch
 degrades to the conversation unchanged. The registry makes the next
@@ -37,7 +37,7 @@ accounts. **There is deliberately no client half**: the pipeline treats
 enrichments as optional by contract, so the client tier simply runs without
 them — its counterpart capabilities arrive, if ever, either browser-direct
 on the user's own keys (the web-search module's pattern) or through the
-grant bridge (class B), never by putting the pair's server in the client
+grant bridge (class B), never by putting the platform's server in the client
 tier's data path. The pure halves of each enrichment (target extraction,
 intent gates, block builders) are still written as import-free Node-tested
 modules — that is what keeps them auditable, and what a future tier move
@@ -91,7 +91,7 @@ would lift out unchanged.
    buggy runner can never take down the chat. The pipeline never names an
    individual enrichment. The fuller declarative form (`settingsKey`,
    `secretName`, `detect` split from `run`) is the roadmap's stated
-   target — adopt it in a fresh pair so gating and visibility derive from
+   target — adopt it in a fresh platform so gating and visibility derive from
    the entry instead of hand-wired lines.
 3. **Per-user knob gating** (`src/settings.js` + the settings API): one
    settings key per enrichment in the per-user settings JSON, **default

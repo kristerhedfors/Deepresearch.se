@@ -2,7 +2,7 @@
 name: agent-platform
 description: >-
   Load when working on the AGENT PLATFORM — defining, previewing, testing or
-  sharing an "agent" (a flavour of the Se/cure + Se/rver pair) through the SDK:
+  sharing an "agent" (a flavour of the Se/cure + Se/rver platform) through the SDK:
   the AgentSpec schema (an agent is DEFINED by its chat-input-pane controls, its
   intro + loading animations, its colour theme, its seed example questions, and
   the default quota a minted share-link token carries), the closed control
@@ -18,7 +18,7 @@ description: >-
 # Agent platform — an agent IS its chat-input pane
 
 The **agent platform** makes "an agent" a first-class, **declarative** thing in
-the SDK. An agent is a *flavour* of the Se/cure + Se/rver pair, and it is
+the SDK. An agent is a *flavour* of the Se/cure + Se/rver platform, and it is
 **defined by five things a user can see and change**:
 
 1. its **chat-input-pane controls** — which affordances hang off the composer

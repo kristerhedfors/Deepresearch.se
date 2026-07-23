@@ -1,7 +1,7 @@
 ---
 name: pair-generator
 description: >-
-  Load when actually GENERATING an agent pair from a module selection — or
+  Load when actually GENERATING a platform from a module selection — or
   wiring an existing product to SDK modules in adoption mode. This is the
   SDK's execution skill: read sdk/MANIFEST.json, validate the selection
   (baseplate always included, dependency closure, class-violation refusal —
@@ -16,9 +16,9 @@ description: >-
   then generate).
 ---
 
-# The pair generator — from a selection to a working pair
+# The pair generator — from a selection to a working platform
 
-Turn a feature selection into a running agent pair — or bind an existing
+Turn a feature selection into a running platform — or bind an existing
 product to the SDK module-by-module. The generator is deliberately thin:
 the knowledge lives in the module skills (`sdk/skills/*/SKILL.md`), the
 machine-readable graph lives in `sdk/MANIFEST.json`, and this skill is the
@@ -75,7 +75,7 @@ This build plan is the generation workflow itself.
    an ordering question, derive the rationale from layers + deps yourself;
    if ROADMAP and manifest ever disagree, the manifest's `deps` win and the
    disagreement is a bug to fix in the same change.
-2. **Choose the pair's name and wordplay EARLY — before generating
+2. **Choose the platform's name and wordplay EARLY — before generating
    anything.** The naming convention (DESIGN.md §1) is load-bearing input
    to multiple modules: the two tier paths (the reference's `/cure` and
    `/rver`), the publish-replays slug discipline (slugs must complete the
@@ -89,7 +89,7 @@ This build plan is the generation workflow itself.
 3. **Validate the selection.**
    - **Baseplate always included:** union the selection with
      `pair-architecture`, `baseplate-worker`, `baseplate-client`. Even a
-     "zero servers" client-only pair keeps `baseplate-worker` in the build —
+     "zero servers" client-only platform keeps `baseplate-worker` in the build —
      the client tier must remain fully functional with that worker reduced
      to any static host, and the worker skeleton is how that property stays
      testable.
@@ -120,7 +120,7 @@ This build plan is the generation workflow itself.
       unit test becomes one; live-verification items become a recorded
       probe procedure.
    4. **Verify** — unit suite green, typecheck clean, the checklist walked;
-      live items verified against the deployed pair when the skill says
+      live items verified against the deployed platform when the skill says
       live is the evidence.
    5. **Commit** — one module, one landing; the tree at every commit is a
       working product with all previously-landed modules still green.
@@ -136,7 +136,7 @@ This build plan is the generation workflow itself.
      before `secure-tier` (L2).) Acceptance for the whole selection: the
      client tier serves and chats from a plain static file host with the
      worker absent.
-   - **Minimal pair** — both tiers, signed-in server-orchestrated research
+   - **Minimal platform** — both tiers, signed-in server-orchestrated research
      plus the client twin: the above plus
      `research-pipeline` (after `provider-registry`), then
      `identity-access → quota-metering`, then `sse-recovery` (after
@@ -183,7 +183,7 @@ This build plan is the generation workflow itself.
    `deps`, and `acceptance`; (c) THEN generate it as an ordinary module in
    the walk. This is the same way the reference's skill library grew —
    solved tasks persist as skills before the session ends — and it keeps
-   the manifest the complete registry of everything a pair can be built
+   the manifest the complete registry of everything a platform can be built
    from.
 9. **Keep the development system running while you generate.** The class-D
    modules are not garnish: the eval harness gates answer-quality changes,

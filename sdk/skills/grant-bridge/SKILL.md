@@ -1,7 +1,7 @@
 ---
 name: grant-bridge
 description: >-
-  Load when building THE bridge of an agent pair — the only sanctioned
+  Load when building THE bridge of a platform — the only sanctioned
   client-tier→server crossing: metered, expiring, revocable grant tokens
   lending bounded server capabilities (web search, proxied LLM completions)
   to sessions that otherwise never touch the server. Covers the token-crypto
@@ -16,7 +16,7 @@ description: >-
 
 # The grant-token bridge between tiers
 
-The pair's story collapses if the client tier quietly calls authenticated
+The platform's story collapses if the client tier quietly calls authenticated
 server endpoints — so every client-tier↔server crossing rides a **grant
 token**: a signed capability, minted by a signed-in user or an admin, that
 lends a session a bounded, disclosed, metered, expiring, instantly-revocable
@@ -87,7 +87,7 @@ the caller's prompt, so its disclosure must say exactly that.
      quota claims**: quota lives ONLY in the meter rows, one row per
      permission, so a grant stays administrable (adjust/pause/top-up/
      revoke) while the token in circulation never changes — the
-     **token-fixed / rows-metered** discipline. New pairs should build Gen
+     **token-fixed / rows-metered** discipline. New platforms should build Gen
      3 directly and keep Gen 1's URL-safety lesson and Gen 2's
      never-in-URL lesson as constraints on what may ride a link.
 3. **JWT family separation is structural, not conventional.** Under the one
@@ -104,7 +104,7 @@ the caller's prompt, so its disclosure must say exactly that.
 4. **THE SERVER-TOKEN GUARANTEE.** State it in the module header at
    verbatim strength and never dilute it:
 
-   > A server token grants access to the pair's UPSTREAM APIs ONLY. It
+   > A server token grants access to the platform's UPSTREAM APIs ONLY. It
    > never hands out any of the server tier's own data: no project
    > contents, no chat contents, no conversation history, no account data.
    > And a server token is NEVER a login: the admin surface is reachable

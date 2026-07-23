@@ -49,7 +49,7 @@ The pieces, and where each is specified:
 
 Once the workspace is portable, nodes stop competing on *holding your data*
 and start competing on *what they can do to it*. deepresearch.se is the
-reference node — a generalist deep-research pair. The interesting future is
+reference node — a generalist deep-research platform. The interesting future is
 the specialized fleet it becomes one of:
 
 - a **domain-literature node** — same pipeline spine, but its `search`

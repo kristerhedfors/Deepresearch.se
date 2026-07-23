@@ -1,7 +1,7 @@
 ---
 name: observability
 description: >-
-  Load when building or extending the pair's observability plane — structured
+  Load when building or extending the platform's observability plane — structured
   logging, request-id correlation, the full-visibility interaction log and its
   incognito opt-out, client error/telemetry beacons, typed operational alerts,
   the admin read APIs + CLI that make production debuggable by an agent
@@ -13,13 +13,13 @@ description: >-
 
 # Observability, interaction logs and live verification
 
-An agent pair is maintained by agent sessions, and an agent session's only
+A platform is maintained by agent sessions, and an agent session's only
 eyes on production are what this module records: structured logs, a
 full-visibility interaction log, client beacons, and typed alerts — all
 reachable through admin read APIs designed to be READ by an agent, plus the
 two field disciplines (live-verify, on-device-trace) for the bug classes no
 recorder catches. The reference product's entire incident history was solved
-through this plane; without it a pair is unfixable the moment it leaves
+through this plane; without it a platform is unfixable the moment it leaves
 `localhost`.
 
 ## Capability class & tier story
