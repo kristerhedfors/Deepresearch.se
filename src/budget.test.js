@@ -16,6 +16,7 @@ import {
   wantsNotes,
   wantsFullContent,
   wantsClaimValidation,
+  wantsSubqFanout,
   MIN_BUDGET_S,
   MAX_BUDGET_S,
   DEFAULT_BUDGET_S,
@@ -265,6 +266,20 @@ describe("budget-tier gates for the deep-research phases", () => {
     assert.equal(wantsNotes(null), false);
     assert.equal(wantsFullContent(undefined), false);
     assert.equal(wantsClaimValidation({}), false);
+  });
+
+  // Sub-question fan-out is gated by its OWN flag (SUBQ_FANOUT_ENABLED in
+  // budget.js — separate from the net-negative deep-tier features: this one
+  // is unmeasured, not disproven). While off it returns false at every tier;
+  // the ≥240s boundary is preserved in the gate body for the bench-gated
+  // enable (tests/bench-gate.mjs is the required evidence — see the flag's
+  // comment for the paired Cloudflare Workflows condition).
+  test("sub-question fan-out stays off at every tier while its flag is disabled", () => {
+    for (const s of [15, 60, 120, 240, 300, 600]) {
+      assert.equal(wantsSubqFanout(plan(s)), false, `fan-out off at ${s}s`);
+    }
+    assert.equal(wantsSubqFanout(null), false);
+    assert.equal(wantsSubqFanout({}), false);
   });
 });
 

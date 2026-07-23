@@ -145,3 +145,38 @@ export function takeSearchBatch(state, queries) {
   }
   return batch;
 }
+
+// Sub-question fan-out merge (pipeline.js runSubquestionFanout): interleave
+// the per-sub-question audit query lists round-robin in sub-question order —
+// every sub-question gets its first pick before any gets a second, so one
+// verbose audit can't starve the others out of the wave — deduped
+// case-insensitively within the wave and capped. Deduping against queries
+// already run (and the maxSearches cap) stays takeSearchBatch's job when the
+// wave fires. Pure so the ordering rule that keeps the fan-out wave's source
+// numbering deterministic is unit-pinned independent of the flag gating the
+// phase.
+/**
+ * @param {(string[] | null | undefined)[]} queryLists Per-sub-question query lists, in sub-question order.
+ * @param {number} cap Max queries in the merged wave.
+ * @returns {string[]}
+ */
+export function mergeFanoutQueries(queryLists, cap) {
+  const lists = queryLists.map((list) =>
+    Array.isArray(list) ? list.filter((q) => typeof q === "string" && q.trim()).map((q) => q.trim()) : [],
+  );
+  const merged = [];
+  const seen = new Set();
+  const deepest = lists.reduce((max, list) => Math.max(max, list.length), 0);
+  for (let depth = 0; depth < deepest && merged.length < cap; depth++) {
+    for (const list of lists) {
+      if (merged.length >= cap) break;
+      const query = list[depth];
+      if (!query) continue;
+      const key = query.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(query);
+    }
+  }
+  return merged;
+}
