@@ -3247,6 +3247,21 @@ $("input").addEventListener("input", () => {
     if (state.developerMode === true) noteIntrospectionText($("input").value);
   }, 350);
 });
+// Enter sends; Shift+Enter inserts a newline — the near-universal chat-composer
+// convention, matching the Se/rver twin (public/js/app.js). Guarded against IME
+// candidate commits (e.isComposing / keyCode 229) and touch-primary devices
+// (coarse pointer), where Enter stays a newline and the ↑ button sends.
+$("input").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.isComposing || e.keyCode === 229) return;
+  try {
+    if (window.matchMedia("(pointer: coarse)").matches) return; // touch → newline
+  } catch {
+    /* no matchMedia → assume a physical keyboard, fall through to send */
+  }
+  e.preventDefault();
+  $("form").requestSubmit();
+});
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the
 // composer pane WHITE TITANIUM (drc.css :root.dev-mode #composer) so the tier's
