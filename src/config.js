@@ -38,6 +38,8 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  * @property {ServerTokenConfig} server_token the CONSOLIDATED Se/rver-token
  *   grant defaults + governance (one JWT, a permission set over upstream APIs
  *   only — src/server-grants.js / src/server-token.js)
+ * @property {PoolConfig} pool compute-sharing defaults + governance (lending a
+ *   local LLM as pooled capacity — src/pool.js)
  * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
  *   selection + registry (admin-selectable small image — src/sandbox-image.js)
  */
@@ -109,6 +111,22 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  * @property {number} budget cap on total OUTSTANDING remaining across all live
  *   server_tokens rows (0 = uncapped)
  */
+/**
+ * Compute-sharing (src/pool.js) defaults + governance. A signed-in sharer lends
+ * their local LLM as pooled capacity; consumers hold pool tokens. Quota 0 =
+ * uncapped ("any number of requests"); the timings bound the D1 job-queue
+ * broker's liveness (docs/COMPUTE-SHARING.md).
+ * @typedef {Object} PoolConfig
+ * @property {boolean} enabled master switch for the whole subsystem
+ * @property {number} quota default per-token quota (0 = uncapped)
+ * @property {number} ttl_hours default lifetime of a pool token, in hours
+ * @property {number} budget cap on total OUTSTANDING remaining across all live
+ *   capped pool_tokens rows (0 = uncapped)
+ * @property {number} provider_stale_s a provider unseen this long is offline
+ * @property {number} claim_stale_s a claimed job unfinished this long requeues
+ * @property {number} job_ttl_s a consumer waits this long before timing out
+ * @property {number} wait_ms how long a poll / submit request blocks server-side
+ */
 
 /** @type {SiteConfig} */
 export const DEFAULT_CONFIG = {
@@ -177,6 +195,20 @@ export const DEFAULT_CONFIG = {
     api_quota: 40, // LLM completions per token's api permission
     ttl_hours: 24,
     budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live server_tokens
+  },
+  // Compute sharing (src/pool.js): lending a local LLM as pooled capacity. The
+  // default token quota is 0 (uncapped — "any number of requests"); the sharer
+  // watches usage in their dashboard and blocks/quotas as they choose. The
+  // timings bound the D1 job-queue broker's liveness.
+  pool: {
+    enabled: true,
+    quota: 0, // 0 = uncapped per token; else the per-token completion cap
+    ttl_hours: 24,
+    budget: 0, // 0 = uncapped; else caps SUM(quota-used) across live capped pool_tokens
+    provider_stale_s: 45,
+    claim_stale_s: 60,
+    job_ttl_s: 120,
+    wait_ms: 20000,
   },
   // Self-hosted Linux sandbox image (src/sandbox-image.js). Empty `image` = the
   // built-in streamed default (today's webvm.io Debian), so this is INERT until
@@ -315,6 +347,18 @@ export function mergeConfig(base, patch) {
     if (Number.isFinite(st.ttl_hours)) out.server_token.ttl_hours = Math.min(720, Math.max(1, Math.round(st.ttl_hours)));
     if (Number.isFinite(st.budget)) out.server_token.budget = Math.max(0, Math.round(st.budget));
   }
+  const pl = patch.pool;
+  if (pl && typeof pl === "object") {
+    if (typeof pl.enabled === "boolean") out.pool.enabled = pl.enabled;
+    // Quota/budget allow 0 (uncapped); the rest are non-hostile bounds.
+    if (Number.isFinite(pl.quota)) out.pool.quota = Math.min(100000, Math.max(0, Math.round(pl.quota)));
+    if (Number.isFinite(pl.ttl_hours)) out.pool.ttl_hours = Math.min(720, Math.max(1, Math.round(pl.ttl_hours)));
+    if (Number.isFinite(pl.budget)) out.pool.budget = Math.max(0, Math.round(pl.budget));
+    if (Number.isFinite(pl.provider_stale_s)) out.pool.provider_stale_s = Math.min(600, Math.max(10, Math.round(pl.provider_stale_s)));
+    if (Number.isFinite(pl.claim_stale_s)) out.pool.claim_stale_s = Math.min(600, Math.max(10, Math.round(pl.claim_stale_s)));
+    if (Number.isFinite(pl.job_ttl_s)) out.pool.job_ttl_s = Math.min(280, Math.max(10, Math.round(pl.job_ttl_s)));
+    if (Number.isFinite(pl.wait_ms)) out.pool.wait_ms = Math.min(60000, Math.max(1000, Math.round(pl.wait_ms)));
+  }
   const sb = patch.sandbox;
   if (sb && typeof sb === "object") {
     // The image registry: keep only well-formed rows (a hostile/malformed patch
@@ -370,6 +414,7 @@ function sanitizeConfigPatch(patch) {
     search: patch?.search,
     proxy: patch?.proxy,
     server_token: patch?.server_token,
+    pool: patch?.pool,
     sandbox: patch?.sandbox,
   };
 }

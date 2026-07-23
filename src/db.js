@@ -265,6 +265,69 @@ CREATE TABLE IF NOT EXISTS server_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_server_tokens_user ON server_tokens(user_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_server_tokens_exp ON server_tokens(expires_at);
+-- Compute sharing (src/pool.js, docs/COMPUTE-SHARING.md): the broker for
+-- lending a local LLM as pooled capacity. One pool per sharer account
+-- (pool_id == account id). pool_providers = online sharer tabs (heartbeated);
+-- pool_jobs = the completion job queue (the prompt rests here transiently, then
+-- is deleted/expired); pool_consumers = the dashboard aggregate + allow/block
+-- list; pool_tokens = the per-token quota meter (0 = uncapped).
+CREATE TABLE IF NOT EXISTS pool_providers (
+  provider_id TEXT PRIMARY KEY,
+  pool_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  label TEXT,
+  models_json TEXT,
+  concurrency INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pool_providers_pool ON pool_providers(pool_id, last_seen_at DESC);
+CREATE TABLE IF NOT EXISTS pool_jobs (
+  job_id TEXT PRIMARY KEY,
+  pool_id TEXT NOT NULL,
+  consumer_key TEXT NOT NULL,
+  token_jti TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_id TEXT,
+  model TEXT,
+  request_json TEXT NOT NULL,
+  response_json TEXT,
+  error TEXT,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  claimed_at INTEGER,
+  done_at INTEGER,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pool_jobs_dispatch ON pool_jobs(pool_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_pool_jobs_consumer ON pool_jobs(consumer_key, created_at DESC);
+CREATE TABLE IF NOT EXISTS pool_consumers (
+  pool_id TEXT NOT NULL,
+  consumer_key TEXT NOT NULL,
+  token_jti TEXT,
+  display TEXT,
+  state TEXT NOT NULL DEFAULT 'active',
+  jobs INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  first_at INTEGER NOT NULL,
+  last_at INTEGER NOT NULL,
+  PRIMARY KEY (pool_id, consumer_key)
+);
+CREATE TABLE IF NOT EXISTS pool_tokens (
+  jti TEXT PRIMARY KEY,
+  pool_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  quota INTEGER NOT NULL DEFAULT 0,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  label TEXT,
+  source TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pool_tokens_pool ON pool_tokens(pool_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pool_tokens_exp ON pool_tokens(expires_at);
 `;
 
 // Additive migrations for databases created before the column existed.
