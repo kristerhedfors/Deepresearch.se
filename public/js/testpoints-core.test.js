@@ -17,6 +17,9 @@ import {
   useCaseTag,
   parseUseCaseRef,
   tagStarterPrompt,
+  useCaseHaystack,
+  filterUseCases,
+  highlightSegments,
 } from "./testpoints-core.js";
 
 test("parseTryId reads a positive integer, else null", () => {
@@ -126,4 +129,65 @@ test("tagStarterPrompt prepends the tag once, never doubling", () => {
   assert.equal(tagStarterPrompt(34, "#UC-34 already tagged"), "#UC-34 already tagged");
   // A DIFFERENT tag in the text is not the point's own → still prepends.
   assert.equal(tagStarterPrompt(34, "#UC-9 other"), "#UC-34 #UC-9 other");
+});
+
+// Queue quick-search — the substring filter + highlight backing the Test
+// queue's search box.
+test("useCaseHaystack joins tag, label and target; skips non-strings", () => {
+  assert.equal(
+    useCaseHaystack({ id: 12, label: "Map cut off", target: "/rver" }),
+    "#UC-12 Map cut off /rver",
+  );
+  // Missing/non-string fields are dropped, not stringified.
+  assert.equal(useCaseHaystack({ id: 3, label: "Only label" }), "#UC-3 Only label");
+  assert.equal(useCaseHaystack({ id: 4, label: 99, target: "/cure" }), "#UC-4 /cure");
+  assert.equal(useCaseHaystack(null), "");
+  assert.equal(useCaseHaystack("bad"), "");
+});
+
+test("filterUseCases narrows by case-insensitive substring; blank = all", () => {
+  const q = [
+    { id: 1, label: "Street View in Stockholm", target: "/rver" },
+    { id: 2, label: "Sandbox boot hang", target: "/cure" },
+    { id: 3, label: "Map export", target: "/admin" },
+  ];
+  // Matches label...
+  assert.deepEqual(filterUseCases(q, "map").map((p) => p.id), [3]);
+  // ...case-insensitively...
+  assert.deepEqual(filterUseCases(q, "SANDBOX").map((p) => p.id), [2]);
+  // ...the #UC tag...
+  assert.deepEqual(filterUseCases(q, "uc-2").map((p) => p.id), [2]);
+  // ...and the target.
+  assert.deepEqual(filterUseCases(q, "/cure").map((p) => p.id), [2]);
+  // Blank / whitespace query returns a copy of the whole list.
+  assert.deepEqual(filterUseCases(q, "").map((p) => p.id), [1, 2, 3]);
+  assert.deepEqual(filterUseCases(q, "   ").map((p) => p.id), [1, 2, 3]);
+  assert.notEqual(filterUseCases(q, ""), q); // shallow copy, not the same ref
+  assert.deepEqual(filterUseCases(q, "zzz"), []);
+  assert.deepEqual(filterUseCases(null, "x"), []);
+});
+
+test("highlightSegments splits into plain/matched runs, every occurrence", () => {
+  assert.deepEqual(highlightSegments("Map a map", "map"), [
+    { text: "Map", match: true },
+    { text: " a ", match: false },
+    { text: "map", match: true },
+  ]);
+  // Match at the very start and end.
+  assert.deepEqual(highlightSegments("abcab", "ab"), [
+    { text: "ab", match: true },
+    { text: "c", match: false },
+    { text: "ab", match: true },
+  ]);
+  // Blank query → one non-matching segment (whole string).
+  assert.deepEqual(highlightSegments("hello", ""), [{ text: "hello", match: false }]);
+  assert.deepEqual(highlightSegments("hello", "   "), [{ text: "hello", match: false }]);
+  // No match → whole string, unmarked.
+  assert.deepEqual(highlightSegments("hello", "zz"), [{ text: "hello", match: false }]);
+  // Empty text → no segments.
+  assert.deepEqual(highlightSegments("", "x"), []);
+  // Reassembling the segments reproduces the original text exactly.
+  const original = "The quick brown fox";
+  const rebuilt = highlightSegments(original, "o").map((s) => s.text).join("");
+  assert.equal(rebuilt, original);
 });

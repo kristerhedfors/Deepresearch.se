@@ -182,6 +182,73 @@ export function partitionActions(actions) {
   return { known, unknown };
 }
 
+// ---- queue quick-search (filter + highlight) ------------------------------
+//
+// The Test queue can carry dozens of use cases, so the overlay offers a
+// substring filter. These three pure helpers back it: `useCaseHaystack`
+// builds the text a point is matched against, `filterUseCases` narrows a
+// list to the matches, and `highlightSegments` splits a string into
+// plain/matched runs so the UI can wrap matches in <mark> WITHOUT innerHTML
+// (segments are rendered as textContent — never HTML — so a point's label or
+// target can't inject markup). All matching is case-insensitive on the
+// trimmed query; a blank query is a no-op (list unchanged, nothing marked).
+
+/**
+ * The searchable text for one test point — its #UC tag, label, and target
+ * joined with spaces. Non-string fields are skipped.
+ * @param {any} point
+ * @returns {string}
+ */
+export function useCaseHaystack(point) {
+  if (!point || typeof point !== "object") return "";
+  return [useCaseTag(point.id), point.label, point.target]
+    .filter((s) => typeof s === "string" && s)
+    .join(" ");
+}
+
+/**
+ * Narrow a queue to the points whose haystack contains the query substring
+ * (case-insensitive). A blank/whitespace query returns a shallow copy of the
+ * whole list.
+ * @param {any[]} list
+ * @param {string} query
+ * @returns {any[]}
+ */
+export function filterUseCases(list, query) {
+  const arr = Array.isArray(list) ? list : [];
+  const q = typeof query === "string" ? query.trim().toLowerCase() : "";
+  if (!q) return arr.slice();
+  return arr.filter((p) => useCaseHaystack(p).toLowerCase().includes(q));
+}
+
+/**
+ * Split `text` into alternating plain / matched segments for the given query
+ * (case-insensitive, every occurrence). Returns `{ text, match }[]`; a blank
+ * text yields `[]`, a blank query yields a single non-matching segment. The
+ * caller renders each segment's `text` as textContent, wrapping `match` ones
+ * in a highlight element.
+ * @param {string} text
+ * @param {string} query
+ * @returns {{ text: string, match: boolean }[]}
+ */
+export function highlightSegments(text, query) {
+  const s = typeof text === "string" ? text : "";
+  if (!s) return [];
+  const needle = (typeof query === "string" ? query.trim() : "").toLowerCase();
+  if (!needle) return [{ text: s, match: false }];
+  const lower = s.toLowerCase();
+  const segs = [];
+  let i = 0;
+  let idx;
+  while ((idx = lower.indexOf(needle, i)) !== -1) {
+    if (idx > i) segs.push({ text: s.slice(i, idx), match: false });
+    segs.push({ text: s.slice(idx, idx + needle.length), match: true });
+    i = idx + needle.length;
+  }
+  if (i < s.length) segs.push({ text: s.slice(i), match: false });
+  return segs;
+}
+
 // Pick the next point to test from a queue: the first `open` one, optionally
 // skipping an id just acted on. Returns null when the queue is drained.
 /**
