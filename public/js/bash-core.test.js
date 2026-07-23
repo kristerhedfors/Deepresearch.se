@@ -24,6 +24,7 @@ import {
   execEnvelope,
   formatByteSize,
   formatShellResult,
+  heredocDelimiters,
   isExportablePath,
   mimeForName,
   normalizeExecResult,
@@ -172,6 +173,83 @@ describe("parseShellRequest", () => {
     for (const junk of [null, undefined, 42, {}, "```bash\nunterminated"]) {
       assert.doesNotThrow(() => parseShellRequest(/** @type {any} */ (junk)));
     }
+  });
+
+  // A here-document must survive as ONE multi-line command, not be shattered
+  // into one command per body line — the "import: not found / class: not found"
+  // regression when a model writes a source file (feedback #3, 2026-07-23).
+  test("keeps a heredoc whole as a single command", () => {
+    const block =
+      "```bash\n" +
+      "cat > /workspace/chatbot/simple_chatbot.py << 'EOL'\n" +
+      "import random\n" +
+      "class SimpleChatbot:\n" +
+      "    def __init__(self):\n" +
+      "        self.responses = {'hi': ['hello']}\n" +
+      "EOL\n" +
+      "```";
+    const r = parseShellRequest(block);
+    assert.equal(r.commands.length, 1);
+    const cmd = r.commands[0];
+    assert.match(cmd, /^cat > \/workspace\/chatbot\/simple_chatbot\.py << 'EOL'\n/);
+    assert.match(cmd, /\nimport random\n/);
+    // The body lines are NOT standalone commands.
+    assert.ok(!r.commands.includes("import random"));
+    assert.ok(cmd.endsWith("EOL"));
+  });
+
+  test("runs a command after a heredoc as its own command", () => {
+    const block =
+      "```bash\n" +
+      "cat > f.txt << EOF\n" +
+      "line one\n" +
+      "line two\n" +
+      "EOF\n" +
+      "python3 f.txt\n" +
+      "```";
+    const r = parseShellRequest(block);
+    assert.equal(r.commands.length, 2);
+    assert.match(r.commands[0], /line one\nline two\nEOF$/);
+    assert.equal(r.commands[1], "python3 f.txt");
+  });
+
+  test("a `#` inside a heredoc body is preserved, not dropped as a comment", () => {
+    const block = "```bash\ncat << EOF\n# this is python, keep it\nx = 1\nEOF\n```";
+    const r = parseShellRequest(block);
+    assert.equal(r.commands.length, 1);
+    assert.match(r.commands[0], /# this is python, keep it/);
+  });
+
+  test("<<- strips leading tabs from the terminator", () => {
+    const block = "```bash\ncat <<-EOF\n\tindented\n\tEOF\n```";
+    const r = parseShellRequest(block);
+    assert.equal(r.commands.length, 1);
+    assert.match(r.commands[0], /\tindented/);
+  });
+
+  test("a here-string (<<<) is not treated as a heredoc", () => {
+    const r = parseShellRequest('```bash\ngrep foo <<< "foo bar"\nls\n```');
+    assert.deepEqual(r.commands, ['grep foo <<< "foo bar"', "ls"]);
+  });
+});
+
+// ---- heredocDelimiters --------------------------------------------------
+
+describe("heredocDelimiters", () => {
+  test("detects unquoted, quoted, and <<- forms", () => {
+    assert.deepEqual(heredocDelimiters("cat << EOF"), [{ delim: "EOF", stripTabs: false }]);
+    assert.deepEqual(heredocDelimiters("cat <<EOF"), [{ delim: "EOF", stripTabs: false }]);
+    assert.deepEqual(heredocDelimiters("cat << 'EOL'"), [{ delim: "EOL", stripTabs: false }]);
+    assert.deepEqual(heredocDelimiters('cat <<"END"'), [{ delim: "END", stripTabs: false }]);
+    assert.deepEqual(heredocDelimiters("cat <<-EOF"), [{ delim: "EOF", stripTabs: true }]);
+  });
+  test("ignores here-strings and lines with no heredoc", () => {
+    assert.deepEqual(heredocDelimiters('grep x <<< "y"'), []);
+    assert.deepEqual(heredocDelimiters("echo hi"), []);
+  });
+  test("finds multiple delimiters in order", () => {
+    const d = heredocDelimiters("cat << A << B");
+    assert.deepEqual(d.map((x) => x.delim), ["A", "B"]);
   });
 });
 
@@ -690,9 +768,18 @@ describe("execEnvelope + parseExecEnvelope", () => {
     const { wrapped } = execEnvelope("exit 3", "id1");
     // RC must be read from $? directly after the subshell, BEFORE the base64
     // command substitutions run — the regression that lost real exit codes.
-    assert.match(wrapped, /\) >\/tmp\/_oid1 2>\/tmp\/_eid1; RC=\$\?; /);
+    assert.match(wrapped, /\n\) >\/tmp\/_oid1 2>\/tmp\/_eid1; RC=\$\?; /);
     assert.ok(wrapped.indexOf("RC=$?") < wrapped.indexOf("base64"));
-    assert.ok(wrapped.includes("( exit 3 )"));
+    assert.ok(wrapped.includes("(\nexit 3\n)"));
+  });
+
+  test("the closing ) is on its own line so a heredoc terminator survives", () => {
+    // A heredoc's terminator must be alone on its line; an inline `( … ) >file`
+    // would put `) >…` on the same line as EOL and break the write.
+    const cmd = "cat > f.py << 'EOL'\nimport random\nEOL";
+    const { wrapped } = execEnvelope(cmd, "h1");
+    assert.ok(wrapped.includes("EOL\n) >/tmp/_oh1"), wrapped);
+    assert.ok(!/EOL \)/.test(wrapped), "terminator must not share its line with )");
   });
 
   test("empty fields and negative exit codes parse; missing marker → null", () => {

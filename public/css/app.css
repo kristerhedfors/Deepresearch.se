@@ -151,6 +151,11 @@ body::before {
 body.term-fg #chat {
   opacity: .16;
 }
+/* THIRD view mode (2026-07-23 directive): the terminal output is not shown at
+   all. Neither term-fg nor term-hidden = the default faint-backdrop state;
+   term-hidden drops the backdrop entirely so only the conversation remains
+   (agent-backdrop.js also sets display:none inline as a belt-and-suspenders). */
+body.term-hidden #dr-agent-backdrop { display: none; }
 body.term-fg #dr-agent-backdrop {
   z-index: 4;
   /* Terminal COLORING (2026-07-16 directive): the pane forward = a real
@@ -1211,10 +1216,21 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* Terminal switcher icon (public/js/agent-backdrop.js): hidden until the
    in-browser Linux VM prints something, then it appears — its presence is the
    sign the sandbox is active — and TAPPING it is the one way to switch between
-   the terminal pane and the conversation. Pressed (accent) = the terminal is the
-   foreground pane right now. No glow: just the symbol, matching the other icons. */
+   the terminal pane and the conversation. The icon now cycles THREE modes and
+   reflects each with a HARMONIZED highlight (2026-07-23 directive) — one accent
+   hue at descending intensity so the icon tells you which mode you're in:
+     .on      terminal forward         → full accent fill (strongest)
+     .mode-bg terminal a faint backdrop → accent-tinted outline (medium)
+     .mode-off terminal not shown at all → dim neutral glass (faintest)
+   No glow: just the symbol, matching the other icons. */
 #termbtn[hidden] { display: none; }
 #termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#termbtn.mode-bg {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#termbtn.mode-off { opacity: .5; }
 /* Active incognito stays clearly visible while the chat runs — the lock
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }

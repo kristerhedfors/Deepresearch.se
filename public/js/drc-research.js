@@ -282,7 +282,7 @@ export const drcBashAgentPrompt = (opts = {}) =>
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
     : "") +
   "Run commands step by step to accomplish the user's request, then stop so the answer can be written from what you found. Each turn respond in ONE of two ways:\n" +
-  "1. A short one-sentence plan, then a single fenced ```bash block with the commands to run this turn (one per line, no prose inside). Keep turns small (1-3 commands).\n" +
+  "1. A short one-sentence plan, then a single fenced ```bash block with the commands to run this turn (one per line, no prose inside). A here-document (`cat > file << 'EOF'` … lines … `EOF`) writes a multi-line file and counts as ONE command — keep its whole body plus the closing terminator (on its own line) inside the block. Keep turns small (1-3 commands).\n" +
   "2. When you have what the answer needs (or it cannot be done offline): reply with the single line SHELL_DONE and no code block.\n" +
   "Commands must be non-interactive (no editors/pagers/prompts). Never attempt network access. Never fabricate output — rely only on real results shown to you. Stop (SHELL_DONE) as soon as more commands would not help." +
   AI_MODEL_NOT_A_PACKAGE_NOTE +
