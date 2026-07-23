@@ -23,15 +23,21 @@
 // started (2026-07-14 directive). ANSI escapes are stripped and the live,
 // not-yet-terminated prompt line is shown as a tail.
 //
-// TWO-LAYER VIEW SWITCH: while the sandbox is running the page holds two stacked
+// THREE-MODE VIEW SWITCH: while the sandbox is running the page holds two stacked
 // panes — the CONVERSATION and this TERMINAL backdrop. A header ICON (`#termbtn`
-// in the upper-right, a terminal glyph) is the ONE control that swaps which pane
-// is in front: the front pane reads at full strength, the other recedes to a
-// faint background, and a quick slide-in-from-the-right sells the swap. The icon
-// APPEARS the moment the VM prints anything — so beyond the characters drifting
-// on the background, the icon's presence is the sign the Linux system is active
-// (2026-07-14 directive: replaced the old tap-on-the-background switch — the icon
-// is now the only switcher, and its only job is switching).
+// in the upper-right, a terminal glyph) is the ONE control, and tapping it CYCLES
+// three modes (2026-07-23 directive, extending the original two):
+//   1. CONVO    — conversation in front, the terminal a faint backdrop behind it.
+//   2. TERMINAL — the terminal in front at full strength (a real terminal field).
+//   3. HIDDEN   — the terminal output is not shown at all; only the conversation.
+// The front pane reads at full strength, the other recedes to a faint background,
+// and a quick slide-in-from-the-right sells the swap (except into HIDDEN, which
+// has nothing to slide in). The icon reflects the current mode with HARMONIZED
+// highlights — one accent hue at descending intensity (full fill → tinted outline
+// → dim neutral), see syncTermBtn + the CSS. The icon APPEARS the moment the VM
+// prints anything — so beyond the characters drifting on the background, the
+// icon's presence is the sign the Linux system is active (2026-07-14 directive:
+// replaced the old tap-on-the-background switch — the icon is the only switcher).
 //
 // The terminal text NEVER sways side to side — the old ambient horizontal wave
 // was removed (2026-07-14 directive). Its only motion is north-south, and only
@@ -85,6 +91,7 @@ import {
   convoSyncOffset,
   createBackdropModel,
   ensureChannel,
+  LAYER_HIDDEN,
   nextLayerMode,
   opacityCss,
   parallaxFollow,
@@ -196,6 +203,13 @@ function ensureLayer() {
 
 function applyOpacity() {
   if (!layer) return;
+  // HIDDEN mode: the terminal output is not shown at all (2026-07-23 directive).
+  // Drop the layer out entirely — the body.term-hidden CSS also hides it, this
+  // is the belt-and-suspenders so it never paints even if the class is stale.
+  if (layerMode === LAYER_HIDDEN) {
+    layer.style.display = "none";
+    return;
+  }
   layer.style.display = "";
   // Full strength when the terminal is the foreground pane; the faint ceiling
   // when it's the background (its normal, decorative state).
@@ -367,13 +381,33 @@ function termBtn() {
   return typeof document !== "undefined" ? document.getElementById(TERM_BTN_ID) : null;
 }
 
-// Reflect on the icon: pressed (accent) while the terminal is the foreground.
+// Reflect the current mode on the icon with HARMONIZED highlights (2026-07-23
+// directive) — one accent hue at descending intensity, so the icon itself tells
+// you which of the three modes you're in:
+//   terminal forward → full accent fill      (.on)
+//   convo / faint backdrop → accent-tinted outline (.mode-bg)
+//   hidden / not shown → dim neutral glass    (.mode-off)
 function syncTermBtn() {
   const btn = termBtn();
   if (!btn) return;
   const terminal = layerMode === LAYER_TERMINAL;
+  const hidden = layerMode === LAYER_HIDDEN;
   btn.classList.toggle("on", terminal);
-  try { btn.setAttribute("aria-pressed", terminal ? "true" : "false"); } catch { /* ignore */ }
+  btn.classList.toggle("mode-bg", !terminal && !hidden);
+  btn.classList.toggle("mode-off", hidden);
+  try {
+    // Only the forward pane is a true "pressed" toggle; the tri-state is spelled
+    // out in the label so assistive tech announces the mode and the next tap.
+    btn.setAttribute("aria-pressed", terminal ? "true" : "false");
+    btn.setAttribute(
+      "title",
+      terminal
+        ? "Terminal in front — tap to hide it"
+        : hidden
+          ? "Terminal hidden — tap to show it behind the chat"
+          : "Terminal behind the chat — tap to bring it forward",
+    );
+  } catch { /* ignore */ }
 }
 
 // Show the switcher icon the moment the terminal is active (the VM printed), and
@@ -428,21 +462,29 @@ function wireTermBtn() {
   });
 }
 
-/** Switch the foreground pane, updating the class, opacity, icon and flourish. */
+/** Switch the view mode, updating the body classes, opacity, icon and flourish. */
 function setLayerMode(mode) {
-  const next = mode === LAYER_TERMINAL ? LAYER_TERMINAL : LAYER_CONVO;
+  const next = mode === LAYER_TERMINAL ? LAYER_TERMINAL
+    : mode === LAYER_HIDDEN ? LAYER_HIDDEN
+      : LAYER_CONVO;
   if (next === layerMode) return;
   layerMode = next;
   const terminal = layerMode === LAYER_TERMINAL;
+  const hidden = layerMode === LAYER_HIDDEN;
   if (typeof document !== "undefined" && document.body) {
+    // term-fg brings the terminal forward; term-hidden drops it out of view.
+    // Both absent = the default faint-backdrop (convo) state.
     document.body.classList.toggle("term-fg", terminal);
+    document.body.classList.toggle("term-hidden", hidden);
   }
   applyOpacity();
   syncTermBtn();
   clearParallax();
-  slideInForeground(terminal);
-  // Leaving terminal mode returns the keyboard to the page (the composer is
-  // the only input again); entering it waits for the user's tap to focus.
+  // The slide-in flourish only makes sense when a pane actually comes forward
+  // (convo or terminal); hiding the terminal has nothing to slide in.
+  if (!hidden) slideInForeground(terminal);
+  // Only terminal mode keeps the keyboard on the terminal input; convo and
+  // hidden both hand the keyboard back to the page (the composer).
   if (!terminal) blurTerminalInput();
 }
 

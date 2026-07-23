@@ -200,19 +200,51 @@ export function wmHtml(s) {
  *                   (web search or LLM) is live in this session
  *   workspaceName — set when this session was opened from a shared secure
  *                   workspace link ("" / absent otherwise)
+ *   workspaceGrants — the borrowed allowance a workspace link bundled (a
+ *                   "research token"), as `{ llm, search }` naming exactly
+ *                   which of the TWO shareable services it carried: llm =
+ *                   server-proxied Berget (model + embeddings), search =
+ *                   server-proxied Exa (query only). Those two are the ONLY
+ *                   third parties a link can borrow. `true` = present but
+ *                   unspecified; falsy = none. When set the session is NOT
+ *                   offline going forward.
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
  *          search?: string|null, embedProvider?: string, embedBorrowed?: boolean,
- *          grantsConnected?: boolean, workspaceName?: string}} [ctx]
+ *          grantsConnected?: boolean, workspaceName?: string,
+ *          workspaceGrants?: boolean|{llm?: boolean, search?: boolean}}} [ctx]
  * @returns {string[]} paragraphs, most important first — never empty
  */
 export function privacyNoticeLines(ctx = {}) {
   const lines = [];
   if (ctx.workspaceName) {
     const name = typeof ctx.workspaceName === "string" ? ctx.workspaceName : "";
+    // Scope "offline" to the LINK's transport only. The blob really does ride
+    // the URL fragment and never reaches a server — but that is NOT the same
+    // as an offline SESSION, and arriving via a shared link must not be left
+    // to read that way. What the link HANDED this browser (a research token,
+    // API keys) decides where the session sends data from here.
     lines.push(
-      `This session was opened from a shared secure workspace link${name ? ` (“${name}”)` : ""}. ` +
-        "Everything the link carried — keys, settings, chats, borrowed allowances — was decrypted and applied IN THIS BROWSER; the link's contents never reach any server (the whole workspace travels in the URL fragment, which browsers do not send).",
+      `This session opened from a shared secure workspace link${name ? ` (“${name}”)` : ""}. The LINK itself is offline: everything it carried — keys, settings, chats, any borrowed allowances — rode in the URL fragment (which browsers never send to a server), was decrypted IN THIS BROWSER, and reached no server.`,
     );
+    if (ctx.workspaceGrants) {
+      // Name EXACTLY which server-touching routes this token opened, mapped to
+      // the two (and only two) shareable grant families — then state the
+      // ceiling, so the recipient knows a link can never carry more than these.
+      const g = ctx.workspaceGrants;
+      const llm = g === true ? false : !!g.llm;
+      const search = g === true ? false : !!g.search;
+      const routes = [];
+      if (llm) routes.push("your conversation to Berget (and its embeddings, for project recall)");
+      if (search) routes.push("your search queries to Exa (only the query leaves this browser)");
+      const routed = routes.length ? routes.join(", and ") : "your conversation and/or web-search queries";
+      lines.push(
+        `That does NOT make this an offline session. The link handed you a borrowed research token, and using it routes ${routed} THROUGH the DeepResearch.Se server — metered and time-limited. A workspace link can borrow ONLY these two services — Berget for the model and its embeddings, Exa for web search — and no other third party: it cannot carry, say, Shodan or Google Maps access. What the link handed you, not the link itself, decides where your data goes; the lines below are the exact routes.`,
+      );
+    } else {
+      lines.push(
+        "Whether this SESSION sends anything out depends not on the link but on what it handed you — the keys and settings now applied here. The lines below are the exact routes for this session.",
+      );
+    }
   }
   lines.push(
     "Your chats, API keys and projects rest sealed in THIS browser's storage. The DeepResearch.Se server stores none of them and is in no data path unless a line below says otherwise.",

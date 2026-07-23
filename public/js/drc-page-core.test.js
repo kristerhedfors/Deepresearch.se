@@ -193,12 +193,61 @@ test("privacyNoticeLines: a shared workspace leads the notice, named or not", ()
   const named = privacyNoticeLines({ workspaceName: "research kit" });
   assert.match(named[0], /shared secure workspace link/);
   assert.match(named[0], /research kit/);
-  assert.match(named[0], /never reach any server/i);
+  // "offline" is scoped to the LINK's transport, not the session.
+  assert.match(named[0], /The LINK itself is offline/);
+  assert.match(named[0], /reached no server/i);
   const unnamed = privacyNoticeLines({ workspaceName: true });
   assert.match(unnamed[0], /shared secure workspace link/);
   assert.doesNotMatch(unnamed[0], /“/);
   // no workspace → no workspace line
   assert.doesNotMatch(privacyNoticeLines({})[0], /workspace/i);
+});
+
+test("privacyNoticeLines: a workspace with a bundled research token is stated NOT offline, with the exact routes + ceiling", () => {
+  // The user arrives via a link that carried BOTH borrowed services: the notice
+  // must correct the "offline" read, name each server-touching route, and state
+  // that a link can borrow only these two — never Shodan/Maps/etc.
+  const lines = privacyNoticeLines({
+    workspaceName: "shared kit",
+    workspaceGrants: { llm: true, search: true },
+    provider: "Berget (borrowed)",
+    viaProxy: true,
+    grantsConnected: true,
+  });
+  assert.match(lines[0], /The LINK itself is offline/); // link transport only
+  const correction = lines[1];
+  assert.match(correction, /does NOT make this an offline session/i);
+  assert.match(correction, /research token/i);
+  assert.match(correction, /THROUGH the DeepResearch\.Se server/);
+  assert.match(correction, /metered/i);
+  // both routes named, mapped to the share-menu grant families
+  assert.match(correction, /your conversation to Berget/);
+  assert.match(correction, /your search queries to Exa/);
+  // the ceiling: only these two, never other third parties
+  assert.match(correction, /can borrow ONLY these two services/);
+  assert.match(correction, /Shodan or Google Maps/);
+});
+
+test("privacyNoticeLines: the research-token routes are named per the grants actually carried", () => {
+  // LLM-only token: name the Berget route, not a search route that wasn't granted.
+  const llmOnly = privacyNoticeLines({ workspaceName: true, workspaceGrants: { llm: true, search: false } })[1];
+  assert.match(llmOnly, /your conversation to Berget/);
+  assert.doesNotMatch(llmOnly, /your search queries to Exa/);
+  // Search-only token: name the Exa route, not a model route that wasn't granted.
+  const searchOnly = privacyNoticeLines({ workspaceName: true, workspaceGrants: { llm: false, search: true } })[1];
+  assert.match(searchOnly, /your search queries to Exa/);
+  assert.doesNotMatch(searchOnly, /your conversation to Berget/);
+  // Both still state the ceiling regardless of which was granted.
+  assert.match(llmOnly, /can borrow ONLY these two services/);
+  assert.match(searchOnly, /can borrow ONLY these two services/);
+});
+
+test("privacyNoticeLines: a workspace WITHOUT bundled allowances hands off without claiming offline", () => {
+  const lines = privacyNoticeLines({ workspaceName: true });
+  assert.match(lines[0], /The LINK itself is offline/);
+  // No research-token claim, but also no blanket "offline session" promise.
+  assert.doesNotMatch(lines[1], /research token/i);
+  assert.match(lines[1], /depends not on the link but on what it handed you/i);
 });
 
 test("providerVisibilityNote: the standing model-picker disclosure per provider kind", () => {
