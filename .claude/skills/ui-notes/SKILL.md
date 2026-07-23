@@ -15,6 +15,17 @@ description: >-
 - Assistant answers render as **Markdown by default** (synthesis prompt asks
   for Markdown). Rendering is client-side with vendored `marked` +
   `DOMPurify` (`public/vendor/` — no CDN; everything stays behind auth).
+  A complete ```` ```mermaid ```` fence in an answer renders as a real
+  diagram (feedback #4, 2026-07-23): `markdown.js` lazy-loads the vendored
+  `mermaid.min.js` (~3.4 MB, `/vendor/`, public in `src/assets.js` for the
+  /cure tier) only when the answer text contains a CLOSED mermaid fence
+  (`completeMermaidSources`, Node-tested — an unterminated mid-stream fence
+  stays a code block), renders with `securityLevel: "strict"` +
+  `htmlLabels: false`, re-sanitizes the SVG through DOMPurify, and fails
+  soft to the visible code block on any load/parse error. Mermaid was
+  chosen over lighter libraries (nomnoml, pintora, flowchart.js) because
+  answer models emit mermaid syntax natively; the weight is paid only on
+  diagram-bearing answers.
   `markdown.js`'s `normalizeLlmMarkdown` repairs one real-world model quirk
   before parsing: GLM-4.7 streamed a whole GFM table on ONE line with its
   rows joined by `||` and no blank line before it, so CommonMark rendered it
