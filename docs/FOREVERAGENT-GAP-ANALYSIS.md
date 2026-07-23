@@ -10,7 +10,7 @@
 > `mcp.md`, `deployment.md` plus the site index (`llms.txt`).
 >
 > This is an assessment document, not a change to product behaviour. It scopes
-> **Se/cure only** — Se/rver (the signed-in hosted tier) is deliberately server-
+> **Se/cure only**. Se/rver (the signed-in hosted tier) is deliberately server-
 > centric and is out of scope for the Forever Agent bar.
 >
 > **Companion:** `docs/FOREVERAGENT-TRAJECTORY.md` turns this into a phased plan
@@ -70,13 +70,12 @@ Cross-cutting domain rules also referenced below: **identity disclosure**
 | R14 Edge deployment | 🟡 Incidental | Static assets could be edge-served; not a designed path |
 
 **Headline:** Se/cure is architecturally *aligned* with the Forever Agent
-philosophy — it already nails data sovereignty, verifiable privacy, encrypted
-state, and in-browser execution, which are the hard, structural ones. It
-**fails three MUST requirements (R1, R6, and partially R5)** for one shared
-root cause: **inference is remote-only.** Fixing that one thing (via a local
-server option and/or WebLLM) clears the biggest gaps at once. The remaining
-work is portability (R10) and finishing the supply-chain/static-file story
-(R7, R9).
+philosophy. It already nails data sovereignty, verifiable privacy, encrypted
+state, and in-browser execution, the hard structural ones. It **fails three
+MUST requirements (R1, R6, and partially R5)** for one shared root cause:
+**inference is remote-only.** Fixing that one thing (via a local server option
+and/or WebLLM) clears the biggest gaps at once. The remaining work is
+portability (R10) and finishing the supply-chain/static-file story (R7, R9).
 
 ---
 
@@ -94,7 +93,7 @@ with a hard-coded remote base URL:
 They were chosen specifically because they serve browser CORS. There is **no
 localhost entry, no Ollama/llama.cpp/LM Studio option, and no custom-base-URL
 field** in the settings drawer (`public/cure/index.html` → `#keyspanel`). The
-spec makes a local OpenAI-compatible server the *baseline* MUST — the exact API
+spec makes a local OpenAI-compatible server the *baseline* MUST, the exact API
 shape (`POST /v1/chat/completions`) Se/cure already speaks.
 
 **Gap.** Se/cure cannot run against inference the user controls. Every answer
@@ -108,7 +107,7 @@ requires shipping the conversation to a third-party API.
    - **CORS:** Ollama needs `OLLAMA_ORIGINS` set to allow the page's origin; llama.cpp/LM Studio expose permissive CORS. Surface this as a one-line setup hint on the panel.
 4. Keep the split-model-routing invariant: the local server can serve *both* the JSON planning phases and synthesis, so `jsonModel` should fall back to the same local model.
 
-This is the single most valuable change — it converts Se/cure from "private
+This is the single most valuable change. It converts Se/cure from "private
 transport to someone else's model" into "your model, your device."
 
 ### R6 — Offline capability — ❌ Gap
@@ -124,18 +123,18 @@ CheerpX engine from a CDN. Nothing works air-gapped.
 - With **R1 (local server)** the chat/research core works offline the moment a local model is reachable — the only network traffic is `localhost`.
 - **R11 (WebLLM)** would make it work with *no server at all* after first model download.
 - Add a **service worker** for `/cure` that precaches the app shell (HTML/CSS/JS/vendored libs) so the UI itself loads offline. There is none today (confirmed: no `serviceWorker`/manifest registration in the `/cure` graph).
-- For the sandbox to be offline-capable, the engine and a minimal disk image would need to be self-hosted (see R7) — a larger, separable effort.
+- For the sandbox to be offline-capable, the engine and a minimal disk image would need to be self-hosted (see R7), a larger, separable effort.
 
 ### R5 — Transparency — 🟡 Partial
 
-**Current.** *Data-flow* transparency is genuinely strong and better than most:
-the intro pane, ghost bubble, and settings copy all state plainly that keys and
+**Current.** *Data-flow* transparency is genuinely strong and better than most.
+The intro pane, ghost bubble, and settings copy all state plainly that keys and
 chats stay in this browser and the server is never in the path. DOMPurify
 sanitisation is in place (threat-model compliance).
 
 **Gaps against `identity.md`.**
 1. **No explicit AI-identity disclosure** at conversation start. The spec wants *"I'm an AI agent built to help with [purpose]"* and an immediate honest answer to "are you AI?". Se/cure's empty state describes the *tool* but the assistant never introduces itself as an AI with bounded memory.
-2. **The irreducible boundary is underplayed.** The threat model calls the LLM-provider boundary "irreducible for remote inference." Se/cure says the *site's* server can't read your chat — true — but a first-time user may not register that **OpenAI/Groq/Berget do receive the full conversation**. That should be said as plainly as the "our server can't see it" claim.
+2. **The irreducible boundary is underplayed.** The threat model calls the LLM-provider boundary "irreducible for remote inference." Se/cure says the *site's* server can't read your chat (true), but a first-time user may not register that **OpenAI/Groq/Berget do receive the full conversation**. That should be said as plainly as the "our server can't see it" claim.
 
 **Adaptation.**
 - Add a one-line AI identity + capability disclosure to the empty/first-turn state (and answer "are you AI?" honestly — already true of an LLM, just make it explicit).
@@ -151,7 +150,7 @@ sanitisation is in place (threat-model compliance).
 **Current.** A project is sealed under a `DR1-…` secret and reachable at
 `/my/project-<hash>`; the form is wired for password-manager capture. But the
 sealed blob lives in **one browser's localStorage** and the derivation is only
-a *reference*, not a *carrier* — there is **no export/import, no QR, no
+a *reference*, not a *carrier*: there is **no export/import, no QR, no
 file, and no URL-fragment** carrying the state. Cross-device is explicitly
 punted to Se/rver.
 
@@ -190,7 +189,7 @@ const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache
 ```
 
 So **every block that gets read is persisted in IndexedDB** and served locally
-on the next boot, and all writes land locally too. It is *lazy*, though — only
+on the next boot, and all writes land locally too. It is *lazy*, though: only
 touched blocks are cached, not the whole image. Fully-local/offline would mean
 force-reading the entire device once (a large, deliberate one-time prefetch),
 which then runs into **browser storage quota + eviction — worst exactly on iOS
@@ -207,10 +206,10 @@ story great and the mobile story *more* precarious, not less.
 ### R9 — Static-file deployable — 🟡 Partial
 
 **Current.** `/cure` is served as static assets and all model calls go direct
-from the browser, so the *shape* is right. But: module `src`/`href` paths are
+from the browser, so the *shape* is right. But module `src`/`href` paths are
 absolute (`/cure/drc.js`, `/vendor/…`), it has never been verified from
 `file://`, and the sandbox needs the cross-origin-isolation **COEP/COOP headers
-the Worker injects** — so at least the sandbox path is not backend-independent.
+the Worker injects**, so at least the sandbox path is not backend-independent.
 
 **Adaptation.**
 - Test the core chat flow from a clean `file://` and a bare `python3 -m http.server`; switch to relative asset paths where needed so the app boots with no origin services (spec's explicit test: *"Test from `file://` and local static server to verify baseline independence"*).
@@ -239,7 +238,7 @@ the Worker injects** — so at least the sandbox path is not backend-independent
 ## 7. Prioritised plan — what to document, what to fix, in what order
 
 Two tracks. **Document** = write it down now (disclosures, accepted
-exceptions, decisions) — cheap, and several of these are the *actual* spec
+exceptions, decisions): cheap, and several of these are the *actual* spec
 requirement (transparency is a disclosure, not a build). **Fix** = code.
 Ordered MUST-first, then by impact ÷ effort. The ranking is deliberately front-
 loaded: **P1 alone clears the most MUST ground.**
@@ -268,11 +267,11 @@ loaded: **P1 alone clears the most MUST ground.**
 
 ### Bottom line
 
-Se/cure is roughly **two MUST-level features** from meeting the bar — **local
-inference (P1/R1)** and the **offline capability (P3/R6)** it unlocks — plus
+Se/cure is roughly **two MUST-level features** from meeting the bar: **local
+inference (P1/R1)** and the **offline capability (P3/R6)** it unlocks, plus
 **portability (P2/R10)** for the SHOULD tier. The structural hard parts
 (sovereignty, verifiable privacy, encrypted state, in-browser execution) are
-already done. **The single highest-leverage move is P1**; the cheapest genuine
+already done. **The single highest-leverage move is P1.** The cheapest genuine
 compliance wins are the Track-A disclosures (transparency is literally a MUST
 that you satisfy by *writing the sentence*).
 
@@ -293,13 +292,13 @@ effect, not the goal.
    especially) silently evict. The sealed blob is already one AES-GCM
    ciphertext, so a file backup/restore is small. *Scope note:* secure
    workspaces (2026-07-15, `workspace-core.js`) already shipped the
-   URL-fragment carry for **sessions** (keys/settings/chats/grants) — what
+   URL-fragment carry for **sessions** (keys/settings/chats/grants); what
    remains is the **project** blob (documents + RAG index) and the file
    transport. QR stays future work.
 2. **Local / custom-endpoint inference** (P1/R1) — picked because it *is* the
    project's mission ("how far can a real research assistant be pushed toward
    provable privacy"), not because the spec mandates it: your model, your
-   device, network tab shows localhost only — and it removes the paid-API-key
+   device, network tab shows localhost only, and it removes the paid-API-key
    barrier to trying the tier. The `baseUrl` plumbing already threads through
    every wire call.
 3. **Honest disclosures** (D1/R5) — the "your words go to {provider}; they can

@@ -1,25 +1,25 @@
 # Enabling Google sign-in
 
-> **STATUS: IMPLEMENTED** (`src/google.js`) — with deliberate deviations
-> from the original plan below, decided when the site switched to
+> **STATUS: IMPLEMENTED** (`src/google.js`), with deliberate deviations
+> from the original plan below. These were decided when the site switched to
 > **Google-only** auth:
-> - Google is the ONLY user-facing sign-in; password login, invitations,
+> - Google is the only user-facing sign-in. Password login, invitations,
 >   and access requests were removed entirely.
 > - Any Google account with a verified email is **auto-provisioned** on
->   first sign-in; the `ADMIN_EMAIL` wrangler var gets (and keeps) the
->   admin role. There is no invite gate — instead there is an **approval
+>   first sign-in. The `ADMIN_EMAIL` wrangler var gets (and keeps) the
+>   admin role. There is no invite gate. In its place there is an **approval
 >   gate** (config `require_approval`, default on): non-admin sign-ins
 >   land as `pending` on an auto-refreshing waiting page (APIs 403,
 >   nothing spends) until approved in `/admin`. Quotas are the cost
 >   boundary after that, and the admin can disable users at any time.
 > - Every account must also accept the **terms of use** once, right after
->   first sign-in (`POST /terms/accept`, `users.terms_accepted_at`) —
+>   first sign-in (`POST /terms/accept`, `users.terms_accepted_at`),
 >   before the approval wait, the app, or any API.
 > - Sessions are 365-day sliding cookies so PWA users never re-log-in.
 > - `ADMIN_USER`/`ADMIN_PASS` remain as break-glass Basic Auth (scripts,
 >   emergencies). The session/state HMAC is now keyed by a dedicated
 >   `SESSION_SECRET` (random, `openssl rand -hex 32`), NOT the admin
->   password — see the note in §2. It is the sole signing key: the old
+>   password. See the note in §2. It is the sole signing key: the old
 >   admin-key fallback was removed, so if `SESSION_SECRET` is unset the
 >   Worker serves a configuration-error page instead of signing keyless.
 >
@@ -30,9 +30,9 @@
 > as history only.
 
 How to add "Sign in with Google" to Deepresearch.se. The account layer was
-built for this: **accounts are keyed by email**, and sessions are already
-identity-carrying cookies — Google becomes the way to *prove* an email,
-not a new account system.
+built for this. **Accounts are keyed by email**, and sessions are already
+identity-carrying cookies, so Google becomes the way to *prove* an email
+rather than a new account system.
 
 ## 1. Google Cloud Console (one-time, ~5 minutes)
 
@@ -44,8 +44,8 @@ In your existing project:
    - App name "Deepresearch.se", your support email.
    - Scopes: only `openid`, `email`, `profile` (non-sensitive — no Google
      review needed).
-   - External + only these scopes means you can set **Publishing status:
-     In production** immediately; "Testing" mode caps you at 100 test users
+   - External plus only these scopes means you can set **Publishing status:
+     In production** immediately. "Testing" mode caps you at 100 test users
      and expires refresh tokens, so don't stay there.
 2. **Credentials → Create credentials → OAuth client ID**:
    - Application type: **Web application**.
@@ -65,21 +65,21 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
 (Or dashboard → Worker → Settings → Variables and Secrets.) Presence of
-these two secrets is the feature flag: when set, the login and invite pages
+these two secrets is the feature flag. When set, the login and invite pages
 show the Google button; when unset, nothing changes.
 
-**Also set `SESSION_SECRET`** (`npx wrangler secret put SESSION_SECRET`) —
+**Also set `SESSION_SECRET`** (`npx wrangler secret put SESSION_SECRET`),
 the HMAC key for the session and OAuth-state cookies, `openssl rand -hex 32`.
-`src/auth.js` uses it as the sole key — there is no fallback. An earlier
+`src/auth.js` uses it as the sole key; there is no fallback. An earlier
 design derived the key from the admin credentials when `SESSION_SECRET` was
-unset, which left every cookie offline-brute-forceable against `ADMIN_PASS`;
-that was removed. Unset now means no signing key at all, and `src/index.js`
+unset, which left every cookie offline-brute-forceable against `ADMIN_PASS`.
+That was removed. Unset now means no signing key at all, and `src/index.js`
 serves a configuration-error page rather than letting any auth flow run
 keyless. Treat `SESSION_SECRET` as required.
 
 ## 3. The flow to implement (server-side OAuth code flow + OIDC)
 
-No SDK needed — three `fetch`es and WebCrypto, all Workers-native. Two new
+No SDK needed: three `fetch`es and WebCrypto, all Workers-native. Two new
 routes in `src/index.js` (public, like `/login`):
 
 ### `GET /auth/google` — start
@@ -116,7 +116,7 @@ code=<code>&client_id=…&client_secret=…
 
 3. The response contains an `id_token` (JWT). Because it arrives **directly
    from Google's token endpoint over TLS**, Google's own docs say signature
-   verification is optional in this flow — decode the payload
+   verification is optional in this flow. Decode the payload
    (base64url middle segment) and validate the claims instead:
    - `iss` is `https://accounts.google.com` or `accounts.google.com`
    - `aud` === your client ID
@@ -139,7 +139,7 @@ code=<code>&client_id=…&client_secret=…
      `ADMIN_EMAIL` → admin + active, everyone else → `pending` when the
      approval gate is on, `active` otherwise.
 
-That's the whole thing — roughly 120–150 lines in a new `src/google.js`
+That's the whole thing: roughly 120–150 lines in a new `src/google.js`
 plus two route lines and a button.
 
 ## 4. UI touches
@@ -149,8 +149,8 @@ plus two route lines and a button.
   the password form, rendered only when the secrets are configured (pass a
   flag from the route).
 - **Invite page**: "Accept with Google" next to the password field (§5).
-- **Account panel**: show "Signed in with Google" when applicable; users
-  with `pass_hash IS NULL` simply have no password to fall back on — Basic
+- **Account panel**: show "Signed in with Google" when applicable. Users
+  with `pass_hash IS NULL` simply have no password to fall back on, so Basic
   Auth for scripts then requires setting one (a future "set password"
   button in the panel, or keep it Google-only).
 
@@ -207,7 +207,7 @@ GOOGLE_CLIENT_SECRET=…
 ```
 
 The sandboxed dev environment used for this repo's verification can't
-complete a real Google round-trip (interactive consent), so test the
+complete a real Google round-trip (interactive consent). Test the
 callback logic with a forged claims object behind a test-only branch, and
 do one manual end-to-end login after deploying.
 

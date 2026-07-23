@@ -29,6 +29,12 @@ claim that the tree contradicts. Most drift is mechanical (a new module absent
 from the CLAUDE.md file table); some is caught for you by a failing test; some
 needs a human eye.
 
+The bulk of the pass is that reconciliation, not styling. But there is one
+styling step now baked in at the end: every doc you actually **touch** in this
+pass leaves it **Cleaned** — the wired anti-ai-smell Clean step (owner
+directive, 2026-07-23), applied in place to the prose you added or changed. See
+Step 5 below and the **anti-ai-smell** skill for the mechanism.
+
 ## The documentation inventory
 
 Everything below is "documentation" for the purposes of this pass:
@@ -139,9 +145,16 @@ are exact and any hit is real drift.
    not tutorials. Honor the **branding rule** (CamelCase `Se/cure`/`Se/rver`,
    Se/cure-first when paired) and keep internal names (DRC/DRS) out of
    user-facing copy (README, static pages).
-5. **Verify**: `npm test` and `npm run typecheck` both green; re-run the drift
+5. **Clean** (the anti-ai-smell tail — never skip when you edited prose): run
+   the **anti-ai-smell** skill's Clean step on every doc you touched in Step 4,
+   in place, so the committed version is Cleaned. Scope it to the prose you
+   added or changed (plus adjacent smell), under that skill's fact-preservation
+   contract — a reconciled row or paragraph that reads like AI slop isn't done.
+   A pass that changed no prose (only regenerated artifacts) has nothing to
+   Clean.
+6. **Verify**: `npm test` and `npm run typecheck` both green; re-run the drift
    greps until they print nothing.
-6. **Commit + push** to the working branch with a clear message; open a PR only
+7. **Commit + push** to the working branch with a clear message; open a PR only
    if asked (see the **pr** skill).
 
 ## Guardrails
@@ -157,8 +170,10 @@ are exact and any hit is real drift.
 - **A new module/skill/feature is not "done" until its docs row exists.** This
   pass is the safety net; the real fix is adding the row in the same commit that
   adds the code (the mirror discipline the whole repo runs on).
-- Scope: reconcile docs with code. Do **not** refactor code, "improve" wording
-  for its own sake, or touch a doc the code doesn't contradict.
+- Scope: reconcile docs with code. Do **not** refactor code or touch a doc the
+  code doesn't contradict. The Clean step (Step 5) is the ONE authorized styling
+  edit, and only on prose you already changed in this pass — not a licence to
+  restyle untouched docs.
 - **Mechanical drift only.** If a fix would change a CAPABILITY or
   privacy/security POSTURE claim (an invariant, a data-path promise, "what
   the app can do"), stop — that is Class C drift and needs the owner's

@@ -6,7 +6,7 @@ that hit a host-side authoritative workspace directly**, never paying the VM's
 boot/exec/marker-protocol cost; those edits are **coherent inside the VM** so
 that **only arbitrary shell** (`bash`, pipelines, builds, package installs)
 routes through the CheerpX VM. Plus a **deploy pipeline** so the built
-workspace can be pushed live and tried. **Server-tier first** — the
+workspace can be pushed live and tried. **Server-tier first**: the
 MCP-agent + host-workspace + live-deploy combination is structurally a
 server-tier capability; Se/cure is deferred and may be unsuitable (§2).*
 
@@ -16,7 +16,7 @@ builds on) and the SDK's `workspace-fs` + `deploy-pipeline` module skills.
 ## 1. The split — what goes through the VM and what does not
 
 Today every file touch by the sandbox agent is a shell command inside the VM
-(the fenced-block loop): `cat`, `grep`, an editor round-trip — each pays a
+(the fenced-block loop): `cat`, `grep`, an editor round-trip. Each pays a
 marker-protocol exec cycle. That is slow and wasteful for what are really just
 file operations. The insight: **most agent file activity is structured file
 ops that do not need a shell at all**, and only a minority is genuine shell.

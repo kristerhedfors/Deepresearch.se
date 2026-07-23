@@ -2,7 +2,7 @@
 
 *Research date: 2026-07-11. Status: part (A) host-commands = DESIGN;
 part (B) file-mounting = **Tier 1 + persistence IMPLEMENTED for DRS**
-(2026-07-11), and **the ingest DESTINATION corrected 2026-07-14** — files now
+(2026-07-11), and **the ingest DESTINATION corrected 2026-07-14**: files now
 `cp` into PLAIN DIRECTORIES in the root OVERLAY, not bare `IDBDevice` volumes;
 `sandbox-files.js` + `sandbox.js` mounts/seed + `stream.js` provider; Tier 2
 (WebDevice+SW) and DRC wiring still pending.*
@@ -18,28 +18,28 @@ part (B) file-mounting = **Tier 1 + persistence IMPLEMENTED for DRS**
 > byte-perfect (`cat`, `grep`, `ls` all fine), while the bare-`IDBDevice` dir
 > mount times out on `cat`. The device API docs technically *allow* `{type:"dir",
 > dev: idbDevice}`, but it does not work in practice. **Fix:** drop the bare
-> `IDBDevice` mounts entirely; `/workspace` and the project dir are now plain
-> directories the seed script `mkdir`s in the **root `OverlayDevice`** — a real
-> ext2 fs that already persists across sessions via its own IndexedDB layer. This
-> is exactly the mechanism `aisecurityliteracy.dev` proved. The efficient
-> `DataDevice` direct-byte ingest (no base64) is unchanged — only the *destination*
-> moved from a fragile per-volume IDBDevice to the overlay.
+> `IDBDevice` mounts entirely. `/workspace` and the project dir are now plain
+> directories the seed script `mkdir`s in the **root `OverlayDevice`**, a real
+> ext2 fs that already persists across sessions via its own IndexedDB layer.
+> This is the mechanism `aisecurityliteracy.dev` proved. The efficient
+> `DataDevice` direct-byte ingest (no base64) is unchanged; only the
+> *destination* moved from a fragile per-volume IDBDevice to the overlay.
 
 *This doc covers two related capabilities that share one host→guest device:
 (A) **fast host-JS commands** that bypass the emulator, and (B) **mounting the
 files a user drops into chat or a project** so the VM can read them. Read (A)
-first — (B) builds on the same `/host` `DataDevice`.*
+first; (B) builds on the same `/host` `DataDevice`.*
 
 ## The problem
 
 The bash-lite execution sandbox (see the **execution-sandbox** skill) boots a
-real Debian inside CheerpX — an x86 emulator compiled to WebAssembly. Emulated
+real Debian inside CheerpX, an x86 emulator compiled to WebAssembly. Emulated
 x86 is **orders of magnitude slower than native**: `python3 -c` math, hashing,
 sorting a large file, or any CPU-bound guest work burns seconds-to-minutes of
 wall clock that the same operation would take milliseconds in the page's own
 JavaScript engine. The goal: **commands that look like Linux commands to the
 model and the transcript, but execute as host-side JavaScript at native
-speed** — with results flowing back into the loop (and, where needed, into the
+speed**, with results flowing back into the loop (and, where needed, into the
 guest filesystem) as if the guest had run them.
 
 ## Research findings
@@ -86,7 +86,7 @@ CheerpX without unsupported reverse-engineering.
 **The vendor's own answer to this problem** is telling: WebVM's Claude
 Computer-Use integration (labs.leaningtech.com/blog/webvm-claude, 2025-03)
 drives the guest by injecting keystrokes into the terminal and detecting
-completion with a `# End of AI command` sentinel string — i.e. even Leaning
+completion with a `# End of AI command` sentinel string. So even Leaning
 Technologies uses sentinel-framed console I/O, not a hypercall. Their only
 roadmap hint is a direct *input-event injection* API, nothing about RPC.
 
@@ -136,14 +136,14 @@ disk from `disks.webvm.io`. Worth a check before this feature graduates from
   closest thing; 9p lineage (jor1k) but no public JS API.
 - **Puter's Phoenix shell**: notable inverse prior art — a pure-JS shell where
   "Linux commands" are host JS functions *by construction*, with a v86 VM
-  attached as one backend. Philosophically exactly what we want, but it
-  replaces the shell rather than augmenting a real guest.
+  attached as one backend. Philosophically what we want, but it replaces the
+  shell rather than augmenting a real guest.
 
 **Cross-cutting takeaway:** on an emulator that exposes no hostfs/serial/NIC
 seam (CheerpX), the two workable shapes are (a) **host-side orchestration** —
 don't enter the VM at all for host-implemented commands — and (b) a
 **sentinel-framed console protocol + file drop-boxes** for guest-initiated
-calls. Both are exactly the primitives our sandbox already uses.
+calls. Both are primitives our sandbox already uses.
 
 ## The key architectural observation
 
@@ -156,7 +156,7 @@ need guest→host RPC at all. We need a **host command registry consulted in
 `execInSandbox` before the VM**: if the command line is a registered host
 command, run it as native JS and return a `{exitCode, stdout, stderr}`
 shaped exactly like a guest result. The model, the transcript
-(`bash-core.js`), the activity UI, and synthesis all see a normal command —
+(`bash-core.js`), the activity UI, and synthesis all see a normal command, with
 zero changes downstream.
 
 Bonus: a host-command-only session **never boots the VM** (the boot is the
@@ -165,7 +165,7 @@ interception happens before `ensureReady`/`ensureSandboxBooted` matters.
 
 Guest-initiated RPC (a stub inside a guest pipeline calling out to JS) is
 still valuable for composability (`hostcmd | grep …`), and CheerpX gives us
-just enough primitives to build it — but it is phase 2, not the core win.
+just enough primitives to build it, but it is phase 2, not the core win.
 
 ## Integration design
 
@@ -202,13 +202,13 @@ if (hc) return runHostCommand(hc, { writeGuestFile });  // never touches cx
 
 `runHostCommand` wraps the entry's `run` with a timeout and clamps output via
 `normalizeExecResult` semantics (the caps in `bash-core.js` already bound what
-enters the transcript). Errors → `{exitCode: 1, stderr}` — the sandbox's
+enters the transcript). Errors → `{exitCode: 1, stderr}`, so the sandbox's
 fail-soft contract holds.
 
 **Loop integration:** none needed. `runShellLoop` calls `exec(command)` and
 gets a ShellRun-shaped result; `buildShellTranscript` renders it identically.
 The only change is **advertising**: `bashAgentPrompt` (src/prompts.js) and
-`drcBashAgentPrompt` (public/js/drc-research.js) gain a generated paragraph —
+`drcBashAgentPrompt` (public/js/drc-research.js) gain a generated paragraph,
 built from the registry's `promptNote`s so prompt and registry can't drift:
 
 > Fast host commands (run instantly, outside the emulator — always put each
@@ -235,7 +235,7 @@ motivates it; grow evidence-driven, per invariant 5):
    `/host` exchange below.
 
 **Security: host `js` must NOT run in the page context.** Today, arbitrary
-model-proposed code executes inside the VM — fully isolated from cookies,
+model-proposed code executes inside the VM, fully isolated from cookies,
 storage, and our authed APIs. A naive `eval` in the page (or a same-origin
 Worker) would hand prompt-injected research content a path to the user's
 session (cookies ride on same-origin fetch even from a Worker). Design:
@@ -255,7 +255,7 @@ for large outputs.
 > aisl mechanism) is simpler and has no mid-session caveat. So a host command's
 > output destined for a *later* guest command is just
 > a Tier-3 base64 write to `/workspace/out/<n>` (the persistent writable volume
-> part B adds) — no DataDevice needed.
+> part B adds), no DataDevice needed.
 > The `DataDevice` sketch below is kept only as the rejected alternative.
 
 ~~Add a `DataDevice` mount to `CheerpX.Linux.create` in `sandbox.js`:~~
@@ -317,7 +317,7 @@ The qemu-ga/env86 pattern adapted to CheerpX's two primitives:
 Phase 2 is real work (a stub shell script, a console-frame parser layered on
 the exec marker protocol, live-verification on Safari) and only pays off when
 the model genuinely needs a host command *inside* a guest pipeline. Ship it
-only if Phase 1 usage shows that need — do not build it speculatively
+only if Phase 1 usage shows that need; do not build it speculatively
 (invariant 5).
 
 **Ruled out — network-terminated RPC.** The "guest connects to a
@@ -481,7 +481,7 @@ anything under the Tier-1 budget is simpler and just as fast on DataDevice.
 
 **The real wrinkle — encryption undercuts the laziness for OUR files.** OPFS
 originals rest as whole-blob AES-GCM, which is **not seekable**: a SW answering a
-`Range` would have to decrypt the *entire* file anyway, losing the lazy win —
+`Range` would have to decrypt the *entire* file anyway, losing the lazy win,
 unless big files are re-stored in seekable, chunk-encrypted form. So Tier 2's
 payoff is cleanest for **plaintext** sources (RAG-indexed docs rest readable) or
 **R2-proxied** content, and weakest for encrypted originals. **First target when
@@ -526,7 +526,7 @@ This is already half-solved and the rest is one extra mount.
 
 **The root overlay already persists.** We boot
 `OverlayDevice.create(cloudDisk, IDBDevice("deepresearch-sandbox-vm"))`
-(`sandbox.js`) — and CheerpX writes **every guest change to `/` into that
+(`sandbox.js`), and CheerpX writes **every guest change to `/` into that
 IndexedDB layer**, restored on the next load because the `dbName` is stable
 (confirmed: the CheerpX docs and the WebVM 2.0 post both state overlay changes
 are "saved in an IndexedDB persisted by the browser"). So anything the guest
@@ -575,7 +575,7 @@ reads guest-created files back into JS — so a report the model writes to
 `/workspace`, or a file it adds under the project mount, can be **pulled back
 out** and saved to the user's project or offered as a download. The VM stops
 being a dead-end. (There is **no** host-side `IDBDevice.writeFile` — only
-`DataDevice` has it — which is exactly why host bytes ingest through `/mnt/in`
+`DataDevice` has it — which is why host bytes ingest through `/mnt/in`
 and are `cp`'d in.)
 
 ## Timing — mounts at create, ingest + seed before the first command
